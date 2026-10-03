@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Git Chronos",
+  "version": "0.1.0",
+  "identifier": "org.gitchronos.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm nx run desktop:serve -- --host 127.0.0.1",
+    "devUrl": "http://127.0.0.1:4200",
+    "beforeBuildCommand": "pnpm nx run desktop:build",
+    "frontendDist": "../../../dist/apps/desktop/browser"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self'; connect-src ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Git Chronos",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 780,
+        "minHeight": 560,
+        "center": true,
+        "decorations": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "A free, local-first Git client",
+    "longDescription": "Git Chronos is an approachable, powerful, free and open-source Git desktop client.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

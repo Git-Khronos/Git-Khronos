@@ -1,0 +1,40 @@
+{
+  "name": "desktop",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/desktop/src",
+  "targets": {
+    "build": { "executor": "nx:run-commands", "options": { "command": "ng build desktop" } },
+    "serve": { "executor": "nx:run-commands", "options": { "command": "ng serve desktop" } },
+    "tauri-dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tauri dev --config apps/desktop/src-tauri/tauri.conf.json" }
+    },
+    "tauri-build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tauri build --config apps/desktop/src-tauri/tauri.conf.json" }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "ng build desktop --configuration development",
+          "cargo check --workspace --all-targets",
+          "cargo clippy --workspace --all-targets -- -D warnings"
+        ],
+        "parallel": false
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "pnpm exec vitest run apps/desktop/src/app/*.spec.ts",
+          "cargo test --workspace"
+        ],
+        "parallel": false
+      }
+    }
+  },
+  "tags": ["type:app", "platform:desktop"]
+}

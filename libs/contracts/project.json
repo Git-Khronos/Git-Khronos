@@ -1,0 +1,7 @@
+{
+  "name": "contracts",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/contracts/src",
+  "tags": ["type:contracts", "scope:shared"]
+}

@@ -1,0 +1,109 @@
+version: '3'
+
+vars:
+  TAURI_CONFIG: apps/desktop/src-tauri/tauri.conf.json
+  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-chronos-desktop.exe{{else}}./target/release/git-chronos-desktop{{end}}'
+
+tasks:
+  default:
+    desc: List the available Git Chronos tasks
+    cmds:
+      - task --list
+
+  doctor:
+    desc: Verify the local Node, pnpm, Rust, and Git toolchains
+    cmds:
+      - node tools/check-node.mjs
+      - pnpm --version
+      - rustc --version
+      - git --version
+
+  install:
+    desc: Install the pinned frontend dependencies
+    deps: [doctor]
+    cmds:
+      - pnpm install --frozen-lockfile
+
+  dev:
+    aliases: [start]
+    desc: Start the Tauri app in development mode with live reload
+    deps: [doctor]
+    cmds:
+      - pnpm dev
+
+  frontend:
+    desc: Build only the Angular frontend
+    deps: [doctor]
+    cmds:
+      - pnpm build
+
+  preview:
+    desc: Serve the sample-data browser preview at http://127.0.0.1:4200
+    deps: [doctor]
+    cmds:
+      - pnpm exec ng serve desktop --host 127.0.0.1 --port 4200
+
+  build:
+    desc: Build the optimized native executable without installer packages
+    deps: [doctor]
+    cmds:
+      - pnpm exec tauri build --no-bundle --config {{.TAURI_CONFIG}}
+
+  run:
+    desc: Build if needed, then run the optimized native executable
+    deps: [build]
+    cmds:
+      - '{{.RELEASE_BINARY}}'
+
+  bundle:
+    desc: Build the native executable and platform installer packages
+    deps: [doctor]
+    cmds:
+      - pnpm tauri:build
+
+  test:
+    desc: Run the workspace test suite
+    deps: [doctor]
+    cmds:
+      - pnpm test
+
+  test:e2e:
+    desc: Run deterministic browser-renderer journeys against sample data
+    deps: [doctor]
+    cmds:
+      - pnpm test:e2e
+
+  test:e2e:install:
+    desc: Install the Chromium runtime used by renderer end-to-end tests
+    deps: [doctor]
+    cmds:
+      - pnpm exec playwright install chromium
+
+  check:
+    desc: Run frontend compilation, Rust checks, and Clippy
+    deps: [doctor]
+    cmds:
+      - pnpm check
+
+  fmt:
+    desc: Format all Rust sources
+    cmds:
+      - cargo fmt --all
+
+  fmt:check:
+    desc: Verify Rust formatting without modifying files
+    cmds:
+      - cargo fmt --all -- --check
+
+  ci:
+    desc: Run the local continuous-integration checks
+    cmds:
+      - task: fmt:check
+      - task: check
+      - task: test
+
+  clean:
+    desc: Remove generated Nx, Angular, Rust, and distribution artifacts
+    cmds:
+      - pnpm exec nx reset
+      - cargo clean

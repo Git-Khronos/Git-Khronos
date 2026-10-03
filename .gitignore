@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.angular/
+.nx/
+target/
+apps/desktop/src-tauri/target/
+*.log
+playwright-report/
+test-results/
+e2e/**/*-snapshots/
+.DS_Store
+.idea/
+.vscode/
+.aws
