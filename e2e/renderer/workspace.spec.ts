@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -910,7 +910,8 @@ test('preserves readable commit messages with both panels on medium desktops', a
 
   const subject = row.locator('.subject');
   expect(await subject.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  expect(await row.locator('.commit-description').evaluate((element) => element.clientWidth)).toBeGreaterThan(64);
+  // The right gutter keeps the scroll-marker rail clear of row actions, leaving the description a bit less room.
+  expect(await row.locator('.commit-description').evaluate((element) => element.clientWidth)).toBeGreaterThan(48);
 });
 
 test('moves the commit inspector into overlay mode before three columns clip', async ({ page }) => {
@@ -2255,7 +2256,7 @@ test('starts with author and date metadata and persists the optional SHA column'
   await shaColumn.check();
   await expect(page.locator('.graph-columns')).toContainText('SHA');
   await expect(page.locator('.commit-row .row-date').first()).toBeVisible();
-  await expect(page.locator('.commit-row .row-date small').filter({ hasText: /\d{1,2}:\d{2} [AP]M/ }).first()).toBeVisible();
+  await expect(page.locator('.commit-row .row-date small').filter({ hasText: /^\d{2}:\d{2}$/ }).first()).toBeVisible();
   await expect(page.locator('.commit-row .row-date small').first()).toHaveCSS('font-size', '12px');
 
   await page.reload();
@@ -2341,9 +2342,9 @@ test('restores graph layout defaults without resetting unrelated preferences', a
   await expect(page.locator('.graph-columns')).toContainText('DATE / TIME');
   await expect(settings).toContainText('Drag column headers to reorder them.');
   await expect.poll(() => page.evaluate(() => ({
-    compact: localStorage.getItem('git-chronos.graph.%2Frepositories%2Fgit-chronos.column.graph.compact'),
-    date: localStorage.getItem('git-chronos.graph.%2Frepositories%2Fgit-chronos.column.date.visible'),
-    markers: localStorage.getItem('git-chronos.graph.%2Frepositories%2Fgit-chronos.scroll-markers'),
+    compact: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.graph.compact'),
+    date: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.date.visible'),
+    markers: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.scroll-markers'),
   }))).toEqual({ compact: null, date: null, markers: null });
 });
 
@@ -2413,34 +2414,48 @@ test('resizes the commit message column independently of unused graph space', as
   const messageSeparator = page.getByRole('separator', { name: 'Resize Commit Message column' });
   const messageHeading = page.locator('.graph-columns .draggable-column').filter({ hasText: 'COMMIT MESSAGE' });
   const settingsButton = page.getByRole('button', { name: 'Configure graph columns' });
+  // A trailing heading also spans the 26px actions lane; measure the column's own track.
+  const messageWidth = () => messageHeading.evaluate((heading) =>
+    Math.round(heading.getBoundingClientRect().width - (heading.classList.contains('trailing-column') ? 26 : 0)));
   const expectSettingsPinnedRight = async () => {
+    // The last heading also spans the settings strip, the header's only extra track.
     expect(await page.locator('.graph-columns').evaluate((header) =>
-      getComputedStyle(header).gridTemplateColumns.split(' ').length === header.children.length,
+      getComputedStyle(header).gridTemplateColumns.split(' ').length
+        === header.children.length + header.querySelectorAll(':scope > .trailing-column').length,
     )).toBe(true);
     await expect(page.locator('.graph-columns .graph-settings-toggle')).toHaveCount(0);
     await expect.poll(async () => {
       const header = (await page.locator('.graph-columns').boundingBox())!;
       const button = (await settingsButton.boundingBox())!;
-      return Math.abs(header.x + header.width - button.x - button.width - 4);
+      return Math.abs(header.x + header.width - button.x - button.width - 14);
     }).toBeLessThanOrEqual(1);
   };
   await expectSettingsPinnedRight();
   await expect(messageSeparator).toHaveAttribute('aria-valuemin', '180');
-  await expect(messageSeparator).toHaveAttribute('aria-valuemax', '800');
-  const initialMessageWidth = Math.round((await messageHeading.boundingBox())!.width);
+  await expect(messageSeparator).toHaveAttribute('aria-valuemax', '2400');
+  const initialMessageWidth = (await messageWidth());
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth));
 
+  // As the last column, Commit Message resizes from its left edge, so the direction is mirrored.
+  const leading = await messageSeparator.evaluate((separator) => separator.classList.contains('leading-edge'));
+  const direction = leading ? -1 : 1;
   await messageSeparator.focus();
   await page.keyboard.press('ArrowLeft');
-  await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth - 8));
-  expect(Math.round((await messageHeading.boundingBox())!.width)).toBe(initialMessageWidth - 8);
+  await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth - 8 * direction));
+  expect((await messageWidth())).toBe(initialMessageWidth - 8 * direction);
   await page.keyboard.press('Home');
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '180');
-  expect((await messageHeading.boundingBox())!.width).toBe(180);
+  expect((await messageWidth())).toBe(180);
   await expectSettingsPinnedRight();
   await page.keyboard.press('End');
-  await expect(messageSeparator).toHaveAttribute('aria-valuenow', '800');
-  expect((await messageHeading.boundingBox())!.width).toBe(800);
+  if (leading) {
+    // A left-edge splitter can only take what the column before it can give up.
+    await expect.poll(async () => Number(await messageSeparator.getAttribute('aria-valuenow'))).toBeGreaterThan(180);
+    expect(await messageWidth()).toBe(Number(await messageSeparator.getAttribute('aria-valuenow')));
+  } else {
+    await expect(messageSeparator).toHaveAttribute('aria-valuenow', '2400');
+    expect((await messageWidth())).toBe(2400);
+  }
   await expectSettingsPinnedRight();
   await page.keyboard.press('Home');
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '180');
@@ -2449,13 +2464,13 @@ test('resizes the commit message column independently of unused graph space', as
   expect(handle).not.toBeNull();
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(handle!.x + handle!.width / 2 + 40, handle!.y + handle!.height / 2);
+  await page.mouse.move(handle!.x + handle!.width / 2 + 40 * direction, handle!.y + handle!.height / 2);
   await page.mouse.up();
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '220');
-  expect((await messageHeading.boundingBox())!.width).toBe(220);
+  expect((await messageWidth())).toBe(220);
   await page.reload();
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '220');
-  expect((await messageHeading.boundingBox())!.width).toBe(220);
+  expect((await messageWidth())).toBe(220);
   await expectSettingsPinnedRight();
   await messageSeparator.dblclick();
   await expect.poll(async () => Number(await messageSeparator.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(260);
@@ -2492,55 +2507,64 @@ test('resizes the date column from its left edge while its right edge stays fixe
   };
   const expectRightFixed = async () => expect(Math.abs(await right() - initialRight)).toBeLessThanOrEqual(1);
 
-  await expect(separator).toHaveAttribute('aria-valuenow', '88');
+  await expect(separator).toHaveAttribute('aria-valuenow', '100');
   await expect(date.locator('.column-heading-label')).toBeVisible();
   await expect(date.locator('.column-heading-icon')).toHaveCount(0);
   await drag(-24);
-  await expect(separator).toHaveAttribute('aria-valuenow', '112');
+  await expect(separator).toHaveAttribute('aria-valuenow', '124');
   expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor) - 24);
   await expectRightFixed();
   expect(Math.abs((await box(message)).width - messageWidth)).toBeLessThanOrEqual(1);
 
+  // Narrowing stops at the width needed by the rendered dates and times.
+  const minimum = Number(await separator.getAttribute('aria-valuemin'));
+  expect(minimum).toBeGreaterThan(40);
+  expect(minimum).toBeLessThan(100);
   await drag(48);
-  await expect(separator).toHaveAttribute('aria-valuenow', '64');
-  expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor) + 24);
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
+  expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor) + 100 - minimum);
   await expectRightFixed();
 
-  await expect(date.locator('.column-heading-icon')).toBeVisible();
   await expect(date).toHaveAttribute('title', 'Date / Time');
   await page.reload();
-  await expect(separator).toHaveAttribute('aria-valuenow', '64');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
   await expectRightFixed();
 
   await separator.focus();
   await page.keyboard.press('ArrowLeft');
-  await expect(separator).toHaveAttribute('aria-valuenow', '72');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum + 8));
   await expectRightFixed();
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(separator).toHaveAttribute('aria-valuenow', '40');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
   await expectRightFixed();
   await page.keyboard.press('ArrowRight');
-  await expectRightFixed();
-  await page.keyboard.press('ArrowRight');
-  await expect(separator).toHaveAttribute('aria-valuenow', '32');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
   await expectRightFixed();
 
   await separator.dblclick();
-  await expect(separator).toHaveAttribute('aria-valuenow', '88');
+  await expect(separator).toHaveAttribute('aria-valuenow', '100');
   expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor));
   await expectRightFixed();
 
-  // The neighbor's minimum width limits how far the left edge can move.
+  // Space freed before Date / Time is filled by it, so its right edge stays at the panel edge.
   await page.getByRole('separator', { name: 'Resize Author column', exact: true }).focus();
   await page.keyboard.press('Home');
-  const narrowRight = await right();
+  await expect.poll(async () => Number(await separator.getAttribute('aria-valuenow'))).toBeGreaterThan(100);
+  const filled = Number(await separator.getAttribute('aria-valuenow'));
+  expect(Math.round((await box(date)).width)).toBe(filled + 26);
+  await expectRightFixed();
+  // The neighbor's minimum width limits how far the left edge can move.
   await separator.focus();
   await page.keyboard.press('End');
-  await expect(separator).toHaveAttribute('aria-valuenow', '88');
-  expect(Math.abs(await right() - narrowRight)).toBeLessThanOrEqual(1);
+  await expect(separator).toHaveAttribute('aria-valuenow', String(filled));
+  await expectRightFixed();
+  // The filled width is real: dragging the left edge right narrows Date / Time at once.
+  await drag(40);
+  await expect(separator).toHaveAttribute('aria-valuenow', String(filled - 40));
+  await expectRightFixed();
   await page.keyboard.press('Home');
-  await expect(separator).toHaveAttribute('aria-valuenow', '32');
-  expect(Math.abs(await right() - narrowRight)).toBeLessThanOrEqual(1);
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
+  await expectRightFixed();
 });
 
 test('shows each graph heading title in full or as an icon with a tooltip', async ({ page }) => {
@@ -2564,10 +2588,11 @@ test('shows each graph heading title in full or as an icon with a tooltip', asyn
   const date = page.locator('.graph-columns .draggable-column').filter({ hasText: 'DATE / TIME' });
   await expect(date.locator('.column-heading-label')).toBeVisible();
   await expect(date.locator('.column-heading-icon')).toHaveCount(0);
+  // Date / Time never narrows below its dates and times, which is already wide enough for its full title.
   await page.getByRole('separator', { name: 'Resize Date and Time column', exact: true }).focus();
   await page.keyboard.press('Home');
-  await expect(date.locator('.column-heading-icon')).toBeVisible();
-  await expect(date).toHaveAttribute('title', 'Date / Time');
+  await expect(date.locator('.column-heading-label')).toBeVisible();
+  await expect(date.locator('.column-heading-icon')).toHaveCount(0);
   await assertFit();
   for (const name of ['Resize Branch and Tag column', 'Resize Graph column', 'Resize Author column', 'Resize Date and Time column', 'Resize SHA column']) {
     const separator = page.getByRole('separator', { name, exact: true });
@@ -2607,19 +2632,36 @@ test('resizes every graph column independently with flexible and narrow commit m
       await page.getByRole('separator', { name: labels[2], exact: true }).focus();
       await page.keyboard.press('Home');
     }
+    // Leave Date / Time and the last column (SHA) room to give up width to the splitter before them.
+    for (const name of ['Resize SHA column', 'Resize Date and Time column']) {
+      await page.getByRole('separator', { name, exact: true }).focus();
+      await page.keyboard.press('Shift+ArrowLeft');
+    }
     for (const label of labels) {
       const separator = page.getByRole('separator', { name: label, exact: true });
       const heading = separator.locator('..');
-      await separator.scrollIntoViewIfNeeded();
+      // Scroll the history, which the header mirrors, until the handle is clear of the settings button.
+      await heading.evaluate((column) => {
+        const list = document.querySelector<HTMLElement>('.commit-list')!;
+        const visibleRight = list.getBoundingClientRect().left + list.clientWidth - 48;
+        const overflow = column.querySelector('.column-resizer')!.getBoundingClientRect().right - visibleRight;
+        if (overflow > 0) {
+          list.scrollLeft += overflow;
+          list.dispatchEvent(new Event('scroll'));
+        }
+      });
+      await expect.poll(() => page.evaluate(() =>
+        document.querySelector('.graph-columns')!.scrollLeft - document.querySelector('.commit-list')!.scrollLeft)).toBe(0);
       const before = (await heading.boundingBox())!;
       const scrollBefore = await page.locator('.graph-columns').evaluate((header) => header.scrollLeft);
       const columnIndex = await heading.evaluate((column) =>
         [...column.parentElement!.querySelectorAll(':scope > .draggable-column')].indexOf(column),
       );
-      // The boundary before Date / Time is a splitter that keeps Date / Time's right edge fixed.
-      const dateIndex = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
-        columns.findIndex((column) => column.querySelector('.column-resizer.leading-edge')),
+      // Date / Time and the last column resize from a left-edge splitter that keeps their right edge fixed.
+      const leadingEdges = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
+        columns.map((column) => column.querySelector('.column-resizer.leading-edge') !== null),
       );
+      const leading = leadingEdges[columnIndex];
       const widths = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
         columns.map((column) => Math.round(column.getBoundingClientRect().width)),
       );
@@ -2631,21 +2673,22 @@ test('resizes every graph column independently with flexible and narrow commit m
       await page.mouse.move(x + 16, y, { steps: 4 });
       await page.mouse.up();
       const after = (await heading.boundingBox())!;
-      expect(Math.round(after.width), label).toBe(Math.round(before.width) + 16);
+      // Dragging a leading-edge splitter right moves the column's left edge, narrowing it.
+      expect(Math.round(after.width), label).toBe(Math.round(before.width) + (leading ? -16 : 16));
       const scrollAfter = await page.locator('.graph-columns').evaluate((header) => header.scrollLeft);
-      // A trailing column pinned to the right edge grows leftward instead of keeping its left edge.
-      const pinned = await heading.evaluate((column) => column.classList.contains('trailing-column'));
-      const keptLeft = Math.abs(after.x + scrollAfter - before.x - scrollBefore) <= 1;
-      const keptRight = Math.abs(after.x + after.width - before.x - before.width) <= 1;
-      expect(pinned ? keptLeft || keptRight : keptLeft, label).toBe(true);
+      // Columns are never pinned, so every other column keeps its left edge in the scrolled content.
+      expect(Math.abs(after.x + scrollAfter - before.x - scrollBefore - (leading ? 16 : 0)), label).toBeLessThanOrEqual(1);
       const newWidths = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
         columns.map((column) => Math.round(column.getBoundingClientRect().width)),
       );
-      expect(newWidths).toEqual(widths.map((width, index) =>
-        width + (index === columnIndex ? 16 : 0) - (index === dateIndex && columnIndex === dateIndex - 1 ? 16 : 0)));
+      expect(newWidths).toEqual(leading
+        ? widths.map((width, index) => width + (index === columnIndex ? -16 : index === columnIndex - 1 ? 16 : 0))
+        : widths.map((width, index) =>
+          width + (index === columnIndex ? 16 : 0) - (index === columnIndex + 1 && leadingEdges[index] ? 16 : 0)));
       await separator.focus();
       await page.keyboard.press('ArrowLeft');
-      expect(Math.round((await heading.boundingBox())!.width)).toBe(Math.round(before.width) + 8);
+      // Left widens a leading-edge column and narrows any other.
+      expect(Math.round((await heading.boundingBox())!.width)).toBe(Math.round(before.width) + (leading ? -8 : 8));
     }
     const author = page.getByRole('separator', { name: labels[3], exact: true });
     await author.focus();
@@ -2820,10 +2863,13 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   expect(headerBoxAfterScroll).not.toBeNull();
   expect(settingsBoxAfterScroll).not.toBeNull();
   expect(Math.abs(settingsBoxAfterScroll!.x + settingsBoxAfterScroll!.width -
-    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 4))).toBeLessThanOrEqual(1);
-  await expect.poll(() => leadingHeader.evaluate((element) => element.getBoundingClientRect().x)).toBeGreaterThanOrEqual(shellX);
-  await expect.poll(() => leadingCell.evaluate((element) => element.getBoundingClientRect().x)).toBeGreaterThanOrEqual(shellX);
-  await expect.poll(() => leadingCell.locator('.ref-pill').first().evaluate((element) => element.getBoundingClientRect().x)).toBeGreaterThanOrEqual(shellX);
+    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 14))).toBeLessThanOrEqual(1);
+  // The leading column scrolls with the history instead of staying pinned over the columns after it.
+  await expect.poll(() => leadingHeader.evaluate((element) => element.getBoundingClientRect().x)).toBeLessThan(shellX);
+  await expect.poll(async () => Math.abs(
+    await leadingHeader.evaluate((element) => element.getBoundingClientRect().x)
+    - await leadingCell.evaluate((element) => element.getBoundingClientRect().x),
+  )).toBeLessThanOrEqual(1);
 
   const [headerMessageX, rowMessageX] = await Promise.all([
     header.getByText('COMMIT MESSAGE', { exact: true }).evaluate((element) => element.getBoundingClientRect().x),
@@ -2864,7 +2910,7 @@ test('keeps compact history controls clear of the commit inspector', async ({ pa
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x);
     expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 4);
     expect(Math.abs(settingsBox!.x + settingsBox!.width -
-      (historyBox!.x + historyBox!.width - 4))).toBeLessThanOrEqual(1);
+      (historyBox!.x + historyBox!.width - 14))).toBeLessThanOrEqual(1);
 
     await settingsButton.click();
     await expect(page.getByRole('dialog', { name: 'Graph layout and columns' })).toBeVisible();
@@ -3238,6 +3284,175 @@ test('finds and safely preserves commits from recovery history', async ({ page }
   await expect(dialog).toHaveCount(0);
 });
 
+test('keeps the graph header in place while the author filter is open', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const header = page.locator('.graph-columns');
+  const before = (await header.boundingBox())!;
+  await page.getByRole('button', { name: 'Filter commits by author' }).click();
+  await expect(page.getByLabel('Search authors')).toBeFocused();
+  expect(await header.evaluate((element) => [element.scrollTop, element.scrollLeft])).toEqual([0, 0]);
+  expect((await page.locator('.author-column-heading').boundingBox())!.y).toBeGreaterThanOrEqual(before.y - 1);
+  await page.keyboard.press('Escape');
+  expect(await header.evaluate((element) => element.scrollTop)).toBe(0);
+});
+
+test('keeps a resized column edge visible while columns overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('separator', { name: 'Resize Commit Message column', exact: true }).focus();
+  await page.keyboard.press('End');
+  const list = page.locator('.commit-list');
+  await expect.poll(() => list.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(100);
+  const edges = () => page.evaluate(() => ({
+    authorRight: document.querySelector('.author-column-heading')!.getBoundingClientRect().right,
+    dateLeft: document.querySelector('.graph-columns > .trailing-column')!.getBoundingClientRect().left,
+    visibleRight: (() => { const list = document.querySelector('.commit-list')!; return list.getBoundingClientRect().left + list.clientWidth; })(),
+  }));
+  // Author's right edge is the Date / Time splitter; widening Author scrolls it into view.
+  await list.evaluate((element) => { element.scrollLeft = 0; });
+  await page.getByRole('separator', { name: 'Resize Date and Time column', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => { const { authorRight, dateLeft, visibleRight } = await edges(); return Math.abs(authorRight - dateLeft) <= 1 && authorRight <= visibleRight; }).toBe(true);
+  // Widening Author from its own handle scrolls its right edge into view.
+  await list.evaluate((element) => { element.scrollLeft = 0; });
+  await page.getByRole('separator', { name: 'Resize Author column', exact: true }).focus();
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(async () => { const { authorRight, dateLeft, visibleRight } = await edges(); return authorRight <= dateLeft + 1 && authorRight <= visibleRight; }).toBe(true);
+});
+
+const graphColumnFit = (page: Page) => page.evaluate(() => {
+  const list = document.querySelector('.commit-list')!;
+  const separators = [...document.querySelectorAll('.graph-columns [role="separator"]')].map((separator) => ({
+    name: separator.getAttribute('aria-label')!,
+    now: Number(separator.getAttribute('aria-valuenow')),
+    min: Number(separator.getAttribute('aria-valuemin')),
+    max: Number(separator.getAttribute('aria-valuemax')),
+  }));
+  const headings = [...document.querySelectorAll('.graph-columns > *')]
+    .map((heading) => heading.getBoundingClientRect())
+    .filter((box) => box.width > 0)
+    .sort((left, right) => left.left - right.left);
+  const overlaps = headings.some((box, index) => index > 0 && box.left < headings[index - 1].right - 1);
+  return { overflow: list.scrollWidth - list.clientWidth, separators, overlaps };
+});
+
+const separatorWidth = async (page: Page, name: string) =>
+  Number(await page.getByRole('separator', { name, exact: true }).getAttribute('aria-valuenow'));
+
+const expectGraphColumnsFit = async (page: Page) => {
+  await expect.poll(async () => {
+    const { overflow, separators, overlaps } = await graphColumnFit(page);
+    return overflow <= 1 && !overlaps && separators.every(({ now, min }) => now >= min);
+  }).toBe(true);
+};
+
+test('fits graph columns to the panel when horizontal scrolling is off', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/');
+  const settingsButton = page.getByRole('button', { name: 'Configure graph columns' });
+  await settingsButton.click();
+  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const toggle = settings.getByLabel('Horizontal Scrolling');
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('false');
+  await expectGraphColumnsFit(page);
+
+  // End on Commit Message takes every other column's spare width, but no more.
+  const message = page.getByRole('separator', { name: 'Resize Commit Message column', exact: true });
+  await message.focus();
+  await page.keyboard.press('End');
+  await expectGraphColumnsFit(page);
+  const messageMaximum = Number(await message.getAttribute('aria-valuemax'));
+  expect(messageMaximum).toBeLessThan(2400);
+  await expect(message).toHaveAttribute('aria-valuenow', String(messageMaximum));
+  for (const { name, now, min } of (await graphColumnFit(page)).separators) {
+    if (name !== 'Resize Commit Message column') expect(now, name).toBe(min);
+  }
+  await page.keyboard.press('Home');
+  await expect(message).toHaveAttribute('aria-valuenow', '180');
+  await expectGraphColumnsFit(page);
+
+  // Widening Branch narrows Commit Message first; dragging back within the same drag restores it.
+  const branchName = 'Resize Branch and Tag column';
+  const authorName = 'Resize Author column';
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) if (key.includes('.column.') && key.endsWith('.width')) localStorage.removeItem(key);
+  });
+  await page.reload();
+  await expect(page.getByRole('separator', { name: branchName, exact: true })).toHaveAttribute('aria-valuenow', '150');
+  const startMessage = await separatorWidth(page, 'Resize Commit Message column');
+  const startAuthor = await separatorWidth(page, authorName);
+  const handle = (await page.getByRole('separator', { name: branchName, exact: true }).boundingBox())!;
+  const y = handle.y + handle.height / 2;
+  await page.mouse.move(handle.x + handle.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2 + 120, y, { steps: 4 });
+  await expect.poll(() => separatorWidth(page, branchName)).toBe(270);
+  await expect.poll(() => separatorWidth(page, 'Resize Commit Message column')).toBeLessThan(startMessage);
+  expect(await separatorWidth(page, authorName)).toBe(startAuthor);
+  await expectGraphColumnsFit(page);
+  await page.mouse.move(handle.x + handle.width / 2 + 700, y, { steps: 6 });
+  await expectGraphColumnsFit(page);
+  expect(await separatorWidth(page, 'Resize Commit Message column')).toBe(180);
+  expect(await separatorWidth(page, authorName)).toBeLessThan(startAuthor);
+  await page.mouse.move(handle.x + handle.width / 2, y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => separatorWidth(page, branchName)).toBe(150);
+  expect(await separatorWidth(page, 'Resize Commit Message column')).toBe(startMessage);
+  expect(await separatorWidth(page, authorName)).toBe(startAuthor);
+
+  // The Date / Time left edge still trades width with Author without overflowing.
+  const date = page.getByRole('separator', { name: 'Resize Date and Time column', exact: true });
+  const startDate = Number(await date.getAttribute('aria-valuenow'));
+  await date.focus();
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => separatorWidth(page, 'Resize Date and Time column')).toBe(startDate + 32);
+  expect(await separatorWidth(page, authorName)).toBe(startAuthor - 32);
+  await expectGraphColumnsFit(page);
+
+  // Narrowing the window narrows the columns, and the setting survives a reload.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expectGraphColumnsFit(page);
+  await page.reload();
+  await expectGraphColumnsFit(page);
+  await settingsButton.click();
+  await expect(toggle).not.toBeChecked();
+
+  // Turning scrolling back on lets columns overflow again.
+  await toggle.check();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('true');
+  await message.focus();
+  await page.keyboard.press('End');
+  await expect(message).toHaveAttribute('aria-valuenow', '2400');
+  await expect.poll(async () => (await graphColumnFit(page)).overflow).toBeGreaterThan(100);
+});
+
+test('keeps fitted graph columns inside the panel when paths are fitted or columns shown', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  await settings.getByLabel('Horizontal Scrolling').uncheck();
+  await settings.getByLabel('SHA').check();
+  await page.keyboard.press('Escape');
+  await expectGraphColumnsFit(page);
+  const graph = page.getByRole('separator', { name: 'Resize Graph column', exact: true });
+  await graph.focus();
+  await page.keyboard.press('End');
+  await expectGraphColumnsFit(page);
+  await graph.dblclick();
+  await expectGraphColumnsFit(page);
+
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  await settings.getByRole('button', { name: 'Restore graph defaults' }).click();
+  await expect(settings.getByLabel('Horizontal Scrolling')).toBeChecked();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBeNull();
+});
+
 test('searches and applies the graph author filter', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await page.locator('.column-settings').getByLabel('Author').check();
@@ -3250,6 +3465,23 @@ test('searches and applies the graph author filter', async ({ page }) => {
   const authorSearch = page.getByRole('searchbox', { name: 'Search authors' });
   await expect(authorSearch).toBeFocused();
   await expect(page.getByRole('dialog', { name: 'Author filter' })).toContainText('All authors');
+  // The whole menu is on top: it is not clipped by the column header, so every option is clickable.
+  const authorMenu = page.getByRole('dialog', { name: 'Author filter' });
+  expect(await authorMenu.evaluate((menu) => {
+    const box = menu.getBoundingClientRect();
+    return [box.top + 8, box.top + box.height / 2, box.bottom - 8].every((y) =>
+      [box.left + 8, box.right - 8].every((x) => menu.contains(document.elementFromPoint(x, y))));
+  })).toBe(true);
+  const lastAuthor = authorMenu.locator(':scope > button').last();
+  const lastAuthorName = (await lastAuthor.locator('strong').textContent())!.trim();
+  await lastAuthor.click();
+  await expect(page.locator('.author-column-heading')).toHaveClass(/filtered/);
+  await expect(page.locator('.commit-row[data-commit-oid] .row-author').first()).toContainText(lastAuthorName);
+  await filterButton.click();
+  await authorMenu.getByRole('button', { name: /All authors/ }).click();
+  await expect(page.locator('.author-column-heading')).not.toHaveClass(/filtered/);
+  await filterButton.click();
+  await expect(authorSearch).toBeFocused();
 
   await authorSearch.fill('leo@example');
   await expect(page.getByRole('dialog', { name: 'Author filter' }).getByRole('button', { name: /Leo Martin/ })).toBeVisible();
@@ -3365,6 +3597,79 @@ test('keeps branch confirmations keyboard-contained and returns to the invoking 
 
   await expect(confirmation).toHaveCount(0);
   await expect(localBranch).toBeFocused();
+});
+
+test('never narrows Date / Time below its visible dates and times', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.reload();
+  const separator = page.getByRole('separator', { name: 'Resize Date and Time column', exact: true });
+  const clipped = () => page.locator('.commit-row .row-date').evaluateAll((cells) => cells.some((cell) =>
+    [...cell.children, cell].some((part) => part.scrollWidth > part.clientWidth + 0.5)
+      || [...cell.children].some((part) => part.getBoundingClientRect().right > cell.getBoundingClientRect().right - 6)));
+  const minimum = Number(await separator.getAttribute('aria-valuemin'));
+  expect(minimum).toBeGreaterThan(32);
+  await separator.focus();
+  await page.keyboard.press('Home');
+  await expect.poll(() => separator.getAttribute('aria-valuenow')).toBe(String(minimum));
+  expect(await clipped()).toBe(false);
+
+  // A narrower width saved earlier is widened to fit the dates when the repository loads.
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) if (key.endsWith('column.date.width')) localStorage.setItem(key, '32');
+  });
+  await page.reload();
+  await expect(page.locator('.commit-row .row-date').first()).toBeVisible();
+  await expect.poll(clipped).toBe(false);
+});
+
+test('offers an explicit force delete when Git protects an unmerged branch', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const snapshot = git.repository();
+    const state = { calls: [] as Array<{ command: string; args: Record<string, unknown> }> };
+    (window as any).__unmergedDeleteTest = state;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: Record<string, unknown> = {}) => {
+        state.calls.push({ command, args });
+        if (command === 'delete_branch' && !args['force']) {
+          return Promise.reject({
+            kind: 'branchNotMerged',
+            message: 'feature/partial-staging has commits that are not merged into its upstream or the current branch.',
+            hint: 'Deleting it anyway can make those commits unreachable from any branch.',
+          });
+        }
+        if (command === 'delete_branch') {
+          return Promise.resolve({
+            ...snapshot,
+            branches: snapshot.branches.filter((branch: { name: string }) => branch.name !== args['name']),
+          });
+        }
+        if (command === 'refresh_repository') return Promise.resolve(snapshot);
+        return Promise.reject(new Error(`Unexpected command: ${command}`));
+      },
+    };
+  });
+  const localBranch = page.getByRole('button', { name: 'Local branch feature/partial-staging' });
+  await localBranch.focus();
+  await page.keyboard.press('Shift+F10');
+  await page.locator('.context-menu[role="menu"]').getByRole('menuitem', { name: 'Delete branch…' }).click();
+  const confirmation = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  await confirmation.getByRole('button', { name: 'Delete branch' }).click();
+
+  await expect(confirmation.getByRole('button', { name: 'Delete anyway' })).toBeVisible();
+  await expect(confirmation).toContainText('not merged into its upstream or the current branch');
+  await expect(confirmation.getByRole('checkbox', { name: /Force delete/ })).toHaveCount(0);
+  await expect(page.getByText('Git needs attention')).toHaveCount(0);
+  await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
+
+  await confirmation.getByRole('button', { name: 'Delete anyway' }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByText('Git needs attention')).toHaveCount(0);
+  await expect(localBranch).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__unmergedDeleteTest.calls
+    .filter((call: { command: string }) => call.command === 'delete_branch')
+    .map((call: { args: Record<string, unknown> }) => call.args['force']))).toEqual([false, true]);
 });
 
 test('navigates branch-drop actions as a fitted desktop menu', async ({ page }) => {
@@ -4043,7 +4348,8 @@ test('navigates HEAD, working changes, selection, and search with scroll markers
     };
   }));
   expect(markerTargets.length).toBeGreaterThan(0);
-  expect(markerTargets.every(({ targetWidth, targetHeight }) => targetWidth >= 24 && targetHeight >= 24)).toBe(true);
+  // Targets fill the 12px rail gutter (clear of row actions) and stay 24px tall.
+  expect(markerTargets.every(({ targetWidth, targetHeight }) => targetWidth >= 12 && targetHeight >= 24)).toBe(true);
   expect(markerTargets.every(({ visualWidth }) => visualWidth <= 11)).toBe(true);
 
   const search = page.getByLabel('Search commits by message, SHA, or author');

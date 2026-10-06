@@ -5,12 +5,15 @@ import {
   HostListener,
   OnDestroy,
   OnInit,
-  ViewChild,
   afterNextRender,
+  afterRenderEffect,
   computed,
   effect,
   inject,
+  Injector,
   signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -34,7 +37,7 @@ import type {
 import { GitChronosService, type RepositoryWorkspace } from './git-chronos.service';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
-import { calculateVirtualWindow } from './virtual-list';
+import { calculateVirtualWindow, type VirtualWindow } from './virtual-list';
 import { shortcutLabelsForPlatform } from './shortcut-labels';
 import {
   boundedGraphLaneOffset,
@@ -49,7 +52,8 @@ import {
   isDefaultGraphColumnVisible,
   MAXIMUM_PERSISTED_GRAPH_COLUMN_WIDTH,
   normalizeGraphColumnWidth,
-  requiredGraphLaneCount,
+  advanceRequiredGraphLaneCount,
+  type RequiredGraphLaneProgress,
 } from './graph-layout';
 import { graphScrollMarkerPosition, sampleGraphMarkers } from './graph-scroll-markers';
 import { repositoryTabDropEdge } from './repository-tabs';
@@ -293,6 +297,8 @@ interface PendingBisectStart {
 interface PendingBranchAction {
   kind: 'rebase' | 'delete';
   branch: string;
+  /** Set after Git refused a safe delete; confirming then force-deletes the branch. */
+  unmerged?: boolean;
 }
 
 interface PendingBranchUpstream {
@@ -433,7 +439,7 @@ const GRAPH_COLUMN_DEFAULT_WIDTHS: Record<GraphColumn, number> = {
   graph: 110,
   message: 260,
   author: 105,
-  date: 88,
+  date: 100,
   sha: 68,
 };
 const REMOTE_LOCATION_ICONS: ReadonlyArray<{ value: RemoteLocationIcon; label: string }> = [
@@ -454,10 +460,38 @@ const WORKTREE_ROW_HEIGHT = 44;
 const GRAPH_ACTION_MENU_WIDTH = 234;
 const VIEWPORT_MENU_GUTTER = 8;
 const GRAPH_OVERSCAN_ROWS = 12;
+
+/**
+ * Returns how many leading items `next` shares (by identity) with `previous` when `previous` is a
+ * prefix of it, or 0 otherwise. History grows page by page, so derived data only processes the tail.
+ */
+function appendedFrom<T>(previous: readonly T[] | null, next: readonly T[]): number {
+  if (!previous || previous.length > next.length) return 0;
+  for (let index = previous.length - 1; index >= 0; index -= 1) if (previous[index] !== next[index]) return 0;
+  return previous.length;
+}
+
+function sameVirtualWindow<T>(a: VirtualWindow<T>, b: VirtualWindow<T>): boolean {
+  if (a.start !== b.start || a.capacity !== b.capacity || a.topPadding !== b.topPadding
+    || a.bottomPadding !== b.bottomPadding || a.items.length !== b.items.length) return false;
+  for (let index = 0; index < a.items.length; index += 1) if (a.items[index] !== b.items[index]) return false;
+  return true;
+}
 const HISTORY_PREFETCH_ROWS = 120;
 const RESPONSIVE_SIDEBAR_BREAKPOINT = 1050;
 const FULL_WIDTH_INSPECTOR_BREAKPOINT = 660;
 const WIDE_GRAPH_METADATA_BREAKPOINT = 1320;
+const GRAPH_DATE_COLUMN_FLOOR = 32;
+const GRAPH_MESSAGE_COLUMN_MAX = 2400;
+const GRAPH_HORIZONTAL_SCROLL_KEY = 'git-chronos.graph.horizontal-scroll';
+const GRAPH_COLUMN_RESIZE_LABELS: Record<GraphColumn, string> = {
+  branch: 'Resize Branch and Tag column',
+  graph: 'Resize Graph column',
+  message: 'Resize Commit Message column',
+  author: 'Resize Author column',
+  date: 'Resize Date and Time column',
+  sha: 'Resize SHA column',
+};
 const PANEL_WIDTH_LIMITS: Record<ResizablePanel, { minimum: number; maximum: number; default: number }> = {
   sidebar: { minimum: 170, maximum: 420, default: 250 },
   details: { minimum: 280, maximum: 560, default: 355 },
@@ -514,69 +548,74 @@ function matchesCommandQuery(query: string, ...values: string[]): boolean {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent implements OnInit, OnDestroy {
-  @ViewChild('appMenuToggle') private appMenuToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('workspaceToggle') private workspaceToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('workspaceNameInput') private workspaceNameInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('commitSearch') private commitSearch?: ElementRef<HTMLInputElement>;
-  @ViewChild('commitSearchToggle') private commitSearchToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('paletteSearch') private paletteSearch?: ElementRef<HTMLInputElement>;
-  @ViewChild('shortcutsClose') private shortcutsClose?: ElementRef<HTMLButtonElement>;
-  @ViewChild('preferencesToggle') private preferencesToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('preferencesClose') private preferencesClose?: ElementRef<HTMLButtonElement>;
-  @ViewChild('worktreeDialogElement') private worktreeDialogElement?: ElementRef<HTMLElement>;
-  @ViewChild('submoduleDialogElement') private submoduleDialogElement?: ElementRef<HTMLElement>;
-  @ViewChild('remoteDialogElement') private remoteDialogElement?: ElementRef<HTMLElement>;
-  @ViewChild('remoteRemovalDialog') private remoteRemovalDialog?: ElementRef<HTMLElement>;
-  @ViewChild('workspaceDeleteDialog') private workspaceDeleteDialog?: ElementRef<HTMLElement>;
-  @ViewChild('lfsPruneDialog') private lfsPruneDialog?: ElementRef<HTMLElement>;
-  @ViewChild('sparseCheckoutConfirmationDialog') private sparseCheckoutConfirmationDialog?: ElementRef<HTMLElement>;
-  @ViewChild('worktreeRemovalDialog') private worktreeRemovalDialog?: ElementRef<HTMLElement>;
-  @ViewChild('branchSearch') private branchSearch?: ElementRef<HTMLInputElement>;
-  @ViewChild('toolbarBranchToggle') private toolbarBranchToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('toolbarBranchSearch') private toolbarBranchSearch?: ElementRef<HTMLInputElement>;
-  @ViewChild('toolbarRemoteToggle') private toolbarRemoteToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('responsiveSidebarToggle') private responsiveSidebarToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('responsiveCommitPanelClose') private responsiveCommitPanelClose?: ElementRef<HTMLButtonElement>;
-  @ViewChild('authorFilterSearch') private authorFilterSearch?: ElementRef<HTMLInputElement>;
-  @ViewChild('commitSummary') private commitSummary?: ElementRef<HTMLInputElement>;
-  @ViewChild('editedCommitSummaryInput') private editedCommitSummaryInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('focusedDiff') private focusedDiff?: ElementRef<HTMLElement>;
-  @ViewChild('graphSettingsToggle') private graphSettingsToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('graphSettingsPanel') private graphSettingsPanel?: ElementRef<HTMLElement>;
-  @ViewChild('graphColumns') private graphColumns?: ElementRef<HTMLElement>;
-  @ViewChild('actionMenuElement') private actionMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('fileActionMenuElement') private fileActionMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('sidebarActionMenuElement') private sidebarActionMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('sidebarContextMenuElement') private sidebarContextMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('branchDropMenuElement') private branchDropMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('repositoryTabMenuElement') private repositoryTabMenuElement?: ElementRef<HTMLElement>;
-  @ViewChild('newRepositoryTab') private newRepositoryTab?: ElementRef<HTMLButtonElement>;
-  @ViewChild('repositoryTabsMenu') private repositoryTabsMenu?: ElementRef<HTMLElement>;
-  @ViewChild('repositoryTabsToggle') private repositoryTabsToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('activityDrawer') private activityDrawer?: ElementRef<HTMLElement>;
-  @ViewChild('repositoryDialogElement') private repositoryDialogElement?: ElementRef<HTMLElement>;
-  @ViewChild('historyConfirmationDialog') private historyConfirmationDialog?: ElementRef<HTMLElement>;
-  @ViewChild('branchConfirmationDialog') private branchConfirmationDialog?: ElementRef<HTMLElement>;
-  @ViewChild('fileConfirmationDialog') private fileConfirmationDialog?: ElementRef<HTMLElement>;
-  @ViewChild('workingTreeOptionsMenu') private workingTreeOptionsMenu?: ElementRef<HTMLElement>;
-  @ViewChild('workingTreeOptionsToggle') private workingTreeOptionsToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('terminalToggle') private terminalToggle?: ElementRef<HTMLButtonElement>;
-  @ViewChild('commitList')
-  private set commitList(value: ElementRef<HTMLElement> | undefined) {
+  private readonly appMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('appMenuToggle');
+  private readonly workspaceToggle = viewChild<ElementRef<HTMLButtonElement>>('workspaceToggle');
+  private readonly workspaceNameInput = viewChild<ElementRef<HTMLInputElement>>('workspaceNameInput');
+  private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
+  private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
+  private readonly paletteSearch = viewChild<ElementRef<HTMLInputElement>>('paletteSearch');
+  private readonly shortcutsClose = viewChild<ElementRef<HTMLButtonElement>>('shortcutsClose');
+  private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
+  private readonly preferencesClose = viewChild<ElementRef<HTMLButtonElement>>('preferencesClose');
+  private readonly worktreeDialogElement = viewChild<ElementRef<HTMLElement>>('worktreeDialogElement');
+  private readonly submoduleDialogElement = viewChild<ElementRef<HTMLElement>>('submoduleDialogElement');
+  private readonly remoteDialogElement = viewChild<ElementRef<HTMLElement>>('remoteDialogElement');
+  private readonly remoteRemovalDialog = viewChild<ElementRef<HTMLElement>>('remoteRemovalDialog');
+  private readonly workspaceDeleteDialog = viewChild<ElementRef<HTMLElement>>('workspaceDeleteDialog');
+  private readonly lfsPruneDialog = viewChild<ElementRef<HTMLElement>>('lfsPruneDialog');
+  private readonly sparseCheckoutConfirmationDialog = viewChild<ElementRef<HTMLElement>>('sparseCheckoutConfirmationDialog');
+  private readonly worktreeRemovalDialog = viewChild<ElementRef<HTMLElement>>('worktreeRemovalDialog');
+  private readonly branchSearch = viewChild<ElementRef<HTMLInputElement>>('branchSearch');
+  private readonly toolbarBranchToggle = viewChild<ElementRef<HTMLButtonElement>>('toolbarBranchToggle');
+  private readonly toolbarBranchSearch = viewChild<ElementRef<HTMLInputElement>>('toolbarBranchSearch');
+  private readonly toolbarRemoteToggle = viewChild<ElementRef<HTMLButtonElement>>('toolbarRemoteToggle');
+  private readonly responsiveSidebarToggle = viewChild<ElementRef<HTMLButtonElement>>('responsiveSidebarToggle');
+  private readonly responsiveCommitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('responsiveCommitPanelClose');
+  private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
+  private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
+  private readonly editedCommitSummaryInput = viewChild<ElementRef<HTMLInputElement>>('editedCommitSummaryInput');
+  private readonly focusedDiff = viewChild<ElementRef<HTMLElement>>('focusedDiff');
+  private readonly graphSettingsToggle = viewChild<ElementRef<HTMLButtonElement>>('graphSettingsToggle');
+  private readonly graphSettingsPanel = viewChild<ElementRef<HTMLElement>>('graphSettingsPanel');
+  private readonly graphColumns = viewChild<ElementRef<HTMLElement>>('graphColumns');
+  private readonly actionMenuElement = viewChild<ElementRef<HTMLElement>>('actionMenuElement');
+  private readonly fileActionMenuElement = viewChild<ElementRef<HTMLElement>>('fileActionMenuElement');
+  private readonly sidebarActionMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarActionMenuElement');
+  private readonly sidebarContextMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarContextMenuElement');
+  private readonly branchDropMenuElement = viewChild<ElementRef<HTMLElement>>('branchDropMenuElement');
+  private readonly repositoryTabMenuElement = viewChild<ElementRef<HTMLElement>>('repositoryTabMenuElement');
+  private readonly newRepositoryTab = viewChild<ElementRef<HTMLButtonElement>>('newRepositoryTab');
+  private readonly repositoryTabsMenu = viewChild<ElementRef<HTMLElement>>('repositoryTabsMenu');
+  private readonly repositoryTabsToggle = viewChild<ElementRef<HTMLButtonElement>>('repositoryTabsToggle');
+  private readonly activityDrawer = viewChild<ElementRef<HTMLElement>>('activityDrawer');
+  private readonly repositoryDialogElement = viewChild<ElementRef<HTMLElement>>('repositoryDialogElement');
+  private readonly historyConfirmationDialog = viewChild<ElementRef<HTMLElement>>('historyConfirmationDialog');
+  private readonly branchConfirmationDialog = viewChild<ElementRef<HTMLElement>>('branchConfirmationDialog');
+  private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
+  private readonly workingTreeOptionsMenu = viewChild<ElementRef<HTMLElement>>('workingTreeOptionsMenu');
+  private readonly workingTreeOptionsToggle = viewChild<ElementRef<HTMLButtonElement>>('workingTreeOptionsToggle');
+  private readonly terminalToggle = viewChild<ElementRef<HTMLButtonElement>>('terminalToggle');
+  private readonly commitList = viewChild<ElementRef<HTMLElement>>('commitList');
+  private readonly commitListAttachEffect = effect(() => {
+    const value = this.commitList();
+    untracked(() => this.attachCommitList(value));
+  });
+  private attachCommitList(value: ElementRef<HTMLElement> | undefined): void {
+    if ((value?.nativeElement ?? null) === this.commitListElement && this.commitListElement) return;
     this.commitListResizeObserver?.disconnect();
     this.commitListElement = value?.nativeElement ?? null;
     if (!this.commitListElement) return;
     const element = this.commitListElement;
     queueMicrotask(() => {
       if (this.commitListElement === element) {
-        this.updateGraphViewport(element);
+        this.updateGraphViewport(element, true);
         this.prefetchOlderHistory(element);
       }
     });
     if (typeof ResizeObserver !== 'undefined') {
       this.commitListResizeObserver = new ResizeObserver(() => {
         if (this.commitListElement) {
-          this.updateGraphViewport(this.commitListElement);
+          this.updateGraphViewport(this.commitListElement, true);
           this.prefetchOlderHistory(this.commitListElement);
         }
       });
@@ -585,6 +624,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitChronosService);
+  private readonly injector = inject(Injector);
   // Keep history-dependent computations insulated from status-only repository
   // updates. Angular otherwise invalidates every graph computation whenever the
   // repository object is replaced, even when the commits array is unchanged.
@@ -802,6 +842,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly graphSettingsOpen = signal(false);
   protected readonly graphSettingsPosition = signal<{ x: number; y: number } | null>(null);
   protected readonly authorFilterOpen = signal(false);
+  /** Author filter menu offset inside the graph header, aligned under its toggle. */
+  protected readonly authorFilterPosition = signal({ x: 0, y: 25 });
   protected readonly authorFilter = signal<string | null>(null);
   protected readonly authorFilterQuery = signal('');
   protected readonly graphColumnOrder = signal<GraphColumn[]>([...DEFAULT_GRAPH_COLUMNS]);
@@ -954,30 +996,128 @@ export class AppComponent implements OnInit, OnDestroy {
     const columns = this.graphColumnOrder()
       .filter((column) => this.isGraphColumnVisible(column))
       .map((column) => {
-        if (column === 'message') {
-          return this.messageColumnManuallyResized()
-            ? `${this.messageColumnWidth()}px`
-            : `minmax(${this.messageColumnWidth()}px, 1fr)`;
+        if (column === 'message' && !this.messageColumnManuallyResized()) {
+          return `minmax(${this.messageColumnWidth()}px, 1fr)`;
         }
-        return `${this.columnWidthSignal(column)()}px`;
+        const width = this.columnWidthSignal(column)();
+        return column === this.graphFillColumn() ? `minmax(${width}px, 1fr)` : `${width}px`;
       });
     return columns.join(' ');
   });
+  // A pinned trailing column spans the trailing actions lane, so it reaches the panel's right edge
+  // with the column settings button (header) and row actions (rows) inside its right end.
+  protected readonly graphHeaderGridColumns = computed(() => this.trailingGraphColumn()
+    ? `${this.graphGridColumns()} 26px`
+    : this.graphGridColumns());
   protected readonly commitRowGridColumns = computed(() => `${this.graphGridColumns()} 26px`);
-  // Rows span every column track (plus 6px side padding and the 26px actions track) so
+  // Rows span every column track (plus 6px left and 16px right padding and the 26px actions track) so
   // hover and selection backgrounds cover columns scrolled past the viewport edge.
-  protected readonly commitRowWidth = computed(() => 12 + 26 + this.graphColumnOrder()
+  protected readonly commitRowWidth = computed(() => 22 + 26 + this.graphColumnOrder()
     .filter((column) => this.isGraphColumnVisible(column))
     .reduce((total, column) => total + this.columnWidthSignal(column)(), 0));
-  // A trailing metadata column stays pinned to the right edge when the columns overflow the panel.
-  // The message and graph columns are the scrolled content itself, so they are never pinned.
-  protected readonly trailingGraphColumn = computed<GraphColumn | null>(() => {
-    const last = this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)).at(-1);
-    return last && last !== 'message' && last !== 'graph' ? last : null;
+  // Whichever column is last spans the actions lane, so it reaches the panel's right edge with the
+  // settings button (header) and row actions (rows) inside its right end.
+  protected readonly trailingGraphColumn = computed<GraphColumn | null>(() =>
+    this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)).at(-1) ?? null);
+  /**
+   * Once Commit Message has a fixed width, the last column fills any space left in the panel, so
+   * the columns always reach the panel edge and no empty area opens before the settings button.
+   * Its rendered width is its own width plus that slack.
+   */
+  private readonly graphFillColumn = computed<GraphColumn | null>(() => {
+    if (this.showMessageColumn() && !this.messageColumnManuallyResized()) return null;
+    return this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)).at(-1) ?? null;
   });
-  protected readonly compactAuthorColumn = computed(() => isCompactAuthorColumn(this.authorColumnWidth()));
+  private readonly graphViewportWidth = signal(0);
+  private readonly visibleGraphColumns = computed(() =>
+    this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)));
+  /** Width the column tracks can use without scrolling: the list minus side padding (6px + 16px) and the 26px actions lane. */
+  private readonly graphColumnsAvailableWidth = computed(() =>
+    this.graphViewportWidth() ? this.graphViewportWidth() - 22 - 26 : 0);
+  private readonly graphColumnSlack = computed(() => {
+    if (!this.graphFillColumn() || !this.graphViewportWidth()) return 0;
+    const used = this.visibleGraphColumns().reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
+    return Math.max(0, Math.floor(this.graphColumnsAvailableWidth() - used));
+  });
+  /** App-wide: when off, the columns always fit the history panel and never scroll horizontally. */
+  protected readonly graphHorizontalScroll = signal(readStoredBoolean(GRAPH_HORIZONTAL_SCROLL_KEY, true));
+  private readonly graphColumnFitEffect = effect(() => {
+    if (this.graphHorizontalScroll()) return;
+    const available = this.graphColumnsAvailableWidth();
+    if (available <= 0) return;
+    const visible = this.visibleGraphColumns();
+    const widths = Object.fromEntries(visible.map((column) => [column, this.columnWidthSignal(column)()])) as Record<GraphColumn, number>;
+    let excess = visible.reduce((total, column) => total + widths[column], 0) - available;
+    if (excess <= 0.5) return;
+    untracked(() => {
+      // Commit Message gives way first, then every other column in proportion to its spare width.
+      const order: GraphColumn[][] = [visible.filter((column) => column === 'message'), visible.filter((column) => column !== 'message')];
+      for (const group of order) {
+        const spare = group.reduce((total, column) => total + Math.max(0, widths[column] - this.graphColumnWidthLimits(column)[0]), 0);
+        if (spare <= 0 || excess <= 0.5) continue;
+        const ratio = Math.min(1, excess / spare);
+        for (const column of group) {
+          const cut = Math.max(0, widths[column] - this.graphColumnWidthLimits(column)[0]) * ratio;
+          if (cut <= 0) continue;
+          this.columnWidthSignal(column).set(Math.floor((widths[column] - cut) * 100) / 100);
+        }
+        excess -= Math.min(excess, spare);
+      }
+      if (visible.includes('message') && !this.messageColumnManuallyResized()) this.messageColumnManuallyResized.set(true);
+    });
+  });
+  protected readonly compactAuthorColumn = computed(() => isCompactAuthorColumn(this.renderedGraphColumnWidth('author')));
   protected readonly graphColumnIcons = GRAPH_COLUMN_ICONS;
   private readonly graphHeadingTitleWidths = signal<Partial<Record<GraphColumn, number>>>({});
+  private readonly graphCellFontFamily = signal<string | null>(null);
+  // Date / Time may never be narrower than its widest visible date or time line (plus 7px side padding).
+  private dateLabelWidths = new Map<string, number>();
+  private dateLabelWidthFont = '';
+  private dateMeasureContext: CanvasRenderingContext2D | null = null;
+  protected readonly dateColumnContentWidth = computed(() => {
+    const family = this.graphCellFontFamily();
+    const context = family
+      ? this.dateMeasureContext ??= document.createElement('canvas').getContext('2d')
+      : null;
+    if (!context) return GRAPH_DATE_COLUMN_FLOOR;
+    context.font = `400 12px ${family}`;
+    // Each distinct label is measured once; later history pages only measure labels not seen before.
+    if (this.dateLabelWidthFont !== context.font) {
+      this.dateLabelWidths = new Map();
+      this.dateLabelWidthFont = context.font;
+    }
+    const widths = this.dateLabelWidths;
+    const measure = (label: string) => {
+      let width = widths.get(label);
+      if (width === undefined) {
+        width = context.measureText(label).width;
+        widths.set(label, width);
+      }
+      return width;
+    };
+    const dates = this.graphCommitDates();
+    const commits = this.graphCommits();
+    const progress = this.dateWidthProgress;
+    const reusable = progress.dates === dates && progress.font === context.font;
+    const start = reusable ? appendedFrom(progress.commits, commits) : 0;
+    let widest = start ? progress.widest : measure('Now');
+    for (let index = start; index < commits.length; index += 1) {
+      const date = dates.get(commits[index].oid);
+      if (date) widest = Math.max(widest, measure(date.primary), measure(date.secondary));
+    }
+    this.dateWidthProgress = { dates, font: context.font, commits, widest };
+    return Math.max(GRAPH_DATE_COLUMN_FLOOR, Math.ceil(widest) + 16);
+  });
+  private dateWidthProgress: {
+    dates: ReadonlyMap<string, CommitDateDisplay> | null;
+    font: string;
+    commits: readonly CommitSummary[] | null;
+    widest: number;
+  } = { dates: null, font: '', commits: null, widest: 0 };
+  private readonly dateColumnFitEffect = effect(() => {
+    const minimum = this.dateColumnContentWidth();
+    if (this.dateColumnWidth() < minimum) this.dateColumnWidth.set(minimum);
+  });
   protected readonly repositoryTabGroups = computed<RepositoryTabGroup[]>(() => {
     const repositories = this.git.repositories();
     if (!this.showWorktreeTabGroups()) {
@@ -1016,6 +1156,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private columnResizeTarget: GraphColumn | null = null;
   private columnResizePartner: GraphColumn | null = null;
   private columnResizePartnerStartWidth = 0;
+  // Column widths when a resize began; with horizontal scrolling off, widening a column takes space
+  // from these snapshots so dragging back returns it to the columns it came from.
+  private columnResizeStartWidths: Partial<Record<GraphColumn, number>> = {};
   private referenceResizeTarget: ReferenceSection | null = null;
   private referenceResizeStartY = 0;
   private referenceResizeStartHeight = 0;
@@ -1032,6 +1175,7 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => this.syncGraphHeader());
   });
   private graphScrollFrame: number | null = null;
+  private graphHeaderScrollLeft = -1;
   private pendingGraphScrollElement: HTMLElement | null = null;
   private activityLogOpener: HTMLElement | null = null;
   private commandPaletteOpener: HTMLElement | null = null;
@@ -1591,7 +1735,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const hidden = new Set(this.hiddenBranches());
     const solo = new Set(this.soloBranches());
     const hiddenStashes = new Set(this.hiddenStashOids());
-    const candidates = commits.filter((commit) => !hiddenStashes.has(commit.oid));
+    const candidates = hiddenStashes.size ? commits.filter((commit) => !hiddenStashes.has(commit.oid)) : commits;
     if (!hidden.size && !solo.size && !this.smartBranchVisibility()) return candidates;
 
     const visibleTips = this.graphBranches()
@@ -1640,10 +1784,15 @@ export class AppComponent implements OnInit, OnDestroy {
       .sort((left, right) => Number(right.current) - Number(left.current) || left.path.localeCompare(right.path));
   });
 
-  protected readonly graphRequiredLaneCount = computed(() => requiredGraphLaneCount(
-    this.graphVisibleCommits(),
-    this.dirtyWorktrees().map((worktree) => worktree.oid),
-  ));
+  private requiredLaneProgress: RequiredGraphLaneProgress | null = null;
+  protected readonly graphRequiredLaneCount = computed(() => {
+    this.requiredLaneProgress = advanceRequiredGraphLaneCount(
+      this.requiredLaneProgress,
+      this.graphVisibleCommits(),
+      this.dirtyWorktrees().map((worktree) => worktree.oid),
+    );
+    return this.requiredLaneProgress.maximum;
+  });
   protected readonly graphMaximumWidth = computed(() => graphColumnWidthForLaneCount(
     this.graphRequiredLaneCount(),
     this.compactGraphColumn(),
@@ -1693,22 +1842,57 @@ export class AppComponent implements OnInit, OnDestroy {
   });
 
   protected readonly authorColors = computed(() => {
-    const colors = new Map<string, string>();
-    for (const commit of this.graphCommits()) {
+    const commits = this.graphCommits();
+    const start = appendedFrom(this.authorColorSource, commits);
+    const colors = start ? this.authorColorMap : new Map<string, string>();
+    for (let index = start; index < commits.length; index += 1) {
+      const commit = commits[index];
       const identity = this.authorIdentity(commit.authorName, commit.authorEmail);
       if (!colors.has(identity)) colors.set(identity, stableAuthorColor(identity));
     }
+    this.authorColorMap = colors;
+    this.authorColorSource = commits;
     return colors;
-  });
+  }, { equal: () => false });
+  private authorColorMap = new Map<string, string>();
+  private authorColorSource: readonly CommitSummary[] | null = null;
 
   private graphLayoutCache: GraphLayoutCache | null = null;
 
-  protected readonly graphCommitDates = computed(() => new Map(
-    this.graphCommits().map((commit) => [
-      commit.oid,
-      formatCommitDate(commit.authoredAt, this.graphDateFormat()),
-    ]),
-  ));
+  // History grows page by page while scrolling, so each commit's date is formatted once per format.
+  private commitDateCache = new Map<string, CommitDateDisplay>();
+  private commitDateCacheFormat: GraphDateFormat | null = null;
+  private commitDateCacheTime = 0;
+  protected readonly graphCommitDates = computed(() => {
+    const format = this.graphDateFormat();
+    const now = Date.now();
+    // Relative labels age, so they are reformatted at most a minute after they were cached.
+    if (format !== this.commitDateCacheFormat || (format === 'relative' && now - this.commitDateCacheTime > 60_000)) {
+      this.commitDateCache = new Map();
+      this.commitDateCacheFormat = format;
+      this.commitDateCacheTime = now;
+    }
+    const cache = this.commitDateCache;
+    const commits = this.graphCommits();
+    const start = this.commitDatesFor === cache ? appendedFrom(this.commitDatesSource, commits) : 0;
+    const dates = start ? this.commitDates : new Map<string, CommitDateDisplay>();
+    for (let index = start; index < commits.length; index += 1) {
+      const commit = commits[index];
+      let date = cache.get(commit.oid);
+      if (!date) {
+        date = formatCommitDate(commit.authoredAt, format, now);
+        cache.set(commit.oid, date);
+      }
+      dates.set(commit.oid, date);
+    }
+    this.commitDates = dates;
+    this.commitDatesSource = commits;
+    this.commitDatesFor = cache;
+    return dates;
+  }, { equal: () => false });
+  private commitDates = new Map<string, CommitDateDisplay>();
+  private commitDatesSource: readonly CommitSummary[] | null = null;
+  private commitDatesFor: Map<string, CommitDateDisplay> | null = null;
 
   protected readonly graphRows = computed<GraphRow[]>(() => {
     const commits = this.graphVisibleCommits();
@@ -1723,7 +1907,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const pinned = this.graphBranches().find(
       (branch) => !branch.remote && branch.name === this.pinnedBranch() && this.isBranchGraphVisible(branch.name),
     );
-    const parentsByOid = new Map(this.graphCommits().map((commit) => [commit.oid, commit.parents]));
+    const parentsByOid = pinned
+      ? new Map(this.graphCommits().map((commit) => [commit.oid, commit.parents]))
+      : new Map<string, readonly string[]>();
     const pinnedHistory = new Set<string>();
     let pinnedOid = pinned?.oid;
     while (pinnedOid && !pinnedHistory.has(pinnedOid)) {
@@ -1934,16 +2120,28 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly visibleGraphRows = computed(() => {
     const author = this.authorFilter();
-    return this.graphRows().filter(({ commit }) => !author || commit.authorEmail === author);
+    const rows = this.graphRows();
+    return author ? rows.filter(({ commit }) => commit.authorEmail === author) : rows;
   });
 
-  private readonly visibleGraphRowByOid = computed(() => new Map(
-    this.visibleGraphRows().map((row) => [row.commit.oid, row] as const),
-  ));
+  private visibleGraphRowLookupSource: readonly GraphRow[] | null = null;
+  private visibleGraphRowLookup = { byOid: new Map<string, GraphRow>(), indexByOid: new Map<string, number>() };
+  private readonly visibleGraphRowLookups = computed(() => {
+    const rows = this.visibleGraphRows();
+    const start = appendedFrom(this.visibleGraphRowLookupSource, rows);
+    const lookup = start ? this.visibleGraphRowLookup : { byOid: new Map<string, GraphRow>(), indexByOid: new Map<string, number>() };
+    for (let index = start; index < rows.length; index += 1) {
+      lookup.byOid.set(rows[index].commit.oid, rows[index]);
+      lookup.indexByOid.set(rows[index].commit.oid, index);
+    }
+    this.visibleGraphRowLookup = lookup;
+    this.visibleGraphRowLookupSource = rows;
+    return lookup;
+  }, { equal: () => false });
 
-  private readonly visibleGraphRowIndexByOid = computed(() => new Map(
-    this.visibleGraphRows().map((row, index) => [row.commit.oid, index] as const),
-  ));
+  private readonly visibleGraphRowByOid = computed(() => this.visibleGraphRowLookups().byOid, { equal: () => false });
+
+  private readonly visibleGraphRowIndexByOid = computed(() => this.visibleGraphRowLookups().indexByOid, { equal: () => false });
 
   protected readonly virtualGraphWindow = computed(() => calculateVirtualWindow(
     this.visibleGraphRows(),
@@ -1952,7 +2150,42 @@ export class AppComponent implements OnInit, OnDestroy {
     COMMIT_ROW_HEIGHT,
     this.worktreeWipRows().length * WORKTREE_ROW_HEIGHT,
     GRAPH_OVERSCAN_ROWS,
-  ));
+  ), { equal: sameVirtualWindow });
+
+  /**
+   * Rows are recycled by slot (absolute index modulo the window capacity): while scrolling, only the
+   * rows leaving the window are rebound to the rows entering it, so no row views are created or
+   * destroyed and rows that stay visible are not repainted. The capacity only grows so slots stay
+   * unique for every row Angular is reconciling.
+   */
+  private graphRowSlotCapacityPeak = 1;
+  private readonly graphRowSlotCapacity = computed(() => {
+    this.graphRowSlotCapacityPeak = Math.max(this.graphRowSlotCapacityPeak, this.virtualGraphWindow().capacity);
+    return this.graphRowSlotCapacityPeak;
+  });
+
+  protected graphRowSlot(row: GraphRow): number | string {
+    const index = this.visibleGraphRowIndexByOid().get(row.commit.oid);
+    return index === undefined ? row.commit.oid : index % this.graphRowSlotCapacity();
+  }
+
+  private focusedGraphRowOid: string | null = null;
+
+  protected rememberFocusedGraphRow(event: FocusEvent): void {
+    const row = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-graph-row]');
+    this.focusedGraphRowOid = row?.dataset['commitOid'] ?? null;
+  }
+
+  /** A recycled row must not carry keyboard focus over to the commit it now shows. */
+  private readonly recycledGraphFocusGuard = afterRenderEffect(() => {
+    this.virtualGraphWindow();
+    const active = document.activeElement as HTMLElement | null;
+    const row = active?.closest<HTMLElement>('[data-graph-row]');
+    if (row && this.focusedGraphRowOid && row.dataset['commitOid'] !== this.focusedGraphRowOid) {
+      active!.blur();
+      this.focusedGraphRowOid = null;
+    }
+  });
 
   protected readonly commitSearchMatches = computed(() => {
     const query = this.commitFilter().trim().toLocaleLowerCase();
@@ -3034,7 +3267,7 @@ export class AppComponent implements OnInit, OnDestroy {
       event.stopPropagation();
       this.graphSettingsOpen.set(false);
       this.graphSettingsPosition.set(null);
-      queueMicrotask(() => this.graphSettingsToggle?.nativeElement.focus());
+      queueMicrotask(() => this.graphSettingsToggle()?.nativeElement.focus());
       return;
     }
     if (event.key === 'Escape' && (this.pullMenuOpen() || this.pushMenuOpen() || this.branchMenuOpen() || this.lfsMenuOpen() || this.sparseCheckoutMenuOpen())) {
@@ -3145,14 +3378,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (event.altKey && key === 'f') {
       event.preventDefault();
       this.setPanelVisibility('left-panel', true);
-      queueMicrotask(() => this.branchSearch?.nativeElement.focus());
+      queueMicrotask(() => this.branchSearch()?.nativeElement.focus());
       return;
     }
     if (event.shiftKey && key === 'm') {
       event.preventDefault();
       this.setPanelVisibility('commit-panel', true);
       this.selectWip();
-      queueMicrotask(() => this.commitSummary?.nativeElement.focus());
+      queueMicrotask(() => this.commitSummary()?.nativeElement.focus());
       return;
     }
     if (event.shiftKey && key === 'h' && this.git.repository()) {
@@ -3192,7 +3425,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (workspace && workspace.id !== this.git.activeWorkspaceId()) {
         event.preventDefault();
         void this.selectWorkspace(workspace.id).then(() => {
-          setTimeout(() => this.workspaceToggle?.nativeElement.focus());
+          setTimeout(() => this.workspaceToggle()?.nativeElement.focus());
         });
       }
       return;
@@ -3276,7 +3509,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     if (key === 'f') {
-      if (!this.commitSearch) return;
+      if (!this.commitSearch()) return;
       event.preventDefault();
       this.focusCommitSearch();
     } else if (key === 'j') {
@@ -3372,14 +3605,13 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.columnResizeTarget && this.columnResizePartner) {
       // Dragging the leading edge left widens the column and narrows its left neighbor.
       this.applyLeadingEdgeResize(this.columnResizeTarget, this.columnResizePartner, this.resizeStartX - event.clientX);
+      this.revealResizedGraphColumn(this.columnResizeTarget);
       return;
     }
     if (this.columnResizeTarget) {
       const delta = event.clientX - this.resizeStartX;
-      const [minimum, maximum] = this.graphColumnWidthLimits(this.columnResizeTarget);
-      this.columnWidthSignal(this.columnResizeTarget).set(
-        Math.max(minimum, Math.min(maximum, this.resizeStartWidth + delta)),
-      );
+      this.setGraphColumnWidth(this.columnResizeTarget, this.resizeStartWidth + delta);
+      this.revealResizedGraphColumn(this.columnResizeTarget);
       return;
     }
     if (!this.resizeTarget) return;
@@ -3411,6 +3643,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (this.columnResizePartner) {
         this.storeColumnWidth(this.columnResizePartner, this.columnWidthSignal(this.columnResizePartner)());
       }
+      this.storeResizedGraphColumnWidths();
       this.columnResizeTarget = null;
       this.columnResizePartner = null;
       return;
@@ -3477,6 +3710,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.columnResizePartnerStartWidth = this.columnResizePartner
       ? this.columnWidthSignal(this.columnResizePartner)()
       : 0;
+    this.snapshotGraphColumnWidths();
   }
 
   protected handleColumnResizeKeydown(target: GraphColumn, event: KeyboardEvent): void {
@@ -3501,24 +3735,25 @@ export class AppComponent implements OnInit, OnDestroy {
       this.applyLeadingEdgeResize(target, partner, growth);
       this.storeColumnWidth(target, this.columnWidthSignal(target)());
       this.storeColumnWidth(partner, this.columnWidthSignal(partner)());
+      this.revealResizedGraphColumn(target);
       return;
     }
-    const [minimum, maximum] = this.graphColumnWidthLimits(target);
+    this.snapshotGraphColumnWidths();
     const current = this.columnWidthSignal(target)();
     const step = event.shiftKey ? 32 : 8;
     let width: number;
     switch (event.key) {
       case 'ArrowLeft': width = current - step; break;
       case 'ArrowRight': width = current + step; break;
-      case 'Home': width = minimum; break;
-      case 'End': width = maximum; break;
+      case 'Home': width = -Infinity; break;
+      case 'End': width = Infinity; break;
       default: return;
     }
     event.preventDefault();
     event.stopPropagation();
-    width = Math.max(minimum, Math.min(maximum, width));
-    this.columnWidthSignal(target).set(width);
-    this.storeColumnWidth(target, width);
+    this.setGraphColumnWidth(target, width);
+    this.storeResizedGraphColumnWidths();
+    this.revealResizedGraphColumn(target);
   }
 
   protected resetGraphColumnWidth(target: GraphColumn, event: Event): void {
@@ -3547,8 +3782,9 @@ export class AppComponent implements OnInit, OnDestroy {
       this.storeColumnWidth(partner, this.columnWidthSignal(partner)());
       return;
     }
-    this.columnWidthSignal(target).set(width);
-    this.storeColumnWidth(target, width);
+    this.snapshotGraphColumnWidths();
+    this.setGraphColumnWidth(target, width);
+    this.storeResizedGraphColumnWidths();
   }
 
   /** True when a heading is too narrow for its title, so it shows an icon with a tooltip instead. */
@@ -3558,7 +3794,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (column === 'message') return false;
     const title = this.graphHeadingTitleWidths()[column];
     if (title === undefined) return false;
-    return this.columnWidthSignal(column)() < title + this.graphHeadingReservedWidth(column);
+    return this.renderedGraphColumnWidth(column) < title + this.graphHeadingReservedWidth(column);
   }
 
   private graphHeadingReservedWidth(column: GraphColumn): number {
@@ -3572,8 +3808,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private measureGraphHeadingTitles(): void {
     const context = document.createElement('canvas').getContext('2d');
     if (!context) return;
-    const style = getComputedStyle(this.graphColumns?.nativeElement ?? document.body);
+    const style = getComputedStyle(this.graphColumns()?.nativeElement ?? document.body);
     context.font = `800 12px ${style.fontFamily}`;
+    this.graphCellFontFamily.set(style.fontFamily);
     const widths: Partial<Record<GraphColumn, number>> = {};
     for (const column of DEFAULT_GRAPH_COLUMNS) {
       widths[column] = Math.ceil(context.measureText(GRAPH_COLUMN_TITLES[column]).width);
@@ -3586,23 +3823,118 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected graphColumnMaximumWidth(target: GraphColumn): number {
-    return this.graphColumnWidthLimits(target)[1];
+    const maximum = this.graphColumnWidthLimits(target)[1];
+    if (this.graphHorizontalScroll() || this.leadingEdgeResizeNeighbor(target)) return maximum;
+    const available = this.graphColumnsAvailableWidth();
+    if (available <= 0) return maximum;
+    const others = this.visibleGraphColumns().filter((column) => column !== target)
+      .reduce((total, column) => total + this.graphColumnWidthLimits(column)[0], 0);
+    return Math.max(this.graphColumnWidthLimits(target)[0], Math.min(maximum, Math.floor(available - others)));
+  }
+
+  private snapshotGraphColumnWidths(): void {
+    this.columnResizeStartWidths = Object.fromEntries(
+      this.visibleGraphColumns().map((column) => [column, this.columnWidthSignal(column)()]),
+    );
+  }
+
+  private storeResizedGraphColumnWidths(): void {
+    for (const column of this.visibleGraphColumns()) {
+      const start = this.columnResizeStartWidths[column];
+      const width = this.columnWidthSignal(column)();
+      if (start !== undefined && Math.abs(start - width) >= 0.5) this.storeColumnWidth(column, width);
+    }
+  }
+
+  /**
+   * Sets a column's width within its limits. With horizontal scrolling off, the columns must still
+   * fit the panel: growth first uses free space, then narrows Commit Message, then the columns to its
+   * right (nearest first) and then those to its left, each down to its minimum, from their widths
+   * when the resize began.
+   */
+  private setGraphColumnWidth(target: GraphColumn, requested: number): void {
+    const available = this.graphColumnsAvailableWidth();
+    const [minimum, maximum] = this.graphColumnWidthLimits(target);
+    let width = Math.max(this.fillColumnMinimumWidth(target, minimum), Math.min(maximum, requested));
+    if (this.graphHorizontalScroll() || available <= 0) {
+      this.columnWidthSignal(target).set(width);
+      return;
+    }
+    const visible = this.visibleGraphColumns();
+    const start = (column: GraphColumn) => this.columnResizeStartWidths[column] ?? this.columnWidthSignal(column)();
+    const index = visible.indexOf(target);
+    const neighbours = [...visible.slice(index + 1), ...visible.slice(0, index).reverse()];
+    const donors = [...neighbours.filter((column) => column === 'message'), ...neighbours.filter((column) => column !== 'message')];
+    const others = donors.reduce((total, column) => total + start(column), 0);
+    let needed = width + others - available;
+    const widths = new Map(donors.map((column) => [column, start(column)]));
+    for (const column of donors) {
+      if (needed <= 0) break;
+      const cut = Math.min(needed, Math.max(0, start(column) - this.graphColumnWidthLimits(column)[0]));
+      widths.set(column, start(column) - cut);
+      needed -= cut;
+    }
+    if (needed > 0) width = Math.max(minimum, width - needed);
+    for (const [column, value] of widths) this.columnWidthSignal(column).set(value);
+    this.columnWidthSignal(target).set(width);
+  }
+
+  /**
+   * The filling last column's right edge is the panel edge, so it cannot be narrowed from there
+   * below the width that still reaches it; it narrows when the columns before it widen instead.
+   */
+  private fillColumnMinimumWidth(target: GraphColumn, minimum: number): number {
+    const available = this.graphColumnsAvailableWidth();
+    if (target !== this.graphFillColumn() || available <= 0) return minimum;
+    const others = this.visibleGraphColumns().filter((column) => column !== target)
+      .reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
+    return Math.max(minimum, Math.floor(available - others));
+  }
+
+  protected setGraphHorizontalScroll(enabled: boolean): void {
+    this.graphHorizontalScroll.set(enabled);
+    try {
+      localStorage.setItem(GRAPH_HORIZONTAL_SCROLL_KEY, String(enabled));
+    } catch {
+      // The preference remains active for this session.
+    }
+    if (!enabled) {
+      const list = this.commitListElement;
+      if (list) {
+        list.scrollLeft = 0;
+        this.syncGraphHeader(list);
+      }
+    }
   }
 
   protected messageColumnAriaWidth(): number {
-    if (this.messageColumnManuallyResized()) return this.messageColumnWidth();
-    const heading = this.graphColumns?.nativeElement
-      .querySelector<HTMLElement>('.message-column-heading');
-    const width = heading?.getBoundingClientRect().width;
-    return width ? Math.round(width) : this.messageColumnWidth();
+    if (this.messageColumnManuallyResized()) return Math.round(this.renderedGraphColumnWidth('message'));
+    // The automatic message track takes whatever the other columns leave of the panel.
+    const available = this.graphColumnsAvailableWidth();
+    const others = this.visibleGraphColumns().filter((column) => column !== 'message')
+      .reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
+    return Math.round(Math.max(this.messageColumnWidth(), available > 0 ? available - others : 0));
   }
 
   /** Date / Time resizes from its left edge, keeping its right edge fixed, when a column precedes it. */
+  /**
+   * Date / Time, and whichever column is last, resize from their left edge: the last column's right
+   * edge is the panel edge, so moving it would open empty space before the settings button.
+   */
   private leadingEdgeResizeNeighbor(target: GraphColumn): GraphColumn | null {
-    if (target !== 'date') return null;
-    const visible = this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column));
+    const visible = this.visibleGraphColumns();
     const index = visible.indexOf(target);
-    return index > 0 ? visible[index - 1] : null;
+    if (index <= 0) return null;
+    return target === 'date' || index === visible.length - 1 ? visible[index - 1] : null;
+  }
+
+  protected graphColumnResizeTitle(target: GraphColumn): string {
+    if (this.graphColumnHasLeadingResizeEdge(target)) {
+      return 'Drag the left edge to resize; the right edge stays fixed · Left arrow widens, Right arrow narrows · Double-click to reset';
+    }
+    return target === 'graph'
+      ? 'Drag or use arrow keys to resize · Shift for larger steps · Double-click to fit all branch paths'
+      : 'Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset';
   }
 
   private applyLeadingEdgeResize(target: GraphColumn, partner: GraphColumn, requestedGrowth: number): void {
@@ -3618,20 +3950,70 @@ export class AppComponent implements OnInit, OnDestroy {
     this.columnWidthSignal(partner).set(partnerStart - growth);
   }
 
+  /**
+   * Keeps the edge being resized in view, scrolling the history horizontally when the columns overflow.
+   * Only the dragged edge is followed, so a widening column grows under the pointer.
+   */
+  private revealResizedGraphColumn(target: GraphColumn): void {
+    // Measure after Angular renders the new widths.
+    afterNextRender(() => {
+      const list = this.commitListElement;
+      const header = this.graphColumns()?.nativeElement;
+      if (!list || !header || list.scrollWidth <= list.clientWidth + 1) return;
+      const headings = [...header.querySelectorAll<HTMLElement>(':scope > .draggable-column')]
+        .sort((a, b) => Number(a.style.order || 0) - Number(b.style.order || 0));
+      const index = headings.findIndex((heading) => heading.querySelector(`[aria-label="${GRAPH_COLUMN_RESIZE_LABELS[target]}"]`));
+      if (index < 0) return;
+      const column = headings[index];
+      const origin = header.getBoundingClientRect().left - header.scrollLeft;
+      // A leading-edge splitter moves its left neighbor's right edge; a normal handle moves this
+      // column's right edge. The trailing column's edge is the panel edge itself; any other edge must
+      // stay left of the settings strip that marks the header's visible edge.
+      const leadingEdgePartner = column.querySelector('.column-resizer.leading-edge') ? headings[index - 1] : null;
+      const edgeColumn = leadingEdgePartner ?? column;
+      const edge = edgeColumn.getBoundingClientRect().right - origin;
+      const visibleRight = list.clientWidth - (edgeColumn.classList.contains('trailing-column') ? 0 : 48);
+      let scrollLeft = list.scrollLeft;
+      scrollLeft = Math.max(scrollLeft, edge - visibleRight);
+      scrollLeft = Math.min(scrollLeft, edge - 24);
+      scrollLeft = Math.max(0, Math.min(list.scrollWidth - list.clientWidth, Math.round(scrollLeft)));
+      if (Math.abs(scrollLeft - list.scrollLeft) < 1) return;
+      list.scrollLeft = scrollLeft;
+      this.syncGraphHeader(list);
+    }, { injector: this.injector });
+  }
+
   protected graphColumnHasLeadingResizeEdge(target: GraphColumn): boolean {
     return this.leadingEdgeResizeNeighbor(target) !== null;
   }
 
+  protected graphColumnAriaWidth(column: GraphColumn): number {
+    return Math.round(this.renderedGraphColumnWidth(column));
+  }
+
+  private renderedGraphColumnWidth(column: GraphColumn): number {
+    const width = this.columnWidthSignal(column)();
+    return column === this.graphFillColumn() ? width + this.graphColumnSlack() : width;
+  }
+
   private prepareColumnResize(target: GraphColumn): void {
+    this.freezeAutoFilledMessageColumn(target);
+    // The last column's share of free space becomes its own width, so a resize starts from what is
+    // visible: dragging its left edge narrows it at once instead of first consuming hidden slack.
+    // Other resizes keep the slack, so the last column absorbs what they give or take.
+    const fill = this.graphFillColumn();
+    const slack = this.graphColumnSlack();
+    if (fill !== target || slack < 1) return;
+    const [, maximum] = this.graphColumnWidthLimits(fill);
+    this.columnWidthSignal(fill).set(Math.min(maximum, this.columnWidthSignal(fill)() + slack));
+  }
+
+  private freezeAutoFilledMessageColumn(target: GraphColumn): void {
     if (this.messageColumnManuallyResized()) return;
     if (!this.showMessageColumn()) return;
-    // Freeze the auto-filled track so resizing one column cannot resize another.
-    const measuredWidth = this.graphColumns?.nativeElement
-      .querySelector<HTMLElement>('.message-column-heading')
-      ?.getBoundingClientRect().width;
-    if (measuredWidth) {
-      this.messageColumnWidth.set(Math.round(measuredWidth));
-    }
+    // Freeze the auto-filled track so resizing one column cannot resize another. Its track width is
+    // computed rather than measured: a trailing heading's box also spans the actions lane.
+    this.messageColumnWidth.set(this.messageColumnAriaWidth());
     this.messageColumnManuallyResized.set(true);
     if (target !== 'message') this.storeColumnWidth('message', this.messageColumnWidth());
   }
@@ -3771,17 +4153,27 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     const source = (this.draggedGraphColumn() ?? event.dataTransfer?.getData('text/plain')) as GraphColumn | null;
     if (!source || source === target || !DEFAULT_GRAPH_COLUMNS.includes(source)) return;
+    // The dragged column takes the target's place: moving right lands after it, moving left before it.
     this.graphColumnOrder.update((columns) => {
+      const movingRight = columns.indexOf(source) < columns.indexOf(target);
       const reordered = columns.filter((column) => column !== source);
-      reordered.splice(reordered.indexOf(target), 0, source);
+      reordered.splice(reordered.indexOf(target) + (movingRight ? 1 : 0), 0, source);
       return reordered;
     });
     this.draggedGraphColumn.set(null);
     this.storeGraphColumnOrder();
   }
 
+  private readonly graphColumnPositions = computed(() => {
+    const positions = new Map<GraphColumn, number>();
+    this.graphColumnOrder()
+      .filter((candidate) => this.isGraphColumnVisible(candidate))
+      .forEach((column, index) => positions.set(column, index));
+    return positions;
+  });
+
   protected graphColumnPosition(column: GraphColumn): number {
-    return this.graphColumnOrder().filter((candidate) => this.isGraphColumnVisible(candidate)).indexOf(column);
+    return this.graphColumnPositions().get(column) ?? -1;
   }
 
   protected toggleGraphSettings(event: MouseEvent): void {
@@ -3789,7 +4181,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.graphSettingsPosition.set(null);
     const open = !this.graphSettingsOpen();
     this.graphSettingsOpen.set(open);
-    if (open) window.setTimeout(() => this.graphSettingsPanel?.nativeElement.focus(), 0);
+    if (open) window.setTimeout(() => this.graphSettingsPanel()?.nativeElement.focus(), 0);
   }
 
   protected openGraphSettingsContext(event: MouseEvent): void {
@@ -3800,7 +4192,7 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 230)),
     });
     this.graphSettingsOpen.set(true);
-    window.setTimeout(() => this.graphSettingsPanel?.nativeElement.focus(), 0);
+    window.setTimeout(() => this.graphSettingsPanel()?.nativeElement.focus(), 0);
   }
 
   protected toggleAuthorFilter(event: MouseEvent): void {
@@ -3808,11 +4200,23 @@ export class AppComponent implements OnInit, OnDestroy {
     this.graphSettingsOpen.set(false);
     this.graphSettingsPosition.set(null);
     const open = !this.authorFilterOpen();
+    if (open) this.authorFilterPosition.set(this.authorFilterMenuPosition(event.currentTarget as HTMLElement | null));
     this.authorFilterOpen.set(open);
     if (open) {
       this.authorFilterQuery.set('');
-      window.setTimeout(() => this.authorFilterSearch?.nativeElement.focus(), 0);
+      window.setTimeout(() => this.authorFilterSearch()?.nativeElement.focus({ preventScroll: true }), 0);
     }
+  }
+
+  /** Right-aligns the menu with its toggle, kept inside the graph header's width. */
+  private authorFilterMenuPosition(toggle: HTMLElement | null): { x: number; y: number } {
+    const header = toggle?.closest<HTMLElement>('.graph-header');
+    if (!toggle || !header) return { x: 0, y: 25 };
+    const headerBox = header.getBoundingClientRect();
+    const toggleBox = toggle.getBoundingClientRect();
+    const menuWidth = 260;
+    const x = Math.max(0, Math.min(headerBox.width - menuWidth, toggleBox.right - headerBox.left - menuWidth));
+    return { x: Math.round(x), y: Math.round(toggleBox.bottom - headerBox.top + 2) };
   }
 
   protected selectAuthorFilter(email: string | null): void {
@@ -3839,7 +4243,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected togglePreferences(event: MouseEvent): void {
     event.stopPropagation();
     const open = !this.preferencesOpen();
-    if (open) this.openPreferences('general', this.preferencesToggle?.nativeElement ?? null);
+    if (open) this.openPreferences('general', this.preferencesToggle()?.nativeElement ?? null);
     else this.closePreferences();
   }
 
@@ -3847,14 +4251,14 @@ export class AppComponent implements OnInit, OnDestroy {
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
-    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle?.nativeElement ?? opener;
+    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle()?.nativeElement ?? opener;
     this.preferencesOpener = opener;
     this.identityPopoverOpen.set(false);
     this.resetUiConfirmation.set(false);
     this.preferencesSection.set(section);
     this.loadSparseCheckoutDraft();
     this.preferencesOpen.set(true);
-    setTimeout(() => this.preferencesClose?.nativeElement.focus());
+    setTimeout(() => this.preferencesClose()?.nativeElement.focus());
   }
 
   protected closePreferences(restoreFocus = true): void {
@@ -3992,7 +4396,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const open = !this.workingTreeOptionsOpen();
     this.workingTreeOptionsOpen.set(open);
     if (open) {
-      window.setTimeout(() => this.workingTreeOptionsMenu?.nativeElement
+      window.setTimeout(() => this.workingTreeOptionsMenu()?.nativeElement
         .querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')
         ?.focus(), 0);
     }
@@ -4014,7 +4418,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private closeWorkingTreeOptions(restoreFocus = false): void {
     this.workingTreeOptionsOpen.set(false);
-    if (restoreFocus) queueMicrotask(() => this.workingTreeOptionsToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.workingTreeOptionsToggle()?.nativeElement.focus());
   }
 
   protected selectToolbarRemote(remote: string): void {
@@ -4040,7 +4444,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private closeToolbarRemoteMenu(restoreFocus = false): void {
     this.toolbarRemoteMenuOpen.set(false);
-    if (restoreFocus) queueMicrotask(() => this.toolbarRemoteToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.toolbarRemoteToggle()?.nativeElement.focus());
   }
 
   protected toggleToolbarCheckoutMenu(event: MouseEvent): void {
@@ -4050,7 +4454,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.toolbarCheckoutMenuOpen.set(open);
     if (open) {
       this.toolbarBranchQuery.set('');
-      window.setTimeout(() => this.toolbarBranchSearch?.nativeElement.focus(), 0);
+      window.setTimeout(() => this.toolbarBranchSearch()?.nativeElement.focus(), 0);
     }
   }
 
@@ -4104,14 +4508,14 @@ export class AppComponent implements OnInit, OnDestroy {
   private closeToolbarCheckoutMenu(restoreFocus = false): void {
     this.toolbarCheckoutMenuOpen.set(false);
     this.toolbarBranchQuery.set('');
-    if (restoreFocus) queueMicrotask(() => this.toolbarBranchToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.toolbarBranchToggle()?.nativeElement.focus());
   }
 
   protected clearToolbarBranchSearch(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
     this.toolbarBranchQuery.set('');
-    queueMicrotask(() => this.toolbarBranchSearch?.nativeElement.focus());
+    queueMicrotask(() => this.toolbarBranchSearch()?.nativeElement.focus());
   }
 
   protected async checkoutFromBranchPicker(branch: Branch): Promise<void> {
@@ -4178,7 +4582,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.activityLogOpener = opener;
     this.activityLogTab.set(tab);
     this.activityLogOpen.set(true);
-    window.setTimeout(() => this.activityDrawer?.nativeElement
+    window.setTimeout(() => this.activityDrawer()?.nativeElement
       .querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]:not(:disabled)')
       ?.focus());
   }
@@ -4285,7 +4689,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.closePreferences(false);
     this.secondaryConfirmationOpener = opener;
     this.pendingSparseCheckoutAction.set('set');
-    setTimeout(() => this.focusConfirmationCancel(this.sparseCheckoutConfirmationDialog));
+    setTimeout(() => this.focusConfirmationCancel(this.sparseCheckoutConfirmationDialog()));
   }
 
   protected requestSparseCheckoutDisable(returnFocus?: HTMLElement | null): void {
@@ -4295,7 +4699,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.closePreferences(false);
     this.secondaryConfirmationOpener = opener;
     this.pendingSparseCheckoutAction.set('disable');
-    setTimeout(() => this.focusConfirmationCancel(this.sparseCheckoutConfirmationDialog));
+    setTimeout(() => this.focusConfirmationCancel(this.sparseCheckoutConfirmationDialog()));
   }
 
   protected closeSparseCheckoutConfirmation(): void {
@@ -4569,7 +4973,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${branch.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement));
+    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement()));
   }
 
   protected canCreateContextWorktree(): boolean {
@@ -4596,7 +5000,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${menu.label.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement));
+    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement()));
   }
 
   protected closeWorktreeDialog(restoreFocus = true): void {
@@ -4662,7 +5066,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.submoduleUrl.set('');
     this.submodulePath.set('');
     this.submoduleDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.submoduleDialogElement));
+    setTimeout(() => this.focusFirstEditableControl(this.submoduleDialogElement()));
   }
 
   protected closeSubmoduleDialog(restoreFocus = true): void {
@@ -4679,7 +5083,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.remoteUrl.set('');
     this.remoteDialogIcon.set('remote');
     this.remoteDialog.set('add');
-    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement));
+    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
   }
 
   protected openEditRemoteDialog(remote: Remote, returnFocus?: HTMLElement | null): void {
@@ -4688,7 +5092,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.remoteUrl.set(remote.fetchUrl);
     this.remoteDialogIcon.set(this.remoteIcon(remote.name));
     this.remoteDialog.set('edit');
-    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement));
+    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
   }
 
   protected closeRemoteDialog(restoreFocus = true): void {
@@ -4725,7 +5129,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!remote) return;
     this.closeRemoteDialog(false);
     this.pendingRemoteRemoval.set(remote);
-    setTimeout(() => this.remoteRemovalDialog?.nativeElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus());
+    setTimeout(() => this.remoteRemovalDialog()?.nativeElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus());
   }
 
   protected closeRemoteRemoval(): void {
@@ -4760,7 +5164,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private captureRemoteDialogOpener(returnFocus?: HTMLElement | null): HTMLElement | null {
     let opener = this.captureDialogOpener(returnFocus);
-    if (opener?.closest('.toolbar-nav-menu')) opener = this.toolbarRemoteToggle?.nativeElement ?? opener;
+    if (opener?.closest('.toolbar-nav-menu')) opener = this.toolbarRemoteToggle()?.nativeElement ?? opener;
     if (opener?.closest('.confirmation-dialog')) {
       opener = document.querySelector<HTMLElement>('.toolbar-actions button[aria-label^="Publish"]') ?? opener;
     }
@@ -4769,11 +5173,11 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private captureSecondaryConfirmationOpener(returnFocus?: HTMLElement | null): HTMLElement | null {
     let opener = this.captureDialogOpener(returnFocus);
-    if (opener?.closest('.workspace-menu')) opener = this.workspaceToggle?.nativeElement ?? opener;
+    if (opener?.closest('.workspace-menu')) opener = this.workspaceToggle()?.nativeElement ?? opener;
     if (opener?.closest('.toolbar-menu')) opener = this.toolbarMenuReturnFocus ?? opener;
     if (opener?.closest('.worktree-card-menu')) opener = this.sidebarActionMenuReturnFocus ?? opener;
     if (opener?.closest('.preferences-popover')) {
-      opener = this.preferencesOpener ?? this.preferencesToggle?.nativeElement ?? opener;
+      opener = this.preferencesOpener ?? this.preferencesToggle()?.nativeElement ?? opener;
     }
     return opener;
   }
@@ -4859,7 +5263,7 @@ export class AppComponent implements OnInit, OnDestroy {
       deleteBranch,
       changes: worktree.changes,
     });
-    setTimeout(() => this.focusConfirmationCancel(this.worktreeRemovalDialog));
+    setTimeout(() => this.focusConfirmationCancel(this.worktreeRemovalDialog()));
   }
 
   protected closeWorktreeRemoval(): void {
@@ -4897,7 +5301,7 @@ export class AppComponent implements OnInit, OnDestroy {
       // Panel visibility remains active for this session.
     }
     if (focusFullWidthInspector) {
-      setTimeout(() => this.responsiveCommitPanelClose?.nativeElement.focus({ preventScroll: true }));
+      setTimeout(() => this.responsiveCommitPanelClose()?.nativeElement.focus({ preventScroll: true }));
     }
   }
 
@@ -4910,7 +5314,7 @@ export class AppComponent implements OnInit, OnDestroy {
       && this.detailsVisible();
     this.fullWidthInspectorMode.set(fullWidthInspector);
     if (enteringFullWidthInspector) {
-      setTimeout(() => this.responsiveCommitPanelClose?.nativeElement.focus({ preventScroll: true }));
+      setTimeout(() => this.responsiveCommitPanelClose()?.nativeElement.focus({ preventScroll: true }));
     }
     const responsive = window.innerWidth <= RESPONSIVE_SIDEBAR_BREAKPOINT;
     if (responsive === this.responsiveSidebarMode) return;
@@ -4920,7 +5324,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeResponsiveSidebar(): void {
     this.setPanelVisibility('left-panel', false);
-    setTimeout(() => this.responsiveSidebarToggle?.nativeElement.focus({ preventScroll: true }));
+    setTimeout(() => this.responsiveSidebarToggle()?.nativeElement.focus({ preventScroll: true }));
   }
 
   protected setWorkingTreeViewMode(mode: WorkingTreeViewMode): void {
@@ -5059,7 +5463,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.messageColumnManuallyResized.set(false);
     this.showGraphScrollMarkers.set(true);
     this.smartBranchVisibility.set(false);
+    this.graphHorizontalScroll.set(true);
     try {
+      localStorage.removeItem(GRAPH_HORIZONTAL_SCROLL_KEY);
       const keys = [
         'column.order',
         'column.graph.compact',
@@ -5723,7 +6129,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.branchFilter.set('');
-    queueMicrotask(() => this.branchSearch?.nativeElement.focus());
+    queueMicrotask(() => this.branchSearch()?.nativeElement.focus());
   }
 
   protected clearReferenceFilters(): void {
@@ -5793,7 +6199,7 @@ export class AppComponent implements OnInit, OnDestroy {
       event.preventDefault();
       event.stopPropagation();
       this.commitSearchExpanded.set(false);
-      queueMicrotask(() => this.commitSearchToggle?.nativeElement.focus());
+      queueMicrotask(() => this.commitSearchToggle()?.nativeElement.focus());
     }
   }
 
@@ -5801,12 +6207,12 @@ export class AppComponent implements OnInit, OnDestroy {
     event?.preventDefault();
     event?.stopPropagation();
     this.updateCommitSearch('');
-    queueMicrotask(() => this.commitSearch?.nativeElement.focus());
+    queueMicrotask(() => this.commitSearch()?.nativeElement.focus());
   }
 
   protected focusCommitSearch(): void {
     this.commitSearchExpanded.set(true);
-    queueMicrotask(() => this.commitSearch?.nativeElement.focus());
+    queueMicrotask(() => this.commitSearch()?.nativeElement.focus());
   }
 
   protected handleCommitSearchFocusOut(event: FocusEvent): void {
@@ -5875,10 +6281,28 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => this.scrollGraphCommitIntoView(oid, 'center', 'smooth'));
   }
 
-  private updateGraphViewport(list: HTMLElement): void {
+  /**
+   * Vertical scrolling only moves the virtualized rows. Horizontal metrics are re-read only when the
+   * list scrolled sideways; resizes and column changes re-sync them through their own paths.
+   */
+  private updateGraphViewport(list: HTMLElement, resized = false): void {
     this.graphScrollTop.set(list.scrollTop);
-    this.graphViewportHeight.set(Math.max(COMMIT_ROW_HEIGHT, list.clientHeight));
-    this.syncGraphHeader(list);
+    if (resized) this.graphViewportHeight.set(Math.max(COMMIT_ROW_HEIGHT, list.clientHeight));
+    if (resized || list.scrollLeft !== this.graphHeaderScrollLeft) this.syncGraphHeader(list);
+  }
+
+  /** The header strip mirrors the history's horizontal scroll and never scrolls vertically. */
+  protected restoreGraphHeaderScroll(header: HTMLElement): void {
+    if (header.scrollTop !== 0) header.scrollTop = 0;
+    const list = this.commitListElement;
+    if (!list || Math.abs(header.scrollLeft - list.scrollLeft) < 1) return;
+    // Focus moved horizontally into a heading outside the view (for example a resize handle reached
+    // with Tab), so scroll the history with it; the list then keeps both aligned within its range.
+    if (document.activeElement && header.contains(document.activeElement)) {
+      list.scrollLeft = header.scrollLeft;
+      this.syncGraphHeader(list);
+    }
+    if (Math.abs(header.scrollLeft - list.scrollLeft) >= 1) header.scrollLeft = list.scrollLeft;
   }
 
   private syncGraphHeader(list = this.commitListElement): void {
@@ -5890,7 +6314,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const style = getComputedStyle(list);
     const borders = (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
     this.graphScrollbarGutter.set(Math.max(0, list.offsetWidth - list.clientWidth - borders));
-    if (this.graphColumns) this.graphColumns.nativeElement.scrollLeft = list.scrollLeft;
+    this.graphViewportWidth.set(list.clientWidth);
+    this.graphHeaderScrollLeft = list.scrollLeft;
+    const header = this.graphColumns()?.nativeElement;
+    if (header && header.scrollLeft !== list.scrollLeft) header.scrollLeft = list.scrollLeft;
     this.graphCanScrollLeft.set(list.scrollLeft > 1);
     this.graphCanScrollRight.set(list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
   }
@@ -6849,7 +7276,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private scrollToDiffHunk(index: number): void {
-    this.focusedDiff?.nativeElement
+    this.focusedDiff()?.nativeElement
       .querySelector<HTMLElement>(`[data-diff-hunk="${index}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -6887,8 +7314,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.editedCommitCoAuthors.set(parsed.authors);
     this.commitMessageEditing.set(true);
     setTimeout(() => {
-      this.editedCommitSummaryInput?.nativeElement.focus();
-      this.editedCommitSummaryInput?.nativeElement.select();
+      this.editedCommitSummaryInput()?.nativeElement.focus();
+      this.editedCommitSummaryInput()?.nativeElement.select();
     });
   }
 
@@ -6960,11 +7387,11 @@ export class AppComponent implements OnInit, OnDestroy {
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
-    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle?.nativeElement ?? opener;
+    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle()?.nativeElement ?? opener;
     this.repositoryDialogOpener = opener;
     this.repositoryDialog.set(mode);
     window.setTimeout(() => {
-      const dialog = this.repositoryDialogElement?.nativeElement;
+      const dialog = this.repositoryDialogElement()?.nativeElement;
       const target = mode === 'clone'
         ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"]')
         : mode === 'init'
@@ -7178,7 +7605,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const open = !this.repositoryTabsOpen();
     this.repositoryTabsOpen.set(open);
     if (open) {
-      window.setTimeout(() => this.repositoryTabsMenu?.nativeElement
+      window.setTimeout(() => this.repositoryTabsMenu()?.nativeElement
         .querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"], [role="menuitemradio"]')
         ?.focus(), 0);
     }
@@ -7210,7 +7637,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private closeRepositoryTabsMenu(restoreFocus = false): void {
     this.repositoryTabsOpen.set(false);
-    if (restoreFocus) queueMicrotask(() => this.repositoryTabsToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.repositoryTabsToggle()?.nativeElement.focus());
   }
 
   protected toggleAppMenu(event: MouseEvent): void {
@@ -7256,7 +7683,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private closeAppMenu(restoreFocus = false): void {
     this.appMenuOpen.set(false);
-    if (restoreFocus) queueMicrotask(() => this.appMenuToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.appMenuToggle()?.nativeElement.focus());
   }
 
   protected toggleWorkspaceMenu(event: MouseEvent): void {
@@ -7299,7 +7726,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private closeWorkspaceMenu(restoreFocus = false): void {
     this.workspaceMenuOpen.set(false);
-    if (restoreFocus) queueMicrotask(() => this.workspaceToggle?.nativeElement.focus());
+    if (restoreFocus) queueMicrotask(() => this.workspaceToggle()?.nativeElement.focus());
   }
 
   protected async selectWorkspace(workspaceId: string): Promise<void> {
@@ -7325,13 +7752,13 @@ export class AppComponent implements OnInit, OnDestroy {
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
-    if (opener?.closest('.workspace-menu')) opener = this.workspaceToggle?.nativeElement ?? opener;
+    if (opener?.closest('.workspace-menu')) opener = this.workspaceToggle()?.nativeElement ?? opener;
     this.workspaceDialogOpener = opener;
     this.workspaceMenuOpen.set(false);
     this.workspaceName.set(mode === 'rename' ? this.git.activeWorkspace()?.name ?? '' : '');
     this.workspaceDialogMode.set(mode);
     setTimeout(() => {
-      const input = this.workspaceNameInput?.nativeElement;
+      const input = this.workspaceNameInput()?.nativeElement;
       input?.focus();
       input?.select();
     });
@@ -7370,7 +7797,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(returnFocus);
     this.workspaceMenuOpen.set(false);
     this.pendingWorkspaceDelete.set(workspace);
-    setTimeout(() => this.focusConfirmationCancel(this.workspaceDeleteDialog));
+    setTimeout(() => this.focusConfirmationCancel(this.workspaceDeleteDialog()));
   }
 
   protected closeWorkspaceDelete(): void {
@@ -7438,7 +7865,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private focusRepositoryTab(repoId: string | null): void {
     const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-repository-tab-id]'));
     const target = tabs.find((tab) => tab.dataset['repositoryTabId'] === repoId);
-    (target ?? this.newRepositoryTab?.nativeElement)?.focus({ preventScroll: true });
+    (target ?? this.newRepositoryTab()?.nativeElement)?.focus({ preventScroll: true });
   }
 
   protected openRepositoryTabMenu(event: MouseEvent, repoId: string, focusMenu = false): void {
@@ -7455,7 +7882,7 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 390)),
     });
     if (focusMenu) {
-      queueMicrotask(() => requestAnimationFrame(() => this.repositoryTabMenuElement?.nativeElement
+      queueMicrotask(() => requestAnimationFrame(() => this.repositoryTabMenuElement()?.nativeElement
         .querySelector<HTMLElement>('[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])')
         ?.focus()));
     }
@@ -7565,7 +7992,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.commandSelection.set(0);
     this.commandPaletteOpen.set(true);
     queueMicrotask(() => this.moveCommandSelection('first'));
-    setTimeout(() => this.paletteSearch?.nativeElement.focus());
+    setTimeout(() => this.paletteSearch()?.nativeElement.focus());
   }
 
   protected closeCommandPalette(): void {
@@ -7581,11 +8008,11 @@ export class AppComponent implements OnInit, OnDestroy {
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
-    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle?.nativeElement ?? opener;
+    if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle()?.nativeElement ?? opener;
     this.keyboardShortcutsOpener = opener;
     this.activeShortcutSection.set('repository');
     this.keyboardShortcutsOpen.set(true);
-    setTimeout(() => this.shortcutsClose?.nativeElement.focus());
+    setTimeout(() => this.shortcutsClose()?.nativeElement.focus());
   }
 
   protected closeKeyboardShortcuts(): void {
@@ -7676,7 +8103,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.commandPaletteOpener = null;
     if (action.id.startsWith('workspace:')) {
       await this.selectWorkspace(action.id.slice('workspace:'.length));
-      setTimeout(() => this.workspaceToggle?.nativeElement.focus());
+      setTimeout(() => this.workspaceToggle()?.nativeElement.focus());
       return;
     }
     if (action.id.startsWith('repository:')) {
@@ -7878,7 +8305,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.terminalOpener;
     this.terminalOpener = null;
     setTimeout(() => {
-      const target = opener?.isConnected ? opener : this.terminalToggle?.nativeElement;
+      const target = opener?.isConnected ? opener : this.terminalToggle()?.nativeElement;
       target?.focus({ preventScroll: true });
     });
   }
@@ -7991,7 +8418,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.lfsMenuOpen.set(false);
     this.toolbarMenuReturnFocus = null;
     this.pendingLfsPrune.set(true);
-    setTimeout(() => this.focusConfirmationCancel(this.lfsPruneDialog));
+    setTimeout(() => this.focusConfirmationCancel(this.lfsPruneDialog()));
   }
 
   protected closeLfsPrune(): void {
@@ -8950,12 +9377,18 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async confirmBranchAction(): Promise<void> {
     const action = this.pendingBranchAction();
     if (!action) return;
+    const returnFocus = this.branchActionReturnFocus;
     this.dismissBranchConfirmation(false);
     if (action.kind === 'rebase') await this.git.integrateBranch(action.branch, 'rebase');
     else {
       const wasPinned = this.pinnedBranch() === action.branch;
-      await this.git.deleteBranch(action.branch, this.forceBranchDelete());
-      if (!this.git.error() && wasPinned) {
+      const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete());
+      if (outcome === 'notMerged') {
+        this.forceBranchDelete.set(false);
+        this.openBranchConfirmation({ kind: 'delete', branch: action.branch, unmerged: true }, returnFocus);
+        return;
+      }
+      if (outcome === 'deleted' && wasPinned) {
         this.pinnedBranch.set(null);
         this.storePinnedBranch();
       }
@@ -9047,7 +9480,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissHistoryConfirmation(true);
       return;
     }
-    this.cycleDialogFocus(this.historyConfirmationDialog?.nativeElement, event);
+    this.cycleDialogFocus(this.historyConfirmationDialog()?.nativeElement, event);
   }
 
   protected handleBranchConfirmationKeydown(event: KeyboardEvent): void {
@@ -9057,7 +9490,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissBranchConfirmation(true);
       return;
     }
-    this.cycleDialogFocus(this.branchConfirmationDialog?.nativeElement, event);
+    this.cycleDialogFocus(this.branchConfirmationDialog()?.nativeElement, event);
   }
 
   protected handleFileConfirmationKeydown(event: KeyboardEvent): void {
@@ -9067,7 +9500,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissFileConfirmation(true);
       return;
     }
-    this.cycleDialogFocus(this.fileConfirmationDialog?.nativeElement, event);
+    this.cycleDialogFocus(this.fileConfirmationDialog()?.nativeElement, event);
   }
 
   protected dismissFileConfirmation(restoreFocus = true): void {
@@ -9090,7 +9523,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingFileAction.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingFileAction() !== action) return;
-      this.fileConfirmationDialog?.nativeElement
+      this.fileConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-file-dialog-cancel]')
         ?.focus();
     }));
@@ -9116,7 +9549,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingBranchAction.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingBranchAction() !== action) return;
-      this.branchConfirmationDialog?.nativeElement
+      this.branchConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-branch-dialog-cancel]')
         ?.focus();
     }));
@@ -9176,7 +9609,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingHistoryAction.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingHistoryAction() !== action) return;
-      this.historyConfirmationDialog?.nativeElement
+      this.historyConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-history-dialog-cancel]')
         ?.focus();
     }));
@@ -9247,7 +9680,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private focusSidebarActionMenu(): void {
-    queueMicrotask(() => requestAnimationFrame(() => this.sidebarActionMenuElement?.nativeElement
+    queueMicrotask(() => requestAnimationFrame(() => this.sidebarActionMenuElement()?.nativeElement
       .querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')
       ?.focus()));
   }
@@ -9258,7 +9691,7 @@ export class AppComponent implements OnInit, OnDestroy {
     preferred: { x: number; y: number },
   ): void {
     queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.sidebarContextMenuElement?.nativeElement;
+      const element = this.sidebarContextMenuElement()?.nativeElement;
       const reference = this.referencePaneMenu();
       const remote = this.remoteGroupMenu();
       const activeKey = target === 'reference' ? reference && 'reference' : remote?.remote;
@@ -9290,7 +9723,7 @@ export class AppComponent implements OnInit, OnDestroy {
     focusMenu: boolean,
   ): void {
     queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.fileActionMenuElement?.nativeElement;
+      const element = this.fileActionMenuElement()?.nativeElement;
       const working = this.fileContextMenu();
       const commit = this.commitFileContextMenu();
       const activeKey = target === 'working'
@@ -9324,7 +9757,7 @@ export class AppComponent implements OnInit, OnDestroy {
     focusMenu: boolean,
   ): void {
     queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.actionMenuElement?.nativeElement;
+      const element = this.actionMenuElement()?.nativeElement;
       const context = this.contextMenu();
       const stash = this.stashContextMenu();
       const activeKey = target === 'context'
@@ -9359,7 +9792,7 @@ export class AppComponent implements OnInit, OnDestroy {
     preferred: { x: number; y: number },
   ): void {
     queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.branchDropMenuElement?.nativeElement;
+      const element = this.branchDropMenuElement()?.nativeElement;
       const operation = this.branchDropMenu();
       if (!element || operation?.source !== source || operation.target !== target) return;
 
@@ -9756,9 +10189,9 @@ export class AppComponent implements OnInit, OnDestroy {
     return {
       branch: [75, 800],
       graph: [42, Math.max(800, this.graphMaximumWidth())],
-      message: [180, Math.max(800, this.messageColumnWidth())],
+      message: [180, Math.max(GRAPH_MESSAGE_COLUMN_MAX, this.messageColumnWidth())],
       author: [70, 800],
-      date: [32, 800],
+      date: [this.dateColumnContentWidth(), 800],
       sha: [54, 800],
     }[column] as [number, number];
   }
@@ -10139,16 +10572,39 @@ function buildCommitFileRows(
   return rows;
 }
 
+function readStoredBoolean(key: string, fallback: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+// Creating Intl formatters is far slower than using them, and history can hold many thousands of commits.
+let commitDateFormatters: {
+  title: Intl.DateTimeFormat;
+  date: Intl.DateTimeFormat;
+  time: Intl.DateTimeFormat;
+  relative: Intl.RelativeTimeFormat;
+} | null = null;
+
 function formatCommitDate(value: string, format: GraphDateFormat, now = Date.now()): CommitDateDisplay {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return { primary: '—', secondary: '', title: value };
-  const title = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'long' }).format(date);
+  const formatters = commitDateFormatters ??= {
+    title: new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'long', hourCycle: 'h23' }),
+    date: new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
+    time: new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
+    relative: new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'narrow' }),
+  };
+  const title = formatters.title.format(date);
   if (format === 'iso') {
     const iso = date.toISOString();
     return { primary: iso.slice(0, 10), secondary: `${iso.slice(11, 16)} Z`, title };
   }
-  const compactDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
-  const compactTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
+  const compactDate = formatters.date.format(date);
+  const compactTime = formatters.time.format(date);
   if (format === 'compact') return { primary: compactDate, secondary: compactTime, title };
 
   const seconds = (date.getTime() - now) / 1_000;
@@ -10167,7 +10623,7 @@ function formatCommitDate(value: string, format: GraphDateFormat, now = Date.now
               ? [Math.round(seconds / 2_592_000), 'month']
               : [Math.round(seconds / 31_536_000), 'year'];
   return {
-    primary: new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'narrow' }).format(amount, unit),
+    primary: formatters.relative.format(amount, unit),
     secondary: compactDate,
     title,
   };

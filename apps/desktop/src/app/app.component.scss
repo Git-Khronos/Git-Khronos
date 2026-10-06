@@ -167,6 +167,7 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; }
 .column-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; }
 .column-resizer.leading-edge { z-index: 4; right: auto; left: -6px; }
+.graph-columns > .trailing-column > .column-resizer:not(.leading-edge) { right: 20px; }
 .column-resizer:hover { background: #7c6ef61f; }
 .column-resizer:hover::after { background: var(--purple); }
 .column-settings { position: absolute; z-index: 12; top: 27px; right: 4px; width: 210px; max-height: calc(100vh - 130px); display: grid; gap: 1px; overflow: auto; padding: 7px; border: 1px solid var(--graph-menu-border); border-radius: 4px; background: var(--graph-menu-surface); box-shadow: 0 12px 35px #000a; }
@@ -181,8 +182,10 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .column-settings .restore-graph-defaults:hover, .column-settings .restore-graph-defaults:focus-visible { border-color: var(--purple); background: var(--graph-menu-control-hover); color: white; }
 .commit-list-shell { position: relative; min-height: 0; flex: 1 1 0; }
 .commit-list { width: 100%; height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.graph-scroll-markers { position: absolute; z-index: 8; top: 3px; right: 12px; bottom: 3px; width: 8px; pointer-events: none; }
-.graph-scroll-marker { position: absolute; right: -8px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: flex-end; padding: 0; border: 0; background: transparent; pointer-events: auto; transform: translateY(-50%); }
+/* Rows and the header keep a 16px right gutter; the marker rail and its hit areas stay inside it so
+   they never cover row actions or the settings button. */
+.graph-scroll-markers { position: absolute; z-index: 8; top: 3px; right: calc(2px + var(--graph-scrollbar-gutter, 0px)); bottom: 3px; width: 8px; pointer-events: none; }
+.graph-scroll-marker { position: absolute; right: -2px; width: 12px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; pointer-events: auto; transform: translateY(-50%); }
 .graph-scroll-marker::before { content: ''; width: 7px; height: 3px; border-radius: 2px; background: #77768b; box-shadow: 0 0 0 1px #171723aa; transition: width .1s ease, filter .1s ease; }
 .graph-scroll-marker:hover::before, .graph-scroll-marker:focus-visible::before { width: 11px; filter: brightness(1.35); }
 .graph-scroll-marker:focus-visible { outline: 1px solid #d8d5e8; outline-offset: -1px; }
@@ -194,7 +197,7 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .history-return-head { position: absolute; z-index: 9; right: 24px; bottom: 11px; height: 27px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #5a5879; border-radius: 14px; background: #2e2d45e8; color: #cfcced; font-size: 12px; font-weight: 700; box-shadow: 0 5px 18px #0009; backdrop-filter: blur(8px); }
 .history-return-head:hover { border-color: #8174e6; background: #403d65; color: white; }
 .virtual-commit-spacer { width: 100%; pointer-events: none; }
-.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 6px; border-bottom: 1px solid #242435; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
+.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 16px 0 6px; border-bottom: 1px solid #242435; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
 .commit-row:hover { background: var(--row-hover); --row-surface: var(--row-hover); }
 .commit-row:focus-visible { z-index: 2; outline: 1px solid #8f84ed; outline-offset: -2px; }
 .commit-row.selected { background: var(--row-selected); --row-surface: var(--row-selected); box-shadow: inset 2px 0 var(--purple); }
@@ -270,15 +273,14 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .row-date small { color: var(--muted); font-size: var(--font-size-caption); }
 .commit-row > code { padding-right: 5px; color: var(--muted); font-size: var(--font-size-caption); text-align: right; }
 .row-menu { order: 99; }
-// A trailing metadata column and the actions button stay pinned to the right edge when columns overflow.
+// The last column's cell spans the actions lane, so row actions sit inside its right end.
 // --row-surface mirrors the row's opaque state background; the cell's box-shadow extends it under the
 // actions track so scrolled content never shows through.
-.commit-row > .trailing-cell { position: sticky; z-index: 6; right: 32px; align-self: stretch; align-content: center; background: var(--row-surface); box-shadow: 32px 0 var(--row-surface); }
-.commit-list-shell.can-scroll-right .commit-row > .trailing-cell { box-shadow: 32px 0 var(--row-surface), -1px 0 var(--graph-header-divider), -8px 0 12px color-mix(in srgb, var(--graph-scroll-shadow) 40%, transparent); }
-.commit-row > .trailing-cell ~ .row-menu { position: sticky; right: 6px; }
-// Dimmed rows fade the pinned cell's content, never its opaque backdrop.
-.commit-row.branch-dimmed > .trailing-cell { opacity: 1; }
-.commit-row.branch-dimmed > .trailing-cell > * { opacity: .86; }
+/* The trailing cell spans its own track and the actions lane; the row action button overlays the lane. */
+.commit-row > .trailing-cell { grid-column: -3 / -1; grid-row: 1; align-self: stretch; align-content: center; padding-right: 33px; }
+.commit-row > .trailing-cell ~ .row-menu { position: relative; z-index: 1; grid-column: -2 / -1; grid-row: 1; }
+.commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) { opacity: 1; }
+.commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) > * { opacity: .86; }
 .commit-row-action { position: relative; z-index: 9; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858397; opacity: 0; transform: translateX(2px); transition: opacity .1s ease, border-color .1s ease, background-color .1s ease, color .1s ease, transform .1s ease; }
 .commit-row:hover .commit-row-action, .commit-row:focus-visible .commit-row-action, .commit-row:focus-within .commit-row-action, .commit-row.selected .commit-row-action, .commit-row-action.menu-open { opacity: 1; transform: translateX(0); }
 .commit-row-action:hover, .commit-row-action:focus-visible { border-color: #55536d; background: #403f58; color: white; }
@@ -692,6 +694,8 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .reset-options small { color: #77768b; font-size: 12px; }
 .force-delete-option { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; padding: 9px; border: 1px solid #603847; border-radius: 4px; background: #321f28; color: #e3a3b3; font-size: 12px; line-height: 1.4; }
 .force-delete-option input { margin: 1px 0 0; accent-color: var(--danger); }
+.unmerged-branch-warning { display: flex; align-items: flex-start; gap: 7px; padding: 9px; border: 1px solid #603847; border-radius: 4px; background: #321f28; color: #e3a3b3; font-size: 12px; }
+.unmerged-branch-warning gc-icon { flex: none; margin-top: 1px; }
 .upstream-picker { display: grid; gap: 6px; margin-top: 13px; color: #8e8c9f; font-size: 12px; font-weight: 700; letter-spacing: .03em; }
 .upstream-picker select { width: 100%; padding: 8px 9px; border: 1px solid #4b4a63; border-radius: 4px; outline: 0; background: #171722; color: #e3e1eb; font: 12px "SFMono-Regular", Consolas, monospace; }
 .upstream-picker select:focus { border-color: #7b70d7; box-shadow: 0 0 0 2px #7b70d72b; }

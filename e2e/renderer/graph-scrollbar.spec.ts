@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // Headless Chromium hides scrollbars by default; this file needs real classic scrollbars.
 test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });
 
-test('keeps the last graph column aligned and clear of the settings button with a vertical scrollbar, highlighting full rows', async ({ page }) => {
+test('keeps the last graph column aligned with the settings button at its right end with a vertical scrollbar, highlighting full rows', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 700 });
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -25,7 +25,8 @@ test('keeps the last graph column aligned and clear of the settings button with 
   const expectAligned = async () => {
     await expect.poll(async () => {
       const { headerRight, rowRight, buttonLeft, rowCovers } = await geometry();
-      return rowCovers && Math.abs(headerRight - rowRight) <= 1 && headerRight <= buttonLeft - 2;
+      // The settings button stays rightmost, inside the trailing column's right end.
+      return rowCovers && Math.abs(headerRight - rowRight) <= 1 && buttonLeft >= headerRight - 32 && buttonLeft < headerRight;
     }).toBe(true);
   };
   await expectAligned();
@@ -48,7 +49,7 @@ test('keeps the last graph column aligned and clear of the settings button with 
   await expectAligned();
 });
 
-test('pins the last graph column and row actions to the right edge while columns overflow', async ({ page }) => {
+test('never lets graph headings or row cells overlap while columns overflow', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 700 });
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -59,7 +60,32 @@ test('pins the last graph column and row actions to the right edge while columns
   }
   const list = page.locator('.commit-list');
   await expect.poll(() => list.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(100);
-  await list.evaluate((element) => { element.scrollLeft = 0; });
+  const overlaps = () => page.evaluate(() => {
+    const overlap = (elements: Element[]) => {
+      const boxes = elements.map((element) => element.getBoundingClientRect());
+      let worst = 0;
+      for (let a = 0; a < boxes.length; a++) {
+        for (let b = a + 1; b < boxes.length; b++) {
+          worst = Math.max(worst, Math.min(boxes[a].right, boxes[b].right) - Math.max(boxes[a].left, boxes[b].left));
+        }
+      }
+      return worst;
+    };
+    const row = document.querySelector('.commit-row:not(.wip-row)')!;
+    return {
+      headings: overlap([...document.querySelectorAll('.graph-columns > .draggable-column')]),
+      cells: overlap([...row.children].filter((cell) => !cell.classList.contains('row-menu'))),
+    };
+  });
+  const maximum = await list.evaluate((element) => element.scrollWidth - element.clientWidth);
+  for (const scrollLeft of [0, Math.round(maximum / 2), maximum]) {
+    await list.evaluate((element, left) => { element.scrollLeft = left; element.dispatchEvent(new Event('scroll')); }, scrollLeft);
+    const { headings, cells } = await overlaps();
+    expect(headings, `headings at ${scrollLeft}`).toBeLessThanOrEqual(1);
+    expect(cells, `cells at ${scrollLeft}`).toBeLessThanOrEqual(1);
+  }
+  // Scrolled to the end, the last column reaches the right edge with the settings button and row
+  // actions inside its right end.
   const geometry = () => page.evaluate(() => {
     const heading = document.querySelector<HTMLElement>('.graph-columns > .trailing-column')!.getBoundingClientRect();
     const row = document.querySelector('.commit-row:not(.wip-row)')!;
@@ -68,12 +94,11 @@ test('pins the last graph column and row actions to the right edge while columns
     const commitList = document.querySelector('.commit-list')!;
     const listRight = commitList.getBoundingClientRect().left + commitList.clientWidth;
     const button = document.querySelector('.graph-settings-toggle')!.getBoundingClientRect();
-    const probe = document.elementFromPoint(cell.left + cell.width / 2, cell.top + cell.height / 2);
-    return { headingRight: heading.right, cellRight: cell.right, menuRight: menu.right, listRight, buttonLeft: button.left, cellOnTop: !!probe && row.querySelector('.trailing-cell')!.contains(probe) };
+    return { headingRight: heading.right, cellRight: cell.right, menuRight: menu.right, listRight, buttonLeft: button.left };
   });
   await expect.poll(async () => {
-    const { headingRight, cellRight, menuRight, listRight, buttonLeft, cellOnTop } = await geometry();
-    return cellOnTop && Math.abs(headingRight - cellRight) <= 1 && headingRight <= buttonLeft - 2 && headingRight >= buttonLeft - 8 && menuRight >= listRight - 7 && menuRight <= listRight - 3;
+    const { headingRight, cellRight, menuRight, listRight, buttonLeft } = await geometry();
+    return Math.abs(headingRight - cellRight) <= 1 && Math.abs(listRight - 16 - cellRight) <= 1 && buttonLeft >= headingRight - 32 && buttonLeft < headingRight && menuRight >= listRight - 17 && menuRight <= listRight - 13;
   }).toBe(true);
   await expect(page.locator('.graph-columns > .trailing-column')).toHaveAttribute('title', /Date/);
 });

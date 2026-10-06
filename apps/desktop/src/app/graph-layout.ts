@@ -163,6 +163,55 @@ export function requiredGraphLaneCount(
   return maximum;
 }
 
+export interface RequiredGraphLaneProgress {
+  commits: readonly { oid: string; parents: readonly string[] }[];
+  seedKey: string;
+  active: string[];
+  maximum: number;
+}
+
+/**
+ * Incremental form of `requiredGraphLaneCount`: when `commits` only appended to the commits already
+ * processed (same objects, same order), only the new tail is walked.
+ */
+export function advanceRequiredGraphLaneCount(
+  progress: RequiredGraphLaneProgress | null,
+  commits: readonly { oid: string; parents: readonly string[] }[],
+  seededOids: readonly string[] = [],
+): RequiredGraphLaneProgress {
+  const seeds = [...new Set(seededOids)];
+  const seedKey = seeds.join('\0');
+  let start = 0;
+  if (progress && progress.seedKey === seedKey && progress.commits.length <= commits.length) {
+    start = progress.commits.length;
+    for (let index = start - 1; index >= 0; index -= 1) {
+      if (progress.commits[index] !== commits[index]) {
+        start = 0;
+        break;
+      }
+    }
+  }
+  let active = start ? [...progress!.active] : seeds;
+  let maximum = start ? progress!.maximum : Math.max(1, active.length);
+  for (let index = start; index < commits.length; index += 1) {
+    const commit = commits[index];
+    let lane = active.indexOf(commit.oid);
+    if (lane < 0) {
+      lane = active.length;
+      active.push(commit.oid);
+    }
+    maximum = Math.max(maximum, active.length);
+    const after = active.filter((_, candidate) => candidate !== lane);
+    commit.parents.forEach((parent, parentIndex) => {
+      if (after.includes(parent)) return;
+      after.splice(Math.min(lane + Math.min(parentIndex, 1), after.length), 0, parent);
+    });
+    active = after;
+    maximum = Math.max(maximum, active.length);
+  }
+  return { commits, seedKey, active, maximum };
+}
+
 export function isCompactAuthorColumn(width: number): boolean {
   return Number.isFinite(width) && width <= COMPACT_AUTHOR_COLUMN_MAX_WIDTH;
 }

@@ -1828,11 +1828,22 @@ pub fn rename_branch(path: &Path, old_name: &str, new_name: &str) -> Result<(), 
 
 pub fn delete_branch(path: &Path, name: &str, force: bool) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    run_mutation(
-        path,
-        &["branch", if force { "-D" } else { "-d" }, name],
-        "delete that branch",
-    )
+    let output = run_git(path, &["branch", if force { "-D" } else { "-d" }, name])?;
+    if !force && !output.status.success() && is_unmerged_branch_refusal(&output.stderr) {
+        // Report the safety refusal distinctly so the interface can offer an explicit force delete.
+        return Err(AppError::new(
+            "branchNotMerged",
+            format!(
+                "{name} has commits that are not merged into its upstream or the current branch."
+            ),
+            Some("Deleting it anyway can make those commits unreachable from any branch."),
+        ));
+    }
+    ensure_success("delete that branch", &output)
+}
+
+fn is_unmerged_branch_refusal(stderr: &[u8]) -> bool {
+    String::from_utf8_lossy(stderr).contains("is not fully merged")
 }
 
 pub fn integrate_branch(path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
@@ -6374,6 +6385,30 @@ mod tests {
             !branches
                 .iter()
                 .any(|branch| branch.name == "feature" || branch.name == "canopy")
+        );
+
+        create_branch(&repository.path, "experiment").expect("create experiment");
+        repository.write("tree.txt", "experiment\n");
+        stage_all(&repository.path).expect("stage experiment");
+        commit(&repository.path, "Experiment").expect("commit experiment");
+        checkout_branch(&repository.path, "main").expect("leave experiment");
+        let unmerged = delete_branch(&repository.path, "experiment", false)
+            .expect_err("protect unmerged branch");
+        assert_eq!(unmerged.kind, "branchNotMerged");
+        assert!(
+            snapshot(&repository.path)
+                .expect("read protected branch")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "experiment")
+        );
+        delete_branch(&repository.path, "experiment", true).expect("force delete unmerged branch");
+        assert!(
+            !snapshot(&repository.path)
+                .expect("read forced deletion")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "experiment")
         );
 
         let error = integrate_branch(&repository.path, "main", "octopus")

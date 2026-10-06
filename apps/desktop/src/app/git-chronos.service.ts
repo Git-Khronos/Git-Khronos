@@ -140,6 +140,7 @@ export class GitChronosService {
     return !!operationId && this.cancellingOperationIds().includes(operationId);
   });
   readonly error = signal<string | null>(null);
+  private lastFailureKind: string | null = null;
   readonly commitDetails = signal<CommitDetails | null>(null);
   readonly commitFileDiff = signal<CommitFileDiff | null>(null);
   readonly selectedCommitFile = signal<string | null>(null);
@@ -993,8 +994,16 @@ export class GitChronosService {
     );
   }
 
-  async deleteBranch(name: string, force = false): Promise<void> {
+  /** Returns 'notMerged' when Git refuses a safe delete, leaving the decision to force it to the caller. */
+  async deleteBranch(name: string, force = false): Promise<'deleted' | 'notMerged' | 'failed'> {
     await this.mutate('delete_branch', `Deleting ${name}…`, `Deleted ${name}`, { name, force });
+    if (!this.error()) return 'deleted';
+    if (!force && this.lastFailureKind === 'branchNotMerged') {
+      this.error.set(null);
+      this.activity.set(`${name} is not fully merged`);
+      return 'notMerged';
+    }
+    return 'failed';
   }
 
   async integrateBranch(name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
@@ -2057,12 +2066,14 @@ export class GitChronosService {
     ].slice(-250));
     this.busy.set(true);
     this.error.set(null);
+    this.lastFailureKind = null;
     this.activity.set(label);
     try {
       await action();
       this.finishActivity(id, 'success', this.activity(), startedAt, null);
       return 'success';
     } catch (error: unknown) {
+      this.lastFailureKind = this.errorKind(error);
       const cancelled = this.isOperationCancelled(error);
       let detail = this.formatError(error);
       if (cancelled && repositoryId) {
@@ -2179,6 +2190,12 @@ export class GitChronosService {
   private formatError(error: unknown): string {
     const payload = error as { message?: string; hint?: string | null };
     return [payload?.message ?? String(error), payload?.hint].filter(Boolean).join(' ');
+  }
+
+  private errorKind(error: unknown): string | null {
+    return typeof error === 'object' && error !== null && 'kind' in error && typeof error.kind === 'string'
+      ? error.kind
+      : null;
   }
 
   private isOperationCancelled(error: unknown): boolean {

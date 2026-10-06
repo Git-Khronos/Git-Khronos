@@ -65,16 +65,26 @@ you need a browser-accessible, sample-data development server at
 System Git operations are available only in the native Tauri application.
 
 Resize graph columns from the right edge of each heading, or focus its separator
-and use Left/Right (Shift for larger steps), Home, or End. Date / Time resizes
-from its left edge instead: its right edge stays fixed while the preceding column
-gives or takes the width (Left widens it, Right narrows it). Resizing preserves the
-other columns' widths; wide layouts scroll horizontally instead of squeezing
-neighboring columns. While scrolling, Branch / Tag stays pinned on the left and a
-trailing metadata column (such as Date / Time) stays pinned on the right. Widths are saved per repository. Double-click a separator
+and use Left/Right (Shift for larger steps), Home, or End. Drag a heading onto
+another to reorder the columns; it lands on the side you dragged towards. The last
+column (Date / Time by default) resizes from its left edge instead: its right edge
+stays fixed while the preceding column gives or takes the width (Left widens it,
+Right narrows it). By default, resizing preserves the
+other columns' widths and wide layouts scroll horizontally. Turn off **Configure graph
+columns → Horizontal Scrolling** (saved for the whole app) to keep the columns inside the
+panel instead: widening a column first narrows Commit Message, then the other columns
+(nearest first), down to their minimum widths. Dragging back within the same drag restores
+them, and narrowing the window narrows the columns. Columns never overlap: none is pinned, so every heading and
+cell keeps its own track and scrolls with the history, and a resized edge is
+scrolled into view. The last column reaches the panel edge with the settings button
+inside its right end; while more columns lie to the right, the settings button stays
+at the edge on its own strip, which headings end at. Date / Time shows the
+full date with its year and a 24-hour time, and never narrows below the width those
+need. Widths are saved per repository. Double-click a separator
 to reset it (the Graph separator fits branch paths), or use **Configure graph
 columns → Restore graph defaults** to restore the automatic layout. A heading too
 narrow for its title shows an icon instead (hover it for the full title). The settings
-button stays pinned to the header and is not a commit column.
+button is not a commit column.
 
 Remote-tracking references are refreshed automatically every five minutes while
 the desktop app is open. The active repository is also checked when the window
@@ -92,8 +102,10 @@ the Git object database or the source tree. Repository reads run away from the
 window event loop, saved tabs restore progressively, and working-tree status
 retains only the requested page of paths in memory. The first-frame snapshot
 also avoids calculating ahead/behind divergence for every inactive branch;
-current-branch divergence still comes from the status query. These safeguards
-keep very large repositories responsive.
+current-branch divergence still comes from the status query. The history list
+renders only the rows in view and rebinds those row elements while scrolling
+instead of rebuilding them, and each loaded history page only lays out, dates,
+and indexes its own commits. These safeguards keep very large repositories responsive.
 
 `task test:e2e` runs fast, deterministic renderer journeys against the sample
 repository. These tests cover interface behavior but do not replace native

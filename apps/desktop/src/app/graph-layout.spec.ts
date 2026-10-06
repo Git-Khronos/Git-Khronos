@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advanceRequiredGraphLaneCount,
   boundedGraphLaneOffset,
   buildGraphSegmentPath,
   graphColumnWidthForLaneCount,
@@ -165,5 +166,22 @@ describe('graph column layout', () => {
     expect(isAppendOnlyCommitHistory(['a', 'b'], [{ oid: 'a' }, { oid: 'b' }, { oid: 'c' }])).toBe(true);
     expect(isAppendOnlyCommitHistory(['a', 'b'], [{ oid: 'a' }, { oid: 'c' }])).toBe(false);
     expect(isAppendOnlyCommitHistory(['a', 'b'], [{ oid: 'a' }])).toBe(false);
+  });
+
+  it('extends the required lane count page by page with the same result as a full walk', () => {
+    const commits = Array.from({ length: 600 }, (_, index) => ({
+      oid: `c${index}`,
+      parents: index % 5 === 0 ? [`c${index + 1}`, `c${index + 4}`] : [`c${index + 1}`],
+    }));
+    let progress = null as ReturnType<typeof advanceRequiredGraphLaneCount> | null;
+    for (let size = 100; size <= commits.length; size += 100) {
+      const page = commits.slice(0, size);
+      const previous = progress;
+      progress = advanceRequiredGraphLaneCount(progress, page, ['c0']);
+      expect(progress.maximum).toBe(requiredGraphLaneCount(page, ['c0']));
+      if (previous) expect(progress.maximum).toBeGreaterThanOrEqual(previous.maximum);
+    }
+    const rewritten = [{ oid: 'x', parents: ['c0'] }, ...commits.slice(0, 50)];
+    expect(advanceRequiredGraphLaneCount(progress, rewritten).maximum).toBe(requiredGraphLaneCount(rewritten));
   });
 });

@@ -10,6 +10,8 @@ describe('calculateVirtualWindow', () => {
     expect(window.items).toHaveLength(34);
     expect(window.items[0]).toBe(88);
     expect(window.items.at(-1)).toBe(121);
+    expect(window.start).toBe(88);
+    expect(window.capacity).toBe(34);
   });
 
   it('preserves the complete scroll height with padding', () => {
