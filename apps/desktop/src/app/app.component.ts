@@ -1997,7 +1997,10 @@ export class AppComponent implements OnInit, OnDestroy {
       ? cache.active.map((lane) => ({ ...lane }))
       : [...seeded.values()].slice(0, laneCapacity);
     let nextColor = canExtend ? cache.nextColor : active.length;
-    const rows = canExtend ? [...cache.rows] : [];
+    // A push or fetch can move decorations without changing topology. Keep the geometry,
+    // but rebind changed commit metadata so recycled rows do not display stale references.
+    const rows = canExtend ? cache.rows.map((row, index) =>
+      row.commit === commits[index] ? row : { ...row, commit: commits[index] }) : [];
     const pendingParentConnections = new Map<string, { fromOffset: number; color: number }[]>();
 
     for (let commitIndex = rows.length; commitIndex < commits.length; commitIndex += 1) {

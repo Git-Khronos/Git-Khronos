@@ -7045,6 +7045,60 @@ mod tests {
         };
         assert!(!has_branch(&origin), "origin must remain untouched");
         assert!(has_branch(&upstream), "selected remote must receive main");
+        repository.git(&["branch", "--set-upstream-to=upstream/main", "main"]);
+        repository.write("next.txt", "next\n");
+        stage_all(&repository.path).expect("stage next commit");
+        commit(&repository.path, "Advance local branch").expect("commit local change");
+        assert_eq!(
+            snapshot(&repository.path)
+                .expect("before push")
+                .status
+                .ahead,
+            1
+        );
+        push_to_remote_cancellable(
+            &repository.path,
+            "upstream",
+            "main",
+            &CancellationToken::default(),
+        )
+        .expect("push next commit");
+        let synchronized = snapshot_with_limits_fast(&repository.path, 50, 50)
+            .expect("snapshot immediately after push");
+        assert_eq!(synchronized.status.ahead, 0);
+        assert_eq!(synchronized.status.behind, 0);
+        let local = synchronized
+            .branches
+            .iter()
+            .find(|branch| branch.current)
+            .expect("local branch");
+        let remote = synchronized
+            .branches
+            .iter()
+            .find(|branch| branch.name == "upstream/main")
+            .expect("remote branch");
+        assert_eq!(local.oid, remote.oid);
+        assert!(local.tracking.is_none());
+        let tip = synchronized
+            .commits
+            .iter()
+            .find(|commit| commit.oid == local.oid)
+            .expect("tip commit");
+        assert!(
+            tip.decorations
+                .iter()
+                .any(|decoration| decoration == "upstream/main")
+        );
+        assert!(
+            synchronized
+                .commits
+                .iter()
+                .filter(|commit| commit.oid != local.oid)
+                .all(|commit| !commit
+                    .decorations
+                    .iter()
+                    .any(|decoration| decoration == "upstream/main"))
+        );
         fs::remove_dir_all(parent).expect("remove selected remote fixture directory");
     }
 

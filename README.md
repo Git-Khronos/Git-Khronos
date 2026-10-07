@@ -124,6 +124,11 @@ cannot open fall back to the Git CLI. Staging, unstaging, and discarding update
 the change lists immediately, run Git away from the window event loop, and then
 reconcile with a status-only refresh instead of reloading history and
 references. These safeguards keep very large repositories responsive.
+Push completion applies refreshed branch tips, divergence counts, and commit
+decorations together. Unchanged commit SHAs do not suppress reference updates,
+and pre-push background snapshots cannot overwrite the completed push state.
+Graph lane geometry is reused when only decorations move; no follow-up fetch or
+status poll is required to place the remote reference at the pushed commit.
 
 `task test:e2e` runs fast, deterministic renderer journeys against the sample
 repository. These tests cover interface behavior but do not replace native

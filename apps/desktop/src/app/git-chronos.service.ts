@@ -32,6 +32,7 @@ import {
 } from './operation-history';
 import { FAVORITE_REPOSITORIES_KEY, toggleFavoriteRepository } from './repository-favorites';
 import { reorderRepositoryTabs } from './repository-tabs';
+import { reconcileCommitHistory } from './commit-history';
 import {
   predictDiscardPath,
   predictStageAll,
@@ -432,8 +433,10 @@ export class GitChronosService {
       || this.backgroundFetchRepositoryId() === repositoryId
       || this.liveRefreshes.has(repositoryId)) return false;
     this.liveRefreshes.add(repositoryId);
+    const generation = this.statusGeneration(repositoryId);
     try {
       const snapshot = await invoke<RepositorySnapshot>('refresh_repository', { repoId: repositoryId });
+      if (generation !== this.statusGeneration(repositoryId)) return true;
       if (this.repositories().some((candidate) => candidate.id === repositoryId)) {
         this.storeSnapshot(snapshot);
         this.deferredMetadataRefreshes.delete(repositoryId);
@@ -465,7 +468,8 @@ export class GitChronosService {
       // A stage/unstage/discard started meanwhile; its own result is newer.
       if (generation !== this.statusGeneration(repository.id)) return true;
       if (status.branch !== currentRepository.status.branch) {
-        this.storeSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repository.id }));
+        const snapshot = await invoke<RepositorySnapshot>('refresh_repository', { repoId: repository.id });
+        if (generation === this.statusGeneration(repository.id)) this.storeSnapshot(snapshot);
       } else {
         this.storeStatus(repository.id, status);
       }
@@ -487,9 +491,11 @@ export class GitChronosService {
       delete updated[repository.id];
       return updated;
     });
+    const generation = this.statusGeneration(repository.id);
     try {
       const snapshot = await invoke<RepositorySnapshot | null>('sync_repository', { repoId: repository.id });
-      if (snapshot && this.repositories().some((candidate) => candidate.id === repository.id)) {
+      if (snapshot && generation === this.statusGeneration(repository.id)
+        && this.repositories().some((candidate) => candidate.id === repository.id)) {
         this.storeSnapshot(snapshot);
       }
       if (this.repositories().some((candidate) => candidate.id === repository.id)) {
@@ -2021,6 +2027,7 @@ export class GitChronosService {
   ): Promise<void> {
     const repo = this.repository();
     if (!repo) return;
+    this.bumpStatusGeneration(repo.id);
     const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
     const result = await this.run(pending, async () => {
       this.storeMutationSnapshot(await invoke<RepositorySnapshot>(command, {
@@ -2444,9 +2451,7 @@ export class GitChronosService {
       // Angular can then skip history layout work for status-only updates.
       snapshot = {
         ...snapshot,
-        commits: sameItems(previous.commits, snapshot.commits, (commit) => commit.oid)
-          ? previous.commits
-          : snapshot.commits,
+        commits: reconcileCommitHistory(previous.commits, snapshot.commits),
         branches: sameItems(
           previous.branches,
           snapshot.branches,
