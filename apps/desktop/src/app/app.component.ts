@@ -2149,14 +2149,14 @@ export class AppComponent implements OnInit, OnDestroy {
     this.graphViewportHeight(),
     COMMIT_ROW_HEIGHT,
     this.worktreeWipRows().length * WORKTREE_ROW_HEIGHT,
-    GRAPH_OVERSCAN_ROWS,
+    Math.max(GRAPH_OVERSCAN_ROWS, Math.ceil(this.graphViewportHeight() / COMMIT_ROW_HEIGHT)),
   ), { equal: sameVirtualWindow });
 
   /**
    * Rows are recycled by slot (absolute index modulo the window capacity): while scrolling, only the
    * rows leaving the window are rebound to the rows entering it, so no row views are created or
    * destroyed and rows that stay visible are not repainted. The capacity only grows so slots stay
-   * unique for every row Angular is reconciling.
+   * unique for every row in the window.
    */
   private graphRowSlotCapacityPeak = 1;
   private readonly graphRowSlotCapacity = computed(() => {
@@ -2164,10 +2164,21 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.graphRowSlotCapacityPeak;
   });
 
-  protected graphRowSlot(row: GraphRow): number | string {
-    const index = this.visibleGraphRowIndexByOid().get(row.commit.oid);
-    return index === undefined ? row.commit.oid : index % this.graphRowSlotCapacity();
-  }
+  /**
+   * Rendered rows in slot order. Each slot keeps its DOM position for the life of the list and is
+   * absolutely positioned at its row's offset, so scrolling only rebinds the rows that changed: no row
+   * is ever moved in the DOM, which would force the engine to restyle and repaint it.
+   */
+  protected readonly graphRowSlots = computed(() => {
+    const window = this.virtualGraphWindow();
+    const capacity = this.graphRowSlotCapacity();
+    const slots: ({ row: GraphRow; top: number } | null)[] = new Array(capacity).fill(null);
+    for (let offset = 0; offset < window.items.length; offset += 1) {
+      const index = window.start + offset;
+      slots[index % capacity] = { row: window.items[offset], top: index * COMMIT_ROW_HEIGHT };
+    }
+    return slots;
+  });
 
   private focusedGraphRowOid: string | null = null;
 

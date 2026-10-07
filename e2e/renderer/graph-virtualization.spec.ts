@@ -38,7 +38,9 @@ async function loadLongHistory(page: Page, total = TOTAL): Promise<void> {
 async function renderedRowProblems(page: Page): Promise<string[]> {
   return page.evaluate((rowHeight) => {
     const problems: string[] = [];
-    const rows = [...document.querySelectorAll<HTMLElement>('.commit-row[data-graph-row]:not(.wip-row)')];
+    // Recycled rows keep a fixed DOM slot, so compare them in visual (commit index) order.
+    const rows = [...document.querySelectorAll<HTMLElement>('.commit-row[data-graph-row]:not(.wip-row)')]
+      .sort((a, b) => parseInt(a.dataset['commitOid']!, 16) - parseInt(b.dataset['commitOid']!, 16));
     let previousIndex = -1;
     let previousTop = -Infinity;
     for (const row of rows) {
@@ -68,6 +70,7 @@ test('recycled history rows always show the commit at their position while scrol
     const firstVisible = await page.evaluate(() => {
       const listBox = document.querySelector('.commit-list')!.getBoundingClientRect();
       const row = [...document.querySelectorAll<HTMLElement>('.commit-row[data-graph-row]:not(.wip-row)')]
+        .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
         .find((candidate) => candidate.getBoundingClientRect().bottom > listBox.top + 1);
       return row ? parseInt(row.dataset['commitOid']!, 16) : -1;
     });
@@ -122,6 +125,11 @@ test('scrolling reuses row elements instead of rebuilding them', async ({ page }
     list.scrollTop = 4000;
     await nextFrame();
     const before = rows();
+    let moved = 0;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) moved += record.addedNodes.length + record.removedNodes.length;
+    });
+    observer.observe(document.querySelector('.virtual-commit-rows')!, { childList: true });
     const changed: number[] = [];
     for (let step = 0; step < 40; step += 1) {
       list.scrollTop += step % 2 ? 120 : 1600;
@@ -129,10 +137,13 @@ test('scrolling reuses row elements instead of rebuilding them', async ({ page }
       const after = rows();
       changed.push([...after].filter((row) => !before.has(row)).length);
     }
-    return { size: before.size, created: Math.max(...changed) };
+    observer.disconnect();
+    return { size: before.size, created: Math.max(...changed), moved };
   });
-  // Row views are rebound in place, including after jumps far beyond the rendered window.
+  // Row views are rebound in place, including after jumps far beyond the rendered window, and never
+  // moved in the DOM (a move makes the engine restyle and repaint the row).
   expect(reuse.size).toBeGreaterThan(20);
   expect(reuse.created).toBe(0);
+  expect(reuse.moved).toBe(0);
   expect(await renderedRowProblems(page)).toEqual([]);
 });

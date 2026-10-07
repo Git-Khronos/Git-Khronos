@@ -103,8 +103,10 @@ window event loop, saved tabs restore progressively, and working-tree status
 retains only the requested page of paths in memory. The first-frame snapshot
 also avoids calculating ahead/behind divergence for every inactive branch;
 current-branch divergence still comes from the status query. The history list
-renders only the rows in view and rebinds those row elements while scrolling
-instead of rebuilding them, and each loaded history page only lays out, dates,
+renders only the rows in view (plus one viewport above and below) and rebinds
+those row elements while scrolling instead of rebuilding them. Each row keeps a
+fixed position in the document and is painted on its own layer, so scrolling
+repaints only the rows that changed. Each loaded history page only lays out, dates,
 and indexes its own commits. These safeguards keep very large repositories responsive.
 
 `task test:e2e` runs fast, deterministic renderer journeys against the sample

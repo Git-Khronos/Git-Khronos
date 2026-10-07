@@ -952,10 +952,11 @@
             </div>
           }
           @if (virtualGraphWindow(); as graphWindow) {
-          <div class="virtual-commit-spacer" [style.height.px]="graphWindow.topPadding" aria-hidden="true"></div>
-          @for (row of graphWindow.items; track graphRowSlot(row)) {
+          <div class="virtual-commit-rows" [style.height.px]="graphWindow.topPadding + graphWindow.items.length * 40 + graphWindow.bottomPadding" [style.min-width.px]="commitRowWidth()">
+          @for (slot of graphRowSlots(); track $index) { @if (slot; as slot) { @let row = slot.row;
             <div
               class="commit-row"
+              [style.top.px]="slot.top"
               role="button"
               data-graph-row
               [attr.tabindex]="!changesOpen() && selectedCommit() === row.commit.oid ? 0 : -1"
@@ -1124,8 +1125,8 @@
                 (keydown.space)="$event.stopPropagation()"
               ><gc-icon name="more" [size]="15" /></button>
             </div>
-          }
-          <div class="virtual-commit-spacer" [style.height.px]="graphWindow.bottomPadding" aria-hidden="true"></div>
+          } }
+          </div>
           }
           @if (!visibleGraphRows().length) {
             <div class="empty-panel"><span><gc-icon name="repo" [size]="32" /></span><strong>No commits yet</strong><p>Stage files and create the first commit.</p></div>
