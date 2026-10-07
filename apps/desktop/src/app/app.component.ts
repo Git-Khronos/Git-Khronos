@@ -37,6 +37,7 @@ import type {
 import { GitChronosService, type RepositoryWorkspace } from './git-chronos.service';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
+import { GraphViewportComponent } from './graph-viewport.component';
 import { calculateVirtualWindow, type VirtualWindow } from './virtual-list';
 import { shortcutLabelsForPlatform } from './shortcut-labels';
 import {
@@ -66,7 +67,6 @@ import {
   type AppThemeNavigationKey,
 } from './app-theme';
 import { hostedReviewRequestsForRemotes } from './remote-hosting';
-import { SearchHighlightPipe } from './search-highlight.pipe';
 import {
   buildCompactReferenceSummary,
   buildReferenceGroups,
@@ -93,7 +93,7 @@ interface GraphSegment {
   sourceNodeRadius?: number;
 }
 
-interface GraphRow {
+export interface GraphRow {
   commit: CommitSummary;
   nodeOffset: number;
   color: number;
@@ -543,7 +543,7 @@ function matchesCommandQuery(query: string, ...values: string[]): boolean {
 
 @Component({
   selector: 'gc-root',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, SearchHighlightPipe, TerminalPanelComponent],
+  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -604,9 +604,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private attachCommitList(value: ElementRef<HTMLElement> | undefined): void {
     if ((value?.nativeElement ?? null) === this.commitListElement && this.commitListElement) return;
     this.commitListResizeObserver?.disconnect();
+    this.detachGraphWheel();
     this.commitListElement = value?.nativeElement ?? null;
     if (!this.commitListElement) return;
     const element = this.commitListElement;
+    element.addEventListener('wheel', this.handleGraphWheel, { passive: false });
     queueMicrotask(() => {
       if (this.commitListElement === element) {
         this.updateGraphViewport(element, true);
@@ -625,6 +627,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitChronosService);
+  private readonly graphViewport = viewChild(GraphViewportComponent);
   private readonly injector = inject(Injector);
   // Keep history-dependent computations insulated from status-only repository
   // updates. Angular otherwise invalidates every graph computation whenever the
@@ -1178,6 +1181,74 @@ export class AppComponent implements OnInit, OnDestroy {
   private graphScrollFrame: number | null = null;
   private graphHeaderScrollLeft = -1;
   private pendingGraphScrollElement: HTMLElement | null = null;
+  private graphWheelFrame: number | null = null;
+  private pendingGraphWheelTop: number | null = null;
+  private pendingGraphWheelLeft = 0;
+  private graphHoverResumeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly handleGraphWheel = (event: WheelEvent): void => {
+    const list = this.commitListElement;
+    if (!list || !event.cancelable || event.defaultPrevented || event.ctrlKey || event.shiftKey || !event.deltaY) return;
+    if (event.target instanceof Element && event.target.closest('.reference-stack-popover')) return;
+    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? COMMIT_ROW_HEIGHT
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? list.clientHeight : 1;
+    const top = Math.max(0, Math.min(
+      (this.pendingGraphWheelTop ?? list.scrollTop) + event.deltaY * scale,
+      list.scrollHeight - list.clientHeight,
+    ));
+    if (this.pendingGraphWheelTop === null && top === list.scrollTop) return;
+    // Native asynchronous scrolling can outrun the virtual window. Keep the old painted rows
+    // visible until the destination rows and scroll offset can be committed in the same frame.
+    event.preventDefault();
+    this.deferGraphHover();
+    this.pendingGraphWheelTop = top;
+    this.pendingGraphWheelLeft += event.deltaX * scale;
+    if (this.graphWheelFrame !== null) return;
+    this.graphWheelFrame = requestAnimationFrame(() => {
+      this.graphWheelFrame = null;
+      const target = this.pendingGraphWheelTop;
+      const left = this.pendingGraphWheelLeft;
+      this.pendingGraphWheelTop = null;
+      this.pendingGraphWheelLeft = 0;
+      if (target === null || this.commitListElement !== list) return;
+      this.graphScrollTop.set(target);
+      this.graphViewport()?.render();
+      list.scrollTop = target;
+      if (left) list.scrollLeft += left;
+      this.updateGraphViewport(list);
+      this.prefetchOlderHistory(list);
+    });
+  };
+
+  private detachGraphWheel(): void {
+    this.commitListElement?.removeEventListener('wheel', this.handleGraphWheel);
+    if (this.graphWheelFrame !== null) cancelAnimationFrame(this.graphWheelFrame);
+    this.graphWheelFrame = null;
+    this.pendingGraphWheelTop = null;
+    this.pendingGraphWheelLeft = 0;
+    if (this.graphHoverResumeTimer !== null) clearTimeout(this.graphHoverResumeTimer);
+    this.graphHoverResumeTimer = null;
+  }
+
+  private deferGraphHover(): void {
+    if (this.graphHoverResumeTimer !== null) clearTimeout(this.graphHoverResumeTimer);
+    this.graphHoverResumeTimer = setTimeout(() => {
+      this.graphHoverResumeTimer = null;
+      if (this.graphWheelFrame !== null || this.graphScrollFrame !== null) {
+        this.deferGraphHover();
+        return;
+      }
+      const row = this.commitListElement?.querySelector<HTMLElement>('.commit-row[data-commit-oid]:hover');
+      const oid = row?.dataset['commitOid'] ?? null;
+      this.hoveredCommitOid.set(oid);
+      const stack = row?.querySelector<HTMLElement>('.commit-ref-stack.multi-ref:hover');
+      if (stack && oid && this.collapsedReferenceStackOid() !== oid) {
+        this.cancelReferenceStackClose();
+        this.expandedReferenceStackOid.set(oid);
+        this.positionReferenceStack(oid, stack);
+      }
+    }, 120);
+  }
   private activityLogOpener: HTMLElement | null = null;
   private commandPaletteOpener: HTMLElement | null = null;
   private keyboardShortcutsOpener: HTMLElement | null = null;
@@ -2181,6 +2252,88 @@ export class AppComponent implements OnInit, OnDestroy {
     return slots;
   });
 
+  // Stable callbacks keep row inputs unchanged during scrolling. Signals read through these
+  // callbacks still notify each row when selection, columns, references, or preferences change.
+  protected readonly graphRowView = computed(() => ({
+    git: this.git,
+    activeCommitSearchOid: this.activeCommitSearchOid.bind(this),
+    allowBranchDrop: this.allowBranchDrop.bind(this),
+    authorMarkerStyle: this.authorMarkerStyle.bind(this),
+    beginColumnResize: this.beginColumnResize.bind(this),
+    branchDropTarget: this.branchDropTarget.bind(this),
+    branchForDecoration: this.branchForDecoration.bind(this),
+    branchForReferenceGroup: this.branchForReferenceGroup.bind(this),
+    branchTrackingLabel: this.branchTrackingLabel.bind(this),
+    changesOpen: this.changesOpen.bind(this),
+    checkoutGhostBranch: this.checkoutGhostBranch.bind(this),
+    checkoutRemoteBranch: this.checkoutRemoteBranch.bind(this),
+    closeTagPreview: this.closeTagPreview.bind(this),
+    collapseReferenceStack: this.collapseReferenceStack.bind(this),
+    collapsedReferenceStackOid: this.collapsedReferenceStackOid.bind(this),
+    commitFilter: this.commitFilter.bind(this),
+    commitRowGridColumns: this.commitRowGridColumns.bind(this),
+    commitRowWidth: this.commitRowWidth.bind(this),
+    commitSearchMatchOids: this.commitSearchMatchOids.bind(this),
+    compactAuthorColumn: this.compactAuthorColumn.bind(this),
+    compactReferenceSummary: this.compactReferenceSummary.bind(this),
+    contextMenu: this.contextMenu.bind(this),
+    currentBranch: this.currentBranch.bind(this),
+    decorationKind: this.decorationKind.bind(this),
+    decorationLabel: this.decorationLabel.bind(this),
+    draggedBranch: this.draggedBranch.bind(this),
+    draggedCommit: this.draggedCommit.bind(this),
+    dropBranch: this.dropBranch.bind(this),
+    expandedReferenceStackOid: this.expandedReferenceStackOid.bind(this),
+    finishBranchDrag: this.finishBranchDrag.bind(this),
+    fitGraphColumnToBranches: this.fitGraphColumnToBranches.bind(this),
+    ghostBranchFor: this.ghostBranchFor.bind(this),
+    graphColumnHasLeadingResizeEdge: this.graphColumnHasLeadingResizeEdge.bind(this),
+    graphColumnPosition: this.graphColumnPosition.bind(this),
+    graphColumnWidth: this.graphColumnWidth.bind(this),
+    graphCommitDates: this.graphCommitDates.bind(this),
+    graphSegmentPath: this.graphSegmentPath.bind(this),
+    handleCommitRowKeydown: this.handleCommitRowKeydown.bind(this),
+    handleReferenceActionKeydown: this.handleReferenceActionKeydown.bind(this),
+    handleReferenceStackMenuKeydown: this.handleReferenceStackMenuKeydown.bind(this),
+    handleReferenceStackTriggerKeydown: this.handleReferenceStackTriggerKeydown.bind(this),
+    highlightReference: this.highlightReference.bind(this),
+    initials: this.initials.bind(this),
+    isBranchPinned: this.isBranchPinned.bind(this),
+    isCommitDimmed: this.isCommitDimmed.bind(this),
+    isCommitHighlighted: this.isCommitHighlighted.bind(this),
+    jumpToReference: this.jumpToReference.bind(this),
+    openBranchMenu: this.openBranchMenu.bind(this),
+    openCommitMenu: this.openCommitMenu.bind(this),
+    openReferenceStack: this.openReferenceStack.bind(this),
+    openReferenceStackFromTrigger: this.openReferenceStackFromTrigger.bind(this),
+    openRemoteMenu: this.openRemoteMenu.bind(this),
+    openTagMenu: this.openTagMenu.bind(this),
+    previewCommit: this.previewCommit.bind(this),
+    referenceGroupHeading: this.referenceGroupHeading.bind(this),
+    referenceGroups: this.referenceGroups.bind(this),
+    releaseReferenceStack: this.releaseReferenceStack.bind(this),
+    remoteIconForDecoration: this.remoteIconForDecoration.bind(this),
+    scheduleReferenceStackClose: this.scheduleReferenceStackClose.bind(this),
+    scheduleTagPreview: this.scheduleTagPreview.bind(this),
+    selectCommitWithModifiers: this.selectCommitWithModifiers.bind(this),
+    selectedCommit: this.selectedCommit.bind(this),
+    selectedCommits: this.selectedCommits.bind(this),
+    shortOid: this.shortOid.bind(this),
+    showAuthorColumn: this.showAuthorColumn.bind(this),
+    showBranchColumn: this.showBranchColumn.bind(this),
+    showDateColumn: this.showDateColumn.bind(this),
+    showGraphColumn: this.showGraphColumn.bind(this),
+    showMessageColumn: this.showMessageColumn.bind(this),
+    showShaColumn: this.showShaColumn.bind(this),
+    startBranchDrag: this.startBranchDrag.bind(this),
+    startCommitDrag: this.startCommitDrag.bind(this),
+    stashForOid: this.stashForOid.bind(this),
+    tagPreview: this.tagPreview.bind(this),
+    trailingGraphColumn: this.trailingGraphColumn.bind(this),
+    upwardReferenceStackOid: this.upwardReferenceStackOid.bind(this),
+    visibleDecorations: this.visibleDecorations.bind(this),
+  }));
+
   private focusedGraphRowOid: string | null = null;
 
   protected rememberFocusedGraphRow(event: FocusEvent): void {
@@ -3007,6 +3160,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.commitListResizeObserver?.disconnect();
+    this.detachGraphWheel();
     if (this.graphScrollFrame !== null) cancelAnimationFrame(this.graphScrollFrame);
     this.cancelAutoFetchTimer();
     this.cancelLiveStatusRefresh();
@@ -6167,6 +6321,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected loadMoreHistoryOnScroll(event: Event): void {
     const list = event.currentTarget as HTMLElement;
+    if (list.scrollTop !== this.graphScrollTop()) this.deferGraphHover();
     this.pendingGraphScrollElement = list;
     if (this.graphScrollFrame !== null) return;
     this.graphScrollFrame = requestAnimationFrame(() => {
@@ -6698,6 +6853,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openReferenceStack(oid: string, event?: Event): void {
+    if (event?.type === 'pointerenter' && this.graphHoverResumeTimer !== null) return;
     this.cancelReferenceStackClose();
     if (this.collapsedReferenceStackOid() !== oid) {
       this.expandedReferenceStackOid.set(oid);
@@ -6919,6 +7075,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected previewCommit(oid: string | null): void {
+    if (this.graphHoverResumeTimer !== null) return;
     this.hoveredCommitOid.set(oid);
   }
 
@@ -10792,3 +10949,5 @@ function summarizeFileChanges(files: CommitFile[]): FileChangeStats {
     return total;
   }, { additions: 0, deletions: 0, binaryFiles: 0 });
 }
+
+export type GraphRowView = ReturnType<AppComponent['graphRowView']>;

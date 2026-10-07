@@ -147,3 +147,248 @@ test('scrolling reuses row elements instead of rebuilding them', async ({ page }
   expect(reuse.moved).toBe(0);
   expect(await renderedRowProblems(page)).toEqual([]);
 });
+
+test('scrolling evaluates graph paths only for rows entering the window', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadLongHistory(page, 20_000);
+  const work = await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const list = document.querySelector<HTMLElement>('.commit-list')!;
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const waitForRows = async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await nextFrame();
+        if (app.graphScrollTop() !== list.scrollTop) continue;
+        const last = app.virtualGraphWindow().items.at(-1).commit;
+        const subject = document.querySelector(`[data-commit-oid="${last.oid}"] .subject`)?.textContent?.trim();
+        if (subject === last.subject) return;
+      }
+      throw new Error('History rows did not catch up with the scroll position');
+    };
+    list.scrollTop = 4000;
+    await waitForRows();
+    const presenter = app.graphRowView();
+    const original = presenter.graphSegmentPath;
+    let evaluations = 0;
+    presenter.graphSegmentPath = function (...args: unknown[]) {
+      evaluations += 1;
+      return original.apply(this, args);
+    };
+    const samples: number[] = [];
+    try {
+      for (let step = 0; step < 12; step += 1) {
+        evaluations = 0;
+        list.scrollTop += 40;
+        await waitForRows();
+        samples.push(evaluations);
+      }
+      return { samples, rows: document.querySelectorAll('.commit-row[data-commit-oid]').length };
+    } finally {
+      presenter.graphSegmentPath = original;
+    }
+  });
+  expect(work.rows).toBeGreaterThan(20);
+  // A one-row scroll must not evaluate paths for the entire rendered window.
+  expect(Math.min(...work.samples)).toBeGreaterThan(0);
+  expect(Math.max(...work.samples)).toBeLessThanOrEqual(6);
+  expect(await renderedRowProblems(page)).toEqual([]);
+});
+
+test('rapid wheel scrolling keeps the entire viewport covered in both directions', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadLongHistory(page, 20_000);
+  const list = page.locator('.commit-list');
+  await list.evaluate((element) => { element.scrollTop = 20_000; });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await list.hover();
+  const initialTop = await list.evaluate((element) => element.scrollTop);
+  for (const direction of [1, -1]) {
+    for (let step = 0; step < 12; step += 1) {
+      await page.mouse.wheel(0, direction * 400);
+      const covered = await page.evaluate(() => new Promise<boolean>((resolve) => {
+        requestAnimationFrame(() => {
+          const list = document.querySelector<HTMLElement>('.commit-list')!;
+          const viewport = list.getBoundingClientRect();
+          const rows = [...list.querySelectorAll<HTMLElement>('.commit-row[data-commit-oid]')]
+            .map((row) => row.getBoundingClientRect());
+          resolve(
+            Math.min(...rows.map((row) => row.top)) <= viewport.top + 1
+            && Math.max(...rows.map((row) => row.bottom)) >= viewport.bottom - 1,
+          );
+        });
+
+      }));
+      expect(covered, `direction ${direction}, wheel step ${step}`).toBe(true);
+    }
+    const currentTop = await list.evaluate((element) => element.scrollTop);
+    if (direction === 1) expect(currentTop).toBeGreaterThan(initialTop + 3000);
+    else expect(currentTop).toBeLessThan(initialTop + 1000);
+  }
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await renderedRowProblems(page)).toEqual([]);
+});
+
+test('wheel bursts larger than the overscan never expose an empty viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadLongHistory(page, 20_000);
+  const list = page.locator('.commit-list');
+  await list.evaluate((element) => { element.scrollTop = 100_000; });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await list.hover();
+  await page.evaluate(() => {
+    const state = { gaps: [] as number[], frames: 0, running: true };
+    (window as any).__wheelCoverage = state;
+    const sample = () => {
+      const list = document.querySelector<HTMLElement>('.commit-list')!;
+      const viewport = list.getBoundingClientRect();
+      const rows = [...list.querySelectorAll<HTMLElement>('.commit-row[data-commit-oid]')]
+        .map((row) => row.getBoundingClientRect());
+      state.frames += 1;
+      if (Math.min(...rows.map((row) => row.top)) > viewport.top + 1
+        || Math.max(...rows.map((row) => row.bottom)) < viewport.bottom - 1) {
+        state.gaps.push(list.scrollTop);
+      }
+      if (state.running) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  for (const direction of [1, -1, 1, -1]) {
+    for (let step = 0; step < 5; step += 1) {
+      await page.mouse.wheel(0, direction * 6000);
+    }
+  }
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const result = await page.evaluate(() => {
+    const state = (window as any).__wheelCoverage;
+    state.running = false;
+    return { frames: state.frames, gaps: state.gaps };
+  });
+  expect(result.frames).toBeGreaterThan(0);
+  expect(result.gaps).toEqual([]);
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(100_000);
+  expect(await renderedRowProblems(page)).toEqual([]);
+});
+
+test('wheel rendering checks only the history viewport, not the working-tree panel', async ({ page }) => {
+  await loadLongHistory(page, 20_000);
+  const result = await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const viewport = app.graphViewport();
+    const originalRender = viewport.render;
+    const originalDirectory = app.fileDirectory;
+    let panelChecks = 0;
+    let renders = 0;
+    let rendering = false;
+    app.fileDirectory = function (...args: unknown[]) {
+      if (rendering) panelChecks += 1;
+      return originalDirectory.apply(this, args);
+    };
+    viewport.render = function () {
+      renders += 1;
+      rendering = true;
+      try { originalRender.call(this); } finally { rendering = false; }
+    };
+    try {
+      rendering = true;
+      (window as any).ng.applyChanges(app);
+      rendering = false;
+      const rootPanelChecks = panelChecks;
+      panelChecks = 0;
+      const list = document.querySelector<HTMLElement>('.commit-list')!;
+      list.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, cancelable: true }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { rootPanelChecks, panelChecks, renders, top: list.scrollTop };
+    } finally {
+      app.fileDirectory = originalDirectory;
+      viewport.render = originalRender;
+    }
+  });
+  expect(result.rootPanelChecks).toBeGreaterThan(0);
+  expect(result.renders).toBe(1);
+  expect(result.panelChecks).toBe(0);
+  expect(result.top).toBe(4000);
+  expect(await renderedRowProblems(page)).toEqual([]);
+});
+
+for (const input of ['wheel', 'scrollbar'] as const) {
+  test(`hover ancestry stays stable during ${input} input and resumes on the row under the pointer`, async ({ page }) => {
+    await loadLongHistory(page, 20_000);
+    const list = page.locator('.commit-list');
+    await list.hover();
+    const result = await page.evaluate((input) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const list = document.querySelector<HTMLElement>('.commit-list')!;
+      const before = app.hoveredCommitOid();
+      if (input === 'wheel') {
+        list.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, cancelable: true }));
+      } else {
+        list.scrollTop = 4000;
+        list.dispatchEvent(new Event('scroll'));
+      }
+      for (let i = 0; i < 100; i += 1) app.previewCommit(i.toString(16).padStart(40, '0'));
+      return { before, during: app.hoveredCommitOid() };
+    }, input);
+    expect(result.during).toBe(result.before);
+    await expect.poll(() => page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const row = document.querySelector<HTMLElement>('.commit-row[data-commit-oid]:hover');
+      return app.graphHoverResumeTimer === null
+        && app.hoveredCommitOid() === (row?.dataset['commitOid'] ?? null);
+    })).toBe(true);
+  });
+}
+
+test('scrolling defers reference-stack pointer previews but preserves keyboard focus', async ({ page }) => {
+  await loadLongHistory(page);
+  const result = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const list = document.querySelector<HTMLElement>('.commit-list')!;
+    list.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, cancelable: true }));
+    app.openReferenceStack('pointer-preview', new PointerEvent('pointerenter'));
+    const pointer = app.expandedReferenceStackOid();
+    app.openReferenceStack('keyboard-preview', new FocusEvent('focusin'));
+    const keyboard = app.expandedReferenceStackOid();
+    app.expandedReferenceStackOid.set(null);
+    return { pointer, keyboard };
+  });
+  expect(result.pointer).toBeNull();
+  expect(result.keyboard).toBe('keyboard-preview');
+});
+
+test('frame-coordinated wheel input preserves distance, delta modes, and zoom gestures', async ({ page }) => {
+  await loadLongHistory(page, 20_000);
+  const result = await page.evaluate(async () => {
+    const list = document.querySelector<HTMLElement>('.commit-list')!;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    list.scrollTop = 10_000;
+    await frame();
+    let prevented = 0;
+    for (let index = 0; index < 100; index += 1) {
+      const wheel = new WheelEvent('wheel', { deltaY: 1, deltaMode: WheelEvent.DOM_DELTA_LINE, cancelable: true });
+      list.dispatchEvent(wheel);
+      if (wheel.defaultPrevented) prevented += 1;
+    }
+    await frame();
+    const afterLines = list.scrollTop;
+    const height = list.clientHeight;
+    list.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, deltaMode: WheelEvent.DOM_DELTA_PAGE, cancelable: true }));
+    await frame();
+    const afterPage = list.scrollTop;
+    const zoom = new WheelEvent('wheel', { deltaY: 50, ctrlKey: true, cancelable: true });
+    const horizontal = new WheelEvent('wheel', { deltaY: 50, shiftKey: true, cancelable: true });
+    const cancelled = new WheelEvent('wheel', { deltaY: 5000, cancelable: true });
+    cancelled.preventDefault();
+    list.dispatchEvent(zoom);
+    list.dispatchEvent(horizontal);
+    list.dispatchEvent(cancelled);
+    await frame();
+    return { prevented, afterLines, afterPage, finalTop: list.scrollTop, height, zoomPrevented: zoom.defaultPrevented, horizontalPrevented: horizontal.defaultPrevented };
+  });
+  expect(result.prevented).toBe(100);
+  expect(result.afterLines).toBe(14_000);
+  expect(result.afterPage).toBe(14_000 - result.height);
+  expect(result.finalTop).toBe(result.afterPage);
+  expect(result.zoomPrevented).toBe(false);
+  expect(result.horizontalPrevented).toBe(false);
+  expect(await renderedRowProblems(page)).toEqual([]);
+});

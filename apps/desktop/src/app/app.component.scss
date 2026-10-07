@@ -152,7 +152,6 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .stash-item.graph-hidden .stash-glyph { color: #77768a; }
 .tag-item { padding-left: 23px; }
 .tag-glyph { color: #65b4ff; font-size: 12px; }
-.ref-pill.with-icon, .draggable-reference { display: inline-flex; align-items: center; gap: 3px; }
 .empty-ref { padding: 5px 23px 9px; color: #66657a; font-size: 12px; }
 .hosted-review-requests { display: grid; grid-template-columns: 18px minmax(0, 1fr) 12px; align-items: center; gap: 7px; width: 100%; padding: 7px 12px 8px 22px; background: transparent; color: var(--nav-text); text-align: left; }
 .hosted-review-requests:hover, .hosted-review-requests:focus-visible { background: var(--nav-item-hover); color: white; }
@@ -164,12 +163,7 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .inline-form { display: flex; gap: 4px; margin: 4px 8px 8px; }
 .inline-form input { min-width: 0; flex: 1; padding: 6px; border: 1px solid #4b4a67; border-radius: 3px; background: #14141f; color: var(--text); }
 .inline-form button { padding: 5px; border-radius: 3px; background: #34344c; color: var(--accent); font-size: 12px; }
-.column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; }
-.column-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; }
-.column-resizer.leading-edge { z-index: 4; right: auto; left: -6px; }
 .graph-columns > .trailing-column > .column-resizer:not(.leading-edge) { right: 20px; }
-.column-resizer:hover { background: #7c6ef61f; }
-.column-resizer:hover::after { background: var(--purple); }
 .column-settings { position: absolute; z-index: 12; top: 27px; right: 4px; width: 210px; max-height: calc(100vh - 130px); display: grid; gap: 1px; overflow: auto; padding: 7px; border: 1px solid var(--graph-menu-border); border-radius: 4px; background: var(--graph-menu-surface); box-shadow: 0 12px 35px #000a; }
 .column-settings.contextual { position: fixed; right: auto; }
 .column-settings strong { padding: 4px 6px 7px; color: var(--overlay-muted-low); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
@@ -196,98 +190,6 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .graph-scroll-marker.search:hover::before, .graph-scroll-marker.search:focus-visible::before { width: 9px; }
 .history-return-head { position: absolute; z-index: 9; right: 24px; bottom: 11px; height: 27px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #5a5879; border-radius: 14px; background: #2e2d45e8; color: #cfcced; font-size: 12px; font-weight: 700; box-shadow: 0 5px 18px #0009; backdrop-filter: blur(8px); }
 .history-return-head:hover { border-color: #8174e6; background: #403d65; color: white; }
-.virtual-commit-rows { position: relative; width: 100%; }
-/* Each recycled row is its own compositing layer: scrolling and rebinding a row then repaints only
-   that row instead of the whole list, which keeps WebKitGTK near one frame per display refresh. */
-.virtual-commit-rows > .commit-row { position: absolute; left: 0; will-change: transform; }
-.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 16px 0 6px; border-bottom: 1px solid #242435; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
-.commit-row:hover { background: var(--row-hover); --row-surface: var(--row-hover); }
-.commit-row:focus-visible { z-index: 2; outline: 1px solid #8f84ed; outline-offset: -2px; }
-.commit-row.selected { background: var(--row-selected); --row-surface: var(--row-selected); box-shadow: inset 2px 0 var(--purple); }
-.commit-row.range-selected { background: var(--row-range-selected); --row-surface: var(--row-range-selected); box-shadow: inset 2px 0 #8578e8; }
-.commit-row.range-selected + .commit-row.range-selected { border-top-color: #4a466c; }
-.commit-row.branch-highlighted { background: var(--row-branch-highlighted); --row-surface: var(--row-branch-highlighted); }
-.commit-row.branch-highlighted .author-node { box-shadow: 0 0 0 2px #171723, 0 0 8px #54d6ad66; }
-.commit-row.branch-dimmed { background: var(--row-branch-dimmed); --row-surface: var(--row-branch-dimmed); }
-.commit-row.branch-dimmed .branch-column { opacity: .62; filter: saturate(.55); }
-.commit-row.branch-dimmed .graph-cell { opacity: .38; filter: saturate(.3); }
-.commit-row.branch-dimmed .subject { opacity: .72; }
-.commit-row.branch-dimmed .commit-description,
-.commit-row.branch-dimmed .row-author,
-.commit-row.branch-dimmed .row-date,
-.commit-row.branch-dimmed > code { opacity: .86; }
-.commit-row.branch-dimmed .row-date small,
-.commit-row.branch-dimmed > code { color: #9a99ad; }
-.commit-row.branch-highlighted.selected { background: var(--row-branch-highlighted-selected); --row-surface: var(--row-branch-highlighted-selected); box-shadow: inset 3px 0 #a59aff, inset 0 0 0 1px #5a557d; }
-.commit-row.branch-dimmed.selected { background: var(--row-branch-dimmed-selected); --row-surface: var(--row-branch-dimmed-selected); box-shadow: inset 3px 0 #8f84ed; opacity: 1; filter: none; }
-.commit-row.branch-dimmed.selected > * { opacity: 1; filter: none; }
-.commit-row.branch-highlighted .graph-edges path { filter: brightness(1.2); }
-.wip-row { --row-surface: var(--row-wip); height: 44px; min-height: 44px; background: var(--row-wip); }
-.wip-row { cursor: pointer; }
-.wip-row.linked-worktree { background: var(--row-wip-linked); --row-surface: var(--row-wip-linked); }
-.wip-row.linked-worktree:hover { background: var(--row-wip-linked-hover); --row-surface: var(--row-wip-linked-hover); }
-.head-label.linked { background: #5b4dba; }
-.wip-row .row-menu { display: grid; place-items: center; color: #68677b; }
-.draggable-reference { cursor: grab; }
-.draggable-reference:active { cursor: grabbing; }
-.draggable-reference.branch-drop-target { box-shadow: 0 0 0 2px #171723, 0 0 0 3px var(--purple); }
-.draggable-reference.reference-pinned { padding-left: 5px; box-shadow: inset 2px 0 #b6aaff; }
-.ghost-reference { min-width: 24px; display: flex; flex: 1 1 auto; align-items: center; overflow: hidden; border: 0; background: transparent; padding: 0; opacity: .62; color: inherit; font: inherit; cursor: pointer; }
-.ghost-reference:hover { opacity: 1; }
-.ghost-pill { min-width: 0; display: inline-flex; align-items: center; gap: 3px; overflow: hidden; padding: 2px 6px; border: 1px dashed #77768f; border-radius: 9px 2px 2px 9px; background: #2c2b3c; color: #b5b4c5; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.ghost-reference > i { min-width: 10px; flex: 1; border-top: 1px solid #77768f; }
-.graph-cell { position: relative; align-self: stretch; display: grid; place-items: center; }
-.graph-cell.multi-lane { display: block; overflow: visible; }
-.graph-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.graph-edges path { fill: none; stroke: var(--graph-lane-color, #55c9a5); stroke-width: 2; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.lane-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--graph-lane-color, #55c9a5); }
-.merge-arc { position: absolute; top: 19px; width: 17px; height: 18px; border: 2px solid var(--graph-lane-color, #7c6ef6); border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
-.wip-edges { height: 100%; }
-.node { z-index: 1; width: 9px; height: 9px; border: 2px solid var(--graph-lane-color, #55c9a5); border-radius: 50%; background: #171723; }
-.multi-lane .node { position: absolute; top: 15px; background: #171723 !important; }
-.multi-lane .author-node { top: 7px; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: var(--author-color) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 0 0 2px #171723; }
-.commit-list.compact-graph .author-node { top: 9px; width: 20px; height: 20px; font-size: 10px; }
-.multi-lane .author-node.head-node { box-shadow: 0 0 0 2px #171723, 0 0 0 4px var(--accent), 0 0 10px #54d6ad66; }
-.multi-lane .stash-node { top: 10px; width: 20px; height: 19px; display: grid; place-items: center; border: 1px solid #ffc98e; border-radius: 3px; background: #a56835 !important; color: #fff3e3; box-shadow: 0 0 0 2px #171723; }
-.stash-row .subject { color: #efbd88; }
-.commit-row:hover .author-node, .commit-row.selected .author-node { filter: brightness(1.18); }
-.commit-row-action[draggable='true'] { cursor: grab; }
-.commit-row-action.commit-dragging { opacity: .45; cursor: grabbing; }
-.wip-node { width: 22px; height: 18px; border: 0; background: var(--orange); color: #2a1809; font-size: 12px; font-weight: 900; }
-.multi-lane .wip-node { top: 13px; display: grid; place-items: center; background: var(--orange) !important; }
-.commit-main { display: flex; min-width: 0; align-items: baseline; gap: 8px; padding: 0 8px; }
-.subject { max-width: 82%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
-.subject:only-child { max-width: 100%; }
-.commit-description { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
-.metadata { display: none; color: var(--muted); font-size: 12px; }
-.row-author, .row-date { overflow: hidden; padding: 0 7px; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.commit-row .branch-column,
-.commit-row .graph-cell,
-.commit-row .subject,
-.commit-row .commit-description,
-.commit-row .row-author,
-.commit-row .row-date,
-.commit-row > code { transition: opacity .1s ease, filter .1s ease; }
-.author-column-heading.compact { justify-content: center; color: #aaa8bd; }
-.row-author.compact { display: grid; place-items: center; padding: 0; }
-.compact-author-avatar { width: 22px; height: 22px; display: grid; place-items: center; overflow: hidden; border: 1px solid #ffffff29; border-radius: 50%; background: var(--author-color); color: white; font-size: 10px; font-weight: 800; line-height: 1; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; }
-.compact-author-avatar.stash { border-radius: 4px; background: #a56835; color: #fff3e3; }
-.row-date { display: flex; flex-direction: column; gap: 1px; justify-content: center; line-height: 1; }
-.row-date small { color: var(--muted); font-size: var(--font-size-caption); }
-.commit-row > code { padding-right: 5px; color: var(--muted); font-size: var(--font-size-caption); text-align: right; }
-.row-menu { order: 99; }
-// The last column's cell spans the actions lane, so row actions sit inside its right end.
-// --row-surface mirrors the row's opaque state background; the cell's box-shadow extends it under the
-// actions track so scrolled content never shows through.
-/* The trailing cell spans its own track and the actions lane; the row action button overlays the lane. */
-.commit-row > .trailing-cell { grid-column: -3 / -1; grid-row: 1; align-self: stretch; align-content: center; padding-right: 33px; }
-.commit-row > .trailing-cell ~ .row-menu { position: relative; z-index: 1; grid-column: -2 / -1; grid-row: 1; }
-.commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) { opacity: 1; }
-.commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) > * { opacity: .86; }
-.commit-row-action { position: relative; z-index: 9; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858397; opacity: 0; transform: translateX(2px); transition: opacity .1s ease, border-color .1s ease, background-color .1s ease, color .1s ease, transform .1s ease; }
-.commit-row:hover .commit-row-action, .commit-row:focus-visible .commit-row-action, .commit-row:focus-within .commit-row-action, .commit-row.selected .commit-row-action, .commit-row-action.menu-open { opacity: 1; transform: translateX(0); }
-.commit-row-action:hover, .commit-row-action:focus-visible { border-color: #55536d; background: #403f58; color: white; }
-.commit-row-action.menu-open { border-color: #736ca0; background: #4a4668; color: #f0edff; box-shadow: 0 0 0 1px #8f84ed26; }
 .empty-panel { display: grid; place-items: center; align-content: center; height: 100%; min-height: 320px; color: var(--muted); }
 .empty-panel span { font-size: 35px; }
 .empty-panel strong { color: var(--text); margin-top: 10px; }

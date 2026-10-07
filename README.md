@@ -106,7 +106,18 @@ current-branch divergence still comes from the status query. The history list
 renders only the rows in view (plus one viewport above and below) and rebinds
 those row elements while scrolling instead of rebuilding them. Each row keeps a
 fixed position in the document and is painted on its own layer, so scrolling
-repaints only the rows that changed. Each loaded history page only lays out, dates,
+repaints only the rows that changed. Each recycled row also has isolated change
+detection, so scrolling checks only the newly rebound rows rather than reevaluating
+every visible row's SVG paths, references, and metadata. Mouse-wheel input is
+accumulated per frame, and destination rows are rendered before the scroll offset
+moves, preventing asynchronous scrolling from exposing an empty virtual window.
+That synchronous render is confined to the history viewport, not the sidebar or
+working-tree panels. Mouse-driven ancestry and ghost-branch previews stay stable
+while scrolling and resume on the row under the pointer after 120 ms of quiet;
+reference-stack hover expansion is deferred too, without delaying keyboard focus
+or explicit clicks.
+Wheel distance is preserved, including line/page deltas; zoom and Shift-wheel
+gestures retain their native handling. Each loaded history page only lays out, dates,
 and indexes its own commits. Older history pages are read in-process with
 gitoxide (`gix`) instead of starting a Git process per page; repositories gitoxide
 cannot open fall back to the Git CLI. Staging, unstaging, and discarding update

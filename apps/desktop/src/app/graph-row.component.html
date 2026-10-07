@@ -1,0 +1,173 @@
+@let view = presenter();
+@let row = graphRow();
+<div
+  class="commit-row"
+  [style.top.px]="top()"
+  role="button"
+  data-graph-row
+  [attr.tabindex]="!view.changesOpen() && view.selectedCommit() === row.commit.oid ? 0 : -1"
+  [attr.data-commit-oid]="row.commit.oid"
+  [class.stash-row]="!!view.stashForOid(row.commit.oid)"
+  [style.grid-template-columns]="view.commitRowGridColumns()" [style.width.px]="view.commitRowWidth()"
+  [class.selected]="!view.changesOpen() && view.selectedCommits().includes(row.commit.oid)"
+  [class.range-selected]="(view.selectedCommits().length > 1 || !!view.git.commitComparison()?.workingTree) && view.selectedCommits().includes(row.commit.oid)"
+  [class.branch-highlighted]="highlighted()"
+  [class.branch-dimmed]="dimmed()"
+  [class.search-match]="view.commitSearchMatchOids().has(row.commit.oid)"
+  [class.search-active]="view.activeCommitSearchOid() === row.commit.oid"
+  [class.search-dimmed]="!!view.commitFilter().trim() && !view.commitSearchMatchOids().has(row.commit.oid)"
+  [attr.aria-label]="(row.commit.subject || 'No commit message') + ', by ' + row.commit.authorName"
+  [attr.aria-pressed]="!view.changesOpen() && view.selectedCommits().includes(row.commit.oid)"
+  (mouseenter)="view.previewCommit(row.commit.oid)"
+  (mouseleave)="view.previewCommit(null); view.releaseReferenceStack(row.commit.oid)"
+  (click)="view.selectCommitWithModifiers($event, row.commit.oid)"
+  (keydown)="view.handleCommitRowKeydown($event, row.commit.oid)"
+  (contextmenu)="view.openCommitMenu($event, row.commit)"
+>
+  @if (view.showBranchColumn()) { <span
+    class="branch-column"
+    [class.leading-branch-column]="view.graphColumnPosition('branch') === 0"
+    [style.order]="view.graphColumnPosition('branch')" [class.trailing-cell]="view.trailingGraphColumn() === 'branch'"
+  >
+    @let decorations = view.visibleDecorations(row.commit);
+    @if (view.stashForOid(row.commit.oid); as stash) {
+      <span class="ref-pill stash-ref" title="{{ stash.message }}">{{ stash.reference }}</span>
+    } @else { <span
+      class="commit-ref-stack"
+      role="group"
+      [class.multi-ref]="decorations.length > 1"
+      [class.pointer-expanded]="view.expandedReferenceStackOid() === row.commit.oid"
+      [class.opens-upward]="view.upwardReferenceStackOid() === row.commit.oid"
+      [class.escape-collapsed]="view.collapsedReferenceStackOid() === row.commit.oid"
+      [attr.aria-label]="decorations.length > 1 ? decorations.length + ' branches and tags on this commit. Focus or hover to show all.' : null"
+      (pointerenter)="decorations.length > 1 ? view.openReferenceStack(row.commit.oid, $event) : null"
+      (pointerleave)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid) : null"
+      (focusin)="decorations.length > 1 ? view.openReferenceStack(row.commit.oid, $event) : null; view.highlightReference(row.commit.oid)"
+      (focusout)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid) : null; view.highlightReference(null)"
+      (keydown.escape)="view.collapseReferenceStack($event, row.commit.oid)"
+    ><ng-template #graphReference let-decoration>
+      @if (view.branchForDecoration(decoration); as branch) {
+        <button
+          class="ref-pill {{ view.decorationKind(decoration) }} draggable-reference lane-color-{{ row.color }}"
+          type="button"
+          [attr.tabindex]="decorations.length > 1 ? -1 : null"
+          [class.current-ref]="branch.current"
+          [class.reference-pinned]="view.isBranchPinned(branch.name)"
+          [class.branch-dragging]="view.draggedBranch() === branch.name"
+          [class.branch-drop-target]="view.branchDropTarget() === branch.name"
+          [attr.aria-label]="'Graph reference ' + branch.name + ', local branch' + (branch.current ? ', current' : '')"
+          [attr.role]="decorations.length > 1 ? 'menuitem' : null"
+          aria-haspopup="menu"
+          title="{{ decoration }}{{ branch.tracking ? ' · ' + branch.tracking : '' }} · Double-click to checkout · Drag onto another branch · Drop a commit here to cherry-pick"
+          draggable="true"
+          (click)="view.jumpToReference($event, branch.oid)"
+          (dblclick)="$event.preventDefault(); $event.stopPropagation(); branch.current ? null : view.git.checkout(branch.name)"
+          (dragstart)="view.startBranchDrag($event, branch.name)"
+          (dragover)="view.allowBranchDrop($event, branch.name)"
+          (drop)="view.dropBranch($event, branch.name)"
+          (dragend)="view.finishBranchDrag()"
+          (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
+          (contextmenu)="view.openBranchMenu($event, branch.name, branch.oid)"
+        ><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="9" />{{ view.decorationLabel(decoration) }}@if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ view.branchTrackingLabel(branch.tracking) }}</small> }</button>
+      } @else if (view.decorationKind(decoration) === 'remote') {
+        <button class="ref-pill remote with-icon interactive-remote-ref lane-color-{{ row.color }}" type="button" [attr.tabindex]="decorations.length > 1 ? -1 : null" [attr.role]="decorations.length > 1 ? 'menuitem' : null" aria-label="Remote branch {{ view.decorationLabel(decoration) }}" aria-haspopup="menu" title="Click to view branch tip · Double-click or press Enter to create and checkout a local tracking branch · Right-click for actions" (click)="view.jumpToReference($event, row.commit.oid)" (keydown)="view.handleReferenceActionKeydown($event, 'remote', view.decorationLabel(decoration), row.commit.oid)" (keydown.enter)="view.checkoutRemoteBranch($event, view.decorationLabel(decoration))" (dblclick)="view.checkoutRemoteBranch($event, view.decorationLabel(decoration))" (contextmenu)="view.openRemoteMenu($event, view.decorationLabel(decoration), row.commit.oid)"><gc-icon [name]="view.remoteIconForDecoration(decoration)" [size]="9" /><span>{{ view.decorationLabel(decoration) }}</span></button>
+      } @else if (view.decorationKind(decoration) === 'tag') {
+        <button class="ref-pill tag interactive-tag-ref" type="button" [attr.tabindex]="decorations.length > 1 ? -1 : null" [attr.role]="decorations.length > 1 ? 'menuitem' : null" aria-label="Tag {{ view.decorationLabel(decoration) }}" [attr.aria-describedby]="view.tagPreview()?.name === view.decorationLabel(decoration) ? 'tag-reference-preview' : null" aria-haspopup="menu" title="View tag {{ view.decorationLabel(decoration) }} · Right-click for actions" (mouseenter)="view.scheduleTagPreview($event, view.decorationLabel(decoration), row.commit.oid)" (mouseleave)="view.closeTagPreview()" (focus)="view.scheduleTagPreview($event, view.decorationLabel(decoration), row.commit.oid, true)" (blur)="view.closeTagPreview()" (click)="view.jumpToReference($event, row.commit.oid)" (keydown)="view.handleReferenceActionKeydown($event, 'tag', view.decorationLabel(decoration), row.commit.oid)" (contextmenu)="view.openTagMenu($event, view.decorationLabel(decoration), row.commit.oid)"><gc-icon name="tag" [size]="9" />{{ view.decorationLabel(decoration) }}</button>
+      } @else {
+        <span class="ref-pill {{ view.decorationKind(decoration) }}" [attr.tabindex]="decorations.length > 1 ? -1 : null" [attr.role]="decorations.length > 1 ? 'menuitem' : null" title="{{ decoration }}">{{ view.decorationLabel(decoration) }}</span>
+      }
+    </ng-template>@if (decorations.length > 1) {
+      @let referenceSummary = view.compactReferenceSummary(decorations);
+      <button
+        class="reference-stack-trigger"
+        type="button"
+        [attr.aria-expanded]="view.expandedReferenceStackOid() === row.commit.oid"
+        [attr.aria-label]="referenceSummary.ariaLabel"
+        aria-haspopup="menu"
+        [title]="referenceSummary.ariaLabel"
+        (click)="view.openReferenceStackFromTrigger($event, row.commit.oid)"
+        (contextmenu)="view.openReferenceStackFromTrigger($event, row.commit.oid, true)"
+        (keydown)="view.handleReferenceStackTriggerKeydown($event, row.commit.oid)"
+    ><span class="reference-stack-locations" aria-hidden="true">@for (location of referenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? view.remoteIconForDecoration(location.decoration) : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ referenceSummary.label }}</span>@if (referenceSummary.hiddenCount) { <b>+{{ referenceSummary.hiddenCount }}</b> }</button>
+      <span class="reference-stack-popover" role="menu" aria-label="References on this commit" [style.--reference-location-offset]="((referenceSummary.locations.length - 1) * 10) + 'px'" (keydown)="view.handleReferenceStackMenuKeydown($event, row.commit.oid)">
+        @let expandedReferenceGroups = view.referenceGroups(decorations);
+        <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ view.referenceGroupHeading(expandedReferenceGroups) }}</span>
+        @for (group of expandedReferenceGroups; track group.key) {
+          <span class="grouped-reference-row" [class.current-reference-group]="group.current">
+            <span class="grouped-reference-locations">
+              @for (location of group.locations; track location.decoration) {
+                @if (view.branchForDecoration(location.decoration); as branch) {
+                  <button class="grouped-reference-location local lane-color-{{ row.color }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" draggable="true" (click)="view.jumpToReference($event, branch.oid)" (dblclick)="$event.preventDefault(); $event.stopPropagation(); branch.current ? null : view.git.checkout(branch.name)" (dragstart)="view.startBranchDrag($event, branch.name)" (dragover)="view.allowBranchDrop($event, branch.name)" (drop)="view.dropBranch($event, branch.name)" (dragend)="view.finishBranchDrag()" (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="view.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
+                } @else if (location.kind === 'remote') {
+                  <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to create a local tracking branch" (click)="view.jumpToReference($event, row.commit.oid)" (keydown)="view.handleReferenceActionKeydown($event, 'remote', location.label, row.commit.oid)" (keydown.enter)="view.checkoutRemoteBranch($event, location.label)" (dblclick)="view.checkoutRemoteBranch($event, location.label)" (contextmenu)="view.openRemoteMenu($event, location.label, row.commit.oid)"><gc-icon [name]="view.remoteIconForDecoration(location.decoration)" [size]="10" /></button>
+                } @else if (location.kind === 'tag') {
+                  <button class="grouped-reference-location tag" type="button" role="menuitem" aria-label="Tag {{ location.label }}" title="Tag {{ location.label }} · Right-click for actions" (mouseenter)="view.scheduleTagPreview($event, location.label, row.commit.oid)" (mouseleave)="view.closeTagPreview()" (focus)="view.scheduleTagPreview($event, location.label, row.commit.oid, true)" (blur)="view.closeTagPreview()" (click)="view.jumpToReference($event, row.commit.oid)" (keydown)="view.handleReferenceActionKeydown($event, 'tag', location.label, row.commit.oid)" (contextmenu)="view.openTagMenu($event, location.label, row.commit.oid)"><gc-icon name="tag" [size]="10" /></button>
+                } @else {
+                  <span class="grouped-reference-location" title="{{ location.decoration }}"><gc-icon name="branch" [size]="10" /></span>
+                }
+              }
+            </span>
+            <span class="grouped-reference-label">{{ group.label }}</span>
+            @if (view.branchForReferenceGroup(group); as branch) { @if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ view.branchTrackingLabel(branch.tracking) }}</small> } }
+          </span>
+        }
+      </span>
+    } @else {
+      @for (decoration of decorations; track $index) {
+        <ng-container [ngTemplateOutlet]="graphReference" [ngTemplateOutletContext]="{ $implicit: decoration }"></ng-container>
+      }
+    }</span> }
+    @if (ghostBranch(); as ghost) {
+      <button type="button" class="ghost-reference" aria-label="Nearest containing branch {{ ghost.name }}" title="Nearest containing branch: {{ ghost.name }}. Double-click or press Enter to checkout." (click)="$event.stopPropagation()" (keydown.enter)="view.checkoutGhostBranch($event, ghost)" (dblclick)="view.checkoutGhostBranch($event, ghost)">
+        <span class="ghost-pill"><gc-icon name="branch" [size]="9" />{{ ghost.name }}</span><i></i>
+      </button>
+    }
+  </span> }
+  @if (view.showGraphColumn()) { <span class="graph-cell multi-lane" [style.order]="view.graphColumnPosition('graph')" [class.trailing-cell]="view.trailingGraphColumn() === 'graph'" aria-hidden="true">
+    <svg class="graph-edges" [attr.viewBox]="'0 0 ' + view.graphColumnWidth() + ' 40'" preserveAspectRatio="none">
+      @for (segment of row.segments; track $index) {
+        <path class="color-{{ segment.color }}" [attr.d]="view.graphSegmentPath(segment)" />
+      }
+    </svg>
+    @if (view.visibleDecorations(row.commit).length || view.stashForOid(row.commit.oid)) { <span class="ref-connector color-{{ row.color }}" [style.width.px]="row.nodeOffset"></span> }
+    @if (view.stashForOid(row.commit.oid)) {
+      <span class="node stash-node color-{{ row.color }}" [style.left.px]="row.nodeOffset - 10" title="Stashed changes"><gc-icon name="archive" [size]="11" /></span>
+    } @else {
+      <span class="node author-node color-{{ row.color }}" [class.head-node]="view.currentBranch()?.oid === row.commit.oid" [class.color-marker]="view.authorMarkerStyle() === 'color'" [attr.data-lane-offset]="row.nodeOffset" [style.left.px]="row.nodeOffset" [style.--author-color]="row.authorColor" title="{{ view.currentBranch()?.oid === row.commit.oid ? 'HEAD · ' : '' }}{{ row.commit.authorName }} &lt;{{ row.commit.authorEmail }}&gt;">@if (view.authorMarkerStyle() === 'initials') { {{ view.initials(row.commit.authorName) }} }</span>
+    }
+    <i class="column-resizer graph-row-resizer" [hidden]="view.graphColumnHasLeadingResizeEdge('graph')" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
+  </span> }
+  @if (view.showMessageColumn()) { <span class="commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" [title]="row.commit.subject + (row.commit.description ? '\n' + row.commit.description : '')">
+    @if (view.stashForOid(row.commit.oid); as stash) {
+      <span class="subject">@for (segment of (stash.message | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span><span class="commit-description">Stashed changes</span>
+    } @else {
+      <span class="subject">@for (segment of ((row.commit.subject || '(no commit message)') | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span>
+      @if (row.commit.description) { <span class="commit-description">@for (segment of (row.commit.description | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span> }
+    }
+  </span> }
+  @if (view.showAuthorColumn()) {
+    <span class="row-author" [class.compact]="view.compactAuthorColumn()" [style.order]="view.graphColumnPosition('author')" [class.trailing-cell]="view.trailingGraphColumn() === 'author'" title="{{ view.stashForOid(row.commit.oid) ? 'Stash' : row.commit.authorName + ' <' + row.commit.authorEmail + '>' }}">
+      @if (view.compactAuthorColumn()) {
+        <span class="compact-author-avatar" [class.stash]="!!view.stashForOid(row.commit.oid)" [class.color-marker]="!view.stashForOid(row.commit.oid) && view.authorMarkerStyle() === 'color'" [style.--author-color]="row.authorColor">@if (view.stashForOid(row.commit.oid)) { S } @else if (view.authorMarkerStyle() === 'initials') { {{ view.initials(row.commit.authorName) }} }</span>
+      } @else { @for (segment of ((view.stashForOid(row.commit.oid) ? 'Stash' : row.commit.authorName) | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } } }
+    </span>
+  }
+  @if (view.showDateColumn() && view.graphCommitDates().get(row.commit.oid); as date) { <span class="row-date" [style.order]="view.graphColumnPosition('date')" [class.trailing-cell]="view.trailingGraphColumn() === 'date'" [title]="date.title"><span>{{ date.primary }}</span><small>{{ date.secondary }}</small></span> }
+  @if (view.showShaColumn()) { <code [style.order]="view.graphColumnPosition('sha')" [class.trailing-cell]="view.trailingGraphColumn() === 'sha'">@for (segment of (view.shortOid(row.commit.oid) | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</code> }
+  <button
+    type="button"
+    class="row-menu commit-row-action"
+    [class.menu-open]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === row.commit.oid"
+    [class.commit-dragging]="view.draggedCommit()?.oid === row.commit.oid"
+    [attr.draggable]="view.stashForOid(row.commit.oid) ? null : 'true'"
+    [title]="view.stashForOid(row.commit.oid) ? 'Commit actions' : 'Commit actions · Drag onto a local branch to cherry-pick'"
+    aria-label="Commit actions for {{ row.commit.subject || view.shortOid(row.commit.oid) }}"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === row.commit.oid"
+    (click)="view.openCommitMenu($event, row.commit, true)"
+    (dragstart)="view.startCommitDrag($event, row.commit)"
+    (dragend)="view.finishBranchDrag()"
+    (keydown.enter)="$event.stopPropagation()"
+    (keydown.space)="$event.stopPropagation()"
+  ><gc-icon name="more" [size]="15" /></button>
+</div>
