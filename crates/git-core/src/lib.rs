@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod history_walk;
+
 pub const MINIMUM_GIT_VERSION: &str = "2.34.0";
 const EMPTY_TREE_OID: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const MAX_REFLOG_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
@@ -243,16 +245,48 @@ pub struct CommitHistoryPage {
 
 /// Incremental history state used by the desktop to avoid increasingly
 /// expensive `git log --skip=N` traversals in very large repositories.
+///
+/// Pages are produced in-process by a gitoxide-backed walk when the repository
+/// can be opened that way, falling back to `git log` over a frontier otherwise.
 #[derive(Default)]
 pub struct CommitHistoryCursor {
     emitted: HashSet<String>,
     frontier: Vec<String>,
+    walk: Option<history_walk::HistoryWalk>,
+    stashes: Vec<StashEntry>,
 }
 
 impl CommitHistoryCursor {
     pub fn reset(&mut self, path: &Path, initial: &[CommitSummary]) -> Result<(), AppError> {
         self.emitted = initial.iter().map(|commit| commit.oid.clone()).collect();
         self.frontier.clear();
+        self.stashes.clear();
+        // Reusing the open repository keeps its loaded pack indexes and
+        // object cache warm across refreshes of the same repository.
+        let reusable = self.walk.take().filter(|walk| walk.opened_from(path));
+
+        if let Some(mut walk) = reusable.or_else(|| history_walk::HistoryWalk::open(path)) {
+            let tips = read_commits_with_arguments(
+                path,
+                &[
+                    "log",
+                    "--no-walk",
+                    "--decorate=short",
+                    "--decorate-refs-exclude=refs/remotes/*/HEAD",
+                    "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
+                    "--all",
+                ],
+            )?;
+            self.stashes = read_stashes(path)?;
+            let stash_oids = self
+                .stashes
+                .iter()
+                .map(|stash| stash.oid.clone())
+                .collect::<Vec<_>>();
+            walk.reset(&tips, initial, &stash_oids);
+            self.walk = Some(walk);
+            return Ok(());
+        }
 
         let tips = run_git(path, &["rev-list", "--no-walk", "--all"])?;
         ensure_success("prepare incremental commit history", &tips)?;
@@ -275,6 +309,14 @@ impl CommitHistoryCursor {
     }
 
     pub fn next_page(&mut self, path: &Path, limit: usize) -> Result<CommitHistoryPage, AppError> {
+        if let Some(walk) = self.walk.as_mut() {
+            let commits = walk.next_page(limit);
+            return Ok(CommitHistoryPage {
+                commits: normalize_stash_history(commits, &self.stashes),
+                history_truncated: walk.has_more(),
+            });
+        }
+
         let mut commits = Vec::with_capacity(limit);
         while commits.len() < limit && !self.frontier.is_empty() {
             let remaining = limit - commits.len();
@@ -6104,6 +6146,101 @@ mod tests {
             observed.len()
         );
         assert_eq!(observed.into_iter().collect::<HashSet<_>>(), expected);
+    }
+
+    #[test]
+    fn in_process_history_walk_matches_git_log_output() {
+        let repository = TestRepository::new();
+        let clock = std::cell::Cell::new(0);
+        let git_at = |zone: &str, args: &[&str]| {
+            clock.set(clock.get() + 1);
+            let date = format!("2020-01-01T00:{:02}:00{zone}", clock.get());
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&repository.path)
+                .args(args)
+                .env("GIT_AUTHOR_DATE", &date)
+                .env("GIT_COMMITTER_DATE", &date)
+                .output()
+                .expect("run Git in test repository");
+            assert!(
+                output.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        repository.write("a.txt", "one\n");
+        git_at("+0000", &["add", "a.txt"]);
+        git_at("+0000", &["commit", "-m", "Root commit"]);
+        git_at("+0000", &["tag", "-a", "v0.1", "-m", "Annotated release"]);
+        repository.write("a.txt", "two\n");
+        git_at(
+            "-0230",
+            &[
+                "commit",
+                "-am",
+                "  Leading spaced subject  \ncontinued subject\n\nBody line\n\nSecond paragraph",
+            ],
+        );
+        git_at("+0000", &["tag", "light"]);
+        git_at("+0000", &["checkout", "-b", "topic", "HEAD~1"]);
+        repository.write("b.txt", "topic\n");
+        git_at("+0530", &["add", "b.txt"]);
+        git_at("+0530", &["commit", "-m", "Topic work"]);
+        git_at("+0000", &["checkout", "main"]);
+        git_at("+0100", &["merge", "--no-ff", "topic", "-m", "Merge topic"]);
+        git_at(
+            "+0000",
+            &["update-ref", "refs/remotes/origin/main", "HEAD~1"],
+        );
+        git_at(
+            "+0000",
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        );
+        git_at("+0000", &["update-ref", "refs/custom/marker", "topic"]);
+        repository.write("a.txt", "dirty\n");
+        repository.write("untracked.txt", "untracked\n");
+        git_at("+0000", &["stash", "push", "-u", "-m", "Work in progress"]);
+        repository.write("a.txt", "after stash\n");
+        git_at("-0800", &["commit", "-am", "After stash"]);
+        git_at("+0000", &["checkout", "--detach", "HEAD~1"]);
+
+        let stashes = read_stashes(&repository.path).expect("read fixture stashes");
+        let expected = normalize_stash_history(
+            read_commits(&repository.path, 100).expect("read fixture history with Git"),
+            &stashes,
+        );
+        let render = |commits: &[CommitSummary]| {
+            commits
+                .iter()
+                .map(|commit| format!("{commit:?}"))
+                .collect::<Vec<_>>()
+        };
+
+        for initial_count in [0, 3] {
+            let initial = expected[..initial_count].to_vec();
+            let mut cursor = CommitHistoryCursor::default();
+            cursor
+                .reset(&repository.path, &initial)
+                .expect("initialize in-process history");
+            assert!(cursor.walk.is_some(), "the in-process walk should be used");
+            let mut observed = initial.clone();
+            loop {
+                let page = cursor
+                    .next_page(&repository.path, 2)
+                    .expect("read in-process history page");
+                observed.extend(page.commits);
+                if !page.history_truncated {
+                    break;
+                }
+            }
+            assert_eq!(render(&observed), render(&expected));
+        }
     }
 
     #[test]

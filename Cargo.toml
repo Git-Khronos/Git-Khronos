@@ -10,6 +10,7 @@ rust-version = "1.99"
 
 [workspace.dependencies]
 git-chronos-git-core = { path = "crates/git-core" }
+gix = { version = "0.88", default-features = false, features = ["sha1", "max-performance-safe"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 

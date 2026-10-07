@@ -43,3 +43,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Rust crate dependencies
+
+Git Chronos links third-party Rust crates that are used unmodified and retain
+their upstream licenses. The gitoxide (`gix`) crates are available under
+MIT OR Apache-2.0. Its dependency `uluru` is available under the Mozilla Public
+License 2.0, and its source code is available at
+<https://github.com/servo/uluru>. See `docs/provenance/third-party-code.md` for
+the license review of these dependencies.
