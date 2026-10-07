@@ -75,6 +75,7 @@ import {
   type ReferenceGroup,
 } from './reference-summary';
 import { orderBranchesCurrentFirst } from './branch-order';
+import { describeWorkingTreeStatus } from './working-tree-status';
 import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
 
 interface ActiveGraphLane {
@@ -5849,6 +5850,10 @@ export class AppComponent implements OnInit, OnDestroy {
     return !query || path.toLocaleLowerCase().includes(query) || !!previousPath?.toLocaleLowerCase().includes(query);
   }
 
+  protected statusDescription(entry: WorkingTreeEntry, staged: boolean): string {
+    return describeWorkingTreeStatus(entry, staged);
+  }
+
   protected isUntrackedDirectory(entry: WorkingTreeEntry): boolean {
     return entry.indexStatus === '?' && entry.path.endsWith('/');
   }
@@ -9152,6 +9157,16 @@ export class AppComponent implements OnInit, OnDestroy {
       path: menu.path,
       untracked: menu.untracked,
     }, returnFocus);
+  }
+
+  protected requestDiscardEntry(entry: WorkingTreeEntry, event: MouseEvent): void {
+    event.stopPropagation();
+    if (entry.conflicted || this.isUntrackedDirectory(entry)) return;
+    this.openFileConfirmation({
+      kind: 'discard',
+      path: entry.path,
+      untracked: entry.indexStatus === '?',
+    }, event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
   }
 
   protected async applyHunk(path: string, staged: boolean, hunkIndex: number): Promise<void> {

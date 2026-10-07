@@ -481,56 +481,58 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, AppError> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn stage_all(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_stage_all)
+async fn stage_all(repo_id: String, app: AppHandle) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, git_stage_all).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn unstage_all(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_unstage_all)
+async fn unstage_all(repo_id: String, app: AppHandle) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, git_unstage_all).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn stage_path(
+async fn stage_path(
     repo_id: String,
     path: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |repository| {
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, move |repository| {
         git_stage_path(repository, &path)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn unstage_path(
+async fn unstage_path(
     repo_id: String,
     path: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |repository| {
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, move |repository| {
         git_unstage_path(repository, &path)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn discard_path(
+async fn discard_path(
     repo_id: String,
     path: String,
     untracked: bool,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_with_discard_recovery(
-        &repo_id,
-        &state,
-        |repository| git_working_tree_file_recovery_patch(repository, &path, untracked),
-        |repository| git_discard_path(repository, &path, untracked),
-    )
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        mutate_with_discard_recovery(
+            &repo_id,
+            &state,
+            |repository| git_working_tree_file_recovery_patch(repository, &path, untracked),
+            |repository| git_discard_path(repository, &path, untracked),
+            working_tree_status,
+        )
+    })
+    .await
+    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1443,68 +1445,77 @@ fn resolve_conflict(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn apply_working_tree_hunk(
+async fn apply_working_tree_hunk(
     repo_id: String,
     path: String,
     staged: bool,
     hunk_index: usize,
     action: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    if action == "discard" {
-        return mutate_with_discard_recovery(
-            &repo_id,
-            &state,
-            |repository| git_working_tree_hunk_recovery_patch(repository, &path, hunk_index),
-            |repository| {
-                git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
-            },
-        );
-    }
-    mutate_and_refresh(&repo_id, &state, |repository| {
-        git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if action == "discard" {
+            return mutate_with_discard_recovery(
+                &repo_id,
+                &state,
+                |repository| git_working_tree_hunk_recovery_patch(repository, &path, hunk_index),
+                |repository| {
+                    git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
+                },
+                working_tree_status,
+            );
+        }
+        mutate_working_tree(&repo_id, &state, |repository| {
+            git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
+        })
     })
+    .await
+    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn apply_working_tree_lines(
+async fn apply_working_tree_lines(
     repo_id: String,
     path: String,
     staged: bool,
     hunk_index: usize,
     line_indices: Vec<usize>,
     action: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    if action == "discard" {
-        return mutate_with_discard_recovery(
-            &repo_id,
-            &state,
-            |repository| {
-                git_working_tree_lines_recovery_patch(repository, &path, hunk_index, &line_indices)
-            },
-            |repository| {
-                git_apply_working_tree_lines(
-                    repository,
-                    &path,
-                    staged,
-                    hunk_index,
-                    &line_indices,
-                    &action,
-                )
-            },
-        );
-    }
-    mutate_and_refresh(&repo_id, &state, |repository| {
-        git_apply_working_tree_lines(
-            repository,
-            &path,
-            staged,
-            hunk_index,
-            &line_indices,
-            &action,
-        )
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let apply = |repository: &Path| {
+            git_apply_working_tree_lines(
+                repository,
+                &path,
+                staged,
+                hunk_index,
+                &line_indices,
+                &action,
+            )
+        };
+        if action == "discard" {
+            return mutate_with_discard_recovery(
+                &repo_id,
+                &state,
+                |repository| {
+                    git_working_tree_lines_recovery_patch(
+                        repository,
+                        &path,
+                        hunk_index,
+                        &line_indices,
+                    )
+                },
+                apply,
+                working_tree_status,
+            );
+        }
+        mutate_working_tree(&repo_id, &state, apply)
     })
+    .await
+    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1523,12 +1534,13 @@ fn redo_discard(
     apply_discard_recovery(&repo_id, &state, true)
 }
 
-fn mutate_with_discard_recovery(
+fn mutate_with_discard_recovery<T>(
     repo_id: &str,
     state: &tauri::State<'_, AppState>,
     prepare: impl FnOnce(&Path) -> Result<Vec<u8>, AppError>,
     mutation: impl FnOnce(&Path) -> Result<(), AppError>,
-) -> Result<RepositorySnapshot, AppError> {
+    finish: impl FnOnce(String, &RepositorySession) -> Result<T, AppError>,
+) -> Result<T, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
     let patch = prepare(&session.path)?;
@@ -1548,7 +1560,7 @@ fn mutate_with_discard_recovery(
         let _ = fs::remove_file(&previous.patch_path);
     }
     drop(recoveries);
-    build_snapshot(repo_id.to_owned(), &session)
+    finish(repo_id.to_owned(), &session)
 }
 
 fn apply_discard_recovery(
@@ -1644,6 +1656,43 @@ fn mutate_and_refresh(
     let _operation = session.operation.lock().map_err(state_error)?;
     mutation(&session.path)?;
     build_snapshot(repo_id.to_owned(), &session)
+}
+
+/// Applies an index or working-tree change and returns only the refreshed
+/// status. Staging, unstaging and discarding never move references or
+/// history, so rebuilding the full snapshot would only add latency.
+fn mutate_working_tree(
+    repo_id: &str,
+    state: &tauri::State<'_, AppState>,
+    mutation: impl FnOnce(&Path) -> Result<(), AppError>,
+) -> Result<RepositoryStatus, AppError> {
+    let session = repository_session(repo_id, state)?;
+    let _operation = session.operation.lock().map_err(state_error)?;
+    mutation(&session.path)?;
+    working_tree_status(repo_id.to_owned(), &session)
+}
+
+fn working_tree_status(
+    _repo_id: String,
+    session: &RepositorySession,
+) -> Result<RepositoryStatus, AppError> {
+    status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed))
+}
+
+async fn mutate_working_tree_background<F>(
+    repo_id: String,
+    app: AppHandle,
+    mutation: F,
+) -> Result<RepositoryStatus, AppError>
+where
+    F: FnOnce(&Path) -> Result<(), AppError> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        mutate_working_tree(&repo_id, &state, mutation)
+    })
+    .await
+    .map_err(background_task_error)?
 }
 
 fn snapshot_for_id(

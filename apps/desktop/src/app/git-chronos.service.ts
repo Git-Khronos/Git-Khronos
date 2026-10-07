@@ -32,6 +32,14 @@ import {
 } from './operation-history';
 import { FAVORITE_REPOSITORIES_KEY, toggleFavoriteRepository } from './repository-favorites';
 import { reorderRepositoryTabs } from './repository-tabs';
+import {
+  predictDiscardPath,
+  predictStageAll,
+  predictStagePath,
+  predictUnstageAll,
+  predictUnstagePath,
+  preserveUntrackedEntries,
+} from './working-tree-status';
 
 const RECENTS_KEY = 'git-chronos.recent-repositories.v1';
 const OPEN_TABS_KEY = 'git-chronos.open-repositories.v1';
@@ -181,6 +189,8 @@ export class GitChronosService {
   private reflogRequest = 0;
   private nextActivityId = 1;
   private readonly liveRefreshes = new Set<string>();
+  private readonly statusGenerations = new Map<string, number>();
+  private readonly pendingWorkingTreeMutations = new Map<string, number>();
   private readonly deferredMetadataRefreshes = new Set<string>();
   private closedRepositories: ClosedRepository[] = [];
 
@@ -436,30 +446,28 @@ export class GitChronosService {
     }
   }
 
-  async refreshStatusInBackground(repositoryId: string | null = this.activeRepositoryId()): Promise<boolean> {
+  async refreshStatusInBackground(
+    repositoryId: string | null = this.activeRepositoryId(),
+    force = false,
+  ): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
     if (!repository
       || this.browserPreview()
-      || this.busy()
-      || this.backgroundFetchRepositoryId() === repository.id
-      || this.liveRefreshes.has(repository.id)) return false;
+      || (!force && (this.busy()
+        || this.backgroundFetchRepositoryId() === repository.id
+        || this.liveRefreshes.has(repository.id)))) return false;
     this.liveRefreshes.add(repository.id);
+    const generation = this.statusGeneration(repository.id);
     try {
       const status = await invoke<RepositoryStatus>('refresh_repository_status', { repoId: repository.id });
       const currentRepository = this.repositories().find((candidate) => candidate.id === repository.id);
       if (!currentRepository) return false;
+      // A stage/unstage/discard started meanwhile; its own result is newer.
+      if (generation !== this.statusGeneration(repository.id)) return true;
       if (status.branch !== currentRepository.status.branch) {
         this.storeSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repository.id }));
-      } else if (!sameRepositoryStatus(status, currentRepository.status)) {
-        this.repositories.update((repositories) => repositories.map((candidate) => candidate.id === repository.id
-          ? {
-              ...candidate,
-              status,
-              worktrees: candidate.worktrees.map((worktree) => worktree.current
-                ? { ...worktree, changes: status.entryCount, ahead: status.ahead, behind: status.behind }
-                : worktree),
-            }
-          : candidate));
+      } else {
+        this.storeStatus(repository.id, status);
       }
       return true;
     } catch {
@@ -671,27 +679,29 @@ export class GitChronosService {
   }
 
   async stageAll(): Promise<void> {
-    await this.mutate('stage_all', 'Staging all changes…', 'All changes staged');
+    await this.mutateWorkingTree('stage_all', 'Staging all changes…', 'All changes staged', {}, predictStageAll);
   }
 
   async unstageAll(): Promise<void> {
-    await this.mutate('unstage_all', 'Unstaging changes…', 'All changes unstaged');
+    await this.mutateWorkingTree('unstage_all', 'Unstaging changes…', 'All changes unstaged', {}, predictUnstageAll);
   }
 
   async stagePath(path: string): Promise<void> {
-    await this.mutate('stage_path', `Staging ${path}…`, 'File staged', { path });
+    await this.mutateWorkingTree('stage_path', `Staging ${path}…`, 'File staged', { path },
+      (status) => predictStagePath(status, path));
   }
 
   async unstagePath(path: string): Promise<void> {
-    await this.mutate('unstage_path', `Unstaging ${path}…`, 'File unstaged', { path });
+    await this.mutateWorkingTree('unstage_path', `Unstaging ${path}…`, 'File unstaged', { path },
+      (status) => predictUnstagePath(status, path));
   }
 
   async discardPath(path: string, untracked: boolean): Promise<void> {
     const repositoryId = this.activeRepositoryId();
-    await this.mutate('discard_path', `Discarding changes in ${path}…`, 'Changes discarded', {
+    await this.mutateWorkingTree('discard_path', `Discarding changes in ${path}…`, 'Changes discarded', {
       path,
       untracked,
-    });
+    }, (status) => predictDiscardPath(status, path));
     if (repositoryId && !this.error()) {
       this.recordDiscard(repositoryId, untracked ? 'Discard Untracked File' : 'Discard Changes');
     }
@@ -722,7 +732,7 @@ export class GitChronosService {
       unstage: ['Unstaging hunk…', 'Hunk unstaged'],
       discard: ['Discarding hunk…', 'Hunk discarded'],
     } as const;
-    await this.mutate('apply_working_tree_hunk', labels[action][0], labels[action][1], {
+    await this.mutateWorkingTree('apply_working_tree_hunk', labels[action][0], labels[action][1], {
       path,
       staged,
       hunkIndex,
@@ -750,7 +760,7 @@ export class GitChronosService {
       unstage: ['Unstaging selected lines…', 'Selected lines unstaged'],
       discard: ['Discarding selected lines…', 'Selected lines discarded'],
     } as const;
-    await this.mutate('apply_working_tree_lines', labels[action][0], labels[action][1], {
+    await this.mutateWorkingTree('apply_working_tree_lines', labels[action][0], labels[action][1], {
       path,
       staged,
       hunkIndex,
@@ -2013,7 +2023,7 @@ export class GitChronosService {
     if (!repo) return;
     const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
     const result = await this.run(pending, async () => {
-      this.storeSnapshot(await invoke<RepositorySnapshot>(command, {
+      this.storeMutationSnapshot(await invoke<RepositorySnapshot>(command, {
         repoId: repo.id,
         ...extra,
         ...(operationId ? { operationId } : {}),
@@ -2023,12 +2033,93 @@ export class GitChronosService {
     }, repo.id, operationId);
     if (result === 'error' && this.error() && this.repositories().some((repository) => repository.id === repo.id)) {
       try {
-        this.storeSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repo.id }));
+        this.storeMutationSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repo.id }));
         this.clearWorkingTreeInspection();
       } catch {
         // Keep the original mutation error; a manual refresh can retry the snapshot.
       }
     }
+    // Fast snapshots skip untracked discovery; complete the status right away.
+    if (this.repositories().some((repository) => repository.id === repo.id)) {
+      void this.refreshStatusInBackground(repo.id, true);
+    }
+  }
+
+  /**
+   * Runs an index or working-tree change that cannot move references or
+   * history. The predicted status is shown immediately, and the backend
+   * returns only the refreshed status instead of a full snapshot.
+   */
+  private async mutateWorkingTree(
+    command: string,
+    pending: string,
+    done: string,
+    extra: Record<string, unknown>,
+    predict: (status: RepositoryStatus) => RepositoryStatus = (status) => status,
+  ): Promise<void> {
+    const repo = this.repository();
+    if (!repo) return;
+    const repoId = repo.id;
+    this.bumpStatusGeneration(repoId);
+    this.storeStatus(repoId, predict(repo.status));
+    this.pendingWorkingTreeMutations.set(repoId, (this.pendingWorkingTreeMutations.get(repoId) ?? 0) + 1);
+    let status: RepositoryStatus | null = null;
+    await this.run(pending, async () => {
+      status = await invoke<RepositoryStatus>(command, { repoId, ...extra });
+      this.clearWorkingTreeInspection();
+      this.activity.set(done);
+    }, repoId);
+    const remaining = (this.pendingWorkingTreeMutations.get(repoId) ?? 1) - 1;
+    if (remaining > 0) {
+      // A later change is still running; its status will include this one.
+      this.pendingWorkingTreeMutations.set(repoId, remaining);
+      return;
+    }
+    this.pendingWorkingTreeMutations.delete(repoId);
+    this.bumpStatusGeneration(repoId);
+    if (status) {
+      this.storeStatus(repoId, status);
+    } else if (this.repositories().some((repository) => repository.id === repoId)) {
+      // Replace the prediction with Git's actual state after a failure.
+      try {
+        this.storeStatus(repoId, await invoke<RepositoryStatus>('refresh_repository_status', { repoId }));
+      } catch {
+        // Keep the original mutation error; the live refresh retries later.
+      }
+    }
+  }
+
+  private statusGeneration(repoId: string): number {
+    return this.statusGenerations.get(repoId) ?? 0;
+  }
+
+  private bumpStatusGeneration(repoId: string): void {
+    this.statusGenerations.set(repoId, this.statusGeneration(repoId) + 1);
+  }
+
+  private storeStatus(repoId: string, status: RepositoryStatus): void {
+    this.repositories.update((repositories) => {
+      const index = repositories.findIndex((candidate) => candidate.id === repoId);
+      if (index < 0 || sameRepositoryStatus(status, repositories[index].status)) return repositories;
+      const candidate = repositories[index];
+      const updated = [...repositories];
+      updated[index] = {
+        ...candidate,
+        status,
+        worktrees: candidate.worktrees.map((worktree) => worktree.current
+          ? { ...worktree, changes: status.entryCount, ahead: status.ahead, behind: status.behind }
+          : worktree),
+      };
+      return updated;
+    });
+  }
+
+  private storeMutationSnapshot(snapshot: RepositorySnapshot): void {
+    const previous = this.repositories().find((repository) => repository.id === snapshot.id);
+    this.bumpStatusGeneration(snapshot.id);
+    this.storeSnapshot(previous
+      ? { ...snapshot, status: preserveUntrackedEntries(previous.status, snapshot.status) }
+      : snapshot);
   }
 
   private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string): void {

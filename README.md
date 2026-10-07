@@ -109,7 +109,10 @@ fixed position in the document and is painted on its own layer, so scrolling
 repaints only the rows that changed. Each loaded history page only lays out, dates,
 and indexes its own commits. Older history pages are read in-process with
 gitoxide (`gix`) instead of starting a Git process per page; repositories gitoxide
-cannot open fall back to the Git CLI. These safeguards keep very large repositories responsive.
+cannot open fall back to the Git CLI. Staging, unstaging, and discarding update
+the change lists immediately, run Git away from the window event loop, and then
+reconcile with a status-only refresh instead of reloading history and
+references. These safeguards keep very large repositories responsive.
 
 `task test:e2e` runs fast, deterministic renderer journeys against the sample
 repository. These tests cover interface behavior but do not replace native

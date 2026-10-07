@@ -39,6 +39,7 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
           return new Promise((_, reject) => state.rejectFetch.push(reject));
         }
         if (command === 'cancel_git_operation') return Promise.resolve(true);
+        if (command === 'refresh_repository_status') return Promise.resolve(snapshot.status);
         if (command === 'refresh_repository') return Promise.resolve(snapshot);
         return Promise.reject(new Error(`Unexpected command: ${command}`));
       },
@@ -67,13 +68,17 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
     return {
       activity: state.git.activity(),
       error: state.git.error(),
-      commands: state.calls.map((call: { command: string }) => call.command),
+      commands: state.calls
+        .map((call: { command: string }) => call.command)
+        .filter((command: string) => command !== 'refresh_repository_status'),
+      completedStatus: state.calls.some((call: { command: string }) => call.command === 'refresh_repository_status'),
       cancellationMatchesOperation: state.calls[0].args.operationId === state.calls[1].args.operationId,
     };
   })).toEqual({
     activity: 'Operation canceled; repository state refreshed',
     error: null,
     commands: ['fetch_repository', 'cancel_git_operation', 'refresh_repository'],
+    completedStatus: true,
     cancellationMatchesOperation: true,
   });
 
@@ -516,11 +521,17 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
     };
   }));
   expect(controlGeometry.every(({ targetWidth, targetHeight }) => targetWidth >= 24 && targetHeight >= 24)).toBe(true);
-  expect(controlGeometry.every(({ visualWidth, visualHeight }) => visualWidth === 13 && visualHeight === 13)).toBe(true);
+  expect(controlGeometry.every(({ visualWidth, visualHeight }) => visualWidth === 18 && visualHeight === 18)).toBe(true);
   expect(await page.locator('.file-row:has(.stage-box)').evaluateAll((rows) =>
     rows.every((row) => row.getBoundingClientRect().height === 31),
   )).toBe(true);
 
+  await expect(page.locator('#unstaged-files-list .stage-box gc-icon').first()).toBeVisible();
+  await expect(page.locator('.stage-box.checked')).toHaveCount(0);
+  const modifiedStatus = page.locator('#unstaged-files-list .file-row', { hasText: 'app.component.html' }).locator('.file-status');
+  await expect(modifiedStatus).toHaveAttribute('title', 'Modified, not staged yet');
+  await expect(page.getByRole('img', { name: 'New file, not tracked by Git yet' })).toBeVisible();
+  await expect(page.locator('#staged-files-list .file-status').first()).toHaveAttribute('title', /staged for the next commit$/);
   const stageFile = page.getByRole('button', { name: 'Stage apps/desktop/src/app/app.component.html' });
   await stageFile.focus();
   await expect(stageFile).toBeFocused();
@@ -532,6 +543,62 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
   await openFile.focus();
   await expect(openFile).toBeFocused();
   await expect(openFile).toHaveCSS('outline-style', 'solid');
+});
+
+test('moves files between change lists before Git responds and offers per-file discard', async ({ page }) => {
+  const path = 'apps/desktop/src/app/app.component.html';
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const state = { calls: [] as string[], pending: [] as Array<(value: unknown) => void>, git };
+    (window as any).__instantStageTest = state;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        state.calls.push(command);
+        if (command === 'stage_path' || command === 'unstage_path') {
+          return new Promise((resolve) => state.pending.push(resolve));
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+        return Promise.reject(new Error(`Unexpected command: ${command}`));
+      },
+    };
+  });
+  const unstaged = page.locator('#unstaged-files-list');
+  const staged = page.locator('#staged-files-list');
+  const untrackedBefore = await page.evaluate(() => (window as any).__instantStageTest.git.repository().status.untracked);
+
+  await page.getByRole('button', { name: `Stage ${path}` }).click();
+  await expect(staged.getByRole('button', { name: `Unstage ${path}` })).toBeVisible();
+  await expect(unstaged.getByRole('button', { name: `Stage ${path}` })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__instantStageTest.pending.length)).toBe(1);
+
+  await page.evaluate(() => {
+    const state = (window as any).__instantStageTest;
+    state.pending.shift()(state.git.repository().status);
+  });
+  await expect(staged.getByRole('button', { name: `Unstage ${path}` })).toBeVisible();
+
+  await staged.getByRole('button', { name: `Unstage ${path}` }).click();
+  await expect(unstaged.getByRole('button', { name: `Stage ${path}` })).toBeVisible();
+  await page.evaluate(() => {
+    const state = (window as any).__instantStageTest;
+    state.pending.shift()(state.git.repository().status);
+  });
+  expect(await page.evaluate(() => (window as any).__instantStageTest.git.repository().status.untracked)).toBe(untrackedBefore);
+
+  const discard = unstaged.getByRole('button', { name: `Discard changes in ${path}` });
+  await expect(discard).toHaveCSS('opacity', '0');
+  await discard.locator('xpath=..').hover();
+  await expect(discard).toHaveCSS('opacity', '1');
+  expect((await discard.boundingBox())?.height).toBeGreaterThanOrEqual(24);
+  await discard.click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation).toContainText(path);
+  await confirmation.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(discard).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__instantStageTest.calls
+    .filter((command: string) => command !== 'refresh_repository_status'))).toEqual(['stage_path', 'unstage_path']);
 });
 
 test('resizes and remembers staged and unstaged file viewports independently', async ({ page }) => {
