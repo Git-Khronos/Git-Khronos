@@ -8,7 +8,7 @@ async function setup(page: Page): Promise<void> {
     const git = app.git;
     app.worktreesOpen.set(true);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
-    const fixture = { calls: [] as any[], fail: false, hold: false, empty: false, finish: null as any };
+    const fixture = { calls: [] as any[], fail: false, hold: false, empty: false, finish: null as any, pruneFail: false, pruned: false };
     (window as any).__worktreeRegistration = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
@@ -17,13 +17,18 @@ async function setup(page: Page): Promise<void> {
         const result = {
           registrations: [
             { path: '/workspace/main', oid: 'a'.repeat(40), branch: 'main', bare: false, locked: false, lockReason: null, prunable: false, pruneReason: null },
-            { path: '/workspace/missing\nliteral', oid: 'b'.repeat(40), branch: 'topic', bare: false, locked: false, lockReason: null, prunable: true, pruneReason: 'gitdir file points to non-existent location' },
+            ...(fixture.pruned ? [] : [{ path: '/workspace/missing\nliteral', oid: 'b'.repeat(40), branch: 'topic', bare: false, locked: false, lockReason: null, prunable: true, pruneReason: 'gitdir file points to non-existent location' }]),
             { path: '/volumes/offline', oid: 'c'.repeat(40), branch: null, bare: false, locked: true, lockReason: 'portable disk', prunable: false, pruneReason: null },
           ],
           pruneReport: fixture.empty ? '' : 'Removing worktrees/missing: gitdir file points to non-existent location\n',
         };
         if (fixture.hold) return new Promise(resolve => { fixture.finish = () => resolve(result); });
         return Promise.resolve(result);
+      }
+      if (command === 'prune_worktree_registration') {
+        if (fixture.pruneFail) return Promise.reject({ kind: 'staleWorktree', message: 'Worktree registrations changed after review. Nothing was removed; the recovery copy is retained.' });
+        fixture.pruned = true;
+        return Promise.resolve({ recoveryReferences: ['refs/git-chronos/recovery/1-2'], metadataBackup: '/workspace/.git/git-chronos-worktree-registrations/1-2-missing' });
       }
       if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
@@ -107,10 +112,13 @@ test('registration review remains keyboard-contained in a compact window and con
   const help = dialog.getByRole('button', { name: 'Learn about worktree registration and pruning…', exact: true });
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
   await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Reload review', exact: true }).focus();
+  await page.keyboard.press('Shift+Tab');
   await expect(help).toBeFocused();
   await help.click();
   const documentation = page.getByRole('dialog', { name: 'Git command reference', exact: true });
-  await expect(documentation.locator('details[open]')).toContainText('safe prune execution remains unfinished');
+  await expect(documentation.locator('details[open]')).toContainText('removes only one reviewed missing, unlocked registration');
   await page.keyboard.press('Escape');
   await expect(documentation).toHaveCount(0);
   await expect(help).toBeFocused();
@@ -136,7 +144,7 @@ test('delayed review chunk can be cancelled without a native query or a late-ope
   const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
   await opener.click();
   await page.getByRole('menuitem', { name: 'Review registrations and prune report…', exact: true }).click();
-  const loading = page.getByRole('dialog', { name: 'Loading worktree review', exact: true });
+  const loading = page.getByRole('dialog', { name: 'Loading review', exact: true });
   await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(loading).toHaveCount(0);
@@ -158,11 +166,79 @@ test('failed registration chunk has an explicit no-command error and a keyboard 
   const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
   await opener.click();
   await page.getByRole('menuitem', { name: 'Review registrations and prune report…', exact: true }).click();
-  const error = page.getByRole('dialog', { name: 'Worktree review unavailable', exact: true });
+  const error = page.getByRole('dialog', { name: 'Review unavailable', exact: true });
   await expect(error.getByRole('alert')).toContainText('No command was run');
   await expect(error.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(error).toHaveCount(0);
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'worktree_registration_review'))).toBe(false);
+});
+
+test('reviewed registration removal confirms scope, sends the exact expected identity and reports preserved recovery data', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
+  await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toHaveCount(1);
+  const opener = dialog.getByRole('button', { name: 'Remove with recovery…', exact: true });
+  await opener.click();
+  const confirm = dialog.getByRole('group', { name: 'Confirm registration removal', exact: true });
+  await expect(confirm).toContainText('without force');
+  await expect(confirm).toContainText('branch topic is not deleted');
+  await expect(confirm).toContainText('Uncommitted work in a disconnected directory is not recovered');
+  await expect(confirm.getByRole('button', { name: 'Remove registration', exact: true })).toBeFocused();
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'prune_worktree_registration'))).toBe(false);
+  await opener.click();
+  await confirm.getByRole('button', { name: 'Remove registration', exact: true }).click();
+  const done = dialog.locator('[data-prune-result]');
+  await expect(done).toContainText('refs/git-chronos/recovery/1-2');
+  await expect(done).toContainText('git-chronos-worktree-registrations/1-2-missing');
+  await expect(done).toBeFocused();
+  await expect(dialog.getByRole('status').first()).toBeVisible();
+  await expect(dialog).toContainText('2 registrations reported');
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter((call: any) => call.command === 'prune_worktree_registration'))).toEqual([
+    { command: 'prune_worktree_registration', args: { repoId: expect.any(String), request: { path: '/workspace/missing\nliteral', expectedOid: 'b'.repeat(40), expectedBranch: 'topic' } } },
+  ]);
+  await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toHaveCount(0);
+});
+
+test('refused registration removal focuses native feedback, keeps the entry and requires an explicit fresh review', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__worktreeRegistration.pruneFail = true; });
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
+  await dialog.getByRole('button', { name: 'Remove with recovery…', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Remove registration', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Nothing was removed');
+  await expect(dialog.getByRole('alert')).toContainText('Reload the review before retrying');
+  await expect(dialog.getByRole('alert')).toBeFocused();
+  await expect(dialog.getByRole('group', { name: 'Confirm registration removal', exact: true })).toHaveCount(0);
+  await expect(dialog).toContainText('/workspace/missing');
+  await expect(page.locator('.error-toast')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter((call: any) => call.command === 'prune_worktree_registration'))).toHaveLength(1);
+  await page.evaluate(() => { (window as any).__worktreeRegistration.pruneFail = false; });
+  await dialog.getByRole('button', { name: 'Reload review', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toBeEnabled();
+});
+
+test('locked and main registrations never offer removal, and a repository switch disables pending confirmation', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
+  const items = dialog.getByRole('list', { name: 'Worktree registrations', exact: true }).locator(':scope > li');
+  await expect(items.nth(0).getByRole('button')).toHaveCount(0);
+  await expect(items.nth(2).getByRole('button')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Remove with recovery…', exact: true }).click();
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
+    git.activeRepositoryId.set('other');
+  });
+  await expect(dialog.getByRole('alert')).toContainText('active repository changed');
+  await expect(dialog.getByRole('button', { name: 'Remove registration', exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'prune_worktree_registration'))).toBe(false);
 });

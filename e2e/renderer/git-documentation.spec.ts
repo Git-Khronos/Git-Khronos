@@ -35,7 +35,7 @@ test('searchable hints explain command scope, open only official manual on deman
   await openReference(page);
   const dialog = page.getByRole('dialog', { name: 'Git command reference', exact: true });
   await expect(dialog.getByLabel('Find a feature or command')).toBeFocused();
-  await expect(dialog.locator('summary')).toHaveCount(38);
+  await expect(dialog.locator('summary')).toHaveCount(40);
   expect(await page.evaluate(() => (window as any).__documentation.calls.filter((call: any) => call.command === 'open_external_url'))).toHaveLength(0);
   await dialog.getByLabel('Find a feature or command').fill('fetch and prune');
   await dialog.getByText('Fetch and prune remote-tracking branches', { exact: true }).click();

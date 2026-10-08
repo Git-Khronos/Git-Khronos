@@ -65,16 +65,17 @@ function layoutProblems(page: Page, expectedOrder: Column[], fit: boolean) {
       const box = cell.getBoundingClientRect();
       if (heading && Math.abs(box.left - heading.left) > 1.5) problems.push(`row cell ${index} starts at ${box.left.toFixed(1)}, heading at ${heading.left.toFixed(1)}`);
     }
-    // The settings button sits inside the last heading's right end, with no empty area before it,
-    // and the last heading never spills past the visible header.
+    // Resizing moves only a column's right edge, so narrowing may leave free space after the last
+    // heading. The last heading never spills past the visible header, and the settings button stays
+    // at the panel's right end.
     const gear = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect();
     const last = boxes.at(-1)!;
     const overflow = list.scrollWidth - list.clientWidth;
     const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);
     if (gear.width < 20 || gear.width > 32) problems.push(`settings button is ${gear.width.toFixed(1)}px wide`);
     if (overflow <= 1) {
-      if (Math.abs(last.right - visibleRight) > 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, panel edge at ${visibleRight.toFixed(1)}`);
-      if (gear.right > last.right + 4 || gear.left < last.right - 34) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is outside the last heading's end ${last.right.toFixed(1)}`);
+      if (last.right > visibleRight + 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, past the panel edge at ${visibleRight.toFixed(1)}`);
+      if (Math.abs(gear.right - visibleRight) > 4) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is not at the panel edge ${visibleRight.toFixed(1)}`);
     }
     // Scroll markers stay in their own rail and never cover the settings button, or row actions once
     // they rest at the end (no overflow, or scrolled fully right). Until then, overflowing content
@@ -104,9 +105,12 @@ function layoutProblems(page: Page, expectedOrder: Column[], fit: boolean) {
       if (now < min) problems.push(`${label}: ${now} below minimum ${min}`);
       const drawn = boxes[index].width - (index === boxes.length - 1 && headings.length ? 26 : 0);
       if (Math.abs(now - drawn) > 1.5 && Math.abs(now - boxes[index].width) > 1.5) problems.push(`${label}: reports ${now}px, draws ${drawn.toFixed(1)}px`);
-      const isLast = index === headings.length - 1;
-      const leading = separator.classList.contains('leading-edge');
-      if (isLast && index > 0 && !leading) problems.push(`${label}: the last column must resize from its left edge`);
+      // Every column, including the last, resizes from its own right edge.
+      const handle = separator.getBoundingClientRect();
+      const handleCenter = handle.left + handle.width / 2;
+      if (handleCenter <= boxes[index].left + boxes[index].width / 2 || handleCenter > boxes[index].right + 1) {
+        problems.push(`${label}: handle at ${handleCenter.toFixed(1)} is not on the right edge ending at ${boxes[index].right.toFixed(1)}`);
+      }
     }
     return { problems, titles };
   }, { expectedOrder, fit });
@@ -231,7 +235,7 @@ test('keeps column layouts intact across window resizes', async ({ page }) => {
   }
 });
 
-test('resizes the last column from its left edge with the pointer in any ordering', async ({ page }) => {
+test('resizes the last column from its right edge without moving columns to its left', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto('/');
@@ -250,28 +254,30 @@ test('resizes the last column from its left edge with the pointer in any orderin
       await page.keyboard.press('ArrowLeft');
       const startLast = await separatorWidth(page, last);
       const startNeighbour = await separatorWidth(page, neighbour);
+      const lastHeading = page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[last] }).first();
+      const lastBox = (await lastHeading.boundingBox())!;
       const handle = (await page.getByRole('separator', { name: SEPARATORS[last], exact: true }).boundingBox())!;
-      const neighbourBox = (await page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[neighbour] }).first().boundingBox())!;
-      // The handle sits on the boundary with the neighbour, not at the panel edge.
-      expect(Math.abs(handle.x + handle.width / 2 - (neighbourBox.x + neighbourBox.width)), order.join()).toBeLessThanOrEqual(2);
+      // The handle sits at the column's right end, not on the boundary with the neighbour.
+      expect(handle.x + handle.width / 2, order.join()).toBeGreaterThan(lastBox.x + lastBox.width / 2);
       const y = handle.y + handle.height / 2;
       const shrinkBy = Math.min(40, startLast - Number(await page.getByRole('separator', { name: SEPARATORS[last], exact: true }).getAttribute('aria-valuemin')));
-      const growBy = Math.min(30, startNeighbour - Number(await page.getByRole('separator', { name: SEPARATORS[neighbour], exact: true }).getAttribute('aria-valuemin')));
-      expect(growBy, `${order.join()} neighbour has room`).toBeGreaterThan(5);
+      expect(shrinkBy, `${order.join()} last column has room`).toBeGreaterThan(5);
       await page.mouse.move(handle.x + handle.width / 2, y);
       await page.mouse.down();
-      await page.mouse.move(handle.x + handle.width / 2 - growBy, y, { steps: 3 });
-      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast + growBy);
-      expect(await separatorWidth(page, neighbour), order.join()).toBe(startNeighbour - growBy);
-      await expectLayout(page, order, `${order.join()} widened last`, !scroll);
-      await page.mouse.move(handle.x + handle.width / 2 + shrinkBy, y, { steps: 3 });
+      await page.mouse.move(handle.x + handle.width / 2 - shrinkBy, y, { steps: 3 });
       await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast - shrinkBy);
-      expect(await separatorWidth(page, neighbour), order.join()).toBe(startNeighbour + shrinkBy);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
+      expect((await lastHeading.boundingBox())!.x, `${order.join()} left edge fixed`).toBeCloseTo(lastBox.x, 0);
+      await page.mouse.move(handle.x + handle.width / 2, y, { steps: 3 });
+      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
+      await page.mouse.move(handle.x + handle.width / 2 - shrinkBy, y, { steps: 3 });
       await page.mouse.up();
-      await expectLayout(page, order, `${order.join()} narrowed last`, !scroll);
+      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast - shrinkBy);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
       await page.reload();
       await expect.poll(() => separatorWidth(page, last), `${order.join()} persisted`).toBe(startLast - shrinkBy);
-      await expectLayout(page, order, `${order.join()} after reload`, !scroll);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour persisted`).toBe(startNeighbour);
     }
   }
 });

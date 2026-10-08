@@ -27,15 +27,15 @@
       <gc-worktree-registration-dialog [request]="worktreeRegistrationRequest()" (closed)="worktreeRegistrationRequest.set(null)" />
     } @loading {
       <div class="confirmation-backdrop">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading worktree review" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
-          <p role="status">Loading worktree review…</p>
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading review" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
+          <p role="status">Loading review…</p>
           <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Cancel</button>
         </section>
       </div>
     } @error {
       <div class="confirmation-backdrop">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Worktree review unavailable" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
-          <p role="alert">Worktree review could not load. Restart to retry. No command was run by this panel.</p>
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Review unavailable" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
+          <p role="alert">Review could not load. Restart to retry. No command was run by this panel.</p>
           <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Close</button>
         </section>
       </div>
@@ -928,6 +928,7 @@
                         <button type="button" role="menuitem" (click)="openSubmodule(submodule)"><gc-icon name="folder-git" [size]="12" />Open submodule</button>
                         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="updateSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Update to latest commit</button>
                       }
+                      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview(true)"><gc-icon name="eye" [size]="12" />Review submodule state…</button>
                       <button type="button" role="menuitem" (click)="submoduleMenuPath.set(null); copyContextValue(submodule.url)"><gc-icon name="copy" [size]="12" />Copy remote URL</button>
                       <button type="button" role="menuitem" (click)="submoduleMenuPath.set(null); copyContextValue(submodule.path)"><gc-icon name="copy" [size]="12" />Copy submodule path</button>
                     </div>
@@ -2015,7 +2016,7 @@
         <div class="confirmation-copy">
           <span>{{ action === 'disable' ? 'Disable sparse checkout' : 'Update sparse checkout' }}</span>
           <h2 id="sparse-checkout-title">{{ action === 'disable' ? 'Restore the complete working tree?' : 'Apply this directory selection?' }}</h2>
-          <p>@if (action === 'disable') { Git will restore every tracked file. This can take time and use substantial disk space in a large repository. } @else if (sparseCheckoutPathCount()) { Git will keep {{ sparseCheckoutPathCount() }} selected {{ sparseCheckoutPathCount() === 1 ? 'directory' : 'directories' }} plus root-level files in the working tree. Local changes are protected by Git's safety checks. } @else { No directories are selected, so only root-level files will remain in the working tree. Local changes are protected by Git's safety checks. }</p>
+          <p>@if (action === 'disable') { Git will restore every tracked file. This can take time and use substantial disk space in a large repository. } @else if (sparseCheckoutPathCount()) { Git will keep {{ sparseCheckoutPathCount() }} selected {{ sparseCheckoutPathCount() === 1 ? 'directory' : 'directories' }} plus root-level files in the working tree. Changed or conflicted files stay and are listed. } @else { No directories are selected, so only root-level files will remain in the working tree. Changed or conflicted files stay and are listed. }</p>
         </div>
         <footer><button type="button" (click)="closeSparseCheckoutConfirmation()">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy()" (click)="confirmSparseCheckoutAction()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
       </section>

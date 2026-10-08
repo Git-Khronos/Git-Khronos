@@ -1591,6 +1591,7 @@ fn pull_strategy_deleted_upstream_retains_configuration_and_local_commits_after_
         &FetchOptions {
             remote: Some("origin".into()),
             prune: true,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -3729,6 +3730,1115 @@ fn worktree_registration_review_handles_unborn_and_literal_paths_without_bypassi
     }
 }
 
+#[test]
+fn worktree_registration_prune_protects_head_and_metadata_and_removes_only_the_selected_registration()
+ {
+    let repository = Repository::new();
+    let path = &repository.0;
+    create_worktree(path, path, "kept missing", "kept", "HEAD").unwrap();
+    create_worktree(path, path, "locked tree", "locked", "HEAD").unwrap();
+    run_mutation(
+        path,
+        &["worktree", "add", "--detach", "gone tree", "HEAD"],
+        "create detached worktree",
+    )
+    .unwrap();
+    let gone = path.join("gone tree");
+    run_mutation(
+        &gone,
+        &["commit", "--allow-empty", "-m", "only here"],
+        "commit inside worktree",
+    )
+    .unwrap();
+    let only_here = String::from_utf8(run_git(&gone, &["rev-parse", "HEAD"]).unwrap().stdout)
+        .unwrap()
+        .trim()
+        .to_owned();
+    fs::write(gone.join("file"), b"staged\n").unwrap();
+    stage_path(&gone, "file").unwrap();
+    set_worktree_locked(path, path.join("locked tree").to_str().unwrap(), true).unwrap();
+    fs::rename(path.join("locked tree"), path.join("moved locked")).unwrap();
+    fs::rename(path.join("kept missing"), path.join("moved kept")).unwrap();
+    let admin = path.join(".git/worktrees/gone-tree");
+    let index = fs::read(admin.join("index")).unwrap();
+    let reflog = fs::read(admin.join("logs/HEAD")).unwrap();
+    fs::remove_dir_all(&gone).unwrap();
+    let refs = run_git(path, &["for-each-ref", "refs/heads", "refs/tags"])
+        .unwrap()
+        .stdout;
+    let before = review_worktree_registrations(path).unwrap();
+    let request = WorktreeRegistrationPrune {
+        path: gone.to_str().unwrap().into(),
+        expected_oid: only_here.clone(),
+        expected_branch: None,
+    };
+    let result = prune_worktree_registration(path, &request).unwrap();
+    assert!(!admin.exists());
+    let after = review_worktree_registrations(path).unwrap();
+    assert_eq!(after.registrations.len(), before.registrations.len() - 1);
+    assert!(
+        after
+            .registrations
+            .iter()
+            .all(|entry| entry.path != request.path)
+    );
+    assert!(
+        after
+            .registrations
+            .iter()
+            .any(|entry| entry.branch.as_deref() == Some("kept") && entry.prunable)
+    );
+    assert!(
+        after
+            .registrations
+            .iter()
+            .any(|entry| entry.branch.as_deref() == Some("locked") && entry.locked)
+    );
+    assert_eq!(
+        run_git(path, &["for-each-ref", "refs/heads", "refs/tags"])
+            .unwrap()
+            .stdout,
+        refs
+    );
+    assert_eq!(result.recovery_references.len(), 1);
+    let protected = run_git(path, &["rev-parse", &result.recovery_references[0]])
+        .unwrap()
+        .stdout;
+    assert_eq!(String::from_utf8(protected).unwrap().trim(), only_here);
+    let backup = Path::new(&result.metadata_backup);
+    assert_eq!(fs::read(backup.join("metadata/index")).unwrap(), index);
+    assert_eq!(fs::read(backup.join("metadata/logs/HEAD")).unwrap(), reflog);
+    let record: serde_json::Value =
+        serde_json::from_slice(&fs::read(backup.join("registration.json")).unwrap()).unwrap();
+    assert_eq!(record["worktreePath"], request.path.as_str());
+    assert_eq!(record["head"], only_here.as_str());
+    assert!(path.join(".git/worktrees/kept-missing").exists());
+    assert!(path.join("moved kept").exists() && path.join("moved locked").exists());
+}
+
+#[test]
+fn worktree_registration_prune_refuses_main_existing_locked_stale_and_unknown_registrations() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    create_worktree(path, path, "present", "present", "HEAD").unwrap();
+    create_worktree(path, path, "locked tree", "locked", "HEAD").unwrap();
+    create_worktree(path, path, "gone", "gone", "HEAD").unwrap();
+    set_worktree_locked(path, path.join("locked tree").to_str().unwrap(), true).unwrap();
+    fs::rename(path.join("locked tree"), path.join("moved locked")).unwrap();
+    fs::rename(path.join("gone"), path.join("moved gone")).unwrap();
+    let oid = repository.oid();
+    let request = |folder: &Path, branch: &str, oid: &str| WorktreeRegistrationPrune {
+        path: folder.to_str().unwrap().into(),
+        expected_oid: oid.into(),
+        expected_branch: Some(branch.into()),
+    };
+    let main = review_worktree_registrations(path).unwrap().registrations[0].clone();
+    let before = review_worktree_registrations(path).unwrap();
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+    for (target, kind) in [
+        (
+            WorktreeRegistrationPrune {
+                path: main.path.clone(),
+                expected_oid: oid.clone(),
+                expected_branch: main.branch.clone(),
+            },
+            "mainWorktree",
+        ),
+        (
+            request(&path.join("present"), "present", &oid),
+            "worktreeNotPrunable",
+        ),
+        (
+            request(&path.join("locked tree"), "locked", &oid),
+            "lockedWorktree",
+        ),
+        (
+            request(&path.join("gone"), "gone", &"b".repeat(40)),
+            "staleWorktree",
+        ),
+        (request(&path.join("gone"), "other", &oid), "staleWorktree"),
+        (
+            request(&path.join("unknown"), "gone", &oid),
+            "staleWorktree",
+        ),
+        (
+            request(Path::new("relative"), "gone", &oid),
+            "invalidWorktree",
+        ),
+    ] {
+        let error = prune_worktree_registration(path, &target).err().unwrap();
+        assert_eq!(error.kind, kind, "{}", target.path);
+    }
+    assert_eq!(review_worktree_registrations(path).unwrap(), before);
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+    assert!(
+        !path
+            .join(".git/git-chronos-worktree-registrations")
+            .exists()
+    );
+    // A directory that reappears is never removed, even after Git reported it missing.
+    fs::create_dir(path.join("gone")).unwrap();
+    let error = prune_worktree_registration(path, &request(&path.join("gone"), "gone", &oid))
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error.kind.as_str(),
+        "worktreeNotPrunable" | "worktreeSourceStillExists"
+    ));
+    assert!(path.join(".git/worktrees/gone").exists());
+}
+
+fn add_fixture_submodule(parent: &Path, url: &Path, target: &str) {
+    run_mutation(
+        parent,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            url.to_str().unwrap(),
+            target,
+        ],
+        "add fixture submodule",
+    )
+    .unwrap();
+}
+
+fn rev(path: &Path, revision: &str) -> String {
+    String::from_utf8_lossy(&run_git(path, &["rev-parse", revision]).unwrap().stdout)
+        .trim()
+        .to_owned()
+}
+
+#[test]
+fn submodule_review_reports_dirty_moved_staged_undeclared_missing_and_url_state_without_changes() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let first = module.oid();
+    fs::write(module.0.join("file"), b"second\n").unwrap();
+    stage_all(&module.0).unwrap();
+    commit(&module.0, "Second").unwrap();
+    let second = module.oid();
+    for target in [
+        "clean",
+        "moved",
+        "dirty",
+        "untracked",
+        "staged",
+        "elsewhere",
+    ] {
+        add_fixture_submodule(&repository.0, &module.0, target);
+    }
+    commit(&repository.0, "Add submodules").unwrap();
+    let root = &repository.0;
+    run_mutation(&root.join("moved"), &["checkout", "-q", &first], "move").unwrap();
+    fs::write(root.join("dirty/file"), b"edited\n").unwrap();
+    fs::write(root.join("untracked/new"), b"new\n").unwrap();
+    run_mutation(&root.join("staged"), &["checkout", "-q", &first], "move").unwrap();
+    run_mutation(root, &["add", "staged"], "stage gitlink").unwrap();
+    run_mutation(
+        root,
+        &["config", "submodule.elsewhere.url", "/elsewhere"],
+        "url",
+    )
+    .unwrap();
+    run_mutation(
+        root,
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{second},raw link"),
+        ],
+        "undeclared gitlink",
+    )
+    .unwrap();
+    for (key, value) in [
+        ("submodule.ghost.path", "ghost"),
+        ("submodule.ghost.url", "/ghost"),
+    ] {
+        run_mutation(
+            root,
+            &["config", "--file", ".gitmodules", key, value],
+            "declare",
+        )
+        .unwrap();
+    }
+    let snapshot = |path: &Path| {
+        (
+            fs::read(path.join(".git/index")).unwrap(),
+            fs::read(path.join(".git/config")).unwrap(),
+            fs::read(path.join(".gitmodules")).unwrap(),
+            rev(path, "HEAD"),
+        )
+    };
+    let before = snapshot(root);
+    let review = review_submodule_state(root).unwrap();
+    assert_eq!(snapshot(root), before);
+    assert!(review.gitmodules_present);
+    let entry = |target: &str| {
+        review
+            .entries
+            .iter()
+            .find(|entry| entry.path == target)
+            .unwrap_or_else(|| panic!("{target} missing"))
+    };
+    assert_eq!(review.entries.len(), 8);
+    let clean = entry("clean");
+    assert_eq!(clean.name.as_deref(), Some("clean"));
+    assert!(clean.checked_out && clean.url_matches == Some(true));
+    assert_eq!(clean.head_oid.as_deref(), Some(second.as_str()));
+    assert_eq!(clean.index_oid, clean.head_oid);
+    assert_eq!(clean.checkout_oid, clean.head_oid);
+    assert!(!clean.commit_changed && !clean.tracked_changes && !clean.untracked_changes);
+    assert!(!clean.staged_change && !clean.undeclared && !clean.missing_gitlink);
+    let moved = entry("moved");
+    assert!(moved.commit_changed && !moved.staged_change);
+    assert_eq!(moved.checkout_oid.as_deref(), Some(first.as_str()));
+    assert!(entry("dirty").tracked_changes && !entry("dirty").commit_changed);
+    assert!(entry("untracked").untracked_changes && !entry("untracked").tracked_changes);
+    let staged = entry("staged");
+    assert!(staged.staged_change && !staged.commit_changed);
+    assert_eq!(staged.head_oid.as_deref(), Some(second.as_str()));
+    assert_eq!(staged.index_oid.as_deref(), Some(first.as_str()));
+    let elsewhere = entry("elsewhere");
+    assert_eq!(elsewhere.url_matches, Some(false));
+    assert_eq!(elsewhere.registered_url.as_deref(), Some("/elsewhere"));
+    let raw = entry("raw link");
+    assert!(raw.undeclared && raw.staged_change && !raw.checked_out);
+    assert_eq!(raw.head_oid, None);
+    let ghost = entry("ghost");
+    assert!(ghost.missing_gitlink && !ghost.checked_out);
+    assert_eq!(ghost.registered_url, None);
+    assert_eq!(fs::read(root.join("dirty/file")).unwrap(), b"edited\n");
+    assert!(root.join("untracked/new").exists());
+    let value = serde_json::to_value(moved).unwrap();
+    assert_eq!(value["commitChanged"], true);
+    assert_eq!(value["checkoutOid"], first);
+}
+
+#[test]
+fn submodule_review_reports_divergent_gitlink_conflict_sides_and_refuses_bare_repositories() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let base = module.oid();
+    let mut tips = Vec::new();
+    for side in ["x", "y"] {
+        run_mutation(&module.0, &["checkout", "-q", "-B", side, &base], "branch").unwrap();
+        fs::write(module.0.join("file"), side).unwrap();
+        stage_all(&module.0).unwrap();
+        commit(&module.0, side).unwrap();
+        tips.push(module.oid());
+    }
+    add_fixture_submodule(&repository.0, &module.0, "lib");
+    let root = &repository.0;
+    let lib = root.join("lib");
+    run_mutation(&lib, &["checkout", "-q", &base], "base").unwrap();
+    stage_all(root).unwrap();
+    commit(root, "Add lib").unwrap();
+    run_mutation(root, &["branch", "topic"], "branch").unwrap();
+    run_mutation(&lib, &["checkout", "-q", &tips[0]], "x").unwrap();
+    stage_all(root).unwrap();
+    commit(root, "Lib x").unwrap();
+    run_mutation(root, &["checkout", "-q", "topic"], "topic").unwrap();
+    run_mutation(&lib, &["checkout", "-q", &tips[1]], "y").unwrap();
+    stage_all(root).unwrap();
+    commit(root, "Lib y").unwrap();
+    run_mutation(root, &["checkout", "-q", "main"], "main").unwrap();
+    run_mutation(&lib, &["checkout", "-q", &tips[0]], "x").unwrap();
+    let merge = run_git(root, &["merge", "--no-edit", "topic"]).unwrap();
+    assert!(!merge.status.success());
+    let before = fs::read(root.join(".git/index")).unwrap();
+    let review = review_submodule_state(root).unwrap();
+    assert_eq!(fs::read(root.join(".git/index")).unwrap(), before);
+    assert!(root.join(".git/MERGE_HEAD").exists());
+    let entry = &review.entries[0];
+    assert_eq!(review.entries.len(), 1);
+    let conflict = entry.conflict.as_ref().unwrap();
+    assert_eq!(conflict.base.as_deref(), Some(base.as_str()));
+    assert_eq!(conflict.ours.as_deref(), Some(tips[0].as_str()));
+    assert_eq!(conflict.theirs.as_deref(), Some(tips[1].as_str()));
+    assert!(!conflict.mixed_types && !entry.staged_change);
+    assert_eq!(entry.index_oid, None);
+    let bare = root.join("bare.git");
+    run_mutation(
+        root,
+        &["clone", "-q", "--bare", ".", bare.to_str().unwrap()],
+        "bare",
+    )
+    .unwrap();
+    assert!(review_submodule_state(&bare).is_err());
+}
+
+fn config_value(path: &Path, key: &str) -> Option<String> {
+    let output = run_git(path, &["config", "--local", "--get", key]).unwrap();
+    output.status.success().then(|| {
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_owned()
+    })
+}
+
+fn url_sync(path: &str, declared: &str, registered: &str) -> SubmoduleUrlSync {
+    SubmoduleUrlSync {
+        path: path.into(),
+        expected_declared_url: declared.into(),
+        expected_registered_url: registered.into(),
+    }
+}
+
+#[test]
+fn submodule_url_sync_updates_only_the_reviewed_local_and_default_remote_urls() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let mirror = Repository::new();
+    let root = &repository.0;
+    let source = module.0.to_str().unwrap().to_owned();
+    let target = mirror.0.to_str().unwrap().to_owned();
+    for path in ["lib", "other"] {
+        add_fixture_submodule(root, &module.0, path);
+    }
+    commit(root, "Add submodules").unwrap();
+    for path in ["lib", "other"] {
+        let key = format!("submodule.{path}.url");
+        run_mutation(
+            root,
+            &["config", "--file", ".gitmodules", &key, &target],
+            "declare",
+        )
+        .unwrap();
+    }
+    run_mutation(
+        &root.join("lib"),
+        &["config", "remote.origin.pushurl", "/push"],
+        "push",
+    )
+    .unwrap();
+    let parent_before = |path: &Path| {
+        (
+            fs::read(path.join(".git/index")).unwrap(),
+            fs::read(path.join(".gitmodules")).unwrap(),
+            rev(path, "HEAD"),
+        )
+    };
+    let stable = parent_before(root);
+
+    let stale = sync_submodule_url(root, &url_sync("lib", &target, "/stale")).unwrap_err();
+    assert_eq!(stale.kind, "submoduleUrlSyncRefused");
+    let changed = sync_submodule_url(root, &url_sync("lib", "/stale", &source)).unwrap_err();
+    assert_eq!(changed.kind, "submoduleUrlSyncRefused");
+    assert_eq!(
+        config_value(root, "submodule.lib.url").as_deref(),
+        Some(source.as_str())
+    );
+
+    let result = sync_submodule_url(root, &url_sync("lib", &target, &source)).unwrap();
+    assert_eq!(result.name, "lib");
+    assert_eq!(result.previous_registered_url, source);
+    assert_eq!(result.registered_url, target);
+    assert_eq!(result.remote_name.as_deref(), Some("origin"));
+    assert_eq!(result.previous_remote_url.as_deref(), Some(source.as_str()));
+    assert_eq!(result.remote_url.as_deref(), Some(target.as_str()));
+    assert_eq!(
+        config_value(root, "submodule.lib.url").as_deref(),
+        Some(target.as_str())
+    );
+    assert_eq!(
+        config_value(&root.join("lib"), "remote.origin.url").as_deref(),
+        Some(target.as_str())
+    );
+    assert_eq!(
+        config_value(&root.join("lib"), "remote.origin.pushurl").as_deref(),
+        Some("/push")
+    );
+    assert_eq!(
+        config_value(root, "submodule.other.url").as_deref(),
+        Some(source.as_str())
+    );
+    assert_eq!(
+        config_value(&root.join("other"), "remote.origin.url").as_deref(),
+        Some(source.as_str())
+    );
+    assert_eq!(parent_before(root), stable);
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(value["previousRegisteredUrl"], source);
+
+    let again = sync_submodule_url(root, &url_sync("lib", &target, &target)).unwrap_err();
+    assert!(again.message.contains("already matches"));
+}
+
+#[test]
+fn submodule_url_sync_follows_renamed_remotes_relative_urls_and_refuses_uninitialized_entries() {
+    let workspace = Repository::new();
+    let base = workspace.0.as_path();
+    for name in ["lib", "parent"] {
+        run_mutation(base, &["init", "-q", "-b", "main", name], "init").unwrap();
+        run_mutation(
+            &base.join(name),
+            &["commit", "-q", "--allow-empty", "-m", name],
+            "commit",
+        )
+        .unwrap();
+    }
+    let root = base.join("parent");
+    let lib = base.join("lib");
+    add_fixture_submodule(&root, &lib, "lib");
+    add_fixture_submodule(&root, &lib, "dormant");
+    commit(&root, "Add").unwrap();
+    run_mutation(&root, &["submodule", "deinit", "-q", "dormant"], "deinit").unwrap();
+    let module = root.join("lib");
+    run_mutation(&module, &["remote", "rename", "origin", "up"], "rename").unwrap();
+    run_mutation(&module, &["checkout", "-q", "-b", "work"], "branch").unwrap();
+    run_mutation(
+        &root,
+        &[
+            "config",
+            "--file",
+            ".gitmodules",
+            "submodule.lib.url",
+            "../lib",
+        ],
+        "relative",
+    )
+    .unwrap();
+    let previous = config_value(&root, "submodule.lib.url").unwrap();
+    run_mutation(&root, &["config", "submodule.lib.url", "/old"], "drift").unwrap();
+    run_mutation(
+        &module,
+        &["config", "remote.up.url", "/old-remote"],
+        "drift",
+    )
+    .unwrap();
+    let result = sync_submodule_url(&root, &url_sync("lib", "../lib", "/old")).unwrap();
+    assert_eq!(result.registered_url, previous);
+    if result.remote_name.as_deref() == Some("origin") {
+        // Git before 2.42 uses "origin" when the branch has no upstream and reports the new remote.
+        assert_eq!(result.previous_remote_url, None);
+        assert_eq!(config_value(&module, "remote.origin.url"), Some(previous.clone()));
+        assert_eq!(config_value(&module, "remote.up.url").as_deref(), Some("/old-remote"));
+    } else {
+        assert_eq!(result.remote_name.as_deref(), Some("up"));
+        assert_eq!(result.previous_remote_url.as_deref(), Some("/old-remote"));
+        assert_eq!(
+            config_value(&module, "remote.up.url"),
+            Some(previous.clone())
+        );
+    }
+    let dormant_url = run_git(
+        &root,
+        &["config", "--file", ".gitmodules", "submodule.dormant.url"],
+    )
+    .unwrap();
+    let declared = String::from_utf8_lossy(&dormant_url.stdout)
+        .trim()
+        .to_owned();
+    let error = sync_submodule_url(&root, &url_sync("dormant", &declared, &declared)).unwrap_err();
+    assert!(error.message.contains("not initialized"));
+    assert_eq!(config_value(&root, "submodule.dormant.url"), None);
+}
+
+fn recorded_checkout(path: &str, index: &str, checkout: &str) -> SubmoduleRecordedCheckout {
+    SubmoduleRecordedCheckout {
+        path: path.into(),
+        expected_index_oid: index.into(),
+        expected_checkout_oid: checkout.into(),
+        recursive: false,
+    }
+}
+
+fn recovery_refs(path: &Path) -> String {
+    String::from_utf8_lossy(
+        &run_git(
+            path,
+            &[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/git-chronos/recovery/",
+            ],
+        )
+        .unwrap()
+        .stdout,
+    )
+    .into_owned()
+}
+
+#[test]
+fn recorded_submodule_checkout_protects_the_previous_commit_and_keeps_branches_and_parent_state() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let recorded = module.oid();
+    let root = &repository.0;
+    add_fixture_submodule(root, &module.0, "lib");
+    commit(root, "Add lib").unwrap();
+    let lib = root.join("lib");
+    run_mutation(&lib, &["checkout", "-q", "-b", "local-work"], "branch").unwrap();
+    fs::write(lib.join("file"), b"local\n").unwrap();
+    stage_all(&lib).unwrap();
+    commit(&lib, "Local work").unwrap();
+    let local = rev(&lib, "HEAD");
+    fs::write(lib.join("notes.txt"), b"untracked\n").unwrap();
+    run_mutation(
+        root,
+        &["config", "submodule.lib.update", "none"],
+        "update mode",
+    )
+    .unwrap();
+    let parent = |path: &Path| {
+        (
+            String::from_utf8_lossy(&run_git(path, &["ls-files", "-s"]).unwrap().stdout)
+                .into_owned(),
+            rev(path, "HEAD"),
+            fs::read(path.join(".gitmodules")).unwrap(),
+        )
+    };
+    let before = parent(root);
+    let result =
+        checkout_recorded_submodule_commit(root, &recorded_checkout("lib", &recorded, &local))
+            .unwrap();
+    assert_eq!(rev(&lib, "HEAD"), recorded);
+    assert!(
+        !run_git(&lib, &["symbolic-ref", "-q", "HEAD"])
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(rev(&lib, "refs/heads/local-work"), local);
+    assert_eq!(result.previous_oid, local);
+    assert_eq!(
+        result.previous_branch.as_deref(),
+        Some("refs/heads/local-work")
+    );
+    assert_eq!(
+        rev(&lib, result.recovery_reference.as_deref().unwrap()),
+        local
+    );
+    assert!(result.nested.is_empty());
+    assert_eq!(fs::read(lib.join("notes.txt")).unwrap(), b"untracked\n");
+    assert_eq!(parent(root), before);
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(value["recordedOid"], recorded);
+    let again =
+        checkout_recorded_submodule_commit(root, &recorded_checkout("lib", &recorded, &recorded))
+            .unwrap_err();
+    assert!(again.message.contains("already checked out"));
+}
+
+#[test]
+fn recorded_submodule_checkout_refuses_dirty_stale_and_unavailable_commits_without_changes() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let first = module.oid();
+    fs::write(module.0.join("file"), b"second\n").unwrap();
+    stage_all(&module.0).unwrap();
+    commit(&module.0, "Second").unwrap();
+    let second = module.oid();
+    let root = &repository.0;
+    add_fixture_submodule(root, &module.0, "lib");
+    commit(root, "Add lib").unwrap();
+    let lib = root.join("lib");
+    run_mutation(&lib, &["checkout", "-q", &first], "move").unwrap();
+    fs::write(lib.join("file"), b"dirty\n").unwrap();
+    let dirty =
+        checkout_recorded_submodule_commit(root, &recorded_checkout("lib", &second, &first))
+            .unwrap_err();
+    assert_eq!(dirty.kind, "submoduleCheckoutRefused");
+    assert!(dirty.message.contains("uncommitted changes"));
+    assert_eq!(fs::read(lib.join("file")).unwrap(), b"dirty\n");
+    run_mutation(&lib, &["checkout", "-q", "--", "file"], "clean").unwrap();
+    let stale =
+        checkout_recorded_submodule_commit(root, &recorded_checkout("lib", &second, &second))
+            .unwrap_err();
+    assert!(stale.message.contains("changed after the review"));
+    let foreign = repository.oid();
+    run_mutation(
+        root,
+        &[
+            "update-index",
+            "--cacheinfo",
+            &format!("160000,{foreign},lib"),
+        ],
+        "record",
+    )
+    .unwrap();
+    let missing =
+        checkout_recorded_submodule_commit(root, &recorded_checkout("lib", &foreign, &first))
+            .unwrap_err();
+    assert!(missing.message.contains("never fetches"));
+    assert_eq!(rev(&lib, "HEAD"), first);
+    assert!(recovery_refs(&lib).is_empty());
+}
+
+#[test]
+fn recursive_recorded_checkout_protects_each_nested_level_and_refuses_nested_edits() {
+    let inner = Repository::new();
+    let first_inner = inner.oid();
+    let middle = Repository::new();
+    add_fixture_submodule(&middle.0, &inner.0, "inner");
+    commit(&middle.0, "Add inner").unwrap();
+    let first_middle = middle.oid();
+    fs::write(inner.0.join("file"), b"inner two\n").unwrap();
+    stage_all(&inner.0).unwrap();
+    commit(&inner.0, "Inner two").unwrap();
+    let second_inner = inner.oid();
+    let middle_inner = middle.0.join("inner");
+    run_mutation(
+        &middle_inner,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "pull",
+            "-q",
+            "origin",
+            "HEAD",
+        ],
+        "pull",
+    )
+    .unwrap();
+    stage_all(&middle.0).unwrap();
+    commit(&middle.0, "Bump inner").unwrap();
+    let second_middle = middle.oid();
+    let repository = Repository::new();
+    let root = &repository.0;
+    add_fixture_submodule(root, &middle.0, "lib");
+    run_mutation(
+        root,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "update",
+            "-q",
+            "--init",
+            "--recursive",
+        ],
+        "init",
+    )
+    .unwrap();
+    commit(root, "Add lib").unwrap();
+    let lib = root.join("lib");
+    let nested = lib.join("inner");
+    assert_eq!(rev(&nested, "HEAD"), second_inner);
+
+    run_mutation(&lib, &["checkout", "-q", &first_middle], "move lib").unwrap();
+    run_mutation(&nested, &["checkout", "-q", &first_inner], "move inner").unwrap();
+    let mut request = recorded_checkout("lib", &second_middle, &first_middle);
+    request.recursive = true;
+    let result = checkout_recorded_submodule_commit(root, &request).unwrap();
+    assert_eq!(rev(&lib, "HEAD"), second_middle);
+    assert_eq!(rev(&nested, "HEAD"), second_inner);
+    assert_eq!(result.nested.len(), 1);
+    assert_eq!(result.nested[0].path, "lib/inner");
+    assert_eq!(
+        rev(
+            &nested,
+            result.nested[0].recovery_reference.as_deref().unwrap()
+        ),
+        first_inner
+    );
+
+    run_mutation(&nested, &["checkout", "-q", &first_inner], "drift inner").unwrap();
+    let single = checkout_recorded_submodule_commit(
+        root,
+        &recorded_checkout("lib", &second_middle, &second_middle),
+    )
+    .unwrap_err();
+    assert!(single.message.contains("already checked out"));
+    let drift = checkout_recorded_submodule_commit(root, &request_for(&second_middle)).unwrap();
+    assert!(drift.recovery_reference.is_none());
+    assert_eq!(rev(&nested, "HEAD"), second_inner);
+
+    fs::write(nested.join("file"), b"edited\n").unwrap();
+    run_mutation(&nested, &["checkout", "-q", "--detach"], "stay").unwrap();
+    let dirty = checkout_recorded_submodule_commit(root, &request_for(&second_middle)).unwrap_err();
+    assert!(
+        dirty
+            .message
+            .starts_with("lib/inner has uncommitted changes"),
+        "{}",
+        dirty.message
+    );
+    assert_eq!(fs::read(nested.join("file")).unwrap(), b"edited\n");
+    run_mutation(&nested, &["checkout", "-q", "--", "file"], "clean").unwrap();
+    let nothing =
+        checkout_recorded_submodule_commit(root, &request_for(&second_middle)).unwrap_err();
+    assert!(nothing.message.contains("already match"));
+}
+
+fn request_for(oid: &str) -> SubmoduleRecordedCheckout {
+    let mut request = recorded_checkout("lib", oid, oid);
+    request.recursive = true;
+    request
+}
+
+fn deinit(path: &str, checkout: &str) -> SubmoduleDeinit {
+    SubmoduleDeinit {
+        path: path.into(),
+        expected_checkout_oid: checkout.into(),
+    }
+}
+
+#[test]
+fn submodule_deinit_keeps_repository_data_and_removes_only_its_local_settings() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let recorded = module.oid();
+    let root = &repository.0;
+    add_fixture_submodule(root, &module.0, "lib");
+    add_fixture_submodule(root, &module.0, "other");
+    commit(root, "Add submodules").unwrap();
+    let lib = root.join("lib");
+    run_mutation(root, &["config", "submodule.lib.update", "rebase"], "update").unwrap();
+    run_mutation(&lib, &["branch", "keep"], "branch").unwrap();
+    fs::write(lib.join("notes.txt"), b"untracked\n").unwrap();
+    let untracked = deinit_submodule(root, &deinit("lib", &recorded)).unwrap_err();
+    assert_eq!(untracked.kind, "submoduleDeinitRefused");
+    assert!(untracked.message.contains("untracked files"));
+    fs::remove_file(lib.join("notes.txt")).unwrap();
+    let stale = deinit_submodule(root, &deinit("lib", &repository.oid())).unwrap_err();
+    assert!(stale.message.contains("changed after the review"));
+    run_mutation(&lib, &["commit", "-q", "--allow-empty", "-m", "local"], "ahead").unwrap();
+    let ahead = deinit_submodule(root, &deinit("lib", &rev(&lib, "HEAD"))).unwrap_err();
+    assert!(ahead.message.contains("not at the commit recorded"));
+    run_mutation(&lib, &["checkout", "-q", "--detach", &recorded], "back").unwrap();
+    let index_before = run_git(root, &["ls-files", "-s"]).unwrap().stdout;
+
+    let result = deinit_submodule(root, &deinit("lib", &recorded)).unwrap();
+    assert!(fs::read_dir(&lib).unwrap().next().is_none());
+    assert!(!result.absorbed);
+    let keys: Vec<_> = result.removed_settings.iter().map(|setting| setting.key.as_str()).collect();
+    assert!(keys.contains(&"submodule.lib.url") && keys.contains(&"submodule.lib.update") && keys.contains(&"submodule.lib.active"));
+    assert_eq!(config_value(root, "submodule.lib.url"), None);
+    assert!(config_value(root, "submodule.other.url").is_some());
+    let data = PathBuf::from(&result.git_directory);
+    let dir = data.to_string_lossy().into_owned();
+    assert!(run_git(root, &["--git-dir", &dir, "rev-parse", "--verify", "-q", "refs/heads/keep"]).unwrap().status.success());
+    assert_eq!(run_git(root, &["ls-files", "-s"]).unwrap().stdout, index_before);
+    assert!(run_git(root, &["status", "--porcelain"]).unwrap().stdout.is_empty());
+    let again = deinit_submodule(root, &deinit("lib", &recorded)).unwrap_err();
+    assert!(again.message.contains("not checked out"));
+}
+
+#[test]
+fn submodule_deinit_absorbs_an_embedded_repository_before_clearing_it() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let recorded = module.oid();
+    let root = &repository.0;
+    run_mutation(root, &["clone", "-q", module.0.to_str().unwrap(), "lib"], "clone").unwrap();
+    fs::write(root.join(".gitmodules"), format!("[submodule \"lib\"]\n\tpath = lib\n\turl = {}\n", module.0.display())).unwrap();
+    run_mutation(root, &["add", ".gitmodules", "lib"], "stage").unwrap();
+    commit(root, "Embedded").unwrap();
+    run_mutation(root, &["submodule", "init", "-q"], "init").unwrap();
+    let result = deinit_submodule(root, &deinit("lib", &recorded)).unwrap();
+    assert!(result.absorbed);
+    assert!(!root.join("lib/.git").exists());
+    let dir = result.git_directory.clone();
+    assert!(dir.ends_with("modules/lib"), "{dir}");
+    assert_eq!(rev_in(root, &dir), recorded);
+}
+
+fn rev_in(root: &Path, git_dir: &str) -> String {
+    String::from_utf8_lossy(&run_git(root, &["--git-dir", git_dir, "rev-parse", "HEAD"]).unwrap().stdout).trim().to_owned()
+}
+
+fn removal(path: &str, oid: &str) -> SubmoduleRemoval {
+    SubmoduleRemoval {
+        path: path.into(),
+        expected_index_oid: oid.into(),
+    }
+}
+
+#[test]
+fn submodule_removal_stages_only_its_gitlink_and_declaration_and_keeps_data() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let recorded = module.oid();
+    let root = &repository.0;
+    add_fixture_submodule(root, &module.0, "lib");
+    add_fixture_submodule(root, &module.0, "other");
+    commit(root, "Add submodules").unwrap();
+    let lib = root.join("lib");
+    run_mutation(&lib, &["branch", "keep"], "branch").unwrap();
+    fs::write(lib.join("notes.txt"), b"untracked\n").unwrap();
+    let untracked = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
+    assert_eq!(untracked.kind, "submoduleRemovalRefused");
+    fs::remove_file(lib.join("notes.txt")).unwrap();
+    fs::write(root.join(".gitmodules"), [fs::read(root.join(".gitmodules")).unwrap(), b"# note\n".to_vec()].concat()).unwrap();
+    let declaration = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
+    assert!(declaration.message.contains(".gitmodules has unstaged changes"));
+    run_mutation(root, &["checkout", "-q", "--", ".gitmodules"], "restore").unwrap();
+    let stale = remove_submodule(root, &removal("lib", &repository.oid())).unwrap_err();
+    assert!(stale.message.contains("changed after the review"));
+    fs::write(root.join("staged.txt"), b"staged\n").unwrap();
+    run_mutation(root, &["add", "staged.txt"], "stage").unwrap();
+
+    let result = remove_submodule(root, &removal("lib", &recorded)).unwrap();
+    assert!(!lib.exists());
+    let status = String::from_utf8_lossy(&run_git(root, &["status", "--porcelain"]).unwrap().stdout).into_owned();
+    assert_eq!(status, "M  .gitmodules\nD  lib\nA  staged.txt\n");
+    let declared = String::from_utf8_lossy(&fs::read(root.join(".gitmodules")).unwrap()).into_owned();
+    assert!(!declared.contains("\"lib\"") && declared.contains("\"other\""));
+    assert_eq!(config_value(root, "submodule.lib.url").as_deref(), Some(module.0.to_str().unwrap()));
+    assert!(result.kept_settings.iter().any(|setting| setting.key == "submodule.lib.url"));
+    let dir = result.git_directory.clone().unwrap();
+    assert!(run_git(root, &["--git-dir", &dir, "--work-tree", ".", "rev-parse", "--verify", "-q", "refs/heads/keep"]).unwrap().status.success());
+    assert_eq!(result.recorded_oid, recorded);
+    assert!(remove_submodule(root, &removal("lib", &recorded)).is_err());
+}
+
+#[test]
+fn submodule_removal_handles_uninitialized_entries_and_refuses_moved_checkouts() {
+    let repository = Repository::new();
+    let module = Repository::new();
+    let recorded = module.oid();
+    let root = &repository.0;
+    add_fixture_submodule(root, &module.0, "lib");
+    add_fixture_submodule(root, &module.0, "idle");
+    commit(root, "Add submodules").unwrap();
+    let lib = root.join("lib");
+    run_mutation(&lib, &["commit", "-q", "--allow-empty", "-m", "ahead"], "ahead").unwrap();
+    let moved = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
+    assert!(moved.message.contains("another commit"));
+    assert!(lib.join(".git").exists());
+    let deinit_result = deinit_submodule(root, &deinit("idle", &recorded)).unwrap();
+    let result = remove_submodule(root, &removal("idle", &recorded)).unwrap();
+    assert_eq!(result.git_directory.as_deref(), Some(deinit_result.git_directory.as_str()));
+    assert!(result.kept_settings.is_empty());
+    assert!(!root.join("idle").exists());
+}
+
+#[test]
+fn clone_limits_history_depth_and_selected_branch() {
+    let source = Repository::new();
+    for message in ["second", "third"] {
+        run_mutation(&source.0, &["commit", "-q", "--allow-empty", "-m", message], message).unwrap();
+    }
+    run_mutation(&source.0, &["branch", "side"], "branch").unwrap();
+    let parent = source.0.with_extension("clones");
+    fs::create_dir(&parent).unwrap();
+    let url = format!("file://{}", source.0.display());
+    let shallow = clone_repository(&url, &parent, "shallow", Some("side"), Some(2)).unwrap();
+    let text = |args: &[&str]| {
+        String::from_utf8_lossy(&run_git(&shallow, args).unwrap().stdout).trim().to_owned()
+    };
+    assert_eq!(text(&["rev-parse", "--is-shallow-repository"]), "true");
+    assert_eq!(text(&["rev-list", "--count", "HEAD"]), "2");
+    assert_eq!(text(&["branch", "--show-current"]), "side");
+    assert_eq!(
+        text(&["for-each-ref", "--format=%(refname)", "refs/remotes"]),
+        "refs/remotes/origin/side"
+    );
+    let full = clone_repository(&url, &parent, "full", None, None).unwrap();
+    let count = run_git(&full, &["rev-list", "--count", "HEAD"]).unwrap().stdout;
+    assert_eq!(String::from_utf8_lossy(&count).trim(), "3");
+    let zero = clone_repository(&url, &parent, "zero", None, Some(0)).unwrap_err();
+    assert_eq!(zero.kind, "invalidCloneDepth");
+    assert!(!parent.join("zero").exists());
+    let existing = clone_repository(&url, &parent, "full", None, None).unwrap_err();
+    assert_eq!(existing.kind, "destinationExists");
+    fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn cancelled_clone_discloses_partial_destination() {
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/stalled.git", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let connection = listener.accept();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        drop(connection);
+    });
+    let parent = Repository::new().0.with_extension("cancelled");
+    fs::create_dir(&parent).unwrap();
+    let cancellation = CancellationToken::default();
+    let canceller = cancellation.clone();
+    let timer = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        canceller.cancel();
+    });
+    let error = authentication::with_authentication(
+        &std::env::current_exe().unwrap(),
+        &cancellation,
+        None,
+        || clone_repository(&url, &parent, "partial", None, None),
+    )
+    .unwrap_err();
+    timer.join().unwrap();
+    assert_eq!(error.kind, "operationCancelled");
+    let partial = parent.join("partial");
+    assert!(partial.exists());
+    let hint = error.hint.unwrap();
+    assert!(hint.contains("Partial clone data remains"));
+    assert!(hint.contains(&partial.display().to_string()));
+    let retry = clone_repository(&url, &parent, "partial", None, None).unwrap_err();
+    assert_eq!(retry.kind, "destinationExists");
+    server.join().unwrap();
+    fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
+    let source = Repository::new();
+    for message in ["c2", "c3", "c4", "c5", "c6"] {
+        run_mutation(&source.0, &["commit", "-q", "--allow-empty", "-m", message], message).unwrap();
+    }
+    let parent = source.0.with_extension("deepen");
+    fs::create_dir(&parent).unwrap();
+    let url = format!("file://{}", source.0.display());
+    let clone = clone_repository(&url, &parent, "work", None, Some(1)).unwrap();
+    run_mutation(&clone, &["remote", "add", "mirror", &url], "mirror").unwrap();
+    let count = |rev: &str| {
+        let out = run_git(&clone, &["rev-list", "--count", rev]).unwrap().stdout;
+        String::from_utf8_lossy(&out).trim().parse::<usize>().unwrap()
+    };
+    let token = CancellationToken::default();
+    let options = |remote: Option<&str>, history| FetchOptions {
+        remote: remote.map(str::to_owned),
+        prune: false,
+        history: Some(history),
+    };
+    assert_eq!(
+        shallow_history_state(&clone).unwrap().boundary_commits,
+        1
+    );
+    let head = run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout;
+    let all = fetch_with_options(&clone, &options(None, FetchHistory::Deepen { commits: 2 }), &token)
+        .unwrap_err();
+    assert_eq!(all.kind, "historyDepthRefused");
+    let zero = fetch_with_options(
+        &clone,
+        &options(Some("origin"), FetchHistory::Deepen { commits: 0 }),
+        &token,
+    )
+    .unwrap_err();
+    assert_eq!(zero.kind, "historyDepthRefused");
+    assert_eq!(count("HEAD"), 1);
+    fetch_with_options(&clone, &options(Some("origin"), FetchHistory::Deepen { commits: 2 }), &token)
+        .unwrap();
+    assert_eq!(count("HEAD"), 3);
+    assert!(shallow_history_state(&clone).unwrap().shallow);
+    assert_eq!(run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout, head);
+    fetch_with_options(&clone, &options(Some("mirror"), FetchHistory::Complete), &token).unwrap();
+    assert_eq!(count("HEAD"), 6);
+    assert_eq!(count("refs/remotes/mirror/main"), 6);
+    let state = shallow_history_state(&clone).unwrap();
+    assert!(!state.shallow);
+    assert_eq!(state.boundary_commits, 0);
+    let complete = fetch_with_options(&clone, &options(Some("origin"), FetchHistory::Complete), &token)
+        .unwrap_err();
+    assert_eq!(complete.kind, "historyDepthRefused");
+    assert!(complete.message.contains("already has complete history"));
+    fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn unborn_and_detached_heads_open_commit_and_attach_without_fabricating_branches() {
+    let base = Repository::new().0.with_extension("heads");
+    fs::create_dir(&base).unwrap();
+    let unborn = base.join("unborn");
+    fs::create_dir(&unborn).unwrap();
+    run_mutation(&unborn, &["init", "-q", "-b", "trunk"], "init").unwrap();
+    for args in [["config", "user.name", "Test"], ["config", "user.email", "test@example.test"]] {
+        run_mutation(&unborn, &args, "identity").unwrap();
+    }
+    fs::write(unborn.join("first.txt"), "first\n").unwrap();
+    assert_eq!(
+        resolve_repository(&unborn).unwrap(),
+        unborn.canonicalize().unwrap()
+    );
+    let empty = snapshot(&unborn).unwrap();
+    assert_eq!(empty.status.branch.as_deref(), Some("trunk"));
+    assert!(empty.commits.is_empty());
+    assert_eq!(empty.status.untracked, 1);
+    let refs = run_git(&unborn, &["for-each-ref"]).unwrap().stdout;
+    assert!(refs.is_empty());
+    create_branch(&unborn, "feature").unwrap();
+    assert_eq!(snapshot(&unborn).unwrap().status.branch.as_deref(), Some("feature"));
+    stage_all(&unborn).unwrap();
+    commit(&unborn, "First").unwrap();
+    let first = snapshot(&unborn).unwrap();
+    assert_eq!(first.commits.len(), 1);
+    assert_eq!(first.status.branch.as_deref(), Some("feature"));
+
+    let repository = Repository::new();
+    let original = repository.oid();
+    run_mutation(&repository.0, &["checkout", "-q", "--detach"], "detach").unwrap();
+    let detached = snapshot(&repository.0).unwrap();
+    assert!(detached.status.branch.is_none());
+    fs::write(repository.0.join("file"), "detached\n").unwrap();
+    stage_all(&repository.0).unwrap();
+    commit(&repository.0, "Detached work").unwrap();
+    let after = snapshot(&repository.0).unwrap();
+    assert!(after.status.branch.is_none());
+    assert_ne!(repository.oid(), original);
+    let main = run_git(&repository.0, &["rev-parse", "main"]).unwrap().stdout;
+    assert_eq!(String::from_utf8_lossy(&main).trim(), original);
+    let detached_tip = repository.oid();
+    create_branch(&repository.0, "rescued").unwrap();
+    assert_eq!(snapshot(&repository.0).unwrap().status.branch.as_deref(), Some("rescued"));
+    assert_eq!(repository.oid(), detached_tip);
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
+    let repository = Repository::new();
+    let base = repository.0.with_extension("shapes");
+    fs::create_dir(&base).unwrap();
+    let bare = base.join("shared.git");
+    run_mutation(
+        &base,
+        &["clone", "-q", "--bare", &repository.0.display().to_string(), &bare.display().to_string()],
+        "bare",
+    )
+    .unwrap();
+    let config = fs::read(bare.join("config")).unwrap();
+    for target in [bare.clone(), bare.join("refs")] {
+        let error = resolve_repository(&target).unwrap_err();
+        assert_eq!(error.kind, "bareRepositoryUnsupported", "{}", error.message);
+        assert!(error.message.contains("bare repository"));
+        assert!(error.hint.unwrap().contains("git worktree add"));
+    }
+    assert_eq!(fs::read(bare.join("config")).unwrap(), config);
+    assert!(!bare.join("index").exists());
+
+    let data = resolve_repository(&repository.0.join(".git")).unwrap_err();
+    assert_eq!(data.kind, "repositoryDataFolder");
+    assert!(data.hint.unwrap().contains("contains this .git folder"));
+    assert_eq!(
+        resolve_repository(&repository.0).unwrap(),
+        repository.0.canonicalize().unwrap()
+    );
+
+    run_mutation(&repository.0, &["config", "core.repositoryformatversion", "1"], "format").unwrap();
+    run_mutation(&repository.0, &["config", "extensions.chronosUnknownFeature", "true"], "ext").unwrap();
+    let format = resolve_repository(&repository.0).unwrap_err();
+    assert_eq!(format.kind, "unsupportedRepositoryFormat");
+    assert!(format.message.contains("chronosunknownfeature"));
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn foreign_owner_refusal_keeps_git_detail_and_explains_trust_choice() {
+    use std::os::unix::process::ExitStatusExt;
+    let output = std::process::Output {
+        status: std::process::ExitStatus::from_raw(128 << 8),
+        stdout: Vec::new(),
+        stderr: b"fatal: detected dubious ownership in repository at '/srv/project'\n".to_vec(),
+    };
+    let error = classify_open_failure(Path::new("/srv/project"), &output);
+    assert_eq!(error.kind, "untrustedRepositoryOwner");
+    assert!(error.message.contains("dubious ownership in repository at '/srv/project'"));
+    assert!(error.hint.unwrap().contains("safe.directory"));
+    let other = std::process::Output {
+        stderr: b"fatal: not a git repository (or any of the parent directories): .git\n".to_vec(),
+        ..output
+    };
+    assert_eq!(classify_open_failure(Path::new("/tmp"), &other).kind, "gitFailure");
+}
+
 fn stash_options(mode: &str, include_untracked: bool, paths: Option<Vec<String>>) -> StashOptions {
     StashOptions {
         mode: mode.into(),
@@ -3793,6 +4903,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
             &FetchOptions {
                 remote: Some(remote.into()),
                 prune: false,
+                history: None,
             },
             &CancellationToken::default(),
         )
@@ -3848,6 +4959,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
         &FetchOptions {
             remote: Some("origin".into()),
             prune: false,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -3861,6 +4973,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
         &FetchOptions {
             remote: Some("origin".into()),
             prune: true,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -3919,6 +5032,7 @@ fn scoped_fetch_all_remote_prune_is_explicit_and_uses_fetch_not_push_url() {
         &FetchOptions {
             remote: None,
             prune: false,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -3935,6 +5049,7 @@ fn scoped_fetch_all_remote_prune_is_explicit_and_uses_fetch_not_push_url() {
         &FetchOptions {
             remote: None,
             prune: true,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -3959,7 +5074,8 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: None,
-                prune: true
+                prune: true,
+                history: None
             },
             &CancellationToken::default()
         )
@@ -3984,7 +5100,8 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: Some("origin".into()),
-                prune: true
+                prune: true,
+                history: None
             },
             &CancellationToken::default()
         )
@@ -3997,7 +5114,8 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: Some("missing".into()),
-                prune: false
+                prune: false,
+                history: None
             },
             &CancellationToken::default()
         )
@@ -4016,7 +5134,8 @@ fn scoped_fetch_cancel_and_failure_leave_actual_updates_visible() {
             &repository.0,
             &FetchOptions {
                 remote: None,
-                prune: true
+                prune: true,
+                history: None
             },
             &token
         )
@@ -4045,6 +5164,7 @@ fn scoped_fetch_cancel_and_failure_leave_actual_updates_visible() {
         &FetchOptions {
             remote: None,
             prune: true,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -4083,6 +5203,7 @@ fn scoped_fetch_refuses_shared_custom_tracking_destinations_without_changes() {
             &FetchOptions {
                 remote: Some("origin".into()),
                 prune: true,
+                history: None,
             },
             &CancellationToken::default(),
         )
@@ -4115,6 +5236,7 @@ fn scoped_fetch_refuses_tracking_aliases_that_redirect_to_local_branches() {
         &FetchOptions {
             remote: Some("origin".into()),
             prune: true,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -4141,6 +5263,7 @@ fn scoped_fetch_does_not_create_local_branches_through_dangling_tracking_aliases
         &FetchOptions {
             remote: Some("origin".into()),
             prune: false,
+            history: None,
         },
         &CancellationToken::default(),
     );
@@ -4169,6 +5292,7 @@ fn scoped_fetch_refuses_unresolved_aliases_inside_its_tracking_namespace() {
         &FetchOptions {
             remote: Some("origin".into()),
             prune: false,
+            history: None,
         },
         &CancellationToken::default(),
     )
@@ -6026,9 +7150,17 @@ fn lfs_attributes_inspect_sparse_excluded_paths_without_hydration_or_index_chang
     assert!(!repository.0.join("assets/.gitattributes").exists());
     let index_bytes = fs::read(repository.0.join(".git/index")).unwrap();
     let head = repository.oid();
-    let attrs = lfs_file_attributes(&repository.0, "assets/data.chrasset").unwrap();
-    assert_eq!(attrs.attributes[0].working, "lfs");
-    assert_eq!(attrs.attributes[0].index, "lfs");
+    match lfs_file_attributes(&repository.0, "assets/data.chrasset") {
+        Ok(attrs) => {
+            assert_eq!(attrs.attributes[0].working, "lfs");
+            assert_eq!(attrs.attributes[0].index, "lfs");
+        }
+        Err(error) => {
+            assert_eq!(error.kind, "sparseAttributesUnreadable");
+            assert!(error.message.contains("assets/.gitattributes"), "{error:?}");
+            assert!(!version_at_least(detect_git().version.as_deref().unwrap(), "2.43.0"));
+        }
+    }
     assert_eq!(
         fs::read(repository.0.join(".git/index")).unwrap(),
         index_bytes
@@ -7522,7 +8654,7 @@ fn reference_actions_sign_and_verify_annotated_tags_with_configured_ssh_key() {
     .unwrap();
     assert!(verify_tag(&repository.0, "unsigned").is_err());
     fs::remove_file(&key).unwrap();
-    assert_eq!(create_signed_tag(&repository.0, "unavailable", &oid, "Missing key").unwrap_err().kind, "gitFailure");
+    assert!(matches!(create_signed_tag(&repository.0, "unavailable", &oid, "Missing key").unwrap_err().kind.as_str(), "gitFailure" | "tagSigningFailed"));
     assert_eq!(run_git(&repository.0, &["show-ref", "--verify", "--quiet", "refs/tags/unavailable"]).unwrap().status.code(), Some(1));
     delete_local_tag(&repository.0, "signed", &oid).unwrap();
     let recovery = run_git(&repository.0, &["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]).unwrap().stdout;

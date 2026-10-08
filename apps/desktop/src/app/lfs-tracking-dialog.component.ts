@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { LfsCheckoutPreview, LfsFetchPreview, LfsFileAttributes, LfsObjects, LfsTrackingPattern, LfsTrackingRules } from '@git-chronos/contracts';
+import { invoke } from '@tauri-apps/api/core';
+import type { LfsCheckoutPreview, LfsLock, LfsLocks, LfsFetchPreview, LfsFileAttributes, LfsObjects, LfsTrackingPattern, LfsTrackingRules } from '@git-chronos/contracts';
 import { GitChronosService } from './git-chronos.service';
 import { GitHelpComponent } from './git-help.component';
 
@@ -116,6 +117,45 @@ export interface LfsTrackingRequest {
               </div>
             }
           </details>
+          <details class="locks">
+            <summary [attr.aria-disabled]="unavailable()" (click)="guardDisclosure($event)">File locks on the LFS server</summary>
+            <p>Locks tell collaborators you are editing a file that cannot be merged. They are advisory and held by the LFS server,
+              so loading contacts the configured LFS endpoint. Nothing is locked or unlocked automatically.</p>
+            <gc-git-help topic="lfs-locks" [disabled]="git.busy() || loading()" label="Learn about LFS file locks…" />
+            <button data-lfs-locks-load type="button" [disabled]="unavailable()" (click)="loadLocks()">{{ locks() ? 'Reload locks' : 'Load locks' }}</button>
+            @if (locks(); as listing) {
+              <div class="lock-result" role="status" tabindex="-1">
+                <p>{{ listing.locks.length }} {{ listing.locks.length === 1 ? 'lock' : 'locks' }} held at load time.</p>
+                <ul aria-label="LFS file locks">
+                  @for (lock of listing.locks; track lock.id) {
+                    <li><div><code>{{ lock.path }}</code>
+                      <span>{{ lock.ours ? 'Locked by you' : 'Locked by ' + (lock.owner || 'an unnamed user') }} · {{ lock.lockedAt }}</span></div>
+                      @if (lock.ours) {
+                        <button type="button" [disabled]="unavailable()" [attr.aria-label]="'Unlock ' + lock.path" (click)="unlock(lock, false)">Unlock</button>
+                      } @else {
+                        <button type="button" [disabled]="unavailable()" [attr.aria-label]="'Review force unlock of ' + lock.path" (click)="reviewForceUnlock(lock)">Force unlock…</button>
+                      }
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (forceUnlock(); as lock) {
+              <div class="force-review">
+                <h3>Break the lock on <code>{{ lock.path }}</code>?</h3>
+                <p>{{ lock.owner || 'Another user' }} holds this lock. Forcing removes it on the server without their agreement,
+                  so both of you may edit a file that cannot be merged. Ask them first when possible. Files are not changed.</p>
+                <button data-lfs-force class="danger" type="button" [disabled]="unavailable()" (click)="unlock(lock, true)">Force unlock</button>
+                <button type="button" [disabled]="unavailable()" (click)="forceUnlock.set(null)">Keep lock</button>
+              </div>
+            }
+            <form (submit)="$event.preventDefault(); lock()">
+              <label for="lfs-lock-path">Tracked file to lock</label>
+              <input id="lfs-lock-path" type="text" name="lockPath" maxlength="4096" placeholder="assets/image.psd"
+                [disabled]="unavailable()" [ngModel]="lockPath()" (ngModelChange)="lockPath.set($event)" />
+              <button type="submit" [disabled]="unavailable() || !lockPath().trim()">Lock file</button>
+            </form>
+          </details>
           <form (submit)="$event.preventDefault(); inspectAttributes()">
             <h3>Inspect effective file attributes</h3>
             <label for="lfs-attribute-path">Repository-relative file path</label>
@@ -216,6 +256,9 @@ export class LfsTrackingDialogComponent {
   readonly fetching = signal(false);
   readonly checkoutPreview = signal<LfsCheckoutPreview | null>(null);
   readonly hydrating = signal(false);
+  readonly locks = signal<LfsLocks | null>(null);
+  readonly forceUnlock = signal<LfsLock | null>(null);
+  readonly lockPath = signal('');
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
 
   constructor() {
@@ -243,6 +286,8 @@ export class LfsTrackingDialogComponent {
     this.objects.set(null);
     this.fetchPreview.set(null);
     this.checkoutPreview.set(null);
+    this.locks.set(null);
+    this.forceUnlock.set(null);
     try {
       const rules = await this.git.loadLfsTrackingRules(target.repositoryId);
       if (this.request() === target) this.rules.set(rules);
@@ -373,6 +418,66 @@ export class LfsTrackingDialogComponent {
       this.notice.set('Hydration cancelled. Refresh and inspect the working file before reviewing again; cancellation may arrive after replacement.');
       this.focus('[role=status][tabindex="-1"]:not(.object-result):not(.attribute-result)');
     } else this.focus('[role=alert]');
+  }
+
+  async loadLocks(notice = ''): Promise<void> {
+    const target = this.request();
+    if (!target || this.unavailable()) return;
+    this.locks.set(null);
+    this.forceUnlock.set(null);
+    this.notice.set('');
+    this.loading.set(true);
+    let locks: LfsLocks | null = null;
+    try {
+      await this.git.run('Loading LFS file locks…', async () => {
+        locks = await invoke<LfsLocks>('lfs_locks', { repoId: target.repositoryId });
+        this.git.activity.set('LFS file locks loaded');
+      }, target.repositoryId);
+    } finally { this.loading.set(false); }
+    if (this.request() !== target) return;
+    this.locks.set(locks);
+    this.notice.set(locks ? notice : '');
+    this.focus(locks ? (notice ? '[role=status][tabindex="-1"]:not(.object-result):not(.attribute-result):not(.lock-result)' : '.lock-result') : '[role=alert]');
+  }
+
+  reviewForceUnlock(lock: LfsLock): void {
+    if (this.unavailable()) return;
+    this.forceUnlock.set(lock);
+    this.focus('[data-lfs-force]');
+  }
+
+  async lock(): Promise<void> {
+    const file = this.lockPath().trim();
+    if (!file) return;
+    if (await this.changeLock('Locking LFS file…', 'lfs_lock_file', { file })) {
+      this.lockPath.set('');
+      await this.loadLocks(`Locked ${file}. Collaborators see your lock; unlock after pushing your change.`);
+    }
+  }
+
+  async unlock(lock: LfsLock, force: boolean): Promise<void> {
+    if (await this.changeLock(force ? 'Forcing LFS unlock…' : 'Unlocking LFS file…', 'lfs_unlock_file', { lock, force })) {
+      await this.loadLocks(force ? `Broke the lock on ${lock.path}. Tell ${lock.owner || 'its owner'} before editing.` : `Unlocked ${lock.path}.`);
+    }
+  }
+
+  private async changeLock(label: string, command: string, args: Record<string, unknown>): Promise<boolean> {
+    const target = this.request();
+    if (!target || this.unavailable()) return false;
+    this.notice.set('');
+    this.loading.set(true);
+    let outcome: 'success' | 'error' | 'cancelled' = 'error';
+    try {
+      outcome = await this.git.run(label, async () => {
+        await invoke(command, { repoId: target.repositoryId, ...args });
+        this.git.activity.set(label.replace('…', ' finished'));
+      }, target.repositoryId);
+    } finally { this.loading.set(false); }
+    if (this.request() !== target) return false;
+    if (outcome === 'success') return true;
+    this.forceUnlock.set(null);
+    this.focus('[role=alert]');
+    return false;
   }
 
   workingStateLabel(state: LfsObjects['files'][number]['workingState']): string {

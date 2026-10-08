@@ -34,7 +34,7 @@ describe('Git feature documentation', () => {
   });
   it('provides unique searchable topics with original hints, precautions and official HTTPS manuals', () => {
     expect(new Set(GIT_DOCUMENTATION_TOPICS.map(topic => topic.id)).size).toBe(GIT_DOCUMENTATION_TOPICS.length);
-    expect(GIT_DOCUMENTATION_TOPICS.length).toBe(39);
+    expect(GIT_DOCUMENTATION_TOPICS.length).toBe(40);
     for (const topic of GIT_DOCUMENTATION_TOPICS) {
       expect(topic.title.length).toBeGreaterThan(10);
       expect(topic.commands.length).toBeGreaterThan(5);
@@ -55,12 +55,14 @@ describe('Git feature documentation', () => {
     }
   });
 
-  it('distinguishes fetch/tag scope, independent hydration and unfinished safe pruning', () => {
+  it('distinguishes fetch/tag scope, independent hydration, unfinished LFS pruning and single-registration worktree removal', () => {
     const topic = (id: string) => GIT_DOCUMENTATION_TOPICS.find(topic => topic.id === id);
     expect(topic('fetch')?.hint).toContain('leaves tags unchanged');
     expect(topic('lfs-checkout')?.hint).toContain('independently copies');
+    expect(topic('lfs-locks')?.caution).toContain('Force unlock removes a collaborator');
     expect(topic('lfs-prune')?.caution).toContain('No exact preview');
-    expect(topic('worktree')?.caution).toContain('dry-run only');
+    expect(topic('worktree')?.caution).toContain('removes only one reviewed missing, unlocked registration');
+    expect(topic('worktree')?.caution).toContain('not recovered');
     expect(topic('rebase')?.caution).toContain('not implied');
   });
 

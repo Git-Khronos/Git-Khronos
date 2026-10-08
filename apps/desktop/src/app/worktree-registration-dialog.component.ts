@@ -1,37 +1,50 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import type { WorktreeRegistrationReview } from '@git-chronos/contracts';
+import { invoke } from '@tauri-apps/api/core';
+import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeRegistrationReview } from '@git-chronos/contracts';
 import { GitChronosService } from './git-chronos.service';
 import { GitHelpComponent } from './git-help.component';
+import { SubmoduleStateReviewComponent } from './submodule-state-review.component';
 
 export interface WorktreeRegistrationRequest {
   repositoryId: string;
   returnFocus: HTMLElement | null;
+  submodules?: boolean;
 }
 
 @Component({
   selector: 'gc-worktree-registration-dialog',
-  imports: [GitHelpComponent],
+  imports: [GitHelpComponent, SubmoduleStateReviewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (request(); as target) {
+    @if (request()?.submodules) {
+      <gc-submodule-state-review [request]="request()" (closed)="closed.emit()" />
+    } @else if (request(); as target) {
       <div class="backdrop" (click)="close()">
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="worktree-registration-title"
           (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
           <h2 id="worktree-registration-title">Review worktree registrations</h2>
-          <p>Read-only inspection with Git worktree list and prune --dry-run --expire=now.
-            No registration, working directory or branch is removed or repaired. Expiring now can show
-            candidates not yet eligible under Git’s normal age-based pruning.</p>
+          <p>Inspection uses Git worktree list and prune --dry-run --expire=now; reviewing changes nothing.
+            Expiring now can show candidates not yet eligible under Git’s normal age-based pruning.
+            A missing, unlocked registration can be removed individually after its HEAD and metadata are preserved.</p>
           @if (target.repositoryId !== git.activeRepositoryId()) {
             <p role="alert" tabindex="-1">The active repository changed. Close this review and inspect the intended repository.</p>
           }
           @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
+          @if (pruned(); as done) {
+            <div role="status" tabindex="-1" data-prune-result>
+              <p>Registration removed. No branch, file or other registration was changed.</p>
+              @for (reference of done.recoveryReferences; track reference) { <p>Protected commit: <code>{{ reference }}</code></p> }
+              @empty { <p>Unborn HEAD: no commit needed protection.</p> }
+              <p>Administrative index and reflog copy: <code>{{ done.metadataBackup }}</code></p>
+            </div>
+          }
           @if (loading()) { <p role="status">Inspecting registrations…</p> }
           @if (review(); as result) {
             <div role="status" tabindex="-1" data-registration-result>
               <p>{{ result.registrations.length }} registrations reported. These are sequential observations, not a deletion lease.</p>
             </div>
             <ul aria-label="Worktree registrations">
-              @for (entry of result.registrations; track entry.path) {
+              @for (entry of result.registrations; track entry.path; let first = $first) {
                 <li><code>{{ entry.path }}</code>
                   <span>{{ entry.bare ? 'Bare repository' : entry.branch || 'Detached HEAD' }}</span>
                   @if (entry.oid) { <code>{{ entry.oid }}</code> }
@@ -41,6 +54,24 @@ export interface WorktreeRegistrationRequest {
                   } @else if (entry.prunable) {
                     <strong>Git reports this registration as prunable</strong>
                     @if (entry.pruneReason) { <p>{{ entry.pruneReason }}</p> }
+                    @if (!first && !entry.bare && entry.oid) {
+                      @if (confirming() === entry) {
+                        <div class="confirm" role="group" aria-label="Confirm registration removal" data-prune-confirm>
+                          <p>Only this registration is removed with git worktree remove, without force. Before that:</p>
+                          <ul class="effects">
+                            <li>HEAD {{ entry.oid }} is kept by a recovery reference{{ entry.branch ? '; branch ' + entry.branch + ' is not deleted' : '' }}.</li>
+                            <li>Its index, reflog and per-worktree files are copied inside the Git directory.</li>
+                            <li>Git rechecks every registration; if anything changed, nothing is removed.</li>
+                          </ul>
+                          <p>Uncommitted work in a disconnected directory is not recovered. Reconnect storage first if it still exists.</p>
+                          <button type="button" data-prune-execute [disabled]="unavailable()" (click)="prune(entry)">Remove registration</button>
+                          <button type="button" [disabled]="pending()" (click)="cancelPrune(entry)">Cancel</button>
+                        </div>
+                      } @else {
+                        <button type="button" [attr.data-prune-open]="entry.path" [disabled]="unavailable()"
+                          (click)="confirm(entry)">Remove with recovery…</button>
+                      }
+                    }
                   } @else { <span>Not reported as prunable</span> }
                 </li>
               }
@@ -50,11 +81,11 @@ export interface WorktreeRegistrationRequest {
             @else { <p>No removals were reported by this dry-run. This does not prove every registration link is healthy.</p> }
             <p>If a directory was moved, repair its registration instead. If storage is disconnected,
               reconnect it or lock the registration. Pruning can lose administrative index/reflog metadata;
-              do not use it to clean dirty or recoverable work. Safe removal is not available in this review.</p>
+              do not use it to clean dirty or recoverable work. Locked and main registrations are never removed here.</p>
           }
           <gc-git-help topic="worktree" label="Learn about worktree registration and pruning…" />
           <footer><button type="button" [disabled]="unavailable()" (click)="reload()">Reload review</button>
-            <button data-registration-close type="button" [disabled]="loading() || git.busy()" (click)="close()">Close</button></footer>
+            <button data-registration-close type="button" [disabled]="loading() || pending() || git.busy()" (click)="close()">Close</button></footer>
         </section>
       </div>
     }
@@ -71,6 +102,9 @@ export interface WorktreeRegistrationRequest {
     button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); }
     button:disabled { opacity: .5; cursor: not-allowed; } button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     [role=alert] { color: var(--danger); }
+    .confirm { margin-top: 8px; padding: 10px; border: 1px solid var(--inspector-divider); border-radius: 5px; }
+    .confirm button { margin: 4px 8px 0 0; } .effects { list-style: disc; padding-left: 18px; } .effects li { padding: 2px 0; border: 0; display: list-item; }
+    li > button { margin-top: 6px; }
   `],
 })
 export class WorktreeRegistrationDialogComponent {
@@ -80,16 +114,19 @@ export class WorktreeRegistrationDialogComponent {
   readonly review = signal<WorktreeRegistrationReview | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly confirming = signal<WorktreeRegistration | null>(null);
+  readonly pending = signal(false);
+  readonly pruned = signal<WorktreeRegistrationPruneResult | null>(null);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
 
   constructor() {
     effect(() => {
-      if (this.request()) untracked(() => { void this.reload(); });
+      if (this.request() && !this.request()?.submodules) untracked(() => { void this.reload(); });
     });
   }
 
   unavailable(): boolean {
-    return this.loading() || this.git.busy() || this.request()?.repositoryId !== this.git.activeRepositoryId();
+    return this.loading() || this.pending() || this.git.busy() || this.request()?.repositoryId !== this.git.activeRepositoryId();
   }
 
   async reload(): Promise<void> {
@@ -97,6 +134,7 @@ export class WorktreeRegistrationDialogComponent {
     if (!target || this.unavailable()) return;
     this.loading.set(true);
     this.review.set(null);
+    this.confirming.set(null);
     this.error.set('');
     try {
       const review = await this.git.reviewWorktreeRegistrations(target.repositoryId);
@@ -111,8 +149,50 @@ export class WorktreeRegistrationDialogComponent {
       this.error() || target.repositoryId !== this.git.activeRepositoryId() ? '[role=alert]' : '[data-registration-result]')?.focus());
   }
 
+  confirm(entry: WorktreeRegistration): void {
+    this.pruned.set(null);
+    this.error.set('');
+    this.confirming.set(entry);
+    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-prune-execute]')?.focus());
+  }
+
+  cancelPrune(entry: WorktreeRegistration): void {
+    this.confirming.set(null);
+    setTimeout(() => [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('[data-prune-open]') ?? [])]
+      .find(button => button.dataset['pruneOpen'] === entry.path)?.focus());
+  }
+
+  async prune(entry: WorktreeRegistration): Promise<void> {
+    const target = this.request();
+    if (!target || !entry.oid || this.unavailable() || !this.git.requireRecoveryRepository(target.repositoryId)) return;
+    this.pending.set(true);
+    this.error.set('');
+    let result: WorktreeRegistrationPruneResult | null = null;
+    try {
+      const outcome = await this.git.run('Removing reviewed worktree registration…', async () => {
+        result = await invoke<WorktreeRegistrationPruneResult>('prune_worktree_registration', { repoId: target.repositoryId,
+          request: { path: entry.path, expectedOid: entry.oid, expectedBranch: entry.branch } });
+      }, target.repositoryId);
+      if (this.request() !== target) return;
+      if (outcome !== 'success' || !result) {
+        this.confirming.set(null);
+        this.error.set(`${this.git.error() ?? 'The registration was not removed.'} Reload the review before retrying.`);
+        setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[role=alert]')?.focus());
+        return;
+      }
+      this.git.activity.set('Worktree registration removed; HEAD and metadata preserved');
+      await this.git.refreshRepositoryInBackground(target.repositoryId);
+    } finally {
+      this.pending.set(false);
+    }
+    if (this.request() !== target) return;
+    await this.reload();
+    this.pruned.set(result);
+    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-prune-result]')?.focus());
+  }
+
   close(): void {
-    if (this.loading() || this.git.busy()) return;
+    if (this.loading() || this.pending() || this.git.busy()) return;
     const opener = this.request()?.returnFocus;
     this.closed.emit();
     setTimeout(() => {

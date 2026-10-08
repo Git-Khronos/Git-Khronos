@@ -67,7 +67,7 @@ resolved object IDs.
 
 Native commands use argument arrays, literal pathspecs, and validated ref/OID,
 date, and repository-relative-path input. No shell interpolation, external diff
-driver, or text-conversion helper is used for history queries. Git 2.34 or newer
+driver, or text-conversion helper is used for history queries. Git 2.39 or newer
 is the application's supported baseline; these commands require no newer Git
 options. Search subprocesses have a 15-second time limit and separate 16-MiB
 stdout/stderr limits. Ref discovery is limited to 4,096 tips and a bounded

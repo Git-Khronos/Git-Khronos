@@ -262,11 +262,53 @@ fn create_series(
             .zip(oids)
             .any(|(found, oid)| *found != oid.as_bytes())
     {
+        if omitted_only_empty_commits(path, oids, &reported)? {
+            return Err(AppError::new(
+                "mailPatchEmptyCommitsUnsupported",
+                "This Git version leaves empty commits out of mail patches, so the series would be incomplete.",
+                Some("Deselect the empty commits or upgrade Git (2.43 includes them), then prepare a fresh review. No file was written."),
+            ));
+        }
         return Err(refused(
             "The generated series does not separate exactly the selected commits. A commit message may contain a line that Git would treat as a new patch; use local Git for that series.",
         ));
     }
     Ok((commits, output.stdout))
+}
+
+/// True when Git reported the selection in order except for commits that change nothing.
+fn omitted_only_empty_commits(path: &Path, oids: &[String], reported: &[&[u8]]) -> Result<bool, AppError> {
+    let mut found = reported.iter().peekable();
+    let mut omitted = Vec::new();
+    for oid in oids {
+        if found.peek().is_some_and(|next| **next == oid.as_bytes()) {
+            found.next();
+        } else {
+            omitted.push(oid);
+        }
+    }
+    if found.next().is_some() || omitted.is_empty() {
+        return Ok(false);
+    }
+    for oid in omitted {
+        let output = run_git(path, &["show", "-s", "--format=%T %P", oid, "--"])?;
+        ensure_success("inspect an omitted commit", &output)?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut fields = text.split_whitespace();
+        let tree = fields.next().unwrap_or_default();
+        let parent_tree = match fields.next() {
+            Some(parent) => {
+                let tree = run_git(path, &["rev-parse", "--verify", &format!("{parent}^{{tree}}")])?;
+                ensure_success("inspect an omitted commit's parent", &tree)?;
+                String::from_utf8_lossy(&tree.stdout).trim().to_owned()
+            }
+            None => return Ok(false),
+        };
+        if fields.next().is_some() || tree != parent_tree {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 pub fn review_mail_patch_export(path: &Path, oids: &[String]) -> Result<MailPatchReview, AppError> {
@@ -822,7 +864,10 @@ mod tests {
             Fixture::git(&fixture.source, &["config", key, value]);
         }
         let selection = vec![root.clone(), empty.clone(), binary.to_uppercase()];
-        let review = review_mail_patch_export(&fixture.source, &selection).unwrap();
+        let review = match review_mail_patch_export(&fixture.source, &selection) {
+            Err(error) if error.kind == "mailPatchEmptyCommitsUnsupported" => return,
+            result => result.unwrap(),
+        };
         assert_eq!(review.request.oids, vec![root, empty, binary]);
         assert!(review.commits[0].root && !review.commits[0].empty);
         assert!(review.commits[1].empty && !review.commits[2].empty);
@@ -1133,7 +1178,12 @@ mod tests {
             &["commit", "--allow-empty", "-m", "Empty change"],
         );
         let empty = Fixture::head(&fixture.source);
-        let series = fixture.export(&[conflicting, independent, empty], "series.mbox");
+        let selection = [conflicting, independent, empty];
+        if let Err(error) = review_mail_patch_export(&fixture.source, &selection) {
+            assert_eq!(error.kind, "mailPatchEmptyCommitsUnsupported", "{error:?}");
+            return;
+        }
+        let series = fixture.export(&selection, "series.mbox");
         let target = fixture.target(&base);
         fs::write(target.join("text"), b"target\n").unwrap();
         Fixture::git(&target, &["commit", "-qam", "Target change"]);

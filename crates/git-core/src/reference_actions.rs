@@ -76,7 +76,31 @@ pub fn create_signed_tag(
         path,
         &["tag", "--sign", "--message", message, name, oid],
         "create the signed annotated tag",
-    )
+    )?;
+    // Some Git versions report success after SSH signing fails and keep an unsigned tag.
+    let reference = format!("refs/tags/{name}");
+    let inspected = run_git(
+        path,
+        &["for-each-ref", "--format=%(objectname)%00%(contents:signature)", "--", &reference],
+    )?;
+    ensure_success("confirm the tag signature", &inspected)?;
+    let text = String::from_utf8_lossy(&inspected.stdout);
+    let (tag_oid, signature) = text.split_once('\0').unwrap_or((text.trim(), ""));
+    if !signature.trim().is_empty() {
+        return Ok(());
+    }
+    let tag_oid = tag_oid.trim();
+    let removed = !tag_oid.is_empty()
+        && run_mutation(path, &["update-ref", "-d", &reference, tag_oid], "remove the unsigned tag").is_ok();
+    Err(AppError::new(
+        "tagSigningFailed",
+        "Git created the tag without a signature, so it was not kept.",
+        Some(if removed {
+            "Check the configured signing key and program, then retry. No unsigned tag remains."
+        } else {
+            "Check the configured signing key and program. Inspect and delete the unsigned tag before retrying."
+        }),
+    ))
 }
 
 pub fn verify_tag(path: &Path, name: &str) -> Result<(), AppError> {

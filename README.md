@@ -21,7 +21,8 @@ Angular, Nx, Rust, and Tauri.
 - Node.js 24.15+ LTS or Node.js 26
 - pnpm 10 or newer
 - Rust 1.99.0 (pinned by `rust-toolchain.toml`)
-- Git 2.34 or newer
+- Git 2.39 or newer (the native suite is qualified against Git 2.39, 2.43 and
+  current releases; older Git lacks options such as NUL-separated worktree lists)
 - The [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) for
   your platform
 
@@ -237,18 +238,42 @@ custom tracking destinations are refused before updates. Symbolic tracking
 destinations are checked to protect local branch references.
 Scoped fetching currently requires Git's file-based reference storage; other
 storage formats are refused with local-Git guidance.
+In a shallow repository the same dialog shows **History depth**: keep the
+current depth, deepen by a number of commits, or download complete history from
+one selected remote. Branches first fetched while deepening may themselves be
+shallow. A cancelled clone can leave a partial destination folder; the error
+names it, and Git Chronos never deletes it automatically.
+Clones are not recursive: after cloning, initialize each submodule you need
+from its **Submodules** menu (**Initialize**).
+
+Opening a bare repository, Git's internal `.git` folder, a repository whose
+format the installed Git does not support, or a folder owned by another user is
+refused with an explanation and next steps; nothing is changed. Empty
+repositories (unborn branch) and detached HEAD open normally.
 
 **Worktrees → Worktree actions → Review registrations and prune report…**
 reads the complete NUL-delimited registration list and Git's verbose prune
 dry-run, with `--expire=now`. It displays locked/prunable reasons and preserves
 literal paths. This more aggressive expiry policy can identify entries that
 normal age-based pruning would retain. The observations are sequential, not an
-atomic snapshot or deletion lease. No registration, directory or branch is
-removed or repaired. An empty dry-run report does not prove every link is
+atomic snapshot or deletion lease. Reviewing removes or repairs nothing. An empty dry-run report does not prove every link is
 healthy; repair externally moved directories and reconnect or lock offline
 storage instead of deleting their metadata. Unsupported output and review
-limits produce explicit errors. Recoverable registration removal remains
-unfinished.
+limits produce explicit errors.
+
+A missing, unlocked linked registration offers **Remove with recovery…**. After
+explicit confirmation, Git Chronos rechecks the reviewed HEAD/branch, that the
+directory is still absent and that the exact administrative directory is
+identified by an absolute link. It protects HEAD and any worktree-specific
+references under `refs/git-chronos/recovery/`, then copies the administrative
+index, reflog and per-worktree files to `git-chronos-worktree-registrations/`
+in the common Git directory. After a final recheck of every registration and the
+metadata, it runs `git worktree remove` without force for that path only, never
+the global prune. It then verifies that other registrations and
+branch/tag/remote references are unchanged. Main, bare, locked, existing,
+stale, relative-link and reftable registrations are refused. Branches are never
+deleted; uncommitted files in a disconnected directory cannot be recovered, and
+reflog entries beyond HEAD are copied but not protected from garbage collection.
 All-remotes fetching is sequential: failure or cancellation can leave earlier
 remotes updated, and the graph refreshes to show actual state.
 Ordinary **Fetch All**, keyboard/background fetch and pull retain Git's configured
@@ -275,7 +300,55 @@ symlink directories, submodule index entries, relative registration backlinks,
 and other registrations whose links need repair. These cases require local Git.
 This prevents Git's repair command from silently repairing other broken links
 alongside the selected worktree. No registration is pruned and no rollback is
-promised. Registration pruning and broader lifecycle workflows remain unfinished.
+promised. Broader lifecycle workflows remain unfinished.
+
+**Submodules → Submodule actions → Review submodule state…** lists every
+gitlink and `.gitmodules` declaration without changing anything. It explains
+unrecorded or undeclared paths, initialization and checkout state, a checked-out
+commit that differs from the recorded one, staged gitlink changes (HEAD versus
+index), uncommitted or untracked files inside, conflicting commit sides, and a
+local URL that differs from an absolute declared URL. A configured
+`submodule.<name>.ignore` setting does not hide changes in this review. Relative
+declared URLs are reported without resolution. Reviews are bounded to 500 paths;
+bare repositories are refused.
+
+When an initialized submodule's local URL differs from `.gitmodules` (or the
+declaration is relative), **Sync local URL from .gitmodules…** confirms the
+declared and current values, then runs `git submodule sync` for that path only
+(not recursively). The repository and its review must still match. Afterwards
+Git Chronos verifies that only `submodule.<name>.url` and, inside a checked-out
+submodule, one default-remote URL changed, and reports both previous values so
+they can be restored with `git config`. Committed files and the index are not
+changed.
+
+When a clean, checked-out submodule sits on a different commit than the one
+recorded in the parent index, **Check out recorded commit…** detaches it at the
+recorded commit with `git submodule update --no-fetch --checkout` for that path
+only. It never fetches, overrides a configured merge/rebase/none update mode,
+and refuses tracked changes, conflicts, stale reviews and unavailable commits.
+The previous submodule commit is kept under `refs/git-chronos/recovery/` inside
+the submodule; branches, untracked files and the parent index are unchanged.
+The optional nested mode then applies the same protected checkout to every
+initialized nested submodule (up to 8 levels), reporting each moved commit,
+recovery reference and skipped entry (for example, not initialized). Edits at
+any depth are refused before anything changes; drift that is only nested
+recorded commits is allowed. It never initializes or fetches and promises no
+rollback.
+
+**Deinitialize…** is offered only for a declared submodule that is checked out
+at its recorded commit with no edits or untracked files at any depth. It runs
+`git submodule deinit` without `--force`, so Git refuses anything that would be
+lost. The checked-out files and the whole local `submodule.<name>` section are
+removed; the submodule's repository data under `.git/modules`, its branches,
+the gitlink and `.gitmodules` stay, and an embedded `.git` directory is first
+moved there by Git. The removed settings are reported for manual restoration.
+
+**Remove from project…** stages, but does not commit, the deletion of a declared
+submodule's gitlink and its `.gitmodules` declaration with `git rm` (no force).
+It requires no staged gitlink change, no unstaged `.gitmodules` edits, and a
+checked-out submodule that is clean at its recorded commit; uninitialized ones
+qualify. Other staged changes, other declarations, the submodule repository data
+and its local settings are kept and verified.
 
 **Preferences → Git Features → Manage tracking patterns…** lists Git LFS rules
 with their source, tracking/exclusion and lockable status. This requires Git LFS
@@ -300,6 +373,20 @@ JSON-capable `git-lfs` on `PATH`, run
 `cargo test -p git-chronos-git-core lfs_tracking -- --include-ignored`.
 The regular native suite explicitly reports these fixtures as ignored when
 they are not selected; renderer journeys use mocked IPC, not packaged Tauri.
+
+Expand **File locks on the LFS server** in the same dialog to coordinate edits
+to files that cannot be merged. **Load locks** contacts the configured LFS
+endpoint only when chosen and lists each lock's path, owner and time, marking
+your own. Lock a tracked file by its repository-relative path; untracked or
+missing paths, existing locks and unconfirmed server replies are refused.
+**Unlock** is offered for your own locks and keeps the lock while the file has
+uncommitted changes. Collaborators' locks need **Force unlock…**, which warns
+that breaking their lock can lead to conflicting binary edits. Unlock and force
+unlock recheck the server list first and refuse if the lock changed. Servers
+without locking support, unreachable endpoints and refusals are reported with
+their reason; files, the index and references are not changed. Real lock
+fixtures use a local test server:
+`cargo test -p git-chronos-git-core lfs_locks -- --include-ignored`.
 
 The same dialog's **Inspect effective file attributes** accepts one literal
 repository-relative path and works even without Git LFS. It compares `filter`,
@@ -535,7 +622,7 @@ pull. A gone upstream stays configured until you intentionally change it.
 Native fixtures qualify opposing configuration, divergent/fast-forward histories,
 conflict aborts, staged/unstaged preservation, deleted upstreams, removed remotes
 and occupied worktree branch protections. Renderer acceptance uses mocked IPC;
-live transport, minimum-Git-version and packaged-platform acceptance remain.
+live transport and packaged-platform acceptance remain.
 
 The interactive rebase editor supports **Fixup** (or `F` for the selected row)
 alongside Pick, Reword, Edit, Squash and Drop. Fixup combines the changes into the
@@ -653,8 +740,11 @@ validated and the original source tip is preserved under
 The reference protects committed history, not arbitrary filesystem/hook effects
 or remote updates. Existing Continue/Skip/Abort handle interrupted execution.
 The row editor remains a linear local-branch workflow; merge preservation uses
-the separate topology review described above. Combined root-onto replay,
-broader autosquash variants and packaged/platform acceptance remain unfinished.
+the separate topology review described above. Whole-history editing can also
+choose a Replay destination (`git rebase -i --root --onto`): the first replayed
+commit gains that captured commit as its parent, destinations inside the
+reviewed history are refused and the destination reference never moves. Broader
+autosquash variants and packaged/platform acceptance remain unfinished.
 
 Cherry-pick and revert confirmations for a **single merge commit** require an
 explicit 1-based mainline parent. Cherry-pick applies the merge difference

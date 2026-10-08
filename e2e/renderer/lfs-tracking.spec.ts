@@ -108,7 +108,8 @@ test('LFS help opens its selected topic without changing rules and returns to th
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns', exact: true });
   await expect(dialog.getByRole('button', { name: 'Review removal of *.psd', exact: true })).toBeVisible();
-  const callsBefore = await page.evaluate(() => (window as any).__lfsTracking.calls.length);
+  const lfsCalls = () => page.evaluate(() => (window as any).__lfsTracking.calls.filter((call: { command: string }) => call.command.startsWith('lfs_')).length);
+  const callsBefore = await lfsCalls();
   const opener = dialog.getByRole('button', { name: 'Learn about tracking rules and LFS pointers…', exact: true });
   await opener.click();
   const documentation = page.getByRole('dialog', { name: 'Git command reference', exact: true });
@@ -118,7 +119,7 @@ test('LFS help opens its selected topic without changing rules and returns to th
   await expect(documentation).toHaveCount(0);
   await expect(opener).toBeFocused();
   await expect(dialog).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__lfsTracking.calls.length)).toBe(callsBefore);
+  expect(await lfsCalls()).toBe(callsBefore);
 });
 
 test('review root LFS rule with explicit source scope and pinned state, then refresh list', async ({ page }) => {
@@ -182,7 +183,7 @@ test('LFS patterns modal contains keyboard focus in a compact window and restore
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
   await page.keyboard.press('Tab');
-  await expect(dialog.locator('summary')).toBeFocused();
+  await expect(dialog.locator('summary').first()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(dialog.getByRole('button', { name: 'Inspect local objects', exact: true })).toBeVisible();
   await page.keyboard.press('Shift+Tab');
@@ -346,7 +347,7 @@ test('LFS object scan explains pointer, missing cache and size-only content evid
   await setup(page);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
-  await dialog.locator('summary').click();
+  await dialog.locator('summary').first().click();
   await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
   const result = dialog.locator('.object-result');
   await expect(result).toBeFocused();
@@ -368,7 +369,7 @@ test('LFS object scan failures remain errors and empty scope never implies hydra
   await setup(page);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
-  await dialog.locator('summary').click();
+  await dialog.locator('summary').first().click();
   await page.evaluate(() => { (window as any).__lfsTracking.objectsFail = true; });
   await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
   await expect(dialog.getByRole('alert')).toBeFocused();
@@ -388,16 +389,16 @@ test('LFS object scan blocks dismissals while pending and repository switches pr
   await setup(page);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
-  await dialog.locator('summary').click();
+  await dialog.locator('summary').first().click();
   await page.evaluate(() => { (window as any).__lfsTracking.objectsHold = true; });
   await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeDisabled();
-  await expect(dialog.locator('summary')).toHaveAttribute('aria-disabled', 'true');
-  await dialog.locator('summary').dispatchEvent('click');
-  await expect(dialog.locator('details')).toHaveAttribute('open', '');
-  await dialog.locator('summary').focus();
+  await expect(dialog.locator('summary').first()).toHaveAttribute('aria-disabled', 'true');
+  await dialog.locator('summary').first().dispatchEvent('click');
+  await expect(dialog.locator('details').first()).toHaveAttribute('open', '');
+  await dialog.locator('summary').first().focus();
   await page.keyboard.press('Enter');
-  await expect(dialog.locator('details')).toHaveAttribute('open', '');
+  await expect(dialog.locator('details').first()).toHaveAttribute('open', '');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   await page.evaluate(() => { (window as any).__lfsTracking.finish(); });
@@ -416,7 +417,7 @@ async function openFetchReview(page: Page): Promise<void> {
     await setup(page);
     await open(page);
     const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
-    await dialog.locator('summary').click();
+    await dialog.locator('summary').first().click();
     await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
     await dialog.getByLabel('Remote for selective fetch').selectOption('backup');
     await dialog.getByRole('button', { name: 'Review fetch of assets/missing.bin', exact: true }).click();
@@ -484,7 +485,7 @@ test('selective LFS transfer is keyboard-contained and cancel never presents dow
     await dialog.getByRole('button', { name: 'Fetch reviewed object', exact: true }).click();
     await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeDisabled();
     await expect(dialog.getByLabel('Remote for selective fetch')).toBeDisabled();
-    await expect(dialog.locator('summary')).toHaveAttribute('aria-disabled', 'true');
+    await expect(dialog.locator('summary').first()).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     await page.keyboard.press('Tab');
@@ -513,7 +514,7 @@ test('repository switch after LFS fetch review disables transfer without invokin
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: 'Manage tracking patterns…', exact: true }).click();
     await expect(dialog.locator('.fetch-review')).toHaveCount(0);
-    await dialog.locator('summary').click();
+    await dialog.locator('summary').first().click();
     await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
     await expect(dialog.getByLabel('Remote for selective fetch')).toHaveValue('');
   });
@@ -542,7 +543,7 @@ async function openHydrationReview(page: Page): Promise<void> {
   await setup(page);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
-  await dialog.locator('summary').click();
+  await dialog.locator('summary').first().click();
   await dialog.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
   await dialog.getByRole('button', { name: 'Review hydration of assets/pointer.bin', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Hydrate reviewed file', exact: true })).toBeFocused();
@@ -603,7 +604,7 @@ test('local LFS hydration pending state traps keyboard focus and cancellation ne
   await page.evaluate(() => { (window as any).__lfsTracking.checkoutHold = true; });
   await dialog.getByRole('button', { name: 'Hydrate reviewed file', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeDisabled();
-  await expect(dialog.locator('summary')).toHaveAttribute('aria-disabled', 'true');
+  await expect(dialog.locator('summary').first()).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');

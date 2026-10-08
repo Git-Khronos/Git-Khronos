@@ -7,7 +7,8 @@ workflows run in the packaged desktop application—not merely in a browser mock
 
 - [x] Nx, Angular, Tauri, and Rust workspace
 - [x] Original design system and application icon
-- [x] System Git detection and minimum-version guidance
+- [x] System Git detection and minimum-version guidance (Git 2.39 baseline; the
+  native suite is qualified against Git 2.39, 2.43 and current releases)
 - [x] Open and refresh local repositories
 - [x] Recent repositories, working-tree summary, branches, and recent commits
 - [x] Stage all, unstage all, commit, branch creation/switching
@@ -21,8 +22,14 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] File and commit diffs
 - [x] Filesystem-driven automatic refresh
 - [x] Non-blocking, bounded large-repository loading and progressive tab restore
-- [x] Clone and initialize workflows
+- [x] Clone and initialize workflows (shallow/single-branch; cancelled clones disclose partial destinations;
+  recursive submodule clone remains)
+- [x] Shallow-history deepening or completion from one selected remote
+- [x] Unborn/detached HEAD qualification; explained refusal of bare, `.git`-folder, unsupported-format and foreign-owner repositories
+- [ ] Read-only browsing of bare repositories
 - [x] Repository-scoped sparse checkout with preferences and toolbar actions
+  (modified/unmerged paths and populated submodules left outside a selection,
+  and changes Stage all cannot stage there, are named; nothing is deleted)
 - [ ] Generated Rust-to-TypeScript IPC bindings
 
 ## Linux daily-driver beta — in progress
@@ -79,11 +86,11 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Explicit whole-history editing including the actual root on the current
   local branch, with complete bounded linear review and protected original tip
   (shallow/merge/all-drop refusal, root Reword/Edit/Continue/Abort and unrelated
-  ref isolation; root-onto combinations remain unsupported)
+  ref isolation; optional captured Replay destination via `--root --onto`)
 - [x] Explicit selected-suffix replay onto a captured destination commit
   (original boundary/full descendant review, immutable full-ID disclosure,
-  unrelated-ref isolation and conflict/empty/Edit controls; root-onto
-  combinations and merge-preserving replay remain separate)
+  unrelated-ref isolation and conflict/empty/Edit controls; merge-preserving
+  replay remains separate)
 - [x] Separately reviewed merge-preserving rebase with Git-owned generated
   topology, explicit no-rebase-cousins semantics and immutable tip preflight
   (two-parent merges, native conflict/reload/Continue/Abort, original manual
@@ -116,8 +123,7 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Reviewed linked-worktree move preserving dirty files and branch occupancy
   (native fixtures and renderer journeys; packaged acceptance remains)
 - [x] Verified registration repair after external linked-worktree directory moves
-  (scoped link checks and explicit unsupported cases; registration prune and
-  packaged acceptance remain)
+  (scoped link checks and explicit unsupported cases; packaged acceptance remains)
 - [x] Commit signature verification in the inspector
 - [x] Effective repository signing configuration diagnostics
 - [x] Explicit per-draft sign-off and unchanged-tree commit permission
@@ -147,7 +153,7 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (menu choices override rebase/fast-forward defaults only for that pull;
   real-Git merge parents, replay, fast-forward, conflicts/abort, dirty-work
   protection and missing/gone upstreams; occupied worktree protections;
-  live transport, minimum-version and packaged-platform acceptance remain)
+  live transport and packaged-platform acceptance remain)
 - [x] Bounded configured-template loading with Git-owned comment preparation,
   visible failure/repair feedback and confirmed draft replacement
   (preserves policy and repository boundaries; packaged acceptance remains)
@@ -168,14 +174,29 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (original explanations and scope/safety guidance; native browser-opening and
   packaged accessibility acceptance remain)
 - [x] Read-only worktree registration and explicit-expiry prune dry-run review
-  (bounded complete registration parsing; recoverable prune execution remains
-  unfinished)
+  (bounded complete registration parsing)
+- [x] Recoverable single-registration removal for missing, unlocked worktrees
+  (protected HEAD/per-worktree refs, copied administrative metadata, rechecked
+  scope, no global prune; packaged acceptance remains)
+- [x] Read-only submodule state review
+  (gitlink/declaration/initialization/checkout/staged/dirty/conflict/URL state;
+  recursive update and safe deinit remain)
+- [x] Reviewed single-submodule URL sync with verified configuration scope
+  (previous URLs reported for manual restoration)
+- [x] Reviewed recorded-commit checkout for one submodule
+  (no fetch, optional nested mode for initialized submodules, each previous
+  commit protected by a recovery reference)
+- [x] Safe single-submodule deinit (no force, repository data kept, removed
+  local settings reported)
+- [x] Staged submodule removal from the project (gitlink and declaration only,
+  repository data and local settings kept)
 - [ ] Expanded Git LFS diagnostics
   (tracking-rule listing, reviewed root untrack and working/index effective
   attributes, bounded local-object diagnostics and reviewed single-file cache
-  fetch with local-transfer retry/cancellation and SHA-256-verified single-pointer
-  hydration are qualified; live HTTPS/SSH LFS transfer acceptance, safe prune,
-  locking and packaged acceptance remain)
+  fetch with local-transfer retry/cancellation, SHA-256-verified single-pointer
+  hydration and reviewed file lock/unlock/force-unlock against a local lock
+  server are qualified; live HTTPS/SSH LFS transfer and hosted-lock acceptance,
+  safe prune and packaged acceptance remain)
 - [x] Persistent continue/skip/abort flows for rebase, merge, cherry-pick, and revert
 - [ ] Operation previews and temporary recovery references
   (durable discard and reset checkpoints, explicit recovery cleanup and native

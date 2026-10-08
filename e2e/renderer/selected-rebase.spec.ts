@@ -93,6 +93,28 @@ test('whole-history review explicitly includes root with no unchanged base and s
         action: index ? 'pick' : 'reword', message: index ? null : 'Reviewed root message' })) });
 });
 
+test('whole-history Replay destination sends root onto and clearing restores independent history', async ({ page }) => {
+  await requestRoot(page);
+  const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
+  const destination = dialog.getByLabel('Replay destination', { exact: true });
+  await expect(destination).toHaveValue('');
+  await expect(destination.locator('option').first()).toHaveText('Keep as independent history (no parent)');
+  await destination.selectOption('d'.repeat(40));
+  await expect(dialog).toContainText('Explicit --root --onto destination');
+  await expect(dialog).toContainText('the destination reference is not changed');
+  await expect(dialog).not.toContainText('There is no unchanged parent base');
+  await destination.selectOption('');
+  await expect(dialog).toContainText('There is no unchanged parent base');
+  await expect(dialog).not.toContainText('Explicit --root --onto destination');
+  await destination.selectOption('d'.repeat(40));
+  await dialog.getByRole('button', { name: 'Start Rebase', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const result = await page.evaluate(() => (window as any).__selectedRebase);
+  const args = result.calls.find((call: any) => call.command === 'execute_interactive_rebase').args;
+  expect(args).toMatchObject({ root: true, ontoOid: 'd'.repeat(40) });
+  expect(args.selectionOids).toBeUndefined();
+});
+
 test('whole-history all-drop cannot start and Reset plus compact help and Escape retain root scope and drafts', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await requestRoot(page);

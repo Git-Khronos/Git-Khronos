@@ -11,7 +11,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
     const entry = { oid: oldOid, authorName: 'Old Author', authorEmail: 'old@example.test', authoredAt: '2001-01-01T00:00:00Z', subject: 'Older than every loaded graph page' };
     const state = { app, oldOid, parentOid, query, entry, calls: [] as any[], searchPages: 0, filePages: 0, failNext: false, holdNext: false, reject: null as any };
     (window as any).__historyFixture = state;
-    app.git.systemInfo.set({ appVersion: 'history fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.34.0' });
+    app.git.systemInfo.set({ appVersion: 'history fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         state.calls.push({ command, args });

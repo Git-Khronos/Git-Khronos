@@ -7,7 +7,8 @@ async function setup(page: Page): Promise<void> {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
-    const fixture = { calls: [] as any[], fail: false, hold: false, resolve: null as any };
+    const fixture = { calls: [] as any[], fail: false, hold: false, resolve: null as any,
+      shallow: { shallow: false, boundaryCommits: 0 } as any };
     (window as any).__fetchFixture = fixture;
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
@@ -21,6 +22,7 @@ async function setup(page: Page): Promise<void> {
           });
           return Promise.resolve(git.repository());
         }
+        if (command === 'shallow_history_state') return Promise.resolve(fixture.shallow);
         if (command === 'cancel_git_operation') {
           fixture.resolve?.();
           return Promise.resolve(true);
@@ -164,4 +166,49 @@ test('no-remotes state explains why scoped fetch is unavailable', async ({ page 
   const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
   await expect(dialog.getByRole('alert')).toContainText('add a remote before fetching');
   await expect(dialog.getByRole('button', { name: 'Fetch branches', exact: true })).toBeDisabled();
+});
+
+test('complete history hides depth choices; shallow history requires one remote and sends typed deepen options', async ({ page }) => {
+  await setup(page);
+  await openOptions(page);
+  const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+  await expect.poll(() => page.evaluate(() => (window as any).__fetchFixture.calls.some((call: any) => call.command === 'shallow_history_state'))).toBe(true);
+  await expect(dialog.getByRole('group', { name: 'History depth' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 1 }; });
+  await openOptions(page);
+  const history = dialog.getByRole('group', { name: 'History depth' });
+  await expect(history).toContainText('behind 1 boundary commit.');
+  await expect(history.getByRole('radio', { name: 'Keep the current depth' })).toBeChecked();
+  await expect(history.getByLabel('Commits to deepen by')).toBeDisabled();
+  await history.getByRole('radio', { name: /Deepen by/ }).check();
+  await history.getByLabel('Commits to deepen by').fill('0');
+  await expect(history.getByRole('alert')).toContainText('whole number');
+  const submit = dialog.getByRole('button', { name: 'Fetch and extend history' });
+  await expect(submit).toBeDisabled();
+  await history.getByLabel('Commits to deepen by').fill('25');
+  await dialog.getByLabel('Fetch from').selectOption('');
+  await expect(history.getByRole('alert')).toContainText('Choose one remote');
+  await expect(submit).toBeDisabled();
+  await dialog.getByLabel('Fetch from').selectOption('upstream');
+  await submit.click();
+  await expect(dialog).toHaveCount(0);
+  const call = await page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_branches'));
+  expect(call.args.options).toEqual({ remote: 'upstream', prune: false, history: { mode: 'deepen', commits: 25 } });
+});
+
+test('complete-history choice discloses size and a shallow source, then reopens at the current depth', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 3 }; });
+  await openOptions(page);
+  const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+  const history = dialog.getByRole('group', { name: 'History depth' });
+  await expect(history).toContainText('3 boundary commits');
+  await history.getByRole('radio', { name: 'Download complete history' }).check();
+  await expect(history).toContainText('remote is itself shallow');
+  await dialog.getByRole('button', { name: 'Fetch and extend history' }).click();
+  const call = await page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_branches'));
+  expect(call.args.options).toEqual({ remote: 'origin', prune: false, history: { mode: 'complete' } });
+  await openOptions(page);
+  await expect(history.getByRole('radio', { name: 'Keep the current depth' })).toBeChecked();
 });

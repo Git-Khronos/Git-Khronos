@@ -141,8 +141,8 @@ unrelated-ref/autostash/autosquash/merge preservation guards are retained.
 Hooks/signing remain enabled. Different destination files can cause conflicts
 or newly empty effects; native Continue/Skip/Abort remains explicit. Destination
 choices retain reviewed actions/messages; restoring original-base choice runs
-no command. Combined root-onto replay remains unsupported; merge preservation
-uses the separate topology review described above.
+no command. Whole-history editing supports the same captured destination
+(see below); merge preservation uses the separate topology review described above.
 
 Owned real-Git fixtures qualify exact resulting parents/trees/messages/authors,
 captured destination despite branch movement, no unrelated-ref updates across
@@ -175,7 +175,15 @@ amend/Continue/Abort, conflict Abort, exact500/501 review boundaries and
 stale/shallow/merge/detached/ref refusals. Renderer journeys exercise explicit
 scope, exact optional IPC, all-drop disabling, compact help/draft/keyboard
 escape, refusal/retry and repository-switch invalidation.
-Root-onto combinations remain unsupported. Merge preservation uses its own
+An optional captured Replay destination runs public `git rebase -i --root
+--onto <commit>`: the first replayed commit gains that destination as parent,
+destinations inside the reviewed history refuse before side effects, ordinary
+non-selected/non-root modes still refuse a destination, and the destination
+reference never moves. Owned fixtures verify resulting parent/trees/messages,
+unchanged destination/unrelated branches, recovery protection and conflict stop
+plus Abort restoring the original tip; a renderer journey verifies exact
+`root`+`ontoOid` IPC and that clearing the choice restores independent history.
+Merge preservation uses its own
 separately reviewed workflow, not the linear root editor.
 No external implementation material or documentation prose copied.
 
@@ -383,9 +391,136 @@ disclosed as more aggressive than Git's normal age-based policy.
 No registration, directory, index, branch or reflog is changed by this review.
 Real-Git fixtures preserve existing state, including dirty and detached
 worktrees; renderer journeys mock IPC and do not establish packaged acceptance.
-Recoverable removal remains a separate unfinished workflow.
+
+## Recoverable single worktree registration removal
+
+The Git manual's global `worktree prune` has no per-entry selection, so this
+independent workflow uses documented `git worktree remove <path>` without
+`--force`. A local Git 2.53 observation confirmed that it removes only the
+named registration when its directory is gone. Preconditions: Git reports the
+entry prunable and unlocked, it is not the main/bare entry, its directory is
+absent, and exactly one administrative directory has an absolute `gitdir`
+link to it. Reftable storage, relative links, symbolic or malformed
+worktree-specific refs, and special files refuse. HEAD and per-worktree refs
+are protected with the existing recovery-reference mechanism. A bounded,
+byte-verified, synced copy of the administrative directory and a JSON
+description are kept in the common Git directory. Every registration, the link
+and a metadata manifest are rechecked before removal. Afterwards the admin
+directory's absence, other registrations, refs and recovery refs are verified.
+No rollback is promised. Missing working files and other reflog objects are not
+recoverable.
 
 Source: official Git worktree manual. No third-party implementation copied.
+
+## Read-only submodule state review
+
+Independently combines documented outputs: `git ls-files --stage` for gitlink
+mode 160000 entries and conflict stages, `git status --porcelain=v2
+--ignore-submodules=none` submodule flags (`S<c><m><u>`), `.gitmodules` and
+local `submodule.*` configuration, and the submodule's checked-out commit.
+Local Git 2.53 observations: a deleted gitlink reports `1 D. S...` with zero
+modes; untracked submodule content is still flagged with `-uno`; relative
+declared URLs remain relative in `.gitmodules` while local config holds the
+resolved URL. URL comparison is therefore limited to absolute declarations.
+Optional locks are disabled; real-Git fixtures verify index, config,
+`.gitmodules` and HEAD stay byte-identical. No mutation is performed.
+
+## Single submodule URL sync
+
+Uses documented `git submodule sync -- <path>` without `--recursive`. Local Git
+2.53 observations: only `submodule.<name>.url` in the superproject and the
+submodule's default remote URL change (a renamed sole remote is updated, not
+`origin`); push URLs are untouched; relative declarations are resolved by Git
+against the superproject. Uninitialized entries are left alone by Git, so they
+are refused. Expected declared and local URLs are rechecked; afterwards the
+complete `submodule.*` and submodule `remote.*` configuration is compared so any
+additional change is reported as unverified. No rollback is promised; previous
+values are returned for manual restoration.
+
+## Recorded submodule commit checkout
+
+Uses documented `git submodule update --no-fetch --checkout -- <path>` without
+`--recursive`. `--checkout` overrides a configured update mode and `--no-fetch`
+prevents network access, so a missing recorded commit is refused beforehand via
+`git cat-file -e`. Local Git 2.53 observations: the submodule HEAD is detached
+at the recorded commit, branches and untracked files stay, and the parent index
+and HEAD are unchanged. Expected index and checkout commits are rechecked;
+tracked changes and conflicts are refused. The previous commit is protected by
+a recovery reference inside the submodule, and afterwards HEAD, submodule
+references and parent index entries are verified.
+
+Nested mode does not use `--recursive`; it walks initialized nested
+submodules itself and repeats the same single-level step with its own
+protection and verification. Before any change, `git status --porcelain=v2`
+at every level must report only submodule entries without staged changes, so
+nested recorded-commit drift is allowed but file edits are refused.
+Uninitialized, conflicted and refused nested entries are reported as skipped.
+
+## Safe submodule deinit
+
+Uses documented `git submodule deinit -- <path>` without `--force`. Local Git
+2.53 observations: Git refuses when the submodule or a nested submodule has
+edits, untracked files or a commit other than the recorded one; on success it
+empties the directory, removes the entire local `submodule.<name>` section
+(including update, branch and ignore), keeps `.git/modules/<name>` with its
+references, and leaves the gitlink, `.gitmodules` and status unchanged. An
+embedded `.git` directory is absorbed first. Git Chronos rechecks the reviewed
+commit, then verifies the empty directory, the remaining configuration, the
+kept repository data and references, and the parent HEAD, index and
+`.gitmodules`.
+
+## Staged submodule removal
+
+Uses documented `git rm -q -- <path>` without `--force` or `--cached`. Local Git
+2.53 observations: Git refuses edits, untracked files or another checked-out
+commit and refuses unstaged `.gitmodules` changes; on success it removes the
+directory and stages both the gitlink deletion and the declaration edit, while
+local `submodule.<name>` configuration and `.git/modules/<name>` remain.
+Uninitialized entries are removed the same way. Afterwards Git Chronos verifies
+that only the path and `.gitmodules` changed in the index, other declarations,
+local configuration, references in the kept repository data and the parent
+HEAD are unchanged. Reading references from that data passes an explicit work
+tree because its recorded one no longer exists.
+
+## Clone history limits and interrupted clones
+
+Uses documented `git clone [--branch <name> --single-branch] [--depth <n>] --
+<source> <destination>`. Local Git 2.53 observations: `--depth` is ignored for
+plain local paths but honored for `file://` sources, producing a shallow
+repository; `--branch` with `--single-branch` fetches only that branch. Git
+removes its destination after an ordinary failure, but cancellation stops the
+whole process group, so Git cannot clean up and a partial destination with
+`.git` can remain. Git Chronos never deletes it automatically; the error names
+the folder to remove before retrying, and a retry into it is refused because the
+destination exists. Recursive submodule cloning is not offered; submodules can
+be reviewed after cloning.
+
+## Shallow-history deepening
+
+The explicit branch-only fetch can add documented `--deepen=<n>` or
+`--unshallow` when `git rev-parse --is-shallow-repository` reports a shallow
+repository. Local Git 2.53 observations: deepening extends the existing
+boundary while branches first fetched in the same operation arrive with limited
+history; `--deepen` on a complete repository is a no-op and `--unshallow` there
+fails. Because the boundary is repository-wide, Git Chronos requires one
+selected remote, refuses complete repositories and depths outside 1-1,000,000,
+leaves HEAD, local branches and files unchanged, and reports when the
+repository is still shallow after requesting complete history.
+
+## Detached, unborn and bare repository states
+
+Opening resolves the working tree with documented `git rev-parse
+--show-toplevel`. Local Git 2.53 observations: an unborn branch has no
+references yet, `git switch -c` renames it, and the first commit creates it;
+on a detached HEAD, commits do not move any branch and `git switch -c` attaches
+the current commit to a new branch. A bare repository or a `.git` folder fails
+with "must be run in a work tree", or "cannot use bare repository" when
+`safe.bareRepository=explicit`; unknown `extensions.*` with format version 1
+fails with "unknown repository extension"; foreign ownership fails with
+"dubious ownership". Git Chronos keeps Git's detail but classifies these as
+bare, repository-data, unsupported-format or untrusted-owner refusals with
+original guidance, and never fabricates a working tree or changes the
+repository. Bare repositories are not yet browsable in the application.
 
 ## Original educational hints
 
@@ -551,6 +686,27 @@ blocks dismissal during a read, guards repository switching and resets path on
 reopening. Browser journeys use mocked IPC; packaged Tauri acceptance remains.
 
 Sources: official Git check-attr and gitattributes manuals. No code was copied.
+
+## Reviewed Git LFS file locking
+
+Observed behavior with Git LFS 3.7.1 against a local test lock server:
+
+- `git lfs locks --verify --json` returns `{ours, theirs}` but reports an empty
+  list with a successful exit when the server is unreachable or lacks locking,
+  so a plain-text `locks --verify` probe confirms the server answered;
+- `git lfs lock` accepts paths that are not tracked, so tracked status is
+  checked first; a refused lock exits with a reason and an empty JSON list;
+- `git lfs unlock --id` refuses files with uncommitted changes unless forced,
+  and makes lockable files read-only again.
+
+Git Chronos lists locks only on request, refuses existing locks and untracked
+paths before locking, confirms the new lock in Git LFS's JSON reply, rechecks
+the server list (id, path, owner and ownership) before unlocking, refuses dirty
+files before an unforced unlock, and requires a separate warning review before
+forcing a collaborator's lock. Files, index and references are not changed.
+
+Implementation source: Git LFS manuals and locking API documentation, plus
+black-box observation of the CLI. No Git LFS implementation code was used.
 
 ## Reviewed root Git LFS tracking-rule removal
 
@@ -1230,11 +1386,15 @@ Documented behavior:
 - The current selection can be reapplied after other Git operations materialize additional paths.
 - Disabling sparse checkout restores the complete tracked working tree.
 - A sparse index can reduce index work for large repositories.
+- Git keeps modified or unmerged files and populated submodules outside a new selection and reports them only as a warning; set/reapply still succeed.
+- `git add --all` succeeds while silently leaving changed tracked files outside the selection unstaged; `git add <path>` for such a file is refused with sparse advice. Commits keep excluded files unchanged in the tree.
 
 Independent implementation:
 
 - Git Chronos invokes the public `git sparse-checkout` interface with validated argument arrays and newline-delimited standard input.
 - Repository state comes from documented Git configuration and `git sparse-checkout list` output.
+- After set/reapply, paths Git reported as left outside the selection (read under `LC_ALL=C`) become an explicit `sparsePathsLeft` result naming up to five paths; nothing is deleted, the selection stays applied and the repository is refreshed. Owned real-Git fixtures cover a modified file (set and reapply, then clean reapply) and an unmerged merge conflict; a renderer journey covers the disclosed message, hint and refresh.
+- In sparse checkouts, Stage all checks porcelain-v2 status afterwards and reports skipped paths as `sparsePathsNotStaged` (in-selection changes stay staged); single-file staging outside the selection becomes `sparsePathOutsideSelection`. A real-Git fixture verifies the populated submodule disclosure, unchanged excluded tree after a sparse commit, and both staging outcomes; a renderer journey verifies the alert and refreshed Git status.
 - The UI and confirmation flows are original to Git Chronos; no proprietary code, assets, or visual implementation were used.
 
 ## Compact commit graph column
@@ -1721,5 +1881,26 @@ Independent implementation:
 - Git Chronos creates the worktree through its existing native Git command boundary and opens it as a normal repository tab.
 - Users can choose to reveal the existing multi-tab repository terminal immediately after creation.
 - The workflow is tool-neutral and does not assume, install, or invoke a particular coding agent.
+
+No proprietary source code, assets, wording collections, or visual implementation details were used.
+
+## Minimum Git version qualification
+
+Observed behavior (real Git builds 2.34, 2.39, 2.43 and 2.53 from the official source):
+
+- `git worktree list --porcelain -z` requires Git 2.36; `git am --empty` requires Git 2.35.
+- Before Git 2.40, the `%GT` trust placeholder can abort on signatures that cannot be verified.
+- Git 2.39 `tag -s` can report success while writing an unsigned tag when the SSH signing key is unavailable.
+- Git 2.39 `format-patch` omits empty commits; Git 2.43 includes them.
+- Git 2.39 ignores a `.gitattributes` file excluded by sparse checkout; Git 2.43 reads it.
+- Older Git prints `%aI` UTC offsets as `+00:00` instead of `Z`, and submodule URL sync without an upstream uses `origin`.
+
+Independent implementation:
+
+- The supported baseline is Git 2.39; detection reports older versions as unsupported.
+- Commit details retry without the trust placeholder when Git reports an invalid trust level.
+- Signed tags are verified after creation; an unsigned result is removed and reported as a signing failure.
+- Mail-patch export refuses selections whose empty commits Git omitted instead of producing a partial series.
+- Attribute inspection refuses sparse-excluded ancestor attribute files on Git older than 2.43.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.

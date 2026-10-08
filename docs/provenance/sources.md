@@ -71,8 +71,8 @@ Sources:
 
 - [Git rebase manual: root and empty commits](https://git-scm.com/docs/git-rebase)
 
-Used for inclusive actual-root replay, unchanged-tree commit semantics and
-native Edit/Continue/Abort. Complete linear-history limits, unrelated-ref
+Used for inclusive actual-root replay, combined `--root --onto` parent
+semantics, unchanged-tree commit semantics and native Edit/Continue/Abort. Complete linear-history limits, unrelated-ref
 isolation, explicit review and recovery guards are independently designed.
 Behavior is checked against owned real-Git repositories; no external source
 code or documentation prose copied.
@@ -131,6 +131,50 @@ Registration review uses documented NUL-delimited porcelain output, lock/prune
 reasons, dry-run mode and explicit `--expire=now`. Original real-Git fixtures
 exercise missing and locked registrations, dirty/detached worktrees, literal
 paths, unborn repositories and respect for the configured bare-repository policy.
+Single-registration removal uses the manual's `worktree remove` semantics, not
+global prune. Original fixtures prove that only the selected registration is
+removed, with HEAD and metadata preserved, and cover refusal of main, existing,
+locked, stale, unknown and relative inputs.
+
+## Submodule state review
+
+Sources: [git-submodule](https://git-scm.com/docs/git-submodule),
+[gitmodules](https://git-scm.com/docs/gitmodules),
+[git-status porcelain v2](https://git-scm.com/docs/git-status),
+[git-ls-files](https://git-scm.com/docs/git-ls-files),
+[git-config](https://git-scm.com/docs/git-config).
+
+Used for gitlink modes, conflict stages, submodule status flags, declared and
+registered URLs, the `sync` subcommand's scope, `update --no-fetch --checkout`, non-forced `deinit` and gitlink removal with
+[git-rm](https://git-scm.com/docs/git-rm). Original fixtures; no
+third-party implementation copied.
+
+## Clone history limits and interruption
+
+Sources: [git-clone](https://git-scm.com/docs/git-clone),
+[git-rev-parse](https://git-scm.com/docs/git-rev-parse).
+
+Used for `--depth`, `--branch`/`--single-branch`, local-path versus `file://`
+transport behavior and `--is-shallow-repository`. The partial destination left
+by a stopped process was observed with real Git; original fixtures, no
+third-party implementation copied.
+
+## Shallow-history deepening
+
+Sources: [git-fetch](https://git-scm.com/docs/git-fetch) (`--deepen`,
+`--unshallow`), [git-rev-parse](https://git-scm.com/docs/git-rev-parse) and
+[gitrepository-layout](https://git-scm.com/docs/gitrepository-layout) (the
+`shallow` file). Behavior confirmed with original real-Git fixtures; no
+third-party implementation copied.
+
+## Repository states on open
+
+Sources: [git-rev-parse](https://git-scm.com/docs/git-rev-parse),
+[git-config `safe.bareRepository` and `safe.directory`](https://git-scm.com/docs/git-config),
+[gitrepository-layout](https://git-scm.com/docs/gitrepository-layout) and
+[repository format extensions](https://git-scm.com/docs/gitrepository-layout#_git_repository_format_versions).
+Used for bare/unborn/detached semantics and the refusal messages classified on
+open; original fixtures and wording.
 
 ## Linked-worktree move
 
@@ -401,6 +445,10 @@ Sources:
 - [Git check-attr documentation](https://git-scm.com/docs/git-check-attr)
 - [Git 2.34 check-attr manual](https://github.com/git/git/blob/v2.34.0/Documentation/git-check-attr.txt)
 - [Git LFS prune documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-prune.adoc)
+- [Git LFS lock manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-lock.adoc)
+- [Git LFS locks manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-locks.adoc)
+- [Git LFS unlock manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-unlock.adoc)
+- [Git LFS file locking API](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/api/locking.md)
 
 Used for:
 
@@ -418,6 +466,9 @@ Used for:
   supported environment output, SHA-256/size verification of an exclusive
   temporary copy, unchanged index/ref leases, permission preservation and
   cancellation before replacement. No upstream implementation copied.
+- Listing, locking, unlocking and explicitly reviewed force-unlocking LFS file
+  locks, with ownership, tracked-path and changed-lock checks. The lock-server
+  test fixture is original.
 - Requiring explicit confirmation before pruning local LFS objects, explaining
   retention/fetch-exclude scope, shared-storage risk and lack of reflog protection.
   Original local-file fixtures exposed incomplete verbose candidate output and
@@ -470,6 +521,7 @@ Used for:
 - Setting directory selections through standard input, reapplying the current selection, and restoring the complete working tree.
 - Providing repository-scoped preferences and conditional toolbar actions for an enabled sparse checkout.
 - Warning that restoring a full working tree can require substantial time and disk space.
+- Disclosing modified or unmerged paths that Git leaves outside a new selection.
 
 No source code, assets, wording, or visual implementation were copied.
 
@@ -710,3 +762,13 @@ Used for object/connectivity inspection scope and the distinction between
 diagnostic findings, normal dangling objects and repair. Git owns verification;
 bounded streaming, cancellation, conservative promisor refusal and the interface
 are original implementations. No external code or documentation prose copied.
+
+## Minimum Git version qualification
+
+Sources: [Git source releases](https://github.com/git/git/tags),
+[Git 2.36 worktree manual](https://git-scm.com/docs/git-worktree/2.36.0) and
+[Git 2.35 am manual](https://git-scm.com/docs/git-am/2.35.0).
+
+Used for building disposable Git 2.34, 2.39 and 2.43 binaries and running the
+native fixture suite against each. Version-specific findings and the 2.39
+baseline are recorded in compatibility notes. No code copied.

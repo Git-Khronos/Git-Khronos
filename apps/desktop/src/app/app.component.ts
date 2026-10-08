@@ -5250,12 +5250,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus, repair: true });
   }
 
-  protected openWorktreeRegistrationReview(): void {
+  protected openWorktreeRegistrationReview(submodules?: boolean): void {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
     this.worktreeMenuPath.set(null);
-    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus });
+    this.submoduleMenuPath.set(null);
+    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus, submodules });
   }
 
   protected openLfsTracking(): void {
@@ -6822,7 +6823,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected setRebaseDestination(oid: string): void {
     const state = this.interactiveRebase();
-    if (!state?.selectionOids || (oid && !state.destinations?.some(destination => destination.oid === oid))) return;
+    if (!state?.destinations || (oid && !state.destinations.some(destination => destination.oid === oid))) return;
     this.interactiveRebase.set({ ...state, ontoOid: oid || undefined });
   }
 
@@ -6970,7 +6971,7 @@ export class AppComponent implements OnInit, OnDestroy {
       base: plan.base,
       selectionOids,
       root,
-      destinations: selectionOids ? this.git.repository()?.branches
+      destinations: selectionOids || root ? this.git.repository()?.branches
         .filter(branch => !plan.commits.some(commit => commit.oid === branch.oid))
         .map(branch => ({ oid: branch.oid, label: branch.name })) : undefined,
       remoteReachableOids: plan.remoteReachableOids ?? [],

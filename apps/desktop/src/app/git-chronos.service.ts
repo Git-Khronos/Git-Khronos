@@ -231,7 +231,7 @@ export class GitChronosService {
         appVersion: 'browser preview',
         gitVersion: null,
         gitSupported: false,
-        minimumGitVersion: '2.34.0',
+        minimumGitVersion: '2.39.0',
       });
       const activeWorkspace = this.activeWorkspace();
       const shouldShowPreview = activeWorkspace?.id === DEFAULT_WORKSPACE_ID
@@ -1261,7 +1261,7 @@ export class GitChronosService {
   ): Promise<void> {
     await this.mutate(
       'execute_interactive_rebase',
-      ontoOid ? `Replaying selected history on ${source} onto ${ontoOid.slice(0, 8)}…` : root ? `Editing entire history on ${source}…` : selectionOids ? `Editing selected history on ${source}…` : `Rebasing ${source} onto ${target}…`,
+      ontoOid ? `Replaying history on ${source} onto ${ontoOid.slice(0, 8)}…` : root ? `Editing entire history on ${source}…` : selectionOids ? `Editing selected history on ${source}…` : `Rebasing ${source} onto ${target}…`,
       snapshot => this.rebaseActivity(snapshot),
       { source, target, steps, ...(selectionOids ? { selectionOids } : {}), ...(root ? { root: true } : {}), ...(ontoOid ? { ontoOid } : {}) },
     );
@@ -1451,11 +1451,10 @@ export class GitChronosService {
     }
   }
 
-  async fetchBranches(remote: string | null, prune: boolean, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
+  async fetchBranches(options: FetchOptions, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
-    const options: FetchOptions = { remote, prune };
-    return this.mutate('fetch_branches', `Fetching branches from ${remote ?? 'all remotes'}…`,
-      `Branches fetched${prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
+    return this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
+      `Fetch complete${options.prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
       { options });
   }
 

@@ -28,16 +28,32 @@ mod fetch_options;
 mod worktree_actions;
 mod worktree_diagnostics;
 pub use worktree_diagnostics::{WorktreeRegistration, WorktreeRegistrationReview, review_worktree_registrations};
+mod worktree_prune;
+pub use worktree_prune::{WorktreeRegistrationPrune, WorktreeRegistrationPruneResult, prune_worktree_registration};
+mod submodule_review;
+pub use submodule_review::{SubmoduleConflict, SubmoduleState, SubmoduleStateReview, review_submodule_state};
+mod submodule_sync;
+pub use submodule_sync::{SubmoduleUrlSync, SubmoduleUrlSyncResult, sync_submodule_url};
+mod submodule_checkout;
+pub use submodule_checkout::{SubmoduleNestedCheckout, SubmoduleRecordedCheckout, SubmoduleRecordedCheckoutResult, checkout_recorded_submodule_commit};
+mod submodule_deinit;
+pub use submodule_deinit::{SubmoduleDeinit, SubmoduleDeinitResult, SubmoduleSetting, deinit_submodule};
+mod submodule_remove;
+pub use submodule_remove::{SubmoduleRemoval, SubmoduleRemovalResult, remove_submodule};
 mod lfs_tracking;
 mod lfs_objects;
 mod lfs_fetch;
 mod lfs_checkout;
+mod lfs_locks;
+pub use lfs_locks::{LfsLock, LfsLocks, lfs_locks, lock_lfs_file, unlock_lfs_file};
 pub use lfs_checkout::{LfsCheckoutPreview, preview_lfs_checkout, checkout_lfs_object};
 pub use lfs_objects::{LfsObjects, LfsObjectFile, lfs_objects};
 pub use lfs_fetch::{LfsFetchPreview, preview_lfs_fetch, fetch_lfs_object};
 pub use lfs_tracking::{LfsTrackingPattern, LfsTrackingRules, LfsAttribute, LfsFileAttributes, lfs_file_attributes, lfs_tracking_rules, untrack_lfs_pattern};
 pub use worktree_actions::{WorktreeMove, WorktreeRepair, move_worktree, repair_worktree};
-pub use fetch_options::{FetchOptions, fetch_with_options};
+pub use fetch_options::{
+    FetchHistory, FetchOptions, ShallowHistoryState, fetch_with_options, shallow_history_state,
+};
 pub use operation_recovery::{
     OperationRecovery, ResetPlan, ResetPreview, delete_operation_recovery, execute_reset,
     operation_recoveries, prepare_reset, preserve_operation, restore_operation_branch,
@@ -71,7 +87,7 @@ pub use discard::{
     discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard, recover_discarded_changes,
 };
 
-pub const MINIMUM_GIT_VERSION: &str = "2.34.0";
+pub const MINIMUM_GIT_VERSION: &str = "2.39.0";
 const EMPTY_TREE_OID: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const MAX_REFLOG_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_TAG_DETAILS_OUTPUT_BYTES: usize = 64 * 1024;
@@ -640,7 +656,9 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
     }
 
     let output = run_git(path, &["rev-parse", "--show-toplevel"])?;
-    ensure_success("open this repository", &output)?;
+    if !output.status.success() {
+        return Err(classify_open_failure(path, &output));
+    }
     let root = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     PathBuf::from(root).canonicalize().map_err(|error| {
         AppError::new(
@@ -649,6 +667,50 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
             None,
         )
     })
+}
+
+/// Explains repository shapes Git Chronos cannot open as a working tree,
+/// keeping Git's own wording as the detail.
+fn classify_open_failure(path: &Path, output: &Output) -> AppError {
+    let mut error = AppError::git_failure("open this repository", output);
+    let detail = error.message.to_ascii_lowercase();
+    let (kind, summary, hint) = if detail.contains("must be run in a work tree")
+        || detail.contains("cannot use bare repository")
+    {
+        if path.components().any(|part| part.as_os_str() == ".git") {
+            (
+                "repositoryDataFolder",
+                "This folder is Git's internal repository data, not the project's working tree.",
+                "Open the project folder that contains this .git folder.",
+            )
+        } else {
+            (
+                "bareRepositoryUnsupported",
+                "This is a bare repository: it stores history and references without a working tree.",
+                "Git Chronos opens working trees. Clone it into a new folder, or add a worktree with local Git (git worktree add), then open that folder. Nothing was changed.",
+            )
+        }
+    } else if detail.contains("unknown repository extension")
+        || detail.contains("expected git repo version")
+    {
+        (
+            "unsupportedRepositoryFormat",
+            "This repository uses a format that the installed Git does not support.",
+            "Update Git, or use the tool that created the repository. Nothing was changed.",
+        )
+    } else if detail.contains("dubious ownership") {
+        (
+            "untrustedRepositoryOwner",
+            "Git refused this repository because another user owns it.",
+            "Check who owns the folder. Only if you trust it, add it to safe.directory with local Git, then open it again.",
+        )
+    } else {
+        return error;
+    };
+    error.kind = kind.to_owned();
+    error.message = format!("{summary} Git reported: {}", error.message);
+    error.hint = Some(hint.to_owned());
+    error
 }
 
 pub struct RepositoryWatchPaths {
@@ -742,8 +804,18 @@ pub fn clone_repository(
         destination.to_string_lossy().into_owned(),
     ]);
     let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let output = run_git(parent, &borrowed)?;
-    ensure_success("clone that repository", &output)?;
+    let cloned = run_git(parent, &borrowed)
+        .and_then(|output| ensure_success("clone that repository", &output));
+    if let Err(mut error) = cloned {
+        // Cancellation stops Git before it can remove its own partial work.
+        if destination.symlink_metadata().is_ok() {
+            error.hint = Some(format!(
+                "Partial clone data remains at {}. Delete that folder before retrying, or choose another folder name.",
+                destination.display()
+            ));
+        }
+        return Err(error);
+    }
     destination.canonicalize().map_err(|error| {
         AppError::new(
             "invalidRepositoryPath",
@@ -1415,15 +1487,65 @@ fn update_submodule_with_cancellation(
 }
 
 pub fn stage_all(path: &Path) -> Result<(), AppError> {
-    run_mutation(path, &["add", "--all", "--"], "stage all changes")
+    run_mutation(path, &["add", "--all", "--"], "stage all changes")?;
+    if !read_sparse_checkout_info(path).enabled {
+        return Ok(());
+    }
+    // `git add --all` succeeds silently while skipping changed tracked files
+    // outside the sparse selection; report them instead of implying all staged.
+    let output = run_git(path, &["status", "--porcelain=v2", "-z", "--untracked-files=no"])?;
+    ensure_success("check staged sparse checkout changes", &output)?;
+    let mut skipped = Vec::new();
+    let mut records = output.stdout.split(|byte| *byte == 0);
+    while let Some(record) = records.next() {
+        let record = String::from_utf8_lossy(record);
+        let fields = if record.starts_with("1 ") {
+            8
+        } else if record.starts_with("2 ") {
+            records.next();
+            9
+        } else {
+            continue;
+        };
+        let mut parts = record.splitn(fields + 1, ' ');
+        let worktree = parts.nth(1).and_then(|xy| xy.chars().nth(1));
+        let submodule = parts.next().is_some_and(|sub| sub.starts_with('S'));
+        if worktree != Some('.') && !submodule
+            && let Some(file) = parts.nth(fields - 3)
+        {
+            skipped.push(file.to_owned());
+        }
+    }
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    let shown = skipped.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    let more = skipped.len().saturating_sub(5);
+    Err(AppError::new(
+        "sparsePathsNotStaged",
+        format!(
+            "Other changes were staged, but Git left {} changed path(s) outside the sparse checkout selection unstaged: {shown}{}.",
+            skipped.len(),
+            if more > 0 { format!(" and {more} more") } else { String::new() }
+        ),
+        Some(SPARSE_OUTSIDE_HINT),
+    ))
 }
 
+const SPARSE_OUTSIDE_HINT: &str = "Add their directories to the sparse checkout selection and stage again, or restore those files.";
+
 pub fn stage_path(path: &Path, file: &str) -> Result<(), AppError> {
-    run_mutation(
-        path,
-        &["--literal-pathspecs", "add", "--", file],
-        "stage that file",
-    )
+    let output = run_git(path, &["--literal-pathspecs", "add", "--", file])?;
+    if !output.status.success()
+        && String::from_utf8_lossy(&output.stderr).contains("outside of your sparse-checkout definition")
+    {
+        return Err(AppError::new(
+            "sparsePathOutsideSelection",
+            format!("{file} is outside the sparse checkout selection, so Git did not stage it."),
+            Some(SPARSE_OUTSIDE_HINT),
+        ));
+    }
+    ensure_success("stage that file", &output)
 }
 
 pub fn unstage_all(path: &Path) -> Result<(), AppError> {
@@ -2648,13 +2770,11 @@ pub fn execute_interactive_rebase_with_destination(
     onto_oid: Option<&str>,
 ) -> Result<(), AppError> {
     if let Some(destination) = onto_oid {
-        if root || selection.is_none() {
+        if !root && selection.is_none() {
             return Err(AppError::new(
                 "invalidRebaseDestination",
-                "Choose an explicit destination only for a selected starting commit or consecutive range.",
-                Some(
-                    "Whole-history root editing and ordinary branch replay retain their own scope.",
-                ),
+                "Choose an explicit destination only for selected history or whole-history editing.",
+                Some("Ordinary branch replay keeps its reviewed target branch."),
             ));
         }
         validate_commit_oid(destination)?;
@@ -2688,7 +2808,7 @@ pub fn execute_interactive_rebase_with_destination(
         return Err(AppError::new(
             "invalidRebaseDestination",
             "The destination cannot be a commit in the history being replayed.",
-            Some("Choose the unchanged boundary or a commit outside the reviewed suffix."),
+            Some("Choose a commit outside the history being replayed."),
         ));
     }
     if steps.len() != plan.commits.len() {
@@ -2793,7 +2913,9 @@ pub fn execute_interactive_rebase_with_destination(
     preserve_reference(
         path,
         &source_tip,
-        &if let Some(destination) = onto_oid {
+        &if let Some(destination) = onto_oid.filter(|_| root) {
+            format!("Whole-history editing {source} including root onto {destination}")
+        } else if let Some(destination) = onto_oid {
             format!("Selected history {source} onto {destination}")
         } else if root {
             format!("Whole-history editing {source} including root")
@@ -2897,6 +3019,9 @@ pub fn execute_interactive_rebase_with_destination(
     }
     if root {
         command.args(["rebase", "-i", "--root"]);
+        if onto_oid.is_some() {
+            command.args(["--onto", &target_ref]);
+        }
     } else {
         command.args(["rebase", "-i", "--onto", &target_ref, &plan.base]);
     }
@@ -3317,7 +3442,7 @@ pub fn set_sparse_checkout(
     } else {
         format!("{}\n", normalized.join("\n")).into_bytes()
     };
-    run_git_with_input(
+    let output = run_git_with_input_output(
         path,
         &[
             "sparse-checkout",
@@ -3331,17 +3456,57 @@ pub fn set_sparse_checkout(
             "--stdin",
         ],
         &input,
-        "set sparse checkout directories",
-    )
+    )?;
+    ensure_success("set sparse checkout directories", &output)?;
+    ensure_no_sparse_paths_left(&output)
 }
 
 pub fn reapply_sparse_checkout(path: &Path) -> Result<(), AppError> {
     ensure_sparse_checkout_enabled(path)?;
-    run_mutation(
-        path,
-        &["sparse-checkout", "reapply"],
-        "reapply sparse checkout directories",
-    )
+    let output = run_git(path, &["sparse-checkout", "reapply"])?;
+    ensure_success("reapply sparse checkout directories", &output)?;
+    ensure_no_sparse_paths_left(&output)
+}
+
+/// Git applies the patterns but keeps modified or unmerged files outside them,
+/// reporting those paths only as a warning (stable under `LC_ALL=C`).
+fn ensure_no_sparse_paths_left(output: &Output) -> Result<(), AppError> {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut left = Vec::new();
+    let mut listing = false;
+    for line in stderr.lines() {
+        if line.contains("were left despite sparse patterns") {
+            listing = true;
+        } else if let Some(entry) = line.strip_prefix('\t').filter(|_| listing) {
+            if !left.iter().any(|known| known == entry) {
+                left.push(entry.to_owned());
+            }
+        } else if let Some(entry) = line
+            .strip_prefix("warning: unable to rmdir '")
+            .and_then(|rest| rest.strip_suffix("': Directory not empty"))
+        {
+            listing = false;
+            if !left.iter().any(|known| known == entry) {
+                left.push(entry.to_owned());
+            }
+        } else {
+            listing = false;
+        }
+    }
+    if left.is_empty() {
+        return Ok(());
+    }
+    let shown = left.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    let more = left.len().saturating_sub(5);
+    Err(AppError::new(
+        "sparsePathsLeft",
+        format!(
+            "The directory selection was applied, but Git kept {} path(s) outside it with local changes, conflicts or populated submodules: {shown}{}.",
+            left.len(),
+            if more > 0 { format!(" and {more} more") } else { String::new() }
+        ),
+        Some("Commit, stash, discard or resolve changed paths, or deinitialize kept submodules, then choose Reapply. Nothing was deleted."),
+    ))
 }
 
 pub fn disable_sparse_checkout(path: &Path) -> Result<(), AppError> {
@@ -4247,17 +4412,18 @@ pub fn move_head_if_current(
 pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError> {
     validate_commit_oid(oid)?;
     let rename_limit = format!("-l{COMMIT_RENAME_LIMIT}");
-    let (message_output, message_truncated) = run_git_with_stdout_limit(
-        path,
-        &[
-            "show",
-            "-s",
-            "--format=%G?%x00%GS%x00%GK%x00%GF%x00%GT%x00%B",
-            oid,
-            "--",
-        ],
-        MAX_COMMIT_MESSAGE_BYTES,
-    )?;
+    let read_message = |format: &str| {
+        run_git_with_stdout_limit(path, &["show", "-s", format, oid, "--"], MAX_COMMIT_MESSAGE_BYTES)
+    };
+    let (mut message_output, mut message_truncated) =
+        read_message("--format=%G?%x00%GS%x00%GK%x00%GF%x00%GT%x00%B")?;
+    // Git before 2.40 aborts on %GT when a signature has no trust level.
+    if !message_output.status.success()
+        && String::from_utf8_lossy(&message_output.stderr).contains("invalid trust level")
+    {
+        (message_output, message_truncated) =
+            read_message("--format=%G?%x00%GS%x00%GK%x00%GF%x00%x00%B")?;
+    }
     if !message_truncated {
         ensure_success("read that commit", &message_output)?;
     }
@@ -7300,6 +7466,10 @@ fn run_git_with_input(
     input: &[u8],
     operation: &str,
 ) -> Result<(), AppError> {
+    ensure_success(operation, &run_git_with_input_output(path, args, input)?)
+}
+
+fn run_git_with_input_output(path: &Path, args: &[&str], input: &[u8]) -> Result<Output, AppError> {
     let mut child = Command::new("git")
         .arg("-C")
         .arg(path)
@@ -7335,14 +7505,13 @@ fn run_git_with_input(
                 None,
             )
         })?;
-    let output = child.wait_with_output().map_err(|error| {
+    child.wait_with_output().map_err(|error| {
         AppError::new(
             "gitWaitFailed",
             format!("Could not finish the Git operation: {error}"),
             None,
         )
-    })?;
-    ensure_success(operation, &output)
+    })
 }
 
 fn run_git_allow_diff_exit(path: &Path, args: &[&str]) -> Result<Output, AppError> {
@@ -7565,8 +7734,8 @@ mod tests {
             Some("2.53.0".into())
         );
         assert!(version_at_least("2.53.0", MINIMUM_GIT_VERSION));
-        assert!(version_at_least("2.34.0.windows.1", MINIMUM_GIT_VERSION));
-        assert!(!version_at_least("2.33.9", MINIMUM_GIT_VERSION));
+        assert!(version_at_least("2.39.0.windows.1", MINIMUM_GIT_VERSION));
+        assert!(!version_at_least("2.38.9", MINIMUM_GIT_VERSION));
     }
 
     #[test]
@@ -7731,7 +7900,8 @@ mod tests {
         let render = |commits: &[CommitSummary]| {
             commits
                 .iter()
-                .map(|commit| format!("{commit:?}"))
+                // Older Git writes UTC as +00:00 instead of Z; both are the same instant.
+                .map(|commit| format!("{commit:?}").replace("+00:00\"", "Z\""))
                 .collect::<Vec<_>>()
         };
 
@@ -7971,6 +8141,127 @@ mod tests {
         let restored = snapshot(&repository.path).expect("read restored checkout");
         assert!(!restored.sparse_checkout.enabled);
         assert!(repository.path.join("docs/guide.md").is_file());
+    }
+
+    #[test]
+    fn sparse_selection_discloses_modified_and_unmerged_paths_left_outside_without_deleting() {
+        let repository = TestRepository::new();
+        repository.write("README.md", "root\n");
+        fs::create_dir_all(repository.path.join("src")).expect("create source directory");
+        fs::create_dir_all(repository.path.join("docs")).expect("create docs directory");
+        repository.write("src/main.rs", "fn main() {}\n");
+        repository.write("docs/guide.md", "guide\n");
+        repository.write("docs/notes.md", "notes\n");
+        stage_all(&repository.path).expect("stage sparse fixture");
+        commit(&repository.path, "Add sparse fixture").expect("commit sparse fixture");
+
+        repository.write("docs/guide.md", "local edit\n");
+        let error = set_sparse_checkout(&repository.path, &["src".into()], false)
+            .expect_err("disclose modified path left outside the selection");
+        assert_eq!(error.kind, "sparsePathsLeft");
+        assert!(error.message.contains("1 path(s)"));
+        assert!(error.message.contains("docs/guide.md"));
+        let info = read_sparse_checkout_info(&repository.path);
+        assert!(info.enabled);
+        assert_eq!(info.paths, vec!["src"]);
+        assert_eq!(
+            fs::read_to_string(repository.path.join("docs/guide.md")).unwrap(),
+            "local edit\n"
+        );
+        assert!(!repository.path.join("docs/notes.md").exists());
+        let error = reapply_sparse_checkout(&repository.path)
+            .expect_err("reapply keeps disclosing the modified path");
+        assert_eq!(error.kind, "sparsePathsLeft");
+
+        run_mutation(&repository.path, &["checkout", "--", "docs/guide.md"], "restore")
+            .expect("restore modified path");
+        reapply_sparse_checkout(&repository.path).expect("clean reapply succeeds");
+        assert!(!repository.path.join("docs/guide.md").exists());
+
+        disable_sparse_checkout(&repository.path).expect("restore complete checkout");
+        run_mutation(&repository.path, &["switch", "-c", "side"], "branch").expect("branch");
+        repository.write("docs/guide.md", "side\n");
+        stage_all(&repository.path).expect("stage Side guide");
+        commit(&repository.path, "Side guide").expect("commit Side guide");
+        run_mutation(&repository.path, &["switch", "-"], "return").expect("return");
+        repository.write("docs/guide.md", "main\n");
+        stage_all(&repository.path).expect("stage Main guide");
+        commit(&repository.path, "Main guide").expect("commit Main guide");
+        assert!(run_git(&repository.path, &["merge", "side"]).unwrap().status.code() == Some(1));
+        let error = set_sparse_checkout(&repository.path, &["src".into()], false)
+            .expect_err("disclose unmerged path left outside the selection");
+        assert_eq!(error.kind, "sparsePathsLeft");
+        assert!(error.message.contains("docs/guide.md"));
+        assert!(read_status(&repository.path).unwrap().conflicted == 1);
+        assert!(repository.path.join("docs/guide.md").is_file());
+    }
+
+    #[test]
+    fn sparse_staging_commits_and_submodules_never_treat_excluded_paths_as_deleted() {
+        let dependency = TestRepository::new();
+        dependency.git(&["commit", "--allow-empty", "-m", "Dependency"]);
+        let repository = TestRepository::new();
+        fs::create_dir_all(repository.path.join("src")).expect("create source directory");
+        fs::create_dir_all(repository.path.join("docs")).expect("create docs directory");
+        repository.write("src/main.rs", "fn main() {}\n");
+        repository.write("docs/guide.md", "guide\n");
+        repository.git(&[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            dependency.path.to_str().unwrap(),
+            "docs/dependency",
+        ]);
+        stage_all(&repository.path).expect("stage sparse fixture");
+        commit(&repository.path, "Add sparse fixture").expect("commit sparse fixture");
+        let tree = |repository: &TestRepository| {
+            String::from_utf8(
+                run_git(&repository.path, &["ls-tree", "-r", "--name-only", "HEAD"])
+                    .unwrap()
+                    .stdout,
+            )
+            .unwrap()
+        };
+        let full_tree = tree(&repository);
+
+        let error = set_sparse_checkout(&repository.path, &["src".into()], true)
+            .expect_err("disclose the populated submodule Git keeps");
+        assert_eq!(error.kind, "sparsePathsLeft");
+        assert!(error.message.contains("docs/dependency"));
+        assert!(repository.path.join("docs/dependency/.git").exists());
+        assert!(!repository.path.join("docs/guide.md").exists());
+        assert!(read_status(&repository.path).unwrap().entries.is_empty());
+
+        repository.write("src/main.rs", "fn main() { println!(); }\n");
+        stage_all(&repository.path).expect("stage inside the selection");
+        commit(&repository.path, "Change source only").expect("commit sparse change");
+        assert_eq!(tree(&repository), full_tree);
+        assert_eq!(
+            String::from_utf8(run_git(&repository.path, &["show", "HEAD:docs/guide.md"]).unwrap().stdout)
+                .unwrap(),
+            "guide\n"
+        );
+
+        repository.write("docs/guide.md", "outside edit\n");
+        repository.write("src/main.rs", "fn main() {}\n");
+        let error = stage_path(&repository.path, "docs/guide.md")
+            .expect_err("refuse staging outside the selection explicitly");
+        assert_eq!(error.kind, "sparsePathOutsideSelection");
+        let error = stage_all(&repository.path).expect_err("disclose the skipped path");
+        assert_eq!(error.kind, "sparsePathsNotStaged");
+        assert!(error.message.contains("1 changed path(s)"));
+        assert!(error.message.contains("docs/guide.md"));
+        let staged = String::from_utf8(
+            run_git(&repository.path, &["diff", "--cached", "--name-only"]).unwrap().stdout,
+        )
+        .unwrap();
+        assert_eq!(staged, "src/main.rs\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("docs/guide.md")).unwrap(),
+            "outside edit\n"
+        );
     }
 
     #[test]

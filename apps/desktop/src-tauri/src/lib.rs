@@ -862,6 +862,64 @@ async fn worktree_registration_review(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+async fn submodule_state_review(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::SubmoduleStateReview, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::review_submodule_state).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn sync_submodule_url(
+    repo_id: String,
+    request: git_chronos_git_core::SubmoduleUrlSync,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::SubmoduleUrlSyncResult, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::sync_submodule_url(path, &request)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn checkout_recorded_submodule_commit(
+    repo_id: String,
+    request: git_chronos_git_core::SubmoduleRecordedCheckout,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::SubmoduleRecordedCheckoutResult, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::checkout_recorded_submodule_commit(path, &request)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn deinit_submodule(
+    repo_id: String,
+    request: git_chronos_git_core::SubmoduleDeinit,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::SubmoduleDeinitResult, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::deinit_submodule(path, &request)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn remove_submodule(
+    repo_id: String,
+    request: git_chronos_git_core::SubmoduleRemoval,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::SubmoduleRemovalResult, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::remove_submodule(path, &request)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn prune_worktree_registration(
+    repo_id: String,
+    request: git_chronos_git_core::WorktreeRegistrationPrune,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::WorktreeRegistrationPruneResult, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::prune_worktree_registration(path, &request)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 async fn inspect_repository_integrity(
     repo_id: String,
     operation_id: String,
@@ -1228,6 +1286,14 @@ async fn fetch_branches(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+async fn shallow_history_state(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::ShallowHistoryState, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::shallow_history_state).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 async fn perform_repository_maintenance(repo_id: String, app: AppHandle) -> Result<(), AppError> {
     with_repository_background(repo_id, app, git_perform_repository_maintenance).await
 }
@@ -1354,6 +1420,31 @@ async fn lfs_checkout_object(
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |path, cancellation|
         git_chronos_git_core::checkout_lfs_object(path, &preview, cancellation)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_locks(repo_id: String, app: AppHandle) -> Result<git_chronos_git_core::LfsLocks, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::lfs_locks).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_lock_file(
+    repo_id: String,
+    file: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, move |path| git_chronos_git_core::lock_lfs_file(path, &file)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_unlock_file(
+    repo_id: String,
+    lock: git_chronos_git_core::LfsLock,
+    force: bool,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, move |path|
+        git_chronos_git_core::unlock_lfs_file(path, &lock, force)).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2633,6 +2724,12 @@ pub fn run() {
             move_worktree,
             repair_worktree,
             worktree_registration_review,
+            prune_worktree_registration,
+            submodule_state_review,
+            sync_submodule_url,
+            checkout_recorded_submodule_commit,
+            deinit_submodule,
+            remove_submodule,
             inspect_repository_integrity,
             add_submodule,
             initialize_submodule,
@@ -2665,6 +2762,7 @@ pub fn run() {
             abort_rebase,
             fetch_repository,
             fetch_branches,
+            shallow_history_state,
             perform_repository_maintenance,
             sync_repository,
             lfs_pull,
@@ -2674,6 +2772,9 @@ pub fn run() {
             lfs_tracking_rules,
             lfs_file_attributes,
             lfs_objects,
+            lfs_locks,
+            lfs_lock_file,
+            lfs_unlock_file,
             lfs_fetch_preview,
             lfs_fetch_object,
             lfs_checkout_preview,

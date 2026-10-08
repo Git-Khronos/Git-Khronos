@@ -7,7 +7,18 @@
     </header>
     <div class="rebase-scope">
       @if (state().root) {
-        <p>Entire history, including the root: all {{ state().steps.length }} reviewed commits may be rewritten. There is no unchanged parent base. Retain at least one commit. Root commits cannot use guided splitting.</p>
+        <p>Entire history, including the root: all {{ state().steps.length }} reviewed commits may be rewritten. @if (!state().ontoOid) { There is no unchanged parent base. } Retain at least one commit. Root commits cannot use guided splitting.</p>
+        <label>Replay destination
+          <select aria-label="Replay destination" [ngModel]="state().ontoOid ?? ''" (ngModelChange)="destinationChanged.emit($event)">
+            <option value="">Keep as independent history (no parent)</option>
+            @for (destination of state().destinations; track $index) {
+              <option [value]="destination.oid">{{ destination.label }} · {{ destination.oid.slice(0, 8) }}</option>
+            }
+          </select>
+        </label>
+        @if (state().ontoOid; as destination) {
+          <p>Explicit --root --onto destination: <code>{{ destination }}</code>. The first replayed commit gains this captured commit as its parent; the destination reference is not changed. Overlapping files can conflict; review and Continue, Skip or Abort explicitly.</p>
+        }
       }
       @if (state().selectionOids; as selection) {
         <p>{{ selection.length }} selected commit(s), plus {{ state().steps.length - selection.length }} later commit(s) through HEAD. All {{ state().steps.length }} reviewed rows may be rewritten; @if (!state().ontoOid) { the base {{ state().base.slice(0, 8) }} remains unchanged. } @else { changes after boundary {{ state().base.slice(0, 8) }} will be replayed onto the chosen destination. }</p>

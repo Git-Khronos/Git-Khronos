@@ -265,6 +265,92 @@ export interface WorktreeRegistrationReview {
   pruneReport: string;
 }
 
+export interface SubmoduleConflict {
+  base: string | null;
+  ours: string | null;
+  theirs: string | null;
+  mixedTypes: boolean;
+}
+
+export interface SubmoduleState {
+  path: string;
+  name: string | null;
+  declaredUrl: string | null;
+  registeredUrl: string | null;
+  urlMatches: boolean | null;
+  headOid: string | null;
+  indexOid: string | null;
+  checkoutOid: string | null;
+  conflict: SubmoduleConflict | null;
+  checkedOut: boolean;
+  commitChanged: boolean;
+  trackedChanges: boolean;
+  untrackedChanges: boolean;
+  stagedChange: boolean;
+  undeclared: boolean;
+  missingGitlink: boolean;
+}
+
+export interface SubmoduleStateReview {
+  gitmodulesPresent: boolean;
+  entries: SubmoduleState[];
+}
+
+export interface SubmoduleUrlSyncResult {
+  path: string;
+  name: string;
+  previousRegisteredUrl: string;
+  registeredUrl: string;
+  remoteName: string | null;
+  previousRemoteUrl: string | null;
+  remoteUrl: string | null;
+}
+
+export interface SubmoduleRecordedCheckoutResult {
+  path: string;
+  previousOid: string;
+  previousBranch: string | null;
+  recordedOid: string;
+  recoveryReference: string | null;
+  nested: SubmoduleNestedCheckout[];
+}
+
+export interface SubmoduleDeinitResult {
+  path: string;
+  name: string;
+  checkoutOid: string;
+  removedSettings: { key: string; value: string }[];
+  gitDirectory: string;
+  absorbed: boolean;
+}
+
+export interface SubmoduleRemovalResult {
+  path: string;
+  name: string;
+  recordedOid: string;
+  gitDirectory: string | null;
+  keptSettings: { key: string; value: string }[];
+}
+
+export interface SubmoduleNestedCheckout {
+  path: string;
+  previousOid: string | null;
+  recordedOid: string | null;
+  recoveryReference: string | null;
+  skipped: string | null;
+}
+
+export interface WorktreeRegistrationPrune {
+  path: string;
+  expectedOid: string;
+  expectedBranch: string | null;
+}
+
+export interface WorktreeRegistrationPruneResult {
+  recoveryReferences: string[];
+  metadataBackup: string;
+}
+
 export interface Submodule {
   name: string;
   path: string;
@@ -437,6 +523,12 @@ export interface ReflogPage {
 export interface FetchOptions {
   remote: string | null;
   prune: boolean;
+  history?: { mode: 'deepen'; commits: number } | { mode: 'complete' };
+}
+
+export interface ShallowHistoryState {
+  shallow: boolean;
+  boundaryCommits: number;
 }
 
 export interface ConflictDetails {
@@ -499,6 +591,18 @@ export interface LfsTrackingRules {
 export interface LfsFileAttributes {
   path: string;
   attributes: { name: string; working: string; index: string }[];
+}
+
+export interface LfsLock {
+  id: string;
+  path: string;
+  owner: string;
+  lockedAt: string;
+  ours: boolean;
+}
+
+export interface LfsLocks {
+  locks: LfsLock[];
 }
 
 export interface LfsObjects {

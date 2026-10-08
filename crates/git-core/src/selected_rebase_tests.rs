@@ -1705,3 +1705,75 @@ fn selected_rebase_continue_after_edit_keeps_unrelated_refs_and_original_author_
     );
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
 }
+
+#[test]
+fn root_onto_replays_entire_history_on_captured_destination_without_moving_refs() {
+    let repository = Repository::new();
+    let root = repository.oid();
+    let first = repository.edit("first", b"first\n", "First");
+    let original = repository.edit("last", b"last\n", "Last");
+    repository.git(&["switch", "-q", "--orphan", "platform"]);
+    let platform = repository.edit("platform", b"platform\n", "Platform");
+    repository.git(&["switch", "-q", "main"]);
+    repository.git(&["branch", "keep", &first]);
+    let plan =
+        prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
+    assert_eq!(plan.commits[0].oid, root);
+    for inside in [&root, &first, &original] {
+        let error = execute_interactive_rebase_with_destination(
+            &repository.0, "main", "main", &picks(&plan), None, true, Some(inside),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "invalidRebaseDestination");
+        repository.unchanged(&original);
+    }
+    let mut steps = picks(&plan);
+    steps[0].action = "reword".into();
+    steps[0].message = Some("Base on platform".into());
+    execute_interactive_rebase_with_destination(
+        &repository.0, "main", "main", &steps, None, true, Some(&platform),
+    )
+    .unwrap();
+    assert_eq!(
+        repository.output(&["log", "--reverse", "--format=%s"]),
+        "Platform\nBase on platform\nFirst\nLast"
+    );
+    assert_eq!(repository.output(&["rev-parse", "HEAD~2^"]), platform);
+    assert_eq!(
+        repository.output(&["ls-tree", "--name-only", "HEAD"]),
+        "base\nfirst\nlast\nplatform"
+    );
+    assert_eq!(repository.output(&["rev-parse", "refs/heads/platform"]), platform);
+    assert_eq!(repository.output(&["rev-parse", "refs/heads/keep"]), first);
+    assert_eq!(
+        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]),
+        original
+    );
+    assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
+    assert!(!rebase_support_dir(&repository.0).unwrap().exists());
+}
+
+#[test]
+fn root_onto_conflict_stops_for_explicit_resolution_and_abort_restores_history() {
+    let repository = Repository::new();
+    let original = repository.edit("first", b"first\n", "First");
+    repository.git(&["switch", "-q", "--orphan", "other"]);
+    let other = repository.edit("base", b"different base\n", "Other base");
+    repository.git(&["switch", "-q", "main"]);
+    let plan =
+        prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
+    let error = execute_interactive_rebase_with_destination(
+        &repository.0, "main", "main", &picks(&plan), None, true, Some(&other),
+    );
+    assert!(error.is_err() || read_status(&repository.0).unwrap().rebase_in_progress);
+    let status = read_status(&repository.0).unwrap();
+    assert!(status.rebase_in_progress);
+    assert_eq!(status.conflicted, 1);
+    abort_rebase(&repository.0).unwrap();
+    assert_eq!(repository.oid(), original);
+    assert_eq!(repository.output(&["rev-parse", "refs/heads/other"]), other);
+    assert_eq!(
+        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]),
+        original
+    );
+}

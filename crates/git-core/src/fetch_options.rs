@@ -5,6 +5,89 @@ use super::*;
 pub struct FetchOptions {
     pub remote: Option<String>,
     pub prune: bool,
+    #[serde(default)]
+    pub history: Option<FetchHistory>,
+}
+
+/// Optional history extension for shallow repositories.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", tag = "mode", deny_unknown_fields)]
+pub enum FetchHistory {
+    Deepen { commits: u32 },
+    Complete,
+}
+
+pub const MAX_DEEPEN_COMMITS: u32 = 1_000_000;
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShallowHistoryState {
+    pub shallow: bool,
+    pub boundary_commits: usize,
+}
+
+pub fn shallow_history_state(path: &Path) -> Result<ShallowHistoryState, AppError> {
+    let output = run_git(path, &["rev-parse", "--is-shallow-repository"])?;
+    ensure_success("check whether history is shallow", &output)?;
+    if output.stdout != b"true\n" {
+        return Ok(ShallowHistoryState {
+            shallow: false,
+            boundary_commits: 0,
+        });
+    }
+    let location = run_git(
+        path,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "shallow",
+        ],
+    )?;
+    ensure_success("locate shallow history boundaries", &location)?;
+    let file = PathBuf::from(String::from_utf8_lossy(&location.stdout).trim());
+    let boundary_commits = fs::read(&file)
+        .map(|bytes| {
+            bytes
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .count()
+        })
+        .unwrap_or(0);
+    Ok(ShallowHistoryState {
+        shallow: true,
+        boundary_commits,
+    })
+}
+
+fn validate_history(path: &Path, options: &FetchOptions) -> Result<Option<String>, AppError> {
+    let Some(history) = options.history else {
+        return Ok(None);
+    };
+    let refused =
+        |message: &str, hint: &str| Err(AppError::new("historyDepthRefused", message, Some(hint)));
+    if options.remote.is_none() {
+        return refused(
+            "Extending shallow history requires one selected remote.",
+            "Choose the remote that provides the missing history; the shallow boundary is shared by the whole repository.",
+        );
+    }
+    if !shallow_history_state(path)?.shallow {
+        return refused(
+            "This repository already has complete history.",
+            "Fetch without a history option.",
+        );
+    }
+    match history {
+        FetchHistory::Deepen { commits } if commits == 0 || commits > MAX_DEEPEN_COMMITS => {
+            refused(
+                "Deepen by at least 1 and at most 1,000,000 commits.",
+                "Choose a smaller number, or download complete history.",
+            )
+        }
+        FetchHistory::Deepen { commits } => Ok(Some(format!("--deepen={commits}"))),
+        FetchHistory::Complete => Ok(Some("--unshallow".to_owned())),
+    }
 }
 
 /// Explicit branch-only fetch, independent of custom tag/mirror refspecs.
@@ -13,6 +96,7 @@ pub fn fetch_with_options(
     options: &FetchOptions,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
+    let history = validate_history(path, options)?;
     let output = run_git(path, &["remote"])?;
     ensure_success("list fetch destinations", &output)?;
     let names = String::from_utf8(output.stdout).map_err(|_| {
@@ -90,7 +174,7 @@ pub fn fetch_with_options(
 
     for (index, remote) in selected.iter().enumerate() {
         let refspec = format!("+refs/heads/*:refs/remotes/{remote}/*");
-        let args = [
+        let mut args = vec![
             "-c",
             "fetch.parallel=1",
             "-c",
@@ -112,10 +196,11 @@ pub fn fetch_with_options(
                 "--no-prune"
             },
             "--refmap=",
-            "--",
-            remote,
-            &refspec,
         ];
+        if let Some(history) = history.as_deref() {
+            args.push(history);
+        }
+        args.extend(["--", remote, &refspec]);
         let result = run_git_with_cancellation(path, &args, Some(cancellation))
             .and_then(|output| ensure_success("fetch branches from the selected remote", &output));
         if let Err(error) = result {
@@ -131,6 +216,15 @@ pub fn fetch_with_options(
                 )),
             ));
         }
+    }
+    if options.history == Some(FetchHistory::Complete) && shallow_history_state(path)?.shallow {
+        return Err(AppError::new(
+            "historyStillShallow",
+            "Git finished, but the repository still has a shallow history boundary.",
+            Some(
+                "The remote may itself be shallow. Inspect the history and its source before retrying.",
+            ),
+        ));
     }
     Ok(())
 }
@@ -239,6 +333,17 @@ mod tests {
         assert!(
             serde_json::from_str::<FetchOptions>(r#"{"remote":"origin","prune":true,"tags":true}"#)
                 .is_err()
+        );
+        let deepen: FetchOptions = serde_json::from_str(
+            r#"{"remote":"origin","prune":false,"history":{"mode":"deepen","commits":5}}"#,
+        )
+        .unwrap();
+        assert_eq!(deepen.history, Some(FetchHistory::Deepen { commits: 5 }));
+        assert!(
+            serde_json::from_str::<FetchOptions>(
+                r#"{"remote":"origin","prune":false,"history":{"mode":"all"}}"#
+            )
+            .is_err()
         );
     }
 }

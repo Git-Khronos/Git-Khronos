@@ -76,6 +76,7 @@ pub fn lfs_file_attributes(path: &Path, file: &str) -> Result<LfsFileAttributes,
         }
         parse_attributes(&output.stdout, file)
     };
+    ensure_sparse_attributes_readable(path, file)?;
     let working = read(false)?;
     let index = read(true)?;
     Ok(LfsFileAttributes {
@@ -90,6 +91,41 @@ pub fn lfs_file_attributes(path: &Path, file: &str) -> Result<LfsFileAttributes,
             })
             .collect(),
     })
+}
+
+/// Git before 2.43 ignores attribute files that sparse checkout excludes, which
+/// would make inherited rules look unspecified.
+fn ensure_sparse_attributes_readable(path: &Path, file: &str) -> Result<(), AppError> {
+    if detect_git().version.is_some_and(|version| version_at_least(&version, "2.43.0")) {
+        return Ok(());
+    }
+    let parts: Vec<&str> = file.split('/').collect();
+    let candidates: Vec<String> = (0..parts.len())
+        .map(|depth| {
+            let mut candidate = parts[..depth].join("/");
+            if !candidate.is_empty() {
+                candidate.push('/');
+            }
+            candidate + ".gitattributes"
+        })
+        .collect();
+    let mut args = vec!["--literal-pathspecs", "ls-files", "-t", "-z", "--"];
+    args.extend(candidates.iter().map(String::as_str));
+    let output = run_git(path, &args)?;
+    ensure_success("check sparse attribute files", &output)?;
+    let excluded = output
+        .stdout
+        .split(|byte| *byte == 0)
+        .find(|entry| entry.starts_with(b"S "))
+        .map(|entry| String::from_utf8_lossy(&entry[2..]).into_owned());
+    match excluded {
+        Some(attributes) => Err(AppError::new(
+            "sparseAttributesUnreadable",
+            format!("{attributes} is outside the sparse checkout, and this Git version ignores it when resolving attributes."),
+            Some("Upgrade to Git 2.43 or newer, or include that folder in the sparse selection, then inspect again. Nothing was changed."),
+        )),
+        None => Ok(()),
+    }
 }
 
 fn parse_attributes(bytes: &[u8], file: &str) -> Result<Vec<String>, AppError> {

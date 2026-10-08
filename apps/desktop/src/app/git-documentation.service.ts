@@ -4,7 +4,7 @@ export type GitDocumentationTopic =
   | 'repository' | 'stage' | 'diff' | 'commit' | 'signing' | 'branch' | 'checkout'
   | 'fetch' | 'pull' | 'push' | 'remote' | 'tag' | 'stash' | 'merge' | 'rebase'
   | 'cherry-pick' | 'revert' | 'reset' | 'split' | 'merge-rebase' | 'discard' | 'reflog' | 'history' | 'blame'
-  | 'worktree' | 'submodule' | 'sparse' | 'lfs' | 'lfs-fetch' | 'lfs-checkout'
+  | 'worktree' | 'submodule' | 'sparse' | 'lfs' | 'lfs-fetch' | 'lfs-checkout' | 'lfs-locks'
   | 'lfs-prune' | 'attributes' | 'authentication' | 'bisect' | 'ignore' | 'maintenance' | 'patch' | 'bundle' | 'mail-patch';
 
 @Injectable({ providedIn: 'root' })

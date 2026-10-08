@@ -28,7 +28,7 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
       appVersion: 'renderer test',
       gitVersion: '2.50.0',
       gitSupported: true,
-      minimumGitVersion: '2.34.0',
+      minimumGitVersion: '2.39.0',
     });
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: Record<string, unknown> = {}) => {
@@ -688,6 +688,8 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
   await expect(pullToggle).toHaveAttribute('aria-expanded', 'true');
   const fetchAll = pullMenu.getByRole('menuitem', { name: /Fetch All/ });
   await expect(fetchAll).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(pullMenu.getByRole('menuitem', { name: /Fetch branches with options/ })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(pullMenu.getByRole('menuitem', { name: /Fast-forward if possible Merge/ })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -3929,7 +3931,7 @@ test('prepares a commit cherry-pick by dragging its action onto a local branch',
   await page.keyboard.press('Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(cancel).toBeFocused();
+  await expect(confirmation.getByRole('checkbox', { name: 'Apply changes without creating commits' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Escape');
@@ -4882,7 +4884,7 @@ test('opens commit details, tree files, and the focused diff through normal clic
   const cherryPick = quickActions.getByRole('button', { name: 'Cherry-pick' });
   await cherryPick.click();
   const historyConfirmation = page.getByRole('alertdialog');
-  await expect(historyConfirmation).toContainText('Apply this commit’s changes');
+  await expect(historyConfirmation).toContainText("Apply this commit's changes");
   await expect(historyConfirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(historyConfirmation).toHaveCount(0);
@@ -5417,7 +5419,7 @@ test('navigates diff layouts as a roving segmented control', async ({ page }) =>
   await expect(split).toBeFocused();
   await expect(split).toHaveAttribute('aria-pressed', 'true');
 
-  const history = page.getByRole('button', { name: 'History' });
+  const history = page.getByRole('button', { name: 'History', exact: true });
   await history.click();
   await expect(history).toHaveAttribute('aria-pressed', 'true');
   await hunk.click();

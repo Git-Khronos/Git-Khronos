@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { invoke } from '@tauri-apps/api/core';
+import type { FetchOptions, ShallowHistoryState } from '@git-chronos/contracts';
 import { GitChronosService } from './git-chronos.service';
 import { GitHelpComponent } from './git-help.component';
 
@@ -41,6 +43,20 @@ export interface FetchDialogRequest {
           <label class="checkbox"><input type="checkbox" name="pruneRemoteBranches" [disabled]="git.busy()"
             [ngModel]="prune()" (ngModelChange)="prune.set($event)" />Remove stale remote-tracking branches</label>
           <p>Pruning removes only cached branch references no longer advertised by the chosen remote(s), not branches on the server.</p>
+          @if (shallow(); as state) {
+            <fieldset [disabled]="git.busy()">
+              <legend>History depth</legend>
+              <p id="fetch-history-scope">This repository has shallow history: older commits are missing behind {{ state.boundaryCommits }} boundary commit{{ state.boundaryCommits === 1 ? '' : 's' }}. Extending it downloads more commits from one remote; files and branches are unchanged.</p>
+              <label class="checkbox"><input type="radio" name="fetchHistory" value="keep" [ngModel]="history()" (ngModelChange)="history.set($event)" />Keep the current depth</label>
+              <label class="checkbox"><input type="radio" name="fetchHistory" value="deepen" [ngModel]="history()" (ngModelChange)="history.set($event)" />Deepen by
+                <input type="number" name="deepenCommits" min="1" [attr.max]="1000000" aria-label="Commits to deepen by" [disabled]="history() !== 'deepen'"
+                  [ngModel]="commits()" (ngModelChange)="commits.set($event)" /> commits</label>
+              <label class="checkbox"><input type="radio" name="fetchHistory" value="complete" [ngModel]="history()" (ngModelChange)="history.set($event)" />Download complete history</label>
+              @if (history() !== 'keep' && !remote()) { <p role="alert">Choose one remote to extend history.</p> }
+              @if (history() === 'deepen' && !validCommits()) { <p role="alert">Enter a whole number from 1 to 1,000,000.</p> }
+              @if (history() === 'complete') { <p>Complete history can be large. If the chosen remote is itself shallow, Git Chronos reports that history is still incomplete.</p> }
+            </fieldset>
+          }
           <details><summary>Advanced scope</summary><p>This uses a standard branch-only mapping, not custom fetch refspecs or mirror settings. It never fetches or prunes tags and never updates submodule working trees. Shared tracking destinations are refused; symbolic destinations are checked.</p></details>
           @if (cancelled()) { <p role="status" tabindex="-1">Fetch was cancelled. Earlier remotes may already be updated. Review the refreshed graph before retrying.</p> }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
@@ -48,7 +64,7 @@ export interface FetchDialogRequest {
           <footer>
             @if (git.busy() && git.activeActivity()?.operationId) { <button type="button" [disabled]="git.activeOperationCancelling()" (click)="git.cancelActiveOperation()">Cancel operation</button> }
             <button type="button" data-fetch-cancel [disabled]="git.busy()" (click)="close()">Cancel</button>
-            <button type="submit" [disabled]="git.busy() || !git.repository()?.remotes?.length || target.repositoryId !== git.activeRepositoryId()">Fetch branches</button>
+            <button type="submit" [disabled]="git.busy() || !git.repository()?.remotes?.length || target.repositoryId !== git.activeRepositoryId() || !historyReady()">{{ history() === 'keep' ? 'Fetch branches' : 'Fetch and extend history' }}</button>
           </footer>
         </form>
       </div>
@@ -62,6 +78,9 @@ export interface FetchDialogRequest {
     .destination { overflow-wrap: anywhere; }
     label { display: block; margin-top: 14px; font-size: 13px; }
     .checkbox { display: flex; gap: 8px; align-items: center; min-height: 28px; }
+    fieldset { margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--inspector-divider); border-radius: 5px; }
+    legend { font-size: 13px; font-weight: 600; }
+    input[type=number] { width: 9ch; padding: 4px 6px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
     select { width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
     footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; }
     button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); }
@@ -77,6 +96,9 @@ export class FetchOptionsDialogComponent {
   readonly remote = signal('');
   readonly prune = signal(false);
   readonly cancelled = signal(false);
+  readonly shallow = signal<ShallowHistoryState | null>(null);
+  readonly history = signal<'keep' | 'deepen' | 'complete'>('keep');
+  readonly commits = signal(50);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
 
   constructor() {
@@ -86,6 +108,12 @@ export class FetchOptionsDialogComponent {
       this.remote.set(untracked(() => this.git.repository()?.remotes[0]?.name ?? ''));
       this.prune.set(false);
       this.cancelled.set(false);
+      this.shallow.set(null);
+      this.history.set('keep');
+      this.commits.set(50);
+      // Best effort: without this state the dialog keeps the ordinary branch fetch only.
+      invoke<ShallowHistoryState>('shallow_history_state', { repoId: request.repositoryId })
+        .then((state) => { if (this.request() === request && state.shallow) this.shallow.set(state); }, () => undefined);
       setTimeout(() => {
         if (this.request() === request) this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-fetch-cancel]')?.focus();
       });
@@ -96,11 +124,25 @@ export class FetchOptionsDialogComponent {
     return this.git.repository()?.remotes.find((remote) => remote.name === this.remote())?.fetchUrl ?? 'Remote no longer configured';
   }
 
+  validCommits(): boolean {
+    const commits = Number(this.commits());
+    return Number.isInteger(commits) && commits >= 1 && commits <= 1_000_000;
+  }
+
+  historyReady(): boolean {
+    const history = this.history();
+    return history === 'keep' || (!!this.remote() && (history === 'complete' || this.validCommits()));
+  }
+
   async confirm(): Promise<void> {
     const request = this.request();
-    if (!request || this.git.busy()) return;
+    if (!request || this.git.busy() || !this.historyReady()) return;
     this.cancelled.set(false);
-    const result = await this.git.fetchBranches(this.remote() || null, this.prune(), request.repositoryId);
+    const options: FetchOptions = { remote: this.remote() || null, prune: this.prune() };
+    const history = this.shallow() ? this.history() : 'keep';
+    if (history === 'deepen') options.history = { mode: 'deepen', commits: Number(this.commits()) };
+    if (history === 'complete') options.history = { mode: 'complete' };
+    const result = await this.git.fetchBranches(options, request.repositoryId);
     if (this.request() !== request) return;
     if (result === 'success') this.close();
     else {
