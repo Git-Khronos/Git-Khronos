@@ -60,7 +60,7 @@ describe('Git feature documentation', () => {
     expect(topic('fetch')?.hint).toContain('leaves tags unchanged');
     expect(topic('lfs-checkout')?.hint).toContain('independently copies');
     expect(topic('lfs-locks')?.caution).toContain('Force unlock removes a collaborator');
-    expect(topic('lfs-prune')?.caution).toContain('No exact preview');
+    expect(topic('lfs-prune')?.caution).toContain('no exact preview');
     expect(topic('worktree')?.caution).toContain('removes only one reviewed missing, unlocked registration');
     expect(topic('worktree')?.caution).toContain('not recovered');
     expect(topic('rebase')?.caution).toContain('not implied');

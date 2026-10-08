@@ -263,8 +263,8 @@ pub(crate) fn validate_repository_urls(path: &Path, args: &[&str]) -> Result<(),
     if args.first() == Some(&"clone") {
         return Ok(());
     }
-    let mut command = Command::new("git");
-    command.arg("-C").arg(path).args([
+    let mut command = crate::git_in(path);
+    command.args([
         "config",
         "--null",
         "--get-regexp",

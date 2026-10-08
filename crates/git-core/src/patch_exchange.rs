@@ -105,9 +105,7 @@ fn safe_path(root: &Path, file: &str) -> Result<(), AppError> {
 // Drain stdout/stderr while sending bounded input so large diagnostics cannot
 // deadlock against a full stdin pipe.
 fn apply_command(path: &Path, patch: &[u8], flags: &[&str]) -> Result<Output, AppError> {
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = crate::git_in(path)
         .args(["-c", "apply.ignoreWhitespace=false"])
         .args(["apply", "--whitespace=nowarn"])
         .args(flags)

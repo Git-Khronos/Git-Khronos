@@ -182,9 +182,7 @@ pub fn execute_merge_rebase(path: &Path, request: &MergeRebaseRequest) -> Result
     require_visible_replay_index(path)?;
     require_no_git_sequence(path)?;
     // Keep Git's generated label/reset/merge instructions intact.
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let output = crate::git_in(path)
         .args([
             "-c",
             "rebase.updateRefs=false",

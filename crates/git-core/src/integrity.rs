@@ -58,9 +58,7 @@ pub fn inspect_integrity(
     if cancellation.is_cancelled() {
         return Err(cancelled());
     }
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = crate::git_in(path)
         .args([
             "-c",
             "core.commitGraph=false",

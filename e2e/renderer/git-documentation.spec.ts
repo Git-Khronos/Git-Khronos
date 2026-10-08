@@ -80,9 +80,9 @@ test('manual opening failures are explicit, focused and retryable without losing
   await setup(page);
   await openReference(page);
   const dialog = page.getByRole('dialog', { name: 'Git command reference', exact: true });
-  await dialog.getByLabel('Find a feature or command').fill('LFS cache-prune');
+  await dialog.getByLabel('Find a feature or command').fill('unreferenced LFS storage');
   await dialog.locator('summary').click();
-  await expect(dialog).toContainText('No exact preview or mandatory remote verification');
+  await expect(dialog).toContainText('Shared or external storage, shallow history and partial clones are refused');
   await page.evaluate(() => { (window as any).__documentation.fail = true; });
   await dialog.getByRole('button', { name: /^Official manual:/ }).click();
   await expect(dialog.getByRole('alert')).toContainText('could not be opened');

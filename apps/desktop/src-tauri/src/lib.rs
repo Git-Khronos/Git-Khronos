@@ -9,7 +9,7 @@ use git_chronos_git_core::{
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     checkout_branch as git_checkout_branch, checkout_commit as git_checkout_commit,
     checkout_remote_branch as git_checkout_remote_branch,
-    cherry_pick_commits_with_options as git_cherry_pick_commits, clone_repository as git_clone_repository,
+    cherry_pick_commits_with_options as git_cherry_pick_commits, clone_repository_with_submodules as git_clone_repository,
     commit_details as git_commit_details, commit_file_diff as git_commit_file_diff,
     compare_commit_file as git_compare_commit_file,
     compare_commit_file_with_working_tree as git_compare_commit_file_with_working_tree,
@@ -213,6 +213,7 @@ async fn open_repository(path: String, app: AppHandle) -> Result<RepositorySnaps
     .map_err(background_task_error)?
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(rename_all = "camelCase")]
 async fn clone_repository(
     remote: String,
@@ -220,6 +221,7 @@ async fn clone_repository(
     folder: String,
     branch: Option<String>,
     depth: Option<u32>,
+    recurse_submodules: Option<bool>,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -228,6 +230,7 @@ async fn clone_repository(
         let root = authentication::run(&app, &operation_id, None, &cancellation, true, || {
             git_clone_repository(
                 &remote, Path::new(&parent_path), &folder, branch.as_deref(), depth,
+                recurse_submodules.unwrap_or(false),
             )
         })?;
         let state = app.state::<AppState>();
@@ -1338,6 +1341,30 @@ async fn lfs_prune(
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_cancellable_background(repo_id, operation_id, app, |path, cancellation| {
         git_prune_lfs_cancellable(path, cancellation)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_prune_preview(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::LfsPrunePreview, AppError> {
+    with_repository_background(repo_id, app, |path| {
+        git_chronos_git_core::preview_lfs_prune(path, &git_chronos_git_core::CancellationToken::default())
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_prune_objects(
+    repo_id: String,
+    preview: git_chronos_git_core::LfsPrunePreview,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |path, cancellation| {
+        git_chronos_git_core::prune_lfs_objects(path, &preview, cancellation)
     })
     .await
 }
@@ -2767,6 +2794,8 @@ pub fn run() {
             sync_repository,
             lfs_pull,
             lfs_prune,
+            lfs_prune_preview,
+            lfs_prune_objects,
             lfs_initialize,
             lfs_track_pattern,
             lfs_tracking_rules,

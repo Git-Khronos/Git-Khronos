@@ -12,6 +12,14 @@ use std::time::Duration;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+/// The askpass helper under test: the build's binary, or an installed/packaged
+/// binary named by `GIT_CHRONOS_PACKAGED_BINARY` for packaged acceptance.
+fn shipped_binary() -> PathBuf {
+    std::env::var_os("GIT_CHRONOS_PACKAGED_BINARY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-chronos-desktop")))
+}
+
 fn git(path: &Path, args: &[&str]) {
     let output = Command::new("git")
         .args(["-c", "safe.bareRepository=all"])
@@ -98,7 +106,9 @@ impl Fixture {
             }
         });
         let helper = directory.join("shipped askpass executable");
-        fs::hard_link(env!("CARGO_BIN_EXE_git-chronos-desktop"), &helper).unwrap();
+        if fs::hard_link(shipped_binary(), &helper).is_err() {
+            fs::copy(shipped_binary(), &helper).unwrap();
+        }
         Self {
             directory,
             repository,
@@ -198,11 +208,11 @@ fn credentials() -> Arc<dyn Fn(PromptKind) -> Option<String> + Send + Sync> {
 fn shipped_helper_answers_ssh_passphrase_and_refuses_host_trust_prompts() {
     let cancellation = CancellationToken::default();
     with_authentication(
-        Path::new(env!("CARGO_BIN_EXE_git-chronos-desktop")),
+        &shipped_binary(),
         &cancellation,
         Some(credentials()),
         || {
-            let mut command = Command::new(env!("CARGO_BIN_EXE_git-chronos-desktop"));
+            let mut command = Command::new(shipped_binary());
             command.arg("Enter passphrase for key '/fixture':");
             configure(&mut command);
             let output = command.output().unwrap();
@@ -212,7 +222,7 @@ fn shipped_helper_answers_ssh_passphrase_and_refuses_host_trust_prompts() {
             );
             assert_eq!(output.stdout, b"fixture-secret\n");
             assert!(output.stderr.is_empty());
-            let mut command = Command::new(env!("CARGO_BIN_EXE_git-chronos-desktop"));
+            let mut command = Command::new(shipped_binary());
             command.arg("Are you sure you want to continue connecting (yes/no/[fingerprint])?");
             configure(&mut command);
             let output = command.output().unwrap();
@@ -295,7 +305,7 @@ fn rejection_and_cancellation_release_the_operation_for_retry() {
     let cancellation = CancellationToken::default();
     let cancel = cancellation.clone();
     let failure = with_authentication(
-        Path::new(env!("CARGO_BIN_EXE_git-chronos-desktop")),
+        &shipped_binary(),
         &cancellation,
         Some(Arc::new(move |_| {
             cancel.cancel();

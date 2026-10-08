@@ -72,5 +72,25 @@ verification bypass, global configuration or external service is used. These
 tests require existing OpenSSL, Python SSL support and `git-http-backend`; missing
 tooling is a test failure, not a simulated success.
 
-Production HTTPS servers/proxies, complete private SSH server transports, installed
-Linux packages, macOS and Windows still require acceptance qualification.
+An optional live SSH fixture starts a disposable, unprivileged OpenSSH `sshd` on
+loopback with generated host and passphrase-protected client keys, then drives real
+`git-upload-pack`/`git-receive-pack` sessions. It verifies that unknown and changed
+host keys are refused without prompting or rewriting `known_hosts`, quiet background
+failure, rejected passphrases through the shipped askpass, cancellation, and
+successful fetch and push. Fixture trust comes from a fixture-only SSH config added
+by a test `ssh` wrapper; the app's forced OpenSSH options stay in effect and the
+user's SSH directory and agent are not used. Run it with
+`GIT_CHRONOS_SSHD=/absolute/path/to/sshd cargo test -p git-chronos-desktop --test ssh_transport -- --include-ignored`;
+a missing `sshd` is a test failure.
+
+Both transport suites can drive a packaged executable as the askpass helper in
+place of the test build. Set `GIT_CHRONOS_PACKAGED_BINARY` to the
+`usr/bin/git-chronos-desktop` extracted from a built Debian package
+(`dpkg-deb -x`), then run
+`cargo test -p git-chronos-desktop --test authentication_transport --test ssh_transport -- --include-ignored`.
+A locally built `.deb` has passed both suites this way. That shows the shipped
+binary contains the askpass entry point. It does not qualify installation through
+a package manager.
+
+Production HTTPS servers/proxies, production SSH servers (agents, MFA, proxies),
+system-installed Linux packages, macOS and Windows still require acceptance qualification.

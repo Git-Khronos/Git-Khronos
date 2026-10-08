@@ -39,6 +39,7 @@ import type {
   LfsObjects,
   LfsFetchPreview,
   LfsCheckoutPreview,
+  LfsPrunePreview,
 } from '@git-chronos/contracts';
 import {
   checkoutHistoryTarget,
@@ -409,7 +410,7 @@ export class GitChronosService {
     remote: string,
     parentPath: string,
     folder: string,
-    options: { branch?: string; depth?: number } = {},
+    options: { branch?: string; depth?: number; recurseSubmodules?: boolean } = {},
   ): Promise<boolean> {
     const operationId = crypto.randomUUID();
     await this.run(`Cloning ${folder.trim() || 'repository'}…`, async () => {
@@ -419,6 +420,7 @@ export class GitChronosService {
         folder: folder.trim(),
         branch: options.branch?.trim() || null,
         depth: options.depth ?? null,
+        recurseSubmodules: options.recurseSubmodules ?? false,
         operationId,
       });
       this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`);
@@ -1152,6 +1154,22 @@ export class GitChronosService {
       'Working pointer replaced with SHA-256-verified local contents; index and references unchanged', { preview });
   }
 
+  async previewLfsPrune(repositoryId: string): Promise<LfsPrunePreview | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let preview: LfsPrunePreview | null = null;
+    const result = await this.run('Reviewing unreferenced LFS objects…', async () => {
+      preview = await invoke<LfsPrunePreview>('lfs_prune_preview', { repoId: repositoryId });
+    }, repositoryId);
+    return result === 'success' ? preview : null;
+  }
+
+  async pruneLfsObjects(preview: LfsPrunePreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    if (!this.requireRecoveryRepository(repositoryId)) return 'error';
+    const count = preview.objects.length;
+    return this.mutate('lfs_prune_objects', `Removing ${count} unreferenced LFS ${count === 1 ? 'object' : 'objects'}…`,
+      'Reviewed unreferenced LFS objects removed; Git history and working files unchanged', { preview });
+  }
+
   async untrackLfsPattern(pattern: string, expectedState: string, repositoryId: string): Promise<boolean> {
     if (!this.requireRecoveryRepository(repositoryId)) return false;
     return await this.mutate('lfs_untrack_pattern', `Removing LFS rule ${pattern}…`,
@@ -1788,9 +1806,9 @@ export class GitChronosService {
 
   async forgetOperationRecovery(id: string, repositoryId: string): Promise<void> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
-    await this.run('Removing saved reset capture…', async () => {
+    await this.run('Removing saved capture…', async () => {
       await invoke('forget_operation_recovery', { repoId: repositoryId, id });
-      this.activity.set('Saved reset capture removed; current branch and files unchanged');
+      this.activity.set('Saved capture removed; current branch and files unchanged');
     }, repositoryId);
   }
 
@@ -2714,6 +2732,7 @@ export class GitChronosService {
       'lfs_fetch_object',
       'lfs_checkout_object',
       'lfs_prune',
+      'lfs_prune_objects',
       'update_submodule',
       'transport_reference',
       'add_submodule',

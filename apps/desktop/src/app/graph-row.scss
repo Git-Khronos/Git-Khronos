@@ -1,19 +1,20 @@
 .ref-pill.with-icon, .draggable-reference { display: inline-flex; align-items: center; gap: 3px; }
 .column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; }
 .column-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; }
-.column-resizer:hover { background: #7c6ef61f; }
-.column-resizer:hover::after { background: var(--purple); }
+.column-resizer:hover { background: var(--splitter-hover); }
+.column-resizer:active { background: var(--splitter-active); }
+.column-resizer:hover::after, .column-resizer:active::after { background: var(--purple); }
 /* Each recycled row is its own compositing layer: scrolling and rebinding a row then repaints only
    that row instead of the whole list, which keeps WebKitGTK near one frame per display refresh. */
 .virtual-commit-rows .commit-row { position: absolute; left: 0; will-change: transform; }
-.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 16px 0 6px; border-bottom: 1px solid #242435; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
+.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 16px 0 6px; border-bottom: 1px solid var(--graph-row-divider); background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
 .commit-row:hover { background: var(--row-hover); --row-surface: var(--row-hover); }
-.commit-row:focus-visible { z-index: 2; outline: 1px solid #8f84ed; outline-offset: -2px; }
+.commit-row:focus-visible { z-index: 2; outline: 1px solid var(--graph-row-focus); outline-offset: -2px; }
 .commit-row.selected { background: var(--row-selected); --row-surface: var(--row-selected); box-shadow: inset 2px 0 var(--purple); }
 .commit-row.range-selected { background: var(--row-range-selected); --row-surface: var(--row-range-selected); box-shadow: inset 2px 0 #8578e8; }
 .commit-row.range-selected + .commit-row.range-selected { border-top-color: #4a466c; }
 .commit-row.branch-highlighted { background: var(--row-branch-highlighted); --row-surface: var(--row-branch-highlighted); }
-.commit-row.branch-highlighted .author-node { box-shadow: 0 0 0 2px #171723, 0 0 8px #54d6ad66; }
+.commit-row.branch-highlighted .author-node { box-shadow: 0 0 0 2px var(--row-surface), 0 0 8px #54d6ad66; }
 .commit-row.branch-dimmed { background: var(--row-branch-dimmed); --row-surface: var(--row-branch-dimmed); }
 .commit-row.branch-dimmed .branch-column { opacity: .62; filter: saturate(.55); }
 .commit-row.branch-dimmed .graph-cell { opacity: .38; filter: saturate(.3); }
@@ -36,7 +37,7 @@
 .wip-row .row-menu { display: grid; place-items: center; color: #68677b; }
 .draggable-reference { cursor: grab; }
 .draggable-reference:active { cursor: grabbing; }
-.draggable-reference.branch-drop-target { box-shadow: 0 0 0 2px #171723, 0 0 0 3px var(--purple); }
+.draggable-reference.branch-drop-target { box-shadow: 0 0 0 2px var(--row-surface), 0 0 0 3px var(--purple); }
 .draggable-reference.reference-pinned { padding-left: 5px; box-shadow: inset 2px 0 #b6aaff; }
 .ghost-reference { min-width: 24px; display: flex; flex: 1 1 auto; align-items: center; overflow: hidden; border: 0; background: transparent; padding: 0; opacity: .62; color: inherit; font: inherit; cursor: pointer; }
 .ghost-reference:hover { opacity: 1; }
@@ -49,12 +50,12 @@
 .lane-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--graph-lane-color, #55c9a5); }
 .merge-arc { position: absolute; top: 19px; width: 17px; height: 18px; border: 2px solid var(--graph-lane-color, #7c6ef6); border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
 .wip-edges { height: 100%; }
-.node { z-index: 1; width: 9px; height: 9px; border: 2px solid var(--graph-lane-color, #55c9a5); border-radius: 50%; background: #171723; }
-.multi-lane .node { position: absolute; top: 15px; background: #171723 !important; }
-.multi-lane .author-node { top: 7px; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: var(--author-color) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 0 0 2px #171723; }
+.node { z-index: 1; width: 9px; height: 9px; border: 2px solid var(--graph-lane-color, #55c9a5); border-radius: 50%; background: var(--row-surface); }
+.multi-lane .node { position: absolute; top: 15px; background: var(--row-surface) !important; }
+.multi-lane .author-node { top: 7px; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: var(--author-color) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 0 0 2px var(--row-surface); }
 .commit-list.compact-graph .author-node { top: 9px; width: 20px; height: 20px; font-size: 10px; }
-.multi-lane .author-node.head-node { box-shadow: 0 0 0 2px #171723, 0 0 0 4px var(--accent), 0 0 10px #54d6ad66; }
-.multi-lane .stash-node { top: 10px; width: 20px; height: 19px; display: grid; place-items: center; border: 1px solid #ffc98e; border-radius: 3px; background: #a56835 !important; color: #fff3e3; box-shadow: 0 0 0 2px #171723; }
+.multi-lane .author-node.head-node { box-shadow: 0 0 0 2px var(--row-surface), 0 0 0 4px var(--accent), 0 0 10px #54d6ad66; }
+.multi-lane .stash-node { top: 10px; width: 20px; height: 19px; display: grid; place-items: center; border: 1px solid #ffc98e; border-radius: 3px; background: #a56835 !important; color: #fff3e3; box-shadow: 0 0 0 2px var(--row-surface); }
 .stash-row .subject { color: #efbd88; }
 .commit-row:hover .author-node, .commit-row.selected .author-node { filter: brightness(1.18); }
 .commit-row-action[draggable='true'] { cursor: grab; }

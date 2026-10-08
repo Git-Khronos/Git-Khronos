@@ -27,6 +27,7 @@ import type {
   DiscardPreview,
   DiscardRecovery,
   InteractiveRebaseStep,
+  LfsPrunePreview,
   OperationRecovery,
   ReflogEntry,
   ResetMode,
@@ -49,6 +50,8 @@ import { HistorySearchComponent } from './history-search.component';
 import { HistorySearchService } from './history-search.service';
 import { FetchOptionsDialogComponent, type FetchDialogRequest } from './fetch-options-dialog.component';
 import { PatchExchangePanelComponent } from './patch-exchange-panel.component';
+import { KeyboardShortcutsDialogComponent } from './keyboard-shortcuts-dialog.component';
+import { RepositoryDialogComponent, type RepositoryDialogMode } from './repository-dialog.component';
 import { LfsTrackingDialogComponent, type LfsTrackingRequest } from './lfs-tracking-dialog.component';
 import { WorktreeMoveDialogComponent, type WorktreeMoveRequest } from './worktree-move-dialog.component';
 import { WorktreeRegistrationDialogComponent, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
@@ -409,10 +412,8 @@ interface BranchDropState {
 
 type GraphColumn = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 type PullStrategy = 'merge' | 'ff-only' | 'rebase';
-type RepositoryDialogMode = 'manager' | 'clone' | 'init';
 type PreferencesSection = 'general' | 'graph' | 'git' | 'editor' | 'terminal';
 type AuthorMarkerStyle = 'initials' | 'color';
-type ShortcutSection = 'repository' | 'navigation' | 'interface' | 'tabs-view';
 type ReferenceSection = 'worktrees' | 'local' | 'remote' | 'tags' | 'stashes' | 'submodules';
 type ReferenceDisclosureSection = ReferenceSection | 'pullRequests';
 type ReferencePane = Exclude<ReferenceSection, 'local'> | 'pullRequests';
@@ -547,7 +548,7 @@ function matchesCommandQuery(query: string, ...values: string[]): boolean {
 
 @Component({
   selector: 'gc-root',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, IntegrityPanelComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PatchExchangePanelComponent],
+  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, IntegrityPanelComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PatchExchangePanelComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -559,7 +560,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly paletteSearch = viewChild<ElementRef<HTMLInputElement>>('paletteSearch');
-  private readonly shortcutsClose = viewChild<ElementRef<HTMLButtonElement>>('shortcutsClose');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
   private readonly preferencesClose = viewChild<ElementRef<HTMLButtonElement>>('preferencesClose');
   private readonly worktreeDialogElement = viewChild<ElementRef<HTMLElement>>('worktreeDialogElement');
@@ -600,7 +600,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly repositoryTabsMenu = viewChild<ElementRef<HTMLElement>>('repositoryTabsMenu');
   private readonly repositoryTabsToggle = viewChild<ElementRef<HTMLButtonElement>>('repositoryTabsToggle');
   private readonly activityDrawer = viewChild<ElementRef<HTMLElement>>('activityDrawer');
-  private readonly repositoryDialogElement = viewChild<ElementRef<HTMLElement>>('repositoryDialogElement');
   private readonly historyConfirmationDialog = viewChild<unknown, ElementRef<HTMLElement>>('historyConfirmationDialog', { read: ElementRef });
   private readonly branchConfirmationDialog = viewChild<ElementRef<HTMLElement>>('branchConfirmationDialog');
   private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
@@ -699,7 +698,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     return children;
   });
-  private readonly shortcutLabels = shortcutLabelsForPlatform(
+  protected readonly shortcutLabels = shortcutLabelsForPlatform(
     typeof navigator === 'undefined' ? '' : navigator.platform,
   );
   protected readonly primaryShortcutKey = this.shortcutLabels.primary;
@@ -776,6 +775,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly identityName = signal('');
   protected readonly identityEmail = signal('');
   protected readonly repositoryDialog = signal<RepositoryDialogMode | null>(null);
+  protected readonly repositoryDialogFocusRequest = signal(0);
   protected readonly worktreeDialogOpen = signal(false);
   protected readonly worktreeBranch = signal('');
   protected readonly worktreeBase = signal('');
@@ -801,6 +801,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
   protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
   protected readonly pendingLfsPrune = signal(false);
+  protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
+  protected readonly lfsPruneReviewing = signal(false);
   protected readonly pendingSparseCheckoutAction = signal<'set' | 'disable' | null>(null);
   protected readonly pendingWorktreeAction = signal<PendingWorktreeAction | null>(null);
   protected readonly forceWorktreeRemoval = signal(false);
@@ -813,16 +815,6 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly terminalRepositoryId = signal<string | null>(null);
   protected readonly terminalRepositoryIds = signal<string[]>([]);
   protected readonly activityLogTab = signal<'application' | 'repository'>('repository');
-  protected readonly cloneRemote = signal('');
-  protected readonly cloneParentPath = signal('');
-  protected readonly cloneFolder = signal('');
-  protected readonly shallowClone = signal(false);
-  protected readonly cloneBranch = signal('');
-  protected readonly cloneDepth = signal(1);
-  protected readonly initParentPath = signal('');
-  protected readonly initFolder = signal('');
-  protected readonly initBranch = signal('main');
-  protected readonly initReadme = signal(true);
   protected readonly contextBranchName = signal('');
   protected readonly contextTagName = signal('');
   protected readonly pendingTagTarget = signal<{ oid: string; label: string } | null>(null);
@@ -881,7 +873,6 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   protected readonly commandPaletteOpen = signal(false);
   protected readonly keyboardShortcutsOpen = signal(false);
-  protected readonly activeShortcutSection = signal<ShortcutSection>('repository');
   protected readonly diffViewerOpen = signal(false);
   protected readonly diffViewMode = signal<DiffViewMode>(this.readDiffViewMode());
   protected readonly diffWordWrap = signal(this.readDiffBoolean('word-wrap', false));
@@ -5855,7 +5846,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.repository()?.status.staged) await this.commit();
   }
 
-  private saveCommitDraft(): void {
+  protected saveCommitDraft(): void {
     const repositoryId = this.draftRepositoryId ?? this.git.activeRepositoryId();
     if (!repositoryId) return;
     this.commitDrafts.set(repositoryId, {
@@ -7814,15 +7805,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle()?.nativeElement ?? opener;
     this.repositoryDialogOpener = opener;
     this.repositoryDialog.set(mode);
-    window.setTimeout(() => {
-      const dialog = this.repositoryDialogElement()?.nativeElement;
-      const target = mode === 'clone'
-        ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"]')
-        : mode === 'init'
-          ? dialog?.querySelector<HTMLElement>('.path-picker button')
-          : dialog?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-      target?.focus();
-    });
+    this.repositoryDialogFocusRequest.update((request) => request + 1);
   }
 
   protected closeRepositoryManager(): void {
@@ -7849,86 +7832,18 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => tabs[next]?.focus());
   }
 
-  protected handleRepositoryDialogTabKeydown(event: KeyboardEvent): void {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const modes: RepositoryDialogMode[] = ['manager', 'clone', 'init'];
-    const tabs = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-    const current = Math.max(0, modes.indexOf(this.repositoryDialog() ?? 'manager'));
-    let next = current;
-    if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = modes.length - 1;
-    else if (event.key === 'ArrowRight') next = (current + 1) % modes.length;
-    else next = (current - 1 + modes.length) % modes.length;
-    event.preventDefault();
-    this.repositoryDialog.set(modes[next]);
-    queueMicrotask(() => tabs[next]?.focus());
-  }
-
-  protected scrollShortcutSection(event: Event, section: ShortcutSection): void {
-    this.activeShortcutSection.set(section);
-    const dialog = (event.currentTarget as HTMLElement).closest<HTMLElement>('.shortcuts-dialog');
-    dialog?.querySelector<HTMLElement>(`#shortcut-section-${section}`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  }
-
   protected async browseFromRepositoryManager(): Promise<void> {
     const previous = this.git.activeRepositoryId();
     await this.chooseRepository();
     if (this.git.activeRepositoryId() !== previous) this.repositoryDialog.set(null);
   }
 
-  protected updateCloneRemote(remote: string): void {
-    this.cloneRemote.set(remote);
-    if (this.cloneFolder().trim()) return;
-    const inferred = remote.trim().replace(/[\\/]+$/, '').split(/[\\/]/).at(-1)?.replace(/\.git$/i, '');
-    if (inferred) this.cloneFolder.set(inferred);
-  }
-
-  protected async chooseCloneParent(): Promise<void> {
-    const path = await this.git.chooseDirectory('Choose where to clone the repository');
-    if (path) this.cloneParentPath.set(path);
-  }
-
-  protected async chooseInitParent(): Promise<void> {
-    const path = await this.git.chooseDirectory('Choose where to create the repository');
-    if (path) this.initParentPath.set(path);
-  }
-
-  protected async submitClone(): Promise<void> {
-    this.saveCommitDraft();
-    const depth = this.shallowClone() ? Math.max(1, Math.floor(Number(this.cloneDepth()) || 1)) : undefined;
-    const opened = await this.git.cloneRepository(
-      this.cloneRemote(),
-      this.cloneParentPath(),
-      this.cloneFolder(),
-      { branch: this.shallowClone() ? this.cloneBranch() : undefined, depth },
-    );
-    if (opened) {
-      this.syncOpenTerminalToActiveRepository();
-      this.restoreCommitDraft();
-      this.repositoryDialog.set(null);
-      this.selectWip();
-      this.loadGraphPreferences();
-    }
-  }
-
-  protected async submitInit(): Promise<void> {
-    this.saveCommitDraft();
-    const opened = await this.git.initializeRepository(
-      this.initParentPath(),
-      this.initFolder(),
-      this.initBranch(),
-      this.initReadme(),
-    );
-    if (opened) {
-      this.syncOpenTerminalToActiveRepository();
-      this.restoreCommitDraft();
-      this.repositoryDialog.set(null);
-      this.selectWip();
-      this.loadGraphPreferences();
-    }
+  protected finishRepositoryCreation(): void {
+    this.syncOpenTerminalToActiveRepository();
+    this.restoreCommitDraft();
+    this.repositoryDialog.set(null);
+    this.selectWip();
+    this.loadGraphPreferences();
   }
 
   protected activateRepository(repoId: string): void {
@@ -8434,9 +8349,7 @@ export class AppComponent implements OnInit, OnDestroy {
       : returnFocus ?? null;
     if (opener?.closest('.app-menu-popover')) opener = this.appMenuToggle()?.nativeElement ?? opener;
     this.keyboardShortcutsOpener = opener;
-    this.activeShortcutSection.set('repository');
     this.keyboardShortcutsOpen.set(true);
-    setTimeout(() => this.shortcutsClose()?.nativeElement.focus());
   }
 
   protected closeKeyboardShortcuts(): void {
@@ -8844,17 +8757,64 @@ export class AppComponent implements OnInit, OnDestroy {
     this.lfsMenuOpen.set(false);
     this.toolbarMenuReturnFocus = null;
     this.pendingLfsPrune.set(true);
+    this.lfsPrunePreview.set(null);
+    setTimeout(() => this.focusConfirmationCancel(this.lfsPruneDialog()));
+    void this.reviewLfsPrune();
+  }
+
+  private async reviewLfsPrune(): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId) return;
+    this.lfsPruneReviewing.set(true);
+    let preview: LfsPrunePreview | null = null;
+    try {
+      preview = await this.git.previewLfsPrune(repositoryId);
+    } finally {
+      this.lfsPruneReviewing.set(false);
+    }
+    if (!this.pendingLfsPrune() || this.git.activeRepositoryId() !== repositoryId) return;
+    if (!preview) {
+      this.closeLfsPrune();
+      return;
+    }
+    this.lfsPrunePreview.set(preview);
     setTimeout(() => this.focusConfirmationCancel(this.lfsPruneDialog()));
   }
 
   protected closeLfsPrune(): void {
     this.pendingLfsPrune.set(false);
+    this.lfsPrunePreview.set(null);
     this.finishSecondaryConfirmation();
   }
 
   protected async confirmLfsPrune(): Promise<void> {
+    const preview = this.lfsPrunePreview();
+    const repositoryId = this.git.activeRepositoryId();
+    if (!preview?.objects.length || !repositoryId) return;
+    this.closeLfsPrune();
+    await this.git.pruneLfsObjects(preview, repositoryId);
+  }
+
+  protected async confirmLfsRetentionPrune(): Promise<void> {
     this.closeLfsPrune();
     await this.git.lfs('lfs_prune');
+  }
+
+  protected lfsPruneActionLabel(): string {
+    const count = this.lfsPrunePreview()?.objects.length ?? 0;
+    return count ? `Remove ${count} ${count === 1 ? 'Object' : 'Objects'}` : 'Remove Objects';
+  }
+
+  protected formatStorageSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+    let value = bytes / 1024;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
   }
 
   protected async executePullStrategy(strategy: PullStrategy): Promise<void> {

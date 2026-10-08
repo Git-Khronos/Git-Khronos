@@ -19,7 +19,7 @@ interface AuthenticationPrompt {
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <dialog #dialog aria-labelledby="authentication-title" aria-describedby="authentication-help"
+    <dialog #dialog [attr.aria-labelledby]="prompt() ? 'authentication-title' : null" [attr.aria-describedby]="prompt() ? 'authentication-help' : null"
       (cancel)="cancel($event)">
       @if (prompt(); as request) {
         <form (ngSubmit)="answer(value())">

@@ -566,6 +566,8 @@ export interface RepositorySnapshot {
   commitTemplateError?: AppError | null;
   commits: CommitSummary[];
   historyTruncated: boolean;
+  /** Bare repository opened for read-only browsing; it has no working tree. */
+  bare?: boolean;
 }
 
 export interface LfsInfo {
@@ -632,6 +634,15 @@ export interface LfsCheckoutPreview {
   oid: string;
   size: number;
   state: string;
+}
+
+/** Reviewed batch of local LFS objects that no Git object references. */
+export interface LfsPrunePreview {
+  objects: { oid: string; size: number }[];
+  totalSize: number;
+  remaining: number;
+  referenced: number;
+  recent: number;
 }
 
 export interface SparseCheckoutInfo {

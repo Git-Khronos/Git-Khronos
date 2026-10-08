@@ -516,8 +516,8 @@
         </div>
         <div class="toolbar-divider"></div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
-          <button class="tool-button split-main" type="button" (click)="pullCurrentBranch()" [disabled]="git.busy() || !currentBranch() || !currentRemote()" [attr.aria-label]="pullToolbarLabel()" title="{{ pullToolbarLabel() }} · {{ pullStrategyLabel() }}"><span><gc-icon name="pull" />@if (currentRemoteIsUpstream() && currentBranchSync().behind) { <b class="toolbar-sync-badge incoming">{{ currentBranchSync().behind }}</b> }</span><small>Pull</small></button>
-          <button class="split-toggle" type="button" (click)="togglePullMenu($event)" [disabled]="git.busy()" title="Pull options" aria-label="Pull options" aria-haspopup="menu" aria-controls="pull-options-menu" [attr.aria-expanded]="pullMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          <button class="tool-button split-main" type="button" (click)="pullCurrentBranch()" [disabled]="git.busy() || !currentBranch() || !currentRemote() || repo.bare" [attr.aria-label]="pullToolbarLabel()" title="{{ pullToolbarLabel() }} · {{ pullStrategyLabel() }}"><span><gc-icon name="pull" />@if (currentRemoteIsUpstream() && currentBranchSync().behind) { <b class="toolbar-sync-badge incoming">{{ currentBranchSync().behind }}</b> }</span><small>Pull</small></button>
+          <button class="split-toggle" type="button" (click)="togglePullMenu($event)" [disabled]="git.busy()" title="Pull options" aria-label="Pull options" aria-haspopup="menu" [attr.aria-controls]="pullMenuOpen() ? 'pull-options-menu' : null" [attr.aria-expanded]="pullMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
           @if (pullMenuOpen()) {
             <div id="pull-options-menu" class="toolbar-menu pull-menu" role="menu" aria-label="Pull options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <button type="button" role="menuitem" (click)="pullMenuOpen.set(false); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy()"><gc-icon name="refresh" [size]="13" /><span><strong>{{ git.backgroundFetchBusy() ? 'Fetching…' : 'Fetch All' }}</strong><small>{{ fetchMenuDetail() }}</small></span></button>
@@ -532,7 +532,7 @@
         </div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" (click)="pushCurrentBranch()" [disabled]="git.busy() || !currentBranch()" [attr.aria-label]="pushToolbarLabel()" title="{{ pushToolbarLabel() }}"><span><gc-icon name="push" />@if (currentRemoteIsUpstream() && currentBranchSync().ahead) { <b class="toolbar-sync-badge outgoing">{{ currentBranchSync().ahead }}</b> }</span><small>{{ currentBranch()?.upstream ? 'Push' : 'Publish' }}</small></button>
-          <button class="split-toggle" type="button" (click)="togglePushMenu($event)" [disabled]="git.busy() || !currentBranch() || !currentRemote()" title="Push options" aria-label="Push options" aria-haspopup="menu" aria-controls="push-options-menu" [attr.aria-expanded]="pushMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          <button class="split-toggle" type="button" (click)="togglePushMenu($event)" [disabled]="git.busy() || !currentBranch() || !currentRemote()" title="Push options" aria-label="Push options" aria-haspopup="menu" [attr.aria-controls]="pushMenuOpen() ? 'push-options-menu' : null" [attr.aria-expanded]="pushMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
           @if (pushMenuOpen()) {
             <div id="push-options-menu" class="toolbar-menu push-menu" role="menu" aria-label="Push options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <button type="button" role="menuitem" (click)="pushMenuOpen.set(false); pushCurrentBranch()"><gc-icon name="push" [size]="13" /><span><strong>{{ currentBranch()?.upstream ? 'Push' : 'Publish branch' }}</strong><small>{{ pushToolbarLabel() }}</small></span></button>
@@ -543,7 +543,7 @@
         </div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" aria-label="Create branch" aria-keyshortcuts="Control+B Meta+B" title="Create branch ({{ primaryShortcutKey }}+B)" (click)="openBranchCreator()" [disabled]="git.busy()"><span><gc-icon name="branch" /></span><small>Branch</small></button>
-          <button class="split-toggle" type="button" (click)="toggleBranchMenu($event)" [disabled]="git.busy()" title="Branch options" aria-label="Branch options" aria-haspopup="menu" aria-controls="branch-options-menu" [attr.aria-expanded]="branchMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          <button class="split-toggle" type="button" (click)="toggleBranchMenu($event)" [disabled]="git.busy()" title="Branch options" aria-label="Branch options" aria-haspopup="menu" [attr.aria-controls]="branchMenuOpen() ? 'branch-options-menu' : null" [attr.aria-expanded]="branchMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
           @if (branchMenuOpen()) {
             <div id="branch-options-menu" class="toolbar-menu branch-menu" role="menu" aria-label="Branch options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <button type="button" role="menuitem" (click)="branchMenuOpen.set(false); openBranchCreator()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
@@ -562,13 +562,13 @@
         @if (repo.lfs.enabled) {
           <div class="toolbar-split" (click)="$event.stopPropagation()">
             <button class="tool-button split-main" type="button" title="Pull Git LFS objects" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gc-icon name="server" /></span><small>LFS</small></button>
-            <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" aria-controls="lfs-options-menu" (click)="toggleLfsMenu($event)" [attr.aria-expanded]="lfsMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+            <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" [attr.aria-controls]="lfsMenuOpen() ? 'lfs-options-menu' : null" (click)="toggleLfsMenu($event)" [attr.aria-expanded]="lfsMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
             @if (lfsMenuOpen()) {
               <div id="lfs-options-menu" class="toolbar-menu lfs-menu" role="menu" aria-label="Git LFS options" (keydown)="handleToolbarActionMenuKeydown($event)">
                 <div class="lfs-menu-status"><gc-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ repo.lfs.available ? (repo.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} }</small></span></div>
                 <div class="menu-separator"></div>
                 <button type="button" role="menuitem" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects needed by the current checkout</small></span></button>
-                <button class="danger-item" type="button" role="menuitem" (click)="requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Prune old LFS objects</strong><small>Remove local objects no longer needed</small></span></button>
+                <button class="danger-item" type="button" role="menuitem" (click)="requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage</strong><small>Review and remove unreferenced local objects</small></span></button>
               </div>
             }
           </div>
@@ -576,7 +576,7 @@
         @if (repo.sparseCheckout.enabled) {
           <div class="toolbar-split" (click)="$event.stopPropagation()">
             <button class="tool-button split-main" type="button" title="Edit sparse checkout directories" (click)="openSparseCheckoutPreferences()" [disabled]="git.busy()"><span><gc-icon name="folder-git" /></span><small>Sparse</small></button>
-            <button class="split-toggle" type="button" title="Sparse checkout options" aria-label="Sparse checkout options" aria-haspopup="menu" aria-controls="sparse-checkout-options-menu" (click)="toggleSparseCheckoutMenu($event)" [attr.aria-expanded]="sparseCheckoutMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+            <button class="split-toggle" type="button" title="Sparse checkout options" aria-label="Sparse checkout options" aria-haspopup="menu" [attr.aria-controls]="sparseCheckoutMenuOpen() ? 'sparse-checkout-options-menu' : null" (click)="toggleSparseCheckoutMenu($event)" [attr.aria-expanded]="sparseCheckoutMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
             @if (sparseCheckoutMenuOpen()) {
               <div id="sparse-checkout-options-menu" class="toolbar-menu sparse-menu" role="menu" aria-label="Sparse checkout options" (keydown)="handleToolbarActionMenuKeydown($event)">
                 <div class="lfs-menu-status"><gc-icon name="folder-git" [size]="15" /><span><strong>Sparse Checkout</strong><small>{{ repo.sparseCheckout.paths.length }} selected {{ repo.sparseCheckout.paths.length === 1 ? 'directory' : 'directories' }} · {{ repo.sparseCheckout.sparseIndex ? 'sparse index' : 'full index' }}</small></span></div>
@@ -593,7 +593,7 @@
         <div class="toolbar-utilities">
           <button class="toolbar-panel-button" type="button" title="{{ detailsVisible() ? 'Hide' : 'Show' }} Commit Panel ({{ primaryShortcutKey }}+K)" aria-label="{{ detailsVisible() ? 'Hide' : 'Show' }} Commit Panel" aria-keyshortcuts="Control+K Meta+K" [class.active]="detailsVisible()" [attr.aria-pressed]="detailsVisible()" (click)="setPanelVisibility('commit-panel', !detailsVisible())"><gc-icon name="panel-right" [size]="14" /></button>
           <div class="graph-search" [class.expanded]="commitSearchExpanded()" [class.searching]="commitFilter().trim()" (focusout)="handleCommitSearchFocusOut($event)">
-          <button #commitSearchToggle class="graph-search-toggle" type="button" title="Search repository history ({{ primaryShortcutKey }}+F)" aria-label="Focus commit search" aria-controls="repository-history-dialog" aria-haspopup="dialog" [attr.aria-expanded]="repositoryHistorySearch()?.opened() || false" (click)="focusCommitSearch()"><gc-icon name="search" [size]="13" /></button>
+          <button #commitSearchToggle class="graph-search-toggle" type="button" title="Search repository history ({{ primaryShortcutKey }}+F)" aria-label="Focus commit search" [attr.aria-controls]="repositoryHistorySearch()?.opened() ? 'repository-history-dialog' : null" aria-haspopup="dialog" [attr.aria-expanded]="repositoryHistorySearch()?.opened() || false" (click)="focusCommitSearch()"><gc-icon name="search" [size]="13" /></button>
           <input
             #commitSearch
             id="commit-search-input"
@@ -675,11 +675,18 @@
           />
           @if (branchFilter()) { <button type="button" title="Clear reference filter" aria-label="Clear reference filter" (click)="clearReferenceFilter($event)"><gc-icon name="x" [size]="10" /></button> }
         </label>
-        <button class="wip-nav" type="button" [class.selected]="changesOpen()" (click)="selectWip()">
-          <span class="wip-icon">WIP</span>
-          <span><strong>Working Directory</strong><small>{{ repo.status.entryCount }} changed files</small></span>
-          <b>{{ repo.status.staged + repo.status.unstaged + repo.status.untracked }}</b>
-        </button>
+        @if (repo.bare) {
+          <div class="wip-nav bare-repository-badge" role="note" title="A bare repository stores history and references without a working tree, so there is nothing to stage, commit or check out here.">
+            <span class="wip-icon">BARE</span>
+            <span><strong>Bare repository</strong><small>Read-only · no working tree</small></span>
+          </div>
+        } @else {
+          <button class="wip-nav" type="button" [class.selected]="changesOpen()" (click)="selectWip()">
+            <span class="wip-icon">WIP</span>
+            <span><strong>Working Directory</strong><small>{{ repo.status.entryCount }} changed files</small></span>
+            <b>{{ repo.status.staged + repo.status.unstaged + repo.status.untracked }}</b>
+          </button>
+        }
 
         <div id="reference-section-worktrees" class="reference-section worktree-section" [class.pane-hidden]="!referencePaneVisible('worktrees')" [class.collapsed]="!worktreesOpen()" [class.maximized]="maximizedReferenceSection() === 'worktrees'" [class.resized]="referenceSectionHeight('worktrees') !== null" [style.height.px]="referenceSectionHeight('worktrees')">
           <div class="sidebar-heading" (dblclick)="maximizeReferenceSection('worktrees')" (contextmenu)="openReferencePaneMenu($event)">
@@ -1002,7 +1009,7 @@
           @if (showDateColumn()) { <span class="draggable-column date-column-heading" draggable="true" title="Date / Time" [class.dragging]="draggedGraphColumn() === 'date'" [style.order]="graphColumnPosition('date')" [class.trailing-column]="trailingGraphColumn() === 'date'" (dragstart)="startGraphColumnDrag($event, 'date')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'date')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('date')">DATE / TIME</span>@if (graphColumnHeadingIconic('date')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.date" [size]="14" /> }<i class="column-resizer" [title]="graphColumnResizeTitle('date')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Date and Time column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('date')" [attr.aria-valuemax]="graphColumnMaximumWidth('date')" [attr.aria-valuenow]="graphColumnAriaWidth('date')" [attr.aria-valuetext]="graphColumnAriaWidth('date') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('date', $event)" (keydown)="handleColumnResizeKeydown('date', $event)" (dblclick)="resetGraphColumnWidth('date', $event)"></i></span> }
           @if (showShaColumn()) { <span class="draggable-column" draggable="true" [class.dragging]="draggedGraphColumn() === 'sha'" [style.order]="graphColumnPosition('sha')" [class.trailing-column]="trailingGraphColumn() === 'sha'" [attr.title]="graphColumnHeadingIconic('sha') ? 'SHA' : null" (dragstart)="startGraphColumnDrag($event, 'sha')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'sha')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('sha')">SHA</span>@if (graphColumnHeadingIconic('sha')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.sha" [size]="14" /> }<i class="column-resizer" [title]="graphColumnResizeTitle('sha')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize SHA column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('sha')" [attr.aria-valuemax]="graphColumnMaximumWidth('sha')" [attr.aria-valuenow]="graphColumnAriaWidth('sha')" [attr.aria-valuetext]="graphColumnAriaWidth('sha') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('sha', $event)" (keydown)="handleColumnResizeKeydown('sha', $event)" (dblclick)="resetGraphColumnWidth('sha', $event)"></i></span> }
         </div>
-          <button #graphSettingsToggle class="graph-settings-toggle" type="button" title="Configure graph columns" aria-label="Configure graph columns" aria-haspopup="dialog" aria-controls="graph-column-settings" [attr.aria-expanded]="graphSettingsOpen()" (click)="toggleGraphSettings($event)"><gc-icon name="settings" [size]="11" /></button>
+          <button #graphSettingsToggle class="graph-settings-toggle" type="button" title="Configure graph columns" aria-label="Configure graph columns" aria-haspopup="dialog" [attr.aria-controls]="graphSettingsOpen() ? 'graph-column-settings' : null" [attr.aria-expanded]="graphSettingsOpen()" (click)="toggleGraphSettings($event)"><gc-icon name="settings" [size]="11" /></button>
           <!-- Rendered outside the clipped column header so the whole list stays visible and clickable. -->
           @if (authorFilterOpen()) {
             <div class="author-filter-menu" role="dialog" [style.left.px]="authorFilterPosition().x" [style.top.px]="authorFilterPosition().y" aria-label="Author filter" (click)="$event.stopPropagation()">
@@ -1115,6 +1122,14 @@
             }
             <p>Open this worktree to review, stage, and commit its changes in the correct working directory.</p>
             <button class="primary" type="button" (click)="openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="13" />Open Worktree</button>
+          </section>
+        } @else if (changesOpen() && repo.bare) {
+          <div class="panel-title"><strong>Bare repository</strong></div>
+          <section class="selected-worktree-card bare-repository-card" aria-label="Bare repository">
+            <span class="selected-worktree-icon"><gc-icon name="archive" [size]="22" /></span>
+            <div><small>READ-ONLY</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong><code>{{ repo.path }}</code></div>
+            <p>This repository has no working tree, so there are no files to stage or commit. Select a commit to inspect it, or browse branches and tags. Fetching and pushing stay available.</p>
+            <p>To make changes, clone it or add a worktree, then open that folder.</p>
           </section>
         } @else if (changesOpen()) {
           <div class="panel-title wip-panel-title" (click)="$event.stopPropagation()">
@@ -1359,7 +1374,7 @@
                 @if (workingTreeViewMode() === 'path') {
                   <div class="virtual-file-spacer" [style.height.px]="virtualComparisonFiles().topPadding" aria-hidden="true"></div>
                   @for (file of virtualComparisonFiles().items; track file.path) {
-                    <button class="commit-file" type="button" [class.selected]="isPanelFileSelected(file.path, 'comparison')" [attr.aria-current]="isPanelFileSelected(file.path, 'comparison') ? 'true' : null" (click)="selectPanelFile($event, file, 'comparison', displayedComparisonFiles())" (keydown)="handleCommitFileActionKeydown($event, file, comparison.targetOid, 'comparison')" (contextmenu)="openCommitFileMenu($event, file, comparison.targetOid, 'comparison')" title="{{ file.previousPath ? file.previousPath + ' → ' + file.path : file.path }}"><span class="change-kind" [attr.data-status]="file.status.charAt(0)">{{ file.status.charAt(0) }}</span><span class="commit-file-path">@if (file.previousPath) { <small class="previous-path">{{ file.previousPath }} →</small> }<span class="current-path"><small>{{ fileDirectory(file.path) }}</small><strong>{{ fileName(file.path) }}</strong></span></span><span class="file-line-stats">@if (file.additions !== null) { <span>+{{ file.additions }}</span><i>−{{ file.deletions }}</i> } @else { <em>binary</em> }</span></button>
+                    <button class="commit-file" type="button" [class.selected]="isPanelFileSelected(file.path, 'comparison')" [attr.aria-current]="isPanelFileSelected(file.path, 'comparison') ? 'true' : null" (click)="selectPanelFile($event, file, 'comparison', displayedComparisonFiles())" (keydown)="handleCommitFileActionKeydown($event, file, comparison.targetOid, 'comparison')" (contextmenu)="openCommitFileMenu($event, file, comparison.targetOid, 'comparison')" title="{{ file.previousPath ? file.previousPath + ' → ' + file.path : file.path }}"><span class="change-kind" [attr.data-status]="file.status.charAt(0)">{{ file.status.charAt(0) }}</span><span class="commit-file-path">@if (file.previousPath) { <small class="previous-path">{{ file.previousPath }} →</small> }<span class="current-path"><strong>{{ fileName(file.path) }}</strong><small>{{ fileDirectory(file.path) }}</small></span></span><span class="file-line-stats">@if (file.additions !== null) { <span>+{{ file.additions }}</span><i>−{{ file.deletions }}</i> } @else { <em>binary</em> }</span></button>
                   } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching changed files' : 'These commits have identical file trees' }}</div> }
                   <div class="virtual-file-spacer" [style.height.px]="virtualComparisonFiles().bottomPadding" aria-hidden="true"></div>
                 } @else {
@@ -1832,54 +1847,11 @@
   }
 
   @if (repositoryDialog(); as mode) {
-    <div class="repository-backdrop" (click)="closeRepositoryManager()">
-      <section #repositoryDialogElement class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
-        <header class="repository-dialog-header">
-          <span class="brand-mark mini">GC</span><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
-          <button type="button" aria-label="Close repository management" (click)="closeRepositoryManager()"><gc-icon name="x" [size]="14" /></button>
-        </header>
-        <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleRepositoryDialogTabKeydown($event)">
-          <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode === 'manager'" [attr.tabindex]="mode === 'manager' ? 0 : -1" [class.active]="mode === 'manager'" (click)="repositoryDialog.set('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button>
-          <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode === 'clone'" [attr.tabindex]="mode === 'clone' ? 0 : -1" [class.active]="mode === 'clone'" (click)="repositoryDialog.set('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
-          <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode === 'init'" [attr.tabindex]="mode === 'init' ? 0 : -1" [class.active]="mode === 'init'" (click)="repositoryDialog.set('init')"><gc-icon name="repo" [size]="13" />Init</button>
-        </nav>
-        @if (mode === 'manager') {
-          <div id="repository-dialog-panel" class="repository-manager-body" role="tabpanel" aria-labelledby="repository-tab-manager">
-            @if (git.browserPreview()) {
-              <div class="browser-preview-notice"><gc-icon name="terminal" [size]="16" /><span><strong>Sample-data preview</strong><small>Local repositories and Git commands are available in the desktop app. Run <code>task dev</code> to use them.</small></span></div>
-            }
-            <button class="repository-action-card" type="button" [disabled]="git.browserPreview()" (click)="browseFromRepositoryManager()"><span><gc-icon name="folder-git" [size]="22" /></span><div><strong>Open a repository</strong><small>Browse to an existing local Git working tree</small></div><b>{{ git.browserPreview() ? 'Desktop only' : 'Browse' }}</b></button>
-            <button class="repository-action-card" type="button" (click)="repositoryDialog.set('clone')"><span><gc-icon name="copy" [size]="22" /></span><div><strong>Clone a repository</strong><small>Download a remote repository to this machine</small></div><b>Clone</b></button>
-            <button class="repository-action-card" type="button" (click)="repositoryDialog.set('init')"><span><gc-icon name="repo" [size]="22" /></span><div><strong>Initialize a repository</strong><small>Create a new local Git working tree</small></div><b>Init</b></button>
-            @if (git.favoritePaths().length) {
-              <div class="manager-repositories manager-favorites"><h3>Favorites</h3>@for (path of git.favoritePaths(); track path; let index = $index) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" (click)="openFavoriteRepository(path)"><gc-icon name="star" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><kbd>{{ index < 9 ? favoriteShortcut + ' ' + (index + 1) : '' }}</kbd></button><button class="manager-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
-            }
-            @if (git.recentPaths().length) {
-              <div class="manager-repositories manager-recents"><h3>Recently opened</h3>@for (path of git.recentPaths(); track path) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" (click)="openRepositoryPath(path, true)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span></button><button class="manager-favorite-toggle" type="button" [class.active]="git.isFavoritePath(path)" title="{{ git.isFavoritePath(path) ? 'Remove from favorites' : 'Add to favorites' }}" [attr.aria-label]="(git.isFavoritePath(path) ? 'Remove ' : 'Add ') + git.pathLabel(path) + (git.isFavoritePath(path) ? ' from favorites' : ' to favorites')" [attr.aria-pressed]="git.isFavoritePath(path)" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
-            }
-          </div>
-        } @else if (mode === 'clone') {
-          <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-clone" (submit)="$event.preventDefault(); submitClone()">
-            <div class="form-intro"><span><gc-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
-            <label>Repository URL<input name="cloneRemote" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="cloneRemote()" (ngModelChange)="updateCloneRemote($event)" /></label>
-            <label>Where to clone<div class="path-picker"><input name="cloneParent" readonly placeholder="Choose a destination folder" [ngModel]="cloneParentPath()" /><button type="button" (click)="chooseCloneParent()">Browse</button></div></label>
-            <label>Folder name<input name="cloneFolder" autocomplete="off" placeholder="repository" [ngModel]="cloneFolder()" (ngModelChange)="cloneFolder.set($event)" /></label>
-            <label class="option-row"><input type="checkbox" name="shallowClone" [ngModel]="shallowClone()" (ngModelChange)="shallowClone.set($event)" /><span><strong>Shallow clone</strong><small>Limit the downloaded commit history</small></span></label>
-            @if (shallowClone()) { <div class="inline-options"><label>Branch<input name="cloneBranch" placeholder="Default branch" [ngModel]="cloneBranch()" (ngModelChange)="cloneBranch.set($event)" /></label><label>Depth<input type="number" name="cloneDepth" min="1" [ngModel]="cloneDepth()" (ngModelChange)="cloneDepth.set($event)" /></label></div> }
-            <footer><button type="button" (click)="closeRepositoryManager()">Cancel</button><button class="primary" type="submit" [disabled]="!cloneRemote().trim() || !cloneParentPath() || !cloneFolder().trim() || git.busy()">Clone the repo</button></footer>
-          </form>
-        } @else {
-          <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-init" (submit)="$event.preventDefault(); submitInit()">
-            <div class="form-intro"><span><gc-icon name="repo" [size]="21" /></span><div><h2>Initialize a Repository</h2><p>Create a new local repository and open it immediately.</p></div></div>
-            <label>Location<div class="path-picker"><input name="initParent" readonly placeholder="Choose a parent folder" [ngModel]="initParentPath()" /><button type="button" (click)="chooseInitParent()">Browse</button></div></label>
-            <label>Repository name<input name="initFolder" autocomplete="off" placeholder="my-project" [ngModel]="initFolder()" (ngModelChange)="initFolder.set($event)" /></label>
-            <label>Initial branch<input name="initBranch" autocomplete="off" placeholder="main" [ngModel]="initBranch()" (ngModelChange)="initBranch.set($event)" /></label>
-            <label class="option-row"><input type="checkbox" name="initReadme" [ngModel]="initReadme()" (ngModelChange)="initReadme.set($event)" /><span><strong>Add README.md</strong><small>Create a starter README in the working tree</small></span></label>
-            <footer><button type="button" (click)="closeRepositoryManager()">Cancel</button><button class="primary" type="submit" [disabled]="!initParentPath() || !initFolder().trim() || !initBranch().trim() || git.busy()">Create repository</button></footer>
-          </form>
-        }
-      </section>
-    </div>
+    @defer (on immediate) {
+      <gc-repository-dialog [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [favoriteShortcut]="favoriteShortcut"
+        (closed)="closeRepositoryManager()" (browse)="browseFromRepositoryManager()" (openFavorite)="openFavoriteRepository($event)"
+        (openPath)="openRepositoryPath($event, true)" (opening)="saveCommitDraft()" (opened)="finishRepositoryCreation()" />
+    }
   }
   @if (workspaceDialogMode(); as mode) {
     <div class="repository-backdrop" (click)="closeWorkspaceDialog()">
@@ -2000,12 +1972,31 @@
       <section #lfsPruneDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="prune-lfs-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>Prune Git LFS storage</span>
-          <h2 id="prune-lfs-title">Remove old local objects?</h2>
-          <p>This runs <code>git lfs prune</code> using the current retention and fetch-exclude settings. Historical, orphaned or fetch-excluded cached objects may be removed, not just unreferenced objects.</p>
-          <p>This confirmation does not provide an exact candidate list or require remote verification. Review the scope with local Git LFS first. Never prune a cache shared with another repository. Deleted local copies have no offline undo.</p>
+          <span>Clean Git LFS storage</span>
+          <h2 id="prune-lfs-title">Remove unreferenced LFS objects?</h2>
+          @if (lfsPrunePreview(); as preview) {
+            @if (preview.objects.length) {
+              <p><strong>{{ preview.objects.length }} {{ preview.objects.length === 1 ? 'object' : 'objects' }} · {{ formatStorageSize(preview.totalSize) }}</strong> in local LFS storage {{ preview.objects.length === 1 ? 'is' : 'are' }} not referenced by any Git object: no branch, tag, stash, reflog, index or unreachable commit points to {{ preview.objects.length === 1 ? 'it' : 'them' }}.</p>
+              <ul class="lfs-prune-list" aria-label="Reviewed unreferenced LFS objects">
+                @for (object of preview.objects.slice(0, 200); track object.oid) {
+                  <li><code [title]="'sha256:' + object.oid">{{ object.oid.slice(0, 12) }}</code><span>{{ formatStorageSize(object.size) }}</span></li>
+                }
+              </ul>
+              @if (preview.objects.length > 200) { <p class="lfs-prune-note">and {{ preview.objects.length - 200 }} more reviewed objects.</p> }
+            } @else {
+              <p role="status"><strong>Nothing to remove.</strong> Every local LFS object is referenced by Git or was written in the last hour.</p>
+            }
+            <p class="lfs-prune-note">Kept: {{ preview.referenced }} referenced{{ preview.recent ? ', ' + preview.recent + ' written in the last hour' : '' }}.@if (preview.remaining) { {{ preview.remaining }} more unreferenced objects can be reviewed after this batch.} Storage is re-checked before removal; removed copies have no offline undo.</p>
+          } @else {
+            <p role="status" aria-live="polite">Reviewing local LFS storage against every Git object…</p>
+          }
+          <details class="lfs-retention-prune">
+            <summary>Advanced: Git LFS retention prune</summary>
+            <p>Runs <code>git lfs prune</code> with the current retention and fetch-exclude settings. Historical, orphaned or fetch-excluded objects may be removed without an exact list or remote verification, and reflogs do not protect them. Never use it on storage shared with another repository.</p>
+            <button class="danger" type="button" [disabled]="git.busy()" (click)="confirmLfsRetentionPrune()">Run git lfs prune</button>
+          </details>
         </div>
-        <footer><button type="button" (click)="closeLfsPrune()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmLfsPrune()">Prune Objects</button></footer>
+        <footer><button type="button" (click)="closeLfsPrune()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || lfsPruneReviewing() || !lfsPrunePreview()?.objects?.length" (click)="confirmLfsPrune()">{{ lfsPruneActionLabel() }}</button></footer>
       </section>
     </div>
   }
@@ -2029,7 +2020,7 @@
         <div class="confirmation-copy">
           <span>{{ action.deleteBranch ? 'Remove worktree and delete branch' : 'Remove worktree' }}</span>
           <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
-          <p>{{ action.deleteBranch ? 'Remove this working directory and permanently delete its branch.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
+          <p>{{ action.deleteBranch ? 'Remove this working directory and delete its branch. The branch tip is saved in Recovery History first.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
           @if (action.changes) {
             <label class="force-delete-option"><input type="checkbox" [ngModel]="forceWorktreeRemoval()" (ngModelChange)="forceWorktreeRemoval.set($event)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
           }
@@ -2100,24 +2091,9 @@
     </div>
   }
   @if (keyboardShortcutsOpen()) {
-    <div class="shortcuts-backdrop" (click)="closeKeyboardShortcuts()">
-      <section class="shortcuts-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
-        <header><span><gc-icon name="command" [size]="18" /></span><div><h2 id="shortcuts-title">Keyboard Shortcuts</h2><small>Familiar desktop Git navigation</small></div><button #shortcutsClose type="button" aria-label="Close keyboard shortcuts" title="Close keyboard shortcuts (Esc)" (click)="closeKeyboardShortcuts()"><gc-icon name="x" [size]="14" /></button></header>
-        <nav class="shortcut-section-nav" aria-label="Shortcut categories">
-          <button type="button" aria-controls="shortcut-section-repository" [class.active]="activeShortcutSection() === 'repository'" [attr.aria-current]="activeShortcutSection() === 'repository' ? 'location' : null" (click)="scrollShortcutSection($event, 'repository')">Repository</button>
-          <button type="button" aria-controls="shortcut-section-navigation" [class.active]="activeShortcutSection() === 'navigation'" [attr.aria-current]="activeShortcutSection() === 'navigation' ? 'location' : null" (click)="scrollShortcutSection($event, 'navigation')">Navigation</button>
-          <button type="button" aria-controls="shortcut-section-interface" [class.active]="activeShortcutSection() === 'interface'" [attr.aria-current]="activeShortcutSection() === 'interface' ? 'location' : null" (click)="scrollShortcutSection($event, 'interface')">Interface</button>
-          <button type="button" aria-controls="shortcut-section-tabs-view" [class.active]="activeShortcutSection() === 'tabs-view'" [attr.aria-current]="activeShortcutSection() === 'tabs-view' ? 'location' : null" (click)="scrollShortcutSection($event, 'tabs-view')">Tabs and view</button>
-        </nav>
-        <div class="shortcut-groups">
-          <section id="shortcut-section-repository"><h3>Repository</h3><dl><div><dt>Undo repository action</dt><dd>@for (key of undoShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }</dd></div><div><dt>Redo repository action</dt><dd>@for (key of redoShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }</dd></div><div><dt>Create branch</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>B</kbd></dd></div><div><dt>Fetch all</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>L</kbd></dd></div><div><dt>Stage selected file</dt><dd><kbd>S</kbd></dd></div><div><dt>Stage all</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>S</kbd></dd></div><div><dt>Unstage selected file</dt><dd><kbd>U</kbd></dd></div><div><dt>Unstage all</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>U</kbd></dd></div><div><dt>Commit staged files</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Enter</kbd></dd></div><div><dt>Stage all and commit</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>Enter</kbd></dd></div></dl></section>
-          <section id="shortcut-section-navigation"><h3>Navigation</h3><dl><div><dt>Older commit</dt><dd><kbd>J</kbd> / <kbd>↓</kbd></dd></div><div><dt>Newer commit</dt><dd><kbd>K</kbd> / <kbd>↑</kbd></dd></div><div><dt>Follow branch toward parent</dt><dd><kbd>Shift</kbd><kbd>J</kbd> / <kbd>↓</kbd></dd></div><div><dt>Follow branch toward child</dt><dd><kbd>Shift</kbd><kbd>K</kbd> / <kbd>↑</kbd></dd></div><div><dt>Connected commit to the left</dt><dd><kbd>H</kbd> / <kbd>←</kbd></dd></div><div><dt>Connected commit to the right</dt><dd><kbd>L</kbd> / <kbd>→</kbd></dd></div><div><dt>First commit</dt><dd>@for (key of firstCommitShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }</dd></div><div><dt>Last commit</dt><dd>@for (key of lastCommitShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }</dd></div><div><dt>Previous / next changed file</dt><dd><kbd>Alt</kbd><kbd>↑</kbd> / <kbd>↓</kbd></dd></div><div><dt>Previous diff change</dt><dd><kbd>Shift</kbd><kbd>F7</kbd></dd></div><div><dt>Next diff change</dt><dd><kbd>F7</kbd></dd></div><div><dt>Next repository tab</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Tab</kbd></dd></div><div><dt>Previous repository tab</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>Tab</kbd></dd></div></dl></section>
-          <section id="shortcut-section-interface"><h3>Interface</h3><dl><div><dt>Command Palette</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>P</kbd></dd></div><div><dt>Search commits</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>F</kbd></dd></div><div><dt>Find file history or blame</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>H</kbd></dd></div><div><dt>Filter references</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>{{ alternateShortcutKey }}</kbd><kbd>F</kbd></dd></div><div><dt>Open diff view</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>D</kbd></dd></div><div><dt>Toggle Left Panel</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>J</kbd></dd></div><div><dt>Toggle Commit Panel</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>K</kbd></dd></div><div><dt>Close focused panel</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Focus commit message</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>M</kbd></dd></div></dl></section>
-          <section id="shortcut-section-tabs-view"><h3>Tabs and view</h3><dl><div><dt>New repository tab</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>T</kbd></dd></div><div><dt>Reopen closed repository</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>T</kbd></dd></div><div><dt>Open repository</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>O</kbd></dd></div><div><dt>Close repository tab</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>W</kbd></dd></div><div><dt>Workspace 1–9</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>Shift</kbd><kbd>1–9</kbd></dd></div><div><dt>Favorite repository 1–9</dt><dd>@for (key of favoriteShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }<kbd>1–9</kbd></dd></div><div><dt>Repository terminal</dt><dd><kbd>{{ alternateShortcutKey }}</kbd><kbd>T</kbd></dd></div><div><dt>New terminal tab</dt><dd><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></dd></div><div><dt>Close terminal tab</dt><dd><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></dd></div><div><dt>Previous / next terminal</dt><dd><kbd>Ctrl</kbd><kbd>Page ↑</kbd> / <kbd>Page ↓</kbd></dd></div><div><dt>Open repository folder</dt><dd><kbd>{{ alternateShortcutKey }}</kbd><kbd>O</kbd></dd></div><div><dt>Toggle fullscreen</dt><dd>@for (key of fullscreenShortcut.split(' '); track key) { <kbd>{{ key }}</kbd> }</dd></div><div><dt>Zoom in / out</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>+</kbd> / <kbd>-</kbd></dd></div><div><dt>Reset zoom</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>0</kbd></dd></div><div><dt>Shortcut reference</dt><dd><kbd>{{ primaryShortcutKey }}</kbd><kbd>/</kbd></dd></div></dl></section>
-        </div>
-        <footer>Press <kbd>Esc</kbd> to close</footer>
-      </section>
-    </div>
+    @defer (on immediate) {
+      <gc-keyboard-shortcuts-dialog [labels]="shortcutLabels" (closed)="closeKeyboardShortcuts()" />
+    }
   }
   @if (tagPreview(); as preview) {
     <section id="tag-reference-preview" class="tag-reference-preview" role="tooltip" [style.left.px]="preview.x" [style.top.px]="preview.y">
@@ -2529,7 +2505,7 @@
         <div class="confirmation-copy">
           <span>Delete stash</span>
           <h2>{{ stash.message }}</h2>
-          <p>Permanently delete {{ stash.reference }}. The stashed changes cannot be recovered through Git Chronos after deletion.</p>
+          <p>Remove {{ stash.reference }} from the stash list. Its staged, unstaged and untracked contents are saved in <strong>Recovery History</strong> first, so you can restore them on a new branch until you remove that capture.</p>
         </div>
         <footer><button type="button" (click)="pendingStashDelete.set(null)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmStashDelete()">Delete Stash</button></footer>
       </section>
@@ -2574,9 +2550,9 @@
             <p>This rewrites commits by rebasing {{ git.repository()?.status?.branch }} onto {{ action.branch }}.</p>
           } @else if (action.unmerged) {
             <p class="unmerged-branch-warning"><gc-icon name="warning" [size]="14" />This branch has commits that are not merged into its upstream or the current branch.</p>
-            <p>Deleting it anyway can leave those commits unreachable from any branch. Merge or push them first if you still need them.</p>
+            <p>Deleting it anyway leaves those commits on no branch. Git Chronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
           } @else {
-            <p>Deleting a branch is permanent. Git will protect an unmerged branch unless force deletion is enabled.</p>
+            <p>Git refuses to delete an unmerged branch unless force deletion is enabled. The branch tip is saved in <strong>Recovery History</strong> first, so you can restore it later.</p>
             <label class="force-delete-option"><input type="checkbox" [ngModel]="forceBranchDelete()" (ngModelChange)="forceBranchDelete.set($event)" /> Force delete even when the branch is not merged</label>
           }
         </div>
@@ -2651,9 +2627,9 @@
         </div>
         <div class="recovery-guidance"><gc-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
         <div class="recovery-list" aria-live="polite">
-          <section class="operation-captures" aria-label="Saved reset captures">
-            <h3>Saved reset captures</h3>
-            <p>Restore original history and tracked staged/unstaged contents on a new branch. Captures stay protected until you remove them; untracked, ignored and submodule working files are not included.</p>
+          <section class="operation-captures" aria-label="Saved operation captures">
+            <h3>Saved operation captures</h3>
+            <p>Restore saved history and any captured changes on a new branch. Captures stay protected until you remove them. Reset captures exclude untracked, ignored and submodule files; deleted stashes keep everything the stash saved.</p>
             @if (recoveryCaptureBusy()) { <p role="status">Reading saved captures...</p> }
             @if (git.error()) { <p class="recovery-error" role="alert" tabindex="-1">{{ git.error() }}</p> }
             @for (record of filteredOperationRecoveries(); track record.id) {
@@ -2683,7 +2659,7 @@
                 }
               </article>
             } @empty {
-              @if (operationRecoveries() && !recoveryCaptureBusy()) { <p>{{ recoveryQuery().trim() ? 'No matching saved captures.' : 'No saved reset captures. Reset creates one before changing history.' }}</p> }
+              @if (operationRecoveries() && !recoveryCaptureBusy()) { <p>{{ recoveryQuery().trim() ? 'No matching saved captures.' : 'No saved operation captures. Reset, branch deletion and stash deletion create one before changing references.' }}</p> }
             }
           </section>
           @if (git.reflogBusy() && !git.reflog()) {

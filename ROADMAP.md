@@ -22,15 +22,17 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] File and commit diffs
 - [x] Filesystem-driven automatic refresh
 - [x] Non-blocking, bounded large-repository loading and progressive tab restore
-- [x] Clone and initialize workflows (shallow/single-branch; cancelled clones disclose partial destinations;
-  recursive submodule clone remains)
+- [x] Clone and initialize workflows (shallow/single-branch, optional recursive submodules; cancelled clones
+  disclose partial destinations)
 - [x] Shallow-history deepening or completion from one selected remote
 - [x] Unborn/detached HEAD qualification; explained refusal of bare, `.git`-folder, unsupported-format and foreign-owner repositories
-- [ ] Read-only browsing of bare repositories
+- [x] Read-only browsing of bare repositories (explicit `GIT_DIR`, working-tree actions unavailable)
 - [x] Repository-scoped sparse checkout with preferences and toolbar actions
   (modified/unmerged paths and populated submodules left outside a selection,
   and changes Stage all cannot stage there, are named; nothing is deleted)
 - [ ] Generated Rust-to-TypeScript IPC bindings
+  (a source-parsed contract test checks every command name, registration,
+  argument name and cancellation identifier; generated payload types remain)
 
 ## Linux daily-driver beta — in progress
 
@@ -42,12 +44,19 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Visible operation progress and durable activity logs
 - [x] Safe cancellation for long-running Git operations
 - [ ] In-app askpass bridge that delegates persistence to Git credential helpers
-  (implemented with native/renderer and loopback HTTPS smart-Git tests; live SSH
-  and packaged acceptance
-  remain—see [authentication support](docs/authentication.md))
+  (implemented with native/renderer, loopback HTTPS smart-Git and loopback OpenSSH
+  fetch/push tests; the helper in a locally built `.deb` passes both transport
+  suites; production servers and system-installed package acceptance remain—see
+  [authentication support](docs/authentication.md))
 - [x] Searchable, virtualized commit graph with real topology
 - [ ] AppImage and Debian packages with checksums, SBOM, and signed updates
+  (Debian and RPM bundles build locally. They declare a dependency on Git ≥ 2.39,
+  recommend OpenSSH and Git LFS, and ship the license and third-party notices.
+  AppImage, published checksums, SBOM and signed updates remain)
 - [ ] English accessibility review and externalized UI strings
+  (an automated structural audit covers names, labels, dialogs, ARIA references,
+  focusability and reading order in 16 preview states and open overlays;
+  assistive-technology review and string externalization remain)
 
 ## Full power suite
 
@@ -195,12 +204,13 @@ workflows run in the packaged desktop application—not merely in a browser mock
   attributes, bounded local-object diagnostics and reviewed single-file cache
   fetch with local-transfer retry/cancellation, SHA-256-verified single-pointer
   hydration and reviewed file lock/unlock/force-unlock against a local lock
-  server are qualified; live HTTPS/SSH LFS transfer and hosted-lock acceptance,
-  safe prune and packaged acceptance remain)
+  server and reviewed removal of unreferenced cached objects are qualified; live
+  HTTPS/SSH LFS transfer, hosted-lock and packaged acceptance remain)
 - [x] Persistent continue/skip/abort flows for rebase, merge, cherry-pick, and revert
 - [ ] Operation previews and temporary recovery references
-  (durable discard and reset checkpoints, explicit recovery cleanup and native
-  stale-preview checks are qualified; broader destructive operations remain)
+  (durable discard, reset, branch-deletion and stash-deletion checkpoints,
+  explicit recovery cleanup and native stale-preview checks are qualified;
+  remaining destructive operations such as stash clear are not exposed)
 
 ## Stable multiplatform release
 

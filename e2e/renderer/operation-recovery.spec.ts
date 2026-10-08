@@ -148,7 +148,7 @@ test('confirms irreversible capture removal and preserves keyboard focus', async
   await capture.getByRole('button', { name: 'Remove capture...' }).click();
   await capture.getByRole('button', { name: 'Permanently remove capture' }).click();
   await expect(capture).toHaveCount(0);
-  await expect(dialog).toContainText('No saved reset captures');
+  await expect(dialog).toContainText('No saved operation captures');
 });
 
 test('shows recovery read failures instead of a success-shaped empty state', async ({ page }) => {
@@ -156,7 +156,7 @@ test('shows recovery read failures instead of a success-shaped empty state', asy
   await openRecovery(page);
   const dialog = page.getByRole('dialog', { name: 'Recovery history' });
   await expect(dialog.getByRole('alert')).toContainText('could not be read');
-  await expect(dialog).not.toContainText('No saved reset captures');
+  await expect(dialog).not.toContainText('No saved operation captures');
 });
 
 test('blocks cross-repository capture actions and focuses the recovery error', async ({ page }) => {

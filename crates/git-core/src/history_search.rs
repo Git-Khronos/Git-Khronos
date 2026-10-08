@@ -100,8 +100,8 @@ pub struct FileHistoryPage {
 /// Both pipes are capped and drained concurrently; timeout/cancel kills and reaps Git.
 fn bounded_git(path: &Path, args: &[String], token: &CancellationToken) -> Result<Output, AppError> {
     if token.is_cancelled() { return Err(cancelled_history()); }
-    let mut command = Command::new("git");
-    command.arg("-C").arg(path).args(args)
+    let mut command = crate::git_in(path);
+    command.args(args)
         .env("GIT_TERMINAL_PROMPT", "0").env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C").stdout(Stdio::piped()).stderr(Stdio::piped());
     configure_process_tree(&mut command);

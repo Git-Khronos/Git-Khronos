@@ -4,9 +4,10 @@
 .terminal-panel.minimized { min-height: 32px; grid-template-rows: 32px; }
 .terminal-resizer { position: absolute; z-index: 3; top: -6px; right: 0; left: 0; height: 12px; cursor: row-resize; }
 .terminal-resizer::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; transform: translateY(-50%); background: transparent; }
-.terminal-resizer:hover { background: color-mix(in srgb, var(--purple) 12%, transparent); }
-.terminal-resizer:hover::after { background: var(--purple); }
-.terminal-resizer:focus-visible { background: color-mix(in srgb, var(--purple) 12%, transparent); outline: none; }
+.terminal-resizer:hover { background: var(--splitter-hover); }
+.terminal-resizer:active { background: var(--splitter-active); }
+.terminal-resizer:hover::after, .terminal-resizer:active::after { background: var(--purple); }
+.terminal-resizer:focus-visible { background: var(--splitter-hover); outline: none; }
 .terminal-resizer:focus-visible::after { height: 3px; background: var(--focus-ring); }
 header { min-width: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--terminal-divider); background: var(--terminal-header); }
 .terminal-session-strip { min-width: 0; display: flex; flex: 1; }

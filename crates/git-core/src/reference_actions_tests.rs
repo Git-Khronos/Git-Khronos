@@ -4795,12 +4795,11 @@ fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
     )
     .unwrap();
     let config = fs::read(bare.join("config")).unwrap();
-    for target in [bare.clone(), bare.join("refs")] {
-        let error = resolve_repository(&target).unwrap_err();
-        assert_eq!(error.kind, "bareRepositoryUnsupported", "{}", error.message);
-        assert!(error.message.contains("bare repository"));
-        assert!(error.hint.unwrap().contains("git worktree add"));
-    }
+    assert_eq!(resolve_repository(&bare).unwrap(), bare.canonicalize().unwrap());
+    let error = resolve_repository(&bare.join("refs")).unwrap_err();
+    assert_eq!(error.kind, "bareRepositoryUnsupported", "{}", error.message);
+    assert!(error.message.contains("bare repository"));
+    assert!(error.hint.unwrap().contains("browse it read-only"));
     assert_eq!(fs::read(bare.join("config")).unwrap(), config);
     assert!(!bare.join("index").exists());
 
@@ -8668,4 +8667,371 @@ fn reference_actions_sign_and_verify_annotated_tags_with_configured_ssh_key() {
     assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"unstaged tag fixture\n");
     assert_eq!(fs::read(repository.0.join("staged")).unwrap(), b"staged tag fixture\n");
     assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
+}
+
+struct GitDaemon(std::process::Child);
+
+impl Drop for GitDaemon {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Serves `base` over git:// so submodule clones use an allowed transport.
+fn serve_git_daemon(base: &Path) -> (GitDaemon, String) {
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let child = std::process::Command::new("git")
+        .args(["daemon", "--export-all", "--reuseaddr", "--listen=127.0.0.1"])
+        .arg(format!("--port={port}"))
+        .arg(format!("--base-path={}", base.display()))
+        .arg(base)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let daemon = GitDaemon(child);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
+        assert!(std::time::Instant::now() < deadline, "git daemon did not start");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    (daemon, format!("git://127.0.0.1:{port}"))
+}
+
+#[test]
+fn recursive_clone_initializes_nested_submodules() {
+    let base = Repository::new().0.with_extension("recursive-base");
+    fs::create_dir(&base).unwrap();
+    let (_daemon, url) = serve_git_daemon(&base);
+    let make = |name: &str| {
+        let path = base.join(name);
+        fs::create_dir(&path).unwrap();
+        run_mutation(&path, &["init", "-q", "-b", "main"], name).unwrap();
+        fs::write(path.join(format!("{name}.txt")), name).unwrap();
+        run_mutation(&path, &["add", "."], name).unwrap();
+        run_mutation(&path, &["commit", "-q", "-m", name], name).unwrap();
+        path
+    };
+    let inner = make("inner");
+    let middle = make("middle");
+    let top = make("top");
+    let add = |parent: &Path, child: &str, path: &str| {
+        run_mutation(parent, &["submodule", "add", "-q", &format!("{url}/{child}"), path], "add").unwrap();
+        run_mutation(parent, &["commit", "-q", "-m", "add submodule"], "commit").unwrap();
+    };
+    add(&middle, "inner", "deps/inner");
+    add(&top, "middle", "vendor/middle");
+    let _ = inner;
+
+    let parent = base.join("clones");
+    fs::create_dir(&parent).unwrap();
+    let plain = clone_repository(&format!("{url}/top"), &parent, "plain", None, None).unwrap();
+    assert!(plain.join("vendor/middle").is_dir());
+    assert!(!plain.join("vendor/middle/middle.txt").exists());
+
+    let full = clone_repository_with_submodules(&format!("{url}/top"), &parent, "full", None, None, true).unwrap();
+    assert_eq!(fs::read_to_string(full.join("vendor/middle/middle.txt")).unwrap(), "middle");
+    assert_eq!(fs::read_to_string(full.join("vendor/middle/deps/inner/inner.txt")).unwrap(), "inner");
+    let active = run_git(&full, &["config", "--get-all", "submodule.active"]).unwrap();
+    assert_eq!(String::from_utf8_lossy(&active.stdout).trim(), ".");
+    let status = run_git(&full, &["submodule", "status", "--recursive"]).unwrap();
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert_eq!(status.lines().count(), 2, "{status}");
+    assert!(status.lines().all(|line| line.starts_with(' ')), "{status}");
+
+    let shallow = clone_repository_with_submodules(&format!("{url}/top"), &parent, "shallow", None, Some(1), true).unwrap();
+    assert!(shallow.join("vendor/middle/deps/inner/inner.txt").is_file());
+
+    // A submodule whose server repository disappeared leaves the superproject usable.
+    fs::rename(&middle, base.join("moved")).unwrap();
+    let error = clone_repository_with_submodules(&format!("{url}/top"), &parent, "broken", None, None, true).unwrap_err();
+    assert_eq!(error.kind, "submoduleCloneIncomplete", "{error:?}");
+    let broken = parent.join("broken");
+    assert!(broken.join("top.txt").is_file());
+    assert!(error.hint.unwrap().contains(&broken.display().to_string()));
+    let retry = clone_repository_with_submodules(&format!("{url}/top"), &parent, "broken", None, None, true).unwrap_err();
+    assert_eq!(retry.kind, "destinationExists");
+    drop(_daemon);
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn bare_repository_opens_read_only_with_explicit_git_dir() {
+    let source = Repository::new();
+    run_git(&source.0, &["tag", "v1"]).unwrap();
+    let bare = source.0.with_extension("bare.git");
+    run_git(&source.0, &["clone", "-q", "--bare", "--", source.0.to_str().unwrap(), bare.to_str().unwrap()]).unwrap();
+    let before = fs::read_dir(&bare).unwrap().count();
+
+    let resolved = resolve_repository(&bare).unwrap();
+    assert_eq!(resolved, bare.canonicalize().unwrap());
+    assert!(is_explicit_bare_repository(&resolved));
+    let data = snapshot_with_limits(&resolved, 20, 100).unwrap();
+    assert!(data.bare);
+    assert_eq!(data.status.entry_count, 0);
+    assert_eq!(data.status.branch.as_deref(), Some("main"));
+    assert_eq!(data.head_oid.as_deref(), Some(source.oid().as_str()));
+    assert!(data.commits.iter().any(|commit| commit.oid == source.oid()));
+    assert!(data.tags.iter().any(|tag| tag.name == "v1"));
+    assert!(data.submodules.is_empty());
+    let startup = snapshot_with_limits_startup(&resolved, 20, 100).unwrap();
+    assert!(startup.bare && startup.status.entries.is_empty());
+    assert!(repository_watch_paths(&resolved).is_ok());
+
+    let refused = stage_all(&resolved).unwrap_err();
+    assert_eq!(refused.kind, "gitFailure");
+    assert_eq!(fs::read_dir(&bare).unwrap().count(), before);
+
+    let refs = bare.join("refs");
+    assert_eq!(resolve_repository(&refs).unwrap_err().kind, "bareRepositoryUnsupported");
+    fs::remove_dir_all(bare).unwrap();
+}
+
+fn lfs_prune_fixture() -> Repository {
+    let repository = Repository::new();
+    let path = &repository.0;
+    run_mutation(
+        path,
+        &["config", "core.hooksPath", ".git/hooks"],
+        "isolate LFS hooks",
+    )
+    .unwrap();
+    initialize_lfs(path).unwrap();
+    track_lfs_pattern(path, "*.bin", false).unwrap();
+    fs::write(path.join("committed.bin"), b"committed object\n").unwrap();
+    stage_all(path).unwrap();
+    commit(path, "Committed LFS object").unwrap();
+    // Staged then unstaged: only a dangling pointer blob still names this object.
+    fs::write(path.join("dangling.bin"), b"dangling pointer object\n").unwrap();
+    stage_path(path, "dangling.bin").unwrap();
+    run_mutation(path, &["reset", "-q"], "unstage").unwrap();
+    fs::remove_file(path.join("dangling.bin")).unwrap();
+    repository
+}
+
+/// Stores contents in LFS storage without writing any Git object, returning its OID.
+fn lfs_orphan(path: &Path, contents: &[u8], age: Duration) -> String {
+    let mut child = git_in(path)
+        .args(["lfs", "clean"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(contents).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let pointer = String::from_utf8(output.stdout).unwrap();
+    let oid = pointer
+        .lines()
+        .find_map(|line| line.strip_prefix("oid sha256:"))
+        .unwrap()
+        .to_owned();
+    let object = lfs_object_path(path, &oid);
+    fs::File::options()
+        .write(true)
+        .open(&object)
+        .unwrap()
+        .set_modified(SystemTime::now() - age)
+        .unwrap();
+    oid
+}
+
+fn lfs_object_path(path: &Path, oid: &str) -> PathBuf {
+    let environment = run_git(path, &["lfs", "env"]).unwrap().stdout;
+    let media = String::from_utf8(environment)
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("LocalMediaDir=").map(str::to_owned))
+        .unwrap();
+    Path::new(&media).join(&oid[..2]).join(&oid[2..4]).join(oid)
+}
+
+fn lfs_stored(path: &Path) -> usize {
+    let media = lfs_object_path(path, &"0".repeat(64));
+    let media = media.parent().unwrap().parent().unwrap().parent().unwrap();
+    fs::read_dir(media)
+        .unwrap()
+        .flat_map(|first| fs::read_dir(first.unwrap().path()).unwrap())
+        .flat_map(|second| fs::read_dir(second.unwrap().path()).unwrap())
+        .count()
+}
+
+#[test]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_offers_only_old_objects_no_git_object_references_and_removes_exactly_them() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let old = Duration::from_secs(2 * 60 * 60);
+    let orphan = lfs_orphan(path, b"orphaned object\n", old);
+    let recent = lfs_orphan(path, b"recent orphan\n", Duration::ZERO);
+    let pointer = run_git(path, &["show", "HEAD:committed.bin"]).unwrap().stdout;
+    let pointer = String::from_utf8(pointer).unwrap();
+    let committed = pointer
+        .lines()
+        .find_map(|line| line.strip_prefix("oid sha256:"))
+        .unwrap();
+    fs::File::options()
+        .write(true)
+        .open(lfs_object_path(path, committed))
+        .unwrap()
+        .set_modified(SystemTime::now() - old)
+        .unwrap();
+    assert_eq!(lfs_stored(path), 4);
+    let cancellation = CancellationToken::default();
+    let preview = preview_lfs_prune(path, &cancellation).unwrap();
+    assert_eq!(
+        preview.objects,
+        vec![LfsPruneObject {
+            oid: orphan.clone(),
+            size: 16
+        }]
+    );
+    assert_eq!((preview.total_size, preview.remaining), (16, 0));
+    assert_eq!((preview.referenced, preview.recent), (2, 1));
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+    prune_lfs_objects(path, &preview, &cancellation).unwrap();
+    assert!(!lfs_object_path(path, &orphan).exists());
+    assert!(lfs_object_path(path, &recent).exists());
+    assert_eq!(lfs_stored(path), 3);
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+    assert_eq!(fs::read(path.join("committed.bin")).unwrap(), b"committed object\n");
+    let again = preview_lfs_prune(path, &cancellation).unwrap();
+    assert!(again.objects.is_empty());
+    let failure = prune_lfs_objects(path, &again, &cancellation).unwrap_err();
+    assert_eq!(failure.kind, "unsafeLfsPrune");
+}
+
+#[test]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancellation() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let orphan = lfs_orphan(path, b"orphaned object\n", Duration::from_secs(7200));
+    let cancellation = CancellationToken::default();
+    let preview = preview_lfs_prune(path, &cancellation).unwrap();
+    assert_eq!(preview.objects.len(), 1);
+
+    // A pointer written after review, even only as a loose Git object, protects the object.
+    let pointer = format!("version https://git-lfs.github.com/spec/v1\noid sha256:{orphan}\nsize 16\n");
+    let mut child = git_in(path)
+        .args(["hash-object", "-w", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(pointer.as_bytes()).unwrap();
+    assert!(child.wait().unwrap().success());
+    let failure = prune_lfs_objects(path, &preview, &cancellation).unwrap_err();
+    assert_eq!(failure.kind, "staleLfsPrune");
+    assert!(lfs_object_path(path, &orphan).exists());
+    let mut changed = preview.clone();
+    changed.objects[0].size += 1;
+    assert_eq!(
+        prune_lfs_objects(path, &changed, &cancellation).unwrap_err().kind,
+        "staleLfsPrune"
+    );
+
+    let cancelled = CancellationToken::default();
+    cancelled.cancel();
+    assert_eq!(
+        preview_lfs_prune(path, &cancelled).unwrap_err().kind,
+        "operationCancelled"
+    );
+
+    run_mutation(path, &["config", "remote.origin.promisor", "true"], "promisor").unwrap();
+    assert_eq!(preview_lfs_prune(path, &cancellation).unwrap_err().kind, "unsafeLfsPrune");
+    run_mutation(path, &["config", "--unset", "remote.origin.promisor"], "unset").unwrap();
+
+    let head = repository.oid();
+    fs::write(path.join(".git/shallow"), format!("{head}\n")).unwrap();
+    assert_eq!(preview_lfs_prune(path, &cancellation).unwrap_err().kind, "unsafeLfsPrune");
+    fs::remove_file(path.join(".git/shallow")).unwrap();
+
+    let shared = path.with_extension("shared-lfs");
+    run_mutation(
+        path,
+        &["config", "lfs.storage", shared.to_str().unwrap()],
+        "external storage",
+    )
+    .unwrap();
+    let failure = preview_lfs_prune(path, &cancellation).unwrap_err();
+    assert_eq!(failure.kind, "unsafeLfsPrune");
+    assert!(failure.message.contains("shared"));
+    assert!(lfs_object_path(path, &orphan).starts_with(&shared));
+    run_mutation(path, &["config", "lfs.storage", "private-lfs"], "private storage").unwrap();
+    assert!(preview_lfs_prune(path, &cancellation).unwrap().objects.is_empty());
+    let _ = fs::remove_dir_all(shared);
+}
+
+#[test]
+fn branch_deletion_keeps_a_restorable_capture_and_refusals_leave_none() {
+    let repository = Repository::new();
+    run_mutation(&repository.0, &["switch", "-c", "topic"], "create topic").unwrap();
+    fs::write(repository.0.join("file"), b"topic\n").unwrap();
+    stage_all(&repository.0).unwrap();
+    commit(&repository.0, "Topic work").unwrap();
+    let tip = repository.oid();
+    checkout_branch(&repository.0, "main").unwrap();
+
+    let refusal = delete_branch(&repository.0, "topic", false).unwrap_err();
+    assert_eq!(refusal.kind, "branchNotMerged");
+    assert!(operation_recoveries(&repository.0).unwrap().is_empty());
+
+    delete_branch(&repository.0, "topic", true).unwrap();
+    let records = operation_recoveries(&repository.0).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].label, "Delete branch topic");
+    assert_eq!(records[0].head_oid, tip);
+    assert!(records[0].snapshot_oid.is_none());
+    run_mutation(&repository.0, &["reflog", "expire", "--expire=now", "--all"], "expire").unwrap();
+    run_mutation(&repository.0, &["gc", "--prune=now"], "prune").unwrap();
+    restore_operation_branch(&repository.0, &records[0].id, "topic-restored").unwrap();
+    assert_eq!(repository.oid(), tip);
+    assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"topic\n");
+
+    let missing = delete_branch(&repository.0, "absent", true).unwrap_err();
+    assert_eq!(missing.kind, "branchNotFound");
+    assert_eq!(operation_recoveries(&repository.0).unwrap().len(), 1);
+}
+
+#[test]
+fn stash_deletion_keeps_index_worktree_and_untracked_contents_restorable() {
+    let repository = Repository::new();
+    let base = repository.oid();
+    fs::write(repository.0.join("file"), b"staged\n").unwrap();
+    stage_all(&repository.0).unwrap();
+    fs::write(repository.0.join("file"), b"working\n").unwrap();
+    fs::write(repository.0.join("new"), b"untracked\n").unwrap();
+    run_mutation(&repository.0, &["stash", "push", "-u", "-m", "Keep me"], "stash").unwrap();
+    fs::write(repository.0.join("file"), b"other\n").unwrap();
+    stash_with_message(&repository.0, Some("Other")).unwrap();
+    let kept = reference_tip(&repository.0, "stash@{0}").unwrap();
+
+    delete_stash_and_check_refusal(&repository);
+    drop_stash(&repository.0, "stash@{1}").unwrap();
+    let stashes = read_stashes(&repository.0).unwrap();
+    assert_eq!(stashes.len(), 1);
+    assert_eq!(reference_tip(&repository.0, "stash@{0}").unwrap(), kept);
+    let records = operation_recoveries(&repository.0).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].label, "Delete stash: On main: Keep me");
+    assert_eq!(records[0].head_oid, base);
+
+    run_mutation(&repository.0, &["stash", "clear"], "clear").unwrap();
+    run_mutation(&repository.0, &["reflog", "expire", "--expire=now", "--all"], "expire").unwrap();
+    run_mutation(&repository.0, &["gc", "--prune=now"], "prune").unwrap();
+    restore_operation_branch(&repository.0, &records[0].id, "stash-restored").unwrap();
+    assert_eq!(repository.oid(), base);
+    assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"working\n");
+    assert_eq!(fs::read(repository.0.join("new")).unwrap(), b"untracked\n");
+    let staged = run_git(&repository.0, &["show", ":file"]).unwrap().stdout;
+    assert_eq!(staged, b"staged\n");
+}
+
+fn delete_stash_and_check_refusal(repository: &Repository) {
+    let missing = drop_stash(&repository.0, "stash@{9}").unwrap_err();
+    assert_eq!(missing.kind, "staleStash");
+    assert!(operation_recoveries(&repository.0).unwrap().is_empty());
 }

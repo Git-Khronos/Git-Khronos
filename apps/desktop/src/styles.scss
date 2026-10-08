@@ -77,6 +77,8 @@
   --graph-header-text: #858499;
   --graph-header-hover: #39384f;
   --graph-header-hover-text: #d3d1df;
+  --graph-row-divider: #242435;
+  --graph-row-focus: #8f84ed;
   --graph-scroll-shadow: #10101b;
   --status-surface: #202031;
   --status-border: #343449;
@@ -100,9 +102,9 @@
   --overlay-list-text: #bdbccd;
   --overlay-strong: #e2e1eb;
   --overlay-title: #dedde7;
-  --overlay-muted: #858499;
-  --overlay-muted-low: #77768b;
-  --overlay-kbd: #68677b;
+  --overlay-muted: #9291a5;
+  --overlay-muted-low: #8f8ea2;
+  --overlay-kbd: #8f8ea2;
   --overlay-hover: #3a3952;
   --overlay-list-hover: #393850;
   --overlay-search: #2b2a3d;
@@ -147,6 +149,28 @@
   --inspector-text: #c2c1d0;
   --inspector-text-strong: #d1d0dc;
   --inspector-muted: #858497;
+  --inspector-card: #20202f;
+  --inspector-card-border: #37364b;
+  --inspector-card-hover: #242335;
+  --inspector-card-hover-border: #54536c;
+  --inspector-card-body: #9c9bae;
+  --signature-neutral-border: #45445b;
+  --signature-neutral-surface: #252436;
+  --signature-neutral-icon: #36354b;
+  --signature-neutral-text: #8f8da1;
+  --signature-neutral-strong: #b9b7c7;
+  --signature-neutral-muted: #747286;
+  --signature-valid-border: #356e61;
+  --signature-valid-surface: #20332f;
+  --signature-valid-icon: #2c5b50;
+  --signature-valid-text: #69d0b2;
+  --signature-valid-strong: #9ee5d1;
+  --signature-warning-border: #6d6041;
+  --signature-warning-surface: #332e23;
+  --signature-warning-text: #e1b866;
+  --signature-danger-border: #754154;
+  --signature-danger-surface: #38252e;
+  --signature-danger-text: #ed8da4;
   --terminal-surface: #11111a;
   --terminal-header: #20202e;
   --terminal-tab: #1b1b28;
@@ -159,6 +183,8 @@
   --terminal-muted-low: #69687a;
   --terminal-error: #e98b9d;
   --focus-ring: color-mix(in srgb, var(--purple) 72%, white);
+  --splitter-hover: color-mix(in srgb, var(--purple) 12%, transparent);
+  --splitter-active: color-mix(in srgb, var(--purple) 20%, transparent);
   --shadow-popover: 0 16px 46px #000a, 0 1px 0 #ffffff0d inset;
 }
 
@@ -222,6 +248,8 @@
   --graph-header-text: #9aa8bb;
   --graph-header-hover: #233148;
   --graph-header-hover-text: #e1e8f1;
+  --graph-row-divider: #1b2738;
+  --graph-row-focus: #aaa2ff;
   --graph-scroll-shadow: #060a10;
   --status-surface: #121b29;
   --status-border: #35445b;
@@ -246,8 +274,8 @@
   --overlay-strong: #e1e8f1;
   --overlay-title: #e1e8f1;
   --overlay-muted: #9aa8bb;
-  --overlay-muted-low: #718198;
-  --overlay-kbd: #718198;
+  --overlay-muted-low: #8fa0b6;
+  --overlay-kbd: #8fa0b6;
   --overlay-hover: #2a3950;
   --overlay-list-hover: #26364d;
   --overlay-search: #202c42;
@@ -292,6 +320,28 @@
   --inspector-text: #cbd6e4;
   --inspector-text-strong: #e1e8f1;
   --inspector-muted: #8fa0b6;
+  --inspector-card: #151f2e;
+  --inspector-card-border: #35445b;
+  --inspector-card-hover: #1a2739;
+  --inspector-card-hover-border: #536984;
+  --inspector-card-body: #a9b6c7;
+  --signature-neutral-border: #45566f;
+  --signature-neutral-surface: #172233;
+  --signature-neutral-icon: #26364d;
+  --signature-neutral-text: #9aa8bb;
+  --signature-neutral-strong: #cbd6e4;
+  --signature-neutral-muted: #8fa0b6;
+  --signature-valid-border: #3f806f;
+  --signature-valid-surface: #142a25;
+  --signature-valid-icon: #235548;
+  --signature-valid-text: #7ce3c2;
+  --signature-valid-strong: #a8efd9;
+  --signature-warning-border: #7a6844;
+  --signature-warning-surface: #30291d;
+  --signature-warning-text: #f0c375;
+  --signature-danger-border: #84475d;
+  --signature-danger-surface: #34202a;
+  --signature-danger-text: #ff93ab;
   --terminal-surface: #080d14;
   --terminal-header: #101826;
   --terminal-tab: #0d1521;
@@ -1203,32 +1253,6 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .author-filter-menu .avatar { width: 22px; height: 22px; font-size: 10px; }
 .author-filter-empty, .author-filter-overflow { margin: 5px 7px; color: var(--overlay-muted-low); font-size: 12px; text-align: center; }
 
-.shortcuts-backdrop { position: fixed; z-index: 56; inset: 0; display: grid; place-items: center; padding: 22px; background: #070710d1; backdrop-filter: blur(4px); }
-.shortcuts-dialog { width: min(780px, 100%); max-height: calc(100vh - 44px); overflow: hidden; border: 1px solid #55536d; border-radius: 7px; background: #1d1d2b; box-shadow: 0 30px 100px #000d; }
-.shortcuts-dialog > header { display: grid; grid-template-columns: 34px minmax(0, 1fr) 30px; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid #39384b; background: #28273a; }
-.shortcuts-dialog > header > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #45415f; color: #c6bdff; }
-.shortcuts-dialog h2 { margin: 0; color: #f0eff5; font-size: 15px; }
-.shortcuts-dialog header small { color: #858397; font-size: 12px; }
-.shortcuts-dialog header button { width: 30px; height: 30px; display: grid; place-items: center; align-self: start; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858397; }
-.shortcuts-dialog header button:hover { border-color: #55536d; background: #39374f; color: white; }
-.shortcuts-dialog header button:focus-visible { outline: 2px solid var(--purple); outline-offset: 1px; }
-.shortcut-section-nav { display: flex; gap: 5px; overflow-x: auto; padding: 7px 12px; border-bottom: 1px solid #39384b; background: #232234; scrollbar-width: none; }
-.shortcut-section-nav::-webkit-scrollbar { display: none; }
-.shortcut-section-nav button { flex: none; padding: 5px 9px; border: 1px solid #41405a; border-radius: 4px; background: #2c2b40; color: #aaa8ba; font-size: 12px; }
-.shortcut-section-nav button:hover, .shortcut-section-nav button:focus-visible { border-color: #716ca0; background: #39374f; color: white; }
-.shortcut-section-nav button.active { border-color: #6f69a4; background: #464260; color: #f2efff; box-shadow: inset 0 -2px #8b82df; }
-.shortcut-section-nav button:focus-visible { outline: 2px solid var(--purple); outline-offset: 1px; }
-.shortcut-groups { max-height: calc(100vh - 150px); overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; padding: 18px 20px 20px; }
-.shortcut-groups > section { scroll-margin-top: 18px; }
-.shortcut-groups section { min-width: 0; }
-.shortcut-groups h3 { margin: 0 0 7px; color: #77758c; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-.shortcut-groups dl { display: block !important; margin: 0; }
-.shortcut-groups dl > div { min-height: 31px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #2b2a3b; }
-.shortcut-groups dt { flex: 1; color: #c7c6d2; font-size: 12px; }
-.shortcut-groups dd { display: flex; align-items: center; gap: 3px; margin: 0; color: #77758a; font-size: 12px; }
-.shortcuts-dialog kbd { min-width: 20px; padding: 3px 5px; border: 1px solid #4a4860; border-bottom-color: #65627c; border-radius: 3px; background: #302f43; color: #d7d5e2; font: 12px var(--mono); text-align: center; box-shadow: 0 1px 0 #11111b; }
-.shortcuts-dialog > footer { padding: 8px 16px; border-top: 1px solid #39384b; background: #252436; color: #77758a; font-size: 12px; text-align: right; }
-@media (max-width: 680px) { .shortcut-groups { grid-template-columns: 1fr; } }
 
 /* Repository management dialog */
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -1467,8 +1491,8 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
 /* Focus treatment for keyboard-operable workspace splitters lives here to keep
    the component stylesheet within its enforced bundle budget. */
 gc-root .panel-resizer:focus-visible { outline: none; }
-gc-root .panel-resizer:focus-visible::after { width: 3px; background: #9a8fff; }
-gc-root .graph-columns .column-resizer:focus-visible { background: #7c6ef61f; outline: none; }
-gc-root .graph-columns .column-resizer:focus-visible::after { width: 3px; background: #9a8fff; }
+gc-root .panel-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
+gc-root .graph-columns .column-resizer:focus-visible { background: var(--splitter-hover); outline: none; }
+gc-root .graph-columns .column-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
 gc-root .reference-section-resizer:focus-visible { outline: none; }
-gc-root .reference-section-resizer:focus-visible::after { height: 3px; background: #9a8fff; }
+gc-root .reference-section-resizer:focus-visible::after { height: 3px; background: var(--focus-ring); }

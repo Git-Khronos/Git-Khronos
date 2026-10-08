@@ -45,6 +45,8 @@ mod lfs_objects;
 mod lfs_fetch;
 mod lfs_checkout;
 mod lfs_locks;
+mod lfs_prune;
+pub use lfs_prune::{LfsPruneObject, LfsPrunePreview, preview_lfs_prune, prune_lfs_objects};
 pub use lfs_locks::{LfsLock, LfsLocks, lfs_locks, lock_lfs_file, unlock_lfs_file};
 pub use lfs_checkout::{LfsCheckoutPreview, preview_lfs_checkout, checkout_lfs_object};
 pub use lfs_objects::{LfsObjects, LfsObjectFile, lfs_objects};
@@ -133,6 +135,8 @@ pub struct RepositoryData {
     pub commit_template_error: Option<AppError>,
     pub commits: Vec<CommitSummary>,
     pub history_truncated: bool,
+    /// Bare repositories have no working tree; working-tree actions are unavailable.
+    pub bare: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -657,7 +661,13 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
 
     let output = run_git(path, &["rev-parse", "--show-toplevel"])?;
     if !output.status.success() {
-        return Err(classify_open_failure(path, &output));
+        let error = classify_open_failure(path, &output);
+        if error.kind == "bareRepositoryUnsupported"
+            && let Some(bare) = explicit_bare_repository_root(path)
+        {
+            return Ok(bare);
+        }
+        return Err(error);
     }
     let root = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     PathBuf::from(root).canonicalize().map_err(|error| {
@@ -667,6 +677,31 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
             None,
         )
     })
+}
+
+/// Accepts `path` as a read-only bare repository only when it is the
+/// repository directory itself. The explicit `GIT_DIR` form keeps working
+/// under `safe.bareRepository=explicit`, which refuses implicit discovery.
+fn explicit_bare_repository_root(path: &Path) -> Option<PathBuf> {
+    let root = path.canonicalize().ok()?;
+    let output = Command::new("git")
+        .arg("--git-dir")
+        .arg(&root)
+        .args(["rev-parse", "--is-bare-repository", "--absolute-git-dir"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    if !output.status.success() || lines.next()? != "true" {
+        return None;
+    }
+    if PathBuf::from(lines.next()?).canonicalize().ok()? != root {
+        return None;
+    }
+    remember_explicit_bare_repository(&root);
+    Some(root)
 }
 
 /// Explains repository shapes Git Chronos cannot open as a working tree,
@@ -686,8 +721,8 @@ fn classify_open_failure(path: &Path, output: &Output) -> AppError {
         } else {
             (
                 "bareRepositoryUnsupported",
-                "This is a bare repository: it stores history and references without a working tree.",
-                "Git Chronos opens working trees. Clone it into a new folder, or add a worktree with local Git (git worktree add), then open that folder. Nothing was changed.",
+                "This folder belongs to a bare repository but is not its top-level folder.",
+                "Open the bare repository folder itself (often named project.git) to browse it read-only. Nothing was changed.",
             )
         }
     } else if detail.contains("unknown repository extension")
@@ -756,6 +791,19 @@ pub fn clone_repository(
     branch: Option<&str>,
     depth: Option<u32>,
 ) -> Result<PathBuf, AppError> {
+    clone_repository_with_submodules(remote, parent, folder, branch, depth, false)
+}
+
+/// Clones like [`clone_repository`]; `recurse_submodules` asks Git to initialize
+/// and clone every submodule recursively, recording `submodule.active=.`.
+pub fn clone_repository_with_submodules(
+    remote: &str,
+    parent: &Path,
+    folder: &str,
+    branch: Option<&str>,
+    depth: Option<u32>,
+    recurse_submodules: bool,
+) -> Result<PathBuf, AppError> {
     validate_parent_directory(parent)?;
     validate_folder_name(folder)?;
     let remote = remote.trim();
@@ -798,6 +846,9 @@ pub fn clone_repository(
     if let Some(depth) = depth {
         args.extend(["--depth".to_owned(), depth.to_string()]);
     }
+    if recurse_submodules {
+        args.push("--recurse-submodules".to_owned());
+    }
     args.extend([
         "--".to_owned(),
         remote.to_owned(),
@@ -807,8 +858,30 @@ pub fn clone_repository(
     let cloned = run_git(parent, &borrowed)
         .and_then(|output| ensure_success("clone that repository", &output));
     if let Err(mut error) = cloned {
-        // Cancellation stops Git before it can remove its own partial work.
-        if destination.symlink_metadata().is_ok() {
+        // Git keeps a checked-out superproject when only a submodule clone fails.
+        let superproject_ready = recurse_submodules
+            && error.kind != "operationCancelled"
+            && run_git(&destination, &["rev-parse", "--verify", "--quiet", "HEAD"])
+                .is_ok_and(|output| output.status.success())
+            && run_git(&destination, &["rev-parse", "--show-toplevel"]).is_ok_and(|output| {
+                output.status.success()
+                    && Path::new(String::from_utf8_lossy(&output.stdout).trim())
+                        .canonicalize()
+                        .ok()
+                        == destination.canonicalize().ok()
+            });
+        if superproject_ready {
+            error.kind = "submoduleCloneIncomplete".to_owned();
+            error.message = format!(
+                "The repository was cloned, but some submodules could not be cloned. Git reported: {}",
+                error.message
+            );
+            error.hint = Some(format!(
+                "Open {} and review its Submodules to retry the missing ones, or delete that folder and clone again.",
+                destination.display()
+            ));
+        } else if destination.symlink_metadata().is_ok() {
+            // Cancellation stops Git before it can remove its own partial work.
             error.hint = Some(format!(
                 "Partial clone data remains at {}. Delete that folder before retrying, or choose another folder name.",
                 destination.display()
@@ -991,8 +1064,9 @@ fn snapshot_with_status(
     } else {
         Vec::new()
     };
+    let bare = is_explicit_bare_repository(path);
     let worktrees = read_worktrees(path, &status, include_linked_worktree_status)?;
-    let submodules = read_submodules(path)?;
+    let submodules = if bare { Vec::new() } else { read_submodules(path)? };
     let lfs = read_lfs_info(path);
     let sparse_checkout = read_sparse_checkout_info(path);
     let (commit_template, commit_template_error) = match commit_template::read(path) {
@@ -1033,6 +1107,7 @@ fn snapshot_with_status(
         commit_template_error,
         commits,
         history_truncated,
+        bare,
     })
 }
 
@@ -1717,10 +1792,8 @@ pub fn apply_working_tree_recovery(
             Some("The temporary recovery data may no longer be available."),
         )
     })?;
-    let mut command = Command::new("git");
+    let mut command = git_in(path);
     command
-        .arg("-C")
-        .arg(path)
         .args(["apply", "--recount", "--whitespace=nowarn"]);
     if reverse {
         command.arg("--reverse");
@@ -2206,10 +2279,13 @@ pub fn remove_worktree(
     arguments.push(target);
     run_mutation(path, &arguments, "remove that worktree")?;
     if let Some(branch) = branch_to_delete {
-        run_mutation(
+        let (tip, record) = protect_branch_tip(path, &branch)?;
+        let reference = format!("refs/heads/{branch}");
+        operation_recovery::with_commit_recovery(
             path,
-            &["branch", "-D", "--", &branch],
-            "delete that worktree branch",
+            record,
+            || run_mutation(path, &["branch", "-D", "--", &branch], "delete that worktree branch"),
+            || reference_tip(path, &reference).as_deref() == Some(tip.as_str()),
         )?;
     }
     Ok(())
@@ -2230,20 +2306,49 @@ pub fn rename_branch(path: &Path, old_name: &str, new_name: &str) -> Result<(), 
     )
 }
 
+fn reference_tip(path: &Path, reference: &str) -> Option<String> {
+    run_git(path, &["rev-parse", "--verify", "--quiet", reference])
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn protect_branch_tip(path: &Path, name: &str) -> Result<(String, OperationRecovery), AppError> {
+    let reference = format!("refs/heads/{name}");
+    let tip = reference_tip(path, &reference).ok_or_else(|| {
+        AppError::new(
+            "branchNotFound",
+            format!("{name} no longer exists."),
+            Some("Refresh the repository and choose the branch again."),
+        )
+    })?;
+    let record = operation_recovery::preserve_commits(path, &format!("Delete branch {name}"), &tip, None)?;
+    Ok((tip, record))
+}
+
 pub fn delete_branch(path: &Path, name: &str, force: bool) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    let output = run_git(path, &["branch", if force { "-D" } else { "-d" }, name])?;
-    if !force && !output.status.success() && is_unmerged_branch_refusal(&output.stderr) {
-        // Report the safety refusal distinctly so the interface can offer an explicit force delete.
-        return Err(AppError::new(
-            "branchNotMerged",
-            format!(
-                "{name} has commits that are not merged into its upstream or the current branch."
-            ),
-            Some("Deleting it anyway can make those commits unreachable from any branch."),
-        ));
-    }
-    ensure_success("delete that branch", &output)
+    let (tip, record) = protect_branch_tip(path, name)?;
+    let reference = format!("refs/heads/{name}");
+    operation_recovery::with_commit_recovery(
+        path,
+        record,
+        || {
+            let output = run_git(path, &["branch", if force { "-D" } else { "-d" }, name])?;
+            if !force && !output.status.success() && is_unmerged_branch_refusal(&output.stderr) {
+                // Report the safety refusal distinctly so the interface can offer an explicit force delete.
+                return Err(AppError::new(
+                    "branchNotMerged",
+                    format!(
+                        "{name} has commits that are not merged into its upstream or the current branch."
+                    ),
+                    Some("Deleting it anyway can make those commits unreachable from any branch."),
+                ));
+            }
+            ensure_success("delete that branch", &output)
+        },
+        || reference_tip(path, &reference).as_deref() == Some(tip.as_str()),
+    )
 }
 
 fn is_unmerged_branch_refusal(stderr: &[u8]) -> bool {
@@ -3003,8 +3108,7 @@ pub fn execute_interactive_rebase_with_destination(
     } else {
         format!("refs/heads/{target}")
     };
-    let mut command = Command::new("git");
-    command.arg("-C").arg(path);
+    let mut command = git_in(path);
     if selection.is_some() || root {
         command.args([
             "-c",
@@ -4022,7 +4126,39 @@ pub fn stash_file_diff(
 
 pub fn drop_stash(path: &Path, reference: &str) -> Result<(), AppError> {
     validate_stash_reference(reference)?;
-    run_mutation(path, &["stash", "drop", reference], "delete that stash")
+    let stale = || {
+        AppError::new(
+            "staleStash",
+            "That stash changed since it was selected.",
+            Some("Refresh the repository and choose the stash again."),
+        )
+    };
+    let oid = reference_tip(path, reference).ok_or_else(stale)?;
+    let base = reference_tip(path, &format!("{oid}^1")).ok_or_else(stale)?;
+    let subject = run_git(path, &["log", "-1", "--format=%s", &oid])?;
+    ensure_success("read the stash message", &subject)?;
+    let subject = String::from_utf8_lossy(&subject.stdout).trim().to_owned();
+    let record = operation_recovery::preserve_commits(
+        path,
+        &format!("Delete stash: {subject}"),
+        &base,
+        Some(&oid),
+    )?;
+    operation_recovery::with_commit_recovery(
+        path,
+        record,
+        || {
+            // Stash indexes shift when entries change; drop only the reviewed entry.
+            if reference_tip(path, reference).as_deref() != Some(oid.as_str()) {
+                return Err(stale());
+            }
+            run_mutation(path, &["stash", "drop", reference], "delete that stash")
+        },
+        || {
+            run_git(path, &["stash", "list", "--format=%H"])
+                .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).lines().any(|line| line == oid))
+        },
+    )
 }
 
 pub fn create_tag(
@@ -5977,6 +6113,9 @@ fn read_status_with_limit_mode(
     entry_limit: usize,
     untracked_files: &str,
 ) -> Result<RepositoryStatus, AppError> {
+    if is_explicit_bare_repository(path) {
+        return read_head_status(path);
+    }
     let (output, output_truncated, overflow) =
         run_status_with_limit(path, entry_limit, untracked_files)?;
     let records = output.stdout.split(|byte| *byte == 0).collect::<Vec<_>>();
@@ -6123,9 +6262,7 @@ fn run_status_with_limit(
         return Ok((output, false, StatusOverflow::default()));
     }
 
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -6626,6 +6763,9 @@ fn managed_worktree(path: &Path, target: &str) -> Result<Worktree, AppError> {
 }
 
 fn read_stashes(path: &Path) -> Result<Vec<StashEntry>, AppError> {
+    if is_explicit_bare_repository(path) {
+        return Ok(Vec::new());
+    }
     let output = run_git(path, &["stash", "list", "--format=%gd%x1f%H%x1f%gs%x1e"])?;
     ensure_success("read stashes", &output)?;
     let text = String::from_utf8_lossy(&output.stdout);
@@ -6997,9 +7137,7 @@ fn run_rebase_control(path: &Path, action: &str, operation: &str) -> Result<(), 
             "Skip is unavailable during a guided split.",
             Some("Complete and explicitly commit the split parts, then Continue; or Abort the entire rebase.")));
     }
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let output = git_in(path)
         .args(["rebase", action])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
@@ -7151,6 +7289,35 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+/// Bare repositories the user explicitly opened. Git's `safe.bareRepository`
+/// may refuse implicit discovery, so these get an explicit `GIT_DIR`.
+static EXPLICIT_BARE_REPOSITORIES: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+fn remember_explicit_bare_repository(path: &Path) {
+    if let Ok(mut paths) = EXPLICIT_BARE_REPOSITORIES.lock()
+        && !paths.iter().any(|known| known == path)
+    {
+        paths.push(path.to_path_buf());
+    }
+}
+
+/// Reports whether `path` is a bare repository opened through [`resolve_repository`].
+pub fn is_explicit_bare_repository(path: &Path) -> bool {
+    EXPLICIT_BARE_REPOSITORIES
+        .lock()
+        .is_ok_and(|paths| paths.iter().any(|known| known == path))
+}
+
+/// Starts a Git command scoped to `path`, the only way repository commands are spawned.
+pub(crate) fn git_in(path: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(path);
+    if is_explicit_bare_repository(path) {
+        command.env("GIT_DIR", path);
+    }
+    command
+}
+
 fn run_git(path: &Path, args: &[&str]) -> Result<Output, AppError> {
     if authentication::is_transport(args) {
         return run_transport(path, args, None);
@@ -7163,9 +7330,7 @@ fn run_git_with_environment(
     args: &[&str],
     environment: &[(&str, &str)],
 ) -> Result<Output, AppError> {
-    Command::new("git")
-        .arg("-C")
-        .arg(path)
+    git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -7196,10 +7361,8 @@ fn run_git_with_cancellation(
         return Err(operation_cancelled());
     }
 
-    let mut command = Command::new("git");
+    let mut command = git_in(path);
     command
-        .arg("-C")
-        .arg(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -7217,11 +7380,11 @@ fn run_transport(
 ) -> Result<Output, AppError> {
     authentication::validate_arguments(args)?;
     authentication::validate_repository_urls(path, args)?;
-    let mut command = Command::new("git");
+    let mut command = git_in(path);
     command.arg("-c").arg(if authentication::interactive() {
         "credential.interactive=true"
     } else { "credential.interactive=false" });
-    command.arg("-C").arg(path).args(args)
+    command.args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
@@ -7374,9 +7537,7 @@ fn run_git_with_stdout_limit(
     args: &[&str],
     limit: usize,
 ) -> Result<(Output, bool), AppError> {
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -7470,9 +7631,7 @@ fn run_git_with_input(
 }
 
 fn run_git_with_input_output(path: &Path, args: &[&str], input: &[u8]) -> Result<Output, AppError> {
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")

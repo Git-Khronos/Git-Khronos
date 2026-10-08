@@ -534,9 +534,7 @@ fn captured<T>(
 fn mail_info(path: &Path, part: &Path, directory: &Path) -> Result<MailPatchEntry, AppError> {
     let message = directory.join("msg");
     let patch = directory.join("patch");
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let output = crate::git_in(path)
         .args(["mailinfo", "-k", "--no-scissors"])
         .arg(&message)
         .arg(&patch)

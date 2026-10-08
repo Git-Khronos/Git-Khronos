@@ -14,17 +14,17 @@ import { IconComponent, type IconName } from './icon.component';
   `,
   styles: [`
     :host { display: block; }
-    .commit-signature { display: flex; align-items: center; gap: 8px; margin: 11px 14px 0; padding: 8px 9px; border: 1px solid #45445b; border-radius: 4px; background: #252436; color: #8f8da1; }
-    .commit-signature > span { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 50%; background: #36354b; }
+    .commit-signature { display: flex; align-items: center; gap: 8px; margin: 11px 14px 0; padding: 8px 9px; border: 1px solid var(--signature-neutral-border); border-radius: 4px; background: var(--signature-neutral-surface); color: var(--signature-neutral-text); }
+    .commit-signature > span { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 50%; background: var(--signature-neutral-icon); }
     .commit-signature > div { min-width: 0; display: grid; gap: 2px; }
     .commit-signature strong, .commit-signature small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .commit-signature strong { color: #b9b7c7; font-size: 12px; }
-    .commit-signature small { color: #747286; font-size: 12px; }
-    .commit-signature.valid { border-color: #356e61; background: #20332f; color: #69d0b2; }
-    .commit-signature.valid > span { background: #2c5b50; }
-    .commit-signature.valid strong { color: #9ee5d1; }
-    .commit-signature.valid-unknown { border-color: #6d6041; background: #332e23; color: #e1b866; }
-    .commit-signature.invalid, .commit-signature.expired-signature, .commit-signature.expired-key, .commit-signature.revoked-key, .commit-signature.unverifiable { border-color: #754154; background: #38252e; color: #ed8da4; }
+    .commit-signature strong { color: var(--signature-neutral-strong); font-size: 12px; }
+    .commit-signature small { color: var(--signature-neutral-muted); font-size: 12px; }
+    .commit-signature.valid { border-color: var(--signature-valid-border); background: var(--signature-valid-surface); color: var(--signature-valid-text); }
+    .commit-signature.valid > span { background: var(--signature-valid-icon); }
+    .commit-signature.valid strong { color: var(--signature-valid-strong); }
+    .commit-signature.valid-unknown { border-color: var(--signature-warning-border); background: var(--signature-warning-surface); color: var(--signature-warning-text); }
+    .commit-signature.invalid, .commit-signature.expired-signature, .commit-signature.expired-key, .commit-signature.revoked-key, .commit-signature.unverifiable { border-color: var(--signature-danger-border); background: var(--signature-danger-surface); color: var(--signature-danger-text); }
     .commit-signature.unsigned { opacity: .82; }
   `],
 })

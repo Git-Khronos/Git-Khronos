@@ -6,6 +6,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
+async function resolvedCssColor(page: Page, value: string): Promise<string> {
+  return page.evaluate((background) => {
+    const probe = document.createElement('span');
+    probe.style.background = background;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, value);
+}
+
 test('uses the Git Chronos identity throughout the application chrome', async ({ page }) => {
   await expect(page).toHaveTitle('Git Chronos');
   await expect(page.locator('.app-menu .brand-mark')).toHaveText('GC');
@@ -679,12 +690,13 @@ test('opens branch creation consistently from the primary toolbar action', async
 test('navigates primary toolbar split menus with the keyboard', async ({ page }) => {
   const pullToggle = page.getByTitle('Pull options');
   await expect(pullToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(pullToggle).toHaveAttribute('aria-controls', 'pull-options-menu');
+  await expect(pullToggle).not.toHaveAttribute('aria-controls', /./);
   await expect(pullToggle).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(() => pullToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await pullToggle.click();
   const pullMenu = page.getByRole('menu', { name: 'Pull options' });
   await expect(pullMenu).toHaveAttribute('id', 'pull-options-menu');
+  await expect(pullToggle).toHaveAttribute('aria-controls', 'pull-options-menu');
   await expect(pullToggle).toHaveAttribute('aria-expanded', 'true');
   const fetchAll = pullMenu.getByRole('menuitem', { name: /Fetch All/ });
   await expect(fetchAll).toBeFocused();
@@ -698,11 +710,12 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
 
   const pushToggle = page.getByTitle('Push options');
   await expect(pushToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(pushToggle).toHaveAttribute('aria-controls', 'push-options-menu');
+  await expect(pushToggle).not.toHaveAttribute('aria-controls', /./);
   await expect.poll(() => pushToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await pushToggle.click();
   const pushMenu = page.getByRole('menu', { name: 'Push options' });
   await expect(pushMenu).toHaveAttribute('id', 'push-options-menu');
+  await expect(pushToggle).toHaveAttribute('aria-controls', 'push-options-menu');
   await expect(pushMenu.getByRole('menuitem', { name: /^Push/ }).first()).toBeFocused();
   await page.keyboard.press('End');
   await expect(pushMenu.getByRole('menuitem', { name: /Force Push with Lease/ })).toBeFocused();
@@ -711,11 +724,12 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
 
   const branchToggle = page.getByTitle('Branch options');
   await expect(branchToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-options-menu');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await expect.poll(() => branchToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await branchToggle.click();
   const branchMenu = page.getByRole('menu', { name: 'Branch options' });
   await expect(branchMenu).toHaveAttribute('id', 'branch-options-menu');
+  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-options-menu');
   await expect(branchMenu.getByRole('menuitem', { name: /Create branch/ })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(branchMenu.getByRole('menuitem', { name: /main Current branch/ })).toBeFocused();
@@ -1055,6 +1069,14 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   await expect(page.locator('.toolbar-navigation')).toBeHidden();
   await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' })).toBeVisible();
   await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Terminal' })).toBeVisible();
+  const [compactActionsBox, compactUtilitiesBox] = await Promise.all([
+    page.locator('.toolbar-actions').boundingBox(),
+    page.locator('.toolbar-utilities').boundingBox(),
+  ]);
+  expect(compactActionsBox).not.toBeNull();
+  expect(compactUtilitiesBox).not.toBeNull();
+  expect(Math.abs(compactActionsBox!.x + compactActionsBox!.width / 2 - 410)).toBeLessThanOrEqual(1);
+  expect(compactActionsBox!.x + compactActionsBox!.width).toBeLessThanOrEqual(compactUtilitiesBox!.x);
 
   await page.setViewportSize({ width: 900, height: 720 });
   const compactSearch = page.locator('.graph-search');
@@ -1785,6 +1807,9 @@ test('navigates and persists application themes as a standard radio group', asyn
   const fileFilter = page.locator('.file-filter');
   const commitSummary = page.locator('.commit-form > input');
   const selectedCommit = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  const selectedAuthorNode = selectedCommit.locator('.author-node');
+  const commitMessageCard = page.locator('.commit-panel .editable-commit-message, .commit-panel > h2').first();
+  const commitSignature = page.locator('gc-commit-signature .commit-signature');
   await expect(chrome).toHaveCSS('background-color', 'rgb(24, 24, 36)');
   await expect(activeRepositoryTab).toHaveCSS('background-color', 'rgb(36, 36, 55)');
   await expect(toolbar).toHaveCSS('background-color', 'rgb(36, 36, 55)');
@@ -1802,6 +1827,12 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(currentWorktree).toHaveCSS('background-color', 'rgb(36, 36, 56)');
   await expect(referenceFilter).toHaveCSS('background-color', 'rgb(20, 20, 31)');
   await expect(selectedCommit).toHaveCSS('background-color', 'rgb(48, 47, 74)');
+  await expect(selectedCommit).toHaveCSS('border-bottom-color', 'rgb(36, 36, 53)');
+  expect(await selectedAuthorNode.evaluate((node) => getComputedStyle(node).boxShadow)).toContain('rgb(48, 47, 74)');
+  await expect(commitMessageCard).toHaveCSS('background-color', 'rgb(32, 32, 47)');
+  await expect(commitMessageCard).toHaveCSS('border-color', 'rgb(55, 54, 75)');
+  await expect(commitSignature).toHaveCSS('background-color', 'rgb(32, 51, 47)');
+  await expect(commitSignature).toHaveCSS('border-color', 'rgb(53, 110, 97)');
 
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   let preferences = page.getByRole('dialog', { name: 'Preferences' });
@@ -1834,6 +1865,12 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(currentWorktree).toHaveCSS('background-color', 'rgb(26, 36, 51)');
   await expect(referenceFilter).toHaveCSS('background-color', 'rgb(15, 22, 33)');
   await expect(selectedCommit).toHaveCSS('background-color', 'rgb(38, 40, 70)');
+  await expect(selectedCommit).toHaveCSS('border-bottom-color', 'rgb(27, 39, 56)');
+  expect(await selectedAuthorNode.evaluate((node) => getComputedStyle(node).boxShadow)).toContain('rgb(38, 40, 70)');
+  await expect(commitMessageCard).toHaveCSS('background-color', 'rgb(21, 31, 46)');
+  await expect(commitMessageCard).toHaveCSS('border-color', 'rgb(53, 68, 91)');
+  await expect(commitSignature).toHaveCSS('background-color', 'rgb(20, 42, 37)');
+  await expect(commitSignature).toHaveCSS('border-color', 'rgb(63, 128, 111)');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.theme'))).toBe('midnight');
 
   await preferences.getByRole('button', { name: 'Close preferences' }).click();
@@ -2203,20 +2240,8 @@ test('shows Git LFS actions only for repositories that enable LFS', async ({ pag
   await lfsOptions.click();
   await expect(page.locator('.lfs-menu-status')).toContainText('git-lfs/3.7.1');
   await expect(page.locator('.lfs-menu-status')).toContainText('12 tracked files');
-  await page.getByRole('menuitem', { name: /Prune old LFS objects/ }).click();
-  const pruneConfirmation = page.getByRole('alertdialog', { name: 'Remove old local objects?' });
-  const pruneCancel = pruneConfirmation.getByRole('button', { name: 'Cancel' });
-  const pruneConfirm = pruneConfirmation.getByRole('button', { name: 'Prune Objects' });
-  await expect(pruneConfirmation).toContainText('git lfs prune');
-  await expect(pruneConfirmation).toContainText('does not provide an exact candidate list or require remote verification');
-  await expect(pruneConfirmation).toContainText('Never prune a cache shared with another repository');
-  await expect(pruneCancel).toBeFocused();
-  await pruneCancel.press('Shift+Tab');
-  await expect(pruneConfirm).toBeFocused();
-  await pruneConfirm.press('Tab');
-  await expect(pruneCancel).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: /Clean LFS storage/ })).toBeEnabled();
   await page.keyboard.press('Escape');
-  await expect(pruneConfirmation).toHaveCount(0);
   await expect(lfsOptions).toBeFocused();
 
   await page.locator('.file-row').filter({ hasText: 'app.component.html' }).click({ button: 'right' });
@@ -2767,6 +2792,8 @@ test('resizes repository side panels with accessible keyboard splitters', async 
   expect((await leftSplitter.boundingBox())!.width).toBeGreaterThanOrEqual(12);
   await leftSplitter.focus();
   expect(await leftSplitter.evaluate((element) => getComputedStyle(element, '::after').width)).toBe('3px');
+  expect(await leftSplitter.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
+    .toBe(await resolvedCssColor(page, 'var(--focus-ring)'));
   await page.keyboard.press('ArrowRight');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '260');
   await page.keyboard.press('Shift+ArrowRight');
@@ -2779,6 +2806,11 @@ test('resizes repository side panels with accessible keyboard splitters', async 
   await leftSplitter.dblclick();
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '250');
   await expect.poll(() => leftPanel.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(250);
+  const splitterBounds = (await leftSplitter.boundingBox())!;
+  await page.mouse.move(splitterBounds.x + splitterBounds.width / 2, splitterBounds.y + splitterBounds.height / 2);
+  await page.mouse.down();
+  await expect(leftSplitter).toHaveCSS('background-color', await resolvedCssColor(page, 'var(--splitter-active)'));
+  await page.mouse.up();
 
   const commitPanel = page.locator('#repository-commit-panel');
   const commitSplitter = page.getByRole('separator', { name: 'Resize commit panel' });
@@ -4641,7 +4673,15 @@ test('compares a graph commit with the current working directory', async ({ page
   await expect(panel.getByText('Changed Files (4)')).toBeVisible();
   await expect(page.locator('.commit-row.selected')).toHaveCount(2);
 
-  await panel.locator('.commit-file').filter({ hasText: 'app.component.html' }).click();
+  const comparisonFile = panel.locator('.comparison-files .commit-file').filter({ hasText: 'app.component.html' });
+  const [comparisonFileNameBox, comparisonDirectoryBox] = await Promise.all([
+    comparisonFile.locator('.current-path strong').boundingBox(),
+    comparisonFile.locator('.current-path small').boundingBox(),
+  ]);
+  expect(comparisonFileNameBox).not.toBeNull();
+  expect(comparisonDirectoryBox).not.toBeNull();
+  expect(comparisonFileNameBox!.y).toBeLessThan(comparisonDirectoryBox!.y);
+  await comparisonFile.click();
   const diffViewer = page.getByRole('region', { name: 'Diff viewer' });
   await expect(diffViewer).toBeVisible();
   await expect(diffViewer).toContainText('160acd10 → WIP');

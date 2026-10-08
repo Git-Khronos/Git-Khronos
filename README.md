@@ -65,6 +65,15 @@ you need a browser-accessible, sample-data development server at
 `http://127.0.0.1:4200`. Add `?welcome-preview` to inspect the welcome screen.
 System Git operations are available only in the native Tauri application.
 
+`task test` includes an IPC contract check
+(`apps/desktop/src/app/ipc-contract.spec.ts`). It reads the native command
+registrations and signatures, plus renderer calls, from source. It fails when a
+command is unregistered or unused, when argument names differ, or when a
+cancelable command cannot receive its operation identifier.
+`e2e/renderer/accessibility-audit.spec.ts` runs a dependency-free structural
+accessibility audit across sample-data preview states and open overlays. It
+does not replace review with real assistive technology.
+
 **Preferences → Git Features → Git command reference…** opens a searchable
 learning reference for implemented workflows. Each topic explains the underlying
 commands, important precautions and the application's narrower scope. Contextual
@@ -243,12 +252,23 @@ current depth, deepen by a number of commits, or download complete history from
 one selected remote. Branches first fetched while deepening may themselves be
 shallow. A cancelled clone can leave a partial destination folder; the error
 names it, and Git Chronos never deletes it automatically.
-Clones are not recursive: after cloning, initialize each submodule you need
-from its **Submodules** menu (**Initialize**).
+Submodules are cloned only when **Include submodules** is checked: Git then
+clones every submodule, including nested ones, and marks all submodules active
+(`submodule.active=.`) so ones added later are also initialized. A shallow
+clone does not shorten submodule history. If only a submodule fails, the error
+says the repository itself was cloned and names its folder; open it and retry
+from the **Submodules** menu. Without the option, initialize each submodule you
+need from that menu (**Initialize**).
 
-Opening a bare repository, Git's internal `.git` folder, a repository whose
-format the installed Git does not support, or a folder owned by another user is
-refused with an explanation and next steps; nothing is changed. Empty
+Opening a bare repository's own folder browses it read-only: history, commit
+details, branches, tags and remotes are shown, while the working directory,
+staging, commits, stashes, pull and checkout are unavailable (a **Bare
+repository** note replaces the working directory entry). Git commands for that
+repository receive an explicit `GIT_DIR`, so a configured
+`safe.bareRepository=explicit` policy keeps working without being changed.
+A folder inside bare repository data, Git's internal `.git` folder, a repository
+whose format the installed Git does not support, or a folder owned by another
+user is refused with an explanation and next steps; nothing is changed. Empty
 repositories (unborn branch) and detached HEAD open normally.
 
 **Worktrees → Worktree actions → Review registrations and prune report…**
@@ -472,16 +492,25 @@ Actual hydration fixtures are opt-in:
 `cargo test -p git-chronos-git-core lfs_checkout -- --include-ignored`.
 Packaged and cross-platform native acceptance remain unqualified.
 
-**Prune old LFS objects** remains a basic confirmed `git lfs prune` delegation,
-not a reviewed exact-object removal workflow. It honors the configured retention
-and fetch-exclude policy and does not require remote verification. Historical,
-orphaned and fetch-excluded cached objects can be removed; Git reflog entries do
-not protect their contents. Never use it on storage shared by different
-repositories. Deleted local copies have no offline undo.
-Stronger prune previews, needed-object protection and shared-storage refusal
-remain unfinished. Local Git LFS 3.7.1 qualification exposed incomplete verbose
-candidate output and a local-file remote verification result that did not prove
-the remote copy existed; those reports are not used as an exact deletion lease.
+**Clean LFS storage** reviews an exact list of local LFS objects that no Git
+object references, with their sizes, before anything is removed. Git Chronos
+reads every Git object in the object database, including unreachable objects and
+alternates, so branches, tags, stashes, reflogs, every worktree index and dangling
+blobs all protect their LFS content. Objects written in the last hour are kept so
+an in-progress `git add` cannot lose its content. Storage outside the repository's
+Git directory (possibly shared), shallow history and partial clones are refused
+because unreferenced objects cannot be proven there. Removal re-scans and requires
+every reviewed object to still be an unreferenced candidate with the same size;
+otherwise nothing is removed. At most 5,000 objects are reviewed per batch.
+Removed local copies have no offline undo. Fixtures are opt-in:
+`cargo test -p git-chronos-git-core lfs_prune -- --include-ignored`.
+
+The older `git lfs prune` delegation remains as an advanced action inside the same
+dialog. It follows retention and fetch-exclude settings, removes historical objects
+without an exact preview or remote verification, and reflogs do not protect them.
+Local Git LFS 3.7.1 qualification exposed incomplete verbose candidate output and a
+local-file remote verification result that did not prove the remote copy existed,
+so those reports are not used as a deletion lease.
 
 Local repository state also refreshes automatically. Git metadata notifications
 update the graph after commits, branch changes, rebases, and terminal-driven Git
@@ -548,7 +577,11 @@ before a complete capture can be made.
 Changed HEAD, branch, index or working state invalidates the preview. Hard reset
 refuses untracked/ignored obstructions and initialized submodule removal; it does
 not recurse into submodule working trees.
-**Recovery History → Saved reset captures** discovers these per-worktree records
+**Delete branch**, **Remove worktree and delete branch** and **Delete stash**
+also create a capture before Git removes the reference: the branch tip, or the
+stash commit with its base, index, working and untracked parts. When Git refuses
+the deletion and the reference is unchanged, the unused capture is removed.
+**Recovery History → Saved operation captures** discovers these per-worktree records
 after restart. Restore creates and switches to an explicitly named new branch at
 the original HEAD and restores the saved index and tracked working contents.
 The current repository must be clean, and ignored-file collisions are refused.

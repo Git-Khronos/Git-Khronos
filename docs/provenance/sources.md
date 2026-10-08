@@ -154,8 +154,11 @@ third-party implementation copied.
 Sources: [git-clone](https://git-scm.com/docs/git-clone),
 [git-rev-parse](https://git-scm.com/docs/git-rev-parse).
 
-Used for `--depth`, `--branch`/`--single-branch`, local-path versus `file://`
-transport behavior and `--is-shallow-repository`. The partial destination left
+Used for `--depth`, `--branch`/`--single-branch`, `--recurse-submodules`
+(with `submodule.active`), local-path versus `file://` transport behavior and
+`--is-shallow-repository`; [git-daemon](https://git-scm.com/docs/git-daemon)
+and `protocol.allow` in [git-config](https://git-scm.com/docs/git-config) for
+the submodule fixture. The partial destination left
 by a stopped process was observed with real Git; original fixtures, no
 third-party implementation copied.
 
@@ -173,8 +176,10 @@ Sources: [git-rev-parse](https://git-scm.com/docs/git-rev-parse),
 [git-config `safe.bareRepository` and `safe.directory`](https://git-scm.com/docs/git-config),
 [gitrepository-layout](https://git-scm.com/docs/gitrepository-layout) and
 [repository format extensions](https://git-scm.com/docs/gitrepository-layout#_git_repository_format_versions).
-Used for bare/unborn/detached semantics and the refusal messages classified on
-open; original fixtures and wording.
+Used for bare/unborn/detached semantics, the refusal messages classified on
+open and explicit `GIT_DIR` access to bare repositories
+([git environment variables](https://git-scm.com/docs/git#_the_git_repository));
+original fixtures and wording.
 
 ## Linked-worktree move
 
@@ -311,6 +316,9 @@ Used for soft/mixed/hard reset scope, non-destructive `stash create` snapshots,
 index-restoring apply, owned expected-object reference transactions, and excluding
 internal snapshot refs from ordinary graph tips/decorations. Requirements and
 tests were independently written; no external source code or proprietary UI was copied.
+The same manuals and [Git branch](https://git-scm.com/docs/git-branch) define
+the branch-deletion and stash-drop checkpoints (deleted-branch reflog removal,
+stash entry structure and index shifting).
 
 ## Selective stash and reference lifecycle
 
@@ -349,6 +357,9 @@ Sources:
 - [Git environment documentation](https://git-scm.com/docs/git)
 - [OpenSSH client manual](https://man.openbsd.org/ssh.1)
 - [OpenSSH configuration manual](https://man.openbsd.org/ssh_config.5)
+- [OpenSSH server configuration manual](https://man.openbsd.org/sshd_config.5)
+
+The server manual informed only the disposable loopback `sshd` test fixture.
 
 Used for Git askpass/helper ownership, SSH askpass behavior and strict host-key
 verification. The operation bridge, protocol and interface are independent
@@ -445,6 +456,9 @@ Sources:
 - [Git check-attr documentation](https://git-scm.com/docs/git-check-attr)
 - [Git 2.34 check-attr manual](https://github.com/git/git/blob/v2.34.0/Documentation/git-check-attr.txt)
 - [Git LFS prune documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-prune.adoc)
+- [Git cat-file documentation](https://git-scm.com/docs/git-cat-file)
+- [Git rev-parse documentation](https://git-scm.com/docs/git-rev-parse)
+- [Git partial clone documentation](https://git-scm.com/docs/partial-clone)
 - [Git LFS lock manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-lock.adoc)
 - [Git LFS locks manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-locks.adoc)
 - [Git LFS unlock manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-unlock.adoc)
@@ -460,6 +474,9 @@ Used for:
   selection, include/exclude override semantics, disabled recent/history
   expansion and remote autodetection/search-all fallback, and explicitly separate
   non-hydrating transfer/retry/cancellation.
+- Reviewed removal of unreferenced cached objects: pointer format and size limit,
+  documented local media storage layout, object-database enumeration including
+  unreachable objects and alternates, and shallow/partial-clone detection.
   Implementation and local bare-remote fixtures are original.
 - Independent local single-pointer hydration, narrower than CLI checkout:
   existing matching index/working pointer only, configured cache from the

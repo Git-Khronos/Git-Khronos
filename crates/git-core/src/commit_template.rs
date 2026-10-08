@@ -2,7 +2,7 @@ use super::{AppError, ensure_success, run_git};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 const MAX_TEMPLATE_BYTES: u64 = 1024 * 1024;
 const TEMPLATE_HINT: &str = "Check commit.template and the file's permissions and UTF-8 encoding, then refresh. No message or Git configuration was changed.";
@@ -66,9 +66,7 @@ pub(super) fn read(path: &Path) -> Result<Option<String>, AppError> {
             "The commit template must contain UTF-8 text without NUL characters.",
         ));
     }
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let mut child = crate::git_in(path)
         .args(["stripspace", "--strip-comments"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")

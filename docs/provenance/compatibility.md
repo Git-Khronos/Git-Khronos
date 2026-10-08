@@ -492,8 +492,16 @@ removes its destination after an ordinary failure, but cancellation stops the
 whole process group, so Git cannot clean up and a partial destination with
 `.git` can remain. Git Chronos never deletes it automatically; the error names
 the folder to remove before retrying, and a retry into it is refused because the
-destination exists. Recursive submodule cloning is not offered; submodules can
-be reviewed after cloning.
+destination exists.
+
+Optional `--recurse-submodules` (no pathspec) clones nested submodules and,
+as documented, records `submodule.active=.`. Observed on Git 2.39 and 2.53:
+`--depth` does not shorten submodule history (`--shallow-submodules` is not
+passed); when a submodule's server repository is missing, clone exits with an
+error but keeps the checked-out superproject, so Git Chronos reports
+`submoduleCloneIncomplete`, naming the folder instead of claiming a partial
+clone. Default protocol policy refuses `file` transport for submodules, so the
+fixture serves repositories through a local `git daemon`.
 
 ## Shallow-history deepening
 
@@ -520,7 +528,18 @@ fails with "unknown repository extension"; foreign ownership fails with
 "dubious ownership". Git Chronos keeps Git's detail but classifies these as
 bare, repository-data, unsupported-format or untrusted-owner refusals with
 original guidance, and never fabricates a working tree or changes the
-repository. Bare repositories are not yet browsable in the application.
+repository.
+
+Read-only bare browsing: when Git reports a bare repository, Git Chronos accepts
+the path only if `git --git-dir=<path> rev-parse --is-bare-repository
+--absolute-git-dir` reports `true` and the same canonical directory. Folders
+inside bare repository data remain refused. Every later command for that
+repository sets `GIT_DIR` explicitly, which Git's `safe.bareRepository=explicit`
+policy permits; the policy is not changed. Status is the current branch only
+(no working tree), stashes and submodules are empty because `git stash` needs a
+work tree, and Git itself refuses working-tree commands (observed "must be run
+in a work tree"). Original fixtures qualify this under the default policy,
+`safe.bareRepository=explicit` and Git 2.39.
 
 ## Original educational hints
 
@@ -532,9 +551,28 @@ command. The catalog and dialogs load separately from the startup bundle.
 
 Sources: official Git/Git LFS command manuals; no external prose or assets copied.
 
-## Existing LFS prune limitations
+## Reviewed unreferenced LFS object removal
 
-The existing action delegates to Git LFS after confirmation. It does not provide
+Requirement: remove only local LFS cache objects that cannot be needed by any
+local Git state, with an exact reviewed list and no retention-policy guesswork.
+
+Candidates are regular files in the documented `LocalMediaDir` layout
+(`aa/bb/<sha256>`) that no SHA-256 pointer in any Git object names. Pointers are
+read from every blob under the specification's 1024-byte pointer limit enumerated
+by `git cat-file --batch-all-objects`, which includes unreachable objects and
+alternates, so references, reflogs, stashes, every worktree index and dangling
+blobs protect content. Objects modified within an hour are kept. Storage outside
+the common Git directory, shallow repositories and promisor/partial-clone
+configuration are refused. Removal repeats the whole scan and requires each
+reviewed object to remain a candidate with the same size; otherwise nothing is
+removed. Symlinks and unexpected names are never candidates. Cancellation between
+removals reports how many were removed. Fixtures qualify Git 2.39 and current Git
+with Git LFS 3.7.1. Remote copies are not checked: removed objects may be
+unavailable anywhere.
+
+## Advanced Git LFS retention prune limitations
+
+The advanced action delegates to Git LFS after confirmation. It does not provide
 an exact candidate preview, require remote verification or refuse shared storage.
 Retention and fetch-exclude settings remain effective; reflog-only objects are
 not protected by Git LFS's documented policy. UI and documentation disclose these
@@ -875,6 +913,27 @@ and filesystem failures are not transactional; failures retain captures and
 report partial effects rather than promising rollback.
 
 Sources: Git's `git-reset`, `git-stash`, `git-update-ref` and `git-log` manuals.
+No external implementation or proprietary assets were used.
+
+## Branch and stash deletion checkpoints
+
+Before Git deletes a local branch, including a branch deleted with its
+worktree, Git Chronos protects the branch tip in the same owned recovery
+namespace and journal. Git removes a deleted branch's reflog, so the reflog
+alone cannot recover it. Before a stash entry is dropped, the reviewed stash
+commit and its first parent are protected. The entry is re-resolved just before
+the drop, so a shifted `stash@{n}` index cannot drop a different entry. When
+Git refuses (for example an unmerged branch without force) and the original
+reference is verifiably unchanged, the unused capture is removed. Otherwise it
+is retained because effects may be partial. Restoration reuses the reset
+capture path: a new named branch at the saved commit, plus `stash apply --index`
+for stash captures, which also restores the stash's untracked part.
+
+Native fixtures cover unmerged refusal without leftovers, a missing branch,
+forced deletion, restoration after reflog expiry and `gc --prune=now`, stale
+stash indexes, and dropping a middle stash entry.
+
+Sources: Git's `git-branch`, `git-stash`, `git-update-ref` manuals.
 No external implementation or proprietary assets were used.
 
 ## Selective stash and explicit checkout handoff

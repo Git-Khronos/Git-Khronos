@@ -523,6 +523,83 @@ pub fn preserve_operation(path: &Path, label: &str) -> Result<OperationRecovery,
     Ok(record)
 }
 
+/// Protects an existing commit (and optionally a stash-shaped snapshot whose
+/// first parent is that commit) before an operation removes its last reference.
+pub(crate) fn preserve_commits(
+    path: &Path,
+    label: &str,
+    head_oid: &str,
+    snapshot_oid: Option<&str>,
+) -> Result<OperationRecovery, AppError> {
+    if label.is_empty() || label.len() > 4096 || label.contains('\0') {
+        return Err(AppError::new(
+            "invalidRecoveryLabel",
+            "The operation recovery label is invalid.",
+            None,
+        ));
+    }
+    validate_commit_oid(head_oid)?;
+    if let Some(oid) = snapshot_oid {
+        validate_commit_oid(oid)?;
+        let base = run_git(path, &["rev-parse", "--verify", &format!("{oid}^1")])?;
+        ensure_success("verify the saved changes base", &base)?;
+        if String::from_utf8_lossy(&base.stdout).trim() != head_oid {
+            return Err(AppError::new(
+                "invalidRecoveryMetadata",
+                "The saved changes do not belong to the saved history.",
+                None,
+            ));
+        }
+    }
+    let id = format!("{:020}-{}", timestamp()?, std::process::id());
+    let head_reference = format!("{RECOVERY_NAMESPACE}{id}-head");
+    let snapshot_reference = snapshot_oid.map(|_| format!("{RECOVERY_NAMESPACE}{id}-changes"));
+    let mut transaction = format!("start\ncreate {head_reference} {head_oid}\n");
+    if let (Some(reference), Some(oid)) = (&snapshot_reference, snapshot_oid) {
+        transaction.push_str(&format!("create {reference} {oid}\n"));
+    }
+    transaction.push_str("prepare\ncommit\n");
+    run_git_with_input(
+        path,
+        &["update-ref", "--no-deref", "--stdin"],
+        transaction.as_bytes(),
+        "protect operation recovery",
+    )?;
+    let record = OperationRecovery {
+        id,
+        label: label.into(),
+        head_oid: head_oid.into(),
+        snapshot_oid: snapshot_oid.map(Into::into),
+        head_reference,
+        snapshot_reference,
+        restored: false,
+    };
+    write_record(path, &record).map_err(|error| AppError::new("recoveryCaptureIncomplete",
+        format!("The operation was not started. Could not persist its recovery record: {}", error.message),
+        Some(&format!("The saved history remains protected at {}. Fix recovery storage before retrying.", record.head_reference))))?;
+    Ok(record)
+}
+
+/// Runs `operation` after a capture exists. When Git refuses and `unchanged`
+/// confirms the original reference still holds the data, the unused capture is
+/// removed; otherwise it is retained because the operation may be partial.
+pub(crate) fn with_commit_recovery<T>(
+    path: &Path,
+    record: OperationRecovery,
+    operation: impl FnOnce() -> Result<T, AppError>,
+    unchanged: impl FnOnce() -> bool,
+) -> Result<T, AppError> {
+    match operation() {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            if unchanged() {
+                let _ = delete_operation_recovery(path, &record.id);
+            }
+            Err(error)
+        }
+    }
+}
+
 fn stale_reset() -> AppError {
     AppError::new(
         "staleReset",
