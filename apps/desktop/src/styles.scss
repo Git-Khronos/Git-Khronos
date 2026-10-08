@@ -447,7 +447,8 @@ code, kbd { font-family: var(--font-mono); }
 .history-entry strong { color: #c9c8d5; font-size: 12px; font-weight: 600; }.history-entry small { color: #6f6e82; font-size: 12px; }
 .history-entry > code { color: var(--muted); font-size: var(--font-size-caption); text-align: right; }
 .blame-lines { padding-bottom: 22px; font: var(--diff-font-size, 12px)/1.5 "SFMono-Regular", Consolas, monospace; tab-size: var(--diff-tab-size, 4); }
-.blame-line { min-width: 900px; display: grid; grid-template-columns: 43px 76px 120px 76px minmax(400px, 1fr); min-height: 22px; align-items: stretch; border-bottom: 1px solid #20202e; }
+.blame-line { min-width: 900px; display: grid; grid-template-columns: 43px 76px 64px 120px 76px minmax(400px, 1fr); min-height: 22px; align-items: stretch; border-bottom: 1px solid #20202e; }
+.blame-line > button { border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--accent); font: inherit; text-align: left; padding: 2px 7px; }
 .blame-line { content-visibility: auto; contain-intrinsic-block-size: auto 22px; }
 .blame-line:hover { background: #20202f; }
 .blame-line > span:first-child, .blame-line > time, .blame-line > .blame-sha, .blame-line > .blame-author { display: flex; align-items: center; overflow: hidden; padding: 2px 7px; border-right: 1px solid #2b2a3b; color: #69687b; text-overflow: ellipsis; white-space: nowrap; }
@@ -1461,18 +1462,7 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
 }
 
 /* Commit signature verification */
-.commit-signature { display: flex; align-items: center; gap: 8px; margin: 11px 14px 0; padding: 8px 9px; border: 1px solid #45445b; border-radius: 4px; background: #252436; color: #8f8da1; }
-.commit-signature > span { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 50%; background: #36354b; }
-.commit-signature > div { min-width: 0; display: grid; gap: 2px; }
-.commit-signature strong, .commit-signature small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-signature strong { color: #b9b7c7; font-size: 12px; }
-.commit-signature small { color: #747286; font-size: 12px; }
-.commit-signature.valid { border-color: #356e61; background: #20332f; color: #69d0b2; }
-.commit-signature.valid > span { background: #2c5b50; }
-.commit-signature.valid strong { color: #9ee5d1; }
-.commit-signature.valid-unknown { border-color: #6d6041; background: #332e23; color: #e1b866; }
-.commit-signature.invalid, .commit-signature.expired-signature, .commit-signature.expired-key, .commit-signature.revoked-key, .commit-signature.unverifiable { border-color: #754154; background: #38252e; color: #ed8da4; }
-.commit-signature.unsigned { opacity: .82; }
+.commit-signature-placeholder { box-sizing: border-box; min-height: 46px; margin: 11px 14px 0; padding: 8px 9px; }
 
 /* Focus treatment for keyboard-operable workspace splitters lives here to keep
    the component stylesheet within its enforced bundle budget. */

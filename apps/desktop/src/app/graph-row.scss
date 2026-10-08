@@ -1,7 +1,6 @@
 .ref-pill.with-icon, .draggable-reference { display: inline-flex; align-items: center; gap: 3px; }
 .column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; }
 .column-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; }
-.column-resizer.leading-edge { z-index: 4; right: auto; left: -6px; }
 .column-resizer:hover { background: #7c6ef61f; }
 .column-resizer:hover::after { background: var(--purple); }
 /* Each recycled row is its own compositing layer: scrolling and rebinding a row then repaints only

@@ -1,5 +1,315 @@
 # Informational sources
 
+## Mail-patch exchange
+
+Sources:
+
+- https://git-scm.com/docs/git-format-patch
+- https://git-scm.com/docs/git-am
+- https://git-scm.com/docs/git-mailsplit
+- https://git-scm.com/docs/git-mailinfo
+
+Used for independently implemented configuration-isolated series export,
+per-patch review, git am application options and Continue/Skip/Abort control.
+Owned real-Git fixtures define safety and refusal behavior. No external source
+code, assets or documentation prose copied.
+
+## Offline Git bundle exchange
+
+Sources:
+
+- https://git-scm.com/docs/git-bundle
+- https://git-scm.com/docs/git-fetch
+- https://git-scm.com/docs/git-update-ref
+
+Used for independently implemented complete branch export, prerequisite/header
+review, advertised tips, object-only fetch scope and atomic recovery-ref creation.
+Verification is not source authentication; pack objects are checked during fetch.
+Owned real-Git fixtures define safety and refusal behavior. No external source
+code, assets or documentation prose copied.
+
+## Complete diff patch exchange
+
+Sources:
+
+- [Git apply manual: check, index/cached targets, path checks and default all-hunk behavior](https://git-scm.com/docs/git-apply)
+- [Git diff manual: binary/full-index output and literal paths](https://git-scm.com/docs/git-diff)
+
+Used to define public diff export, checked import and separate index/worktree
+effects. Original owned Git fixtures verify bytes, modes, path/state refusal,
+configuration isolation and linked-worktree scope. UI, bounds and review
+invalidation are independently designed. No external code or manual prose
+copied.
+
+## Merge-preserving rebase
+
+Sources:
+
+- [Git rebase manual: rebase-merges, no-rebase-cousins and rebasing merges](https://git-scm.com/docs/git-rebase)
+
+Used for public merge-recreation behavior, Git-owned structural instructions,
+cousin ancestry and the need to reapply manual merge resolutions. Original
+owned repositories verify topology, conflicts and protected refs. Review,
+bounded metadata and preflight design are independent. No external source
+implementation or documentation prose copied.
+
+## Explicit replay destination
+
+Sources:
+
+- [Git rebase manual: onto, empty commits and operation controls](https://git-scm.com/docs/git-rebase)
+
+Used for the distinction between the replay boundary and destination parent,
+public interactive onto invocation and native interrupted replay behavior.
+Original owned Git fixtures verify result trees/parents, captured destination
+and preserved refs. UI scope and recovery guards are independently designed.
+No external source code or manual prose copied.
+
+## Whole-history root editing
+
+Sources:
+
+- [Git rebase manual: root and empty commits](https://git-scm.com/docs/git-rebase)
+
+Used for inclusive actual-root replay, unchanged-tree commit semantics and
+native Edit/Continue/Abort. Complete linear-history limits, unrelated-ref
+isolation, explicit review and recovery guards are independently designed.
+Behavior is checked against owned real-Git repositories; no external source
+code or documentation prose copied.
+
+## Guided commit splitting
+
+Sources:
+
+- [Git rebase manual: splitting commits](https://git-scm.com/docs/git-rebase)
+- [Git reset manual](https://git-scm.com/docs/git-reset)
+- [Git repository layout](https://git-scm.com/docs/gitrepository-layout)
+
+Used for clean Edit stops, documented mixed reset, detached commit creation and
+native Continue/Abort. Original owned Git probes established that split-created
+untracked files can block Abort; the interface exposes preservation/staging/move
+guidance instead of forcing a reset. Independent application metadata guards
+uncertain resets and complete-tree recovery without fabricating Git's state.
+No external implementation or documentation prose copied.
+## Selected-range history editing
+
+Sources:
+
+- [Git rebase manual](https://git-scm.com/docs/git-rebase)
+- [Git rev-list manual](https://git-scm.com/docs/git-rev-list)
+
+Used for inclusive starting-commit review, unchanged-parent base, all later
+descendants, intentional empty commits and remote-tracking ancestry exclusion.
+Original owned Git fixtures verify exact trees/messages/parents, protected old
+history and no unrelated ref updates under configured automatic ref rewriting.
+Remote reachability is explicitly a local recorded observation, not a remote
+publication check. No external source code or documentation prose copied.
+## Explicit commit policy options
+
+Sources:
+
+- [Git commit manual](https://git-scm.com/docs/git-commit)
+- [Git hooks manual](https://git-scm.com/docs/githooks)
+
+Used for committer sign-off trailers, unchanged-tree permission, staged-content
+scope, explicit author overrides, command-scoped committer identity, amend
+semantics and hook execution. The interface and disposable actual-
+Git fixtures were independently written. No source code or manual prose copied.
+
+## In-app Git learning reference and registration review
+
+Sources:
+
+- [Official Git manual index](https://git-scm.com/docs)
+- [Git worktree manual](https://git-scm.com/docs/git-worktree)
+- [Official Git LFS command manuals](https://github.com/git-lfs/git-lfs/tree/main/docs/man)
+
+The learning catalog links command-specific manuals and provides independently
+written workflow explanations, precautions and application-scope distinctions.
+No documentation text, implementation or graphical assets were copied.
+Registration review uses documented NUL-delimited porcelain output, lock/prune
+reasons, dry-run mode and explicit `--expire=now`. Original real-Git fixtures
+exercise missing and locked registrations, dirty/detached worktrees, literal
+paths, unborn repositories and respect for the configured bare-repository policy.
+
+## Linked-worktree move
+
+Source: [Git worktree manual](https://git-scm.com/docs/git-worktree).
+
+Used for linked versus main worktrees, move restrictions, lock protection and
+Git-owned registration updates and external-move repair. Real-Git fixtures also
+established that targeted repair may rewrite other broken links, requiring a
+preflight refusal to preserve this interface's focused scope.
+The interface and behavioral fixtures were
+independently implemented. No external implementation or assets copied.
+
+## Explicit branch fetch and prune scope
+
+Sources:
+
+- [Git fetch manual](https://git-scm.com/docs/git-fetch)
+- [Git repository layout](https://git-scm.com/docs/gitrepository-layout)
+
+Used for explicit branch refspec destinations, empty `--refmap` isolation,
+disabled tag following/tag pruning, per-remote transactions and cancellation
+scope. The interface and local bare-remote behavioral fixtures are original.
+No source code, assets or proprietary text copied.
+
+## Explicit pull strategy and local refusal semantics
+
+Sources:
+
+- [Git pull manual](https://git-scm.com/docs/git-pull)
+- [Git 2.34 pull manual](https://git-scm.com/docs/git-pull/2.34.0)
+- Installed Git's public `git pull -h` command reference
+- [Git branch manual](https://git-scm.com/docs/git-branch)
+
+Used for explicit `--no-rebase`, `--rebase`, `--ff` and `--ff-only`, per-command
+overrides, upstreams, occupied branches and partial fetch/integration effects.
+Independent disposable local bare-remote observations establish merge-parent,
+replayed-commit, conflict-abort and stale/gone-upstream contracts. Real rebase
+progress may delimit an error with a carriage return, not only a newline.
+UI hints and sanitized error guidance were written independently; no manual
+prose or third-party implementation copied. Minimum-version execution remains
+unqualified despite using its documented options.
+
+## Interactive fixup and retained-predecessor safety
+
+Sources:
+
+- [Git rebase manual](https://git-scm.com/docs/git-rebase)
+- [Git update-ref manual](https://git-scm.com/docs/git-update-ref)
+
+Used for explicit fixup versus squash message behavior, preceding retained
+commits, linear replay and interruption/abort. Original disposable fixtures
+verify message/tree contracts, preflight refusal before side effects and a
+protected original source tip. UI and validation are independently designed;
+no upstream source, manual prose or proprietary interface copied.
+
+## Complete, bounded interactive rebase metadata
+
+Sources:
+
+- [Git log manual](https://git-scm.com/docs/git-log)
+- [Git pretty formats](https://git-scm.com/docs/pretty-formats)
+- [Git worktree manual](https://git-scm.com/docs/git-worktree)
+
+Used for bounded history traversal, structured metadata fields, message
+encoding and linked-worktree occupancy. Complete-plan refusal and metadata
+validation are independent application policy. Original disposable fixtures
+verify actual Git output and refusal without mutation; no source or manual
+prose copied.
+
+## Intentional interactive rebase editing
+
+Source:
+
+- [Git rebase manual](https://git-scm.com/docs/git-rebase)
+
+Used for the `edit` todo action, amendment, continuation and abort.
+Independent fixtures qualify successful intentional stops, subsequent
+reword/fixup, multiple stops, hook refusal and restoration. An observed
+automatic commit of staged changes on Continue motivates the application's
+explicit-amend policy; no implementation or manual prose copied.
+
+## Reviewed autosquash preview
+
+Source:
+
+- [Git rebase manual](https://git-scm.com/docs/git-rebase)
+
+Used for fixup!/squash! subject markers and combining actions. Matching and
+preview policies are independently designed, with stricter unique-target and
+all-Pick requirements than Git's broader matcher. Original pure, renderer and
+real-Git fixtures qualify stable grouping and resulting trees/messages. No
+upstream implementation or documentation prose copied.
+
+## Conflict resolution safeguards
+
+Sources:
+
+- [Git checkout](https://git-scm.com/docs/git-checkout)
+- [Git index inspection](https://git-scm.com/docs/git-ls-files)
+- [Git object reading](https://git-scm.com/docs/git-cat-file)
+- [Git object hashing](https://git-scm.com/docs/git-hash-object)
+
+Used for explicit ours/theirs stage meanings during merge and rebase, missing
+stage/deletion semantics, bounded object previews and working-content leases.
+The state checks, temporary-file save, interface and actual-Git fixtures were
+independently implemented. No source code, assets or proprietary wording copied.
+
+## Selected index edits and new files
+
+Sources:
+
+- [Git apply](https://git-scm.com/docs/git-apply)
+- [Git diff](https://git-scm.com/docs/git-diff)
+- [Git configuration](https://git-scm.com/docs/git-config)
+- [Git attributes](https://git-scm.com/docs/gitattributes)
+- [Git environment and literal pathspecs](https://git-scm.com/docs/git)
+
+Used for index-only patch application, recalculated hunk counts, partial
+new-file unstage headers, effective file-mode policy, literal selected paths
+and native expected-preview checks. Real Git fixtures qualify index contents,
+unchanged working bytes, CRLF attributes and unborn repositories.
+Implementation and tests are original; no external code or assets copied.
+
+## Durable reset recovery
+
+Sources:
+
+- [Git reset](https://git-scm.com/docs/git-reset)
+- [Git stash](https://git-scm.com/docs/git-stash)
+- [Git update-ref](https://git-scm.com/docs/git-update-ref)
+- [Git log](https://git-scm.com/docs/git-log)
+
+Used for soft/mixed/hard reset scope, non-destructive `stash create` snapshots,
+index-restoring apply, owned expected-object reference transactions, and excluding
+internal snapshot refs from ordinary graph tips/decorations. Requirements and
+tests were independently written; no external source code or proprietary UI was copied.
+
+## Selective stash and reference lifecycle
+
+Sources:
+
+- [Git stash](https://git-scm.com/docs/git-stash)
+- [Git tag](https://git-scm.com/docs/git-tag)
+- [Git push](https://git-scm.com/docs/git-push)
+- [Git update-ref](https://git-scm.com/docs/git-update-ref)
+- [Git remote](https://git-scm.com/docs/git-remote)
+
+Used for selective-path stash behavior, staged-state restoration, stash bases,
+signed tag handling, exact-object reference leases and separate push URLs.
+The implementation and behavioral fixtures are original; no source code copied.
+
+## Whole-repository history investigation
+
+Sources:
+
+- [Git log](https://git-scm.com/docs/git-log)
+- [Git revision selection](https://git-scm.com/docs/gitrevisions)
+- [Git blame porcelain](https://git-scm.com/docs/git-blame)
+- [Git merge-base](https://git-scm.com/docs/git-merge-base)
+- [Git diff-tree](https://git-scm.com/docs/git-diff-tree)
+
+Used for argument-array queries, pinned commit/ref ranges, NUL-delimited
+metadata and rename paths, historical blame filenames, parent lookup, and
+explicit direct-tree versus unique-merge-base comparisons. Implementation and
+tests were written independently; no third-party code or assets were copied.
+
+## Standard Git authentication
+
+Sources:
+
+- [Git credential documentation](https://git-scm.com/docs/gitcredentials)
+- [Git environment documentation](https://git-scm.com/docs/git)
+- [OpenSSH client manual](https://man.openbsd.org/ssh.1)
+- [OpenSSH configuration manual](https://man.openbsd.org/ssh_config.5)
+
+Used for Git askpass/helper ownership, SSH askpass behavior and strict host-key
+verification. The operation bridge, protocol and interface are independent
+implementations; no upstream source code or assets were copied.
+
 ## Desktop interface behavior
 
 Sources:
@@ -76,6 +386,20 @@ Sources:
 - [Git LFS command documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs.adoc)
 - [Git LFS install documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-install.adoc)
 - [Git LFS track documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-track.adoc)
+- [Git LFS untrack documentation](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-untrack.adoc)
+- [Git LFS ls-files manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-ls-files.adoc)
+- [Git LFS fetch manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-fetch.adoc)
+- [Git LFS configuration manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-config.adoc)
+- [Git LFS checkout manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-checkout.adoc)
+- [Git LFS environment manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-env.adoc)
+- [Git LFS pointer manual](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/man/git-lfs-pointer.adoc)
+- [Git LFS pointer specification](https://github.com/git-lfs/git-lfs/blob/v3.7.1/docs/spec.md)
+- [Git LFS ls-files command](https://github.com/git-lfs/git-lfs/blob/v3.7.1/commands/command_ls_files.go)
+- [Git LFS 3.7.1 track command](https://github.com/git-lfs/git-lfs/blob/v3.7.1/commands/command_track.go)
+- [Git LFS 3.7.1 untrack command](https://github.com/git-lfs/git-lfs/blob/v3.7.1/commands/command_untrack.go)
+- [Git hooks path configuration](https://git-scm.com/docs/git-config#Documentation/git-config.txt-corehooksPath)
+- [Git check-attr documentation](https://git-scm.com/docs/git-check-attr)
+- [Git 2.34 check-attr manual](https://github.com/git/git/blob/v2.34.0/Documentation/git-check-attr.txt)
 - [Git LFS prune documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-prune.adoc)
 
 Used for:
@@ -84,7 +408,37 @@ Used for:
 - Initializing repository-local Git LFS filters and hooks.
 - Adding ordinary or lockable tracking patterns through `.gitattributes`.
 - Pulling objects required by the current checkout through the documented Git LFS CLI.
-- Requiring explicit confirmation before pruning old local LFS objects.
+- Reviewed single-file cache fetch at pinned committed HEAD, configured remote
+  selection, include/exclude override semantics, disabled recent/history
+  expansion and remote autodetection/search-all fallback, and explicitly separate
+  non-hydrating transfer/retry/cancellation.
+  Implementation and local bare-remote fixtures are original.
+- Independent local single-pointer hydration, narrower than CLI checkout:
+  existing matching index/working pointer only, configured cache from the
+  supported environment output, SHA-256/size verification of an exclusive
+  temporary copy, unchanged index/ref leases, permission preservation and
+  cancellation before replacement. No upstream implementation copied.
+- Requiring explicit confirmation before pruning local LFS objects, explaining
+  retention/fetch-exclude scope, shared-storage risk and lack of reflog protection.
+  Original local-file fixtures exposed incomplete verbose candidate output and
+  verification that did not establish remote-copy existence; no experimental
+  candidate parser or deletion executor was retained.
+- Listing the documented JSON pattern records without flattening their sources.
+- Literal-file effective-attribute inspection with NUL-delimited Git output,
+  comparing working and index views while retaining external-source precedence.
+  This invokes Git without requiring LFS or reading/hydrating file contents.
+- Local object diagnostics through stable ls-files JSON. Canonical MIT-licensed
+  command code was an informational reference for size-only checkout/cache flags,
+  index-plus-HEAD scope and zero-size omissions, not copied or adapted.
+  Canonical working pointers are recognized independently from the public spec;
+  extended/different pointer-like content is explicitly not classified as hydrated.
+- Reviewed root-rule removal with attributes/index/HEAD state checks, without
+  claiming history conversion or restoring lockable file permissions.
+- Isolating implicit pattern-command hook installation in a command-local
+  private directory. Real CLI tests exposed the shared-hook side effect;
+  canonical MIT-licensed command sources confirmed it and the long-line rewrite
+  limitation. They were used only as informational behavior references, not
+  copied or adapted into this repository.
 
 No source code, assets, wording, or visual implementation were copied.
 
@@ -137,12 +491,15 @@ No source code, assets, wording, or visual implementation were copied.
 Sources:
 
 - [Git maintenance documentation](https://git-scm.com/docs/git-maintenance)
+- [Git fsck documentation](https://git-scm.com/docs/git-fsck)
 
 Used for:
 
 - Defining a keyboard-accessible repository-maintenance capability.
 - Defining keyboard-accessible repository creation, tab, staging, and stash workflows.
-- Running Git's documented repository-local maintenance strategy on demand.
+- Running only explicit commit-graph and pack-refs tasks after a complete passing
+  integrity check, rather than the configured repository-maintenance strategy.
+- Confirming that explicit `--task` options exclude tasks enabled by configuration.
 - Keeping maintenance serialized with other repository operations while the UI remains responsive.
 
 No source code, assets, wording collections, or visual implementation were copied.
@@ -200,6 +557,19 @@ Used for:
 - Detecting interrupted cherry-pick and revert operations.
 - Continuing, skipping, or aborting the active operation through documented commands.
 - Restoring the original repository state when an operation is aborted.
+- Selecting a 1-based mainline parent to apply or reverse a single merge's
+  difference relative to that parent, without copying implementation code.
+- Explaining how reverting a merge retains ancestry and affects later merges.
+- Applying selected changes with documented `--no-commit` and later explicit
+  commits using the current identity.
+- Reverting an explicit list with `--no-walk=unsorted` and native sequencer
+  Continue/Skip/Abort, preserving documented inverse-commit semantics.
+- Owned first/later hook-refusal fixtures identify retained sequencer state
+  without REVERT_HEAD and qualify explicit staged commit before Continue;
+  no Git implementation code was inspected or copied.
+- Owned black-box fixtures of single/multiple no-commit conflicts, Continue and
+  `git reset --merge` informed an independent restart-safe application journal;
+  no proprietary implementation was inspected or copied.
 
 No source code was copied.
 
@@ -224,6 +594,16 @@ Source:
 - [Git commit documentation](https://git-scm.com/docs/git-commit)
 - [Git config documentation](https://git-scm.com/docs/git-config)
 - [Git pretty formats documentation](https://git-scm.com/docs/pretty-formats)
+- [Git signature object format](https://git-scm.com/docs/gitformat-signature)
+- [Git 2.34 SSH trust configuration](https://git-scm.com/docs/git-config/2.34.0)
+- [Git hooks manual](https://git-scm.com/docs/githooks)
+- [Git 2.34 signing configuration documentation](https://raw.githubusercontent.com/git/git/v2.34.0/Documentation/config/gpg.txt)
+- [GnuPG configuration options](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Configuration-Options.html)
+- [GnuPG agent trust configuration](https://www.gnupg.org/documentation/manuals/gnupg/Agent-Configuration.html)
+- [GPGSM certificate-checking options](https://www.gnupg.org/documentation/manuals/gnupg/Certificate-Options.html)
+- [GPGSM configuration options](https://www.gnupg.org/documentation/manuals/gnupg/Configuration-Options.html)
+- [OpenSSL certificate request command](https://docs.openssl.org/3.5/man1/openssl-req/)
+- [OpenSSL PKCS#12 command](https://docs.openssl.org/3.5/man1/openssl-pkcs12/)
 
 Used for:
 
@@ -233,6 +613,18 @@ Used for:
 - Updating repository-local `user.name` and `user.email` values through Git's documented configuration interface.
 - Reading Git's documented signature status, signer, key, fingerprint, and trust placeholders for one inspected commit.
 - Resolving the effective OpenPGP, SSH, or X.509 signer program without invoking it.
+- Distinguishing stored commit-signature headers from absent signatures when
+  verification lacks configuration, using bounded independent header parsing.
+- Qualifying SSH allowed-signers/revocation behavior through ephemeral local
+  test keys without touching user keys or trust stores.
+- Explaining the exact verification-hook opt-out and always-run prepare hook.
+- Resolving legacy and format-specific OpenPGP program aliases in effective
+  configuration order with bounded, literal settings and explicit failures.
+- Qualifying OpenPGP signing/verification using generated disposable keys,
+  isolated signing/public-verification homes and home-scoped agent cleanup.
+- Qualifying offline X.509 signing/tamper rejection and explicit distrust through
+  generated disposable certificate/key/trust fixtures. Offline checking options
+  are fixture-only; production trust and revocation configuration are untouched.
 
 No source code was copied.
 
@@ -295,3 +687,26 @@ Used for:
 - Keeping terminal handoff tool-neutral so users can run any locally available command.
 
 No source code, assets, wording collections, or visual implementation were copied.
+
+## Configured commit-template preparation
+
+Sources:
+
+- https://git-scm.com/docs/git-commit
+- https://git-scm.com/docs/git-config
+- https://git-scm.com/docs/git-stripspace
+
+Used for effective template path configuration and Git-owned comment/whitespace
+preparation. Independently implemented bounded UTF-8 loading, visible failures,
+non-mutating retry and confirmation before draft replacement. Original disposable
+fixtures compare behavior with Git, including literal paths, custom comment
+characters, exact limits and preserved repository state. No code copied.
+
+## Explicit repository integrity inspection
+
+Source: [Git fsck manual](https://git-scm.com/docs/git-fsck).
+
+Used for object/connectivity inspection scope and the distinction between
+diagnostic findings, normal dangling objects and repair. Git owns verification;
+bounded streaming, cancellation, conservative promisor refusal and the interface
+are original implementations. No external code or documentation prose copied.

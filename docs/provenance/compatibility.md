@@ -1,5 +1,951 @@
 # Compatibility notes
 
+## Mail-patch series exchange
+
+Export accepts 1-500 consecutive ordinary first-parent commits ending at HEAD,
+refusing merges, shallow boundaries and partial/promisor repositories. Public
+format-patch runs with replacement objects disabled and explicit command options
+overriding signature, notes, threading, numbering, headers, mboxrd, rename,
+external diff and textconv configuration; exports never overwrite files.
+Import reviews a complete regular file up to 16 MiB/500 patches, then rechecks
+file identity, HEAD and branch, requires clean tracked state and saves the
+original tip in a protected recovery reference before git am -k --keep-cr
+--no-3way. Committer is local; signatures and notes are not carried. Empty
+patches, conflicts and hook refusals stop for explicit Continue/Skip/Abort;
+Abort restores the original tip; ordinary commits refuse while paused.
+Eight owned real-Git fixtures qualify exact
+round trips under hostile configuration, partial series, refusal boundaries,
+500-commit/oversize limits, conflicts, stale/dirty/detached inputs and hook
+refusal. Seven renderer journeys qualify review/save/apply/pause controls, focus
+and repository-scoped refresh. Not a transaction against outside writes or disk
+failures. No external implementation, assets or documentation prose copied.
+
+## Offline bundle branch exchange
+
+Public Git bundle create exports one local branch with its full reachable history
+and an expected-tip guard. Verify/list-heads inspect the complete immutable
+captured file and available prerequisites; actual object payload validation
+happens at fetch. Source fingerprints detect ordinary stale contents, not
+authenticity. Complete regular files are limited to 16 MiB and 500 distinct
+UTF-8 advertised references. Symlink/special/tag-only/over-limit inputs refuse.
+Partial/promisor repositories refuse before status inspection to avoid implicit
+network downloads; self-contained export also requires non-shallow history.
+New exclusive output files are synchronized outside working-tree/Git metadata
+boundaries; existing files are never replaced.
+
+Separate explicit branch-only import rechecks contents, exact advertised tips
+and active operations, fetches from a local capture without destination mapping,
+and atomically creates one protected recovery reference to the direct commit.
+No existing branch, tag, remote-tracking ref, HEAD, FETCH_HEAD, index or working
+file update is requested. Dirty files stay in place; configured ref mapping,
+pruning/tags, submodule recursion and automatic maintenance are disabled for
+this command without editing settings. Missing prerequisites refuse before
+fetch. Annotated tag and blob objects advertised as branches cannot become recovery refs.
+Failed fetch/ref preservation may leave objects and returns explicit guidance;
+temporary capture cleanup errors also disclose completed/failed action state.
+Configured hooks and external filesystem effects are not transactional.
+
+Original real-Git fixtures cover binary full-history round trips, dirty index/
+worktree/untracked/ref/FETCH_HEAD isolation, stale source/export tips, changed
+advertisements, active metadata, no overwrite/outside-output boundaries,
+incremental prerequisites in unborn and existing repositories, shallow/partial
+source scope without implicit network fetch, exact byte and
+500/501 reference limits, corrupt headers/payloads, annotated-tag advertisements,
+hook-refusal after object import, literal newline source paths and linked
+worktree scope. Deferred renderer journeys cover exact expected-tip/import IPC,
+explicit branch-only choice, complete tip disclosure, cancellations, compact
+help/focus, stale export/refusal/no-repeat recovery, post-import refresh failure,
+loaded/review-generation repository invalidation, and shared lazy-loading shell.
+No external implementation, assets or documentation prose copied.
+
+## Complete tracked diff patch exchange
+
+Public Git diff with binary/full-index output exports all or literal selected
+tracked staged/unstaged changes. New files require staging; renames export as
+deletion/addition. Every selected path must produce its complete chosen-scope
+diff. No external diff or text conversion is requested. New exclusive output
+files outside the worktree/common metadata directory are synchronized; existing
+files are not replaced. Export does not move refs or mutate the index/worktree.
+Filesystem write failures disclose a possible partial output file.
+
+Import reads one bounded regular file, inspects Git's NUL-delimited path/count
+report and creation/deletion/mode summary, and runs public git apply --check
+against the explicitly chosen working files, cached index, or both. A separate
+Apply repeats the complete clean-state/path/object review and compares exact
+input bytes, HEAD, full branch identity and the complete index entries.
+No commit/ref changes, partial-hunk application, three-way fallback, whitespace
+fixing or unsafe-path override. Configured whitespace-ignore behavior is
+overridden for this command only; repository/user configuration is not edited.
+Index-only effects are explained separately from working-file contents.
+
+Review requires a committed HEAD and no dirty/untracked/active-operation or
+assume-unchanged/skip-worktree state. Complete patch/index reports are bounded
+to 4 MiB and 2000 distinct patch paths. Invalid/outside/metadata paths, symlink
+ancestors/leaves, nested repositories, special input files, unsupported
+non-UTF-8 paths, symlink/gitlink modes and extended rename/copy records refuse.
+Ordinary additions/deletions, executable modes and binary data are supported.
+LFS diffs carry Git pointer data, not cached LFS objects.
+
+Original native fixtures verify all three target effects, exact text/binary/
+index bytes and unchanged refs, staged literal tab/newline paths, mode/rename
+deletion-addition round trips, source/base/branch/dirty/hidden-state refusal,
+all-hunk base mismatch, preserved operation metadata, exact byte/path limits,
+symlink/nested/metadata safety, no overwrite, whitespace/external-diff config
+isolation and linked worktrees with a literal newline root path.
+Renderer journeys qualify exact optional selection and captured import IPC,
+explicit review/cancel/target invalidation, native dialog cancellation, focused
+refusal/fresh review, compact/help and repository/deferred-load invalidation.
+These checks do not promise a transaction against outside filesystem writes or
+disk failures. Mail patches have their own commit-series workflow above.
+No external implementation, assets or documentation prose copied.
+
+## Separately reviewed merge-preserving replay
+
+Current-local-branch replay onto a different local branch can use a distinct
+complete topology review. Public `git rebase -i --rebase-merges=no-rebase-cousins
+--onto <captured-target> <common-base>` leaves Git's generated structural
+instructions intact. Ordinary commits and two-parent merges are supported;
+shallow, root, octopus, ambiguous common bases and over-limit reviews refuse.
+No flattening fallback, instruction reconstruction, autosquash or row editing
+is offered. Side ancestry outside the common base keeps original branch points.
+
+Source/destination tips, original parents and recorded remote reachability are
+reviewed, then checked again on execution. The original tip is preserved;
+unrelated refs remain unchanged despite configured automatic updates.
+Hooks/signing remain enabled. Native conflicts and Continue/Skip/Abort survive
+reload. Original manual merge resolutions are not automatically copied;
+owned conflicting-merge fixtures prove a new resolution is required and Abort
+restores the original resolved tree.
+
+Original real-Git fixtures qualify resulting two-parent trees/messages/ancestry,
+cousin branch points, unrelated-ref isolation, conflict Continue/Abort,
+500/501 topology bounds, shallow/linear/octopus/ambiguous/stale/dirty/hidden/
+recovery refusal and actual hook failure. Deferred renderer fixtures exercise
+explicit scope, exact IPC, keyboard/compact help/cancel, failed replay no-repeat,
+preparation refusal/retry and repository/lazy import invalidation.
+No external source code or manual prose copied.
+
+## Explicit selected-history replay destination
+
+Selected-history review defaults to its unchanged parent base. An explicit
+destination choice captures an available branch-tip commit independently of the
+original boundary. Public `git rebase -i --onto <captured-commit> <boundary>`
+replays the complete reviewed suffix on the current local branch. The destination
+reference remains untouched; later branch movement cannot silently change the
+captured parent. Exact commit existence/type is checked before native recovery
+or setup; a destination inside the reviewed suffix refuses.
+
+Existing optional selection/root requests remain compatible when no destination
+is supplied. Complete source preflight, protected original tip and scoped
+unrelated-ref/autostash/autosquash/merge preservation guards are retained.
+Hooks/signing remain enabled. Different destination files can cause conflicts
+or newly empty effects; native Continue/Skip/Abort remains explicit. Destination
+choices retain reviewed actions/messages; restoring original-base choice runs
+no command. Combined root-onto replay remains unsupported; merge preservation
+uses the separate topology review described above.
+
+Owned real-Git fixtures qualify exact resulting parents/trees/messages/authors,
+captured destination despite branch movement, no unrelated-ref updates across
+Edit/Continue, conflict Continue/Abort, newly empty Skip, invalid destination/
+mode/dirty/hidden/recovery refusal and actual hook failure. Renderer journeys
+qualify exact optional destination IPC, full suffix/disclosure, retained drafts,
+compact help/cancel/restored base and repository-switch invalidation.
+No external implementation material or documentation prose copied.
+
+## Explicit whole-history editing including the root
+
+Current-local-branch actions offer a distinct complete-history review from the
+actual root through HEAD. Public `git rebase -i --root` executes only after
+complete bounded review and repeated execution preflight. There is no unchanged
+base; at least one commit must remain. Shallow, non-linear, competing-operation,
+dirty/hidden-index and stale/incomplete plans refuse instead of replaying a
+prefix or treating a shallow boundary as the actual root.
+
+Existing branch and selected-range APIs remain compatible; an optional root
+IPC flag is absent in legacy requests. Scoped configuration prevents implicit
+unrelated-ref updates, autosquash, autostash and merge preservation. Hooks and
+configured signing remain enabled. The original tip is protected before setup.
+An originally empty root can be reworded with conditional unchanged-tree
+permission; newly empty steps retain Git's native interruption. Root Edit
+supports amendment/Continue/Abort but not parent-based guided splitting.
+
+Independent owned fixtures exercise root messages/parents/trees/authors,
+empty-root Reword, root dropping versus all-drop refusal, root Edit/reload/
+amend/Continue/Abort, conflict Abort, exact500/501 review boundaries and
+stale/shallow/merge/detached/ref refusals. Renderer journeys exercise explicit
+scope, exact optional IPC, all-drop disabling, compact help/draft/keyboard
+escape, refusal/retry and repository-switch invalidation.
+Root-onto combinations remain unsupported. Merge preservation uses its own
+separately reviewed workflow, not the linear root editor.
+No external implementation material or documentation prose copied.
+
+## Guided commit splitting at Edit stops
+
+A separately reviewed action at a clean intentional rebase Edit stop protects
+the original branch tip and replayed commit, then performs a documented mixed
+reset to its sole parent. Index changes are unstaged, working contents retained
+and added files become untracked. Existing application rebase reviews/recovery
+remain authoritative; original native rebase metadata is inspected, never
+fabricated or edited by this feature.
+
+A strict 4 KiB worktree-local split journal is synchronized before reset, then
+marked active after the expected parent is verified. Exclusive metadata locks
+are not stolen. Interrupted/uncertain reset state refuses repeat, commit,
+Skip and Continue, while direct Abort remains available. Malformed/oversized/
+unreadable metadata reports errors instead of looking idle.
+
+Active split parts must form a bounded linear chain (up to 500 commits) rooted
+at the saved parent. Explicit ordinary commits use the current identity and
+signing policy; author overrides remain available. Parent amendment and
+unchanged-tree permission are refused. Continue requires at least two parts,
+the exact saved combined tree and no remaining staged/unstaged/untracked changes.
+No implicit commit or Skip can bypass this check. Empty stopped commits refuse
+without reset. This intentionally supports partitioning contents, not changing
+their net tree; ordinary Edit/amend remains available for the latter workflow.
+
+Native Abort may refuse split-created untracked files overlapping the restored
+original tree. Files remain intact; explicit review/stage-only-those-files or
+safe external movement precedes retry. No force reset or silent deletion runs.
+Owned actual-Git fixtures cover repeat/reset/lock/stale/dirty/hidden-state refusal,
+partial/full parts, exact suffix trees/messages/parents, hook failures, uncertain
+storage, worktree isolation, empty input, consecutive Edit splits and Abort
+obstructions with unrelated-file preservation. Renderer fixtures verify
+confirmation/identity guidance, focused help/cancel, staged parts/commit/Continue,
+restart-like status-only changes and repository-switch safety.
+
+## Reviewed selected-range history editing
+
+Commit actions prepare an inclusive starting commit or consecutive
+oldest-to-newest selection on the current local branch. The complete review
+also contains every later descendant through HEAD, bounded at 500 rows and
+2 MiB. The original first-parent base remains unchanged. Merge-containing,
+unrelated/nonconsecutive, root and shallow-boundary ranges refuse rather than
+flattening or replaying a partial selection.
+
+Existing local-branch-to-local-branch preparation remains available. Both modes
+inspect recorded remote reachability via local remote-tracking ancestry;
+unknown means unverified publication, never proof of private/unpublished work.
+No network operation runs during this inspection. Captured immutable source
+objects and final branch-tip checks prevent source changes from silently
+altering the review, and execution validates the complete supplied set again.
+
+Selected-range execution preserves the original tip before support writes,
+refuses hidden index entries and competing operations, and suppresses configured
+automatic unrelated-ref updates, implicit autosquash/autostash and merge
+preservation. Hooks and configured signing remain effective. Reword adds
+unchanged-tree permission only for commits verified as originally empty;
+nonempty commits becoming empty still use Git's interactive stop behavior.
+Recovery references, native rebase stops and Continue/Skip/Abort survive reload.
+
+Original actual-Git fixtures cover exact trees, messages and parent base,
+protected original history, configured automatic ref updates, tags sharing
+branch names, remote reachability/unknown, 500/501-row thresholds, invalid and
+stale selections, hidden edits, actual hooks, empty Reword and repeated conflicts.
+Renderer journeys qualify full-suffix disclosure, exact optional selection IPC,
+compact keyboard/help/cancel, refusal/retry and repository-switch invalidation.
+Merge-preserving mode remains unfinished; explicit destination replay,
+whole-history root editing and guided splitting have separate workflows above.
+Official Git manuals inform behavior; no external implementation material copied.
+
+## Explicit sign-off and unchanged-tree commits
+
+Per-draft opt-ins delegate to Git's `--signoff` and `--allow-empty`. Existing
+callers keep both disabled; the IPC policy is optional for older clients and
+unknown policy fields are refused. Sign-off uses the actual Git committer and
+is distinct from cryptographic signing. Unchanged-tree permission does not
+exclude staged files or automatically stage working edits.
+Real-Git fixtures cover default empty refusal, nonempty messages, exact tree
+and parent behavior, committer trailer deduplication, co-author preservation,
+amend, unstaged/untracked preservation and configuration preservation.
+Unix fixtures qualify failing pre-commit, prepare-commit-msg and commit-msg
+hooks plus an unavailable signer, without recording a commit or losing staged
+contents. Renderer fixtures mock IPC, including per-repository drafts, pending
+controls and late-completion safety; they do not establish packaged acceptance.
+
+Source: official Git commit and hook manuals. Independently implemented.
+
+## Per-commit author and committer overrides
+
+Strict optional identity objects extend the commit policy without changing old
+caller defaults. Explicit full author identity is passed through `--author`;
+committer name/email are added only to that Git command's environment.
+Both require bounded nonempty names and explicit emails without control or
+delimiter injection. Invalid overrides fail before executing Git.
+Repository configuration and the parent application's environment are not
+modified. Git owns amend-author retention, trailer identity and signing policy.
+A changed committer may affect default key selection.
+
+Original real-Git fixtures qualify independent author-only/committer-only/both
+overrides, restoration of configured defaults on the next commit, unchanged
+configuration, Unicode names, explicit amend-author replacement, exact tree/
+parent preservation, malformed/overlong identities and strict unknown-field
+refusal. Unix hooks observe the scoped committer, can refuse the operation and
+do not persist the override into a later command.
+The combined deferred policy editor retains per-repository drafts, pending
+editing guards, native-refusal retry and explicit chunk-load errors.
+Renderer IPC is mocked; packaged acceptance remains unfinished.
+
+Source: official Git commit/hook documentation. No third-party code copied.
+
+## Configured templates without silent loss
+
+The repository snapshot reads the effective `commit.template` path using Git's
+NUL-delimited path output. Whitespace/newline paths remain literal. Only regular
+UTF-8 files up to 1 MiB, without NUL text, are accepted; reading is bounded even
+if the file grows. Empty/guidance-only templates are distinct from no template.
+Git `stripspace --strip-comments` prepares guidance with effective comment
+configuration instead of the renderer deleting every hash-prefixed line.
+This is form preparation, not an override of commit cleanup policy.
+
+Failures are structured snapshot feedback, not silently empty templates or
+repository-opening failures. Repair is retried with repository refresh; refresh
+does not replace an entered message. Reload of the current snapshot requires
+confirmation before replacing summary, description and co-authors. Commit
+policy is preserved, pending commits disable reload/help, and confirmations
+are invalidated on repository/template/error changes.
+
+Original real-Git fixtures qualify configured comments, whitespace/newline
+paths, missing/invalid/directory/oversized inputs, exact accepted byte limit,
+repair, unchanged configuration/HEAD/index and staged/unstaged contents.
+Renderer qualification covers explicit replacement/cancel/focus, literal
+headings, empty templates, visible failures, retry, repository switches,
+pending controls, compact layout and deferred import refusal.
+IPC is mocked; packaged-native acceptance remains unfinished.
+
+Source: official commit/config/stripspace manuals. No external code copied.
+
+## Advisory Git failure recovery
+
+Existing `gitFailure` kind and credential-redacted Git diagnostics remain
+unchanged. An original classifier adds non-destructive hints for selected
+English C-locale diagnostic phrases: lock collisions, full volumes/quotas,
+permissions/read-only filesystems, damaged indexes/objects and storage I/O.
+Unknown messages keep generic guidance; revisions merely named by invalid
+user input are not classified as repository corruption.
+An active rebase does not replace recognized operational-failure guidance with
+conflict instructions; ordinary rebase conflict handling remains unchanged.
+Hints do not inspect ownership, assert complete diagnosis, delete locks,
+reset indexes, fetch objects, prune, run maintenance or retry mutations.
+Object guidance suggests a separate manual `git fsck --full` check and recovery
+from known-good sources. The separately implemented explicit inspector below
+also exposes this check, never automatically from an error.
+
+Original disposable actual-Git fixtures qualify a foreign index lock retained
+byte-for-byte after stage refusal, an empty loose object and damaged index
+preserved after inspection refusal, and explicit fixture-only repair for retry.
+Synthetic diagnostics qualify disk/quota/permissions/I/O phrases, conservative
+fallbacks, contract stability, active-rebase distinction and existing credential
+redaction.
+Renderer mocked IPC qualifies original messages plus hints, retained drafts and
+only user-initiated commit attempts. Packaged acceptance remains unfinished.
+
+## Explicit object/connectivity inspection
+
+The independently implemented inspector runs `git -c core.commitGraph=false
+fsck --full --no-progress` with optional locks disabled, C-locale diagnostics,
+terminal prompts disabled and lazy fetch disabled. Any partial-clone/promisor
+configuration is conservatively refused without changing it. No lost-found,
+repair, garbage collection or maintenance command is issued.
+Both output streams drain concurrently with 1 MiB retained per stream; complete
+output versus truncated reporting is explicit. A check passes only with exit zero
+and complete output. Nonzero exits are inspection findings/failure, not transport
+success or clean-state claims. Signals/startup/read/wait failures and cancellation
+remain explicit errors without a success report.
+
+Tauri registers a cancellable operation and serializes inspection with local
+mutations. The deferred preferences panel reuses global operation busy/cancel
+lifecycle; closing preferences does not hide the global cancellation affordance.
+Reports/errors are repository-scoped and delayed results are discarded after a
+switch. Nested official help remains focus-restoring and disabled while pending.
+Results are sequential observations, not an ownership lease, backup, signature/
+LFS/device-health verification or permission for repair.
+
+Original real-Git fixtures preserve HEAD/index/config and staged/unstaged data,
+inspect clean/dangling and damaged loose-object repositories, qualify linked/
+unborn layouts and respect configured bare-repository policy, refuse promisor settings,
+retain cancelled large-object inspection data and never create lost-found.
+Bounded-reader units qualify exact/excess stream limits. Renderer mocked IPC
+qualifies explicit invocation, findings/empty/truncated output, error/retry,
+cancellation, global busy, switching, nested help and lazy import refusal.
+Packaged-native/platform acceptance remains unfinished.
+
+## Read-only worktree registration review
+
+The independently implemented review reads a complete bounded
+`git worktree list --porcelain -z --expire=now`, then a bounded
+`git worktree prune --dry-run --verbose --expire=now`. NUL boundaries preserve
+literal newline/tab paths. Incomplete, malformed, duplicate and unknown records
+are refused instead of presenting a partial successful review.
+Locked and prunable reasons are shown explicitly; the human prune report is
+displayed, not parsed into an executable deletion scope.
+Sequential observations are not a lease or transaction. Immediate expiry is
+disclosed as more aggressive than Git's normal age-based policy.
+No registration, directory, index, branch or reflog is changed by this review.
+Real-Git fixtures preserve existing state, including dirty and detached
+worktrees; renderer journeys mock IPC and do not establish packaged acceptance.
+Recoverable removal remains a separate unfinished workflow.
+
+Source: official Git worktree manual. No third-party implementation copied.
+
+## Original educational hints
+
+The searchable reference uses original explanations of implemented feature
+families, with explicit risks and narrower application support. Static official
+HTTPS Git/Git LFS manual links are opened on demand through the existing validated
+browser-opening service. Contextual help does not execute the explained Git
+command. The catalog and dialogs load separately from the startup bundle.
+
+Sources: official Git/Git LFS command manuals; no external prose or assets copied.
+
+## Existing LFS prune limitations
+
+The existing action delegates to Git LFS after confirmation. It does not provide
+an exact candidate preview, require remote verification or refuse shared storage.
+Retention and fetch-exclude settings remain effective; reflog-only objects are
+not protected by Git LFS's documented policy. UI and documentation disclose these
+limits rather than describing all candidates as unreferenced.
+
+A proposed stricter workflow was rejected during local Git LFS 3.7.1 black-box
+qualification: the verbose dry-run reported two removable objects but listed only
+one, and a local-file remote check reported verification after the selected
+remote cache copy had been removed. No candidate parser or new deletion executor
+from that experiment remains. Complete enumeration and meaningful remote backup
+evidence require further work. These local observations do not qualify HTTP/SSH
+server verification or imply the same behavior in other tool versions.
+
+Source: official Git LFS prune manual and original, disposable local fixtures.
+No external implementation copied.
+
+## Reviewed local single-pointer hydration
+
+Independent hydration is deliberately narrower than `git lfs checkout`: only an
+existing canonical working pointer identical to one ordinary unmerged-free
+stage-zero index entry is eligible. Both attribute views must assign the LFS
+filter. Missing/modified/already hydrated files, symlink parents/entries, gitlinks,
+unmerged entries, noncanonical pointers, skip-worktree and assume-unchanged flags
+are refused. Literal index pathspecs support wildcard-looking names without scope
+expansion. This does not vivify absent sparse paths.
+
+The review leases HEAD/branch, a complete index-file checksum, selected index
+entry/flags, pointer permissions, effective attributes, cache path and an opaque
+fingerprint of effective Git/LFS settings. Initial identity and working-pointer
+reads are rechecked before returning a review and again before replacement.
+Git hashes the literal unfiltered working pointer and compares the index blob
+ID; no missing Git pointer blob needs to be fetched.
+
+The supported `LocalMediaDir` line from documented `git lfs env` locates configured
+storage; missing/duplicate/nonabsolute/unsupported output or symlink object paths
+fail explicitly. No hardcoded default `.git/lfs` location is assumed. An exclusive
+randomly named temporary file in the existing working parent uses owner-only
+permissions on Unix. Copy is streaming and cancellable. The documented `git lfs
+pointer --file` computes SHA-256/size of that copy; it must match the exact
+reviewed canonical pointer before original permissions are applied and rename
+replaces the working pointer. No network transfer, staging, Git reference update,
+prune or LFS lock/unlock is requested.
+
+Same-size corrupt cache contents fail before replacement. Errors/cancellation
+clean only the owned temporary file; cleanup failure identifies its exact path.
+Successful rename is followed by directory synchronization on Unix and identity
+verification. Post-replacement failures explicitly disclose the replacement and
+lack of rollback. External filesystem races and unsupported platform-specific
+replace/permission semantics are not hidden as transactional guarantees.
+
+Original actual-LFS fixtures cover custom cache, exact one-file replacement,
+unchanged index/ref/config/other working files, permission preservation, modified/
+missing/different-index/cache-corrupt/unmerged/symlink/sparse/assume-unchanged
+refusals, full-index/HEAD/attributes/settings leases, literal special names and
+active-copy cancellation cleanup. Renderer journeys exercise review, exact IPC,
+error/retry, cancellation focus, compact layout and repository guards with mocked
+IPC. Packaged/cross-platform native acceptance remains unqualified.
+
+Sources: official LFS checkout behavior, environment/pointer manuals and public
+pointer specification. No upstream implementation copied; safe temporary-copy
+hydration and tests were written independently.
+
+## Reviewed single-file LFS cache fetch
+
+An inspected pointer must match exactly one selected literal path at committed
+HEAD. The preview records that commit, path, object ID, size and chosen configured
+remote. An opaque fingerprint of bounded effective Git configuration and `git
+lfs env` output detects configuration/endpoint/storage changes without returning
+raw settings to the renderer. Execution rechecks HEAD, the committed object and
+settings before starting. External changes are still possible after these reads;
+no transactional guarantee or server identity certificate is claimed.
+
+The documented CLI fetch uses the explicit pinned commit and a root-anchored
+include filter, clears exclusions, and disables recent/history expansion through
+command-local configuration. Remote autodetection and search-all fallback are
+disabled so a missing object on the selected remote is not obtained silently
+from another remote. Commas, wildcard syntax, backslashes and exclamation
+marks in names are refused rather than reinterpreted as wider selection.
+No checkout, prune, staging or Git ref update is requested. Custom local storage
+and configured LFS endpoint resolution remain Git LFS's responsibility.
+Completion requires the selected cache object's size-based availability; it is
+not hash-integrity verification. The existing operation authentication bridge and
+process-group cancellation are reused; transfer errors and cancellation explicitly
+disclose possible retained cache data and require a new review for retry.
+
+Original local bare-remote fixtures qualify single-object selection despite broad
+recent/history policy and conflicting include/exclude configuration, no download
+of unrelated or historical objects, preservation of dirty/index/pointer/ref/config
+state, sparse-index exclusion without hydration, stale review and staged-object
+refusal, missing-server-object failure/retry, disabled cross-remote fallback and
+pre-cancelled transfer. Renderer
+journeys qualify explicit review, exact IPC, refusal/retry, cancellation focus,
+compact layout and repository guards; they mock IPC. Live HTTPS/SSH LFS-specific
+authentication and packaged-native acceptance remain unqualified.
+
+Source: official Git LFS fetch manual. Implementation, interface and tests were
+written independently; no external implementation copied.
+
+## Bounded local LFS object diagnostics
+
+Uses Git LFS's documented `ls-files --json` output with no include/exclude
+filter, bounded complete output and strict path/hash/version/size validation.
+Null and empty file arrays are valid empty scopes; missing/malformed records
+and output limits are explicit errors. Index/HEAD scope, index-first duplicate
+selection, fallback HEAD paths deleted from the index, and zero-size omission
+are explained rather than presented as all repository objects.
+
+OID and cache location interpretation are delegated to LFS. Its checkout and
+downloaded booleans are size evidence, not checksums. An independent bounded
+ordinary working-file read recognizes the canonical public-spec pointer to the
+listed OID/size, labels other pointer-like content conservatively, and refuses
+following static symlink paths. Missing paths (including sparse exclusion),
+non-files and size-matching/differing content remain distinct. No hash integrity
+or transactional filesystem guarantee is claimed; external edits are possible.
+
+Real LFS fixtures cover custom storage, pointer-only checkout with available and
+missing cache, same-size modified contents, size mismatch, other pointer-like
+contents, missing paths, symlink parents/entries and unchanged configured hooks.
+Diagnostics do not stage, hydrate, transfer, prune or rewrite files/index/HEAD.
+UI reports scan failures separately from empty results, focuses status/errors,
+guards repository switches and pending dismissal, and provides non-mutating
+missing-object/transfer retry guidance. Packaged-native qualification, actual
+live HTTPS/SSH transfer acceptance, safe prune and locking remain.
+
+Sources: official Git LFS ls-files documentation and pointer specification;
+MIT-licensed canonical command sources were behavior references only.
+
+## Effective file attributes without hydration
+
+The LFS tracking dialog accepts a literal repository-relative path and compares
+five relevant attributes in `git check-attr -z` and its `--cached` view. It does
+not implement an attribute parser or flatten pattern precedence: Git resolves
+macros, nested/root rules and info/global/system sources. Complete records must
+match the requested path and attribute order; oversized/truncated, non-UTF-8,
+missing or malformed responses are errors. Traversing/absolute/metadata paths
+are refused. Paths need not exist or be tracked.
+
+Real Git fixtures verify nested working/index differences, macro/global/info
+precedence, staged fallback when working attribute files are missing, literal
+wildcard/space/option-looking names and sparse-excluded directories. Sparse-index
+bytes, HEAD and excluded-file absence stay unchanged. This is a read operation,
+not hydration, staging or an LFS installation check; it runs without `git-lfs`.
+Views are sequential observations and can diverge under external edits.
+Raw values are displayed, not inferred from the pattern listing; Git's reserved
+status words can also be literal custom values.
+
+UI retains invalid input, focuses errors/results, clears old output on edits,
+blocks dismissal during a read, guards repository switching and resets path on
+reopening. Browser journeys use mocked IPC; packaged Tauri acceptance remains.
+
+Sources: official Git check-attr and gitattributes manuals. No code was copied.
+
+## Reviewed root Git LFS tracking-rule removal
+
+Git LFS's documented `track --json` list is presented with original pattern,
+source, lockable and tracking/exclusion fields. Root tracked rules can be
+reviewed; nested, external and exclusion rules remain read-only in this scope.
+Removal leases HEAD/branch, root working text/type/mode and root index entries,
+rejects unmerged or unsafe attributes, then delegates to Git LFS and verifies
+the selected root tracking rule disappeared, other lines match the reviewed
+result, and index/HEAD/branch/permissions stayed unchanged. Macro definitions,
+indirect/quoted rules without a direct match and misleading `filter=lfs`
+substrings are refused before editing. It does not convert pointers,
+rewrite history, remove objects, restore lockable permissions or stage changes.
+Git LFS may normalize line endings and remove additional attributes on matching
+LFS lines. Overlong lines are refused to prevent silent CLI rewrite truncation.
+
+Pattern commands are given a private command-local hook directory; their
+implicit hook installation never targets configured repository/shared hooks.
+Only that owned directory's known hook files are cleaned up, and cleanup failures
+are explicit. Repository-local LFS format metadata can be initialized by the
+CLI. External processes are not locked out; no transaction or rollback is
+claimed. The dialog retains failed review, offers explicit reload, guards
+repository switching, blocks dismissal during mutations and manages keyboard
+focus. Global duplicate error toasts are suppressed while this dialog displays
+the error, so they cannot obscure its retry controls.
+
+Behavior was qualified with original actual Git/LFS 3.7.1 fixtures and mocked
+renderer journeys. Older JSON-capable LFS versions and packaged Tauri still need
+qualification. Object/transfer diagnostics, selective
+hydration, safe prune and locking remain unfinished.
+
+Sources: official Git LFS track/untrack manuals, Git's hooks-path documentation
+and MIT-licensed canonical command sources (behavior reference only).
+
+## Reviewed linked-worktree move
+
+The action checks the selected registration's HEAD/branch, current/locked/missing
+state, linked `.git` marker, unused destination and outside-source parent before
+delegating to `git worktree move` without force. The desktop additionally refuses
+an open source repository tab, comparing canonical paths. Main worktrees,
+unsupported submodule-containing moves and filesystem failures are explicit.
+Working/index files and branch occupancy survive successful moves.
+
+The dialog retains failed destination choices, blocks submission after repository
+switch, disables edits/dismissal while moving, traps focus, and restores focus to
+the moved row or compact-window panel control. External filesystem/Git processes
+are not excluded: this is not a transactional filesystem move or rollback
+guarantee. Prune and packaged acceptance remain unfinished.
+
+Source: [Git worktree manual](https://git-scm.com/docs/git-worktree).
+Implementation and actual-Git fixtures are original.
+
+## Verified repair after an external worktree move
+
+The original registered path must be missing. The actual linked directory's
+bounded ordinary `.git` file must resolve to a direct registration in this
+repository's common `worktrees` directory, and its absolute backlink must match
+the selected old path. HEAD/branch and links are rechecked before Git repair.
+The resulting path, backlink and HEAD/branch are verified before success.
+Files, index and branch refs are not modified by this workflow.
+
+Git's repair command can rewrite other broken worktree links even when passed
+one path; local fixtures exposed that behavior. Other existing registrations
+must therefore have consistent reciprocal links and common-directory pointers
+before running this focused action. Other missing entries remain registered.
+Locked/current/open worktrees, existing-source copies, symlink/malformed links,
+relative backlinks and submodule index entries have explicit refusal and local
+Git guidance. Nested submodule repair and main-repository relocation are not
+claimed. External filesystem/Git races remain possible; there is no rollback or
+pruning guarantee. The dialog retains refused paths and restores keyboard focus.
+
+Source: [Git worktree manual](https://git-scm.com/docs/git-worktree) and original
+black-box local Git fixtures. No third-party implementation used.
+
+## Explicit branch fetch and prune scope
+
+The separate options workflow fetches one remote or every configured remote into
+its standard tracking-branch namespace. Explicit refspecs, empty `--refmap`,
+`--no-all`, `--no-tags` and `--no-prune-tags` isolate the action from configured
+mirror/custom/tag mappings. Pruning is an explicit opt-in and overrides ordinary
+configured pruning defaults. It uses fetch URLs, not separate push destinations.
+Nested/overlapping remote names, potentially shared custom tracking mappings
+from other remotes, and resolved symbolic aliases pointing outside the chosen
+namespace are rejected before any update. Loose references are inspected because
+Git enumeration omits dangling symbolic aliases; unresolved aliases also block
+fetching instead of reporting an apparently successful fetch that silently
+skipped the broken tracking branch. This scoped action requires file-based
+reference storage; other storage formats are explicitly refused.
+
+Each remote uses Git's `--atomic` reference update option. All-remotes execution
+is sequential, not a cross-remote transaction; failures/cancellation report the
+affected remote and previously completed count. External processes remain able
+to modify repository state. The renderer retains options on error, exposes
+cancellation and refreshes actual state. Local branches, tags, index and working
+files are not destinations of this action.
+Ordinary configured-refspec fetch/pull and automatic fetch are unchanged.
+
+Source: [Git fetch manual](https://git-scm.com/docs/git-fetch).
+Implementation and real-Git behavioral fixtures were written independently.
+
+## Checked conflict resolution
+
+Conflict previews lease HEAD, symbolic branch, exact selected unmerged stages,
+working-file type/mode and unfiltered object hash (or symlink target).
+State is checked across preview reads and before text replacement. Missing blobs
+are read errors, never interpreted as deleted sides. Content previews are bounded
+at 256 KB; binary, invalid UTF-8, oversized, symlink and gitlink conflicts cannot
+be saved through the text editor.
+
+Text output is synced to an exclusively created temporary file and renamed before
+literal-path staging. Failed staging reports saved but unresolved output.
+Complete-side actions use Git index stages, including actual deletion rather than
+empty-file substitution. The UI explains rebase meanings, retains failed editor
+output, provides explicit reload, guards repository identity and traps keyboard
+focus. Gitlinks are explicitly unsupported by these side/text actions.
+External Git/filesystem races are not transactional; broader complex conflict
+resolution and configured local tools remain unfinished.
+
+Sources: Git's `git-checkout`, `git-ls-files`, `git-cat-file` and `git-hash-object`
+manuals. Implementation and behavioral fixtures are original.
+
+## Partial staging of new files
+
+New-file patches apply directly to the index with `git apply --cached`; no
+full-file or intent-to-add staging is performed first. Native selections compare
+the current complete UTF-8 diff with the displayed preview. Truncated previews,
+invalid selections and non-text diffs are refused before index mutation.
+Partial unstage retains unselected new-file contents by expressing an ordinary
+content edit, and removing all selected contents removes the new index entry.
+Working bytes stay unchanged. Unborn whole-file unstage force-removes only the
+index entry, including when its staged contents differ from the working copy.
+
+Paths are literal, diff prefixes are fixed, and external diff/text conversion
+is disabled. Git attributes still apply; executable new-file metadata follows
+effective `core.filemode` rather than no-index filesystem mode alone.
+Behavioral fixtures cover unborn and committed repositories, unusual paths,
+other staged entries, missing final newlines, CRLF, executable bits, stale
+working/index state and failure without unintended index entries.
+As with other local workflows, external Git processes are not locked out.
+
+Sources: Git's `git-apply`, `git-diff`, `git-config`, `git` and `gitattributes`
+manuals. The selection implementation and tests are independently written.
+
+## Durable reset checkpoints
+
+Native reset previews lease HEAD, symbolic branch identity, exact index entries,
+tracked worktree diffs and ordinary status. Captured index trees and worktree
+diffs are checked against that state, then state and obstructions are rechecked
+immediately before mutation. Recovery uses non-destructive `git stash create`,
+owned protected references and a synced bounded JSON journal in the individual
+worktree's Git directory. Soft/mixed/hard behavior remains Git-owned.
+
+Reset does not recurse into submodules. Hard resets refuse untracked/ignored
+destination collisions, nested repositories and initialized gitlink removal.
+Recovery creates a new branch at the original HEAD and uses `stash apply --index`
+without dropping the protected capture. It requires a clean repository and checks
+ignored destination collisions before branch creation. Removal leases only the
+record's owned direct references and never dereferences symbolic aliases.
+
+Native behavioral fixtures cover staged/unstaged separation, binary/empty/deleted
+files and symlinks, stale state, obstructions, capture failures, linked worktrees,
+GC retention, journal tampering, direct-ref ownership and ordinary graph isolation.
+Internal refs are excluded from default graph/search tips and decorations, not
+explicit immutable-OID inspection. External Git processes are not locked out,
+and filesystem failures are not transactional; failures retain captures and
+report partial effects rather than promising rollback.
+
+Sources: Git's `git-reset`, `git-stash`, `git-update-ref` and `git-log` manuals.
+No external implementation or proprietary assets were used.
+
+## Selective stash and explicit checkout handoff
+
+Stash options delegate literal selected paths, untracked inclusion, keep-index
+and staged-only semantics to Git. Staged-only is guarded at Git 2.35.
+Index-restoring apply validates the selected immutable stash object and keeps
+the stash. Recovery branches start from the stash's original parent, preserve
+staged/unstaged separation and intentionally do not drop the source stash.
+Stash-and-checkout checks both selected branch tips before saving changes and
+never silently applies them on the destination.
+
+Behavioral source: https://git-scm.com/docs/git-stash.
+Implementation and fixtures were written independently; no external code or
+proprietary interface identity was copied.
+
+## Selected reference lifecycle
+
+Local tag deletion preserves the raw tag object before an expected-object
+delete. Signed tags use the configured Git signer. Selected tag pushes pin the
+local object and explicitly disable follow-tags, mirroring and recursive
+submodule pushes. Remote tag/branch deletion uses an exact-object lease.
+Tag deletion previews resolve the selected remote's single push destination,
+including separate push URLs. Remote configuration validates both URL inputs
+before writing and reports partial configuration failures explicitly.
+
+Real SSH fixtures qualify annotated target/message, refusal to overwrite an
+existing tag, unknown/revoked signer and tampered-object failures, missing-key
+creation without a partial reference, and deletion/recovery of the exact signed
+object with successful verification after restoration. HEAD, staged/unstaged
+contents and configuration remain unchanged. Optional isolated OpenPGP and
+offline-X.509 fixtures also qualify annotated targets, verification, missing-key
+refusal without a partial tag and explicit corrected-signer retry. OpenPGP
+unknown trust may still pass Git's cryptographic verification; the app neither
+changes that policy nor creates trust entries. X.509 checks retain the existing
+test-only offline CRL/Dirmngr scope, not production revocation-policy changes.
+Renderer journeys retain annotation/signing after refusal, verify the exact
+selected tag, expose explicit refusal versus success and never transport a tag
+as a side effect of signature verification. They use mocked IPC.
+Reference-menu placement acceptance checks exact pointer anchoring when the
+menu fits, height-aware clamping when it does not, and the existing eight-pixel
+viewport gutter; a stale fixed-position expectation no longer confuses correct
+clamping for a positioning regression.
+
+Behavioral sources: Git's `git-tag`, `git-push`, `git-update-ref` and
+`git-remote` manuals. No upstream code, assets or proprietary wording was copied.
+
+## Explicit pull choices and local integration refusals
+
+The three app pull modes now explicitly select both rebase and fast-forward
+behavior: merge uses `--no-rebase --ff`, fast-forward-only uses
+`--no-rebase --ff-only`, and rebase uses `--rebase --ff`. This prevents
+configured `pull.rebase`, `branch.<name>.rebase`, `pull.ff` or `merge.ff` from
+contradicting the chosen menu mode. No persistent Git configuration changes.
+Other Git policies, including hooks/signing and configured autostash, remain.
+
+Original real-Git fixtures use owned local bare remotes and publishers.
+They check exact divergent merge parents without local replay, fast-forward-only
+refusal with refreshed tracking tip and preserved local contents, rebase with
+the remote as its sole parent and retained changes, exact-tip fast-forward
+under every mode, conflict state and explicit abort back to the local tip,
+overlapping staged/unstaged preservation with fixture autostash disabled,
+missing/deleted upstream and removed-remote refusal. Pruning a deleted upstream
+retains its configured name with gone tracking state, not an invented replacement.
+Ordinary checkout and both safe/force branch deletion respect occupied linked
+worktrees and retain both trees' staged/unstaged data.
+
+Only recognized local pull diagnostics select project-written divergence,
+integration, upstream or local-change guidance. Raw transport output is never
+propagated; auth/host-key diagnostics retain priority. Known local failures
+after an authentication prompt are not mistaken for rejected credentials.
+Synthetic fixtures include carriage-return rebase progress, redaction and
+non-pull command isolation. Unrecognized failures retain explicit transport
+failure, without asserting unobserved local success.
+Renderer fixtures qualify per-command selection independently of the saved
+default, truthful error refresh, conflict continuation/abort, draft preservation
+and explicit retry. Rebase progress is not falsely described as always
+interactive. These mock IPC, not packaged native transport.
+
+Sources: public Git pull/branch documentation and independent observations.
+No upstream implementation or proprietary identity copied.
+
+## Interactive fixup and recovery preflight
+
+The existing linear local-branch interactive plan accepts an explicit `fixup`
+action and emits Git's documented todo command. It combines changes into the
+preceding retained commit without appending the fixup message. `squash` keeps
+its existing message-combination behavior. The full plan is validated before
+writing support files: dropped rows cannot receive either combination, and
+reword messages require bounded, nonempty, NUL-free content. Membership and
+unique-commit checks remain.
+
+Before execution, Git's update-ref creates a protected recovery reference
+for the original source tip. Failure prevents checkout or support modification.
+Successful or interrupted rebase retains the reference; no remote rollback,
+filesystem transaction or arbitrary hook-effect backup is promised.
+Native fixtures qualify retained message/combined tree and later independent
+commit, fixup after dropped rows/reword, original-history recovery on a new
+branch, invalid combination/reword refusal without ref/index/support changes,
+recovery namespace obstruction before checkout and conflict/abort with the
+protected source and target intact.
+Renderer fixtures qualify explicit IPC actions, keyboard `F`, Reset,
+recipient drop/reorder without silent action conversion and compact control
+bounds. Plans include the repository identity, switch invalidation and a request
+generation for late preparation. Renderer fixtures qualify switch dismissal,
+explicit stale-execution refusal and no late opening after switching away/back.
+The native selector also retains existing squash/reword/conflict tests.
+Selected ranges, guided splitting, explicit autosquash preview, root/onto and
+merge-preserving replay are qualified separately in their sections.
+
+Sources: official Git rebase and update-ref documentation; independent
+implementation and fixtures, no copied upstream source or interface identity.
+
+## Complete, bounded interactive rebase plans
+
+Preparation and execution refuse active merge/cherry-pick/revert/bisect state
+and source branches checked out in another worktree, including missing or
+locked registrations. Exact canonical worktree identity distinguishes nested
+linked worktrees from their containing main worktree. No recovery reference,
+support file, checkout or replay is created on these refusals.
+
+The planner bounds topology to 500 commits and complete serialized commit
+metadata to 2 MiB, with individual messages limited to 256,000 bytes.
+Limit crossings refuse the whole plan instead of offering a truncated replay.
+NUL-delimited fields replace ambiguous control-character separators; UTF-8,
+record completeness, unique full OIDs and exact topology/log sequence are
+validated. Message whitespace and embedded record/field control characters
+are preserved, and notes/signature-display configuration does not alter the
+metadata. Unsupported text is refused rather than decoded lossily.
+Source and target history reads use explicit `refs/heads/` references, as does
+the replay target. A real-Git fixture first reproduced colliding tags selecting
+the wrong source history, then qualified the intended source sequence, target
+ancestry, final tree and unchanged tags with explicit local-branch references.
+
+Original real-Git fixtures exercise exact commit-count acceptance/refusal,
+oversized total and individual messages, malformed text, control characters,
+active-operation markers and nested/locked/missing worktrees. Parser fixtures
+exercise missing terminators/fields, duplicate OIDs, invalid OIDs and NUL
+ambiguity. Renderer journeys qualify visible refusal guidance and explicit
+retry without opening or executing a partial plan.
+
+Sources: public Git log/pretty-format/worktree documentation and independent
+fixtures. No external implementation, assets or documentation prose copied.
+These safety limits are shared infrastructure; selected-range, guided split,
+autosquash, root/onto and merge-preserving behavior have separate qualification.
+
+## Intentional interactive rebase Edit stops
+
+The independently implemented editor emits Git's documented `edit` todo action
+and exposes `E` as a row shortcut. Git replays that commit and pauses successfully.
+Native status separately reports the Git rebase backend's amendment
+marker; conflict counts take precedence in the displayed workflow. Success with
+an active rebase preserves support files for later reword steps rather than
+cleaning them prematurely. Completion or abort clears support as before.
+
+The application deliberately requires an explicit amendment/commit before
+Continue at a dirty Edit stop. An original real-Git fixture observed that plain
+`git rebase --continue` can automatically commit staged changes; native and UI
+guards prevent that unreviewed action here. Clean Continue leaves the replayed
+commit unchanged. Multiple Edit stops, Edit followed by Reword/Fixup, amend
+success, hook refusal/retry, conflict-before-stop and abort-after-amend are
+qualified with disposable repositories and exact trees/messages/ancestry and
+retained original-tip recovery. No hook/signing policy is bypassed.
+
+Renderer fixtures qualify the exact Edit IPC action, shortcut, truthful pause
+activity (never premature completion), dirty Continue disabling, staged Amend
+with retained draft on refusal, explicit retry, unchanged Continue and Abort.
+The status equality guard includes the Edit marker so same-count refreshes can
+change the reported stop. Guided split/root/onto/ranges/autosquash and
+merge-preserving workflows have separate reviews and qualification.
+
+Source: official Git rebase documentation and original black-box fixtures.
+No upstream source or distinctive product interface copied.
+
+## Reviewed autosquash grouping
+
+The editor explicitly previews fixup!/squash! grouping on an all-Pick plan.
+It matches earlier unique exact subjects or full/unique abbreviated IDs (at
+least four hex characters), resolves nested marker targets to their retained
+root and moves matching rows after that root in stable source order. Message
+drafts, unique membership and independent-row ordering remain intact.
+Existing manual actions, duplicate IDs, unsupported amend! markers and any
+ambiguous/unmatched target refuse the entire preview without partial changes.
+This deliberately does not implement Git's partial-subject matching or
+amend! message-replacement variants. Reset restores the original plan; Start
+Rebase remains a separate explicit action using existing native validation,
+recovery and plain fixup/squash todo commands, not a second native matcher.
+
+Original unit fixtures qualify exact/hash/nested matching, stable grouping,
+atomic refusal and input immutability. Renderer fixtures qualify visible
+preview/refusal, retained manual reword draft, Reset and exact final IPC order.
+A real-Git fixture replays the reviewed reordered plan and verifies exact final
+tree, retained target/squash messages, discarded fixup message, independent
+commit order and original-tip recovery.
+
+Source: public Git rebase documentation. Independent matcher, UI and fixtures;
+no external implementation copied. Broader matching variants remain unsupported.
+
+## Rebase reorder interaction alternatives
+
+The independently designed editor supplies Move up/down controls and focused
+row Alt+Up/Down as alternatives to drag ordering. Moves preserve exact row
+objects/actions/message drafts and root-owned plan state. Boundary controls
+are disabled. Moved rows regain focus after Angular's keyed DOM move and
+scroll into view; a polite atomic announcement provides commit and position
+context without replacing focus. Text fields keep normal cursor navigation.
+Invalid Fixup/Squash recipient placement stays visible and disables Start;
+neither moving nor resetting implicitly runs Git.
+
+Renderer fixtures qualify compact target bounds of at least 24 CSS pixels,
+focus restoration, selected-row action shortcuts, preserved reword drafts,
+boundary no-op, Reset, no IPC before Start and exact final native order.
+The native rebase validation/recovery contract is unchanged.
+
+## Recoverable bulk discard
+
+Git Chronos independently derives unstaged changes from complete porcelain
+status and binary, full-index Git diffs. A server-held preview captures the
+affected paths and index state; execution rejects changed previews and applies
+the checked reverse patch without modifying the index.
+Conflicts, gitlinks, nested repositories, ignored paths and unselected files
+are not recursively removed. Recovery patches remain in the worktree Git
+directory and are reapplied only after Git validates the current files.
+
+Behavioral sources: Git's `git-status`, `git-diff`, and `git-apply` manuals.
+No third-party implementation code or proprietary assets were copied.
+
 ## Repository tab utilities
 
 Documented behavior:
@@ -375,6 +1321,121 @@ Independent implementation:
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
 
+## Reviewed merge mainline replay
+
+Public `git cherry-pick --mainline` and `git revert --mainline` define a
+1-based parent baseline for applying or reversing a merge difference.
+Cherry-pick produces a single-parent commit; revert retains the original merge
+ancestry, so later merges do not automatically restore its ancestor changes.
+
+Git Chronos independently adds an explicit parent selector with no default for
+single merges. Context-menu, inspector and branch-drop confirmations share the
+review and retain choices on hook failure. A real hook fixture observed Git
+leaving staged inverse changes without `REVERT_HEAD` after revert commit refusal:
+the UI explains explicit staged commit or original-tip restoration rather than
+fabricating an active operation or promising replay retry over a dirty index.
+Cherry-pick hook refusal retains its active marker and uses explicit Continue.
+Repository changes dismiss stale
+confirmations and cannot redirect replay after a delayed target checkout.
+Mixed selections containing a merge require individual review; all selected
+commits are validated before any prefix is replayed. Native execution rechecks
+parent validity, requires a clean complete status and no active operation, and
+preserves the destination tip under `refs/git-chronos/recovery` before merge
+replay. Recovery-reference failure stops execution. Existing Continue/Skip/Abort
+handle conflicts. Recovery protects committed history, not arbitrary hook
+effects or remote updates.
+
+Real-Git fixtures cover both parent choices, exact trees/ancestry/messages,
+missing/out-of-range/nonmerge choices, mixed selections, dirty/active-operation
+refusal, recovery failure, hook refusal/staged-state recovery and conflicts/abort for both commands. Renderer
+fixtures cover explicit IPC, failure retry, cancellation, compact keyboard
+controls and repository switches. Ordinary nonmerge commands retain their
+existing default options. Ordered ordinary-commit reverts have a separate
+reviewed-list path. No proprietary code, assets or distinctive wording were copied.
+
+## Staged no-commit cherry-pick
+
+Documented `git cherry-pick --no-commit` applies differences to the index and
+working tree without creating commits. Git Chronos independently runs reviewed
+rows one at a time under a bounded worktree-local JSON journal (1-500 full OIDs,
+128 KiB metadata cap). This journal is application metadata, not a public Git
+operation marker. Complete clean status/no active operation and visible index
+entries are required; the original destination tip is protected first.
+Single-merge plans use the same explicitly validated mainline choice.
+
+Authorized tests of owned repositories found that direct single no-commit
+conflicts do not leave CHERRY_PICK_HEAD and multi-pick `--continue` can refuse a
+staged resolution. The independent application sequence therefore marks known
+conflicts for explicit stage/Continue without an implicit commit. Before each
+step, an atomic journal update records an uncertain applying phase; a crash or
+nonconflict Git failure cannot cause a hidden repeat or skipped row. On Unix the
+journal file and its containing directory are synchronized before application.
+Journal removal also synchronizes the containing directory on Unix.
+All status/control calls reload the journal, including after restart. Operation
+paths are derived from the absolute worktree-local Git directory without
+splitting literal whitespace or newlines in filesystem paths.
+
+Abort invokes public `git reset --merge` only while the original HEAD and branch
+still match; Git refusal leaves later conflicting unstaged edits intact.
+Finish manually deletes only the application journal and preserves index,
+working files and conflicts. Skip is intentionally unsupported. A competing
+native Git sequence, moved HEAD, malformed metadata or journal write failure
+fails visibly rather than guessing. Committing while the sequence is active is
+refused natively; after completion the user explicitly supplies a message and
+current identity. Empty effects do not create a commit. Hooks/signing are not
+disabled and apply when the user later commits.
+
+Native fixtures verify exact combined trees, both merge parents, independent
+manual author/message/ancestry, restart-style reload, staged resolution plus
+remaining order, abort/untracked retention, quit/index equality, dirty/hidden/
+active/missing-object/size/recovery failures, stale/uncertain state, empty effects
+and malformed metadata, linked-worktree isolation, literal newline paths,
+single/repeated conflict stops and actual later commit-hook refusal. Renderer
+fixtures exercise exact opt-in IPC, truthful staged feedback, retained
+drafts/refusal and conflict controls without hidden commits. Marker-only status
+refreshes change the recovery controls even when file counts stay unchanged;
+preview manual finish retains staged contents and unresolved conflicts.
+No third-party implementation code or assets were used.
+
+## Ordered inverse commit sequences
+
+The official Git revert manual defines a list of commits without traversal,
+inverse commits, native sequencer controls and explicit merge mainlines.
+Git Chronos independently validates 1-500 distinct full commit IDs and every
+selected parent before mutation, refuses merges in a shared ordinary selection,
+requires complete clean status and visible index entries, and protects the
+original tip before invoking `git revert --no-edit --no-walk=unsorted`.
+The graph review defaults to newest-to-oldest selection order and shows each
+full-ID-backed inverse row before explicit confirmation.
+
+Owned repository fixtures verify supplied argument order rather than date
+sorting or implicit traversal, exact dependent-change inverses, retained
+unselected files, new-message order and original ancestry. Native conflict
+Continue/Skip/Abort resumes from Git's saved sequence; Abort restores its original
+tip including successful earlier inverse commits. An empty inverse requires an
+explicit Skip instead of a fabricated successful commit.
+
+Actual first/later commit-hook refusal leaves staged inverse changes and a
+native sequencer, sometimes without REVERT_HEAD. Status classifies the saved
+operation from only the bounded leading command prefix of worktree-local
+sequencer/todo; it never edits Git's sequencer metadata. Unknown or unreadable
+sequence state fails explicitly. When a staged inverse lacks a pending commit
+marker, Continue requires the user to review and explicitly commit that step
+before continuing, or Abort. No automatic author, message or hook bypass is used.
+This differs from a single revert whose hook refusal may leave no saved sequence.
+No-commit revert is intentionally unsupported.
+An active application no-commit journal retains priority: Finish manually can
+remove that journal even alongside unknown native sequence metadata, preserving
+the conflicted index and all native metadata. Its next native-state inspection
+then reports the unsupported sequence explicitly instead of discarding it.
+
+Renderer journeys qualify graph multi-selection, the exact reviewed list/IPC,
+retained drafts and refusal, individual-merge refusal, compact keyboard
+cancellation, official Git help and existing-sequence Continue/Skip/Abort.
+Repository switches during mutation cannot redirect its captured completion or
+record another repository's HEAD in the source operation's Undo history.
+No proprietary implementation material or third-party code was used.
+
 ## Commit signer diagnostics
 
 Documented behavior:
@@ -388,6 +1449,15 @@ Independent implementation:
 - The diagnostic resolves the configured program or documented default through the repository path and system `PATH` without invoking the signer or requesting credentials.
 - The result distinguishes explicit key selection from Git's default-key selection and remains scoped to the active repository.
 - Signer checks are deliberately excluded from repository snapshot loading to preserve startup performance.
+- Program availability does not establish access to a key, trust or successful
+  signing. Diagnostics do not install keys or modify trust configuration.
+- One bounded NUL-delimited effective-configuration query selects the format's
+  program. OpenPGP legacy and format-specific aliases are resolved in Git's
+  configuration iteration order. Missing values alone select documented defaults;
+  explicitly empty/valueless, malformed, invalid UTF-8 and excessive output fail
+  visibly. Literal whitespace/newline executable paths are retained.
+- Rechecking clears cached availability for that repository, so an unsuccessful
+  check cannot leave an earlier available-program result displayed.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
 
@@ -424,6 +1494,49 @@ Independent implementation:
 - Preferences display the effective format and key without reading or storing private-key material.
 - The inspector verifies only the selected commit, avoiding an expensive signature check across the complete graph.
 - Git's status is mapped to original verified, unknown-trust, invalid, expired, revoked, unverifiable, and unsigned presentation states.
+- When Git reports no signature, a bounded raw-commit read checks only complete
+  object headers for `gpgsig` or `gpgsig-sha256`. A stored signature with no
+  verification result is labelled unverifiable, not unsigned. Incomplete headers
+  fail explicitly; message text and nested mergetag content cannot establish
+  signature presence. Unknown status codes are unverifiable, not unsigned.
+- An optional real-SSH fixture generates its own disposable key, verifies scoped
+  author/committer/sign-off, configured automatic signing, trusted/unknown/
+  unconfigured/revoked verification, explicit unsigned amend and missing-key
+  failure. Configuration, dirty files and staged contents remain intact.
+  Git may refresh cache-tree metadata in an index during a failed commit; the
+  preservation assertion checks actual staged entries, not incidental bytes.
+- Unix fixtures verify custom hooks paths and the exact `--no-verify` boundary:
+  pre-commit/commit-msg can be explicitly bypassed, but prepare-commit-msg still
+  edits messages and can refuse a commit. The interface calls this "Skip checks"
+  and discloses that hook side effects are not rolled back.
+- Renderer signing/hook refusals retain message and selected policy for explicit
+  retry. Online certificate revocation/CA chains, interactive/hardware-key and
+  native packaged signing remain unqualified.
+- An optional Unix real-OpenPGP fixture uses separate generated-private-key and
+  public-only verification homes, no user keyrings or process-global environment
+  changes, batch mode and a generated test-only key without a passphrase.
+  It qualifies trusted and unknown-trust verification, missing public keys,
+  tampered signed content without updating HEAD, failed signing with staged
+  contents retained, explicit corrected-signer retry and unsigned amend.
+  Format-specific program selection works despite an unavailable legacy alias.
+  Cleanup addresses only each owned home's agent and removes its fixture data,
+  including during assertion failures.
+- An optional Unix X.509 fixture generates an ephemeral RSA certificate using
+  the installed OpenSSL CLI, imports its private key only into its own GnuPG home,
+  and uses a separate certificate-only home for explicit distrust and missing-key
+  signing refusal. Native code preserves configured format/program/key, staged
+  contents, dirty files and both fixture trust lists. Signature tampering is an
+  owned unreachable commit object; HEAD is never moved to it.
+- X.509 wrappers disable Dirmngr and CRL checks only within the isolated fixture.
+  No production arguments or trust settings are relaxed. Qualification establishes
+  offline signing, cryptographic tamper rejection, explicit distrust failure and
+  retry, not online revocation or every trust/CA-chain case. An absent verifier
+  trustlist was not treated as guaranteed distrust: explicit certificate distrust
+  is used for the actual refusal assertion.
+- Selected-commit signature presentation and its existing scoped styling are
+  deferred rather than loaded at startup. A reserved neutral loading state never
+  implies verification, import failure is explicit and leaves drafts intact, and
+  loading completion cannot reopen a dismissed inspector or steal focus.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
 
@@ -538,14 +1651,28 @@ No proprietary source code, assets, wording collections, or visual implementatio
 
 Documented behavior:
 
-- Repository optimization is available from the keyboard-oriented command palette.
-- The operation improves Git's on-disk repository data and can take time on large repositories.
+- Non-pruning metadata maintenance is available from the command palette and a
+  reviewed preferences action. It can take time and use disk space.
 
 Independent implementation:
 
-- Git Chronos invokes the public `git maintenance run` command through its existing argument-array execution boundary.
+- Git Chronos requires a complete passing integrity inspection, then invokes
+  `git maintenance run --task=commit-graph --task=pack-refs` through its existing
+  argument-array execution boundary. Explicit tasks ignore configured enabled
+  maintenance tasks. No GC, object pruning, reflog expiry, missing-worktree cleanup,
+  prefetch or scheduling is requested.
 - The native command runs away from the renderer thread and is serialized with other operations for the same repository.
 - Progress and completion are reported through Git Chronos's project-defined activity system.
+- The preferences action requires review before running, disables pending actions,
+  retains refusal feedback and requires an explicit retry. Reviews and delayed
+  local feedback do not transfer to another repository.
+- This operation is not cancellable and makes no repair, backup, rollback or
+  concurrent-client transaction guarantee. Inspect partial metadata effects after
+  failure before retrying.
+- Disposable real-Git fixtures preserve dangling objects, reflogs, offline worktree
+  registrations, refs, HEAD, index, configuration and working files despite
+  aggressive enabled GC/prefetch/expiry settings. A corrupt-object preflight
+  refuses maintenance before generating metadata or modifying damaged objects.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
 

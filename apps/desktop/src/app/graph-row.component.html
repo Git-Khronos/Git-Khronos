@@ -135,7 +135,7 @@
     } @else {
       <span class="node author-node color-{{ row.color }}" [class.head-node]="view.currentBranch()?.oid === row.commit.oid" [class.color-marker]="view.authorMarkerStyle() === 'color'" [attr.data-lane-offset]="row.nodeOffset" [style.left.px]="row.nodeOffset" [style.--author-color]="row.authorColor" title="{{ view.currentBranch()?.oid === row.commit.oid ? 'HEAD · ' : '' }}{{ row.commit.authorName }} &lt;{{ row.commit.authorEmail }}&gt;">@if (view.authorMarkerStyle() === 'initials') { {{ view.initials(row.commit.authorName) }} }</span>
     }
-    <i class="column-resizer graph-row-resizer" [hidden]="view.graphColumnHasLeadingResizeEdge('graph')" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
+    <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
   </span> }
   @if (view.showMessageColumn()) { <span class="commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" [title]="row.commit.subject + (row.commit.description ? '\n' + row.commit.description : '')">
     @if (view.stashForOid(row.commit.oid); as stash) {

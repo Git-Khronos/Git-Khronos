@@ -22,11 +22,15 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   Branch,
   CommitFile,
-  CommitSignature,
+  CommitPolicy,
   CommitSummary,
-  InteractiveRebaseCommit,
+  DiscardPreview,
+  DiscardRecovery,
   InteractiveRebaseStep,
+  OperationRecovery,
   ReflogEntry,
+  ResetMode,
+  ResetPreview,
   Remote,
   RepositorySnapshot,
   StashEntry,
@@ -37,7 +41,26 @@ import type {
 import { GitChronosService, type RepositoryWorkspace } from './git-chronos.service';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
+import { AuthenticationComponent } from './authentication.component';
 import { GraphViewportComponent } from './graph-viewport.component';
+import { ReferenceActionDialogComponent, type ReferenceActionRequest } from './reference-action-dialog.component';
+import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
+import { HistorySearchComponent } from './history-search.component';
+import { HistorySearchService } from './history-search.service';
+import { FetchOptionsDialogComponent, type FetchDialogRequest } from './fetch-options-dialog.component';
+import { PatchExchangePanelComponent } from './patch-exchange-panel.component';
+import { LfsTrackingDialogComponent, type LfsTrackingRequest } from './lfs-tracking-dialog.component';
+import { WorktreeMoveDialogComponent, type WorktreeMoveRequest } from './worktree-move-dialog.component';
+import { WorktreeRegistrationDialogComponent, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
+import { MergeRebaseDialogComponent, type MergeRebaseDialogState } from './merge-rebase-dialog.component';
+import { GitDocumentationDialogComponent } from './git-documentation-dialog.component';
+import { GitDocumentationService } from './git-documentation.service';
+import { CommitPolicyFieldsComponent } from './commit-policy-fields.component';
+import { CommitTemplateBannerComponent } from './commit-template-banner.component';
+import { IntegrityPanelComponent } from './integrity-panel.component';
+import { CommitSignatureComponent } from './commit-signature.component';
+import { InteractiveRebaseEditorComponent, type InteractiveRebaseState, type RebaseAction, type RebaseStepView } from './interactive-rebase-editor.component';
+import { HistoryReviewDialogComponent, type PendingHistoryAction } from './history-review-dialog.component';
 import { calculateVirtualWindow, type VirtualWindow } from './virtual-list';
 import { shortcutLabelsForPlatform } from './shortcut-labels';
 import {
@@ -154,6 +177,7 @@ interface CommitDraft {
   skipHooks: boolean;
   sign: boolean;
   pushAfter: boolean;
+  policy: CommitPolicy;
 }
 
 interface DiffLine {
@@ -280,14 +304,6 @@ interface CommandAction {
   icon: IconName;
 }
 
-interface PendingHistoryAction {
-  kind: 'cherry-pick' | 'revert' | 'reset';
-  oid: string;
-  oids: string[];
-  label: string;
-  targetBranch?: string;
-}
-
 interface PendingBisectStart {
   goodOid: string;
   goodLabel: string;
@@ -365,7 +381,7 @@ interface StashContextMenuState {
 }
 
 interface PendingFileAction {
-  kind: 'discard' | 'discard-hunk' | 'discard-lines' | 'ignore' | 'restore-commit';
+  kind: 'discard' | 'discard-bulk' | 'recover-discard' | 'forget-discard' | 'discard-hunk' | 'discard-lines' | 'ignore' | 'restore-commit';
   path: string;
   untracked: boolean;
   oid?: string;
@@ -374,6 +390,9 @@ interface PendingFileAction {
   staged?: boolean;
   hunkIndex?: number;
   lineIndices?: number[];
+  preview?: DiscardPreview;
+  repositoryId?: string;
+  recovery?: DiscardRecovery;
 }
 
 interface GhostBranchState {
@@ -386,21 +405,6 @@ interface BranchDropState {
   target: string;
   x: number;
   y: number;
-}
-
-type RebaseAction = InteractiveRebaseStep['action'];
-
-interface RebaseStepView extends InteractiveRebaseCommit {
-  action: RebaseAction;
-  message: string;
-}
-
-interface InteractiveRebaseState {
-  source: string;
-  target: string;
-  base: string;
-  original: RebaseStepView[];
-  steps: RebaseStepView[];
 }
 
 type GraphColumn = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
@@ -543,7 +547,7 @@ function matchesCommandQuery(query: string, ...values: string[]): boolean {
 
 @Component({
   selector: 'gc-root',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent],
+  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, IntegrityPanelComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PatchExchangePanelComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -564,6 +568,13 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly remoteRemovalDialog = viewChild<ElementRef<HTMLElement>>('remoteRemovalDialog');
   private readonly workspaceDeleteDialog = viewChild<ElementRef<HTMLElement>>('workspaceDeleteDialog');
   private readonly lfsPruneDialog = viewChild<ElementRef<HTMLElement>>('lfsPruneDialog');
+  private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
+  private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
+  private readonly worktreeReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeReviewLoaderClose');
+  private readonly actionLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('actionLoaderClose');
+  private readonly historyLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyLoaderClose');
+  private readonly rebaseLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('rebaseLoaderClose');
+  private readonly historyReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyReviewLoaderClose');
   private readonly sparseCheckoutConfirmationDialog = viewChild<ElementRef<HTMLElement>>('sparseCheckoutConfirmationDialog');
   private readonly worktreeRemovalDialog = viewChild<ElementRef<HTMLElement>>('worktreeRemovalDialog');
   private readonly branchSearch = viewChild<ElementRef<HTMLInputElement>>('branchSearch');
@@ -590,7 +601,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly repositoryTabsToggle = viewChild<ElementRef<HTMLButtonElement>>('repositoryTabsToggle');
   private readonly activityDrawer = viewChild<ElementRef<HTMLElement>>('activityDrawer');
   private readonly repositoryDialogElement = viewChild<ElementRef<HTMLElement>>('repositoryDialogElement');
-  private readonly historyConfirmationDialog = viewChild<ElementRef<HTMLElement>>('historyConfirmationDialog');
+  private readonly historyConfirmationDialog = viewChild<unknown, ElementRef<HTMLElement>>('historyConfirmationDialog', { read: ElementRef });
   private readonly branchConfirmationDialog = viewChild<ElementRef<HTMLElement>>('branchConfirmationDialog');
   private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
   private readonly workingTreeOptionsMenu = viewChild<ElementRef<HTMLElement>>('workingTreeOptionsMenu');
@@ -627,6 +638,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitChronosService);
+  protected readonly historySearch = inject(HistorySearchService);
+  private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
+  protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
+  protected readonly historySearchRequested = signal(false);
+  private historySearchLoaderOpener: HTMLElement | null = null;
   private readonly graphViewport = viewChild(GraphViewportComponent);
   private readonly injector = inject(Injector);
   // Keep history-dependent computations insulated from status-only repository
@@ -697,6 +713,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commitMessage = signal('');
   protected readonly commitDescription = signal('');
   protected readonly stashMessage = signal('');
+  protected readonly stashDialog = signal<StashDialogRequest | null>(null);
   protected readonly coAuthors = signal<CoAuthor[]>([]);
   protected readonly coAuthorPickerOpen = signal(false);
   protected readonly coAuthorName = signal('');
@@ -704,6 +721,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly branchName = signal('');
   protected readonly amendPrevious = signal(false);
   protected readonly skipGitHooks = signal(false);
+  protected readonly commitPolicy = signal<CommitPolicy>({ signOff: false, allowEmpty: false, author: null, committer: null });
+  protected readonly commitPolicyOpen = signal(false);
   protected readonly signCommit = signal(false);
   protected readonly pushAfterCommit = signal(false);
   protected readonly commitMessageEditing = signal(false);
@@ -765,6 +784,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly worktreeHandoff = signal<'none' | 'terminal'>('none');
   protected readonly worktreeCreationSource = signal<string | null>(null);
   protected readonly worktreeMenuPath = signal<string | null>(null);
+  protected readonly worktreeMoveRequest = signal<WorktreeMoveRequest | null>(null);
+  protected readonly worktreeRegistrationRequest = signal<WorktreeRegistrationRequest | null>(null);
+  protected readonly documentation = inject(GitDocumentationService);
+  protected readonly lfsTrackingRequest = signal<LfsTrackingRequest | null>(null);
   protected readonly submoduleMenuPath = signal<string | null>(null);
   protected readonly referencePaneMenu = signal<{ x: number; y: number } | null>(null);
   protected readonly submoduleDialogOpen = signal(false);
@@ -773,6 +796,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remoteDialog = signal<RemoteDialogMode | null>(null);
   protected readonly remoteName = signal('');
   protected readonly remoteUrl = signal('');
+  protected readonly remotePushUrl = signal('');
+  private initialRemotePushUrl = '';
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
   protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
   protected readonly pendingLfsPrune = signal(false);
@@ -805,6 +830,18 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly tagCreationMessage = signal('');
   protected readonly contextRenameName = signal('');
   protected readonly pendingHistoryAction = signal<PendingHistoryAction | null>(null);
+  private historyActionRepositoryId: string | null = null;
+  protected readonly historyMainline = signal<number | null>(null);
+  protected readonly historyNoCommit = signal(false);
+  protected readonly historyMergeParents = computed(() => {
+    const action = this.pendingHistoryAction();
+    if (!action || action.kind === 'reset' || action.kind === 'split') return [];
+    return action.oids.flatMap(oid => {
+      const commit = this.graphCommitByOid().get(oid)
+        ?? (this.externalHistoryCommit()?.oid === oid ? this.externalHistoryCommit() : null);
+      return commit && commit.parents.length > 1 ? commit.parents : [];
+    });
+  });
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
   protected readonly pendingBranchRename = signal<string | null>(null);
   protected readonly pendingBranchAction = signal<PendingBranchAction | null>(null);
@@ -813,12 +850,35 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
   protected readonly publishRemote = signal('');
   protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
+  protected readonly selectedDiscardPaths = signal<string[]>([]);
+  protected readonly discardSelectionMode = signal(false);
+  protected readonly savedDiscards = signal<DiscardRecovery[] | null>(null);
+  protected readonly savedDiscardsRepositoryId = signal<string | null>(null);
+  protected readonly referenceAction = signal<ReferenceActionRequest | null>(null);
+  protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashEntry | null>(null);
   protected readonly stashRenameTarget = signal<StashEntry | null>(null);
   protected readonly stashRenameMessage = signal('');
   protected readonly conflictOutput = signal('');
+  protected readonly fetchRequest = signal<FetchDialogRequest | null>(null);
+  private conflictReturnFocus: HTMLElement | null = null;
   protected readonly forceBranchDelete = signal(false);
   protected readonly resetMode = signal<'soft' | 'mixed' | 'hard'>('mixed');
+  protected readonly resetPreview = signal<ResetPreview | null>(null);
+  protected readonly resetPreviewBusy = signal(false);
+  private resetPreviewRequest = 0;
+  private resetPreviewRepositoryId: string | null = null;
+  protected readonly operationRecoveries = signal<OperationRecovery[] | null>(null);
+  protected readonly recoveryCaptureBusy = signal(false);
+  protected readonly recoveryCaptureAction = signal<{ record: OperationRecovery; kind: 'restore' | 'remove' } | null>(null);
+  protected readonly recoveryCaptureBranch = signal('');
+  private recoveryRepositoryId: string | null = null;
+  private recoveryHistoryReturnFocus: HTMLElement | null = null;
+  protected readonly filteredOperationRecoveries = computed(() => {
+    const query = this.recoveryQuery().trim().toLowerCase();
+    return (this.operationRecoveries() ?? []).filter((entry) =>
+      !query || `${entry.label} ${entry.headOid} ${entry.id}`.toLowerCase().includes(query));
+  });
   protected readonly commandPaletteOpen = signal(false);
   protected readonly keyboardShortcutsOpen = signal(false);
   protected readonly activeShortcutSection = signal<ShortcutSection>('repository');
@@ -983,6 +1043,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly branchDropTarget = signal<string | null>(null);
   protected readonly branchDropMenu = signal<BranchDropState | null>(null);
   protected readonly interactiveRebase = signal<InteractiveRebaseState | null>(null);
+  protected readonly mergeRebaseReview = signal<MergeRebaseDialogState | null>(null);
   protected readonly selectedRebaseOid = signal<string | null>(null);
   protected readonly draggedRebaseOid = signal<string | null>(null);
   protected readonly sidebarWidth = signal(this.readWidth('sidebar'));
@@ -1003,8 +1064,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (column === 'message' && !this.messageColumnManuallyResized()) {
           return `minmax(${this.messageColumnWidth()}px, 1fr)`;
         }
-        const width = this.columnWidthSignal(column)();
-        return column === this.graphFillColumn() ? `minmax(${width}px, 1fr)` : `${width}px`;
+        return `${this.columnWidthSignal(column)()}px`;
       });
     return columns.join(' ');
   });
@@ -1023,26 +1083,12 @@ export class AppComponent implements OnInit, OnDestroy {
   // settings button (header) and row actions (rows) inside its right end.
   protected readonly trailingGraphColumn = computed<GraphColumn | null>(() =>
     this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)).at(-1) ?? null);
-  /**
-   * Once Commit Message has a fixed width, the last column fills any space left in the panel, so
-   * the columns always reach the panel edge and no empty area opens before the settings button.
-   * Its rendered width is its own width plus that slack.
-   */
-  private readonly graphFillColumn = computed<GraphColumn | null>(() => {
-    if (this.showMessageColumn() && !this.messageColumnManuallyResized()) return null;
-    return this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)).at(-1) ?? null;
-  });
   private readonly graphViewportWidth = signal(0);
   private readonly visibleGraphColumns = computed(() =>
     this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)));
   /** Width the column tracks can use without scrolling: the list minus side padding (6px + 16px) and the 26px actions lane. */
   private readonly graphColumnsAvailableWidth = computed(() =>
     this.graphViewportWidth() ? this.graphViewportWidth() - 22 - 26 : 0);
-  private readonly graphColumnSlack = computed(() => {
-    if (!this.graphFillColumn() || !this.graphViewportWidth()) return 0;
-    const used = this.visibleGraphColumns().reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
-    return Math.max(0, Math.floor(this.graphColumnsAvailableWidth() - used));
-  });
   /** App-wide: when off, the columns always fit the history panel and never scroll horizontally. */
   protected readonly graphHorizontalScroll = signal(readStoredBoolean(GRAPH_HORIZONTAL_SCROLL_KEY, true));
   private readonly graphColumnFitEffect = effect(() => {
@@ -1158,8 +1204,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private resizeStartX = 0;
   private resizeStartWidth = 0;
   private columnResizeTarget: GraphColumn | null = null;
-  private columnResizePartner: GraphColumn | null = null;
-  private columnResizePartnerStartWidth = 0;
   // Column widths when a resize began; with horizontal scrolling off, widening a column takes space
   // from these snapshots so dragging back returns it to the columns it came from.
   private columnResizeStartWidths: Partial<Record<GraphColumn, number>> = {};
@@ -1270,8 +1314,24 @@ export class AppComponent implements OnInit, OnDestroy {
   private toolbarMenuReturnFocus: HTMLElement | null = null;
   private readonly repositoryRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private repositoryChangeUnlisten: UnlistenFn | null = null;
+  private rebaseRequest = 0;
 
   constructor() {
+    effect(() => {
+      this.git.activeRepositoryId();
+      untracked(() => {
+        this.selectedDiscardPaths.set([]);
+        this.discardSelectionMode.set(false);
+        this.savedDiscards.set(null);
+        this.referenceAction.set(null);
+        this.stashDialog.set(null);
+        this.rebaseRequest++;
+        this.interactiveRebase.set(null);
+        this.mergeRebaseReview.set(null);
+        this.selectedRebaseOid.set(null);
+        this.pendingHistoryAction.set(null);
+      });
+    });
     this.applyAppTheme(this.appTheme());
     afterNextRender(() => {
       this.measureGraphHeadingTitles();
@@ -1315,7 +1375,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly selectedCommitData = computed(() => {
     const selected = this.selectedCommit();
-    return this.graphCommitByOid().get(selected ?? '') ?? this.graphCommits()[0] ?? null;
+    if (!selected) return this.graphCommits()[0] ?? null;
+    return this.graphCommitByOid().get(selected)
+      ?? (this.externalHistoryCommit()?.oid === selected ? this.externalHistoryCommit() : null);
   });
   protected readonly selectedStash = computed(() => {
     const oid = this.selectedCommit();
@@ -2290,7 +2352,6 @@ export class AppComponent implements OnInit, OnDestroy {
     finishBranchDrag: this.finishBranchDrag.bind(this),
     fitGraphColumnToBranches: this.fitGraphColumnToBranches.bind(this),
     ghostBranchFor: this.ghostBranchFor.bind(this),
-    graphColumnHasLeadingResizeEdge: this.graphColumnHasLeadingResizeEdge.bind(this),
     graphColumnPosition: this.graphColumnPosition.bind(this),
     graphColumnWidth: this.graphColumnWidth.bind(this),
     graphCommitDates: this.graphCommitDates.bind(this),
@@ -2353,6 +2414,27 @@ export class AppComponent implements OnInit, OnDestroy {
       active!.blur();
       this.focusedGraphRowOid = null;
     }
+  });
+
+  private readonly lfsLoaderFocus = afterRenderEffect(() => {
+    this.lfsLoaderClose()?.nativeElement.focus();
+  });
+  private readonly referenceLoaderFocus = afterRenderEffect(() => {
+    this.documentationLoaderClose()?.nativeElement.focus();
+    this.worktreeReviewLoaderClose()?.nativeElement.focus();
+    this.actionLoaderClose()?.nativeElement.focus();
+    this.historyLoaderClose()?.nativeElement.focus();
+    this.rebaseLoaderClose()?.nativeElement.focus();
+    this.historyReviewLoaderClose()?.nativeElement.focus();
+  });
+  private readonly deferredHistoryFocus = afterRenderEffect(() => {
+    const panel = this.repositoryHistorySearch();
+    if (panel) untracked(() => {
+      if (this.historySearchRequested()) {
+        if (this.historySearchLoaderOpener?.isConnected) this.historySearchLoaderOpener.focus();
+        panel.open();
+      }
+    });
   });
 
   protected readonly commitSearchMatches = computed(() => {
@@ -2653,10 +2735,11 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'close-tab', group: 'Repository', label: 'Close Repository Tab', detail: 'Close the current repository workspace', shortcut: `${this.primaryShortcutKey} W`, enabled: !!repository && !busy, icon: 'x' },
       { id: 'reopen-tab', group: 'Repository', label: 'Reopen Closed Repository', detail: this.git.recentlyClosedRepositoryPath() ?? 'No repository tab has been closed this session', shortcut: `${this.primaryShortcutKey} Shift T`, enabled: !!this.git.recentlyClosedRepositoryPath() && !busy, icon: 'redo' },
       { id: 'refresh', group: 'Repository', label: 'Refresh Repository', detail: 'Reload status, references, and history', enabled: !!repository && !busy, icon: 'refresh' },
-      { id: 'maintenance', group: 'Repository', label: 'Perform Repository Maintenance', detail: 'Optimize repository data for faster Git operations', enabled: !!repository && !busy, icon: 'settings' },
+      { id: 'maintenance', group: 'Repository', label: 'Perform Repository Maintenance', detail: 'Check integrity, pack refs/commit graph; no pruning', enabled: !!repository && !busy, icon: 'settings' },
       { id: 'undo', group: 'Edit', label: this.git.undoLabel() ?? 'Undo', detail: this.git.undoLabel() ? 'Reverse the latest supported repository action' : 'No supported repository action to undo', shortcut: this.undoShortcut, enabled: !!this.git.undoLabel() && !busy, icon: 'undo' },
       { id: 'redo', group: 'Edit', label: this.git.redoLabel() ?? 'Redo', detail: this.git.redoLabel() ? 'Repeat the last repository action that was undone' : 'No supported repository action to redo', shortcut: this.redoShortcut, enabled: !!this.git.redoLabel() && !busy, icon: 'redo' },
       { id: 'fetch', group: 'Remote', label: 'Fetch All', detail: 'Fetch and prune remote references', enabled: !!repository && !busy, icon: 'refresh' },
+      { id: 'fetch-options', group: 'Remote', label: 'Fetch branches with options', detail: 'Choose remote and pruning; leave tags unchanged', enabled: !!repository && !busy, icon: 'remote' },
       { id: 'add-remote', group: 'Remote', label: 'Add Remote', detail: 'Connect another tracked Git repository', enabled: !!repository && !busy, icon: 'remote' },
       { id: 'pull', group: 'Remote', label: 'Pull', detail: 'Fetch and integrate upstream changes', enabled: !!repository && !busy, icon: 'pull' },
       {
@@ -2681,7 +2764,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'terminal', group: 'View', label: 'Open Terminal', detail: 'Open a shell in this repository', shortcut: `${this.alternateShortcutKey} T`, enabled: !!repository, icon: 'terminal' },
       { id: 'file-manager', group: 'View', label: 'Open Repository Folder', detail: 'Show the working tree in the system file manager', shortcut: `${this.alternateShortcutKey} O`, enabled: !!repository, icon: 'folder-git' },
       { id: 'fullscreen', group: 'View', label: 'Toggle Fullscreen', detail: 'Enter or leave fullscreen mode', shortcut: this.fullscreenShortcut, enabled: true, icon: 'maximize' },
-      { id: 'search', group: 'View', label: 'Search Commits', detail: 'Focus the commit graph search', shortcut: `${this.primaryShortcutKey} F`, enabled: !!repository, icon: 'search' },
+      { id: 'search', group: 'View', label: 'Search Commits', detail: 'Search whole-repository history with optional advanced filters', shortcut: `${this.primaryShortcutKey} F`, enabled: !!repository, icon: 'search' },
       { id: 'file-search', group: 'History', label: 'Find File History or Blame', detail: 'Search every tracked file in this repository', shortcut: `${this.primaryShortcutKey} Shift H`, enabled: !!repository, icon: 'history' },
       { id: 'recovery-history', group: 'History', label: 'Recovery History', detail: 'Find previous reference positions and preserve a commit with a new branch', enabled: !!repository && !busy, icon: 'history' },
       ...(repository?.status.mergeInProgress ? [
@@ -2689,9 +2772,10 @@ export class AppComponent implements OnInit, OnDestroy {
         { id: 'merge-abort', group: 'Branch', label: 'Abort Merge', detail: 'Stop the merge and restore its pre-merge state', enabled: !busy, icon: 'reset' as IconName },
       ] : []),
       ...(repository?.status.historyOperation ? [
-        { id: 'history-operation-continue', group: 'History', label: `Continue ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Continue the interrupted history operation', enabled: !repository.status.conflicted && !busy, icon: (repository.status.historyOperation === 'cherry-pick' ? 'cherry-pick' : 'revert') as IconName },
-        { id: 'history-operation-skip', group: 'History', label: `Skip Current ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Omit the current commit and advance the operation', enabled: !busy, icon: 'redo' as IconName },
+        { id: 'history-operation-continue', group: 'History', label: `Continue ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: repository.status.historyNoCommit ? 'Stage resolutions and apply remaining changes without committing' : repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Continue the interrupted history operation', enabled: !repository.status.conflicted && !(repository.status.historyNoCommit && repository.status.unstaged) && !busy, icon: (repository.status.historyOperation === 'cherry-pick' ? 'cherry-pick' : 'revert') as IconName },
+        { id: 'history-operation-skip', group: 'History', label: `Skip Current ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Omit the current commit and advance the operation', enabled: !repository.status.historyNoCommit && !busy, icon: 'redo' as IconName },
         { id: 'history-operation-abort', group: 'History', label: `Abort ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Stop the operation and restore its original state', enabled: !busy, icon: 'reset' as IconName },
+        ...(repository.status.historyNoCommit ? [{ id: 'history-operation-quit', group: 'History', label: 'Finish No-commit Replay Manually', detail: 'End the saved sequence while retaining all current files and staged changes', enabled: !busy, icon: 'check' as IconName }] : []),
       ] : []),
       ...(repository?.status.bisectInProgress ? [
         { id: 'bisect-good', group: 'History', label: 'Bisect: Mark Current Commit Good', detail: 'Continue the search using the current commit as a known-good result', enabled: !busy, icon: 'check' as IconName },
@@ -2901,9 +2985,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly canExecuteInteractiveRebase = computed(() => {
     const state = this.interactiveRebase();
+    const first = state?.steps.find((step) => step.action !== 'drop');
     return !!state?.steps.length
-      && state.steps[0].action !== 'squash'
+      && (!state.root || !!first)
+      && first?.action !== 'squash' && first?.action !== 'fixup'
       && state.steps.every((step) => step.action !== 'reword' || !!step.message.trim());
+  });
+
+  protected readonly isRebaseRootStop = computed(() => {
+    const repository = this.git.repository();
+    return !!repository?.status.rebaseEditStopped
+      && repository.commits.find(commit => commit.oid === repository.headOid)?.parents.length === 0;
   });
 
   async ngOnInit(): Promise<void> {
@@ -3003,6 +3095,7 @@ export class AppComponent implements OnInit, OnDestroy {
         }));
         if (steps[1]) steps[1].message = 'Clarify graph column preferences\n\nKeep widths and order per repository.';
         this.interactiveRebase.set({
+          repositoryId: repository.id,
           source,
           target,
           base: commits[0].parents[0] ?? '',
@@ -3023,6 +3116,11 @@ export class AppComponent implements OnInit, OnDestroy {
         output: current,
         binary: false,
         truncated: false,
+        editable: true,
+        state: 'browser-conflict-preview',
+        currentExists: true,
+        incomingExists: true,
+        submodule: false,
       });
       this.conflictOutput.set(current);
     }
@@ -3074,7 +3172,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (parameters.has('commit-template')) {
         const activeId = this.git.activeRepositoryId();
         this.git.repositories.update((repositories) => repositories.map((repository) => repository.id === activeId
-          ? { ...repository, commitTemplate: 'feat: concise summary\n\nExplain the motivation and user impact.\n# This guidance is not included.' }
+          ? { ...repository, commitTemplate: 'feat: concise summary\n\nExplain the motivation and user impact.\n' }
           : repository));
         this.resetCommitForm();
         this.applyCommitTemplate();
@@ -3203,6 +3301,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview()) return;
     if (event.key === 'Escape' && this.pendingFileAction()) {
       event.preventDefault();
       this.dismissFileConfirmation(true);
@@ -3225,7 +3324,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (event.key === 'Escape' && this.git.conflictDetails()) {
       event.preventDefault();
-      this.git.conflictDetails.set(null);
+      this.closeConflictTool();
       return;
     }
     if (event.key === 'Escape' && this.interactiveRebase()) {
@@ -3492,9 +3591,9 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!command) {
-      if (!editing && this.interactiveRebase() && ['p', 's', 'r', 'd'].includes(event.key.toLocaleLowerCase())) {
+      if (!editing && this.interactiveRebase() && ['p', 's', 'r', 'e', 'f', 'd'].includes(event.key.toLocaleLowerCase())) {
         event.preventDefault();
-        const action = ({ p: 'pick', s: 'squash', r: 'reword', d: 'drop' } as const)[event.key.toLocaleLowerCase() as 'p' | 's' | 'r' | 'd'];
+        const action = ({ p: 'pick', s: 'squash', r: 'reword', e: 'edit', f: 'fixup', d: 'drop' } as const)[event.key.toLocaleLowerCase() as 'p' | 's' | 'r' | 'e' | 'f' | 'd'];
         this.setSelectedRebaseAction(action);
         return;
       }
@@ -3771,12 +3870,6 @@ export class AppComponent implements OnInit, OnDestroy {
       this.referenceSectionHeights.update((heights) => ({ ...heights, [this.referenceResizeTarget!]: height }));
       return;
     }
-    if (this.columnResizeTarget && this.columnResizePartner) {
-      // Dragging the leading edge left widens the column and narrows its left neighbor.
-      this.applyLeadingEdgeResize(this.columnResizeTarget, this.columnResizePartner, this.resizeStartX - event.clientX);
-      this.revealResizedGraphColumn(this.columnResizeTarget);
-      return;
-    }
     if (this.columnResizeTarget) {
       const delta = event.clientX - this.resizeStartX;
       this.setGraphColumnWidth(this.columnResizeTarget, this.resizeStartWidth + delta);
@@ -3808,13 +3901,8 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (this.columnResizeTarget) {
-      this.storeColumnWidth(this.columnResizeTarget, this.columnWidthSignal(this.columnResizeTarget)());
-      if (this.columnResizePartner) {
-        this.storeColumnWidth(this.columnResizePartner, this.columnWidthSignal(this.columnResizePartner)());
-      }
-      this.storeResizedGraphColumnWidths();
+      this.storeResizedGraphColumnWidths(this.columnResizeTarget);
       this.columnResizeTarget = null;
-      this.columnResizePartner = null;
       return;
     }
     if (!this.resizeTarget) return;
@@ -3871,42 +3959,16 @@ export class AppComponent implements OnInit, OnDestroy {
   protected beginColumnResize(target: GraphColumn, event: PointerEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.prepareColumnResize(target);
+    this.freezeAutoFilledMessageColumn(target);
     this.columnResizeTarget = target;
     this.resizeStartX = event.clientX;
     this.resizeStartWidth = this.columnWidthSignal(target)();
-    this.columnResizePartner = this.leadingEdgeResizeNeighbor(target);
-    this.columnResizePartnerStartWidth = this.columnResizePartner
-      ? this.columnWidthSignal(this.columnResizePartner)()
-      : 0;
     this.snapshotGraphColumnWidths();
   }
 
   protected handleColumnResizeKeydown(target: GraphColumn, event: KeyboardEvent): void {
-    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-      this.prepareColumnResize(target);
-    }
-    const partner = this.leadingEdgeResizeNeighbor(target);
-    if (partner) {
-      const step = event.shiftKey ? 32 : 8;
-      let growth: number;
-      switch (event.key) {
-        case 'ArrowLeft': growth = step; break;
-        case 'ArrowRight': growth = -step; break;
-        case 'Home': growth = -Infinity; break;
-        case 'End': growth = Infinity; break;
-        default: return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      this.resizeStartWidth = this.columnWidthSignal(target)();
-      this.columnResizePartnerStartWidth = this.columnWidthSignal(partner)();
-      this.applyLeadingEdgeResize(target, partner, growth);
-      this.storeColumnWidth(target, this.columnWidthSignal(target)());
-      this.storeColumnWidth(partner, this.columnWidthSignal(partner)());
-      this.revealResizedGraphColumn(target);
-      return;
-    }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    this.freezeAutoFilledMessageColumn(target);
     this.snapshotGraphColumnWidths();
     const current = this.columnWidthSignal(target)();
     const step = event.shiftKey ? 32 : 8;
@@ -3921,39 +3983,29 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.setGraphColumnWidth(target, width);
-    this.storeResizedGraphColumnWidths();
+    this.storeResizedGraphColumnWidths(target);
     this.revealResizedGraphColumn(target);
   }
 
   protected resetGraphColumnWidth(target: GraphColumn, event: Event): void {
     event.preventDefault();
     event.stopPropagation();
+    this.freezeAutoFilledMessageColumn(target);
+    const width = target === 'graph'
+      ? this.graphMaximumWidth()
+      : GRAPH_COLUMN_DEFAULT_WIDTHS[target];
+    this.snapshotGraphColumnWidths();
+    this.setGraphColumnWidth(target, width);
+    this.storeResizedGraphColumnWidths(target);
     if (target === 'message') {
-      this.messageColumnWidth.set(GRAPH_COLUMN_DEFAULT_WIDTHS.message);
       this.messageColumnManuallyResized.set(false);
       try {
         localStorage.removeItem(this.graphPreferenceKey('column.message.width'));
       } catch {
-        // The default width remains active for this session.
+        // The automatic width remains active for this session.
       }
-      return;
     }
-    const width = target === 'graph'
-      ? this.graphMaximumWidth()
-      : GRAPH_COLUMN_DEFAULT_WIDTHS[target];
-    const partner = this.leadingEdgeResizeNeighbor(target);
-    if (partner) {
-      this.prepareColumnResize(target);
-      this.resizeStartWidth = this.columnWidthSignal(target)();
-      this.columnResizePartnerStartWidth = this.columnWidthSignal(partner)();
-      this.applyLeadingEdgeResize(target, partner, width - this.resizeStartWidth);
-      this.storeColumnWidth(target, this.columnWidthSignal(target)());
-      this.storeColumnWidth(partner, this.columnWidthSignal(partner)());
-      return;
-    }
-    this.snapshotGraphColumnWidths();
-    this.setGraphColumnWidth(target, width);
-    this.storeResizedGraphColumnWidths();
+    this.revealResizedGraphColumn(target);
   }
 
   /** True when a heading is too narrow for its title, so it shows an icon with a tooltip instead. */
@@ -3993,11 +4045,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected graphColumnMaximumWidth(target: GraphColumn): number {
     const maximum = this.graphColumnWidthLimits(target)[1];
-    if (this.graphHorizontalScroll() || this.leadingEdgeResizeNeighbor(target)) return maximum;
+    if (this.graphHorizontalScroll()) return maximum;
     const available = this.graphColumnsAvailableWidth();
     if (available <= 0) return maximum;
-    const others = this.visibleGraphColumns().filter((column) => column !== target)
-      .reduce((total, column) => total + this.graphColumnWidthLimits(column)[0], 0);
+    const visible = this.visibleGraphColumns();
+    const index = visible.indexOf(target);
+    const others = visible.reduce((total, column, position) => total + (column === target ? 0
+      : position < index ? this.renderedGraphColumnWidth(column) : this.graphColumnWidthLimits(column)[0]), 0);
     return Math.max(this.graphColumnWidthLimits(target)[0], Math.min(maximum, Math.floor(available - others)));
   }
 
@@ -4007,24 +4061,25 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
 
-  private storeResizedGraphColumnWidths(): void {
+  private storeResizedGraphColumnWidths(target: GraphColumn): void {
     for (const column of this.visibleGraphColumns()) {
       const start = this.columnResizeStartWidths[column];
       const width = this.columnWidthSignal(column)();
-      if (start !== undefined && Math.abs(start - width) >= 0.5) this.storeColumnWidth(column, width);
+      if (column === target || (start !== undefined && Math.abs(start - width) >= 0.5)) {
+        this.storeColumnWidth(column, width);
+      }
     }
   }
 
   /**
    * Sets a column's width within its limits. With horizontal scrolling off, the columns must still
-   * fit the panel: growth first uses free space, then narrows Commit Message, then the columns to its
-   * right (nearest first) and then those to its left, each down to its minimum, from their widths
-   * when the resize began.
+   * fit the panel: growth uses free space, then narrows only columns to its right, nearest first.
+   * Columns on the left never change, and exhausted right-hand capacity clamps the dragged edge.
    */
   private setGraphColumnWidth(target: GraphColumn, requested: number): void {
     const available = this.graphColumnsAvailableWidth();
     const [minimum, maximum] = this.graphColumnWidthLimits(target);
-    let width = Math.max(this.fillColumnMinimumWidth(target, minimum), Math.min(maximum, requested));
+    let width = Math.max(minimum, Math.min(maximum, requested));
     if (this.graphHorizontalScroll() || available <= 0) {
       this.columnWidthSignal(target).set(width);
       return;
@@ -4032,9 +4087,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const visible = this.visibleGraphColumns();
     const start = (column: GraphColumn) => this.columnResizeStartWidths[column] ?? this.columnWidthSignal(column)();
     const index = visible.indexOf(target);
-    const neighbours = [...visible.slice(index + 1), ...visible.slice(0, index).reverse()];
-    const donors = [...neighbours.filter((column) => column === 'message'), ...neighbours.filter((column) => column !== 'message')];
-    const others = donors.reduce((total, column) => total + start(column), 0);
+    const donors = visible.slice(index + 1);
+    const others = visible.filter((column) => column !== target)
+      .reduce((total, column) => total + start(column), 0);
+    width = Math.min(width, this.graphColumnMaximumWidth(target));
     let needed = width + others - available;
     const widths = new Map(donors.map((column) => [column, start(column)]));
     for (const column of donors) {
@@ -4046,18 +4102,6 @@ export class AppComponent implements OnInit, OnDestroy {
     if (needed > 0) width = Math.max(minimum, width - needed);
     for (const [column, value] of widths) this.columnWidthSignal(column).set(value);
     this.columnWidthSignal(target).set(width);
-  }
-
-  /**
-   * The filling last column's right edge is the panel edge, so it cannot be narrowed from there
-   * below the width that still reaches it; it narrows when the columns before it widen instead.
-   */
-  private fillColumnMinimumWidth(target: GraphColumn, minimum: number): number {
-    const available = this.graphColumnsAvailableWidth();
-    if (target !== this.graphFillColumn() || available <= 0) return minimum;
-    const others = this.visibleGraphColumns().filter((column) => column !== target)
-      .reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
-    return Math.max(minimum, Math.floor(available - others));
   }
 
   protected setGraphHorizontalScroll(enabled: boolean): void {
@@ -4077,46 +4121,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected messageColumnAriaWidth(): number {
-    if (this.messageColumnManuallyResized()) return Math.round(this.renderedGraphColumnWidth('message'));
-    // The automatic message track takes whatever the other columns leave of the panel.
-    const available = this.graphColumnsAvailableWidth();
-    const others = this.visibleGraphColumns().filter((column) => column !== 'message')
-      .reduce((total, column) => total + this.columnWidthSignal(column)(), 0);
-    return Math.round(Math.max(this.messageColumnWidth(), available > 0 ? available - others : 0));
-  }
-
-  /** Date / Time resizes from its left edge, keeping its right edge fixed, when a column precedes it. */
-  /**
-   * Date / Time, and whichever column is last, resize from their left edge: the last column's right
-   * edge is the panel edge, so moving it would open empty space before the settings button.
-   */
-  private leadingEdgeResizeNeighbor(target: GraphColumn): GraphColumn | null {
-    const visible = this.visibleGraphColumns();
-    const index = visible.indexOf(target);
-    if (index <= 0) return null;
-    return target === 'date' || index === visible.length - 1 ? visible[index - 1] : null;
+    return Math.round(this.renderedGraphColumnWidth('message'));
   }
 
   protected graphColumnResizeTitle(target: GraphColumn): string {
-    if (this.graphColumnHasLeadingResizeEdge(target)) {
-      return 'Drag the left edge to resize; the right edge stays fixed · Left arrow widens, Right arrow narrows · Double-click to reset';
-    }
     return target === 'graph'
       ? 'Drag or use arrow keys to resize · Shift for larger steps · Double-click to fit all branch paths'
       : 'Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset';
-  }
-
-  private applyLeadingEdgeResize(target: GraphColumn, partner: GraphColumn, requestedGrowth: number): void {
-    const [targetMinimum, targetMaximum] = this.graphColumnWidthLimits(target);
-    const [partnerMinimum, partnerMaximum] = this.graphColumnWidthLimits(partner);
-    const targetStart = this.resizeStartWidth;
-    const partnerStart = this.columnResizePartnerStartWidth;
-    const growth = Math.max(
-      Math.max(targetMinimum - targetStart, partnerStart - partnerMaximum),
-      Math.min(Math.min(targetMaximum - targetStart, partnerStart - partnerMinimum), requestedGrowth),
-    );
-    this.columnWidthSignal(target).set(targetStart + growth);
-    this.columnWidthSignal(partner).set(partnerStart - growth);
   }
 
   /**
@@ -4135,13 +4146,9 @@ export class AppComponent implements OnInit, OnDestroy {
       if (index < 0) return;
       const column = headings[index];
       const origin = header.getBoundingClientRect().left - header.scrollLeft;
-      // A leading-edge splitter moves its left neighbor's right edge; a normal handle moves this
-      // column's right edge. The trailing column's edge is the panel edge itself; any other edge must
-      // stay left of the settings strip that marks the header's visible edge.
-      const leadingEdgePartner = column.querySelector('.column-resizer.leading-edge') ? headings[index - 1] : null;
-      const edgeColumn = leadingEdgePartner ?? column;
-      const edge = edgeColumn.getBoundingClientRect().right - origin;
-      const visibleRight = list.clientWidth - (edgeColumn.classList.contains('trailing-column') ? 0 : 48);
+      const edge = column.getBoundingClientRect().right - origin
+        - (column.classList.contains('trailing-column') ? 26 : 0);
+      const visibleRight = list.clientWidth - 48;
       let scrollLeft = list.scrollLeft;
       scrollLeft = Math.max(scrollLeft, edge - visibleRight);
       scrollLeft = Math.min(scrollLeft, edge - 24);
@@ -4152,29 +4159,18 @@ export class AppComponent implements OnInit, OnDestroy {
     }, { injector: this.injector });
   }
 
-  protected graphColumnHasLeadingResizeEdge(target: GraphColumn): boolean {
-    return this.leadingEdgeResizeNeighbor(target) !== null;
-  }
-
   protected graphColumnAriaWidth(column: GraphColumn): number {
     return Math.round(this.renderedGraphColumnWidth(column));
   }
 
   private renderedGraphColumnWidth(column: GraphColumn): number {
     const width = this.columnWidthSignal(column)();
-    return column === this.graphFillColumn() ? width + this.graphColumnSlack() : width;
-  }
-
-  private prepareColumnResize(target: GraphColumn): void {
-    this.freezeAutoFilledMessageColumn(target);
-    // The last column's share of free space becomes its own width, so a resize starts from what is
-    // visible: dragging its left edge narrows it at once instead of first consuming hidden slack.
-    // Other resizes keep the slack, so the last column absorbs what they give or take.
-    const fill = this.graphFillColumn();
-    const slack = this.graphColumnSlack();
-    if (fill !== target || slack < 1) return;
-    const [, maximum] = this.graphColumnWidthLimits(fill);
-    this.columnWidthSignal(fill).set(Math.min(maximum, this.columnWidthSignal(fill)() + slack));
+    if (column !== 'message' || this.messageColumnManuallyResized()) return width;
+    // The automatic message track takes whatever the other columns leave of the panel.
+    const available = this.graphColumnsAvailableWidth();
+    const others = this.visibleGraphColumns().filter((candidate) => candidate !== 'message')
+      .reduce((total, candidate) => total + this.columnWidthSignal(candidate)(), 0);
+    return Math.max(width, available > 0 ? available - others : 0);
   }
 
   private freezeAutoFilledMessageColumn(target: GraphColumn): void {
@@ -4182,7 +4178,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.showMessageColumn()) return;
     // Freeze the auto-filled track so resizing one column cannot resize another. Its track width is
     // computed rather than measured: a trailing heading's box also spans the actions lane.
-    this.messageColumnWidth.set(this.messageColumnAriaWidth());
+    this.messageColumnWidth.set(this.renderedGraphColumnWidth('message'));
     this.messageColumnManuallyResized.set(true);
     if (target !== 'message') this.storeColumnWidth('message', this.messageColumnWidth());
   }
@@ -4908,7 +4904,15 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected runAutoFetchNow(): void {
-    void this.runAutoFetchCycle(true);
+    void this.git.remote('fetch_repository');
+  }
+
+  protected openFetchOptions(returnFocus: HTMLElement | null = null): void {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy()) return;
+    const opener = returnFocus ?? document.querySelector<HTMLButtonElement>('button[aria-label="Pull options"]');
+    this.pullMenuOpen.set(false);
+    this.fetchRequest.set({ repositoryId, returnFocus: opener });
   }
 
   protected autoFetchStatusLabel(): string {
@@ -5230,6 +5234,86 @@ export class AppComponent implements OnInit, OnDestroy {
     this.focusSidebarActionMenu();
   }
 
+  protected openWorktreeMove(worktree: Worktree): void {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || worktree.prunable || this.isWorktreeOpen(worktree.path)) return;
+    const returnFocus = this.sidebarActionMenuReturnFocus;
+    this.worktreeMenuPath.set(null);
+    this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus });
+  }
+
+  protected openWorktreeRepair(worktree: Worktree): void {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || this.isWorktreeOpen(worktree.path)) return;
+    const returnFocus = this.sidebarActionMenuReturnFocus;
+    this.worktreeMenuPath.set(null);
+    this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus, repair: true });
+  }
+
+  protected openWorktreeRegistrationReview(): void {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy()) return;
+    const returnFocus = this.sidebarActionMenuReturnFocus;
+    this.worktreeMenuPath.set(null);
+    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus });
+  }
+
+  protected openLfsTracking(): void {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy()) return;
+    this.lfsTrackingRequest.set({ repositoryId, returnFocus: this.captureDialogOpener() });
+  }
+
+  protected closeLfsTrackingLoader(): void {
+    const opener = this.lfsTrackingRequest()?.returnFocus;
+    this.lfsTrackingRequest.set(null);
+    setTimeout(() => { if (opener?.isConnected) opener.focus(); });
+  }
+
+  protected closeWorktreeRegistrationLoader(): void {
+    const opener = this.worktreeRegistrationRequest()?.returnFocus;
+    this.worktreeRegistrationRequest.set(null);
+    setTimeout(() => {
+      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
+      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
+    });
+  }
+
+  protected closeDeferredGitAction(): void {
+    const opener = (this.referenceAction() ?? this.fetchRequest() ?? this.worktreeMoveRequest() ?? this.stashDialog())?.returnFocus;
+    this.referenceAction.set(null);
+    this.fetchRequest.set(null);
+    this.worktreeMoveRequest.set(null);
+    this.stashDialog.set(null);
+    setTimeout(() => {
+      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
+      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
+    });
+  }
+
+  protected handleReferenceLoaderKey(event: KeyboardEvent, kind: 'documentation' | 'worktree' | 'action' | 'history'): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (kind === 'documentation') this.documentation.close();
+      else if (kind === 'action') this.closeDeferredGitAction();
+      else if (kind === 'history') this.closeHistorySearchLoader();
+      else this.closeWorktreeRegistrationLoader();
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('button')?.focus();
+    }
+  }
+
+  protected handleLfsLoaderKey(event: KeyboardEvent): void {
+    if (event.key === 'Escape') { event.preventDefault(); this.closeLfsTrackingLoader(); }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('button')?.focus();
+    }
+  }
+
   protected openSubmoduleDialog(returnFocus?: HTMLElement | null): void {
     this.submoduleDialogOpener = this.captureDialogOpener(returnFocus);
     this.submoduleUrl.set('');
@@ -5250,6 +5334,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const hasOrigin = this.git.repository()?.remotes.some((remote) => remote.name === 'origin');
     this.remoteName.set(hasOrigin ? '' : 'origin');
     this.remoteUrl.set('');
+    this.remotePushUrl.set('');
+    this.initialRemotePushUrl = '';
     this.remoteDialogIcon.set('remote');
     this.remoteDialog.set('add');
     setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
@@ -5259,6 +5345,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.remoteDialogOpener = this.captureRemoteDialogOpener(returnFocus);
     this.remoteName.set(remote.name);
     this.remoteUrl.set(remote.fetchUrl);
+    this.remotePushUrl.set(remote.pushUrl === remote.fetchUrl ? '' : remote.pushUrl);
+    this.initialRemotePushUrl = this.remotePushUrl();
     this.remoteDialogIcon.set(this.remoteIcon(remote.name));
     this.remoteDialog.set('edit');
     setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
@@ -5284,8 +5372,16 @@ export class AppComponent implements OnInit, OnDestroy {
     const url = this.remoteUrl().trim();
     if (!mode || !name || !url || this.git.busy()) return;
     this.setRemoteIcon(name, this.remoteDialogIcon());
-    if (mode === 'add') await this.git.addRemote(name, url);
+    const repositoryId = this.git.activeRepositoryId();
+    const pushUrl = this.remotePushUrl().trim();
+    if (pushUrl !== this.initialRemotePushUrl) {
+      await this.git.configureRemote(name, url, pushUrl || null, true, mode === 'add');
+    } else if (mode === 'add') await this.git.addRemote(name, url);
     else await this.git.setRemoteUrl(name, url);
+    if (repositoryId !== this.git.activeRepositoryId()) return;
+    if (mode === 'add' && this.git.repository()?.remotes.some(remote => remote.name === name)) {
+      this.remoteDialog.set('edit');
+    }
     if (!this.git.error()) {
       this.closeRemoteDialog();
       this.remoteBranchesOpen.set(true);
@@ -5482,8 +5578,10 @@ export class AppComponent implements OnInit, OnDestroy {
       && !this.fullWidthInspectorMode()
       && this.detailsVisible();
     this.fullWidthInspectorMode.set(fullWidthInspector);
-    if (enteringFullWidthInspector) {
-      setTimeout(() => this.responsiveCommitPanelClose()?.nativeElement.focus({ preventScroll: true }));
+    if (enteringFullWidthInspector && !this.pendingHistoryAction()) {
+      setTimeout(() => {
+        if (!this.pendingHistoryAction()) this.responsiveCommitPanelClose()?.nativeElement.focus({ preventScroll: true });
+      });
     }
     const responsive = window.innerWidth <= RESPONSIVE_SIDEBAR_BREAKPOINT;
     if (responsive === this.responsiveSidebarMode) return;
@@ -5592,9 +5690,11 @@ export class AppComponent implements OnInit, OnDestroy {
   protected fitGraphColumnToBranches(event?: Event): void {
     event?.preventDefault();
     event?.stopPropagation();
-    const width = this.graphMaximumWidth();
-    this.graphColumnWidth.set(width);
-    this.storeColumnWidth('graph', width);
+    this.freezeAutoFilledMessageColumn('graph');
+    this.snapshotGraphColumnWidths();
+    this.setGraphColumnWidth('graph', this.graphMaximumWidth());
+    this.storeResizedGraphColumnWidths('graph');
+    this.revealResizedGraphColumn('graph');
   }
 
   protected setGraphScrollMarkers(visible: boolean): void {
@@ -5656,7 +5756,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async commit(): Promise<void> {
     const repository = this.git.repository();
-    if (!this.commitMessage().trim() || (!repository?.status.staged && !this.amendPrevious()) || this.git.busy()) return;
+    if (!repository || !this.commitMessage().trim() || (!repository.status.staged && !this.amendPrevious() && !this.commitPolicy().allowEmpty) || this.git.busy()) return;
     const trailers = this.coAuthors()
       .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
       .join('\n');
@@ -5665,13 +5765,18 @@ export class AppComponent implements OnInit, OnDestroy {
       .join('\n\n');
     const pushAfter = this.pushAfterCommit();
     const committed = await this.git.commit(message, {
-      amend: this.amendPrevious(),
+      amend: !repository.status.rebaseSplit && this.amendPrevious(),
       skipHooks: this.skipGitHooks(),
       sign: this.signCommit(),
+      ...this.commitPolicy(),
       pushAfter: false,
     });
     if (committed) {
-      if (this.draftRepositoryId) this.commitDrafts.delete(this.draftRepositoryId);
+      this.commitDrafts.delete(repository.id);
+      if (this.git.activeRepositoryId() !== repository.id) {
+        if (pushAfter) this.git.error.set('The commit completed in the original repository. Push was not started because the active repository changed. Return to that repository to review and push.');
+        return;
+      }
       this.resetCommitForm();
       this.applyCommitTemplate();
       if (pushAfter) this.pushCurrentBranch();
@@ -5720,6 +5825,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected reloadCommitTemplate(): void {
+    if (this.git.busy()) return;
     this.commitMessage.set('');
     this.commitDescription.set('');
     this.coAuthors.set([]);
@@ -5759,6 +5865,7 @@ export class AppComponent implements OnInit, OnDestroy {
       skipHooks: this.skipGitHooks(),
       sign: this.signCommit(),
       pushAfter: this.pushAfterCommit(),
+      policy: this.commitPolicy(),
     });
   }
 
@@ -5779,6 +5886,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.skipGitHooks.set(draft.skipHooks);
     this.signCommit.set(draft.sign);
     this.pushAfterCommit.set(draft.pushAfter);
+    this.commitPolicy.set(draft.policy);
   }
 
   private resetCommitForm(): void {
@@ -5790,6 +5898,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.coAuthorPickerOpen.set(false);
     this.amendPrevious.set(false);
     this.skipGitHooks.set(false);
+    this.commitPolicy.set({ signOff: false, allowEmpty: false, author: null, committer: null });
     this.signCommit.set(this.git.repository()?.signing.enabled ?? false);
     this.pushAfterCommit.set(false);
   }
@@ -5798,9 +5907,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.commitMessage() || this.commitDescription()) return;
     const template = this.git.repository()?.commitTemplate;
     if (!template) return;
-    const parsed = parseCommitTemplate(template);
-    const body = parseCoAuthors(parsed.description);
-    this.commitMessage.set(parsed.summary);
+    const [summary, ...description] = template.trim().split('\n');
+    const body = parseCoAuthors(description.join('\n').trim());
+    this.commitMessage.set(summary);
     this.commitDescription.set(body.body);
     this.coAuthors.set(body.authors);
   }
@@ -5961,34 +6070,6 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected shortOid(oid: string): string {
     return oid.slice(0, 8);
-  }
-
-  protected commitSignatureLabel(signature: CommitSignature): string {
-    return {
-      valid: 'Verified signature',
-      'valid-unknown': 'Valid signature · unknown trust',
-      invalid: 'Invalid signature',
-      'expired-signature': 'Expired signature',
-      'expired-key': 'Expired signing key',
-      'revoked-key': 'Revoked signing key',
-      unverifiable: 'Signature could not be verified',
-      unsigned: 'Unsigned',
-    }[signature.status];
-  }
-
-  protected commitSignatureDetail(signature: CommitSignature): string {
-    if (signature.signer && signature.key) return `${signature.signer} · key ${signature.key}`;
-    if (signature.signer) return signature.signer;
-    if (signature.key) return `Key ${signature.key}`;
-    return signature.status === 'unsigned'
-      ? 'No cryptographic signature is stored in this commit.'
-      : 'Git did not return signer identity details.';
-  }
-
-  protected commitSignatureIcon(signature: CommitSignature): IconName {
-    if (signature.status === 'valid' || signature.status === 'valid-unknown') return 'check';
-    if (signature.status === 'unsigned') return 'edit';
-    return 'warning';
   }
 
   protected fileName(path: string): string {
@@ -6385,8 +6466,18 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected focusCommitSearch(): void {
-    this.commitSearchExpanded.set(true);
-    queueMicrotask(() => this.commitSearch()?.nativeElement.focus());
+    const panel = this.repositoryHistorySearch();
+    if (panel) panel.open();
+    else {
+      this.historySearchLoaderOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      this.historySearchRequested.set(true);
+    }
+  }
+
+  protected closeHistorySearchLoader(): void {
+    this.historySearchRequested.set(false);
+    if (this.historySearchLoaderOpener?.isConnected) this.historySearchLoaderOpener.focus();
+    else this.commitSearchToggle()?.nativeElement.focus();
   }
 
   protected handleCommitSearchFocusOut(event: FocusEvent): void {
@@ -6654,20 +6745,70 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.openInteractiveRebase(source, menu.label);
   }
 
+  protected async openMergeRebase(): Promise<void> {
+    const menu = this.contextMenu();
+    const source = this.git.repository()?.status.branch;
+    const repositoryId = this.git.activeRepositoryId();
+    if (!menu || menu.kind !== 'branch' || !source || !repositoryId || source === menu.label || this.git.busy()) return;
+    const returnFocus = this.contextMenuReturnFocus;
+    this.contextMenu.set(null);
+    const request = ++this.rebaseRequest;
+    const plan = await this.git.prepareMergeRebase(repositoryId, source, menu.label);
+    if (plan && request === this.rebaseRequest && repositoryId === this.git.activeRepositoryId()) {
+      this.mergeRebaseReview.set({ repositoryId, plan, returnFocus });
+    }
+  }
+
+  protected async openSelectedRebase(): Promise<void> {
+    const menu = this.contextMenu();
+    const source = this.git.repository()?.status.branch;
+    if (!menu || menu.kind !== 'commit' || !source || this.git.busy()) return;
+    this.contextMenu.set(null);
+    await this.openInteractiveRebase(source, source, [...menu.oids]);
+  }
+
+  protected async openRootRebase(): Promise<void> {
+    const menu = this.contextMenu();
+    const source = this.git.repository()?.status.branch;
+    if (!menu || menu.kind !== 'branch' || menu.label !== source || !source || this.git.busy()) return;
+    this.contextMenu.set(null);
+    await this.openInteractiveRebase(source, source, undefined, true);
+  }
+
   protected selectRebaseStep(oid: string): void {
     this.selectedRebaseOid.set(oid);
+  }
+  protected handleRebaseLoaderKey(event: KeyboardEvent): void {
+    if (event.key !== 'Tab' && event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') this.closeRebaseReviewLoader();
+    else this.rebaseLoaderClose()?.nativeElement.focus();
+  }
+  protected closeRebaseReviewLoader(): void {
+    this.interactiveRebase.set(null);
+    this.mergeRebaseReview.set(null);
+  }
+  protected readonly rebaseAuthorColor = (name: string, email: string): string => this.authorColor(name, email);
+  protected updateRebasePlan(steps: RebaseStepView[]): void {
+    const state = this.interactiveRebase();
+    if (state) this.interactiveRebase.set({ ...state, steps });
   }
 
   protected setRebaseAction(oid: string, action: RebaseAction): void {
     const state = this.interactiveRebase();
     if (!state) return;
     const index = state.steps.findIndex((step) => step.oid === oid);
-    if (action === 'squash' && index === 0) return;
+    if ((action === 'squash' || action === 'fixup') && !this.canCombineRebaseStep(index)) return;
     this.interactiveRebase.set({
       ...state,
       steps: state.steps.map((step) => step.oid === oid ? { ...step, action } : step),
     });
     this.selectedRebaseOid.set(oid);
+  }
+
+  protected canCombineRebaseStep(index: number): boolean {
+    return this.interactiveRebase()?.steps.slice(0, index).some((step) => step.action !== 'drop') ?? false;
   }
 
   protected updateRebaseMessage(oid: string, message: string): void {
@@ -6677,6 +6818,12 @@ export class AppComponent implements OnInit, OnDestroy {
       ...state,
       steps: state.steps.map((step) => step.oid === oid ? { ...step, message } : step),
     });
+  }
+
+  protected setRebaseDestination(oid: string): void {
+    const state = this.interactiveRebase();
+    if (!state?.selectionOids || (oid && !state.destinations?.some(destination => destination.oid === oid))) return;
+    this.interactiveRebase.set({ ...state, ontoOid: oid || undefined });
   }
 
   protected resetInteractiveRebase(): void {
@@ -6705,14 +6852,13 @@ export class AppComponent implements OnInit, OnDestroy {
     const targetIndex = reordered.findIndex((step) => step.oid === targetOid);
     if (!source || targetIndex < 0) return;
     reordered.splice(targetIndex, 0, source);
-    if (reordered[0].action === 'squash') reordered[0] = { ...reordered[0], action: 'pick' };
     this.interactiveRebase.set({ ...state, steps: reordered });
     this.draggedRebaseOid.set(null);
   }
 
   protected async executeInteractiveRebase(): Promise<void> {
     const state = this.interactiveRebase();
-    if (!state) return;
+    if (!state || !this.git.requireRecoveryRepository(state.repositoryId)) return;
     const steps: InteractiveRebaseStep[] = state.steps.map((step) => ({
       oid: step.oid,
       action: step.action,
@@ -6720,7 +6866,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }));
     this.interactiveRebase.set(null);
     this.selectedRebaseOid.set(null);
-    await this.git.executeInteractiveRebase(state.source, state.target, steps);
+    await this.git.executeInteractiveRebase(state.source, state.target, steps, state.selectionOids, state.root, state.ontoOid);
     if (this.git.repository()?.status.rebaseInProgress) this.selectWip();
   }
 
@@ -6737,14 +6883,23 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.repository()?.status.mergeInProgress) this.selectWip();
   }
 
-  protected async controlHistoryOperation(action: 'continue' | 'skip' | 'abort'): Promise<void> {
+  protected async controlHistoryOperation(action: 'continue' | 'skip' | 'abort' | 'quit'): Promise<void> {
     await this.git.controlHistoryOperation(action);
     if (this.git.repository()?.status.historyOperation) this.selectWip();
   }
 
   protected async openConflictTool(path: string): Promise<void> {
+    if (this.git.busy()) return;
+    if (!this.git.conflictDetails()) {
+      this.conflictReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     const details = await this.git.inspectConflict(path);
-    if (details) this.conflictOutput.set(details.output ?? details.current ?? details.incoming ?? '');
+    if (details) {
+      this.conflictOutput.set(details.output ?? details.current ?? details.incoming ?? '');
+      afterNextRender(() => {
+        document.querySelector<HTMLElement>('[aria-label="Close conflict editor"]')?.focus();
+      }, { injector: this.injector });
+    }
   }
 
   protected useConflictSide(side: 'current' | 'incoming'): void {
@@ -6755,12 +6910,35 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async resolveOpenConflict(resolution: 'current' | 'incoming' | 'output'): Promise<void> {
     const details = this.git.conflictDetails();
-    if (!details) return;
+    if (!details || this.git.busy()) return;
     await this.git.resolveConflict(
       details.path,
       resolution,
       resolution === 'output' ? this.conflictOutput() : undefined,
     );
+    if (!this.git.error()) this.closeConflictTool();
+    else afterNextRender(() => {
+      document.querySelector<HTMLElement>('.merge-tool [role="alert"]')?.focus();
+    }, { injector: this.injector });
+  }
+
+  protected closeConflictTool(): void {
+    this.git.closeConflict();
+    const opener = this.conflictReturnFocus;
+    this.conflictReturnFocus = null;
+    afterNextRender(() => {
+      if (opener?.isConnected) opener.focus();
+    }, { injector: this.injector });
+  }
+
+  protected handleConflictKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeConflictTool();
+      return;
+    }
+    this.cycleDialogFocus(document.querySelector<HTMLElement>('.merge-tool') ?? undefined, event);
   }
 
   protected async resolveContextConflict(resolution: 'current' | 'incoming'): Promise<void> {
@@ -6775,17 +6953,27 @@ export class AppComponent implements OnInit, OnDestroy {
     if (oid) this.setRebaseAction(oid, action);
   }
 
-  private async openInteractiveRebase(source: string, target: string): Promise<void> {
-    const plan = await this.git.prepareInteractiveRebase(source, target);
-    if (!plan) return;
+  private async openInteractiveRebase(source: string, target: string, selectionOids?: string[], root = false): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy()) return;
+    const request = ++this.rebaseRequest;
+    const plan = await this.git.prepareInteractiveRebase(source, target, selectionOids, root);
+    if (!plan || request !== this.rebaseRequest || repositoryId !== this.git.activeRepositoryId()) return;
     const steps = plan.commits.map((commit): RebaseStepView => ({
       ...commit,
       action: 'pick',
     }));
     this.interactiveRebase.set({
+      repositoryId,
       source: plan.source,
       target: plan.target,
       base: plan.base,
+      selectionOids,
+      root,
+      destinations: selectionOids ? this.git.repository()?.branches
+        .filter(branch => !plan.commits.some(commit => commit.oid === branch.oid))
+        .map(branch => ({ oid: branch.oid, label: branch.name })) : undefined,
+      remoteReachableOids: plan.remoteReachableOids ?? [],
       original: steps.map((step) => ({ ...step })),
       steps,
     });
@@ -7101,6 +7289,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedCommits.set([oid]);
     this.commitSelectionAnchor.set(oid);
     this.selectedCommit.set(oid);
+    if (!this.graphCommitByOid().has(oid)) {
+      this.externalHistoryCommit.set(null);
+      const repositoryId = this.git.activeRepositoryId();
+      void this.historySearch.summary(oid).then(summary => {
+        if (this.selectedCommit() === oid && this.git.activeRepositoryId() === repositoryId) this.externalHistoryCommit.set(summary);
+      }).catch(error => {
+        if (this.selectedCommit() === oid) this.git.error.set(String(error?.message ?? error));
+      });
+    }
     this.commitFilesScrollTop.set(0);
     this.changesOpen.set(false);
     this.setPanelVisibility('commit-panel', true);
@@ -7413,7 +7610,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const revision = this.activeDiffRevision();
     if (!diff || !revision || !this.canInspectActiveFile()) return;
     this.diffInsightMode.set('history');
-    await this.git.inspectFileHistory(diff.path, revision);
+    await this.historySearch.openFile(revision, diff.path);
   }
 
   protected async showFileBlame(): Promise<void> {
@@ -7447,7 +7644,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.git.selectedCommitFile.set(path);
     this.openDiffViewer();
     this.diffInsightMode.set(mode);
-    if (mode === 'history') await this.git.inspectFileHistory(path, revision);
+    if (mode === 'history') await this.historySearch.openFile(revision, path);
     else await this.git.inspectFileBlame(path, revision);
   }
 
@@ -7457,16 +7654,66 @@ export class AppComponent implements OnInit, OnDestroy {
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  protected showHistoryComparison(): void {
+    this.changesOpen.set(false);
+    this.selectedCommits.set([]);
+    this.setPanelVisibility('commit-panel', true);
+  }
+
+  protected clearHistoryComparison(): void {
+    this.git.commitComparison.set(null);
+    this.git.comparisonFileDiff.set(null);
+    const oid = this.git.repository()?.headOid;
+    if (oid) this.selectCommit(oid);
+    else this.changesOpen.set(true);
+  }
+
+  protected async openHistoricalFile(oid: string, path: string, previousPath: string | null = null): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    this.selectedCommit.set(oid);
+    this.selectedCommits.set([oid]);
+    this.changesOpen.set(false);
+    this.setPanelVisibility('commit-panel', true);
+    try {
+      const summary = await this.historySearch.summary(oid);
+      if (this.git.activeRepositoryId() !== repositoryId || this.selectedCommit() !== oid) return;
+      this.externalHistoryCommit.set(summary);
+    }
+    catch (error) { this.git.error.set(String((error as { message?: unknown })?.message ?? error)); return; }
+    await this.git.inspectCommit(oid);
+    if (this.git.activeRepositoryId() !== repositoryId || this.selectedCommit() !== oid) return;
+    await this.git.inspectCommitFile({ path, previousPath, status: previousPath ? 'R' : 'M', additions: null, deletions: null });
+    this.diffInsightMode.set('diff');
+  }
+
+  protected async navigateBlame(oid: string, path: string, parent: boolean): Promise<void> {
+    try {
+      const navigation = await this.historySearch.navigation(oid, path);
+      if (parent) {
+        if (!navigation.parents.length) {
+          this.git.error.set('This is a root commit; it has no parent.');
+          return;
+        }
+        await this.openHistoricalFile(navigation.parents[0], navigation.parentPath ?? path);
+      } else {
+        await this.openHistoricalFile(navigation.oid, navigation.path, navigation.parentPath === navigation.path ? null : navigation.parentPath);
+      }
+    } catch (error) {
+      this.git.error.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+    }
+  }
+
   protected canEditSelectedCommitMessage(): boolean {
     const repository = this.git.repository();
     const commit = this.selectedCommitData();
-    return !!repository?.headOid && commit?.oid === repository.headOid;
+    return !!repository?.headOid && !repository.status.rebaseSplit && commit?.oid === repository.headOid;
   }
 
   protected canEditContextCommitMessage(): boolean {
     const menu = this.contextMenu();
     return menu?.kind === 'commit'
       && menu.oids.length === 1
+      && !this.git.repository()?.status.rebaseSplit
       && menu.oid === this.git.repository()?.headOid;
   }
 
@@ -8360,7 +8607,8 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'maintenance': await this.git.performRepositoryMaintenance(); break;
       case 'undo': await this.git.undo(); break;
       case 'redo': await this.git.redo(); break;
-      case 'fetch': await this.git.remote('fetch_repository', { remote: this.currentRemote()?.name }); break;
+      case 'fetch': await this.git.remote('fetch_repository'); break;
+      case 'fetch-options': this.openFetchOptions(paletteReturnFocus); break;
       case 'add-remote': this.openAddRemoteDialog(paletteReturnFocus); break;
       case 'pull': await this.pullCurrentBranch(); break;
       case 'push': this.pushCurrentBranch(); break;
@@ -8390,6 +8638,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'history-operation-continue': await this.controlHistoryOperation('continue'); break;
       case 'history-operation-skip': await this.controlHistoryOperation('skip'); break;
       case 'history-operation-abort': await this.controlHistoryOperation('abort'); break;
+      case 'history-operation-quit': await this.controlHistoryOperation('quit'); break;
       case 'bisect-start': this.requestBisectFromSelection(); break;
       case 'bisect-good': await this.git.markBisect('good'); break;
       case 'bisect-bad': await this.git.markBisect('bad'); break;
@@ -8778,13 +9027,89 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async openRecoveryHistory(): Promise<void> {
+    this.recoveryHistoryReturnFocus = document.querySelector<HTMLElement>('[aria-label="Main menu"]');
+    this.recoveryRepositoryId = this.git.activeRepositoryId();
     this.appMenuOpen.set(false);
     this.activityLogOpen.set(false);
     this.recoveryQuery.set('');
     this.recoveryBranchEntry.set(null);
     this.recoveryBranchName.set('');
+    this.operationRecoveries.set(null);
+    this.recoveryCaptureAction.set(null);
     this.recoveryHistoryOpen.set(true);
-    await this.git.loadReflog();
+    await this.refreshRecoveryHistory();
+  }
+
+  protected async refreshRecoveryHistory(): Promise<void> {
+    if (this.git.busy() || this.recoveryCaptureBusy()) return;
+    const repositoryId = this.recoveryRepositoryId;
+    if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
+    this.recoveryCaptureBusy.set(true);
+    try {
+      await this.git.loadReflog();
+      const reflogError = this.git.error();
+      const records = await this.git.loadOperationRecoveries(repositoryId);
+      if (reflogError) this.git.error.set([reflogError, this.git.error()].filter(Boolean).join(' '));
+      if (this.recoveryHistoryOpen() && this.recoveryRepositoryId === repositoryId) {
+        this.operationRecoveries.set(records);
+      }
+    } finally {
+      this.recoveryCaptureBusy.set(false);
+    }
+  }
+
+  protected beginRecoveryCaptureAction(record: OperationRecovery, kind: 'restore' | 'remove'): void {
+    this.recoveryCaptureAction.set({ record, kind });
+    this.recoveryCaptureBranch.set(`recovery/${this.shortOid(record.headOid)}`);
+    afterNextRender(() => {
+      const form = document.querySelector<HTMLElement>('.recovery-capture-form');
+      form?.querySelector<HTMLElement>(kind === 'restore' ? 'input' : '[data-capture-cancel]')?.focus();
+    }, { injector: this.injector });
+  }
+
+  protected cancelRecoveryCaptureAction(): void {
+    const action = this.recoveryCaptureAction();
+    this.recoveryCaptureAction.set(null);
+    afterNextRender(() => {
+      if (!action) return;
+      const captures = [...document.querySelectorAll<HTMLElement>('.operation-capture')];
+      const capture = captures.find((element) => element.dataset['captureId'] === action.record.id);
+      capture?.querySelector<HTMLElement>(`[data-capture-action="${action.kind}"]`)?.focus();
+    }, { injector: this.injector });
+  }
+
+  protected async confirmRecoveryCaptureAction(): Promise<void> {
+    const action = this.recoveryCaptureAction();
+    const repositoryId = this.recoveryRepositoryId;
+    if (!action || !repositoryId || this.git.busy() || this.recoveryCaptureBusy()) return;
+    if (action.kind === 'restore') {
+      const branch = this.recoveryCaptureBranch().trim();
+      if (!branch) return;
+      await this.git.restoreOperationRecovery(action.record.id, branch, repositoryId);
+    } else {
+      await this.git.forgetOperationRecovery(action.record.id, repositoryId);
+    }
+    if (this.git.error()) {
+      afterNextRender(() => {
+        document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
+      }, { injector: this.injector });
+      return;
+    }
+    this.recoveryCaptureAction.set(null);
+    await this.refreshRecoveryHistory();
+    afterNextRender(() => {
+      document.querySelector<HTMLElement>('[aria-label="Refresh recovery history"]')?.focus();
+    }, { injector: this.injector });
+  }
+
+  protected handleRecoveryHistoryKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeRecoveryHistory();
+      return;
+    }
+    this.cycleDialogFocus(document.querySelector<HTMLElement>('.recovery-dialog') ?? undefined, event);
   }
 
   protected closeRecoveryHistory(): void {
@@ -8792,7 +9117,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.recoveryQuery.set('');
     this.recoveryBranchEntry.set(null);
     this.recoveryBranchName.set('');
+    this.recoveryCaptureAction.set(null);
+    this.operationRecoveries.set(null);
+    this.recoveryRepositoryId = null;
     this.git.clearReflog();
+    const opener = this.recoveryHistoryReturnFocus;
+    this.recoveryHistoryReturnFocus = null;
+    afterNextRender(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   protected recoveryEntryInGraph(entry: ReflogEntry): boolean {
@@ -8800,6 +9133,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async viewRecoveryEntry(entry: ReflogEntry): Promise<void> {
+    if (!this.recoveryRepositoryId || !this.git.requireRecoveryRepository(this.recoveryRepositoryId)) return;
     this.closeRecoveryHistory();
     await this.jumpToCommit(entry.oid);
   }
@@ -8817,9 +9151,15 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async createRecoveryBranch(): Promise<void> {
     const entry = this.recoveryBranchEntry();
     const name = this.recoveryBranchName().trim();
-    if (!entry || !name) return;
-    await this.git.createBranchAt(name, entry.oid);
-    if (this.git.error()) return;
+    const repositoryId = this.recoveryRepositoryId;
+    if (!entry || !name || !repositoryId) return;
+    await this.git.createBranchAt(name, entry.oid, repositoryId);
+    if (this.git.error()) {
+      afterNextRender(() => {
+        document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
+      }, { injector: this.injector });
+      return;
+    }
     this.recoveryBranchEntry.set(null);
     this.recoveryBranchName.set('');
     await this.git.loadReflog();
@@ -8853,6 +9193,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private showTagCreator(oid: string, label: string): void {
     this.contextTagName.set('');
+    this.signNewTag.set(false);
     this.tagCreationKind.set('lightweight');
     this.tagCreationMessage.set('');
     this.pendingTagTarget.set({ oid, label });
@@ -8863,7 +9204,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const name = this.contextTagName().trim();
     const message = this.tagCreationKind() === 'annotated' ? this.tagCreationMessage().trim() : null;
     if (!target || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
-    await this.git.createTag(name, target.oid, message);
+    if (this.signNewTag() && message) await this.git.manageReference('signed-tag', name, { expectedOid: target.oid, message });
+    else await this.git.createTag(name, target.oid, message);
     if (!this.git.error()) {
       this.pendingTagTarget.set(null);
       this.contextTagName.set('');
@@ -9047,6 +9389,23 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 320)),
     });
     this.settleGraphActionMenuPosition('stash', stash.reference, preferredPosition, focusMenu);
+  }
+
+  protected openStashOptions(action: StashDialogRequest['action'], stash?: StashEntry): void {
+    const repository = this.git.repository();
+    if (!repository || this.git.busy()) return;
+    const menu = this.contextMenu();
+    const branch = action === 'switch' ? repository.branches.find(candidate =>
+      !candidate.remote && candidate.name === menu?.label && !candidate.current) : undefined;
+    if (action === 'switch' && (!branch || !repository.headOid)) return;
+    const returnFocus = (action === 'save' ? this.workingTreeOptionsToggle()?.nativeElement : null) ?? this.contextMenuReturnFocus
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    this.contextMenu.set(null);
+    this.stashContextMenu.set(null);
+    this.workingTreeOptionsOpen.set(false);
+    this.git.error.set(null);
+    this.stashDialog.set({ action, repositoryId: repository.id, stash, branch,
+      headOid: repository.headOid ?? undefined, message: this.stashMessage(), returnFocus });
   }
 
   protected beginStashRename(stash?: StashEntry): void {
@@ -9319,6 +9678,49 @@ export class AppComponent implements OnInit, OnDestroy {
     }, returnFocus);
   }
 
+  protected toggleDiscardSelection(path: string): void {
+    this.selectedDiscardPaths.update(paths => paths.includes(path)
+      ? paths.filter(candidate => candidate !== path) : [...paths, path]);
+  }
+
+  protected async requestBulkDiscard(selected = false): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId || this.git.busy()) return;
+    const paths = selected ? this.selectedDiscardPaths().filter(path =>
+      this.unstagedEntries().some(entry => entry.path === path)) : null;
+    if (selected && !paths?.length) return;
+    const preview = await this.git.previewDiscard(paths);
+    if (!preview || repositoryId !== this.git.activeRepositoryId()) return;
+    this.openFileConfirmation({
+      kind: 'discard-bulk', path: `${preview.paths.length} unstaged files`,
+      untracked: false, preview, repositoryId,
+    }, this.workingTreeOptionsToggle()?.nativeElement ?? null);
+  }
+
+  protected async openSavedDiscards(): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    const recoveries = await this.git.loadDiscardRecoveries();
+    if (this.git.error() || repositoryId !== this.git.activeRepositoryId()) return;
+    this.savedDiscardsRepositoryId.set(repositoryId);
+    this.savedDiscards.set(recoveries);
+    queueMicrotask(() => requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('[data-saved-discards-close]')?.focus()));
+  }
+
+  protected savedDiscardLabel(id: string): string {
+    const nanos = Number(id.split('-')[0]);
+    return Number.isFinite(nanos) ? new Date(nanos / 1_000_000).toLocaleString() : id;
+  }
+
+  protected requestSavedDiscard(recovery: DiscardRecovery, remove = false): void {
+    const repositoryId = this.savedDiscardsRepositoryId();
+    this.savedDiscards.set(null);
+    this.openFileConfirmation({
+      kind: remove ? 'forget-discard' : 'recover-discard',
+      path: this.savedDiscardLabel(recovery.id), untracked: false, repositoryId: repositoryId ?? undefined, recovery,
+    });
+  }
+
   protected requestDiscardEntry(entry: WorkingTreeEntry, event: MouseEvent): void {
     event.stopPropagation();
     if (entry.conflicted || this.isUntrackedDirectory(entry)) return;
@@ -9330,8 +9732,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async applyHunk(path: string, staged: boolean, hunkIndex: number): Promise<void> {
-    if (this.isUntrackedPath(path)) return;
-    await this.git.applyWorkingTreeHunk(path, staged, hunkIndex, staged ? 'unstage' : 'stage');
+    const diff = this.activeWorkingTreeDiff();
+    if (!diff || diff.path !== path || diff.staged !== staged || diff.truncated || this.git.busy()) return;
+    await this.git.applyWorkingTreeHunk(path, staged, hunkIndex, staged ? 'unstage' : 'stage', diff.patch);
     if (!this.git.error()) this.selectedDiffLineGroups.set([]);
   }
 
@@ -9355,15 +9758,23 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async applySelectedDiffLines(): Promise<void> {
     const diff = this.activeWorkingTreeDiff();
     const selection = this.selectedDiffLines();
-    if (!diff || !selection || this.git.busy() || this.isUntrackedPath(diff.path)) return;
+    if (!diff || !selection || diff.truncated || this.git.busy()) return;
     await this.git.applyWorkingTreeLines(
       diff.path,
       diff.staged,
       selection.hunkIndex,
       selection.lineIndices,
       diff.staged ? 'unstage' : 'stage',
+      diff.patch,
     );
     if (!this.git.error()) this.selectedDiffLineGroups.set([]);
+  }
+
+  protected async reloadWorkingTreeDiff(): Promise<void> {
+    const diff = this.activeWorkingTreeDiff();
+    if (!diff || this.git.busy()) return;
+    this.selectedDiffLineGroups.set([]);
+    await this.git.inspectWorkingTreeFile(diff.path, diff.staged);
   }
 
   protected requestDiscardSelectedDiffLines(): void {
@@ -9412,7 +9823,20 @@ export class AppComponent implements OnInit, OnDestroy {
     const action = this.pendingFileAction();
     if (!action) return;
     this.dismissFileConfirmation(false);
-    if (action.kind === 'discard') {
+    if (action.kind === 'discard-bulk' && action.preview && action.repositoryId) {
+      await this.git.discardPrepared(action.preview, action.repositoryId);
+      if (!this.git.error()) {
+        this.selectedDiscardPaths.set([]);
+        this.discardSelectionMode.set(false);
+      }
+    } else if ((action.kind === 'recover-discard' || action.kind === 'forget-discard') && action.recovery) {
+      if (action.repositoryId !== this.git.activeRepositoryId()) {
+        this.git.error.set('The active repository changed. Reopen discarded-change recovery.');
+        return;
+      }
+      if (action.kind === 'forget-discard') await this.git.forgetSavedDiscard(action.recovery.id);
+      else await this.git.applySavedDiscard(action.recovery.id, action.recovery.restored);
+    } else if (action.kind === 'discard') {
       await this.git.discardPath(action.path, action.untracked);
     } else if (action.kind === 'discard-hunk' && action.hunkIndex !== undefined) {
       await this.git.applyWorkingTreeHunk(action.path, false, action.hunkIndex, 'discard');
@@ -9471,6 +9895,26 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu) return;
     this.contextMenu.set(null);
     this.showTagCreator(menu.oid, menu.label);
+  }
+
+  protected requestReferenceAction(action: ReferenceActionRequest['action']): void {
+    const menu = this.contextMenu();
+    const repositoryId = this.git.activeRepositoryId();
+    if (!menu || !repositoryId || this.git.busy()) return;
+    if (action === 'delete-remote-branch' ? menu.kind !== 'remote' : menu.kind !== 'tag') return;
+    const remote = menu.kind === 'remote' ? this.remoteLocationName(menu.label) : undefined;
+    const name = menu.kind === 'remote' ? this.remoteBranchLabel(menu.label) : menu.label;
+    const returnFocus = this.contextMenuReturnFocus;
+    this.contextMenu.set(null);
+    this.git.dismissError();
+    this.referenceAction.set({ action, repositoryId, name, oid: menu.oid, remote, returnFocus });
+  }
+
+  protected async verifyContextTag(): Promise<void> {
+    const menu = this.contextMenu();
+    if (!menu || menu.kind !== 'tag') return;
+    this.contextMenu.set(null);
+    await this.git.manageReference('verify-tag', menu.label);
   }
 
   protected async renameContextBranch(): Promise<void> {
@@ -9584,14 +10028,22 @@ export class AppComponent implements OnInit, OnDestroy {
   protected requestHistoryAction(kind: PendingHistoryAction['kind']): void {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'commit') return;
-    const oids = kind === 'cherry-pick' ? menu.oids : [menu.oid];
+    const oids = kind === 'cherry-pick' ? menu.oids : kind === 'revert' ? [...menu.oids].reverse() : [menu.oid];
     const returnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
     this.resetMode.set('mixed');
     this.openHistoryConfirmation(
-      { kind, oid: menu.oid, oids, label: menu.label },
+      { kind, oid: kind === 'revert' ? oids[0] : menu.oid, oids, label: menu.label },
       returnFocus,
     );
+  }
+
+  protected requestRebaseSplit(): void {
+    const repository = this.git.repository();
+    if (!repository?.headOid || !repository.status.rebaseEditStopped || repository.status.rebaseSplit || this.isRebaseRootStop() || this.git.busy()) return;
+    const head = repository.commits.find(commit => commit.oid === repository.headOid);
+    this.openHistoryConfirmation({ kind: 'split', oid: repository.headOid,
+      oids: [repository.headOid], label: head?.subject || shortLabel(repository.headOid) });
   }
 
   protected canStartBisectAt(oid: string): boolean {
@@ -9646,23 +10098,77 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmHistoryAction(): Promise<void> {
     const action = this.pendingHistoryAction();
-    if (!action) return;
-    this.dismissHistoryConfirmation(false);
+    if (!action || this.git.busy()) return;
+    const repositoryId = this.historyActionRepositoryId;
+    if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
+    const parents = this.historyMergeParents();
+    const mainline = this.historyMainline();
+    const noCommit = this.historyNoCommit();
+    if (parents.length && (action.oids.length !== 1 || !mainline || mainline > parents.length)) return;
+    if (action.kind === 'reset') {
+      const preview = this.resetPreview();
+      const repositoryId = this.resetPreviewRepositoryId;
+      if (!preview || !repositoryId || preview.mode !== this.resetMode() || preview.targetOid !== action.oid) return;
+      await this.git.resetPrepared(preview, repositoryId);
+      this.resetPreview.set(null);
+      if (!this.git.error()) this.dismissHistoryConfirmation(true);
+      else afterNextRender(() => {
+        this.historyConfirmationDialog()?.nativeElement.querySelector<HTMLElement>('.recovery-error')?.focus();
+      }, { injector: this.injector });
+      return;
+    }
     if (action.kind === 'cherry-pick') {
       if (action.targetBranch && this.git.repository()?.status.branch !== action.targetBranch) {
         await this.git.checkout(action.targetBranch);
         if (this.git.error()) return;
+        if (this.pendingHistoryAction() !== action) return;
+        if (!this.git.requireRecoveryRepository(repositoryId)) return;
       }
-      await this.git.cherryPick(action.oids);
+      await this.git.cherryPick(action.oids, mainline, noCommit);
     }
-    else if (action.kind === 'revert') await this.git.revertCommit(action.oid);
-    else await this.git.resetToCommit(action.oid, this.resetMode());
+    else if (action.kind === 'revert') {
+      if (action.oids.length > 1) await this.git.revertCommits(action.oids);
+      else await this.git.revertCommit(action.oid, mainline);
+    }
+    else if (action.kind === 'split') {
+      await this.git.beginRebaseSplit(action.oid);
+      if (!this.git.error() && repositoryId === this.git.activeRepositoryId()) {
+        this.amendPrevious.set(false);
+        this.selectWip();
+      }
+    }
+    if (this.pendingHistoryAction() !== action || repositoryId !== this.git.activeRepositoryId()) return;
+    if (!this.git.error()) this.dismissHistoryConfirmation(true);
+    else afterNextRender(() => {
+      if (this.pendingHistoryAction() !== action || repositoryId !== this.git.activeRepositoryId()) return;
+      this.historyConfirmationDialog()?.nativeElement.querySelector<HTMLElement>('.recovery-error')?.focus();
+    }, { injector: this.injector });
+  }
+
+  protected async refreshResetPreview(mode: ResetMode = this.resetMode()): Promise<void> {
+    const action = this.pendingHistoryAction();
+    if (action?.kind !== 'reset' || this.git.busy()) return;
+    const request = ++this.resetPreviewRequest;
+    this.resetMode.set(mode);
+    this.resetPreview.set(null);
+    this.resetPreviewBusy.set(true);
+    const repositoryId = this.git.activeRepositoryId();
+    this.resetPreviewRepositoryId = repositoryId;
+    try {
+      const preview = await this.git.previewReset(action.oid, mode);
+      if (request === this.resetPreviewRequest && this.pendingHistoryAction() === action
+        && repositoryId === this.git.activeRepositoryId()) {
+        this.resetPreview.set(preview);
+      }
+    } finally {
+      if (request === this.resetPreviewRequest) this.resetPreviewBusy.set(false);
+    }
   }
 
   protected handleHistoryConfirmationKeydown(event: KeyboardEvent): void {
+    event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
-      event.stopPropagation();
       this.dismissHistoryConfirmation(true);
       return;
     }
@@ -9686,7 +10192,17 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissFileConfirmation(true);
       return;
     }
+
     this.cycleDialogFocus(this.fileConfirmationDialog()?.nativeElement, event);
+  }
+
+  protected handleSavedDiscardsKeydown(event: KeyboardEvent): void {
+    this.cycleDialogFocus(document.querySelector<HTMLElement>('.saved-discards-dialog') ?? undefined, event);
+  }
+
+  protected dismissSavedDiscards(): void {
+    this.savedDiscards.set(null);
+    queueMicrotask(() => this.workingTreeOptionsToggle()?.nativeElement.focus());
   }
 
   protected dismissFileConfirmation(restoreFocus = true): void {
@@ -9778,6 +10294,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected dismissHistoryConfirmation(restoreFocus = true): void {
     const target = restoreFocus ? this.historyActionReturnFocus : null;
     this.pendingHistoryAction.set(null);
+    this.resetPreviewRequest++;
+    this.resetPreview.set(null);
+    this.resetPreviewBusy.set(false);
+    this.resetPreviewRepositoryId = null;
     this.historyActionReturnFocus = null;
     if (target?.isConnected) {
       queueMicrotask(() => target.focus({ preventScroll: true }));
@@ -9792,7 +10312,11 @@ export class AppComponent implements OnInit, OnDestroy {
       ? document.activeElement
       : null;
     this.historyActionReturnFocus = returnFocus ?? activeElement;
+    this.historyActionRepositoryId = this.git.activeRepositoryId();
+    this.historyMainline.set(null);
+    this.historyNoCommit.set(false);
     this.pendingHistoryAction.set(action);
+    if (action.kind === 'reset') void this.refreshResetPreview();
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingHistoryAction() !== action) return;
       this.historyConfirmationDialog()?.nativeElement
@@ -10911,17 +11435,6 @@ function appendDiffSegment(segments: DiffTextSegment[], text: string | undefined
 function commitMessageBody(message: string): string {
   const newline = message.indexOf('\n');
   return newline < 0 ? '' : message.slice(newline + 1);
-}
-
-function parseCommitTemplate(template: string): { summary: string; description: string } {
-  const lines = template
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('#'));
-  while (lines[0]?.trim() === '') lines.shift();
-  while (lines.at(-1)?.trim() === '') lines.pop();
-  const summary = lines.shift()?.trim() ?? '';
-  return { summary, description: lines.join('\n').trim() };
 }
 
 function parseCoAuthors(body: string): { body: string; authors: CoAuthor[] } {

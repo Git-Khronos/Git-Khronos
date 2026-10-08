@@ -1,5 +1,28 @@
 # Third-party code and development tools
 
+## serde_json
+
+Source: <https://github.com/serde-rs/json>
+
+License: MIT OR Apache-2.0, verified in the canonical Cargo.toml.
+
+Usage: bounded JSON records for durable per-worktree operation recovery and
+test-only verification of the flattened desktop IPC response. Used
+unmodified as a dependency; no source code copied or adapted. The licenses are
+compatible with this GPL-3.0 project. Redistributed dependency packages must retain
+the selected upstream license and applicable notices.
+
+## getrandom
+
+Source: <https://github.com/rust-random/getrandom>
+
+License: MIT OR Apache-2.0 (verified in upstream v0.3.4 package metadata).
+
+Usage: OS-backed random operation capability tokens for the askpass IPC bridge.
+Used as an unmodified dependency, already present transitively in the workspace.
+No source code was copied or adapted. Upstream dependency license files remain
+applicable on redistribution; licenses are compatible with this GPL-3.0 project.
+
 ## Playwright Test
 
 Source: <https://github.com/microsoft/playwright>

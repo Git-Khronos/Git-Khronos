@@ -1,0 +1,78 @@
+<div class="rebase-backdrop" (click)="closed.emit()">
+  <section #dialog class="interactive-rebase" role="dialog" aria-modal="true" aria-label="Interactive rebase" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+    <header>
+      <span class="rebase-mark"><gc-icon name="edit" [size]="18" /></span>
+      <div><small>INTERACTIVE REBASE</small><h2>{{ state().source }} @if (state().root) { <i>from root</i> } @else if (!state().selectionOids) { <i>onto</i> {{ state().target }} }</h2><p>Fixup keeps the preceding message; Squash combines messages. Both need a retained predecessor. Edit pauses for amendments, then Continue. Original tip is saved for recovery.</p></div>
+      <button data-rebase-close type="button" aria-label="Close interactive rebase" title="Close interactive rebase" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button>
+    </header>
+    <div class="rebase-scope">
+      @if (state().root) {
+        <p>Entire history, including the root: all {{ state().steps.length }} reviewed commits may be rewritten. There is no unchanged parent base. Retain at least one commit. Root commits cannot use guided splitting.</p>
+      }
+      @if (state().selectionOids; as selection) {
+        <p>{{ selection.length }} selected commit(s), plus {{ state().steps.length - selection.length }} later commit(s) through HEAD. All {{ state().steps.length }} reviewed rows may be rewritten; @if (!state().ontoOid) { the base {{ state().base.slice(0, 8) }} remains unchanged. } @else { changes after boundary {{ state().base.slice(0, 8) }} will be replayed onto the chosen destination. }</p>
+        <label>Replay destination
+          <select aria-label="Replay destination" [ngModel]="state().ontoOid ?? ''" (ngModelChange)="destinationChanged.emit($event)">
+            <option value="">Keep original parent base {{ state().base.slice(0, 8) }}</option>
+            @for (destination of state().destinations; track $index) {
+              <option [value]="destination.oid">{{ destination.label }} · {{ destination.oid.slice(0, 8) }}</option>
+            }
+          </select>
+        </label>
+        @if (state().ontoOid; as destination) {
+          <p>Explicit --onto destination: <code>{{ destination }}</code>. This is the captured commit, not a moving branch. The destination reference is not changed. Conflicts or empty effects may stop replay; review and Continue, Skip or Abort explicitly.</p>
+        }
+      }
+      <p>Recorded remote reachability is based only on local remote-tracking references. Unknown does not mean unpublished. Coordinate before rewriting shared history.</p>
+      <gc-git-help topic="rebase" label="Learn about interactive rebase…" />
+    </div>
+    <div class="autosquash-review">
+      <button type="button" (click)="autosquash()">Preview autosquash</button>
+      <span>Match fixup!/squash! to an earlier unique subject or commit ID. Manual actions are never replaced.</span>
+      @if (autosquashError()) { <p role="alert">{{ autosquashError() }}</p> }
+      @if (autosquashNotice()) { <p role="status">{{ autosquashNotice() }}</p> }
+    </div>
+    <div class="rebase-column-head"><span>ACTION</span><span>COMMITS — OLDEST FIRST</span></div>
+    <p class="rebase-reorder-help">Move rows with the arrow buttons, drag, or focus a row and press Alt+Up/Down.</p>
+    <p class="rebase-reorder-announcement" aria-live="polite" aria-atomic="true">{{ reorderNotice() }}</p>
+    <div class="rebase-steps">
+      @for (step of state().steps; track step.oid; let index = $index) {
+        <div class="rebase-step action-{{ step.action }}"
+          tabindex="0" [attr.data-rebase-oid]="step.oid"
+          [attr.aria-label]="step.subject + ', position ' + (index + 1) + ' of ' + state().steps.length + '. Alt+Up or Alt+Down to move.'"
+          (focus)="selectedChanged.emit(step.oid)"
+          [class.selected]="selected() === step.oid" [class.dragging]="dragged() === step.oid"
+          draggable="true" (click)="selectedChanged.emit(step.oid)"
+          (dragstart)="dragStarted.emit({ event: $event, oid: step.oid })"
+          (dragover)="$event.preventDefault()" (drop)="dropped.emit({ event: $event, oid: step.oid })"
+          (dragend)="dragEnded.emit()">
+          <span class="rebase-grip" aria-hidden="true">⠿</span>
+          <select aria-label="Action for {{ step.subject }}" [ngModel]="step.action"
+            (ngModelChange)="actionChanged.emit({ oid: step.oid, action: $event })" (click)="$event.stopPropagation()">
+            <option value="pick">Pick</option><option value="reword">Reword</option>
+            <option value="edit">Edit</option>
+            <option value="squash" [disabled]="!canCombine(index)">Squash</option>
+            <option value="fixup" [disabled]="!canCombine(index)">Fixup</option><option value="drop">Drop</option>
+          </select>
+          <span class="avatar" [style.--author-color]="colorFor()(step.authorName, step.authorEmail)">{{ initials(step.authorName) }}</span>
+          <span class="rebase-commit-copy"><strong [title]="step.subject">{{ step.subject }}</strong><small [title]="step.oid">{{ step.oid.slice(0, 8) }} · {{ step.authorName }}</small><small>{{ state().remoteReachableOids?.includes(step.oid) ? 'Recorded remote-reachable' : 'Publication unknown' }} @if (state().selectionOids) { · {{ state().selectionOids?.includes(step.oid) ? 'Selected' : 'Later descendant' }} }</small></span>
+          <div class="rebase-move-controls">
+            <button type="button" aria-label="Move {{ step.subject }} up" title="Move up (Alt+Up)"
+              [disabled]="index === 0" (click)="$event.stopPropagation(); moveStep(step.oid, -1)"><gc-icon name="chevron-up" [size]="12" /></button>
+            <button type="button" aria-label="Move {{ step.subject }} down" title="Move down (Alt+Down)"
+              [disabled]="index === state().steps.length - 1" (click)="$event.stopPropagation(); moveStep(step.oid, 1)"><gc-icon name="chevron-down" [size]="12" /></button>
+          </div>
+          @if (step.action === 'reword') {
+            <textarea rows="2" aria-label="New message for {{ step.subject }}" [ngModel]="step.message"
+              (ngModelChange)="messageChanged.emit({ oid: step.oid, message: $event })" (click)="$event.stopPropagation()"></textarea>
+          }
+        </div>
+      }
+    </div>
+    <footer>
+      <div class="rebase-shortcuts" title="Squash/Fixup need a preceding retained commit. Original source tip is saved in a recovery reference."><span><kbd>P</kbd> Pick</span><span><kbd>R</kbd> Reword</span><span><kbd>E</kbd> Edit</span><span><kbd>S</kbd> Squash</span><span><kbd>F</kbd> Fixup</span><span><kbd>D</kbd> Drop</span></div>
+      <button type="button" (click)="resetPlan()">Reset</button>
+      <button class="primary" type="button" [disabled]="!ready()" (click)="execute.emit()">Start Rebase</button>
+    </footer>
+  </section>
+</div>

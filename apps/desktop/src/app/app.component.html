@@ -1,4 +1,86 @@
 <div class="app-shell" [class.is-busy]="git.busy()">
+  <gc-authentication />
+  @if (referenceAction() || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
+    @defer (on immediate) {
+      <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" />
+      <gc-fetch-options-dialog [request]="fetchRequest()" (closed)="fetchRequest.set(null)" />
+      <gc-worktree-move-dialog [request]="worktreeMoveRequest()" (closed)="worktreeMoveRequest.set(null)" />
+      <gc-stash-options-dialog [request]="stashDialog()" (closed)="stashDialog.set(null)" />
+    } @loading {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Git action" (keydown)="handleReferenceLoaderKey($event, 'action')">
+          <p role="status">Loading Git action…</p>
+          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction()">Cancel</button>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Git action unavailable" (keydown)="handleReferenceLoaderKey($event, 'action')">
+          <p role="alert">Git action could not load. Restart to retry. No command was run by this panel.</p>
+          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction()">Close</button>
+        </section>
+      </div>
+    }
+  }
+  @if (worktreeRegistrationRequest()) {
+    @defer (on immediate) {
+      <gc-worktree-registration-dialog [request]="worktreeRegistrationRequest()" (closed)="worktreeRegistrationRequest.set(null)" />
+    } @loading {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading worktree review" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
+          <p role="status">Loading worktree review…</p>
+          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Cancel</button>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Worktree review unavailable" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
+          <p role="alert">Worktree review could not load. Restart to retry. No command was run by this panel.</p>
+          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Close</button>
+        </section>
+      </div>
+    }
+  }
+  @if (documentation.request()) {
+    @defer (on immediate) {
+      <gc-git-documentation-dialog />
+    } @loading {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Git reference" (keydown)="handleReferenceLoaderKey($event, 'documentation')">
+          <p role="status">Loading Git reference…</p>
+          <button #documentationLoaderClose type="button" (click)="documentation.close()">Cancel</button>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Git reference unavailable" (keydown)="handleReferenceLoaderKey($event, 'documentation')">
+          <p role="alert">The Git reference could not load. Restart the application before retrying.</p>
+          <button #documentationLoaderClose type="button" (click)="documentation.close()">Close</button>
+        </section>
+      </div>
+    }
+  }
+  @if (lfsTrackingRequest()) {
+    @defer (on immediate) {
+      <gc-lfs-tracking-dialog [request]="lfsTrackingRequest()" (closed)="lfsTrackingRequest.set(null)" />
+    } @loading {
+      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader()">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading LFS tools"
+          (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation(); handleLfsLoaderKey($event)">
+          <div class="confirmation-copy"><p role="status">Loading LFS tools…</p></div>
+          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader()">Cancel</button>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader()">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="LFS tools unavailable"
+          (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation(); handleLfsLoaderKey($event)">
+          <div class="confirmation-copy"><p role="alert">The LFS tools panel could not be loaded. Close it and restart the app before retrying. No command was run by this panel.</p></div>
+          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader()">Close</button>
+        </section>
+      </div>
+    }
+  }
   @if (!git.repository()) {
     <main class="welcome">
       <div class="ambient ambient-one"></div>
@@ -173,7 +255,7 @@
           <gc-icon name="bell" [size]="15" />
           @if (activityAttentionCount()) { <b>{{ activityAttentionCount() > 9 ? '9+' : activityAttentionCount() }}</b> }
         </button>
-        <div class="preferences-control" (click)="$event.stopPropagation()">
+        <div class="preferences-control" [attr.inert]="lfsTrackingRequest() ? '' : null" (click)="$event.stopPropagation()">
           <button #preferencesToggle class="chrome-icon" type="button" title="Preferences" aria-label="Preferences" (click)="togglePreferences($event)" [attr.aria-expanded]="preferencesOpen()"><gc-icon name="settings" [size]="15" /></button>
           @if (preferencesOpen()) {
             <div class="preferences-backdrop" aria-hidden="true" (click)="closePreferences()"></div>
@@ -241,6 +323,7 @@
                   <option [ngValue]="30">Every 30 minutes</option>
                 </select></label>
                 <small>Fetches and prunes remote references. It never pulls or changes working files.</small>
+                <button #fetchHelp type="button" (click)="documentation.open('fetch', fetchHelp)" aria-haspopup="dialog">Learn about fetch and pruning…</button>
               </div>
               <div class="preference-group signing-preferences" [hidden]="preferencesSection() !== 'git'">
                 <span>Commit Signing <small>repository</small></span>
@@ -250,7 +333,8 @@
                 @if (git.signingDiagnostic(); as diagnostic) {
                   <div class="signing-diagnostic" [class.available]="diagnostic.available" [class.missing]="!diagnostic.available" aria-live="polite"><gc-icon [name]="diagnostic.available ? 'check' : 'warning'" [size]="13" /><span><strong>{{ diagnostic.available ? 'Signer available' : 'Signer unavailable' }}</strong><small>{{ diagnostic.message }}</small></span><code>{{ diagnostic.program }}</code></div>
                 }
-                <small>Git Chronos delegates signing and credentials to Git. Changing the commit checkbox overrides the repository default for that commit only.</small>
+                <small>Git owns signing. The commit checkbox overrides this default for one commit only.</small>
+                <button #signingHelp type="button" (click)="documentation.open('signing', signingHelp)" aria-haspopup="dialog">Learn about signing and verification…</button>
               </div>
               <div class="preference-group sparse-checkout-preferences" [hidden]="preferencesSection() !== 'git'">
                 <span>Sparse Checkout <small>repository</small></span>
@@ -265,6 +349,7 @@
                     <button class="danger" type="button" [disabled]="git.busy()" (click)="requestSparseCheckoutDisable()"><gc-icon name="x" [size]="12" />Disable</button>
                   }
                 </div>
+                <button #sparseHelp type="button" (click)="documentation.open('sparse', sparseHelp)" aria-haspopup="dialog">Learn about sparse checkout…</button>
               </div>
               <div class="preference-group lfs-preferences" [hidden]="preferencesSection() !== 'git'">
                 <span>Git LFS <small>repository</small></span>
@@ -278,6 +363,21 @@
                   <label class="lfs-pattern-field"><span>Tracking pattern</span><input type="text" maxlength="500" placeholder="*.psd" aria-label="Git LFS tracking pattern" [ngModel]="lfsPattern()" (ngModelChange)="lfsPattern.set($event)" (keydown.enter)="$event.preventDefault(); addLfsPattern()" /></label>
                   <label><input type="checkbox" [ngModel]="lfsPatternLockable()" (ngModelChange)="lfsPatternLockable.set($event)" /> Require a lock before editing</label>
                   <button type="button" [disabled]="git.busy() || !lfsPattern().trim()" (click)="addLfsPattern()"><gc-icon name="plus" [size]="12" />Track Pattern</button>
+                }
+                <button type="button" [disabled]="git.busy()" (click)="openLfsTracking()"><gc-icon name="server" [size]="12" />Manage tracking patterns…</button>
+                <button #lfsHelp type="button" (click)="documentation.open('lfs', lfsHelp)" aria-haspopup="dialog">Learn about Git LFS…</button>
+              </div>
+              <div class="preference-group" [hidden]="preferencesSection() !== 'git'">
+                <span>Learning and reference</span>
+                <small>Hints and official manuals. Help never changes repository data.</small>
+                <button #referenceHelp type="button" (click)="documentation.open(null, referenceHelp)" aria-haspopup="dialog">Git command reference…</button>
+                @defer (when preferencesSection() === 'git') {
+                  <gc-integrity-panel [repositoryId]="repo.id" [disabled]="git.busy()" />
+                  <gc-patch-exchange-panel [repositoryId]="repo.id" [disabled]="git.busy()" />
+                } @loading {
+                  <p role="status">Loading repository tools…</p>
+                } @error {
+                  <p role="alert">Repository tools unavailable. Restart to retry.</p>
                 }
               </div>
               <div class="preference-group editor-preferences" [hidden]="preferencesSection() !== 'editor'">
@@ -421,6 +521,7 @@
           @if (pullMenuOpen()) {
             <div id="pull-options-menu" class="toolbar-menu pull-menu" role="menu" aria-label="Pull options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <button type="button" role="menuitem" (click)="pullMenuOpen.set(false); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy()"><gc-icon name="refresh" [size]="13" /><span><strong>{{ git.backgroundFetchBusy() ? 'Fetching…' : 'Fetch All' }}</strong><small>{{ fetchMenuDetail() }}</small></span></button>
+              <button type="button" role="menuitem" (click)="openFetchOptions()" [disabled]="git.busy()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remote and pruning; leave tags unchanged</small></span></button>
               <div class="menu-separator"></div>
               <div class="menu-caption">Pull strategy</div>
               <div class="pull-strategy-row" [class.default]="pullStrategy() === 'merge'"><button type="button" role="menuitem" (click)="executePullStrategy('merge')"><gc-icon name="pull" [size]="13" /><span><strong>Fast-forward if possible</strong><small>Merge when fast-forward is not possible</small></span></button><button class="pull-default" type="button" role="menuitemradio" title="{{ pullStrategy() === 'merge' ? 'Default pull strategy' : 'Make Fast-forward if possible the default' }}" aria-label="{{ pullStrategy() === 'merge' ? 'Fast-forward if possible is the default pull strategy' : 'Make Fast-forward if possible the default pull strategy' }}" [attr.aria-checked]="pullStrategy() === 'merge'" (click)="setDefaultPullStrategy($event, 'merge')"><gc-icon name="star" [size]="12" /></button></div>
@@ -492,13 +593,13 @@
         <div class="toolbar-utilities">
           <button class="toolbar-panel-button" type="button" title="{{ detailsVisible() ? 'Hide' : 'Show' }} Commit Panel ({{ primaryShortcutKey }}+K)" aria-label="{{ detailsVisible() ? 'Hide' : 'Show' }} Commit Panel" aria-keyshortcuts="Control+K Meta+K" [class.active]="detailsVisible()" [attr.aria-pressed]="detailsVisible()" (click)="setPanelVisibility('commit-panel', !detailsVisible())"><gc-icon name="panel-right" [size]="14" /></button>
           <div class="graph-search" [class.expanded]="commitSearchExpanded()" [class.searching]="commitFilter().trim()" (focusout)="handleCommitSearchFocusOut($event)">
-          <button #commitSearchToggle class="graph-search-toggle" type="button" title="Focus commit search ({{ primaryShortcutKey }}+F)" aria-label="Focus commit search" aria-controls="commit-search-input" [attr.aria-expanded]="commitSearchExpanded()" (click)="focusCommitSearch()"><gc-icon name="search" [size]="13" /></button>
+          <button #commitSearchToggle class="graph-search-toggle" type="button" title="Search repository history ({{ primaryShortcutKey }}+F)" aria-label="Focus commit search" aria-controls="repository-history-dialog" aria-haspopup="dialog" [attr.aria-expanded]="repositoryHistorySearch()?.opened() || false" (click)="focusCommitSearch()"><gc-icon name="search" [size]="13" /></button>
           <input
             #commitSearch
             id="commit-search-input"
             type="search"
-            aria-label="Search commits by message, SHA, or author"
-            placeholder="Search commits"
+            aria-label="Filter loaded graph commits by message, SHA, or author"
+            placeholder="Filter loaded graph"
             [ngModel]="commitFilter()"
             (ngModelChange)="updateCommitSearch($event)"
             (focus)="commitSearchExpanded.set(true)"
@@ -516,6 +617,30 @@
         </div>
       </div>
     </header>
+
+    @if (git.repository()) {
+      @defer (when historySearchRequested()) {
+        <gc-history-search #repositoryHistorySearch (commitSelected)="selectCommit($event)" (comparisonReady)="showHistoryComparison()" />
+      } @loading {
+        @if (historySearchRequested()) {
+          <div class="confirmation-backdrop">
+            <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading history search" (keydown)="handleReferenceLoaderKey($event, 'history')">
+              <p role="status">Loading history search…</p>
+              <button #historyLoaderClose type="button" (click)="closeHistorySearchLoader()">Cancel</button>
+            </section>
+          </div>
+        }
+      } @error {
+        @if (historySearchRequested()) {
+          <div class="confirmation-backdrop">
+            <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="History search unavailable" (keydown)="handleReferenceLoaderKey($event, 'history')">
+              <p role="alert">History search could not load. Restart the application before retrying. No search was run by this panel.</p>
+              <button #historyLoaderClose type="button" (click)="closeHistorySearchLoader()">Close</button>
+            </section>
+          </div>
+        }
+      }
+    }
 
     @if (!sidebarVisible()) {
       <button
@@ -571,17 +696,20 @@
                     @else if (!worktree.statusLoaded) { <b title="Open this worktree to inspect its status">Status on open</b> }
                     @if (worktree.locked) { <i title="Locked"><gc-icon name="pin" [size]="10" /></i> }
                   </button>
-                  <button class="worktree-list-actions" type="button" title="Worktree actions" aria-label="Worktree actions for {{ worktree.branch ?? git.pathLabel(worktree.path) }}" aria-haspopup="menu" [attr.aria-expanded]="worktreeMenuPath() === worktree.path" (click)="toggleWorktreeMenu($event, worktree.path)"><gc-icon name="more" [size]="13" /></button>
+                  <button class="worktree-list-actions" type="button" [attr.data-worktree-path]="worktree.path" title="Worktree actions" aria-label="Worktree actions for {{ worktree.branch ?? git.pathLabel(worktree.path) }}" aria-haspopup="menu" [attr.aria-expanded]="worktreeMenuPath() === worktree.path" (click)="toggleWorktreeMenu($event, worktree.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (worktreeMenuPath() === worktree.path) {
                     <div #sidebarActionMenuElement class="worktree-card-menu list-menu" role="menu" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
                       <div><small>Worktree</small><strong>{{ worktree.branch || 'Detached HEAD' }}</strong></div>
                       <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="worktreeMenuPath.set(null); openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
                       <button type="button" role="menuitem" (click)="worktreeMenuPath.set(null); copyContextValue(worktree.path)"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
+                      <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || worktree.prunable || isWorktreeOpen(worktree.path)" (click)="openWorktreeMove(worktree)"><gc-icon name="folder-git" [size]="12" />Move linked worktree…</button>
+                      <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || isWorktreeOpen(worktree.path)" (click)="openWorktreeRepair(worktree)"><gc-icon name="refresh" [size]="12" />Repair after external move…</button>
+                      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview()"><gc-icon name="eye" [size]="12" />Review registrations and prune report…</button>
                       <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="setWorktreeLocked(worktree)"><gc-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree' }}</button>
                       <i></i>
                       <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || isWorktreeOpen(worktree.path)" (click)="requestWorktreeRemoval(worktree, false)"><gc-icon name="trash" [size]="12" />Remove this worktree</button>
                       <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || !worktree.branch || isWorktreeOpen(worktree.path)" (click)="requestWorktreeRemoval(worktree, true)"><gc-icon name="trash" [size]="12" />Remove worktree and delete branch</button>
-                      @if (!worktree.current && isWorktreeOpen(worktree.path)) { <p>Close its repository tab before removal.</p> }
+                      @if (!worktree.current && isWorktreeOpen(worktree.path)) { <p>Close its repository tab before moving or removing it.</p> }
                     </div>
                   }
                 </div>
@@ -823,15 +951,16 @@
         @if (repo.status.historyOperation; as operation) {
           <div class="history-operation-progress" role="status" [attr.aria-label]="'Git ' + operation + ' in progress'">
             <span><gc-icon [name]="operation === 'cherry-pick' ? 'cherry-pick' : 'revert'" [size]="13" /><strong>{{ operation === 'cherry-pick' ? 'CHERRY-PICK' : 'REVERT' }} IN PROGRESS</strong></span>
-            <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'All conflicts resolved; continue the operation' }}</small>
-            <div><button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('abort')">Abort</button><button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('skip')">Skip</button><button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted" (click)="controlHistoryOperation('continue')">Continue</button></div>
+            <small>{{ repo.status.historyNoCommit ? 'NO COMMIT: resolve and stage, then Continue without creating a commit. Abort restores the original tracked state; Finish manually keeps current files.' : repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'All conflicts resolved; continue the operation' }}</small>
+            <div><button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('abort')">Abort</button>@if (repo.status.historyNoCommit) { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('quit')">Finish manually</button> } @else { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('skip')">Skip</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (repo.status.historyNoCommit && !!repo.status.unstaged)" (click)="controlHistoryOperation('continue')">Continue</button></div>
           </div>
         }
         @if (repo.status.rebaseInProgress) {
-          <div class="rebase-progress">
-            <span><gc-icon name="refresh" [size]="13" /><strong>INTERACTIVE REBASE IN PROGRESS</strong></span>
-            <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'Stage resolved files, then continue' }}</small>
-            <div><button type="button" [disabled]="git.busy()" (click)="controlRebase('abort')">Abort</button><button type="button" [disabled]="git.busy()" (click)="controlRebase('skip')">Skip</button><button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted" (click)="controlRebase('continue')">Continue</button></div>
+          <div class="rebase-progress" role="status" aria-label="Git rebase in progress">
+            <span><gc-icon name="refresh" [size]="13" /><strong>{{ repo.status.rebaseSplit ? 'REBASE PAUSED FOR SPLIT' : repo.status.rebaseEditStopped && !repo.status.conflicted ? 'REBASE PAUSED FOR EDIT' : 'REBASE IN PROGRESS' }}</strong></span>
+            @if (repo.status.rebaseSplit; as split) { <small>{{ split.preparing ? 'Split reset was interrupted. Preserve changes and Abort; do not start it again.' : split.partCount + ' part(s) committed. Stage selected changes and create separate commits; keep the combined tree unchanged before Continue.' }}</small> }
+            @else { <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : repo.status.rebaseEditStopped ? 'Stage changes and Amend, then Continue; or Continue unchanged' + (isRebaseRootStop() ? '. Guided splitting requires a parent.' : ' / Split this commit') : 'Stage resolved files, then continue' }}</small> }
+            <div><button type="button" [disabled]="git.busy()" (click)="controlRebase('abort')">Abort</button>@if (!repo.status.rebaseSplit && (!repo.status.rebaseEditStopped || repo.status.conflicted)) { <button type="button" [disabled]="git.busy()" (click)="controlRebase('skip')">Skip</button> }@if (repo.status.rebaseEditStopped && !repo.status.rebaseSplit && !repo.status.conflicted && !isRebaseRootStop()) { <button type="button" [disabled]="git.busy() || !!repo.status.entryCount || repo.status.entriesTruncated" (click)="requestRebaseSplit()">Split this commit…</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (repo.status.rebaseEditStopped && !!(repo.status.staged || repo.status.unstaged)) || (!!repo.status.rebaseSplit && (repo.status.rebaseSplit.preparing || repo.status.rebaseSplit.partCount < 2 || !repo.status.rebaseSplit.treeMatches || !!repo.status.entryCount || repo.status.entriesTruncated))" (click)="controlRebase('continue')">Continue</button></div>
           </div>
         }
         @if (repo.status.bisectInProgress) {
@@ -850,27 +979,27 @@
         }
         <div class="graph-header" [style.--graph-scrollbar-gutter]="graphScrollbarGutter() + 'px'">
         <div #graphColumns class="graph-columns" (scroll)="restoreGraphHeaderScroll(graphColumns)" [class.has-trailing-column]="!!trailingGraphColumn()" [style.grid-template-columns]="graphHeaderGridColumns()" (contextmenu)="openGraphSettingsContext($event)">
-          @if (showBranchColumn()) { <span class="draggable-column" [class.leading-branch-column]="graphColumnPosition('branch') === 0" draggable="true" [class.dragging]="draggedGraphColumn() === 'branch'" [style.order]="graphColumnPosition('branch')" [class.trailing-column]="trailingGraphColumn() === 'branch'" [attr.title]="graphColumnHeadingIconic('branch') ? 'Branch / Tag' : null" (dragstart)="startGraphColumnDrag($event, 'branch')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'branch')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('branch')">BRANCH / TAG</span>@if (graphColumnHeadingIconic('branch')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.branch" [size]="14" /> }<i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('branch')" [title]="graphColumnResizeTitle('branch')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('branch') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize Branch and Tag column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('branch')" [attr.aria-valuemax]="graphColumnMaximumWidth('branch')" [attr.aria-valuenow]="graphColumnAriaWidth('branch')" [attr.aria-valuetext]="graphColumnAriaWidth('branch') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('branch', $event)" (keydown)="handleColumnResizeKeydown('branch', $event)" (dblclick)="resetGraphColumnWidth('branch', $event)"></i></span> }
+          @if (showBranchColumn()) { <span class="draggable-column" [class.leading-branch-column]="graphColumnPosition('branch') === 0" draggable="true" [class.dragging]="draggedGraphColumn() === 'branch'" [style.order]="graphColumnPosition('branch')" [class.trailing-column]="trailingGraphColumn() === 'branch'" [attr.title]="graphColumnHeadingIconic('branch') ? 'Branch / Tag' : null" (dragstart)="startGraphColumnDrag($event, 'branch')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'branch')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('branch')">BRANCH / TAG</span>@if (graphColumnHeadingIconic('branch')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.branch" [size]="14" /> }<i class="column-resizer" [title]="graphColumnResizeTitle('branch')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Branch and Tag column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('branch')" [attr.aria-valuemax]="graphColumnMaximumWidth('branch')" [attr.aria-valuenow]="graphColumnAriaWidth('branch')" [attr.aria-valuetext]="graphColumnAriaWidth('branch') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('branch', $event)" (keydown)="handleColumnResizeKeydown('branch', $event)" (dblclick)="resetGraphColumnWidth('branch', $event)"></i></span> }
           @if (showGraphColumn()) {
             <span class="draggable-column graph-column-heading" draggable="true" [class.dragging]="draggedGraphColumn() === 'graph'" [style.order]="graphColumnPosition('graph')" [class.trailing-column]="trailingGraphColumn() === 'graph'" [attr.title]="graphColumnHeadingIconic('graph') ? 'Graph' : null" (dragstart)="startGraphColumnDrag($event, 'graph')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'graph')" (dragend)="draggedGraphColumn.set(null)">
               <span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('graph')">GRAPH</span>@if (graphColumnHeadingIconic('graph')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.graph" [size]="14" /> }
               @if (pinnedGraphBranch(); as branch) {
                 <button class="pinned-branch-jump" type="button" draggable="false" title="Jump to pinned branch {{ branch.name }}" aria-label="Jump to pinned branch {{ branch.name }}" (pointerdown)="$event.stopPropagation()" (click)="jumpToReference($event, branch.oid)"><gc-icon name="pin" [size]="9" /></button>
               }
-              <i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('graph')" [title]="graphColumnResizeTitle('graph')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('graph') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize Graph column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('graph')" [attr.aria-valuemax]="graphColumnMaximumWidth('graph')" [attr.aria-valuenow]="graphColumnAriaWidth('graph')" [attr.aria-valuetext]="graphColumnAriaWidth('graph') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('graph', $event)" (keydown)="handleColumnResizeKeydown('graph', $event)" (dblclick)="resetGraphColumnWidth('graph', $event)"></i>
+              <i class="column-resizer" [title]="graphColumnResizeTitle('graph')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Graph column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('graph')" [attr.aria-valuemax]="graphColumnMaximumWidth('graph')" [attr.aria-valuenow]="graphColumnAriaWidth('graph')" [attr.aria-valuetext]="graphColumnAriaWidth('graph') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('graph', $event)" (keydown)="handleColumnResizeKeydown('graph', $event)" (dblclick)="resetGraphColumnWidth('graph', $event)"></i>
             </span>
           }
-          @if (showMessageColumn()) { <span class="draggable-column message-column-heading" draggable="true" [class.dragging]="draggedGraphColumn() === 'message'" [style.order]="graphColumnPosition('message')" [class.trailing-column]="trailingGraphColumn() === 'message'" (dragstart)="startGraphColumnDrag($event, 'message')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'message')" (dragend)="draggedGraphColumn.set(null)">COMMIT MESSAGE<i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('message')" [title]="graphColumnResizeTitle('message')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('message') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize Commit Message column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('message')" [attr.aria-valuemax]="graphColumnMaximumWidth('message')" [attr.aria-valuenow]="messageColumnAriaWidth()" [attr.aria-valuetext]="messageColumnAriaWidth() + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('message', $event)" (keydown)="handleColumnResizeKeydown('message', $event)" (dblclick)="resetGraphColumnWidth('message', $event)"></i></span> }
+          @if (showMessageColumn()) { <span class="draggable-column message-column-heading" draggable="true" [class.dragging]="draggedGraphColumn() === 'message'" [style.order]="graphColumnPosition('message')" [class.trailing-column]="trailingGraphColumn() === 'message'" (dragstart)="startGraphColumnDrag($event, 'message')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'message')" (dragend)="draggedGraphColumn.set(null)">COMMIT MESSAGE<i class="column-resizer" [title]="graphColumnResizeTitle('message')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Commit Message column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('message')" [attr.aria-valuemax]="graphColumnMaximumWidth('message')" [attr.aria-valuenow]="messageColumnAriaWidth()" [attr.aria-valuetext]="messageColumnAriaWidth() + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('message', $event)" (keydown)="handleColumnResizeKeydown('message', $event)" (dblclick)="resetGraphColumnWidth('message', $event)"></i></span> }
           @if (showAuthorColumn()) {
             <span class="draggable-column author-column-heading" draggable="true" [class.dragging]="draggedGraphColumn() === 'author'" [class.filtered]="authorFilter()" [class.compact]="compactAuthorColumn()" [style.order]="graphColumnPosition('author')" [class.trailing-column]="trailingGraphColumn() === 'author'" title="Author" (dragstart)="startGraphColumnDrag($event, 'author')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'author')" (dragend)="draggedGraphColumn.set(null)">
               <span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('author')">AUTHOR</span>@if (graphColumnHeadingIconic('author')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.author" [size]="14" /> }
               @if (authorFilter()) { <span class="author-filter-indicator" title="Author filter is active"></span> }
               <button class="author-filter-toggle" type="button" draggable="false" title="Filter commits by author" aria-label="Filter commits by author" [attr.aria-expanded]="authorFilterOpen()" (pointerdown)="$event.stopPropagation()" (click)="toggleAuthorFilter($event)"><gc-icon name="chevron-down" [size]="9" /></button>
-              <i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('author')" [title]="graphColumnResizeTitle('author')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('author') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize Author column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('author')" [attr.aria-valuemax]="graphColumnMaximumWidth('author')" [attr.aria-valuenow]="graphColumnAriaWidth('author')" [attr.aria-valuetext]="graphColumnAriaWidth('author') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('author', $event)" (keydown)="handleColumnResizeKeydown('author', $event)" (dblclick)="resetGraphColumnWidth('author', $event)"></i>
+              <i class="column-resizer" [title]="graphColumnResizeTitle('author')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Author column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('author')" [attr.aria-valuemax]="graphColumnMaximumWidth('author')" [attr.aria-valuenow]="graphColumnAriaWidth('author')" [attr.aria-valuetext]="graphColumnAriaWidth('author') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('author', $event)" (keydown)="handleColumnResizeKeydown('author', $event)" (dblclick)="resetGraphColumnWidth('author', $event)"></i>
             </span>
           }
-          @if (showDateColumn()) { <span class="draggable-column date-column-heading" draggable="true" title="Date / Time" [class.dragging]="draggedGraphColumn() === 'date'" [style.order]="graphColumnPosition('date')" [class.trailing-column]="trailingGraphColumn() === 'date'" (dragstart)="startGraphColumnDrag($event, 'date')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'date')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('date')">DATE / TIME</span>@if (graphColumnHeadingIconic('date')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.date" [size]="14" /> }<i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('date')" [title]="graphColumnResizeTitle('date')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('date') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize Date and Time column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('date')" [attr.aria-valuemax]="graphColumnMaximumWidth('date')" [attr.aria-valuenow]="graphColumnAriaWidth('date')" [attr.aria-valuetext]="graphColumnAriaWidth('date') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('date', $event)" (keydown)="handleColumnResizeKeydown('date', $event)" (dblclick)="resetGraphColumnWidth('date', $event)"></i></span> }
-          @if (showShaColumn()) { <span class="draggable-column" draggable="true" [class.dragging]="draggedGraphColumn() === 'sha'" [style.order]="graphColumnPosition('sha')" [class.trailing-column]="trailingGraphColumn() === 'sha'" [attr.title]="graphColumnHeadingIconic('sha') ? 'SHA' : null" (dragstart)="startGraphColumnDrag($event, 'sha')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'sha')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('sha')">SHA</span>@if (graphColumnHeadingIconic('sha')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.sha" [size]="14" /> }<i class="column-resizer" [class.leading-edge]="graphColumnHasLeadingResizeEdge('sha')" [title]="graphColumnResizeTitle('sha')" [attr.aria-keyshortcuts]="graphColumnHasLeadingResizeEdge('sha') ? 'ArrowLeft ArrowRight Home End' : null" role="separator" tabindex="0" aria-label="Resize SHA column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('sha')" [attr.aria-valuemax]="graphColumnMaximumWidth('sha')" [attr.aria-valuenow]="graphColumnAriaWidth('sha')" [attr.aria-valuetext]="graphColumnAriaWidth('sha') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('sha', $event)" (keydown)="handleColumnResizeKeydown('sha', $event)" (dblclick)="resetGraphColumnWidth('sha', $event)"></i></span> }
+          @if (showDateColumn()) { <span class="draggable-column date-column-heading" draggable="true" title="Date / Time" [class.dragging]="draggedGraphColumn() === 'date'" [style.order]="graphColumnPosition('date')" [class.trailing-column]="trailingGraphColumn() === 'date'" (dragstart)="startGraphColumnDrag($event, 'date')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'date')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('date')">DATE / TIME</span>@if (graphColumnHeadingIconic('date')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.date" [size]="14" /> }<i class="column-resizer" [title]="graphColumnResizeTitle('date')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize Date and Time column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('date')" [attr.aria-valuemax]="graphColumnMaximumWidth('date')" [attr.aria-valuenow]="graphColumnAriaWidth('date')" [attr.aria-valuetext]="graphColumnAriaWidth('date') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('date', $event)" (keydown)="handleColumnResizeKeydown('date', $event)" (dblclick)="resetGraphColumnWidth('date', $event)"></i></span> }
+          @if (showShaColumn()) { <span class="draggable-column" draggable="true" [class.dragging]="draggedGraphColumn() === 'sha'" [style.order]="graphColumnPosition('sha')" [class.trailing-column]="trailingGraphColumn() === 'sha'" [attr.title]="graphColumnHeadingIconic('sha') ? 'SHA' : null" (dragstart)="startGraphColumnDrag($event, 'sha')" (dragover)="$event.preventDefault()" (drop)="dropGraphColumn($event, 'sha')" (dragend)="draggedGraphColumn.set(null)"><span class="column-heading-label" [class.sr-only]="graphColumnHeadingIconic('sha')">SHA</span>@if (graphColumnHeadingIconic('sha')) { <gc-icon class="column-heading-icon" [name]="graphColumnIcons.sha" [size]="14" /> }<i class="column-resizer" [title]="graphColumnResizeTitle('sha')" aria-keyshortcuts="ArrowLeft ArrowRight Home End" role="separator" tabindex="0" aria-label="Resize SHA column" aria-orientation="vertical" [attr.aria-valuemin]="graphColumnMinimumWidth('sha')" [attr.aria-valuemax]="graphColumnMaximumWidth('sha')" [attr.aria-valuenow]="graphColumnAriaWidth('sha')" [attr.aria-valuetext]="graphColumnAriaWidth('sha') + ' pixels'" draggable="false" (pointerdown)="beginColumnResize('sha', $event)" (keydown)="handleColumnResizeKeydown('sha', $event)" (dblclick)="resetGraphColumnWidth('sha', $event)"></i></span> }
         </div>
           <button #graphSettingsToggle class="graph-settings-toggle" type="button" title="Configure graph columns" aria-label="Configure graph columns" aria-haspopup="dialog" aria-controls="graph-column-settings" [attr.aria-expanded]="graphSettingsOpen()" (click)="toggleGraphSettings($event)"><gc-icon name="settings" [size]="11" /></button>
           <!-- Rendered outside the clipped column header so the whole list stays visible and clickable. -->
@@ -927,7 +1056,7 @@
                 </svg>
                 <span class="ref-connector wip-ref-connector color-{{ wip.color }}" [style.width.px]="wip.nodeOffset"></span>
                 <span class="node wip-node color-{{ wip.color }}" [attr.data-lane-offset]="wip.nodeOffset" [style.left.px]="wip.nodeOffset - 11">W</span>
-                <i class="column-resizer graph-row-resizer" [hidden]="graphColumnHasLeadingResizeEdge('graph')" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="fitGraphColumnToBranches($event)"></i>
+                <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="fitGraphColumnToBranches($event)"></i>
               </span> }
               @if (showMessageColumn()) {
                 <span class="commit-main wip-commit-main" [style.order]="graphColumnPosition('message')" [class.trailing-cell]="trailingGraphColumn() === 'message'" title="{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} in {{ wip.worktree.path }}">
@@ -992,6 +1121,10 @@
             <button #workingTreeOptionsToggle class="inspector-overflow-action" [class.menu-open]="workingTreeOptionsOpen()" type="button" title="Working directory options" aria-label="Working directory options" aria-haspopup="menu" [attr.aria-expanded]="workingTreeOptionsOpen()" (click)="toggleWorkingTreeOptions($event)"><gc-icon name="more" [size]="15" /></button>
             @if (workingTreeOptionsOpen()) {
               <div #workingTreeOptionsMenu class="toolbar-menu panel-options-menu" role="menu" aria-label="Working directory options" (keydown)="handleWorkingTreeOptionsKeydown($event)">
+                <button type="button" role="menuitem" [disabled]="!git.repository()?.status?.entryCount || git.busy()" (click)="openStashOptions('save')"><gc-icon name="archive" [size]="13" /><span><strong>Stash with options…</strong><small>Selected files, keep staged contents, or staged-only</small></span></button>
+                <button type="button" role="menuitem" [disabled]="!(repo.status.unstaged + repo.status.untracked) || git.busy()" (click)="workingTreeOptionsOpen.set(false); requestBulkDiscard()"><gc-icon name="trash" [size]="13" /><span><strong>Discard all unstaged…</strong><small>Preview all files; preserve staged changes</small></span></button>
+                <button type="button" role="menuitem" [disabled]="!unstagedEntries().length || git.busy()" (click)="workingTreeOptionsOpen.set(false); discardSelectionMode.set(true)"><gc-icon name="check" [size]="13" /><span><strong>Select files for discard</strong><small>Choose only the unstaged files to discard</small></span></button>
+                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="workingTreeOptionsOpen.set(false); openSavedDiscards()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Recover discarded…</strong><small>Restore or remove saved bulk-discard captures</small></span></button>
                 <button type="button" role="menuitem" (click)="workingTreeOptionsOpen.set(false); git.refresh()"><gc-icon name="refresh" [size]="13" /><span><strong>Refresh working directory</strong><small>Reload status and repository history</small></span></button>
                 <button type="button" role="menuitem" (click)="workingTreeOptionsOpen.set(false); git.openRepositoryInFileManager()"><gc-icon name="folder-git" [size]="13" /><span><strong>Open in file manager</strong><small>{{ repo.path }}</small></span></button>
                 <button type="button" role="menuitem" (click)="workingTreeOptionsOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="13" /><span><strong>Open terminal</strong><small>Show repository terminal tabs</small></span></button>
@@ -1025,10 +1158,18 @@
           }
           <section class="file-section unstaged-section">
             <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><button type="button" (click)="git.stageAll()" [disabled]="!unstagedEntries().length || git.busy()">Stage all changes</button></div>
+            @if (discardSelectionMode()) {
+              <div class="discard-actions" role="group" aria-label="Select unstaged files for discard">
+                <span>Select files below</span>
+                <button type="button" (click)="requestBulkDiscard(true)" [disabled]="!selectedDiscardPaths().length || git.busy()">Discard selected…</button>
+                <button type="button" (click)="discardSelectionMode.set(false); selectedDiscardPaths.set([])">Cancel selection</button>
+              </div>
+            }
             @if (unstagedFilesOpen()) { <div id="unstaged-files-list" class="file-list unstaged-file-list" [style.max-height.px]="workingTreeFileListHeight('unstaged')">
               @if (workingTreeViewMode() === 'path') {
                 @for (entry of sortedUnstagedEntries(); track entry.path) {
                   <div class="file-row" [class.conflict]="entry.conflicted" [class.directory-summary]="isUntrackedDirectory(entry)" [class.selected]="git.selectedWorkingTreeFile() === 'unstaged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, false)" (contextmenu)="openFileMenu($event, entry, false)">
+                    @if (discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
                     <button class="stage-box" type="button" title="Stage {{ entry.path }}" aria-label="Stage {{ entry.path }}" (click)="git.stagePath(entry.path)"><gc-icon name="plus" [size]="12" /></button>
                     <span class="file-status" [title]="statusDescription(entry, false)" [attr.aria-label]="statusDescription(entry, false)" role="img">{{ entry.conflicted ? '!' : entry.indexStatus === '?' ? 'A' : entry.worktreeStatus }}</span>
                     <button class="file-name-button path-display" type="button" title="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" aria-label="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" [disabled]="isUntrackedDirectory(entry) && git.changesLoading()" (click)="isUntrackedDirectory(entry) ? expandUntrackedDirectory(entry.path) : inspectWorkingTreeFile(entry.path, false)">@if (isUntrackedDirectory(entry)) { <gc-icon name="folder-git" [size]="12" /> }<span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
@@ -1041,6 +1182,7 @@
                     <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
                   } @else if (row.entry; as entry) {
                     <div class="file-row tree-file" [style.padding-left.px]="10 + row.depth * 12" [class.conflict]="entry.conflicted" [class.directory-summary]="isUntrackedDirectory(entry)" [class.selected]="git.selectedWorkingTreeFile() === 'unstaged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, false)" (contextmenu)="openFileMenu($event, entry, false)">
+                      @if (discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
                       <button class="stage-box" type="button" title="Stage {{ entry.path }}" aria-label="Stage {{ entry.path }}" (click)="git.stagePath(entry.path)"><gc-icon name="plus" [size]="12" /></button>
                       <span class="file-status" [title]="statusDescription(entry, false)" [attr.aria-label]="statusDescription(entry, false)" role="img">{{ entry.conflicted ? '!' : entry.indexStatus === '?' ? 'A' : entry.worktreeStatus }}</span>
                       <button class="file-name-button" type="button" title="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" aria-label="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" [disabled]="isUntrackedDirectory(entry) && git.changesLoading()" (click)="isUntrackedDirectory(entry) ? expandUntrackedDirectory(entry.path) : inspectWorkingTreeFile(entry.path, false)">@if (isUntrackedDirectory(entry)) { <gc-icon name="folder-git" [size]="12" /> }{{ isUntrackedDirectory(entry) ? fileName(entry.path) : row.label }}</button>
@@ -1111,8 +1253,16 @@
               (ngModelChange)="commitMessage.set($event)"
             />
             <textarea name="description" aria-label="Commit description" placeholder="Description" rows="3" [ngModel]="commitDescription()" (ngModelChange)="commitDescription.set($event)"></textarea>
-            @if (repo.commitTemplate) {
-              <div class="commit-template-banner"><gc-icon name="file" [size]="11" /><span>Commit template configured</span><button type="button" (click)="reloadCommitTemplate()">Reload template</button></div>
+            @if (repo.commitTemplate !== null || repo.commitTemplateError) {
+              @defer {
+                <gc-commit-template-banner [repositoryId]="repo.id" [template]="repo.commitTemplate"
+                  [error]="repo.commitTemplateError ?? null" [disabled]="git.busy()"
+                  (retry)="git.refresh()" (accepted)="reloadCommitTemplate()" />
+              } @loading {
+                <p role="status">Loading template…</p>
+              } @error {
+                <p role="alert">Template controls failed to load. Restart to retry; draft is unchanged.</p>
+              }
             }
             <div class="coauthor-control" (click)="$event.stopPropagation()">
               @if (coAuthors().length) {
@@ -1123,6 +1273,18 @@
                 </div>
               }
               <button class="add-coauthor" type="button" [attr.aria-expanded]="coAuthorPickerOpen()" (click)="toggleCoAuthorPicker($event)"><gc-icon name="plus" [size]="11" /> Add co-author</button>
+              <details #commitPolicyDetails class="commit-policy" (toggle)="commitPolicyOpen.set(commitPolicyDetails.open)">
+                <summary aria-label="Commit policy options">Commit policy</summary>
+                @defer (when commitPolicyOpen()) {
+                  <gc-commit-policy-fields [policy]="commitPolicy()"
+                    [defaults]="{ name: repo.identity.name ?? '', email: repo.identity.email ?? '' }" [disabled]="git.busy()"
+                    (changed)="commitPolicy.set($event)" />
+                } @loading {
+                  <p role="status">Loading commit policy…</p>
+                } @error {
+                  <p role="alert">Policy unavailable. Restart to retry. No option was changed.</p>
+                }
+              </details>
               @if (coAuthorPickerOpen()) {
                 <div class="coauthor-picker">
                   <header><strong>Add co-author</strong><small>Creates a Co-authored-by trailer</small></header>
@@ -1145,18 +1307,18 @@
             </div>
             <div class="commit-options">
               <label class="commit-option"><input type="checkbox" name="pushAfter" aria-label="Push after committing" [ngModel]="pushAfterCommit()" (ngModelChange)="pushAfterCommit.set($event)" /> Push after commit</label>
-              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [ngModel]="amendPrevious()" (ngModelChange)="toggleAmend($event)" [disabled]="!repo.headOid" /> Amend previous</label>
-              <label class="commit-option" title="Override the repository default for this commit using Git's configured signing key and format"><input type="checkbox" name="signCommit" aria-label="Sign this commit" [ngModel]="signCommit()" (ngModelChange)="signCommit.set($event)" /> Sign commit</label>
-              <label class="commit-option"><input type="checkbox" name="skipHooks" aria-label="Skip Git hooks" [ngModel]="skipGitHooks()" (ngModelChange)="skipGitHooks.set($event)" /> Skip hooks</label>
+              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [ngModel]="!repo.status.rebaseSplit && amendPrevious()" (ngModelChange)="toggleAmend($event)" [disabled]="!repo.headOid || !!repo.status.rebaseSplit" /> Amend previous</label>
+              <label class="commit-option" title="Override signing for this commit using Git's configured key and format"><input type="checkbox" name="signCommit" aria-label="Sign this commit" [ngModel]="signCommit()" (ngModelChange)="signCommit.set($event)" /> Sign commit</label>
+              <label class="commit-option"><input type="checkbox" name="skipHooks" aria-label="Skip verification hooks" [ngModel]="skipGitHooks()" (ngModelChange)="skipGitHooks.set($event)" /> Skip checks</label>
             </div>
-            <button class="primary" type="submit" [disabled]="(!repo.status.staged && !amendPrevious()) || !commitMessage().trim() || git.busy()">
-              {{ amendPrevious() ? 'Amend previous commit' : 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') }}{{ pushAfterCommit() ? ' and push' : '' }}
+            <button class="primary" type="submit" [disabled]="repo.status.historyNoCommit || (!!repo.status.rebaseSplit && (repo.status.rebaseSplit.preparing || repo.status.rebaseSplit.partCount >= 500 || !repo.status.staged || commitPolicy().allowEmpty)) || (!repo.status.staged && !amendPrevious() && !commitPolicy().allowEmpty) || !commitMessage().trim() || git.busy()">
+              {{ !repo.status.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') }}{{ pushAfterCommit() ? ' and push' : '' }}
             </button>
           </form>
-        } @else if (git.commitComparison()?.workingTree || selectedCommitRows().length > 1) {
-          <div class="panel-title comparison-title"><strong>{{ git.commitComparison()?.workingTree ? 'Commit compared with WIP' : selectedCommitRows().length + ' commits selected' }}</strong><button type="button" title="Clear comparison" (click)="selectCommit(selectedCommitRows()[0].commit.oid)"><gc-icon name="x" [size]="12" /></button></div>
+        } @else if (git.commitComparison() || selectedCommitRows().length > 1) {
+          <div class="panel-title comparison-title"><strong>{{ git.commitComparison()?.workingTree ? 'Commit compared with WIP' : 'Revision comparison' }}</strong><button type="button" title="Clear comparison" (click)="clearHistoryComparison()"><gc-icon name="x" [size]="12" /></button></div>
           <section class="comparison-summary" aria-label="Selected commit range">
-            <header><strong>{{ git.commitComparison()?.workingTree ? 'Viewing working directory changes since this commit' : 'Viewing diff between ' + selectedCommitRows().length + ' commits' }}</strong></header>
+            <header><strong>{{ git.commitComparison()?.workingTree ? 'Viewing working directory changes since this commit' : git.commitComparison()?.comparisonMode === 'mergeBase' ? 'Merge base → target comparison' : 'Direct-tip comparison' }}</strong></header>
             @if (git.commitComparison()?.workingTree) {
               @if (selectedCommitRows()[0]; as row) {
                 <article class="comparison-commit-card">
@@ -1170,7 +1332,7 @@
                 <div><strong>Working directory</strong><small>{{ repo.status.entryCount }} current {{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</small></div>
                 <code>WIP</code><b>TO</b>
               </article>
-            } @else {
+            } @else if (selectedCommitRows().length > 1) {
               @for (row of [selectedCommitRows().at(-1)!, selectedCommitRows()[0]]; track row.commit.oid; let index = $index) {
                 <article class="comparison-commit-card">
                   <span class="comparison-avatar" [style.--author-color]="authorColor(row.commit.authorName, row.commit.authorEmail)">{{ initials(row.commit.authorName) }}</span>
@@ -1178,9 +1340,11 @@
                   <code>{{ shortOid(row.commit.oid) }}</code><b>{{ index === 0 ? 'FROM' : 'TO' }}</b>
                 </article>
               }
+            } @else if (git.commitComparison(); as comparison) {
+              <p><code>{{ shortOid(comparison.baseOid) }}</code> → <code>{{ shortOid(comparison.targetOid) }}</code></p>
             }
           </section>
-          @if (!git.commitComparison()?.workingTree && !selectionIsContiguous()) {
+          @if (!git.commitComparison() && !selectionIsContiguous()) {
             <div class="comparison-unavailable"><span><gc-icon name="git-commit" [size]="18" /></span><strong>Combined diff unavailable</strong><p>Select consecutive commits with Shift, or select exactly two commits with Ctrl/Cmd.</p></div>
           } @else if (git.commitComparison(); as comparison) {
             <section class="commit-file-section comparison-files">
@@ -1360,10 +1524,13 @@
             </div>
           }
           @if (!selectedStash() && git.commitDetails(); as details) {
-            <div class="commit-signature {{ details.signature.status }}" [attr.aria-label]="commitSignatureLabel(details.signature)" [title]="commitSignatureDetail(details.signature)">
-              <span><gc-icon [name]="commitSignatureIcon(details.signature)" [size]="12" /></span>
-              <div><strong>{{ commitSignatureLabel(details.signature) }}</strong><small>{{ commitSignatureDetail(details.signature) }}</small></div>
-            </div>
+            @defer (on immediate) {
+              <gc-commit-signature [signature]="details.signature" />
+            } @placeholder {
+              <div class="commit-signature-placeholder" role="status">Loading signature…</div>
+            } @error {
+              <p class="inspector-empty" role="alert">Signature view unavailable. Preserve drafts before restarting.</p>
+            }
           }
           <dl>
             <dt>Authored</dt><dd>{{ commit.authoredAt | date: 'medium' }}</dd>
@@ -1452,12 +1619,15 @@
               @if (selectedDiffLines(); as selection) {
                 <div class="selected-line-actions" role="group" aria-label="Selected line actions">
                   <span>{{ selection.lineIndices.length }} selected</span>
-                  <button type="button" [disabled]="git.busy()" (click)="applySelectedDiffLines()">{{ activeWorkingTreeDiff()?.staged ? 'Unstage' : 'Stage' }}</button>
-                  @if (!activeWorkingTreeDiff()?.staged) { <button class="discard" type="button" [disabled]="git.busy()" (click)="requestDiscardSelectedDiffLines()">Discard</button> }
+                  <button type="button" [disabled]="git.busy() || diff.truncated" title="Apply only the selected changes to the index; the working file stays unchanged" (click)="applySelectedDiffLines()">{{ activeWorkingTreeDiff()?.staged ? 'Unstage' : 'Stage' }}</button>
+                  @if (!activeWorkingTreeDiff()?.staged && !isUntrackedPath(diff.path)) { <button class="discard" type="button" [disabled]="git.busy() || diff.truncated" (click)="requestDiscardSelectedDiffLines()">Discard</button> }
                   <button class="clear" type="button" title="Clear line selection" aria-label="Clear selected lines" (click)="selectedDiffLineGroups.set([])"><gc-icon name="x" [size]="9" /></button>
                 </div>
               }
               <button class="diff-wrap-toggle" type="button" [class.active]="diffWordWrap()" (click)="setDiffPreference('word-wrap', !diffWordWrap())" title="Toggle word wrap">Word Wrap</button>
+              @if (activeWorkingTreeDiff()) {
+                <button type="button" aria-label="Reload diff" title="Reload the current file and clear selected lines" [disabled]="git.busy() || git.detailsBusy()" (click)="reloadWorkingTreeDiff()"><gc-icon name="refresh" [size]="13" /></button>
+              }
             }
           </div>
           <button class="diff-close" type="button" aria-label="Close diff" title="Close diff (Esc)" (click)="closeDiffViewer()"><gc-icon name="x" [size]="13" /></button>
@@ -1465,19 +1635,25 @@
         <div class="diff-content-shell" [class.insight-open]="diffInsightMode() !== 'diff'">
           @if (diffInsightMode() === 'history') {
             <section class="file-insight-panel history-insight" aria-label="File history">
-              <header><div><strong>File History</strong><small>{{ diff.path }} · up to {{ shortOid(activeDiffRevision() || '') }}</small></div><b>{{ git.fileHistory()?.length ?? 0 }} commits</b></header>
-              @if (git.fileInsightBusy()) {
+              <header><div><strong>File History</strong><small>{{ diff.path }} · renamed paths followed</small></div><b>{{ historySearch.files().length }} commits{{ historySearch.fileComplete() ? ' · complete' : ' · incomplete' }}</b></header>
+              @if (historySearch.fileBusy()) {
                 <div class="file-insight-loading"><span></span><span></span><span></span><small>Reading file history…</small></div>
-              } @else {
+                <button type="button" (click)="historySearch.cancelFile()">Cancel file history</button>
+              }
+              @if (historySearch.fileError()) { <p role="alert">{{ historySearch.fileError() }}</p> }
                 <div class="history-list">
-                  @for (entry of git.fileHistory() ?? []; track entry.oid) {
+                  @for (entry of historySearch.files(); track entry.oid) {
                     <article class="history-entry">
                       <span class="history-avatar" [style.--author-color]="authorColor(entry.authorName, entry.authorEmail)">{{ initials(entry.authorName) }}</span>
-                      <div><strong>{{ entry.subject }}</strong><small>{{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
+                      <div><button type="button" (click)="openHistoricalFile(entry.oid, entry.path, entry.previousPath)">{{ entry.subject }}</button><small>{{ entry.path }} · {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
                       <code>{{ shortOid(entry.oid) }}</code>
                     </article>
-                  } @empty { <div class="file-insight-empty">No history was found for this file at the selected revision.</div> }
+                  } @empty {
+                    @if (historySearch.fileComplete()) { <div class="file-insight-empty">No history was found for this file at the selected revision.</div> }
+                  }
                 </div>
+              @if (!historySearch.fileComplete() && !historySearch.fileBusy()) {
+                <button type="button" (click)="historySearch.nextFile()">{{ historySearch.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
               }
             </section>
           } @else if (diffInsightMode() === 'blame') {
@@ -1489,7 +1665,7 @@
                 <div class="blame-lines">
                   @for (line of blameRows(); track line.lineNumber) {
                     <div class="blame-line" title="{{ line.summary }} · {{ line.authorEmail }}">
-                      <span>{{ line.lineNumber }}</span><code class="blame-sha">{{ shortOid(line.oid) }}</code><span class="blame-author">{{ line.authorName }}</span><time>{{ (line.authoredAt * 1000) | date: 'MMM d, y' }}</time>
+                      <span>{{ line.lineNumber }}</span><button type="button" class="blame-sha" (click)="navigateBlame(line.oid, line.path || diff.path, false)" title="Open blamed commit">{{ shortOid(line.oid) }}</button><button type="button" (click)="navigateBlame(line.oid, line.path || diff.path, true)" title="Open first parent of blamed commit">Parent</button><span class="blame-author">{{ line.authorName }}</span><time>{{ (line.authoredAt * 1000) | date: 'MMM d, y' }}</time>
                       <code class="blame-source">@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}">{{ token.text }}</span>}</code>
                     </div>
                   } @empty { <div class="file-insight-empty">No blame information was found for this file.</div> }
@@ -1521,13 +1697,13 @@
             <div #focusedDiff class="focus-diff-view {{ diffViewMode() }}" role="region" aria-label="File changes">
               @for (line of diffLines(); track $index) {
                 <div class="focus-diff-line {{ line.kind }}" [class.active-hunk]="line.kind === 'hunk' && line.hunkIndex === activeDiffHunk()" [class.line-selected]="isDiffLineSelected(line)" [attr.data-diff-hunk]="line.kind === 'hunk' ? line.hunkIndex : null">
-                  <span>@if (line.kind === 'addition' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="isUntrackedPath(diff.path)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
-                  <span>@if (line.kind === 'deletion' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="isUntrackedPath(diff.path)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.newLine }} }</span>
+                  <span>@if (line.kind === 'addition' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
+                  <span>@if (line.kind === 'deletion' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.newLine }} }</span>
                   <div class="focus-diff-code"><code>@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}</code>
-                    @if (diffViewMode() === 'hunk' && line.hunkIndex !== null && activeWorkingTreeDiff(); as workingDiff) {
+                    @if (diffViewMode() === 'hunk' && line.kind === 'hunk' && line.hunkIndex !== null && activeWorkingTreeDiff(); as workingDiff) {
                       <div class="focus-hunk-actions">
-                        <button type="button" [disabled]="git.busy() || isUntrackedPath(workingDiff.path)" (click)="applyHunk(workingDiff.path, workingDiff.staged, line.hunkIndex)">{{ workingDiff.staged ? 'Unstage Hunk' : 'Stage Hunk' }}</button>
-                        @if (!workingDiff.staged) { <button class="discard" type="button" [disabled]="git.busy() || isUntrackedPath(workingDiff.path)" (click)="requestDiscardHunk(workingDiff.path, line.hunkIndex)">Discard Hunk</button> }
+                        <button type="button" [disabled]="git.busy() || diff.truncated" (click)="applyHunk(workingDiff.path, workingDiff.staged, line.hunkIndex)">{{ workingDiff.staged ? 'Unstage Hunk' : 'Stage Hunk' }}</button>
+                        @if (!workingDiff.staged) { <button class="discard" type="button" [disabled]="git.busy() || diff.truncated || isUntrackedPath(workingDiff.path)" (click)="requestDiscardHunk(workingDiff.path, line.hunkIndex)">Discard Hunk</button> }
                       </div>
                     }
                   </div>
@@ -1544,7 +1720,7 @@
         </div>
         <footer class="diff-workspace-footer">
           @if (diffInsightMode() === 'history') {
-            <span>{{ git.fileHistory()?.length ?? 0 }} commits in file history</span>
+            <span>{{ historySearch.files().length }} commits in file history{{ historySearch.fileComplete() ? ' · complete' : ' · more history may remain' }}</span>
           } @else if (diffInsightMode() === 'blame') {
             <span>{{ blameRows().length }} blamed lines</span>
           } @else {
@@ -1794,6 +1970,7 @@
           <div class="form-intro"><span><gc-icon name="remote" [size]="21" /></span><div><h2>Remote details</h2><p>Use an HTTPS, SSH, or local Git repository URL. Fetching remains a separate action.</p></div></div>
           <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [ngModel]="remoteName()" (ngModelChange)="remoteName.set($event)" /></label>
           <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="remoteUrl()" (ngModelChange)="remoteUrl.set($event)" /></label>
+          <details><summary>Advanced: separate push destination</summary><label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" [ngModel]="remotePushUrl()" (ngModelChange)="remotePushUrl.set($event)" /></label><p>Leave empty to use the fetch URL. A separate push URL changes where branches and tags are sent, not where they are fetched.</p></details>
           <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [ngModel]="remoteDialogIcon()" (ngModelChange)="remoteDialogIcon.set($event)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value">{{ option.label }}</option> }</select></label>
           @if (mode === 'edit') { <small class="remote-push-note">Push currently uses {{ editedRemotePushUrl() }}.</small> }
           <footer>
@@ -1824,7 +2001,8 @@
         <div class="confirmation-copy">
           <span>Prune Git LFS storage</span>
           <h2 id="prune-lfs-title">Remove old local objects?</h2>
-          <p>This runs <code>git lfs prune</code>. It permanently removes local LFS objects considered old and unreferenced. Confirm that important objects have been pushed before continuing.</p>
+          <p>This runs <code>git lfs prune</code> using the current retention and fetch-exclude settings. Historical, orphaned or fetch-excluded cached objects may be removed, not just unreferenced objects.</p>
+          <p>This confirmation does not provide an exact candidate list or require remote verification. Review the scope with local Git LFS first. Never prune a cache shared with another repository. Deleted local copies have no offline undo.</p>
         </div>
         <footer><button type="button" (click)="closeLfsPrune()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmLfsPrune()">Prune Objects</button></footer>
       </section>
@@ -1859,7 +2037,7 @@
       </section>
     </div>
   }
-  @if (git.error(); as error) {
+  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && git.error(); as error) {
     <div class="error-toast" role="alert">
       <span>!</span><p><strong>Git needs attention</strong>{{ error }}</p>
       <button class="view-error-log" type="button" (click)="openErrorActivityLog()">View log</button>
@@ -1998,6 +2176,8 @@
     <div #actionMenuElement class="context-menu stash-context-menu" role="menu" aria-label="Stash actions" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleContextMenuKeydown($event)">
       <div class="context-heading"><span>{{ menu.stash.reference }}</span><strong>{{ menu.stash.message }}</strong></div>
       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="applyStashFromMenu(false)"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply Stash</button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('apply', menu.stash)"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply with staged-state options…</button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('branch', menu.stash)"><span><gc-icon name="branch" [size]="13" /></span>Create branch from stash…</button>
       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="applyStashFromMenu(true)"><span><gc-icon name="archive" [size]="13" /></span>Pop Stash</button>
       <div class="context-divider"></div>
       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="beginStashRename(menu.stash)"><span><gc-icon name="edit" [size]="13" /></span>Edit stash message…</button>
@@ -2024,7 +2204,7 @@
       <button type="button" role="menuitem" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }}</strong><small>Preserve the source branch history</small></span></button>
       <button type="button" role="menuitem" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage the combined result for one commit</small></span></button>
       <button type="button" role="menuitem" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay source commits on the target</small></span></button>
-      <button type="button" role="menuitem" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, squash, or drop source commits</small></span></button>
+      <button type="button" role="menuitem" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, combine, or drop source commits</small></span></button>
       <footer><button type="button" (click)="dismissBranchDropMenu(true)">Cancel</button></footer>
     </section>
   }
@@ -2048,6 +2228,18 @@
       <button type="button" role="menuitem" (click)="copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
         <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
       </button>
+      @if (menu.kind === 'branch' && menu.label !== git.repository()?.status?.branch && git.repository()?.status?.entryCount) {
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('switch')"><span><gc-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>
+      }
+      @if (menu.kind === 'tag') {
+        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('push-tag')"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="verifyContextTag()"><span><gc-icon name="check" [size]="13" /></span>Verify tag signature</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('delete-remote-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
+      }
+      @if (menu.kind === 'remote') {
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-remote-branch')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
+      }
       @if (menu.kind === 'branch' || menu.kind === 'remote') {
         <button type="button" role="menuitem" (click)="compareContextReferenceWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
       }
@@ -2057,7 +2249,8 @@
           <button type="button" role="menuitem" (click)="editContextCommitMessage()"><span><gc-icon name="edit" [size]="13" /></span>Edit commit message</button>
         }
         <button type="button" role="menuitem" (click)="requestHistoryAction('cherry-pick')"><span><gc-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="requestHistoryAction('revert')"><span><gc-icon name="revert" [size]="13" /></span>Revert commit</button>
+        <button type="button" role="menuitem" (click)="requestHistoryAction('revert')"><span><gc-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
+        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.status?.branch" (click)="openSelectedRebase()"><span><gc-icon name="edit" [size]="13" /></span>{{ menu.oids.length === 1 ? 'Edit history from this commit…' : 'Edit selected range…' }}</button>
         <button type="button" role="menuitem" [disabled]="menu.oids.length > 1 || !canStartBisectAt(menu.oid)" (click)="requestBisectFromContext()"><span><gc-icon name="history" [size]="13" /></span>Start bisect from here…</button>
         <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="requestHistoryAction('reset')"><span><gc-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
       } @else if (menu.kind === 'branch') {
@@ -2071,6 +2264,10 @@
         <button type="button" role="menuitem" (click)="soloContextBranch()"><span><gc-icon name="eye" [size]="13" /></span>{{ isBranchSoloed(menu.label) ? 'Unsolo' : 'Solo' }} branch</button>
         <button type="button" role="menuitem" (click)="toggleContextBranchPin()"><span><gc-icon name="pin" [size]="13" /></span>{{ isBranchPinned(menu.label) ? 'Unpin from left' : 'Pin to left' }}</button>
         <button type="button" role="menuitem" [disabled]="menu.label === git.repository()?.status?.branch" (click)="openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}</button>
+        <button type="button" role="menuitem" [disabled]="git.busy() || menu.label === git.repository()?.status?.branch" (click)="openMergeRebase()"><span><gc-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
+        @if (menu.label === git.repository()?.status?.branch) {
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRootRebase()"><span><gc-icon name="edit" [size]="13" /></span>Edit entire history, including root…</button>
+        }
         <div class="context-divider"></div>
         <button type="button" role="menuitem" [disabled]="menu.label === git.repository()?.status?.branch" (click)="integrateContextBranch('ff-only')"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ git.repository()?.status?.branch }} to {{ menu.label }}</button>
         <button type="button" role="menuitem" [disabled]="menu.label === git.repository()?.status?.branch" (click)="integrateContextBranch('merge')"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
@@ -2141,84 +2338,95 @@
       </div>
     }
   }
-  @if (interactiveRebase(); as rebase) {
-    <div class="rebase-backdrop" (click)="interactiveRebase.set(null)">
-      <section class="interactive-rebase" role="dialog" aria-modal="true" aria-label="Interactive rebase" (click)="$event.stopPropagation()">
-        <header>
-          <span class="rebase-mark"><gc-icon name="edit" [size]="18" /></span>
-          <div><small>INTERACTIVE REBASE</small><h2>{{ rebase.source }} <i>onto</i> {{ rebase.target }}</h2><p>Drag commits to reorder them, then choose how each commit is replayed.</p></div>
-          <button type="button" title="Close interactive rebase" (click)="interactiveRebase.set(null)"><gc-icon name="x" [size]="14" /></button>
-        </header>
-        <div class="rebase-column-head"><span>ACTION</span><span>COMMITS — OLDEST FIRST</span></div>
-        <div class="rebase-steps">
-          @for (step of rebase.steps; track step.oid; let index = $index) {
-            <div
-              class="rebase-step action-{{ step.action }}"
-              [class.selected]="selectedRebaseOid() === step.oid"
-              [class.dragging]="draggedRebaseOid() === step.oid"
-              draggable="true"
-              (click)="selectRebaseStep(step.oid)"
-              (dragstart)="startRebaseStepDrag($event, step.oid)"
-              (dragover)="$event.preventDefault()"
-              (drop)="dropRebaseStep($event, step.oid)"
-              (dragend)="draggedRebaseOid.set(null)"
-            >
-              <span class="rebase-grip">⠿</span>
-              <select aria-label="Action for {{ step.subject }}" [ngModel]="step.action" (ngModelChange)="setRebaseAction(step.oid, $event)" (click)="$event.stopPropagation()">
-                <option value="pick">Pick</option>
-                <option value="reword">Reword</option>
-                <option value="squash" [disabled]="index === 0">Squash</option>
-                <option value="drop">Drop</option>
-              </select>
-              <span class="avatar" [style.--author-color]="authorColor(step.authorName, step.authorEmail)">{{ initials(step.authorName) }}</span>
-              <span class="rebase-commit-copy"><strong>{{ step.subject }}</strong><small>{{ shortOid(step.oid) }} · {{ step.authorName }}</small></span>
-              @if (step.action === 'reword') {
-                <textarea rows="2" aria-label="New message for {{ step.subject }}" [ngModel]="step.message" (ngModelChange)="updateRebaseMessage(step.oid, $event)" (click)="$event.stopPropagation()"></textarea>
-              }
-            </div>
-          }
-        </div>
-        <footer>
-          <div class="rebase-shortcuts"><span><kbd>P</kbd> Pick</span><span><kbd>R</kbd> Reword</span><span><kbd>S</kbd> Squash</span><span><kbd>D</kbd> Drop</span></div>
-          <button type="button" (click)="resetInteractiveRebase()">Reset</button>
-          <button class="primary" type="button" [disabled]="!canExecuteInteractiveRebase() || git.busy()" (click)="executeInteractiveRebase()">Start Rebase</button>
-        </footer>
-      </section>
-    </div>
+  @if (interactiveRebase() || mergeRebaseReview()) {
+    @defer (on immediate) {
+      @if (mergeRebaseReview(); as mergeReview) {
+        <gc-merge-rebase-dialog [state]="mergeReview" (closed)="mergeRebaseReview.set(null)" />
+      }
+      @if (interactiveRebase(); as rebase) {
+      <gc-interactive-rebase-editor [state]="rebase" [selected]="selectedRebaseOid()" [dragged]="draggedRebaseOid()"
+        [ready]="canExecuteInteractiveRebase() && !git.busy()" [colorFor]="rebaseAuthorColor"
+        (closed)="interactiveRebase.set(null)" (selectedChanged)="selectRebaseStep($event)"
+        (actionChanged)="setRebaseAction($event.oid, $event.action)" (messageChanged)="updateRebaseMessage($event.oid, $event.message)"
+        (dragStarted)="startRebaseStepDrag($event.event, $event.oid)" (dropped)="dropRebaseStep($event.event, $event.oid)"
+        (dragEnded)="draggedRebaseOid.set(null)" (planChanged)="updateRebasePlan($event)"
+        (destinationChanged)="setRebaseDestination($event)"
+        (reset)="resetInteractiveRebase()" (execute)="executeInteractiveRebase()" />
+      }
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading interactive rebase" (keydown)="handleRebaseLoaderKey($event)">
+        <p role="status">Loading rebase editor. No history changes have been made.</p>
+        <button #rebaseLoaderClose type="button" (click)="closeRebaseReviewLoader()">Cancel</button>
+      </section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Rebase editor unavailable" (keydown)="handleRebaseLoaderKey($event)">
+        <p role="alert">The rebase editor could not load. No command was run. Preserve drafts before restarting to retry.</p>
+        <button #rebaseLoaderClose type="button" (click)="closeRebaseReviewLoader()">Close</button>
+      </section></div>
+    }
   }
   @if (git.conflictDetails(); as conflict) {
-    <div class="merge-tool-backdrop" (click)="git.conflictDetails.set(null)">
-      <section class="merge-tool" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()">
+    <div class="merge-tool-backdrop" (click)="closeConflictTool()">
+      <section class="merge-tool" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="handleConflictKeydown($event)">
         <header>
           <span class="merge-mark"><gc-icon name="merge" [size]="18" /></span>
           <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>Choose a side or edit the resolved output, then mark the file resolved.</p></div>
-          <button type="button" title="Close Merge Tool" (click)="git.conflictDetails.set(null)"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close conflict editor" title="Close Merge Tool" (click)="closeConflictTool()"><gc-icon name="x" [size]="14" /></button>
         </header>
+        <div class="merge-notices">
+        @if (git.repository()?.status?.rebaseInProgress) {
+          <p class="merge-warning">During rebase, Current is the destination history plus commits already replayed. Incoming is the commit now being replayed, not the destination branch.</p>
+        } @else {
+          <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed). A missing side means deletion, not an empty file.</p>
+        }
+        @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
+        @if (conflict.submodule) { <p class="merge-warning">Resolve this gitlink by choosing a commit inside the submodule with Git, then refresh the parent repository. The text editor cannot resolve submodule history.</p> }
+        </div>
+        <div class="merge-content" [class.binary]="conflict.binary">
         @if (conflict.binary) {
           <div class="binary-conflict"><gc-icon name="file" [size]="30" /><strong>Binary file conflict</strong><p>This file cannot be edited as text. Choose the current or incoming version.</p></div>
         } @else {
           <div class="merge-sides">
             <section>
-              <header><span>CURRENT</span><small>Ours</small><button type="button" (click)="useConflictSide('current')">Use current</button></header>
+              <header><span>CURRENT</span><small>Ours · stage 2</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.current === null" (click)="useConflictSide('current')">Use current</button></header>
               @if (conflict.current !== null) { <pre>{{ conflict.current }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
             </section>
             <section>
-              <header><span>INCOMING</span><small>Theirs</small><button type="button" (click)="useConflictSide('incoming')">Use incoming</button></header>
+              <header><span>INCOMING</span><small>Theirs · stage 3</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.incoming === null" (click)="useConflictSide('incoming')">Use incoming</button></header>
               @if (conflict.incoming !== null) { <pre>{{ conflict.incoming }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
             </section>
           </div>
           <section class="merge-output">
             <header><span>OUTPUT</span><small>Edit the final file</small></header>
-            <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [ngModel]="conflictOutput()" (ngModelChange)="conflictOutput.set($event)"></textarea>
+            <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [ngModel]="conflictOutput()" (ngModelChange)="conflictOutput.set($event)"></textarea>
           </section>
-          @if (conflict.truncated) { <div class="merge-warning">This file was truncated at 1 MB. Use an external merge tool to avoid data loss.</div> }
+          @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }
+          @if (!conflict.editable && !conflict.truncated) { <div class="merge-warning">This file type cannot be saved as text. Choose a complete side, or resolve it with Git.</div> }
         }
+        </div>
         <footer>
           <span>{{ conflict.binary ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
-          <button type="button" (click)="resolveOpenConflict('current')" [disabled]="git.busy()">Take Current</button>
-          <button type="button" (click)="resolveOpenConflict('incoming')" [disabled]="git.busy()">Take Incoming</button>
-          @if (!conflict.binary && !conflict.truncated) { <button class="primary" type="button" (click)="resolveOpenConflict('output')" [disabled]="git.busy()">Save Output &amp; Mark Resolved</button> }
+          <button type="button" title="Reload the latest conflict; replace unsaved editor output" (click)="openConflictTool(conflict.path)" [disabled]="git.busy()">Reload conflict</button>
+          <button type="button" (click)="resolveOpenConflict('current')" [disabled]="git.busy() || conflict.submodule">{{ !conflict.currentExists ? 'Accept current deletion' : 'Take Current' }}</button>
+          <button type="button" (click)="resolveOpenConflict('incoming')" [disabled]="git.busy() || conflict.submodule">{{ !conflict.incomingExists ? 'Accept incoming deletion' : 'Take Incoming' }}</button>
+          @if (conflict.editable) { <button class="primary" type="button" (click)="resolveOpenConflict('output')" [disabled]="git.busy()">Save Output &amp; Mark Resolved</button> }
         </footer>
+      </section>
+    </div>
+  }
+  @if (savedDiscards(); as recoveries) {
+    <div class="confirmation-backdrop" (click)="dismissSavedDiscards()">
+      <section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-labelledby="saved-discards-title" (click)="$event.stopPropagation()" (keydown)="$event.key === 'Escape' ? dismissSavedDiscards() : handleSavedDiscardsKeydown($event)">
+        <div class="confirmation-copy">
+          <h2 id="saved-discards-title">Discarded-change recovery</h2>
+          <p>Captured bulk discards remain in this worktree's Git directory after restart. Recovery checks the current files before applying; it will not overwrite conflicting edits. Remove captures explicitly when no longer needed.</p>
+          <div class="saved-discard-list">
+            @for (recovery of recoveries; track recovery.id) {
+              <div><span>{{ savedDiscardLabel(recovery.id) }} — {{ recovery.restored ? 'Recovered' : 'Captured' }}</span><button type="button" (click)="requestSavedDiscard(recovery)">{{ recovery.restored ? 'Discard again…' : 'Recover…' }}</button><button type="button" (click)="requestSavedDiscard(recovery, true)">Remove capture…</button></div>
+            } @empty { <p>No saved bulk discards in this worktree.</p> }
+          </div>
+        </div>
+        <footer><button type="button" data-saved-discards-close (click)="dismissSavedDiscards()">Close</button></footer>
       </section>
     </div>
   }
@@ -2227,9 +2435,17 @@
       <section #fileConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
         <div class="confirmation-icon" [class.danger]="action.kind !== 'restore-commit'"><gc-icon [name]="action.kind === 'ignore' ? 'file' : action.kind === 'restore-commit' ? 'archive-restore' : 'trash'" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>{{ action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : 'Ignore and stop tracking' }}</span>
+          <span>{{ action.kind === 'discard-bulk' ? 'Discard unstaged changes' : action.kind === 'recover-discard' ? 'Recover discarded changes' : action.kind === 'forget-discard' ? 'Remove recovery capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : 'Ignore and stop tracking' }}</span>
           <h2 id="file-confirmation-title">{{ action.kind === 'restore-commit' && (action.paths?.length ?? 0) > 1 ? (action.paths?.length ?? 0) + ' selected files' : action.path }}</h2>
-          @if (action.kind === 'discard') {
+          @if (action.kind === 'discard-bulk' && action.preview; as preview) {
+            <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
+            <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
+            @if (preview.skippedPaths.length) { <p>Not discarded: conflicts, submodule working trees or nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }
+          } @else if (action.kind === 'recover-discard') {
+            <p>{{ action.recovery?.restored ? 'Discard these recovered edits again only if the captured patch still matches the working files.' : 'Apply the captured changes to the working files. Git checks the patch first and refuses conflicting edits. Staged contents are unchanged.' }}</p>
+          } @else if (action.kind === 'forget-discard') {
+            <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
+          } @else if (action.kind === 'discard') {
             <p>{{ action.untracked ? 'Delete this untracked file from disk. Git Chronos saves a temporary recovery patch so you can restore it with Undo.' : 'Replace the working copy with the staged version. Git Chronos saves a temporary recovery patch so you can restore it with Undo.' }}</p>
           } @else if (action.kind === 'discard-hunk') {
             <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore the hunk.</p>
@@ -2241,36 +2457,29 @@
             <p>This adds a rule to the repository’s .gitignore and stages removal of the file from Git’s index. The file stays on disk.</p>
           }
         </div>
-        <footer><button type="button" data-file-dialog-cancel (click)="dismissFileConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind !== 'restore-commit'" type="button" (click)="confirmFileAction()">{{ action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : 'Ignore and stop tracking' }}</button></footer>
+        <footer><button type="button" data-file-dialog-cancel (click)="dismissFileConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="git.busy()" (click)="confirmFileAction()">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : 'Ignore and stop tracking' }}</button></footer>
       </section>
     </div>
   }
   @if (pendingHistoryAction(); as action) {
-    <div class="confirmation-backdrop" (click)="dismissHistoryConfirmation(true)">
-      <section #historyConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="history-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleHistoryConfirmationKeydown($event)">
-        <div class="confirmation-icon" [class.danger]="action.kind === 'reset' && resetMode() === 'hard'"><gc-icon [name]="action.kind === 'cherry-pick' ? 'cherry-pick' : action.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>{{ action.kind === 'cherry-pick' ? (action.targetBranch ? 'Cherry-pick onto ' + action.targetBranch : 'Cherry-pick ' + (action.oids.length === 1 ? 'commit' : action.oids.length + ' commits')) : action.kind === 'revert' ? 'Revert commit' : 'Reset to commit' }}</span>
-          <h2 id="history-confirmation-title">{{ action.kind === 'cherry-pick' && action.oids.length > 1 ? action.oids.length + ' selected commits' : action.label }}</h2>
-          @if (action.kind === 'cherry-pick') { <p>@if (action.targetBranch) { Switch to <strong>{{ action.targetBranch }}</strong>, then apply this commit’s changes there as a new commit. } @else { Apply {{ action.oids.length === 1 ? 'this commit’s changes' : 'these commits in oldest-to-newest order' }} onto the current branch as {{ action.oids.length === 1 ? 'a new commit' : 'new commits' }}. }</p> }
-          @if (action.kind === 'revert') { <p>Create a new commit that safely reverses this commit.</p> }
-          @if (action.kind === 'reset') {
-            <p>Choose what happens to changes after moving the current branch to this commit.</p>
-            <div class="reset-options">
-              <label [class.selected]="resetMode() === 'soft'"><input type="radio" name="resetMode" value="soft" [ngModel]="resetMode()" (ngModelChange)="resetMode.set($event)" /><span><strong>Soft</strong><small>Keep changes staged</small></span></label>
-              <label [class.selected]="resetMode() === 'mixed'"><input type="radio" name="resetMode" value="mixed" [ngModel]="resetMode()" (ngModelChange)="resetMode.set($event)" /><span><strong>Mixed</strong><small>Keep changes unstaged</small></span></label>
-              <label class="hard" [class.selected]="resetMode() === 'hard'"><input type="radio" name="resetMode" value="hard" [ngModel]="resetMode()" (ngModelChange)="resetMode.set($event)" /><span><strong>Hard</strong><small>Discard working changes</small></span></label>
-            </div>
-          }
-        </div>
-        <footer>
-          <button type="button" data-history-dialog-cancel (click)="dismissHistoryConfirmation(true)">Cancel</button>
-          <button class="confirm-action" [class.danger]="action.kind === 'reset' && resetMode() === 'hard'" type="button" (click)="confirmHistoryAction()">
-            {{ action.kind === 'cherry-pick' ? (action.targetBranch ? 'Cherry-pick onto ' + action.targetBranch : 'Cherry-pick' + (action.oids.length === 1 ? '' : ' ' + action.oids.length + ' commits')) : action.kind === 'revert' ? 'Revert' : 'Reset ' + resetMode() }}
-          </button>
-        </footer>
-      </section>
-    </div>
+    @defer (on immediate) {
+      <gc-history-review-dialog #historyConfirmationDialog [action]="action" [parents]="historyMergeParents()"
+        [mainline]="historyMainline()" [noCommit]="historyNoCommit()" [resetMode]="resetMode()"
+        [preview]="resetPreview()" [previewBusy]="resetPreviewBusy()"
+        (mainlineChanged)="historyMainline.set($event)" (noCommitChanged)="historyNoCommit.set($event)"
+        (previewRequested)="refreshResetPreview($event)" (closed)="dismissHistoryConfirmation(true)"
+        (execute)="confirmHistoryAction()" (keyPressed)="handleHistoryConfirmationKeydown($event)" />
+    } @loading {
+      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading history review" (keydown)="handleHistoryConfirmationKeydown($event)">
+        <p role="status">Loading history review. No history changes have been made.</p>
+        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true)">Cancel</button>
+      </section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="History review unavailable" (keydown)="handleHistoryConfirmationKeydown($event)">
+        <p role="alert">The history review could not load. No history changes were made. Preserve drafts before restarting to retry.</p>
+        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true)">Close</button>
+      </section></div>
+    }
   }
   @if (pendingBisectStart(); as bisect) {
     <div class="confirmation-backdrop" (click)="pendingBisectStart.set(null)">
@@ -2305,6 +2514,7 @@
           </div>
           @if (tagCreationKind() === 'annotated') {
             <label class="tag-name-field">Tag message<textarea name="tagMessage" rows="3" placeholder="Release notes" [ngModel]="tagCreationMessage()" (ngModelChange)="tagCreationMessage.set($event)"></textarea></label>
+            <label><input type="checkbox" name="signTag" [ngModel]="signNewTag()" (ngModelChange)="signNewTag.set($event)" /> Sign this tag with the configured Git key</label>
           }
         </div>
         <footer><button type="button" (click)="pendingTagTarget.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextTagName().trim() || (tagCreationKind() === 'annotated' && !tagCreationMessage().trim()) || git.busy()">Create Tag</button></footer>
@@ -2428,7 +2638,7 @@
   }
   @if (recoveryHistoryOpen()) {
     <div class="recovery-backdrop" (click)="closeRecoveryHistory()">
-      <section class="recovery-dialog" role="dialog" aria-modal="true" aria-label="Recovery history" (click)="$event.stopPropagation()">
+      <section class="recovery-dialog" role="dialog" aria-modal="true" aria-label="Recovery history" (click)="$event.stopPropagation()" (keydown)="handleRecoveryHistoryKeydown($event)">
         <header>
           <span class="recovery-mark"><gc-icon name="history" [size]="20" /></span>
           <div><small>LOCAL REPOSITORY</small><h2>Recovery History</h2><p>Find commits recorded before a branch, reset, rebase, or checkout moved a reference.</p></div>
@@ -2436,10 +2646,45 @@
         </header>
         <div class="recovery-toolbar">
           <label><gc-icon name="search" [size]="14" /><input type="search" aria-label="Search recovery history" placeholder="Search action, author, SHA, or reflog selector" [ngModel]="recoveryQuery()" (ngModelChange)="recoveryQuery.set($event)" autofocus /></label>
-          <button type="button" title="Refresh recovery history" aria-label="Refresh recovery history" [disabled]="git.reflogBusy()" (click)="git.loadReflog()"><gc-icon name="refresh" [size]="13" /></button>
+          <button type="button" title="Refresh recovery history" aria-label="Refresh recovery history" [disabled]="git.reflogBusy() || git.busy() || recoveryCaptureBusy()" (click)="refreshRecoveryHistory()"><gc-icon name="refresh" [size]="13" /></button>
         </div>
         <div class="recovery-guidance"><gc-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
         <div class="recovery-list" aria-live="polite">
+          <section class="operation-captures" aria-label="Saved reset captures">
+            <h3>Saved reset captures</h3>
+            <p>Restore original history and tracked staged/unstaged contents on a new branch. Captures stay protected until you remove them; untracked, ignored and submodule working files are not included.</p>
+            @if (recoveryCaptureBusy()) { <p role="status">Reading saved captures...</p> }
+            @if (git.error()) { <p class="recovery-error" role="alert" tabindex="-1">{{ git.error() }}</p> }
+            @for (record of filteredOperationRecoveries(); track record.id) {
+              <article class="operation-capture" [attr.data-capture-id]="record.id">
+                <strong>{{ record.label }}</strong>
+                <small><code>{{ shortOid(record.headOid) }}</code> · {{ record.snapshotOid ? 'History and tracked contents' : 'History only; no tracked changes' }} · {{ record.restored ? 'Previously restored' : 'Saved' }}</small>
+                <div class="capture-actions">
+                  <button type="button" data-capture-action="restore" [disabled]="git.busy() || recoveryCaptureBusy()" (click)="beginRecoveryCaptureAction(record, 'restore')">Restore on new branch...</button>
+                  <button type="button" data-capture-action="remove" [disabled]="git.busy() || recoveryCaptureBusy()" (click)="beginRecoveryCaptureAction(record, 'remove')">Remove capture...</button>
+                </div>
+                @if (recoveryCaptureAction(); as action) {
+                  @if (action.record.id === record.id) {
+                    <form class="recovery-capture-form" (submit)="$event.preventDefault(); confirmRecoveryCaptureAction()">
+                      @if (action.kind === 'restore') {
+                        <label>Recovery branch name<input name="recoveryCaptureBranch" autocomplete="off" [disabled]="git.busy()" [ngModel]="recoveryCaptureBranch()" (ngModelChange)="recoveryCaptureBranch.set($event)" /></label>
+                        <p>This switches to the new branch and restores the saved index and working contents. Your current repository must be clean.</p>
+                        @if (git.repository()?.status?.entryCount) { <p>Save current changes before restoring this capture.</p> }
+                      } @else {
+                        <p>Permanently remove this capture and its protected references? Current branches and files remain unchanged, but unsaved captured contents may become unrecoverable.</p>
+                      }
+                      <div class="capture-actions">
+                        <button type="button" data-capture-cancel [disabled]="git.busy()" (click)="cancelRecoveryCaptureAction()">Cancel</button>
+                        <button type="submit" [disabled]="git.busy() || recoveryCaptureBusy() || (action.kind === 'restore' && (!recoveryCaptureBranch().trim() || !!git.repository()?.status?.entryCount))">{{ action.kind === 'restore' ? 'Restore and switch' : 'Permanently remove capture' }}</button>
+                      </div>
+                    </form>
+                  }
+                }
+              </article>
+            } @empty {
+              @if (operationRecoveries() && !recoveryCaptureBusy()) { <p>{{ recoveryQuery().trim() ? 'No matching saved captures.' : 'No saved reset captures. Reset creates one before changing history.' }}</p> }
+            }
+          </section>
           @if (git.reflogBusy() && !git.reflog()) {
             <div class="recovery-empty"><gc-icon name="refresh" [size]="24" /><strong>Reading local history…</strong></div>
           } @else {

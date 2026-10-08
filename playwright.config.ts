@@ -24,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec ng serve desktop --host 127.0.0.1 --port ${port}`,
+    command: `pnpm exec ng serve desktop --no-hmr --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,

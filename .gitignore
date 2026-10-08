@@ -12,3 +12,4 @@ e2e/**/*-snapshots/
 .idea/
 .vscode/
 .aws
+__pycache__/

@@ -1217,6 +1217,7 @@ dependencies = [
  "notify",
  "portable-pty",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -1226,8 +1227,10 @@ dependencies = [
 name = "git-chronos-git-core"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "gix",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

@@ -7,19 +7,38 @@ import type {
   CommitFile,
   CommitFileDiff,
   CommitHistoryPage,
+  CommitPolicy,
   ConflictDetails,
+  DiscardPreview,
+  DiscardRecovery,
   FileBlameLine,
   FileHistoryEntry,
+  FetchOptions,
   InteractiveRebasePlan,
   InteractiveRebaseStep,
+  MergeRebasePlan,
+  MergeRebaseRequest,
+  OperationRecovery,
+  PatchRequest,
   ReflogPage,
+  ResetMode,
+  ResetPreview,
   RepositoryStatus,
   RepositorySnapshot,
   SigningDiagnostic,
+  StashOptions,
   SystemInfo,
   TagDetails,
   TrackedFileSearch,
   WorkingTreeFileDiff,
+  WorktreeMove,
+  WorktreeRepair,
+  WorktreeRegistrationReview,
+  LfsTrackingRules,
+  LfsFileAttributes,
+  LfsObjects,
+  LfsFetchPreview,
+  LfsCheckoutPreview,
 } from '@git-chronos/contracts';
 import {
   checkoutHistoryTarget,
@@ -64,7 +83,13 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && left.conflicted === right.conflicted
     && left.mergeInProgress === right.mergeInProgress
     && left.historyOperation === right.historyOperation
+    && left.historyNoCommit === right.historyNoCommit
     && left.rebaseInProgress === right.rebaseInProgress
+    && left.rebaseEditStopped === right.rebaseEditStopped
+    && left.rebaseSplit?.preparing === right.rebaseSplit?.preparing
+    && left.rebaseSplit?.partCount === right.rebaseSplit?.partCount
+    && left.rebaseSplit?.treeMatches === right.rebaseSplit?.treeMatches
+    && !!left.mailPatchInProgress === !!right.mailPatchInProgress
     && left.bisectInProgress === right.bisectInProgress
     && left.entryCount === right.entryCount
     && left.entriesTruncated === right.entriesTruncated
@@ -163,6 +188,8 @@ export class GitChronosService {
   readonly workingTreeFileDiff = signal<WorkingTreeFileDiff | null>(null);
   readonly selectedWorkingTreeFile = signal<string | null>(null);
   readonly conflictDetails = signal<ConflictDetails | null>(null);
+  private conflictRepositoryId: string | null = null;
+  private conflictRequest = 0;
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
   readonly fileInsightBusy = signal(false);
@@ -384,16 +411,18 @@ export class GitChronosService {
     folder: string,
     options: { branch?: string; depth?: number } = {},
   ): Promise<boolean> {
-    await this.run('Cloning repository…', async () => {
+    const operationId = crypto.randomUUID();
+    await this.run(`Cloning ${folder.trim() || 'repository'}…`, async () => {
       const snapshot = await invoke<RepositorySnapshot>('clone_repository', {
         remote: remote.trim(),
         parentPath,
         folder: folder.trim(),
         branch: options.branch?.trim() || null,
         depth: options.depth ?? null,
+        operationId,
       });
       this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`);
-    });
+    }, null, operationId);
     return !this.error();
   }
 
@@ -484,6 +513,8 @@ export class GitChronosService {
   async fetchInBackground(repositoryId: string | null = this.activeRepositoryId()): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
     if (!repository || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
+    // An explicit fetch retries a failure; timers must not repeatedly retry authentication.
+    if (this.backgroundFetchErrors()[repository.id]) return false;
     this.backgroundFetchBusy.set(true);
     this.backgroundFetchRepositoryId.set(repository.id);
     this.backgroundFetchErrors.update((errors) => {
@@ -713,6 +744,81 @@ export class GitChronosService {
     }
   }
 
+    async previewDiscard(paths: string[] | null): Promise<DiscardPreview | null> {
+      const repository = this.repository();
+      if (!repository) return null;
+      let preview: DiscardPreview | null = null;
+      await this.run('Preparing discard preview…', async () => {
+        if (this.browserPreview()) {
+          const entries = repository.status.entries.filter(entry =>
+            (!paths || paths.includes(entry.path))
+            && (entry.conflicted || entry.indexStatus === '?' || entry.worktreeStatus.trim()));
+          preview = {
+            token: 'preview',
+            paths: entries.filter(entry => !entry.conflicted).map(entry => entry.path),
+            skippedPaths: entries.filter(entry => entry.conflicted).map(entry => entry.path),
+            untracked: entries.filter(entry => entry.indexStatus === '?').length,
+          };
+        } else {
+          preview = await invoke<DiscardPreview>('preview_discard', { repoId: repository.id, paths });
+        }
+      }, repository.id);
+      return preview;
+    }
+
+    async discardPrepared(preview: DiscardPreview, repositoryId: string): Promise<void> {
+      if (repositoryId !== this.activeRepositoryId()) {
+        this.error.set('The active repository changed. Review a new discard preview.');
+        return;
+      }
+      this.bumpStatusGeneration(repositoryId);
+      const result = await this.run('Discarding captured unstaged changes…', async () => {
+        let id: string;
+        let status: RepositoryStatus;
+        if (this.browserPreview()) {
+          id = 'preview';
+          status = preview.paths.reduce((current, path) => predictDiscardPath(current, path), this.repository()!.status);
+        } else {
+          const response = await invoke<{ id: string; status: RepositoryStatus }>('discard_changes', {
+            repoId: repositoryId, token: preview.token,
+          });
+          id = response.id;
+          status = response.status;
+        }
+        this.storeStatus(repositoryId, status);
+        this.clearWorkingTreeInspection();
+        this.recordDiscard(repositoryId, 'Discard Unstaged Changes', id);
+        this.activity.set('Unstaged changes discarded; recovery saved');
+      }, repositoryId);
+      this.bumpStatusGeneration(repositoryId);
+      if (result !== 'success') await this.refreshStatusInBackground(repositoryId, true);
+    }
+
+    async loadDiscardRecoveries(): Promise<DiscardRecovery[]> {
+      const repository = this.repository();
+      if (!repository) return [];
+      let recoveries: DiscardRecovery[] = [];
+      await this.run('Loading discarded-change recovery…', async () => {
+        recoveries = this.browserPreview() ? []
+          : await invoke<DiscardRecovery[]>('load_discard_recoveries', { repoId: repository.id });
+      }, repository.id);
+      return recoveries;
+    }
+
+    async applySavedDiscard(id: string, reverse = false): Promise<void> {
+      await this.mutateWorkingTree('apply_saved_discard', reverse ? 'Discarding recovered changes…' : 'Recovering discarded changes…',
+        reverse ? 'Recovered changes discarded again' : 'Discarded changes recovered', { id, reverse });
+    }
+
+    async forgetSavedDiscard(id: string): Promise<void> {
+      const repository = this.repository();
+      if (!repository) return;
+      await this.run('Removing saved recovery…', async () => {
+        await invoke('forget_saved_discard', { repoId: repository.id, id });
+        this.activity.set('Saved recovery removed');
+      }, repository.id);
+    }
+
   async ignorePath(
     path: string,
     patternKind: 'file' | 'extension' | 'directory',
@@ -731,6 +837,7 @@ export class GitChronosService {
     staged: boolean,
     hunkIndex: number,
     action: 'stage' | 'unstage' | 'discard',
+    expectedPatch?: string,
   ): Promise<void> {
     const repositoryId = this.activeRepositoryId();
     const labels = {
@@ -743,6 +850,7 @@ export class GitChronosService {
       staged,
       hunkIndex,
       action,
+      ...(expectedPatch !== undefined ? { expectedPatch } : {}),
     });
     if (this.error()) return;
     if (action === 'discard' && repositoryId) this.recordDiscard(repositoryId, 'Discard Hunk');
@@ -759,6 +867,7 @@ export class GitChronosService {
     hunkIndex: number,
     lineIndices: number[],
     action: 'stage' | 'unstage' | 'discard',
+    expectedPatch?: string,
   ): Promise<void> {
     const repositoryId = this.activeRepositoryId();
     const labels = {
@@ -772,6 +881,7 @@ export class GitChronosService {
       hunkIndex,
       lineIndices,
       action,
+      ...(expectedPatch !== undefined ? { expectedPatch } : {}),
     });
     if (this.error()) return;
     if (action === 'discard' && repositoryId) this.recordDiscard(repositoryId, 'Discard Selected Lines');
@@ -784,21 +894,23 @@ export class GitChronosService {
 
   async commit(
     message: string,
-    options: { amend?: boolean; skipHooks?: boolean; pushAfter?: boolean; sign?: boolean } = {},
+    options: { amend?: boolean; skipHooks?: boolean; pushAfter?: boolean; sign?: boolean } & Partial<CommitPolicy> = {},
   ): Promise<boolean> {
     if (!message.trim()) return false;
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    await this.mutate('commit_changes', options.amend ? 'Amending commit…' : 'Creating commit…', options.amend ? 'Commit amended' : 'Commit created', {
+    const outcome = await this.mutate('commit_changes', options.amend ? 'Amending commit…' : 'Creating commit…', options.amend ? 'Commit amended' : 'Commit created', {
       message: message.trim(),
       amend: options.amend ?? false,
       skipHooks: options.skipHooks ?? false,
       sign: options.sign ?? false,
+      policy: { signOff: options.signOff ?? false, allowEmpty: options.allowEmpty ?? false,
+        author: options.author ?? null, committer: options.committer ?? null },
     });
-    if (this.error()) return false;
-    const afterOid = this.repository()?.headOid;
+    if (outcome !== 'success') return false;
+    const afterOid = this.repositories().find(candidate => candidate.id === repository?.id)?.headOid;
     this.recordHeadChange(repository?.id, beforeOid, afterOid, options.amend ? 'Amend Commit' : 'Commit');
-    if (options.pushAfter) await this.remote('push_repository');
+    if (options.pushAfter && repository && this.requireRecoveryRepository(repository.id)) await this.remote('push_repository');
     return true;
   }
 
@@ -823,7 +935,8 @@ export class GitChronosService {
     const entry = repo ? this.operationHistory()[repo.id] : null;
     if (!repo || !entry || entry.undone) return;
     if (entry.kind === 'discard') {
-      await this.mutate('undo_discard', `Undoing ${entry.label.toLocaleLowerCase()}…`, 'Discarded changes restored');
+      if (entry.recoveryId) await this.applySavedDiscard(entry.recoveryId);
+      else await this.mutate('undo_discard', `Undoing ${entry.label.toLocaleLowerCase()}…`, 'Discarded changes restored');
     } else if (entry.kind === 'checkout') {
       const branch = checkoutHistoryTarget(entry, 'undo')!;
       await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
@@ -852,7 +965,8 @@ export class GitChronosService {
     const entry = repo ? this.operationHistory()[repo.id] : null;
     if (!repo || !entry || !entry.undone) return;
     if (entry.kind === 'discard') {
-      await this.mutate('redo_discard', `Redoing ${entry.label.toLocaleLowerCase()}…`, 'Changes discarded again');
+      if (entry.recoveryId) await this.applySavedDiscard(entry.recoveryId, true);
+      else await this.mutate('redo_discard', `Redoing ${entry.label.toLocaleLowerCase()}…`, 'Changes discarded again');
     } else if (entry.kind === 'checkout') {
       const branch = checkoutHistoryTarget(entry, 'redo')!;
       await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
@@ -900,7 +1014,8 @@ export class GitChronosService {
     await this.mutate('create_branch', `Creating ${name}…`, `Created ${name}`, { name: name.trim() });
   }
 
-  async createBranchAt(name: string, oid: string): Promise<void> {
+  async createBranchAt(name: string, oid: string, repositoryId?: string): Promise<void> {
+    if (repositoryId && !this.requireRecoveryRepository(repositoryId)) return;
     if (!name.trim()) return;
     await this.mutate('create_branch_at', `Creating ${name}…`, `Created ${name}`, {
       name: name.trim(),
@@ -953,6 +1068,95 @@ export class GitChronosService {
       deleteBranch ? 'Worktree and branch removed' : 'Worktree removed',
       { path, deleteBranch, force },
     );
+  }
+
+  async moveWorktree(request: WorktreeMove, repositoryId: string): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('move_worktree', 'Moving linked worktree…',
+      'Linked worktree moved; branch and files preserved', { request }) === 'success';
+  }
+
+  async repairWorktree(request: WorktreeRepair, repositoryId: string): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('repair_worktree', 'Repairing moved worktree links…',
+      'Worktree registration repaired; files and branch unchanged', { request }) === 'success';
+  }
+
+  async reviewWorktreeRegistrations(repositoryId: string): Promise<WorktreeRegistrationReview | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let review: WorktreeRegistrationReview | null = null;
+    const result = await this.run('Reviewing worktree registrations…', async () => {
+      review = await invoke<WorktreeRegistrationReview>('worktree_registration_review', { repoId: repositoryId });
+    }, repositoryId);
+    return result === 'success' ? review : null;
+  }
+
+  async loadLfsTrackingRules(repositoryId: string): Promise<LfsTrackingRules | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let rules: LfsTrackingRules | null = null;
+    const result = await this.run('Loading LFS tracking patterns…', async () => {
+      rules = await invoke<LfsTrackingRules>('lfs_tracking_rules', { repoId: repositoryId });
+    }, repositoryId);
+    return result === 'success' ? rules : null;
+  }
+
+  async inspectLfsAttributes(file: string, repositoryId: string): Promise<LfsFileAttributes | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let attributes: LfsFileAttributes | null = null;
+    const result = await this.run('Inspecting effective file attributes…', async () => {
+      attributes = await invoke<LfsFileAttributes>('lfs_file_attributes', { repoId: repositoryId, file });
+    }, repositoryId);
+    return result === 'success' ? attributes : null;
+  }
+
+  async inspectLfsObjects(repositoryId: string): Promise<LfsObjects | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let objects: LfsObjects | null = null;
+    const result = await this.run('Inspecting local LFS objects…', async () => {
+      objects = await invoke<LfsObjects>('lfs_objects', { repoId: repositoryId });
+    }, repositoryId);
+    return result === 'success' ? objects : null;
+  }
+
+  async previewLfsFetch(file: LfsObjects['files'][number], remote: string, repositoryId: string): Promise<LfsFetchPreview | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let preview: LfsFetchPreview | null = null;
+    const result = await this.run('Reviewing selective LFS fetch…', async () => {
+      preview = await invoke<LfsFetchPreview>('lfs_fetch_preview', {
+        repoId: repositoryId, file: file.name, remote, expectedOid: file.oid, expectedSize: file.size,
+      });
+    }, repositoryId);
+    return result === 'success' ? preview : null;
+  }
+
+  async fetchLfsObject(preview: LfsFetchPreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    if (!this.requireRecoveryRepository(repositoryId)) return 'error';
+    return this.mutate('lfs_fetch_object', `Fetching LFS object for ${preview.file}…`,
+      'Reviewed LFS object fetched into local storage; working files were not hydrated', { preview });
+  }
+
+  async previewLfsCheckout(file: LfsObjects['files'][number], repositoryId: string): Promise<LfsCheckoutPreview | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let preview: LfsCheckoutPreview | null = null;
+    const result = await this.run('Reviewing local LFS hydration…', async () => {
+      preview = await invoke<LfsCheckoutPreview>('lfs_checkout_preview', {
+        repoId: repositoryId, file: file.name, expectedOid: file.oid, expectedSize: file.size,
+      });
+    }, repositoryId);
+    return result === 'success' ? preview : null;
+  }
+
+  async checkoutLfsObject(preview: LfsCheckoutPreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    if (!this.requireRecoveryRepository(repositoryId)) return 'error';
+    return this.mutate('lfs_checkout_object', `Verifying and hydrating ${preview.file}…`,
+      'Working pointer replaced with SHA-256-verified local contents; index and references unchanged', { preview });
+  }
+
+  async untrackLfsPattern(pattern: string, expectedState: string, repositoryId: string): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('lfs_untrack_pattern', `Removing LFS rule ${pattern}…`,
+      'LFS rule removed; review and commit .gitattributes. Existing history and file contents unchanged',
+      { pattern, expectedState }) === 'success';
   }
 
   async addSubmodule(url: string, path: string): Promise<boolean> {
@@ -1030,7 +1234,7 @@ export class GitChronosService {
     });
   }
 
-  async prepareInteractiveRebase(source: string, target: string): Promise<InteractiveRebasePlan | null> {
+  async prepareInteractiveRebase(source: string, target: string, selectionOids?: string[], root = false): Promise<InteractiveRebasePlan | null> {
     const repo = this.repository();
     if (!repo) return null;
     let plan: InteractiveRebasePlan | null = null;
@@ -1039,8 +1243,10 @@ export class GitChronosService {
         repoId: repo.id,
         source,
         target,
+        ...(selectionOids ? { selectionOids } : {}),
+        ...(root ? { root: true } : {}),
       });
-      this.activity.set(`Interactive rebase ready: ${source} onto ${target}`);
+      this.activity.set(root ? `Whole-history rebase ready on ${source}` : selectionOids ? `Selected-range rebase ready on ${source}` : `Interactive rebase ready: ${source} onto ${target}`);
     }, repo.id);
     return plan;
   }
@@ -1049,21 +1255,57 @@ export class GitChronosService {
     source: string,
     target: string,
     steps: InteractiveRebaseStep[],
+    selectionOids?: string[],
+    root = false,
+    ontoOid?: string,
   ): Promise<void> {
     await this.mutate(
       'execute_interactive_rebase',
-      `Rebasing ${source} onto ${target}…`,
-      `Interactive rebase of ${source} complete`,
-      { source, target, steps },
+      ontoOid ? `Replaying selected history on ${source} onto ${ontoOid.slice(0, 8)}…` : root ? `Editing entire history on ${source}…` : selectionOids ? `Editing selected history on ${source}…` : `Rebasing ${source} onto ${target}…`,
+      snapshot => this.rebaseActivity(snapshot),
+      { source, target, steps, ...(selectionOids ? { selectionOids } : {}), ...(root ? { root: true } : {}), ...(ontoOid ? { ontoOid } : {}) },
     );
   }
 
   async continueRebase(): Promise<void> {
-    await this.mutate('continue_rebase', 'Continuing interactive rebase…', 'Interactive rebase complete');
+    await this.mutate('continue_rebase', 'Continuing interactive rebase…', snapshot => this.rebaseActivity(snapshot));
+  }
+
+  async prepareMergeRebase(repositoryId: string, source: string, target: string): Promise<MergeRebasePlan | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let plan: MergeRebasePlan | null = null;
+    await this.run('Reviewing merge-preserving rebase…', async () => {
+      plan = await invoke<MergeRebasePlan>('prepare_merge_rebase', { repoId: repositoryId, source, target });
+      this.activity.set('Merge-preserving review ready; no history changed');
+    }, repositoryId);
+    return plan;
+  }
+
+  async executeMergeRebase(repositoryId: string, request: MergeRebaseRequest): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('execute_merge_rebase', 'Rebasing with merge topology…',
+      snapshot => this.rebaseActivity(snapshot), { request }) === 'success';
+  }
+
+  async importDiffPatch(repositoryId: string, request: PatchRequest): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('import_diff_patch', 'Applying reviewed patch…',
+      'Patch applied; review changes before committing. No reference moved.', { request }) === 'success';
+  }
+  async beginRebaseSplit(expectedHead: string): Promise<void> {
+    await this.mutate('begin_rebase_split', 'Preparing the stopped commit for splitting…',
+      'Split started. Stage selected changes and create at least two separate commits, then Continue.',
+      { expectedHead });
   }
 
   async skipRebase(): Promise<void> {
-    await this.mutate('skip_rebase', 'Skipping conflicted commit…', 'Interactive rebase advanced');
+    await this.mutate('skip_rebase', 'Skipping conflicted commit…', snapshot => this.rebaseActivity(snapshot));
+  }
+
+  private rebaseActivity(snapshot: RepositorySnapshot): string {
+    if (snapshot.status.rebaseSplit) return 'Rebase paused for splitting. Commit every part explicitly, then Continue; or Abort.';
+    if (snapshot.status.rebaseEditStopped && !snapshot.status.conflicted) return 'Rebase paused for Edit. Amend the replayed commit, then Continue; or Continue unchanged.';
+    return snapshot.status.rebaseInProgress ? 'Rebase remains in progress. Review the current stop before continuing.' : 'Interactive rebase complete';
   }
 
   async abortRebase(): Promise<void> {
@@ -1108,7 +1350,7 @@ export class GitChronosService {
       : repository));
   }
 
-  async controlHistoryOperation(action: 'continue' | 'skip' | 'abort'): Promise<void> {
+  async controlHistoryOperation(action: 'continue' | 'skip' | 'abort' | 'quit'): Promise<void> {
     const repository = this.repository();
     const operation = repository?.status.historyOperation;
     if (!repository || !operation || (action === 'continue' && repository.status.conflicted)) return;
@@ -1119,21 +1361,28 @@ export class GitChronosService {
             status: {
               ...candidate.status,
               historyOperation: null,
-              conflicted: 0,
-              entries: candidate.status.entries.map((entry) => entry.conflicted
+              historyNoCommit: false,
+              conflicted: action === 'quit' ? candidate.status.conflicted : 0,
+              entries: action === 'quit' ? candidate.status.entries : candidate.status.entries.map((entry) => entry.conflicted
                 ? { ...entry, indexStatus: ' ', worktreeStatus: 'M', conflicted: false }
                 : entry),
             },
           }
         : candidate));
-      this.activity.set(`${operation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'} ${action === 'abort' ? 'aborted' : action === 'skip' ? 'skipped' : 'complete'}`);
+      this.activity.set(action === 'quit' ? 'No-commit sequence ended; current files and staged changes retained'
+        : `${operation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'} ${action === 'abort' ? 'aborted' : action === 'skip' ? 'skipped' : 'complete'}`);
       return;
     }
     const label = operation === 'cherry-pick' ? 'cherry-pick' : 'revert';
     await this.mutate(
       'control_history_operation',
-      `${action === 'continue' ? 'Continuing' : action === 'skip' ? 'Skipping' : 'Aborting'} ${label}…`,
-      `${label === 'cherry-pick' ? 'Cherry-pick' : 'Revert'} ${action === 'abort' ? 'aborted' : action === 'skip' ? 'skipped' : 'continued'}`,
+      `${action === 'continue' ? 'Continuing' : action === 'skip' ? 'Skipping' : action === 'quit' ? 'Finishing manually' : 'Aborting'} ${label}…`,
+      snapshot => snapshot.status.historyNoCommit ? 'No-commit replay paused; review and stage conflicts'
+        : repository.status.historyNoCommit
+          ? action === 'abort' ? 'No-commit replay aborted; original tracked state restored'
+            : action === 'quit' ? 'No-commit sequence ended; current files and staged changes retained'
+              : snapshot.status.staged ? 'Selected changes staged; no commit created' : 'Selected changes have no effect; HEAD unchanged and no commit created'
+          : `${label === 'cherry-pick' ? 'Cherry-pick' : 'Revert'} ${action === 'abort' ? 'aborted' : action === 'skip' ? 'skipped' : 'continued'}`,
       { operation, action },
     );
   }
@@ -1141,14 +1390,25 @@ export class GitChronosService {
   async inspectConflict(path: string): Promise<ConflictDetails | null> {
     const repo = this.repository();
     if (!repo) return null;
+    if (this.conflictDetails() && this.conflictRepositoryId !== repo.id
+      && this.conflictRepositoryId && !this.requireRecoveryRepository(this.conflictRepositoryId)) return null;
     let details: ConflictDetails | null = null;
-    this.conflictDetails.set(null);
+    const request = ++this.conflictRequest;
+    if (this.conflictDetails()?.path !== path) this.conflictDetails.set(null);
+    this.conflictRepositoryId = repo.id;
     await this.run(`Opening merge tool for ${path}…`, async () => {
       details = await invoke<ConflictDetails>('inspect_conflict', { repoId: repo.id, path });
+      if (this.activeRepositoryId() !== repo.id || request !== this.conflictRequest) return;
       this.conflictDetails.set(details);
       this.activity.set(`Resolving conflict in ${path}`);
     }, repo.id);
-    return details;
+    return this.activeRepositoryId() === repo.id && request === this.conflictRequest ? details : null;
+  }
+
+  closeConflict(): void {
+    this.conflictRequest++;
+    this.conflictRepositoryId = null;
+    this.conflictDetails.set(null);
   }
 
   async resolveConflict(
@@ -1156,11 +1416,17 @@ export class GitChronosService {
     resolution: 'current' | 'incoming' | 'output',
     output?: string,
   ): Promise<void> {
+    let details = this.conflictDetails();
+    if (!details || details.path !== path) {
+      details = await this.inspectConflict(path);
+    }
+    if (!details || !this.conflictRepositoryId || !this.requireRecoveryRepository(this.conflictRepositoryId)) return;
     await this.mutate(
       'resolve_conflict',
       `Resolving ${path}…`,
       `Resolved ${path}`,
-      { path, resolution, output: output ?? null },
+      { path, resolution, output: output ?? null, expectedState: details.state },
+      true,
     );
     if (!this.error()) this.conflictDetails.set(null);
   }
@@ -1175,6 +1441,22 @@ export class GitChronosService {
       push_repository: ['Pushing…', 'Push complete'],
     } as const;
     await this.mutate(operation, labels[operation][0], labels[operation][1], target);
+    if (operation === 'fetch_repository' && !this.error()) {
+      const repositoryId = this.activeRepositoryId();
+      if (repositoryId) this.backgroundFetchErrors.update((errors) => {
+        const updated = { ...errors };
+        delete updated[repositoryId];
+        return updated;
+      });
+    }
+  }
+
+  async fetchBranches(remote: string | null, prune: boolean, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    if (!this.requireRecoveryRepository(repositoryId)) return;
+    const options: FetchOptions = { remote, prune };
+    return this.mutate('fetch_branches', `Fetching branches from ${remote ?? 'all remotes'}…`,
+      `Branches fetched${prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
+      { options });
   }
 
   async forcePushWithLease(remote?: string, branch?: string): Promise<void> {
@@ -1191,23 +1473,55 @@ export class GitChronosService {
     );
   }
 
-  async performRepositoryMaintenance(): Promise<void> {
+    async manageReference(
+      action: 'delete-tag' | 'signed-tag' | 'verify-tag' | 'set-push-url',
+      name: string,
+      extra: { expectedOid?: string; message?: string; url?: string | null } = {},
+    ): Promise<void> {
+      await this.mutate('manage_reference', 'Updating Git reference…',
+        action === 'verify-tag' ? 'Tag signature verified by Git' : 'Git reference updated',
+        { action, name, ...extra });
+    }
+
+    async transportReference(remote: string, name: string, kind: 'tag' | 'branch', deleteReference: boolean, expectedOid?: string): Promise<void> {
+      await this.mutate('transport_reference', 'Updating selected remote reference…', 'Remote reference updated',
+        { request: { remote, name, kind, delete: deleteReference, expectedOid } });
+    }
+
+    async previewRemoteTag(remote: string, name: string): Promise<string | null> {
+      const repository = this.repository();
+      if (!repository) return null;
+      const operationId = crypto.randomUUID();
+      let oid: string | null = null;
+      await this.run('Checking selected remote tag…', async () => {
+        oid = await invoke<string>('preview_remote_tag', { repoId: repository.id, remote, name, operationId });
+      }, repository.id, operationId);
+      return oid;
+    }
+
+  async performRepositoryMaintenance(): Promise<boolean> {
     const repository = this.repository();
-    if (!repository) return;
+    if (!repository || this.busy()) return false;
     if (this.browserPreview()) {
       this.activity.set('Repository maintenance complete');
-      return;
+      return true;
     }
-    await this.run('Optimizing repository data…', async () => {
+    const outcome = await this.run('Checking integrity and packing metadata…', async () => {
       await invoke('perform_repository_maintenance', { repoId: repository.id });
       this.activity.set('Repository maintenance complete');
     }, repository.id);
+    return outcome === 'success';
   }
 
   async diagnoseSigning(): Promise<void> {
     const repository = this.repository();
     if (!repository || this.signingDiagnosticBusy()) return;
     this.signingDiagnosticBusy.set(true);
+    this.signingDiagnostics.update(diagnostics => {
+      const remaining = { ...diagnostics };
+      delete remaining[repository.id];
+      return remaining;
+    });
     this.error.set(null);
     try {
       const diagnostic = this.browserPreview()
@@ -1318,6 +1632,11 @@ export class GitChronosService {
     );
   }
 
+  async configureRemote(name: string, fetchUrl: string, pushUrl: string | null, changePush: boolean, add: boolean): Promise<void> {
+    await this.mutate('configure_remote', `Saving remote ${name}…`, `Remote ${name} saved`,
+      { name, fetchUrl, pushUrl, changePush, add });
+  }
+
   async removeRemote(name: string): Promise<void> {
     await this.mutate('remove_remote', `Removing remote ${name}…`, `Remote ${name} removed`, { name });
   }
@@ -1338,6 +1657,25 @@ export class GitChronosService {
       name ? `Stash “${name}” created` : 'Changes stashed',
       { message: name || null },
     );
+  }
+
+  async stashSelected(options: StashOptions): Promise<void> {
+    await this.mutate('stash_selected', 'Saving selected changes…', 'Selected changes stashed', { options });
+  }
+
+  async applyStashOptions(reference: string, expectedOid: string, restoreIndex: boolean): Promise<void> {
+    await this.mutate('apply_stash_options', `Restoring ${reference}…`, `${reference} restored; stash kept`,
+      { reference, expectedOid, restoreIndex });
+  }
+
+  async branchFromStash(reference: string, expectedOid: string, name: string): Promise<void> {
+    await this.mutate('branch_from_stash', `Restoring ${reference} on ${name}…`,
+      `Created ${name}; original stash kept`, { reference, expectedOid, name });
+  }
+
+  async stashCheckout(name: string, expectedHead: string, expectedTarget: string, message: string): Promise<void> {
+    await this.mutate('stash_checkout', `Saving changes before checkout of ${name}…`,
+      `Checked out ${name}; previous changes saved in stash`, { name, expectedHead, expectedTarget, message });
   }
 
   async popStash(): Promise<void> {
@@ -1374,17 +1712,20 @@ export class GitChronosService {
     });
   }
 
-  async cherryPick(oids: string[]): Promise<void> {
+  async cherryPick(oids: string[], mainline: number | null = null, noCommit = false): Promise<void> {
     const count = oids.length;
     if (!count) return;
     const repository = this.repository();
     const beforeOid = repository?.headOid;
     await this.mutate(
       'cherry_pick_commits',
-      count === 1 ? 'Cherry-picking commit…' : `Cherry-picking ${count} commits…`,
-      count === 1 ? 'Commit cherry-picked' : `${count} commits cherry-picked`,
-      { oids },
+      noCommit ? 'Applying selected changes without committing…' : count === 1 ? 'Cherry-picking commit…' : `Cherry-picking ${count} commits…`,
+      snapshot => noCommit
+        ? snapshot.status.staged ? 'Selected changes staged; no commit created' : 'Selected changes have no effect; HEAD unchanged and no commit created'
+        : count === 1 ? 'Commit cherry-picked' : `${count} commits cherry-picked`,
+      { oids, mainline, noCommit },
     );
+    if (noCommit) return;
     this.recordHeadChange(
       repository?.id,
       beforeOid,
@@ -1393,15 +1734,71 @@ export class GitChronosService {
     );
   }
 
-  async revertCommit(oid: string): Promise<void> {
+  async revertCommit(oid: string, mainline: number | null = null): Promise<void> {
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    await this.mutate('revert_commit', 'Reverting commit…', 'Revert commit created', { oid });
+    await this.mutate('revert_commit', 'Reverting commit…', 'Revert commit created', { oid, mainline });
     this.recordHeadChange(repository?.id, beforeOid, this.repository()?.headOid, 'Revert Commit');
+  }
+
+  async revertCommits(oids: string[]): Promise<void> {
+    const repository = this.repository();
+    const beforeOid = repository?.headOid;
+    await this.mutate('revert_commit', `Reverting ${oids.length} commits…`,
+      `${oids.length} revert commits created`, { oid: oids[0], oids, mainline: null });
+    const afterOid = this.repositories().find(candidate => candidate.id === repository?.id)?.headOid;
+    this.recordHeadChange(repository?.id, beforeOid, afterOid, `Revert ${oids.length} Commits`);
   }
 
   async resetToCommit(oid: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
     await this.mutate('reset_to_commit', `Resetting ${mode}…`, `Reset ${mode} complete`, { oid, mode });
+  }
+
+  async previewReset(oid: string, mode: ResetMode): Promise<ResetPreview | null> {
+    const repository = this.repository();
+    if (!repository) return null;
+    let preview: ResetPreview | null = null;
+    const result = await this.run('Reviewing reset scope…', async () => {
+      preview = await invoke<ResetPreview>('preview_reset', { repoId: repository.id, oid, mode });
+    }, repository.id);
+    return result === 'success' ? preview : null;
+  }
+
+  async resetPrepared(preview: ResetPreview, repositoryId: string): Promise<void> {
+    if (!this.requireRecoveryRepository(repositoryId)) return;
+    await this.mutate('execute_prepared_reset', `Resetting ${preview.mode}…`,
+      'Reset complete; original history and tracked changes saved in Recovery History',
+      { token: preview.token });
+  }
+
+  async loadOperationRecoveries(repositoryId: string): Promise<OperationRecovery[] | null> {
+    if (!this.requireRecoveryRepository(repositoryId)) return null;
+    let records: OperationRecovery[] | null = null;
+    const result = await this.run('Loading saved operation recovery…', async () => {
+      records = this.browserPreview() ? []
+        : await invoke<OperationRecovery[]>('load_operation_recoveries', { repoId: repositoryId });
+    }, repositoryId);
+    return result === 'success' ? records : null;
+  }
+
+  async restoreOperationRecovery(id: string, branch: string, repositoryId: string): Promise<void> {
+    if (!this.requireRecoveryRepository(repositoryId)) return;
+    await this.mutate('restore_operation_recovery', 'Restoring on a new branch…',
+      'Original history and tracked changes restored; recovery capture retained', { id, branch });
+  }
+
+  async forgetOperationRecovery(id: string, repositoryId: string): Promise<void> {
+    if (!this.requireRecoveryRepository(repositoryId)) return;
+    await this.run('Removing saved reset capture…', async () => {
+      await invoke('forget_operation_recovery', { repoId: repositoryId, id });
+      this.activity.set('Saved reset capture removed; current branch and files unchanged');
+    }, repositoryId);
+  }
+
+  requireRecoveryRepository(repositoryId: string): boolean {
+    if (repositoryId === this.activeRepositoryId()) return true;
+    this.error.set('The active repository changed. Close this dialog and review the intended repository.');
+    return false;
   }
 
   async startBisect(goodOid: string): Promise<void> {
@@ -2022,26 +2419,28 @@ export class GitChronosService {
   private async mutate(
     command: string,
     pending: string,
-    done: string,
+    done: string | ((snapshot: RepositorySnapshot) => string),
     extra: Record<string, unknown> = {},
-  ): Promise<void> {
+    preserveConflictOnFailure = false,
+  ): Promise<'success' | 'error' | 'cancelled' | undefined> {
     const repo = this.repository();
     if (!repo) return;
     this.bumpStatusGeneration(repo.id);
     const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
     const result = await this.run(pending, async () => {
-      this.storeMutationSnapshot(await invoke<RepositorySnapshot>(command, {
+      const snapshot = await invoke<RepositorySnapshot>(command, {
         repoId: repo.id,
         ...extra,
         ...(operationId ? { operationId } : {}),
-      }));
+      });
+      this.storeMutationSnapshot(snapshot);
       this.clearWorkingTreeInspection();
-      this.activity.set(done);
+      this.activity.set(typeof done === 'function' ? done(snapshot) : done);
     }, repo.id, operationId);
     if (result === 'error' && this.error() && this.repositories().some((repository) => repository.id === repo.id)) {
       try {
         this.storeMutationSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repo.id }));
-        this.clearWorkingTreeInspection();
+        this.clearWorkingTreeInspection(preserveConflictOnFailure);
       } catch {
         // Keep the original mutation error; a manual refresh can retry the snapshot.
       }
@@ -2050,6 +2449,7 @@ export class GitChronosService {
     if (this.repositories().some((repository) => repository.id === repo.id)) {
       void this.refreshStatusInBackground(repo.id, true);
     }
+    return result;
   }
 
   /**
@@ -2139,7 +2539,7 @@ export class GitChronosService {
     this.deferMetadataRefresh(snapshot.id);
   }
 
-  private async run(
+  async run(
     label: string,
     action: () => Promise<void>,
     repositoryId: string | null = null,
@@ -2220,10 +2620,10 @@ export class GitChronosService {
     });
   }
 
-  private recordDiscard(repoId: string, label: string): void {
+  private recordDiscard(repoId: string, label: string, recoveryId?: string): void {
     this.operationHistory.update((history) => ({
       ...history,
-      [repoId]: { kind: 'discard', label, undone: false },
+      [repoId]: { kind: 'discard', label, undone: false, recoveryId },
     }));
   }
 
@@ -2270,11 +2670,11 @@ export class GitChronosService {
     this.detailsBusy.set(false);
   }
 
-  private clearWorkingTreeInspection(): void {
+  private clearWorkingTreeInspection(preserveConflict = false): void {
     this.workingTreeRequest += 1;
     this.workingTreeFileDiff.set(null);
     this.selectedWorkingTreeFile.set(null);
-    this.conflictDetails.set(null);
+    if (!preserveConflict) this.closeConflict();
     this.detailsBusy.set(false);
   }
 
@@ -2306,13 +2706,19 @@ export class GitChronosService {
   private isCancelableCommand(command: string): boolean {
     return [
       'fetch_repository',
+      'fetch_branches',
       'pull_repository',
       'push_repository',
       'force_push_repository',
       'publish_branch',
       'lfs_pull',
+      'lfs_fetch_object',
+      'lfs_checkout_object',
       'lfs_prune',
       'update_submodule',
+      'transport_reference',
+      'add_submodule',
+      'initialize_submodule',
     ].includes(command);
   }
 
@@ -2692,7 +3098,7 @@ function createRepositoryPreview(): RepositorySnapshot {
     identity: { name: 'Maya Chen', email: 'maya@example.test' },
     headOid,
     status: {
-      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, mergeInProgress: false, historyOperation: null, rebaseInProgress: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
+      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, mergeInProgress: false, historyOperation: null, historyNoCommit: false, rebaseInProgress: false, rebaseEditStopped: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
       entries: [
         { path: 'apps/desktop/src/app/app.component.ts', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
         { path: 'apps/desktop/src/app/app.component.html', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },

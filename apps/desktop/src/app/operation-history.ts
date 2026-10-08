@@ -26,6 +26,7 @@ export interface DiscardHistoryEntry {
   kind: 'discard';
   label: string;
   undone: boolean;
+  recoveryId?: string;
 }
 
 export type OperationHistoryEntry =

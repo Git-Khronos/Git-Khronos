@@ -5,34 +5,35 @@ use git_chronos_git_core::{
     RepositoryStatus, SigningDiagnostic, TagDetails, TrackedFileSearch, WorkingTreeFileDiff,
     abort_merge as git_abort_merge, abort_rebase as git_abort_rebase, add_remote as git_add_remote,
     add_submodule as git_add_submodule, apply_stash as git_apply_stash,
-    apply_working_tree_hunk as git_apply_working_tree_hunk,
-    apply_working_tree_lines as git_apply_working_tree_lines,
-    apply_working_tree_recovery as git_apply_working_tree_recovery,
+    apply_working_tree_hunk_with_preview as git_apply_working_tree_hunk,
+    apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     checkout_branch as git_checkout_branch, checkout_commit as git_checkout_commit,
     checkout_remote_branch as git_checkout_remote_branch,
-    cherry_pick_commits as git_cherry_pick_commits, clone_repository as git_clone_repository,
+    cherry_pick_commits_with_options as git_cherry_pick_commits, clone_repository as git_clone_repository,
     commit_details as git_commit_details, commit_file_diff as git_commit_file_diff,
-    commit_with_options as git_commit, compare_commit_file as git_compare_commit_file,
+    compare_commit_file as git_compare_commit_file,
     compare_commit_file_with_working_tree as git_compare_commit_file_with_working_tree,
     compare_commit_with_working_tree as git_compare_commit_with_working_tree,
     compare_commits as git_compare_commits, conflict_details as git_conflict_details,
     continue_merge as git_continue_merge, continue_rebase as git_continue_rebase,
+    begin_rebase_split as git_begin_rebase_split,
     control_history_operation as git_control_history_operation, create_branch as git_create_branch,
     create_branch_at as git_create_branch_at, create_tag as git_create_tag,
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
     delete_branch as git_delete_branch, detect_git,
-    disable_sparse_checkout as git_disable_sparse_checkout, discard_path as git_discard_path,
-    drop_stash as git_drop_stash, execute_interactive_rebase as git_execute_interactive_rebase,
+    disable_sparse_checkout as git_disable_sparse_checkout,
+    drop_stash as git_drop_stash, execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
     fetch_remote_cancellable as git_fetch_remote_cancellable, file_blame as git_file_blame,
+    FetchOptions, fetch_with_options as git_fetch_with_options,
     file_history as git_file_history, ignore_path as git_ignore_path,
     initialize_lfs as git_initialize_lfs, initialize_repository as git_initialize_repository,
     initialize_submodule as git_initialize_submodule, integrate_branch as git_integrate_branch,
     mark_bisect as git_mark_bisect, move_head_if_current as git_move_head,
     perform_repository_maintenance as git_perform_repository_maintenance,
     pop_stash as git_pop_stash, pop_stash_entry as git_pop_stash_entry,
-    prepare_interactive_rebase as git_prepare_interactive_rebase,
+    prepare_interactive_rebase_with_options as git_prepare_interactive_rebase,
     prune_lfs_cancellable as git_prune_lfs_cancellable,
     publish_branch_cancellable as git_publish_branch_cancellable,
     pull_from_remote_with_strategy_cancellable as git_pull_from_remote_cancellable,
@@ -44,8 +45,9 @@ use git_chronos_git_core::{
     remove_remote as git_remove_remote, remove_worktree as git_remove_worktree,
     rename_branch as git_rename_branch, rename_stash as git_rename_stash, repository_watch_paths,
     reset_bisect as git_reset_bisect, reset_to_commit as git_reset_to_commit,
-    resolve_conflict as git_resolve_conflict, resolve_repository,
-    restore_files_from_commit as git_restore_files_from_commit, revert_commit as git_revert_commit,
+    resolve_conflict_with_preview as git_resolve_conflict, resolve_repository,
+    restore_files_from_commit as git_restore_files_from_commit, revert_commit_with_mainline as git_revert_commit,
+    revert_commits as git_revert_commits,
     search_tracked_files as git_search_tracked_files,
     set_branch_upstream as git_set_branch_upstream, set_remote_url as git_set_remote_url,
     set_repository_identity as git_set_repository_identity,
@@ -60,15 +62,17 @@ use git_chronos_git_core::{
     update_head_message as git_update_head_message,
     update_submodule_cancellable as git_update_submodule_cancellable,
     working_tree_file_diff as git_working_tree_file_diff,
-    working_tree_file_recovery_patch as git_working_tree_file_recovery_patch,
-    working_tree_hunk_recovery_patch as git_working_tree_hunk_recovery_patch,
-    working_tree_lines_recovery_patch as git_working_tree_lines_recovery_patch,
+};
+use git_chronos_git_core::{
+    DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
+    discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard, recover_discarded_changes,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+mod reference_commands;
+mod stash_commands;
 use portable_pty::{Child, CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -77,11 +81,16 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
+mod authentication;
+mod recovery_commands;
+
 #[derive(Default)]
 struct AppState {
     repositories: Mutex<HashMap<String, Arc<RepositorySession>>>,
     repository_watchers: Mutex<HashMap<String, RecommendedWatcher>>,
     discard_recoveries: Mutex<HashMap<String, DiscardRecovery>>,
+    discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
+    reset_plans: Mutex<HashMap<String, (String, git_chronos_git_core::ResetPlan)>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     terminals: Mutex<HashMap<String, TerminalSession>>,
     next_id: AtomicU64,
@@ -102,14 +111,8 @@ impl Drop for ActiveOperationGuard {
 }
 
 struct DiscardRecovery {
-    patch_path: PathBuf,
+    id: String,
     undone: bool,
-}
-
-impl Drop for DiscardRecovery {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.patch_path);
-    }
 }
 
 #[derive(Clone, Serialize)]
@@ -211,23 +214,25 @@ async fn open_repository(path: String, app: AppHandle) -> Result<RepositorySnaps
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn clone_repository(
+async fn clone_repository(
     remote: String,
     parent_path: String,
     folder: String,
     branch: Option<String>,
     depth: Option<u32>,
-    state: tauri::State<'_, AppState>,
+    operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    let root = git_clone_repository(
-        &remote,
-        Path::new(&parent_path),
-        &folder,
-        branch.as_deref(),
-        depth,
-    )?;
-    register_repository(root, &state, &app)
+    let (cancellation, _active_operation) = register_active_operation(&app, operation_id.clone())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = authentication::run(&app, &operation_id, None, &cancellation, true, || {
+            git_clone_repository(
+                &remote, Path::new(&parent_path), &folder, branch.as_deref(), depth,
+            )
+        })?;
+        let state = app.state::<AppState>();
+        register_repository(root, &state, &app)
+    }).await.map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -526,10 +531,127 @@ async fn discard_path(
         mutate_with_discard_recovery(
             &repo_id,
             &state,
-            |repository| git_working_tree_file_recovery_patch(repository, &path, untracked),
-            |repository| git_discard_path(repository, &path, untracked),
+            |repository| {
+                let plan = prepare_discard(repository, Some(vec![path.clone()]))?;
+                if untracked != (plan.preview.untracked > 0) {
+                    return Err(AppError { kind: "staleWorkingTreeFile".into(),
+                        message: "That file's status changed before discarding.".into(),
+                        hint: Some("Refresh and review a new discard preview.".into()) });
+                }
+                Ok(plan)
+            },
             working_tree_status,
         )
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedDiscard {
+    token: String,
+    #[serde(flatten)]
+    preview: DiscardPreview,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn preview_discard(
+    repo_id: String,
+    paths: Option<Vec<String>>,
+    app: AppHandle,
+) -> Result<PreparedDiscard, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        let plan = prepare_discard(&session.path, paths)?;
+        let token = state.next_id.fetch_add(1, Ordering::Relaxed).to_string();
+        let preview = plan.preview.clone();
+        let mut plans = state.discard_plans.lock().map_err(state_error)?;
+        plans.retain(|_, (repository, _)| repository != &repo_id);
+        plans.insert(token.clone(), (repo_id, plan));
+        Ok(PreparedDiscard { token, preview })
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn discard_changes(
+    repo_id: String,
+    token: String,
+    app: AppHandle,
+) -> Result<DiscardResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        let mut plans = state.discard_plans.lock().map_err(state_error)?;
+        let matches = plans
+            .get(&token)
+            .is_some_and(|(repository, _)| repository == &repo_id);
+        if !matches {
+            return Err(AppError {
+                kind: "staleDiscard".into(),
+                message: "That discard preview expired.".into(),
+                hint: Some("Review a new preview before discarding.".into()),
+            });
+        }
+        let (_, plan) = plans.remove(&token).expect("validated discard plan");
+        drop(plans);
+        let id = execute_discard(&session.path, &plan)?;
+        Ok(DiscardResult {
+            id,
+            status: working_tree_status(repo_id, &session)?,
+        })
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiscardResult {
+    id: String,
+    status: RepositoryStatus,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn load_discard_recoveries(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<Vec<DiscardRecoveryInfo>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        discarded_change_recoveries(&session.path)
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn apply_saved_discard(
+    repo_id: String,
+    id: String,
+    reverse: bool,
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, move |repository| {
+        recover_discarded_changes(repository, &id, reverse)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn forget_saved_discard(repo_id: String, id: String, app: AppHandle) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        delete_discard_recovery(&session.path, &id)
     })
     .await
     .map_err(background_task_error)?
@@ -555,10 +677,11 @@ fn commit_changes(
     amend: bool,
     skip_hooks: bool,
     sign: bool,
+    policy: Option<git_chronos_git_core::CommitPolicy>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_commit(path, &message, amend, skip_hooks, Some(sign))
+        git_chronos_git_core::commit_with_policy(path, &message, amend, skip_hooks, Some(sign), &policy.unwrap_or_default())
     })
 }
 
@@ -683,26 +806,95 @@ fn remove_worktree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn add_submodule(
+async fn move_worktree(
     repo_id: String,
-    url: String,
-    path: String,
-    state: tauri::State<'_, AppState>,
+    request: git_chronos_git_core::WorktreeMove,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |repository| {
-        git_add_submodule(repository, &url, &path)
-    })
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let target = std::fs::canonicalize(&request.path).map_err(|error| AppError {
+            kind: "worktreeMoveUnavailable".into(),
+            message: format!("Could not inspect the selected worktree: {error}"),
+            hint: Some("Refresh and review its path before retrying.".into()),
+        })?;
+        let is_open = state.repositories.lock().map_err(state_error)?.values().any(|session|
+            std::fs::canonicalize(&session.path).is_ok_and(|path| path == target));
+        if is_open {
+            return Err(AppError { kind: "openWorktree".into(),
+                message: "Close that worktree's repository tab before moving it.".into(), hint: None });
+        }
+        mutate_and_refresh(&repo_id, &state, |path|
+            git_chronos_git_core::move_worktree(path, &request))
+    }).await.map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn initialize_submodule(
+async fn repair_worktree(
+    repo_id: String,
+    request: git_chronos_git_core::WorktreeRepair,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let actual = std::fs::canonicalize(&request.actual_path).map_err(|error| AppError {
+            kind: "worktreeRepairUnavailable".into(), message: format!("Could not inspect the actual worktree: {error}"),
+            hint: Some("Choose its existing directory and retry.".into()),
+        })?;
+        let sessions = state.repositories.lock().map_err(state_error)?;
+        if sessions.values().any(|session| session.path == Path::new(&request.path)
+            || std::fs::canonicalize(&session.path).is_ok_and(|path| path == actual))
+        {
+            return Err(AppError { kind: "openWorktree".into(),
+                message: "Close the old and actual worktree tabs before repairing its registration.".into(), hint: None });
+        }
+        drop(sessions);
+        mutate_and_refresh(&repo_id, &state, |path| git_chronos_git_core::repair_worktree(path, &request))
+    }).await.map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn worktree_registration_review(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::WorktreeRegistrationReview, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::review_worktree_registrations).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn inspect_repository_integrity(
+    repo_id: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::IntegrityReport, AppError> {
+    let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::inspect_integrity(path, &cancellation)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn add_submodule(
+    repo_id: String,
+    url: String,
+    path: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |repository, _| {
+        git_add_submodule(repository, &url, &path)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn initialize_submodule(
     repo_id: String,
     path: String,
-    state: tauri::State<'_, AppState>,
+    operation_id: String,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |repository| {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |repository, _| {
         git_initialize_submodule(repository, &path)
-    })
+    }).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -801,24 +993,184 @@ fn prepare_interactive_rebase(
     repo_id: String,
     source: String,
     target: String,
+    selection_oids: Option<Vec<String>>,
+    root: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<InteractiveRebasePlan, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_prepare_interactive_rebase(path, &source, &target)
+        git_prepare_interactive_rebase(
+            path, &source, &target, selection_oids.as_deref(), root.unwrap_or(false),
+        )
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 fn execute_interactive_rebase(
     repo_id: String,
     source: String,
     target: String,
     steps: Vec<InteractiveRebaseStep>,
+    selection_oids: Option<Vec<String>>,
+    root: Option<bool>,
+    onto_oid: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_execute_interactive_rebase(path, &source, &target, &steps)
+        git_execute_interactive_rebase(
+            path,
+            &source,
+            &target,
+            &steps,
+            selection_oids.as_deref(),
+            root.unwrap_or(false),
+            onto_oid.as_deref(),
+        )
     })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn begin_rebase_split(
+    repo_id: String,
+    expected_head: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| git_begin_rebase_split(path, &expected_head))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn prepare_merge_rebase(
+    repo_id: String,
+    source: String,
+    target: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::MergeRebasePlan, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::prepare_merge_rebase(path, &source, &target))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn execute_merge_rebase(
+    repo_id: String,
+    request: git_chronos_git_core::MergeRebaseRequest,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| git_chronos_git_core::execute_merge_rebase(path, &request))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn export_diff_patch(
+    repo_id: String,
+    staged: bool,
+    paths: Vec<String>,
+    destination: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_chronos_git_core::export_patch(path, staged, &paths, std::path::Path::new(&destination))
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn review_diff_patch(
+    repo_id: String,
+    file: String,
+    target: git_chronos_git_core::PatchTarget,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::PatchReview, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_chronos_git_core::review_patch(path, std::path::Path::new(&file), target)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn import_diff_patch(
+    repo_id: String,
+    request: git_chronos_git_core::PatchRequest,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| git_chronos_git_core::import_patch(path, &request))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn export_git_bundle(
+    repo_id: String,
+    branch: String,
+    expected_oid: String,
+    destination: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_chronos_git_core::export_bundle(path, &branch, &expected_oid, std::path::Path::new(&destination))
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn review_git_bundle(
+    repo_id: String,
+    file: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::BundleReview, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::review_bundle(path, std::path::Path::new(&file)))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn import_git_bundle(
+    repo_id: String,
+    request: git_chronos_git_core::BundleRequest,
+    tip: git_chronos_git_core::BundleTip,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::import_bundle(path, &request, &tip))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn review_mail_patch_export(
+    repo_id: String,
+    oids: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::MailPatchReview, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::review_mail_patch_export(path, &oids))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn export_mail_patch(
+    repo_id: String,
+    request: git_chronos_git_core::MailPatchRequest,
+    destination: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_chronos_git_core::export_mail_patch(path, &request, std::path::Path::new(&destination))
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn review_mail_patch_import(
+    repo_id: String,
+    file: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::MailPatchImportReview, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_chronos_git_core::review_mail_patch_import(path, std::path::Path::new(&file))
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn import_mail_patch(
+    repo_id: String,
+    request: git_chronos_git_core::MailPatchImportRequest,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::MailPatchProgress, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::import_mail_patch(path, &request))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn control_mail_patch(
+    repo_id: String,
+    action: git_chronos_git_core::MailPatchAction,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_chronos_git_core::MailPatchProgress, AppError> {
+    with_repository(&repo_id, &state, |path| git_chronos_git_core::control_mail_patch(path, action))
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -865,6 +1217,17 @@ async fn fetch_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+async fn fetch_branches(
+    repo_id: String,
+    options: FetchOptions,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app,
+        move |path, cancellation| git_fetch_with_options(path, &options, cancellation)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 async fn perform_repository_maintenance(repo_id: String, app: AppHandle) -> Result<(), AppError> {
     with_repository_background(repo_id, app, git_perform_repository_maintenance).await
 }
@@ -878,7 +1241,9 @@ async fn sync_repository(
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
-        if !git_fetch_if_needed(&session.path)? {
+        let fetched = authentication::run(&app, "background-fetch", Some(&repo_id),
+            &CancellationToken::default(), false, || git_fetch_if_needed(&session.path))?;
+        if !fetched {
             return Ok(None);
         }
         build_snapshot(repo_id, &session).map(Some)
@@ -927,6 +1292,79 @@ async fn lfs_track_pattern(
         git_track_lfs_pattern(path, &pattern, lockable)
     })
     .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_tracking_rules(repo_id: String, app: AppHandle) -> Result<git_chronos_git_core::LfsTrackingRules, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::lfs_tracking_rules).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_file_attributes(repo_id: String, file: String, app: AppHandle) -> Result<git_chronos_git_core::LfsFileAttributes, AppError> {
+    with_repository_background(repo_id, app, move |path| git_chronos_git_core::lfs_file_attributes(path, &file)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_objects(repo_id: String, app: AppHandle) -> Result<git_chronos_git_core::LfsObjects, AppError> {
+    with_repository_background(repo_id, app, git_chronos_git_core::lfs_objects).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_fetch_preview(
+    repo_id: String,
+    file: String,
+    remote: String,
+    expected_oid: String,
+    expected_size: u64,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::LfsFetchPreview, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::preview_lfs_fetch(path, &file, &remote, &expected_oid, expected_size)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_fetch_object(
+    repo_id: String,
+    preview: git_chronos_git_core::LfsFetchPreview,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |path, cancellation|
+        git_chronos_git_core::fetch_lfs_object(path, &preview, cancellation)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_checkout_preview(
+    repo_id: String,
+    file: String,
+    expected_oid: String,
+    expected_size: u64,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::LfsCheckoutPreview, AppError> {
+    with_repository_background(repo_id, app, move |path|
+        git_chronos_git_core::preview_lfs_checkout(path, &file, &expected_oid, expected_size)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_checkout_object(
+    repo_id: String,
+    preview: git_chronos_git_core::LfsCheckoutPreview,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(repo_id, operation_id, app, move |path, cancellation|
+        git_chronos_git_core::checkout_lfs_object(path, &preview, cancellation)).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn lfs_untrack_pattern(
+    repo_id: String,
+    pattern: String,
+    expected_state: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, move |path|
+        git_chronos_git_core::untrack_lfs_pattern(path, &pattern, &expected_state)).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1176,10 +1614,12 @@ fn create_tag(
 fn cherry_pick_commits(
     repo_id: String,
     oids: Vec<String>,
+    mainline: Option<u32>,
+    no_commit: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_cherry_pick_commits(path, &oids)
+        git_cherry_pick_commits(path, &oids, mainline, no_commit.unwrap_or(false))
     })
 }
 
@@ -1187,9 +1627,24 @@ fn cherry_pick_commits(
 fn revert_commit(
     repo_id: String,
     oid: String,
+    mainline: Option<u32>,
+    oids: Option<Vec<String>>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_revert_commit(path, &oid))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        if let Some(oids) = &oids {
+            if mainline.is_some() || oids.first() != Some(&oid) {
+                return Err(AppError {
+                    kind: "invalidRevertRange".into(),
+                    message: "The revert selection does not match the reviewed first commit or includes a shared mainline.".into(),
+                    hint: None,
+                });
+            }
+            git_revert_commits(path, oids)
+        } else {
+            git_revert_commit(path, &oid, mainline)
+        }
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1397,6 +1852,68 @@ fn inspect_file_history(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+async fn search_repository_history(
+    repo_id: String,
+    query: git_chronos_git_core::history_search::HistoryQuery,
+    cursor: Option<git_chronos_git_core::history_search::HistoryCursor>,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::history_search::HistorySearchPage, AppError> {
+    let (token, guard) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |path| {
+        let _guard = guard;
+        git_chronos_git_core::history_search::search_history(path, query, cursor, &token)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn inspect_file_history_page(
+    repo_id: String,
+    revision: String,
+    path: String,
+    cursor: Option<git_chronos_git_core::history_search::FileHistoryCursor>,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_chronos_git_core::history_search::FileHistoryPage, AppError> {
+    let (token, guard) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |repository| {
+        let _guard = guard;
+        git_chronos_git_core::history_search::file_history_page(repository, &revision, &path, cursor, &token)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn inspect_blame_navigation(
+    repo_id: String, oid: String, path: String, app: AppHandle,
+) -> Result<git_chronos_git_core::history_search::BlameNavigation, AppError> {
+    with_repository_background_read(repo_id, app, move |repository| {
+        git_chronos_git_core::history_search::blame_navigation(repository, &oid, &path, &CancellationToken::default())
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn inspect_history_commit(
+    repo_id: String, oid: String, app: AppHandle,
+) -> Result<git_chronos_git_core::CommitSummary, AppError> {
+    with_repository_background_read(repo_id, app, move |repository| {
+        git_chronos_git_core::history_search::history_commit(repository, &oid, &CancellationToken::default())
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn compare_history_revisions(
+    repo_id: String, base: String, target: String, mode: String, app: AppHandle,
+) -> Result<CommitComparison, AppError> {
+    with_repository_background_read(repo_id, app, move |repository| {
+        let token = CancellationToken::default();
+        let base = git_chronos_git_core::history_search::comparison_base(repository, &base, &target, &mode, &token)?;
+        // The resolver validates and freezes the target, including symbolic refs.
+        let target = git_chronos_git_core::history_search::comparison_base(repository, &target, &target, "direct", &token)?;
+        git_compare_commits(repository, &base, &target)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 fn inspect_file_blame(
     repo_id: String,
     revision: String,
@@ -1437,10 +1954,17 @@ fn resolve_conflict(
     path: String,
     resolution: String,
     output: Option<String>,
+    expected_state: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |repository| {
-        git_resolve_conflict(repository, &path, &resolution, output.as_deref())
+        git_resolve_conflict(
+            repository,
+            &path,
+            &resolution,
+            output.as_deref(),
+            expected_state.as_deref(),
+        )
     })
 }
 
@@ -1451,23 +1975,35 @@ async fn apply_working_tree_hunk(
     staged: bool,
     hunk_index: usize,
     action: String,
+    expected_patch: Option<String>,
     app: AppHandle,
 ) -> Result<RepositoryStatus, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         if action == "discard" {
+            if staged {
+                return Err(AppError {
+                    kind: "invalidHunkAction".into(),
+                    message: "Staged changes cannot be discarded from this diff.".into(),
+                    hint: None,
+                });
+            }
             return mutate_with_discard_recovery(
                 &repo_id,
                 &state,
-                |repository| git_working_tree_hunk_recovery_patch(repository, &path, hunk_index),
-                |repository| {
-                    git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
-                },
+                |repository| prepare_partial_discard(repository, &path, hunk_index, None),
                 working_tree_status,
             );
         }
         mutate_working_tree(&repo_id, &state, |repository| {
-            git_apply_working_tree_hunk(repository, &path, staged, hunk_index, &action)
+            git_apply_working_tree_hunk(
+                repository,
+                &path,
+                staged,
+                hunk_index,
+                &action,
+                expected_patch.as_deref(),
+            )
         })
     })
     .await
@@ -1475,6 +2011,7 @@ async fn apply_working_tree_hunk(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 async fn apply_working_tree_lines(
     repo_id: String,
     path: String,
@@ -1482,6 +2019,7 @@ async fn apply_working_tree_lines(
     hunk_index: usize,
     line_indices: Vec<usize>,
     action: String,
+    expected_patch: Option<String>,
     app: AppHandle,
 ) -> Result<RepositoryStatus, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1494,21 +2032,23 @@ async fn apply_working_tree_lines(
                 hunk_index,
                 &line_indices,
                 &action,
+                expected_patch.as_deref(),
             )
         };
         if action == "discard" {
+            if staged {
+                return Err(AppError {
+                    kind: "invalidLineAction".into(),
+                    message: "Staged changes cannot be discarded from this diff.".into(),
+                    hint: None,
+                });
+            }
             return mutate_with_discard_recovery(
                 &repo_id,
                 &state,
                 |repository| {
-                    git_working_tree_lines_recovery_patch(
-                        repository,
-                        &path,
-                        hunk_index,
-                        &line_indices,
-                    )
+                    prepare_partial_discard(repository, &path, hunk_index, Some(&line_indices))
                 },
-                apply,
                 working_tree_status,
             );
         }
@@ -1519,46 +2059,45 @@ async fn apply_working_tree_lines(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn undo_discard(
+async fn undo_discard(
     repo_id: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    apply_discard_recovery(&repo_id, &state, false)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        apply_discard_recovery(&repo_id, &state, false)
+    }).await.map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn redo_discard(
+async fn redo_discard(
     repo_id: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    apply_discard_recovery(&repo_id, &state, true)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        apply_discard_recovery(&repo_id, &state, true)
+    }).await.map_err(background_task_error)?
 }
 
 fn mutate_with_discard_recovery<T>(
     repo_id: &str,
     state: &tauri::State<'_, AppState>,
-    prepare: impl FnOnce(&Path) -> Result<Vec<u8>, AppError>,
-    mutation: impl FnOnce(&Path) -> Result<(), AppError>,
+    prepare: impl FnOnce(&Path) -> Result<DiscardPlan, AppError>,
     finish: impl FnOnce(String, &RepositorySession) -> Result<T, AppError>,
 ) -> Result<T, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
-    let patch = prepare(&session.path)?;
-    let patch_path = write_discard_recovery_patch(state, repo_id, &patch)?;
-    if let Err(error) = mutation(&session.path) {
-        let _ = fs::remove_file(&patch_path);
-        return Err(error);
-    }
+    let plan = prepare(&session.path)?;
+    let id = execute_discard(&session.path, &plan)?;
     let mut recoveries = state.discard_recoveries.lock().map_err(state_error)?;
-    if let Some(previous) = recoveries.insert(
+    recoveries.insert(
         repo_id.to_owned(),
         DiscardRecovery {
-            patch_path,
+            id,
             undone: false,
         },
-    ) {
-        let _ = fs::remove_file(&previous.patch_path);
-    }
+    );
     drop(recoveries);
     finish(repo_id.to_owned(), &session)
 }
@@ -1570,7 +2109,7 @@ fn apply_discard_recovery(
 ) -> Result<RepositorySnapshot, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
-    let patch_path = {
+    let id = {
         let recoveries = state.discard_recoveries.lock().map_err(state_error)?;
         let recovery = recoveries.get(repo_id).ok_or_else(|| AppError {
             kind: "discardRecoveryUnavailable".into(),
@@ -1584,9 +2123,9 @@ fn apply_discard_recovery(
                 hint: Some("Refresh the repository and try the available toolbar action.".into()),
             });
         }
-        recovery.patch_path.clone()
+        recovery.id.clone()
     };
-    git_apply_working_tree_recovery(&session.path, &patch_path, reverse)?;
+    recover_discarded_changes(&session.path, &id, reverse)?;
     if let Some(recovery) = state
         .discard_recoveries
         .lock()
@@ -1596,55 +2135,6 @@ fn apply_discard_recovery(
         recovery.undone = !reverse;
     }
     build_snapshot(repo_id.to_owned(), &session)
-}
-
-fn write_discard_recovery_patch(
-    state: &tauri::State<'_, AppState>,
-    repo_id: &str,
-    patch: &[u8],
-) -> Result<PathBuf, AppError> {
-    let directory = std::env::temp_dir().join("git-chronos-discard-recovery");
-    fs::create_dir_all(&directory).map_err(|error| AppError {
-        kind: "discardRecoveryUnavailable".into(),
-        message: format!("Could not prepare discard recovery storage: {error}"),
-        hint: Some("Check that the temporary directory is writable.".into()),
-    })?;
-    let sequence = state.next_id.fetch_add(1, Ordering::Relaxed);
-    let safe_repo_id = repo_id
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    let path = directory.join(format!(
-        "{}-{safe_repo_id}-{sequence}.patch",
-        std::process::id()
-    ));
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&path).map_err(|error| AppError {
-        kind: "discardRecoveryUnavailable".into(),
-        message: format!("Could not create the discard recovery patch: {error}"),
-        hint: Some("Check that the temporary directory is writable.".into()),
-    })?;
-    if let Err(error) = file.write_all(patch) {
-        let _ = fs::remove_file(&path);
-        return Err(AppError {
-            kind: "discardRecoveryUnavailable".into(),
-            message: format!("Could not save the discard recovery patch: {error}"),
-            hint: Some("No changes were discarded.".into()),
-        });
-    }
-    Ok(path)
 }
 
 fn mutate_and_refresh(
@@ -1862,12 +2352,13 @@ async fn mutate_and_refresh_cancellable_background<F>(
 where
     F: FnOnce(&Path, &CancellationToken) -> Result<(), AppError> + Send + 'static,
 {
-    let (cancellation, _active_operation) = register_active_operation(&app, operation_id)?;
+    let (cancellation, _active_operation) = register_active_operation(&app, operation_id.clone())?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
-        action(&session.path, &cancellation)?;
+        authentication::run(&app, &operation_id, Some(&repo_id), &cancellation, true,
+            || action(&session.path, &cancellation))?;
         build_snapshot(repo_id, &session)
     })
     .await
@@ -2089,9 +2580,12 @@ fn default_shell() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(authentication::AuthenticationState::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
+            authentication::answer_authentication,
+            authentication::pending_authentication,
             system_info,
             cancel_git_operation,
             open_repository,
@@ -2112,6 +2606,19 @@ pub fn run() {
             stage_path,
             unstage_path,
             discard_path,
+            reference_commands::manage_reference,
+            reference_commands::configure_remote,
+            reference_commands::transport_reference,
+            reference_commands::preview_remote_tag,
+            stash_commands::stash_selected,
+            stash_commands::apply_stash_options,
+            stash_commands::branch_from_stash,
+            stash_commands::stash_checkout,
+            preview_discard,
+            discard_changes,
+            load_discard_recoveries,
+            apply_saved_discard,
+            forget_saved_discard,
             ignore_path,
             commit_changes,
             update_head_message,
@@ -2123,6 +2630,10 @@ pub fn run() {
             create_worktree_for_branch,
             set_worktree_locked,
             remove_worktree,
+            move_worktree,
+            repair_worktree,
+            worktree_registration_review,
+            inspect_repository_integrity,
             add_submodule,
             initialize_submodule,
             update_submodule,
@@ -2136,15 +2647,38 @@ pub fn run() {
             prepare_interactive_rebase,
             execute_interactive_rebase,
             continue_rebase,
+            begin_rebase_split,
+            prepare_merge_rebase,
+            execute_merge_rebase,
+            export_diff_patch,
+            review_diff_patch,
+            import_diff_patch,
+            export_git_bundle,
+            review_git_bundle,
+            import_git_bundle,
+            review_mail_patch_export,
+            export_mail_patch,
+            review_mail_patch_import,
+            import_mail_patch,
+            control_mail_patch,
             skip_rebase,
             abort_rebase,
             fetch_repository,
+            fetch_branches,
             perform_repository_maintenance,
             sync_repository,
             lfs_pull,
             lfs_prune,
             lfs_initialize,
             lfs_track_pattern,
+            lfs_tracking_rules,
+            lfs_file_attributes,
+            lfs_objects,
+            lfs_fetch_preview,
+            lfs_fetch_object,
+            lfs_checkout_preview,
+            lfs_checkout_object,
+            lfs_untrack_pattern,
             sparse_checkout_set,
             sparse_checkout_reapply,
             sparse_checkout_disable,
@@ -2167,6 +2701,11 @@ pub fn run() {
             revert_commit,
             control_history_operation,
             reset_to_commit,
+            recovery_commands::preview_reset,
+            recovery_commands::execute_prepared_reset,
+            recovery_commands::load_operation_recoveries,
+            recovery_commands::restore_operation_recovery,
+            recovery_commands::forget_operation_recovery,
             start_bisect,
             mark_bisect,
             reset_bisect,
@@ -2182,6 +2721,11 @@ pub fn run() {
             compare_commit_file_with_working_tree,
             inspect_working_tree_file,
             inspect_file_history,
+            search_repository_history,
+            inspect_file_history_page,
+            inspect_blame_navigation,
+            inspect_history_commit,
+            compare_history_revisions,
             inspect_file_blame,
             restore_files_from_commit,
             inspect_conflict,
