@@ -4,6 +4,7 @@
   class="commit-row"
   [style.top.px]="top()"
   role="button"
+  aria-controls="repository-commit-panel"
   data-graph-row
   [attr.tabindex]="!view.changesOpen() && view.selectedCommit() === row.commit.oid ? 0 : -1"
   [attr.data-commit-oid]="row.commit.oid"
@@ -35,15 +36,16 @@
     } @else { <span
       class="commit-ref-stack"
       role="group"
+      [class.single-ref]="decorations.length === 1"
       [class.multi-ref]="decorations.length > 1"
       [class.pointer-expanded]="view.expandedReferenceStackOid() === row.commit.oid"
       [class.opens-upward]="view.upwardReferenceStackOid() === row.commit.oid"
       [class.escape-collapsed]="view.collapsedReferenceStackOid() === row.commit.oid"
-      [attr.aria-label]="decorations.length > 1 ? decorations.length + ' branches and tags on this commit. Focus or hover to show all.' : null"
+      [attr.aria-label]="decorations.length > 1 ? decorations.length + ' branches and tags on this commit. Activate or hover to show all.' : null"
       (pointerenter)="decorations.length > 1 ? view.openReferenceStack(row.commit.oid, $event) : null"
-      (pointerleave)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid) : null"
-      (focusin)="decorations.length > 1 ? view.openReferenceStack(row.commit.oid, $event) : null; view.highlightReference(row.commit.oid)"
-      (focusout)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid) : null; view.highlightReference(null)"
+      (pointerleave)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid, $event) : null"
+      (focusin)="view.highlightReference(row.commit.oid)"
+      (focusout)="decorations.length > 1 ? view.scheduleReferenceStackClose(row.commit.oid, $event) : null; view.highlightReference(null)"
       (keydown.escape)="view.collapseReferenceStack($event, row.commit.oid)"
     ><ng-template #graphReference let-decoration>
       @if (view.branchForDecoration(decoration); as branch) {
@@ -88,7 +90,7 @@
         (click)="view.openReferenceStackFromTrigger($event, row.commit.oid)"
         (contextmenu)="view.openReferenceStackFromTrigger($event, row.commit.oid, true)"
         (keydown)="view.handleReferenceStackTriggerKeydown($event, row.commit.oid)"
-    ><span class="reference-stack-locations" aria-hidden="true">@for (location of referenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? view.remoteIconForDecoration(location.decoration) : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ referenceSummary.label }}</span>@if (referenceSummary.hiddenCount) { <b>+{{ referenceSummary.hiddenCount }}</b> }</button>
+    ><span class="reference-stack-locations" aria-hidden="true">@for (location of referenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? view.remoteIconForDecoration(location.decoration) : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ referenceSummary.label }}</span>@if (referenceSummary.hiddenCount) { <b>+{{ referenceSummary.hiddenCount }}</b> }<gc-icon class="reference-stack-chevron" name="chevron-down" [size]="10" /></button>
       <span class="reference-stack-popover" role="menu" aria-label="References on this commit" [style.--reference-location-offset]="((referenceSummary.locations.length - 1) * 10) + 'px'" (keydown)="view.handleReferenceStackMenuKeydown($event, row.commit.oid)">
         @let expandedReferenceGroups = view.referenceGroups(decorations);
         <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ view.referenceGroupHeading(expandedReferenceGroups) }}</span>
@@ -135,15 +137,17 @@
     } @else {
       <span class="node author-node color-{{ row.color }}" [class.head-node]="view.currentBranch()?.oid === row.commit.oid" [class.color-marker]="view.authorMarkerStyle() === 'color'" [attr.data-lane-offset]="row.nodeOffset" [style.left.px]="row.nodeOffset" [style.--author-color]="row.authorColor" title="{{ view.currentBranch()?.oid === row.commit.oid ? 'HEAD · ' : '' }}{{ row.commit.authorName }} &lt;{{ row.commit.authorEmail }}&gt;">@if (view.authorMarkerStyle() === 'initials') { {{ view.initials(row.commit.authorName) }} }</span>
     }
-    <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="$event.stopPropagation()" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
+    <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="view.handleGraphRowResizerClick($event, row.commit.oid)" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
   </span> }
   @if (view.showMessageColumn()) { <span class="commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" [title]="row.commit.subject + (row.commit.description ? '\n' + row.commit.description : '')">
-    @if (view.stashForOid(row.commit.oid); as stash) {
-      <span class="subject">@for (segment of (stash.message | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span><span class="commit-description">Stashed changes</span>
-    } @else {
-      <span class="subject">@for (segment of ((row.commit.subject || '(no commit message)') | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span>
-      @if (row.commit.description) { <span class="commit-description">@for (segment of (row.commit.description | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span> }
-    }
+    <span class="commit-copy">
+      @if (view.stashForOid(row.commit.oid); as stash) {
+        <span class="subject">@for (segment of (stash.message | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span><span class="commit-description">Stashed changes</span>
+      } @else {
+        <span class="subject">@for (segment of ((row.commit.subject || '(no commit message)') | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span>
+        @if (row.commit.description) { <span class="commit-description">@for (segment of (row.commit.description | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span> }
+      }
+    </span>
   </span> }
   @if (view.showAuthorColumn()) {
     <span class="row-author" [class.compact]="view.compactAuthorColumn()" [style.order]="view.graphColumnPosition('author')" [class.trailing-cell]="view.trailingGraphColumn() === 'author'" title="{{ view.stashForOid(row.commit.oid) ? 'Stash' : row.commit.authorName + ' <' + row.commit.authorEmail + '>' }}">

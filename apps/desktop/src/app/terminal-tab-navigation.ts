@@ -18,9 +18,48 @@ export interface TerminalTabScrollMetrics {
   maximumScrollPosition: number;
 }
 
+export interface TerminalTabStripMetrics {
+  scrollPosition: number;
+  viewportWidth: number;
+  contentWidth: number;
+}
+
+export interface TerminalTabOverflowState {
+  overflowing: boolean;
+  canScrollBack: boolean;
+  canScrollForward: boolean;
+}
+
 export interface TerminalTabCloseState {
   readonly activeId: string | null;
   readonly remainingIds: string[];
+}
+
+const TERMINAL_TAB_TITLE_LIMIT = 96;
+
+function cleanTerminalTabTitle(value: string): string {
+  return Array.from(value)
+    .filter((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 0x20
+        && !(codePoint >= 0x7f && codePoint <= 0x9f)
+        && codePoint !== 0x061c
+        && codePoint !== 0x200e
+        && codePoint !== 0x200f
+        && !(codePoint >= 0x202a && codePoint <= 0x202e)
+        && !(codePoint >= 0x2066 && codePoint <= 0x2069);
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function normalizeTerminalTabTitle(value: string, fallback: string): string {
+  const title = cleanTerminalTabTitle(value) || cleanTerminalTabTitle(fallback) || 'Terminal';
+  const characters = Array.from(title);
+  return characters.length <= TERMINAL_TAB_TITLE_LIMIT
+    ? title
+    : `${characters.slice(0, TERMINAL_TAB_TITLE_LIMIT - 1).join('')}…`;
 }
 
 export function terminalTabNavigationIndex(
@@ -60,6 +99,17 @@ export function terminalTabScrollPosition(metrics: TerminalTabScrollMetrics): nu
     return null;
   }
   return Math.max(0, Math.min(metrics.maximumScrollPosition, target));
+}
+
+export function terminalTabOverflowState(metrics: TerminalTabStripMetrics): TerminalTabOverflowState {
+  const tolerance = 1;
+  const maximumScrollPosition = Math.max(0, metrics.contentWidth - metrics.viewportWidth);
+  const overflowing = maximumScrollPosition > tolerance;
+  return {
+    overflowing,
+    canScrollBack: overflowing && metrics.scrollPosition > tolerance,
+    canScrollForward: overflowing && metrics.scrollPosition < maximumScrollPosition - tolerance,
+  };
 }
 
 export function terminalTabStateAfterClose(

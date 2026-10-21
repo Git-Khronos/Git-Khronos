@@ -61,6 +61,72 @@ tasks:
     cmds:
       - pnpm tauri:build
 
+  package:deb:
+    aliases: [deb]
+    desc: Build the Debian/Ubuntu system package
+    platforms: [linux]
+    deps: [doctor]
+    cmds:
+      - task: package:deb:build
+      - tools/manage-linux-package.sh verify
+
+  package:deb:build:
+    internal: true
+    platforms: [linux]
+    method: checksum
+    sources:
+      - Taskfile.yml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - angular.json
+      - nx.json
+      - tsconfig*.json
+      - .cargo/**/*
+      - apps/desktop/**/*
+      - exclude: apps/desktop/src-tauri/gen/**/*
+      - exclude: apps/desktop/src-tauri/target/**/*
+      - crates/**/*
+      - libs/**/*
+      - packaging/**/*
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - tools/check-node.mjs
+      - tools/prepare-linux-package.mjs
+      - tools/manage-linux-package.sh
+    generates:
+      - target/release/git-chronos-desktop
+      - target/release/bundle/deb/*.deb
+      - target/package-assets/changelog.gz
+      - target/package-assets/git-chronos-desktop.1.gz
+      - dist/apps/desktop/browser/index.html
+    cmds:
+      - pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
+
+  package:deb:path:
+    desc: Print the latest Debian/Ubuntu package path
+    platforms: [linux]
+    cmds:
+      - tools/manage-linux-package.sh print-package
+
+  install:system:
+    aliases: [install:linux]
+    desc: Build and install Git Chronos system-wide on Debian/Ubuntu
+    platforms: [linux]
+    deps: [package:deb]
+    cmds:
+      - tools/manage-linux-package.sh install
+
+  uninstall:system:
+    aliases: [uninstall:linux]
+    desc: Remove the system-wide Debian/Ubuntu installation
+    platforms: [linux]
+    cmds:
+      - tools/manage-linux-package.sh uninstall
+
   test:
     desc: Run the workspace test suite
     deps: [doctor]

@@ -183,6 +183,10 @@ test('marker-only status refresh toggles no-commit controls without losing uncha
       await expect(progress).toContainText('NO COMMIT');
       await expect(progress.getByRole('button', { name: 'Skip', exact: true })).toHaveCount(0);
       await expect(progress.getByRole('button', { name: 'Finish manually', exact: true })).toBeVisible();
+      await expect(page.locator('#commit-readiness')).toHaveText('Finish the no-commit replay from the operation banner before creating another commit.');
+      await page.getByLabel('Commit summary').fill('Must not commit during replay');
+      await page.getByLabel('Commit summary').press('Enter');
+      expect(await page.evaluate(() => (window as any).__noCommit.calls.some((call: any) => call.command === 'commit_changes'))).toBe(false);
     } else {
       await expect(progress).not.toContainText('NO COMMIT');
       await expect(progress.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();

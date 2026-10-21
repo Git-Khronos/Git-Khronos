@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { ConflictDetails } from '../../libs/contracts/src/index';
 
-async function openConflict(page: Page, options: { stale?: boolean; rebase?: boolean; truncated?: boolean; deleted?: boolean } = {}): Promise<void> {
+async function openConflict(page: Page, options: { stale?: boolean; rebase?: boolean; truncated?: boolean; deleted?: boolean; submodule?: boolean } = {}): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate((options) => {
@@ -13,11 +13,13 @@ async function openConflict(page: Page, options: { stale?: boolean; rebase?: boo
       entries: [{ path: 'shared.txt', originalPath: null, indexStatus: 'U', worktreeStatus: 'U', conflicted: true }],
     };
     const details: ConflictDetails = {
-      path: 'shared.txt', ancestor: 'base\n', current: 'current\n',
-      incoming: options.deleted ? null : 'incoming\n', output: 'working conflict\n',
-      binary: false, truncated: !!options.truncated, editable: !options.truncated,
+      path: 'shared.txt', ancestor: options.submodule ? 'Submodule commit aaaaaaaaaa\n' : 'base\n',
+      current: options.submodule ? 'Submodule commit bbbbbbbbbb\n' : 'current\n',
+      incoming: options.deleted ? null : options.submodule ? 'Submodule commit cccccccccc\n' : 'incoming\n',
+      output: options.submodule ? null : 'working conflict\n',
+      binary: false, truncated: !!options.truncated, editable: !options.truncated && !options.submodule,
       state: 'native-reviewed-state', currentExists: true, incomingExists: !options.deleted,
-      submodule: false,
+      submodule: !!options.submodule,
     };
     git.repositories.update((repositories: any[]) => repositories.map((item) =>
       item.id === repository.id ? { ...item, status } : item));
@@ -115,6 +117,29 @@ test('labels accepting a deleted side separately from saving an empty file', asy
   await expect(dialog.getByRole('button', { name: 'Accept incoming deletion' })).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Use incoming', exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Save Output & Mark Resolved' })).toBeEnabled();
+});
+
+test('resolves a submodule conflict by staging one reviewed gitlink without presenting a text editor', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 560 });
+  await openConflict(page, { submodule: true });
+  const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
+  await expect(dialog).toContainText('Submodule commit conflict');
+  await expect(dialog).toContainText('does not check out, fetch, reset, or modify files inside the submodule');
+  await expect(dialog.getByRole('textbox')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Keep Current Commit' })).toBeEnabled();
+  const incoming = dialog.getByRole('button', { name: 'Keep Incoming Commit' });
+  const bounds = await incoming.boundingBox();
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(560);
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await incoming.click();
+  await expect(dialog).toHaveCount(0);
+  const call = await page.evaluate(() => (window as any).__conflictTest.calls.find(
+    (entry: { command: string }) => entry.command === 'resolve_conflict'));
+  expect(call).toEqual({
+    command: 'resolve_conflict',
+    args: { repoId: expect.any(String), path: 'shared.txt', resolution: 'incoming',
+      output: null, expectedState: 'native-reviewed-state' },
+  });
 });
 
 test('does not resolve an old conflict in a newly active repository', async ({ page }) => {

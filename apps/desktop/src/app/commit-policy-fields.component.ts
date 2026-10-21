@@ -9,10 +9,10 @@ import { GitHelpComponent } from './git-help.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <label class="toggle"><input type="checkbox" name="signOffCommit" aria-describedby="commit-signoff-help"
-      [disabled]="disabled()" [ngModel]="policy().signOff" (ngModelChange)="update({ signOff: $event })" /> Add Signed-off-by trailer</label>
+      [disabled]="disabled()" [ngModel]="policy().signOff" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ signOff: $event })" /> Add Signed-off-by trailer</label>
     <p id="commit-signoff-help">Uses Git's committer identity. A sign-off is a project-specific contributor statement, not a cryptographic signature. Check your project's policy before selecting it.</p>
     <label class="toggle"><input type="checkbox" name="allowEmptyCommit" aria-describedby="commit-empty-help"
-      [disabled]="disabled()" [ngModel]="policy().allowEmpty" (ngModelChange)="update({ allowEmpty: $event })" /> Allow commit without staged changes</label>
+      [disabled]="disabled()" [ngModel]="policy().allowEmpty" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ allowEmpty: $event })" /> Allow commit without staged changes</label>
     <p id="commit-empty-help">Allows an unchanged tree. Staged contents are still included when present; unstaged edits are not staged automatically. A nonempty message and successful hooks are still required.</p>
     <p>Skip checks bypasses only pre-commit and commit-msg verification hooks.
       Prepare-commit-msg and other applicable hooks still run. Hooks can edit files or messages;
@@ -25,17 +25,17 @@ import { GitHelpComponent } from './git-help.component';
       (change)="update({ author: author() ? null : initialIdentity() })" /> Override commit author</label>
     @if (author(); as identity) {
       <label>Author name<input name="commitAuthorName" maxlength="256" [disabled]="disabled()"
-        autocomplete="off" [ngModel]="identity.name" (ngModelChange)="update({ author: { name: $event, email: identity.email } })" /></label>
+        autocomplete="off" [ngModel]="identity.name" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ author: { name: $event, email: identity.email } })" /></label>
       <label>Author email<input name="commitAuthorEmail" maxlength="320" [disabled]="disabled()"
-        autocomplete="off" spellcheck="false" [ngModel]="identity.email" (ngModelChange)="update({ author: { name: identity.name, email: $event } })" /></label>
+        autocomplete="off" spellcheck="false" [ngModel]="identity.email" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ author: { name: identity.name, email: $event } })" /></label>
     }
     <label class="toggle"><input type="checkbox" [disabled]="disabled()" [checked]="committer() !== null"
       (change)="update({ committer: committer() ? null : initialIdentity() })" /> Override commit committer</label>
     @if (committer(); as identity) {
       <label>Committer name<input name="commitCommitterName" maxlength="256" [disabled]="disabled()"
-        autocomplete="off" [ngModel]="identity.name" (ngModelChange)="update({ committer: { name: $event, email: identity.email } })" /></label>
+        autocomplete="off" [ngModel]="identity.name" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ committer: { name: $event, email: identity.email } })" /></label>
       <label>Committer email<input name="commitCommitterEmail" maxlength="320" [disabled]="disabled()"
-        autocomplete="off" spellcheck="false" [ngModel]="identity.email" (ngModelChange)="update({ committer: { name: identity.name, email: $event } })" /></label>
+        autocomplete="off" spellcheck="false" [ngModel]="identity.email" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ committer: { name: identity.name, email: $event } })" /></label>
     }
     <gc-git-help topic="commit" label="Learn about commit policy…" />
     @if (author() || committer()) {

@@ -254,9 +254,12 @@ test('closing commit details during signature loading never reopens them or stea
   await page.goto('/');
   const row = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
   await row.click();
-  const loading = page.locator('.commit-panel').getByRole('status').filter({ hasText: 'Loading signature' });
+  const loading = page.locator('.commit-panel').getByRole('status', { name: 'Loading signature verification' });
   await expect(loading).toBeVisible();
-  expect((await loading.boundingBox())?.height).toBeGreaterThanOrEqual(46);
+  await expect(loading.locator('.signature-placeholder-icon')).toBeVisible();
+  await expect(loading.locator('.signature-placeholder-copy i')).toHaveCount(2);
+  await expect(loading).not.toContainText('Loading');
+  expect((await loading.boundingBox())?.height).toBeGreaterThanOrEqual(42);
   await page.getByRole('button', { name: 'Close commit panel', exact: true }).click();
   await row.focus();
   release!();
@@ -392,6 +395,10 @@ test('identity values stay in their repository draft and failed commits keep the
 });
 
 test('identity controls load progressively and contain long values in compact view while pending commit disables editing', async ({ page }) => {
+  const formWarnings: string[] = [];
+  page.on('console', message => {
+    if (message.type() === 'warning' && message.text().includes('NG01354')) formWarnings.push(message.text());
+  });
   await setup(page, 1);
   await page.setViewportSize({ width: 820, height: 720 });
   await expect(page.locator('gc-commit-policy-fields')).toHaveCount(0);
@@ -407,6 +414,7 @@ test('identity controls load progressively and contain long values in compact vi
   await expect(page.getByLabel('Override commit committer', { exact: true })).toBeDisabled();
   await page.evaluate(() => { (window as any).__commitPolicy.finish(); });
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
+  expect(formWarnings).toEqual([]);
 });
 
 test('invalid identity feedback is explicit and the entered override remains available for correction', async ({ page }) => {

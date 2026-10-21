@@ -16,16 +16,22 @@ import { IconComponent, type IconName } from './icon.component';
     :host { display: block; }
     .commit-signature { display: flex; align-items: center; gap: 8px; margin: 11px 14px 0; padding: 8px 9px; border: 1px solid var(--signature-neutral-border); border-radius: 4px; background: var(--signature-neutral-surface); color: var(--signature-neutral-text); }
     .commit-signature > span { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 50%; background: var(--signature-neutral-icon); }
-    .commit-signature > div { min-width: 0; display: grid; gap: 2px; }
-    .commit-signature strong, .commit-signature small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .commit-signature strong { color: var(--signature-neutral-strong); font-size: 12px; }
-    .commit-signature small { color: var(--signature-neutral-muted); font-size: 12px; }
+    .commit-signature > div { min-width: 0; width: 100%; display: grid; gap: 2px; }
+    .commit-signature strong { overflow: hidden; color: var(--signature-neutral-strong); font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }
+    .commit-signature small { color: var(--signature-neutral-muted); font-size: var(--font-size-caption); line-height: 1.35; overflow-wrap: anywhere; white-space: normal; }
     .commit-signature.valid { border-color: var(--signature-valid-border); background: var(--signature-valid-surface); color: var(--signature-valid-text); }
     .commit-signature.valid > span { background: var(--signature-valid-icon); }
     .commit-signature.valid strong { color: var(--signature-valid-strong); }
     .commit-signature.valid-unknown { border-color: var(--signature-warning-border); background: var(--signature-warning-surface); color: var(--signature-warning-text); }
     .commit-signature.invalid, .commit-signature.expired-signature, .commit-signature.expired-key, .commit-signature.revoked-key, .commit-signature.unverifiable { border-color: var(--signature-danger-border); background: var(--signature-danger-surface); color: var(--signature-danger-text); }
-    .commit-signature.unsigned { opacity: .82; }
+    @media (max-height: 720px) {
+      .commit-signature { margin: 7px 10px 0; padding: 6px 8px; }
+    }
+    @media (max-height: 640px) {
+      .commit-signature { gap: 6px; margin: 4px 8px 0; padding: 4px 7px; }
+      .commit-signature.unsigned > span { width: 20px; height: 20px; }
+      .commit-signature.unsigned small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    }
   `],
 })
 export class CommitSignatureComponent {

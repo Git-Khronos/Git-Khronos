@@ -36,7 +36,12 @@ async function setup(page: Page): Promise<void> {
 }
 
 async function openOptions(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Pull options', exact: true }).click();
+  const fetchOptions = page.getByRole('button', { name: 'Fetch options', exact: true });
+  if (await fetchOptions.isVisible()) {
+    await fetchOptions.click();
+  } else {
+    await page.getByRole('button', { name: 'More repository actions', exact: true }).click();
+  }
   await page.getByRole('menuitem', { name: /Fetch branches with options/ }).click();
   await expect(page.getByRole('dialog', { name: 'Fetch branches with options' })).toBeVisible();
 }
@@ -102,7 +107,7 @@ test('compact dialog traps focus, resets prune on reopen, and returns toolbar fo
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Pull options', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'More repository actions', exact: true })).toBeFocused();
   await openOptions(page);
   await expect(dialog.getByRole('checkbox')).not.toBeChecked();
 });

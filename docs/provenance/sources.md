@@ -145,7 +145,8 @@ Sources: [git-submodule](https://git-scm.com/docs/git-submodule),
 [git-config](https://git-scm.com/docs/git-config).
 
 Used for gitlink modes, conflict stages, submodule status flags, declared and
-registered URLs, the `sync` subcommand's scope, `update --no-fetch --checkout`, non-forced `deinit` and gitlink removal with
+registered URLs, `set-branch` remote-HEAD/same-name/specific-branch semantics,
+the `sync` subcommand's scope, `update --no-fetch --checkout`, non-forced `deinit` and gitlink removal with
 [git-rm](https://git-scm.com/docs/git-rm). Original fixtures; no
 third-party implementation copied.
 
@@ -789,3 +790,37 @@ Sources: [Git source releases](https://github.com/git/git/tags),
 Used for building disposable Git 2.34, 2.39 and 2.43 binaries and running the
 native fixture suite against each. Version-specific findings and the 2.39
 baseline are recorded in compatibility notes. No code copied.
+
+## Linux system packaging
+
+Sources:
+
+- [Tauri 2 bundle configuration reference](https://v2.tauri.app/reference/config/#bundleconfig)
+- [Debian package archives policy](https://www.debian.org/doc/debian-policy/ch-archive.html)
+- [Debian copyright format 1.0](https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/)
+- [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
+
+Used for:
+
+- Building a Debian package with explicit runtime dependencies and standard
+  installation paths.
+- Installing the executable, desktop launcher, icons, manual, changelog,
+  copyright statement and third-party notices system-wide.
+- Validating package metadata and desktop-menu registration independently of
+  any other Git client.
+
+No source code, assets, or product wording were copied.
+
+## Native window title updates
+
+Source:
+
+- [Tauri 2 window API](https://v2.tauri.app/reference/javascript/api/namespacewindow/)
+
+Used for:
+
+- Updating the native desktop window title through the documented `setTitle`
+  capability when the active repository, branch, or working state changes.
+- Keeping browser-preview document titles useful without invoking native APIs.
+
+No source code, assets, wording collections, or visual implementation were copied.

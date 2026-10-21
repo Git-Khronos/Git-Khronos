@@ -21,6 +21,19 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('opens advanced stash controls from the toolbar and restores focus', async ({ page }) => {
+  const toggle = page.getByRole('button', { name: 'Stash options' });
+  await toggle.click();
+  const menu = page.getByRole('menu', { name: 'Stash options' });
+  await menu.getByRole('menuitem', { name: /Stash with options/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(toggle).toBeFocused();
+});
+
 test('selected stash options disclose staged state and send only chosen paths', async ({ page }) => {
   const path = 'apps/desktop/src/app/app.component.html';
   const opener = page.getByRole('button', { name: 'Working directory options', exact: true });
@@ -28,8 +41,10 @@ test('selected stash options disclose staged state and send only chosen paths', 
   await page.getByRole('menuitem', { name: /^Stash with options/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Stash with options' });
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
-  await dialog.getByLabel('Message (optional)').fill('Selected work');
-  await dialog.getByLabel('What to save').selectOption('keep-index');
+  await expect(dialog.getByLabel('Stash source')).toContainText('main4 changed filesHEAD');
+  await expect(dialog.getByRole('button', { name: 'Create stash' })).toHaveClass(/primary/);
+  await dialog.getByLabel('Message').fill('Selected work');
+  await dialog.getByLabel('Changes to save').selectOption('keep-index');
   await expect(dialog).toContainText('staged contents remain');
   await dialog.getByLabel('Include untracked files').uncheck();
   await dialog.getByText('Choose specific files', { exact: true }).click();
@@ -51,13 +66,13 @@ test('staged-only mode excludes untracked files and keeps escape inside the work
   await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
   await page.getByRole('menuitem', { name: /^Stash with options/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Stash with options' });
-  await dialog.getByLabel('What to save').selectOption('staged-only');
+  await dialog.getByLabel('Changes to save').selectOption('staged-only');
   await expect(dialog.getByLabel('Include untracked files')).not.toBeChecked();
   await expect(dialog.getByLabel('Include untracked files')).toBeDisabled();
   await expect(dialog).toContainText('overlapping changes may be refused');
   await dialog.getByRole('button', { name: 'Create stash' }).focus();
   await page.keyboard.press('Tab');
-  await expect(dialog.getByLabel('Message (optional)')).toBeFocused();
+  await expect(dialog.getByLabel('Message')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 });

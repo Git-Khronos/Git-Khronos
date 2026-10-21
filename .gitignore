@@ -2,6 +2,7 @@ node_modules/
 dist/
 .angular/
 .nx/
+.task/
 target/
 apps/desktop/src-tauri/target/
 *.log
@@ -13,3 +14,6 @@ e2e/**/*-snapshots/
 .vscode/
 .aws
 __pycache__/
+
+.claude/worktrees
+.claude/settings.local.json

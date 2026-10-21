@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import type { StashEntry, StashOptions } from '@git-chronos/contracts';
 import { GitChronosService } from './git-chronos.service';
 import { GitHelpComponent } from './git-help.component';
+import { IconComponent } from './icon.component';
 
 export interface StashDialogRequest {
   action: 'save' | 'apply' | 'branch' | 'switch';
@@ -16,25 +17,38 @@ export interface StashDialogRequest {
 
 @Component({
   selector: 'gc-stash-options-dialog',
-  imports: [FormsModule, GitHelpComponent],
+  imports: [FormsModule, GitHelpComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (request(); as target) {
       <div class="backdrop" (click)="close()">
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="stash-options-title"
           aria-describedby="stash-options-description" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-          <h2 id="stash-options-title">{{ title() }}</h2>
-          <p id="stash-options-description">{{ description() }}</p>
+          <header class="dialog-heading">
+            <span class="dialog-icon" aria-hidden="true"><gc-icon name="archive" [size]="18" /></span>
+            <span class="dialog-heading-copy">
+              <small>{{ eyebrow() }}</small>
+              <h2 id="stash-options-title">{{ title() }}</h2>
+              <p id="stash-options-description">{{ description() }}</p>
+            </span>
+          </header>
           @if (target.action === 'save') {
-            <label>Message (optional)<input name="stashMessage" maxlength="500" [ngModel]="message()" (ngModelChange)="message.set($event)" /></label>
-            <label>What to save<select name="stashMode" [ngModel]="mode()" (ngModelChange)="changeMode($event)">
-              <option value="all">Staged and unstaged changes</option>
-              <option value="keep-index">Save changes, keep staged contents in place</option>
-              <option value="staged-only">Only staged changes (Git 2.35+)</option>
-            </select></label>
-            <p class="hint">{{ modeDescription() }}</p>
-            <label class="check"><input type="checkbox" name="stashUntracked" [disabled]="mode() === 'staged-only'"
-              [ngModel]="includeUntracked()" (ngModelChange)="includeUntracked.set($event)" />Include untracked files (ignored files stay untouched)</label>
+            <div class="repository-context" role="group" aria-label="Stash source">
+              <gc-icon name="branch" [size]="14" aria-hidden="true" />
+              <span><strong>{{ git.repository()?.status?.branch || 'Detached HEAD' }}</strong><small>{{ git.repository()?.status?.entryCount || 0 }} changed {{ git.repository()?.status?.entryCount === 1 ? 'file' : 'files' }}</small></span>
+              <code>HEAD</code>
+            </div>
+            <div class="form-section">
+              <label>Message <small>Optional</small><input name="stashMessage" maxlength="500" [ngModel]="message()" (ngModelChange)="message.set($event)" /></label>
+              <label>Changes to save<select name="stashMode" [ngModel]="mode()" (ngModelChange)="changeMode($event)">
+                <option value="all">Staged and unstaged changes</option>
+                <option value="keep-index">Save changes, keep staged contents in place</option>
+                <option value="staged-only">Only staged changes (Git 2.35+)</option>
+              </select></label>
+              <p class="hint">{{ modeDescription() }}</p>
+              <label class="check"><input type="checkbox" name="stashUntracked" [disabled]="mode() === 'staged-only'"
+                [ngModel]="includeUntracked()" (ngModelChange)="includeUntracked.set($event)" />Include untracked files <small>Ignored files stay untouched</small></label>
+            </div>
             <details>
               <summary>Choose specific files</summary>
               <label class="check"><input type="checkbox" name="stashSelectedOnly" [ngModel]="selectedOnly()" (ngModelChange)="selectedOnly.set($event)" />Save only selected files</label>
@@ -69,7 +83,7 @@ export interface StashDialogRequest {
           <gc-git-help topic="stash" label="Learn about stash modes and recovery…" />
           <footer>
             <button type="button" data-stash-cancel [disabled]="git.busy()" (click)="close()">Cancel</button>
-            <button type="button" [disabled]="!canConfirm() || git.busy()" (click)="confirm()">{{ actionLabel() }}</button>
+            <button class="primary" type="button" [disabled]="!canConfirm() || git.busy()" (click)="confirm()">{{ actionLabel() }}</button>
           </footer>
           @if (git.busy()) { <p role="status">Git is updating the repository. Wait before closing.</p> }
         </section>
@@ -78,20 +92,37 @@ export interface StashDialogRequest {
   `,
   styles: [`
     .backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 18px; background: var(--modal-backdrop, #080811b8); }
-    section { width: min(520px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; border: 1px solid var(--inspector-divider); border-radius: 7px; background: var(--inspector-list); color: var(--text); }
-    h2 { margin: 0 0 12px; font-size: 16px; }
+    section { width: min(520px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; border: 1px solid var(--inspector-divider); border-radius: 7px; background: var(--inspector-list); color: var(--text); box-shadow: 0 20px 55px #0008; }
+    .dialog-heading { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
+    .dialog-icon { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+    .dialog-heading-copy { min-width: 0; display: grid; gap: 3px; }
+    .dialog-heading-copy > small { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: 16px; }
+    .dialog-heading p { margin: 3px 0 0; }
     p, label, summary { font-size: 13px; line-height: 1.5; }
     code { overflow-wrap: anywhere; min-width: 0; }
     label { display: grid; gap: 6px; margin-top: 14px; }
+    label > small { color: var(--muted); font-size: 11px; }
     .check { display: flex; align-items: start; gap: 8px; }
+    .check small { margin-left: 2px; color: var(--muted); }
     .check input { flex: none; margin-top: 3px; }
     input:not([type=checkbox]), select { width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); border-radius: 4px; }
+    .repository-context { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 9px; margin-top: 16px; padding: 9px 10px; border: 1px solid var(--inspector-divider); border-radius: 5px; background: color-mix(in srgb, var(--inspector-row) 72%, transparent); color: var(--accent); }
+    .repository-context > span { min-width: 0; display: grid; gap: 1px; color: var(--text); }
+    .repository-context strong, .repository-context small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .repository-context strong { font-size: 12px; }
+    .repository-context small { color: var(--muted); font-size: 11px; }
+    .repository-context code { color: var(--muted); font-size: 11px; }
+    .form-section { margin-top: 14px; padding-top: 1px; border-top: 1px solid var(--inspector-divider); }
     details { margin-top: 16px; }
     summary { cursor: pointer; }
     .files { max-height: 210px; overflow: auto; }
     .hint { color: var(--muted); }
     footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
-    button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); }
+    button { min-height: 34px; padding: 8px 12px; border: 1px solid var(--inspector-divider); border-radius: 4px; background: var(--inspector-row); color: var(--text); }
+    button.primary { border-color: color-mix(in srgb, var(--accent) 72%, #000); background: var(--accent); color: #10251e; font-weight: 700; }
+    button:hover:not(:disabled), button:focus-visible { filter: brightness(1.08); }
+    button:disabled { cursor: default; filter: none; opacity: .45; }
     .error { color: var(--danger); }
   `],
 })
@@ -109,6 +140,9 @@ export class StashOptionsDialogComponent {
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly title = computed(() => ({
     save: 'Stash with options', apply: 'Apply stash', branch: 'Create branch from stash', switch: 'Stash and switch branch',
+  })[this.request()?.action ?? 'save']);
+  readonly eyebrow = computed(() => ({
+    save: 'Working directory', apply: 'Saved work', branch: 'Saved work', switch: 'Working directory',
   })[this.request()?.action ?? 'save']);
   readonly description = computed(() => ({
     save: 'Save work locally without creating a commit. Review what will remain in the working directory.',

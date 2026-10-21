@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Git Chronos desktop application"
+authors = ["Maurizio Casciano <mauriziocasciano7@gmail.com>"]
+homepage = "https://github.com/Git-Chronos/Git-Chronos"
+repository = "https://github.com/Git-Chronos/Git-Chronos.git"
 
 [lib]
 name = "git_chronos_desktop"

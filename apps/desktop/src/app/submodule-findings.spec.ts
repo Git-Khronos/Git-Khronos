@@ -5,7 +5,7 @@ import { submoduleFindings } from './submodule-findings';
 const a = 'a'.repeat(40);
 const b = 'b'.repeat(40);
 const state = (overrides: Partial<SubmoduleState> = {}): SubmoduleState => ({
-  path: 'lib', name: 'lib', declaredUrl: '/lib', registeredUrl: '/lib', urlMatches: true,
+  path: 'lib', name: 'lib', declaredUrl: '/lib', trackingBranch: null, registeredUrl: '/lib', urlMatches: true,
   headOid: a, indexOid: a, checkoutOid: a, conflict: null, checkedOut: true, commitChanged: false,
   trackedChanges: false, untrackedChanges: false, stagedChange: false, undeclared: false, missingGitlink: false,
   ...overrides,

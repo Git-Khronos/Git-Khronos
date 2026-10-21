@@ -11,17 +11,20 @@ async function setup(page: Page): Promise<void> {
     const a = 'a'.repeat(40);
     const b = 'b'.repeat(40);
     const entry = (overrides: any) => ({ path: 'vendor/lane-engine', name: 'vendor/lane-engine', declaredUrl: '/lane', registeredUrl: '/lane',
-      urlMatches: true, headOid: a, indexOid: a, checkoutOid: a, conflict: null, checkedOut: true, commitChanged: false,
+      trackingBranch: null, urlMatches: true, headOid: a, indexOid: a, checkoutOid: a, conflict: null, checkedOut: true, commitChanged: false,
       trackedChanges: false, untrackedChanges: false, stagedChange: false, undeclared: false, missingGitlink: false, ...overrides });
-    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, syncFail: false, holdSync: false, finishSync: null as any, checkoutFail: false };
+    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, initializedAll: false,
+      syncFail: false, holdSync: false, finishSync: null as any, checkoutFail: false, trackingBranch: null as string | null };
     (window as any).__submoduleReview = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
       if (command === 'submodule_state_review') {
         if (fixture.fail) return Promise.reject({ kind: 'submoduleReviewUnavailable', message: 'The complete status exceeds the submodule review limit.', hint: 'Inspect submodules with local Git status and submodule status. This review changes nothing.' });
-        const result = { gitmodulesPresent: true, entries: fixture.clean ? [entry({})] : [
+        const result = { gitmodulesPresent: true, entries: fixture.clean ? [entry({ trackingBranch: fixture.trackingBranch })] : [
           entry({ commitChanged: true, checkoutOid: b, trackedChanges: true }),
-          entry({ path: 'plugins/diff-driver', name: 'diff', checkedOut: false, registeredUrl: null, urlMatches: null, checkoutOid: null }),
+          entry({ path: 'plugins/diff-driver', name: 'diff', checkedOut: fixture.initializedAll,
+            registeredUrl: fixture.initializedAll ? '/lane' : null, urlMatches: fixture.initializedAll ? true : null,
+            checkoutOid: fixture.initializedAll ? a : null }),
           entry({ path: 'raw link', name: null, declaredUrl: null, registeredUrl: null, urlMatches: null, undeclared: true, checkedOut: false, headOid: null, stagedChange: true, checkoutOid: null }),
           entry({ path: 'merge/lib', indexOid: null, headOid: null, conflict: { base: a, ours: b, theirs: 'c'.repeat(40), mixedTypes: false } }),
           entry({ path: 'synced', urlMatches: false, registeredUrl: '/elsewhere' }),
@@ -44,6 +47,17 @@ async function setup(page: Page): Promise<void> {
           { path: 'moved/docs', previousOid: null, recordedOid: a, recoveryReference: null, skipped: 'not initialized' }] : [];
         return Promise.resolve({ path: 'moved', previousOid: b, previousBranch: 'refs/heads/topic', recordedOid: a, recoveryReference: 'refs/git-chronos/recovery/1-2', nested });
       }
+      if (command === 'initialize_all_submodules') {
+        fixture.initializedAll = true;
+        return Promise.resolve(git.repository());
+      }
+      if (command === 'update_all_submodules') return Promise.resolve(git.repository());
+      if (command === 'set_submodule_tracking_branch') {
+        const previousTrackingBranch = fixture.trackingBranch;
+        fixture.trackingBranch = args.request.trackingBranch;
+        return Promise.resolve({ path: args.request.path, name: 'vendor/lane-engine', previousTrackingBranch,
+          trackingBranch: fixture.trackingBranch });
+      }
       if (command === 'remove_submodule') {
         fixture.clean = true;
         return Promise.resolve({ path: 'plugins/diff-driver', name: 'diff', recordedOid: a, gitDirectory: null, keptSettings: [{ key: 'submodule.diff.url', value: '/lane' }] });
@@ -64,14 +78,14 @@ const opener = (page: Page) => page.locator('.submodule-actions').first();
 
 async function open(page: Page): Promise<void> {
   await opener(page).click();
-  await page.getByRole('menuitem', { name: 'Review submodule state…', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Review submodule state', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Manage submodules…', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Manage submodules', exact: true })).toBeVisible();
 }
 
 test('submodule review explains each state with exact commits and invokes only the read-only command', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths; 6 need attention.');
   await expect(dialog.getByRole('status')).toBeFocused();
   const lane = dialog.getByRole('listitem', { name: 'Submodule vendor/lane-engine', exact: true });
@@ -94,11 +108,70 @@ test('submodule review explains each state with exact commits and invokes only t
   await expect(opener(page)).toBeFocused();
 });
 
+test('initializes every missing submodule only after a scoped bulk confirmation', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const initialize = dialog.getByRole('button', { name: 'Initialize missing 1' });
+  await expect(initialize).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Update all from remotes' })).toBeDisabled();
+  await initialize.click();
+  const confirmation = dialog.getByRole('group', { name: 'Initialize all missing submodules' });
+  await expect(confirmation).toContainText('at the commits recorded by this repository');
+  await confirmation.getByRole('button', { name: 'Initialize missing', exact: true }).click();
+  await expect(dialog.locator('[data-submodule-sync]')).toContainText('Initialized all missing submodules');
+  await expect(dialog.getByRole('button', { name: /^Initialize missing/ })).toBeDisabled();
+  const call = await page.evaluate(() => (window as any).__submoduleReview.calls.find(
+    (entry: any) => entry.command === 'initialize_all_submodules'));
+  expect(call.args).toEqual({ repoId: expect.any(String), operationId: expect.any(String) });
+});
+
+test('updates all clean initialized submodules from remotes only after confirmation', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__submoduleReview.clean = true; });
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const update = dialog.getByRole('button', { name: 'Update all from remotes' });
+  await expect(update).toBeEnabled();
+  await update.click();
+  const confirmation = dialog.getByRole('group', { name: 'Update all submodules from remotes' });
+  await expect(confirmation).toContainText('Parent-repository gitlinks can become modified');
+  await confirmation.getByRole('button', { name: 'Update all from remotes' }).click();
+  await expect(dialog.locator('[data-submodule-sync]')).toContainText('Review parent-repository gitlink changes');
+  const call = await page.evaluate(() => (window as any).__submoduleReview.calls.find(
+    (entry: any) => entry.command === 'update_all_submodules'));
+  expect(call.args).toEqual({ repoId: expect.any(String), operationId: expect.any(String) });
+});
+
+test('shows and changes the reviewed remote update branch without hiding .gitmodules effects', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__submoduleReview.clean = true; });
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const submodule = dialog.getByRole('listitem', { name: 'Submodule vendor/lane-engine', exact: true });
+  await expect(submodule).toContainText('Remote default branch');
+  await submodule.getByRole('button', { name: 'Change tracking branch…', exact: true }).click();
+  const editor = submodule.getByRole('group', { name: 'Change tracking branch for vendor/lane-engine' });
+  const behavior = editor.getByLabel('Tracking behavior', { exact: true });
+  await expect(behavior).toBeFocused();
+  await behavior.selectOption('specific');
+  await editor.getByLabel('Remote branch name', { exact: true }).fill('release/v2');
+  await expect(editor).toContainText('review and commit that file');
+  await editor.getByRole('button', { name: 'Save tracking branch', exact: true }).click();
+  await expect(dialog.locator('[data-submodule-sync]')).toContainText('Review and commit .gitmodules');
+  await expect(submodule).toContainText('release/v2');
+  const call = await page.evaluate(() => (window as any).__submoduleReview.calls.find(
+    (entry: any) => entry.command === 'set_submodule_tracking_branch'));
+  expect(call.args).toEqual({ repoId: expect.any(String), request: {
+    path: 'vendor/lane-engine', expectedTrackingBranch: null, trackingBranch: 'release/v2',
+  } });
+});
+
 test('failed submodule review focuses the native reason and recovers through explicit reload', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => { (window as any).__submoduleReview.fail = true; });
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('alert')).toContainText('exceeds the submodule review limit');
   await expect(dialog.getByRole('alert')).toContainText('This review changes nothing.');
   await expect(dialog.getByRole('alert')).toBeFocused();
@@ -114,7 +187,7 @@ test('pending submodule review blocks dismissal and a repository switch discards
   await setup(page);
   await page.evaluate(() => { (window as any).__submoduleReview.hold = true; });
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
@@ -135,14 +208,14 @@ test('pending submodule review blocks dismissal and a repository switch discards
 test('submodule review fits a compact window, contains Tab focus and returns from contextual help', async ({ page }) => {
   await setup(page);
   await open(page);
-  await page.setViewportSize({ width: 900, height: 640 });
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  await page.setViewportSize({ width: 520, height: 640 });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths');
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   const help = dialog.getByRole('button', { name: 'Learn about submodule state…', exact: true });
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
   await page.keyboard.press('Tab');
-  await expect(dialog.getByRole('button', { name: 'Check out recorded commit…' }).first()).toBeFocused();
+  await expect(dialog.getByRole('button', { name: 'Initialize missing 1', exact: true })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
   await help.click();
@@ -160,7 +233,7 @@ test('submodule review fits a compact window, contains Tab focus and returns fro
 test('URL sync is offered only for differing initialized entries, confirms scope and sends the reviewed values', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths');
   await expect(dialog.getByRole('button', { name: 'Sync local URL from .gitmodules…' })).toHaveCount(1);
   const synced = dialog.getByRole('listitem', { name: 'Submodule synced', exact: true });
@@ -192,7 +265,7 @@ test('refused URL sync focuses the reason and shows a fresh review', async ({ pa
   await setup(page);
   await page.evaluate(() => { (window as any).__submoduleReview.syncFail = true; });
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await dialog.getByRole('listitem', { name: 'Submodule synced', exact: true }).getByRole('button', { name: 'Sync local URL from .gitmodules…' }).click();
   await dialog.getByRole('button', { name: 'Sync URL', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('changed after the review');
@@ -205,7 +278,7 @@ test('refused URL sync focuses the reason and shows a fresh review', async ({ pa
 test('recorded-commit checkout is offered only for clean moved checkouts and discloses its protection', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths');
   await expect(dialog.getByRole('button', { name: 'Check out recorded commit…' })).toHaveCount(2);
   await expect(dialog.getByRole('listitem', { name: 'Submodule plugins/diff-driver', exact: true }).getByRole('button', { name: /Check out/ })).toHaveCount(0);
@@ -238,7 +311,7 @@ test('refused recorded-commit checkout focuses the no-fetch reason', async ({ pa
   await setup(page);
   await page.evaluate(() => { (window as any).__submoduleReview.checkoutFail = true; });
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await dialog.getByRole('listitem', { name: 'Submodule moved', exact: true }).getByRole('button', { name: 'Check out recorded commit…' }).click();
   await dialog.getByRole('button', { name: 'Check out recorded commit', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('never fetches');
@@ -249,7 +322,7 @@ test('refused recorded-commit checkout focuses the no-fetch reason', async ({ pa
 test('recursive recorded-commit checkout reports each nested result and skip', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await dialog.getByRole('listitem', { name: 'Submodule moved', exact: true }).getByRole('button', { name: 'Check out recorded commit…' }).click();
   const confirm = dialog.getByRole('group', { name: 'Check out recorded commit for moved' });
   await confirm.getByRole('checkbox', { name: /nested submodules/ }).check();
@@ -265,7 +338,7 @@ test('recursive recorded-commit checkout reports each nested result and skip', a
 test('deinit is offered only for clean recorded checkouts and reports kept data and removed settings', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths');
   await expect(dialog.getByRole('button', { name: 'Deinitialize…' })).toHaveCount(1);
   const synced = dialog.getByRole('listitem', { name: 'Submodule synced', exact: true });
@@ -288,7 +361,7 @@ test('deinit is offered only for clean recorded checkouts and reports kept data 
 test('removal stages only reviewed declared entries and explains what remains', async ({ page }) => {
   await setup(page);
   await open(page);
-  const dialog = page.getByRole('dialog', { name: 'Review submodule state', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths');
   await expect(dialog.getByRole('button', { name: 'Remove from project…' })).toHaveCount(2);
   for (const path of ['vendor/lane-engine', 'raw link', 'merge/lib', 'moved']) {

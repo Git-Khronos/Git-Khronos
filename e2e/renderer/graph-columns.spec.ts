@@ -69,10 +69,14 @@ function layoutProblems(page: Page, expectedOrder: Column[], fit: boolean) {
     // heading. The last heading never spills past the visible header, and the settings button stays
     // at the panel's right end.
     const gear = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect();
+    const layoutIcon = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"] gc-icon');
     const last = boxes.at(-1)!;
     const overflow = list.scrollWidth - list.clientWidth;
     const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);
     if (gear.width < 20 || gear.width > 32) problems.push(`settings button is ${gear.width.toFixed(1)}px wide`);
+    if (!layoutIcon || layoutIcon.querySelectorAll('rect').length !== 1 || layoutIcon.querySelectorAll('path').length !== 1) {
+      problems.push('settings button does not show the framed columns layout icon');
+    }
     if (overflow <= 1) {
       if (last.right > visibleRight + 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, past the panel edge at ${visibleRight.toFixed(1)}`);
       if (Math.abs(gear.right - visibleRight) > 4) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is not at the panel edge ${visibleRight.toFixed(1)}`);
@@ -233,6 +237,63 @@ test('keeps column layouts intact across window resizes', async ({ page }) => {
       }
     }
   }
+});
+
+test('keeps graph settings controls reachable in a compact window', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 640 });
+  await page.goto('/');
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Configure graph columns' });
+  await toggle.click();
+  const dialog = page.getByRole('dialog', { name: 'Graph settings' });
+  const scrollArea = dialog.locator('.column-settings-scroll');
+  const restore = dialog.getByRole('button', { name: 'Restore graph defaults' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close graph settings' })).toBeVisible();
+  await expect(restore).toBeVisible();
+
+  const before = await restore.boundingBox();
+  expect(before).not.toBeNull();
+  expect(before!.y + before!.height).toBeLessThanOrEqual(640);
+  await scrollArea.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const after = await restore.boundingBox();
+  expect(after).not.toBeNull();
+  expect(after!.y).toBeCloseTo(before!.y, 0);
+
+  await dialog.getByRole('button', { name: 'Close graph settings' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(toggle).toBeFocused();
+
+  await toggle.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(toggle).toBeFocused();
+});
+
+test('discloses hidden graph columns from the column settings control', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 640 });
+  await page.goto('/');
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Configure graph columns' });
+  const count = toggle.locator('.graph-settings-hidden-count');
+  await expect(toggle).toHaveAttribute('title', 'Configure graph columns (3 hidden)');
+  await expect(toggle).toHaveAttribute('aria-describedby', 'graph-hidden-columns-description');
+  await expect(toggle.locator('#graph-hidden-columns-description')).toHaveText('3 hidden columns');
+  await expect(count).toHaveText('3');
+
+  await toggle.click();
+  const dialog = page.getByRole('dialog', { name: 'Graph settings' });
+  await dialog.getByRole('checkbox', { name: 'Author', exact: true }).check();
+  await expect(count).toHaveText('2');
+  await expect(toggle.locator('#graph-hidden-columns-description')).toHaveText('2 hidden columns');
+  await dialog.getByRole('checkbox', { name: 'Date / Time', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: 'SHA', exact: true }).check();
+  await expect(count).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('title', 'Configure graph columns');
+  await expect(toggle).not.toHaveAttribute('aria-describedby', /.+/);
 });
 
 test('resizes the last column from its right edge without moving columns to its left', async ({ page }) => {

@@ -60,6 +60,48 @@ task ci
 task bundle
 ```
 
+### Install system-wide on Debian or Ubuntu
+
+Build a native Debian package and install it for every user on the machine:
+
+```bash
+task install:system
+```
+
+The command builds the optimized application, verifies that the generated
+package belongs to Git Chronos, and then asks for administrator access through
+`sudo`. The package installs `git-chronos-desktop` in `/usr/bin`, registers Git
+Chronos in the desktop application menu, and installs its icons and license
+notices in the standard system locations. Git 2.39 or newer is a required
+package dependency; OpenSSH client and Git LFS are recommended dependencies.
+
+To build and verify the `.deb` without installing it, print the generated
+package path, or remove the system package while leaving repositories and
+per-user preferences untouched:
+
+```bash
+task package:deb
+task package:deb:path
+task uninstall:system
+```
+
+The generated package is written to `target/release/bundle/deb/`. The generic
+`task bundle` command continues to build every installer format supported by the
+current platform, while `task install` remains the development-dependency setup
+command. After installation, launch **Git Chronos** from the desktop application
+menu or run `git-chronos-desktop` from any terminal. A locally built package
+targets the current CPU architecture and native-library baseline; build public
+release packages on the oldest Debian/Ubuntu baseline the release supports.
+
+`task package:deb` (and `task install:system`) reuses the last successful build
+when its source/configuration checksums are unchanged and required build outputs
+are still present. Package verification still runs every time. The first
+invocation after enabling these checks builds once to establish a baseline in
+`.task/`; existing Cargo and Nx caches are retained. Source additions, edits,
+deletions, or missing required outputs trigger another build. Use
+`task --force package:deb` to rebuild explicitly, for example after changing the
+installed toolchain or system libraries.
+
 `task frontend` creates an optimized frontend build. Use `task preview` when
 you need a browser-accessible, sample-data development server at
 `http://127.0.0.1:4200`. Add `?welcome-preview` to inspect the welcome screen.
@@ -322,8 +364,11 @@ This prevents Git's repair command from silently repairing other broken links
 alongside the selected worktree. No registration is pruned and no rollback is
 promised. Broader lifecycle workflows remain unfinished.
 
-**Submodules → Submodule actions → Review submodule state…** lists every
-gitlink and `.gitmodules` declaration without changing anything. It explains
+The **Submodules** pane is visible by default. Use **Manage submodules** there,
+or search for **Manage Submodules** / **Add Submodule** in the command palette,
+to reach the complete workflow without opening an individual row menu. The
+management review lists every gitlink and `.gitmodules` declaration; inspecting
+it does not change the repository. It explains
 unrecorded or undeclared paths, initialization and checkout state, a checked-out
 commit that differs from the recorded one, staged gitlink changes (HEAD versus
 index), uncommitted or untracked files inside, conflicting commit sides, and a
@@ -331,6 +376,21 @@ local URL that differs from an absolute declared URL. A configured
 `submodule.<name>.ignore` setting does not hide changes in this review. Relative
 declared URLs are reported without resolution. Reviews are bounded to 500 paths;
 bare repositories are refused.
+
+The manager keeps bulk initialization and remote updating separate. **Initialize
+missing** checks out every missing submodule at the commits recorded by the
+parent repository, including nested submodules. **Update all from remotes** is
+available only when every reviewed submodule is initialized and has no conflict
+or local file changes; it follows each configured remote-tracking branch
+recursively and can leave parent-repository gitlinks modified for explicit
+review and commit. Both network-capable operations require confirmation.
+
+Each declared submodule also shows the branch followed by remote updates.
+**Change tracking branch…** can use the remote's default branch, mirror the
+parent repository's current branch name, or store a specific branch name.
+The change is written to `.gitmodules` for review and an explicit commit; it
+does not fetch or move the submodule checkout. Stale reviews and invalid branch
+names are refused, and Git Chronos verifies that no other declaration changed.
 
 When an initialized submodule's local URL differs from `.gitmodules` (or the
 declaration is relative), **Sync local URL from .gitmodules…** confirms the
@@ -603,8 +663,10 @@ Text saves refuse binary/non-UTF-8, truncated, symlink and gitlink conflicts.
 Edited output is written to a synced temporary file before replacing the working
 file; a staging failure explicitly reports that the file was saved but remains
 unresolved. Complete-side actions preserve binary bytes and symlink types.
-Submodule conflict resolution and configured external-tool handoff remain
-unfinished; gitlinks receive explicit local-Git guidance rather than text saving.
+Submodule gitlink conflicts can be resolved by selecting the reviewed Current or
+Incoming commit. Only the parent repository's gitlink is staged; the submodule
+checkout and local changes inside it are left untouched. Configured external-tool
+handoff remains unfinished.
 These checks do not lock out external Git processes or promise transactional
 resolution against filesystem failures.
 

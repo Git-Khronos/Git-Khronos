@@ -28,6 +28,10 @@ async function openCloneForm(page: import('@playwright/test').Page) {
   await dialog.getByRole('button', { name: 'Browse' }).click();
   await expect(dialog.locator('input[name="cloneParent"]')).toHaveValue('/work');
   await expect(dialog.getByLabel('Folder name')).toHaveValue('vendor-app');
+  await expect(dialog.getByText('Destination', { exact: true })).toBeVisible();
+  await expect(dialog.locator('.repository-destination')).toContainText('/work/vendor-app');
+  await expect(dialog.getByRole('group', { name: 'Clone options' })).toBeVisible();
+  await expect(dialog.locator('.form-readiness')).toHaveText('Ready to clone');
   return dialog;
 }
 
@@ -35,7 +39,7 @@ test('clones without submodules unless the option is chosen', async ({ page }) =
   const dialog = await openCloneForm(page);
   const submodules = dialog.getByRole('checkbox', { name: /Include submodules/ });
   await expect(submodules).not.toBeChecked();
-  await dialog.getByRole('button', { name: 'Clone the repo' }).click();
+  await dialog.getByRole('button', { name: 'Clone repository', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__cloneCalls.length)).toBe(1);
   const [call] = await page.evaluate(() => (window as any).__cloneCalls);
   expect(call).toMatchObject({ remote: 'https://example.test/team/vendor-app.git', parentPath: '/work', folder: 'vendor-app', recurseSubmodules: false, depth: null });
@@ -48,7 +52,7 @@ test('requests a recursive clone and explains a partly cloned superproject', asy
   await expect(dialog.getByText('Submodule history is not shortened')).toHaveCount(0);
   await dialog.getByRole('checkbox', { name: /Shallow clone/ }).check();
   await expect(dialog.getByText(/Submodule history is not shortened/)).toBeVisible();
-  await dialog.getByRole('button', { name: 'Clone the repo' }).click();
+  await dialog.getByRole('button', { name: 'Clone repository', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__cloneCalls.length)).toBe(1);
   const [call] = await page.evaluate(() => (window as any).__cloneCalls);
   expect(call).toMatchObject({ recurseSubmodules: true, depth: 1 });

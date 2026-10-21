@@ -21,6 +21,7 @@ pub struct SubmoduleState {
     pub path: String,
     pub name: Option<String>,
     pub declared_url: Option<String>,
+    pub tracking_branch: Option<String>,
     pub registered_url: Option<String>,
     pub url_matches: Option<bool>,
     pub head_oid: Option<String>,
@@ -85,14 +86,21 @@ pub fn review_submodule_state(path: &Path) -> Result<SubmoduleStateReview, AppEr
         BTreeMap::new()
     };
     let registered = parse_config(&config(path, &["--local"])?)?;
-    let mut by_path: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
+    let mut by_path: BTreeMap<String, (String, Option<String>, Option<String>)> = BTreeMap::new();
     for (name, values) in &declared {
         let Some(target) = values.get("path") else {
             continue;
         };
         valid_path(target)?;
         if by_path
-            .insert(target.clone(), (name.clone(), values.get("url").cloned()))
+            .insert(
+                target.clone(),
+                (
+                    name.clone(),
+                    values.get("url").cloned(),
+                    values.get("branch").cloned(),
+                ),
+            )
             .is_some()
         {
             return Err(unavailable(
@@ -117,9 +125,9 @@ pub fn review_submodule_state(path: &Path) -> Result<SubmoduleStateReview, AppEr
             None => None,
         };
         let gitlink = index_oid.is_some() || head_oid.is_some() || conflict.is_some();
-        let (name, declared_url) = by_path
+        let (name, declared_url, tracking_branch) = by_path
             .get(&target)
-            .map(|(name, url)| (Some(name.clone()), url.clone()))
+            .map(|(name, url, branch)| (Some(name.clone()), url.clone(), branch.clone()))
             .unwrap_or_default();
         let registered_url = name
             .as_ref()
@@ -156,6 +164,7 @@ pub fn review_submodule_state(path: &Path) -> Result<SubmoduleStateReview, AppEr
             path: target,
             name,
             declared_url,
+            tracking_branch,
             registered_url,
             url_matches,
             head_oid,
@@ -205,7 +214,7 @@ pub(super) fn config(path: &Path, scope: &[&str]) -> Result<Vec<u8>, AppError> {
     }
 }
 
-type ConfigValues = BTreeMap<String, BTreeMap<String, String>>;
+pub(super) type ConfigValues = BTreeMap<String, BTreeMap<String, String>>;
 
 pub(super) fn parse_config(bytes: &[u8]) -> Result<ConfigValues, AppError> {
     let text = std::str::from_utf8(bytes)

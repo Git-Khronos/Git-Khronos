@@ -276,6 +276,7 @@ export interface SubmoduleState {
   path: string;
   name: string | null;
   declaredUrl: string | null;
+  trackingBranch: string | null;
   registeredUrl: string | null;
   urlMatches: boolean | null;
   headOid: string | null;
@@ -304,6 +305,19 @@ export interface SubmoduleUrlSyncResult {
   remoteName: string | null;
   previousRemoteUrl: string | null;
   remoteUrl: string | null;
+}
+
+export interface SubmoduleTrackingBranchChange {
+  path: string;
+  expectedTrackingBranch: string | null;
+  trackingBranch: string | null;
+}
+
+export interface SubmoduleTrackingBranchResult {
+  path: string;
+  name: string;
+  previousTrackingBranch: string | null;
+  trackingBranch: string | null;
 }
 
 export interface SubmoduleRecordedCheckoutResult {

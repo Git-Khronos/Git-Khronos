@@ -425,6 +425,18 @@ resolved URL. URL comparison is therefore limited to absolute declarations.
 Optional locks are disabled; real-Git fixtures verify index, config,
 `.gitmodules` and HEAD stay byte-identical. No mutation is performed.
 
+## Submodule remote-update branch
+
+Uses documented `git submodule set-branch --branch <branch> -- <path>` and
+`--default`. An absent `submodule.<name>.branch` follows the remote HEAD; the
+special value `.` follows the branch with the same name as the parent
+repository's current branch. The reviewed branch value is rechecked before the
+command. Ordinary names are validated with `git check-ref-format --branch`.
+Afterwards the complete `.gitmodules` submodule configuration is compared so
+only the selected declaration's `branch` value may differ. The command does not
+fetch or move a submodule checkout. `.gitmodules` remains for explicit review,
+staging and commit. No third-party implementation was used.
+
 ## Single submodule URL sync
 
 Uses documented `git submodule sync -- <path>` without `--recursive`. Local Git

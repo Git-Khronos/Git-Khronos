@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeTerminalTabTitle,
   terminalShortcutForEvent,
   terminalTabNavigationIndex,
+  terminalTabOverflowState,
   terminalTabScrollPosition,
   terminalTabStateAfterClose,
 } from './terminal-tab-navigation';
+
+describe('terminal tab titles', () => {
+  it('normalizes shell titles and preserves a numbered fallback', () => {
+    expect(normalizeTerminalTabTitle('  api\n logs  ', 'bash 2')).toBe('api logs');
+    expect(normalizeTerminalTabTitle('\u001b\u202Espoof', 'bash 2')).toBe('spoof');
+    expect(normalizeTerminalTabTitle('\u0000\u007f', 'bash 2')).toBe('bash 2');
+  });
+
+  it('bounds long labels without splitting Unicode characters', () => {
+    const title = normalizeTerminalTabTitle('🚀'.repeat(120), 'bash 1');
+    expect(Array.from(title)).toHaveLength(96);
+    expect(title.endsWith('…')).toBe(true);
+  });
+});
 
 describe('terminal tab keyboard navigation', () => {
   it('moves in either direction and wraps at both boundaries', () => {
@@ -71,6 +87,32 @@ describe('terminal tab visibility', () => {
   it('clamps the target to the scrollable range', () => {
     expect(terminalTabScrollPosition({ ...baseMetrics, tabStart: -400, tabEnd: -280 })).toBe(0);
     expect(terminalTabScrollPosition({ ...baseMetrics, tabStart: 900, tabEnd: 1020 })).toBe(720);
+  });
+
+  it('reports strip overflow and the directions that remain reachable', () => {
+    expect(terminalTabOverflowState({ scrollPosition: 0, viewportWidth: 400, contentWidth: 720 })).toEqual({
+      overflowing: true,
+      canScrollBack: false,
+      canScrollForward: true,
+    });
+    expect(terminalTabOverflowState({ scrollPosition: 160, viewportWidth: 400, contentWidth: 720 })).toEqual({
+      overflowing: true,
+      canScrollBack: true,
+      canScrollForward: true,
+    });
+    expect(terminalTabOverflowState({ scrollPosition: 320, viewportWidth: 400, contentWidth: 720 })).toEqual({
+      overflowing: true,
+      canScrollBack: true,
+      canScrollForward: false,
+    });
+  });
+
+  it('keeps overflow controls hidden when every terminal tab fits', () => {
+    expect(terminalTabOverflowState({ scrollPosition: 12, viewportWidth: 400, contentWidth: 400 })).toEqual({
+      overflowing: false,
+      canScrollBack: false,
+      canScrollForward: false,
+    });
   });
 });
 

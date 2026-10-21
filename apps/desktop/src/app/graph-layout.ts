@@ -68,9 +68,13 @@ export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
   }
   if (segment.sourceNodeRadius && direction > 0) {
     // A link to another lane leaves the node's side-middle edge facing that lane,
-    // then curves down into the target lane so it arrives vertically.
+    // then follows a node-sized quarter circle into the target lane so it arrives vertically.
     const exitX = segment.x1 + horizontalDirection * segment.sourceNodeRadius;
-    const radius = Math.min(8, Math.abs(segment.x2 - exitX), segment.y2 - segment.y1);
+    const radius = Math.min(
+      segment.sourceNodeRadius,
+      Math.abs(segment.x2 - exitX),
+      segment.y2 - segment.y1,
+    );
     if (radius > 0 && Math.sign(segment.x2 - exitX) === horizontalDirection) {
       const sweep = horizontalDirection > 0 ? 1 : 0;
       return `M ${exitX} ${segment.y1} H ${segment.x2 - horizontalDirection * radius} A ${radius} ${radius} 0 0 ${sweep} ${segment.x2} ${segment.y1 + radius} V ${segment.y2}`;

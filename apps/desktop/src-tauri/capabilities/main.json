@@ -3,5 +3,5 @@
   "identifier": "main-window",
   "description": "Minimal capabilities for the Git Chronos main window",
   "windows": ["main"],
-  "permissions": ["core:default", "core:webview:allow-set-webview-zoom", "dialog:allow-open", "dialog:allow-save"]
+  "permissions": ["core:default", "core:window:allow-set-title", "core:webview:allow-set-webview-zoom", "dialog:allow-open", "dialog:allow-save"]
 }

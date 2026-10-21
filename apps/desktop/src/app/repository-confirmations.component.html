@@ -1,0 +1,19 @@
+<div class="confirmation-backdrop" (click)="close()">
+  @if (remote(); as candidate) {
+    <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-remote-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+      <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+      <div class="confirmation-copy"><span>Remove remote</span><h2 id="remove-remote-title">{{ candidate.name }}</h2><p>This removes the remote configuration and its remote-tracking branches. The remote repository itself is not deleted.</p></div>
+      <footer><button type="button" (click)="remoteClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="remoteConfirmed.emit()">Remove Remote</button></footer>
+    </section>
+  } @else if (sparseAction(); as action) {
+    <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sparse-checkout-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+      <div class="confirmation-icon"><gc-icon name="folder-git" [size]="19" /></div>
+      <div class="confirmation-copy">
+        <span>{{ action === 'disable' ? 'Disable sparse checkout' : 'Update sparse checkout' }}</span>
+        <h2 id="sparse-checkout-title">{{ action === 'disable' ? 'Restore the complete working tree?' : 'Apply this directory selection?' }}</h2>
+        <p>@if (action === 'disable') { Git will restore every tracked file. This can take time and use substantial disk space in a large repository. } @else if (sparsePathCount()) { Git will keep {{ sparsePathCount() }} selected {{ sparsePathCount() === 1 ? 'directory' : 'directories' }} plus root-level files in the working tree. Changed or conflicted files stay and are listed. } @else { No directories are selected, so only root-level files will remain in the working tree. Changed or conflicted files stay and are listed. }</p>
+      </div>
+      <footer><button type="button" (click)="sparseClosed.emit()">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy()" (click)="sparseConfirmed.emit()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
+    </section>
+  }
+</div>

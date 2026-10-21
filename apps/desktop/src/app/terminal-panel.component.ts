@@ -17,10 +17,16 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type IDisposable } from '@xterm/xterm';
 import type { AppTheme } from './app-theme';
 import { IconComponent } from './icon.component';
-import { terminalTheme } from './terminal-theme';
 import {
+  applyTerminalAppearance,
+  terminalAppearance,
+  type TerminalCursorStyle,
+} from './terminal-appearance';
+import {
+  normalizeTerminalTabTitle,
   terminalShortcutForEvent,
   terminalTabNavigationIndex,
+  terminalTabOverflowState,
   terminalTabScrollPosition,
   terminalTabStateAfterClose,
   type TerminalTabNavigationKey,
@@ -41,8 +47,6 @@ interface TerminalExit {
   sessionId: string;
 }
 
-type TerminalCursorStyle = 'block' | 'underline' | 'bar';
-
 const TERMINAL_PANEL_MIN_HEIGHT = 150;
 const TERMINAL_PANEL_DEFAULT_HEIGHT = 280;
 const TERMINAL_PANEL_VIEWPORT_ALLOWANCE = 170;
@@ -50,9 +54,11 @@ const TERMINAL_PANEL_HEIGHT_STORAGE_KEY = 'git-chronos.terminal.panel-height';
 
 interface TerminalTab extends TerminalInfo {
   title: string;
+  fallbackTitle: string;
   terminal: Terminal;
   fit: FitAddon;
   input: IDisposable;
+  titleChange: IDisposable;
   ended: boolean;
 }
 
@@ -60,18 +66,29 @@ interface TerminalTab extends TerminalInfo {
   selector: 'gc-terminal-panel',
   imports: [IconComponent],
   template: `
-    <section [attr.id]="panelId()" class="terminal-panel" [class.inactive]="!visible()" [class.minimized]="minimized()" [style.height.px]="minimized() ? 32 : height()" aria-label="Repository terminals">
+    <section [attr.id]="panelId()" class="terminal-panel" [class.inactive]="!visible()" [class.minimized]="minimized()" [style.height.px]="minimized() ? 32 : height()" tabindex="-1" [attr.aria-label]="'Repository terminals for ' + repositoryLabel()">
       @if (!minimized()) { <div class="terminal-resizer" role="separator" tabindex="0" aria-label="Resize terminal" [attr.aria-controls]="panelId()" aria-orientation="horizontal" [attr.aria-valuemin]="terminalMinimumHeight" [attr.aria-valuemax]="maximumHeight()" [attr.aria-valuenow]="height()" [attr.aria-valuetext]="height() + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize($event)" (keydown)="handleResizeKeydown($event)" (dblclick)="resetHeight($event)"></div> }
       <header>
         <div class="terminal-session-strip">
-          <div #terminalTabs class="terminal-tabs" role="tablist" aria-label="Terminal tabs">
-            @for (tab of tabs(); track tab.id) {
-              <div class="terminal-tab" [class.active]="activeId() === tab.id" [class.ended]="tab.ended">
-                <button class="terminal-tab-main" type="button" role="tab" [attr.id]="tabId(tab.id)" [attr.data-terminal-tab-id]="tab.id" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-selected]="activeId() === tab.id" [attr.aria-controls]="tabPanelId(tab.id)" title="{{ tab.cwd }}" (click)="activate(tab.id)" (keydown)="handleTabKeydown($event, tab.id)">
-                  <gc-icon name="terminal" [size]="12" /><span>{{ tab.title }}</span>@if (tab.ended) { <i>exited</i> }
-                </button>
-                <button class="terminal-tab-close" type="button" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-keyshortcuts]="activeId() === tab.id ? 'Control+Shift+W' : null" aria-label="Close {{ tab.title }}" title="Close terminal tab" (click)="$event.stopPropagation(); closeTab(tab.id, true)"><gc-icon name="x" [size]="10" /></button>
-              </div>
+          <div class="terminal-tabs-shell">
+            @if (tabStripOverflow()) {
+              <button class="terminal-tab-scroll" type="button" aria-label="Show previous terminal tabs" title="Show previous terminal tabs" [disabled]="!canScrollTabsBack()" (click)="scrollTabs(-1)"><gc-icon name="chevron-left" [size]="11" /></button>
+            }
+            <div #terminalTabs class="terminal-tabs" role="tablist" aria-label="Terminal tabs" (scroll)="updateTabOverflow()">
+              @if (!tabs().length) {
+                <span class="terminal-empty-tab" aria-hidden="true"><gc-icon name="terminal" [size]="12" /><span>{{ opening() ? 'Starting…' : 'Terminal' }}</span></span>
+              }
+              @for (tab of tabs(); track tab.id) {
+                <div class="terminal-tab" [class.active]="activeId() === tab.id" [class.ended]="tab.ended">
+                  <button class="terminal-tab-main" type="button" role="tab" [attr.id]="tabId(tab.id)" [attr.data-terminal-tab-id]="tab.id" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-selected]="activeId() === tab.id" [attr.aria-controls]="tabPanelId(tab.id)" title="{{ tab.title }} · {{ tab.cwd }}" (click)="activate(tab.id)" (keydown)="handleTabKeydown($event, tab.id)">
+                    <gc-icon name="terminal" [size]="12" /><span>{{ tab.title }}</span>@if (tab.ended) { <i>exited</i> }
+                  </button>
+                  <button class="terminal-tab-close" type="button" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-keyshortcuts]="activeId() === tab.id ? 'Control+Shift+W' : null" aria-label="Close {{ tab.title }}" title="Close terminal tab" (click)="$event.stopPropagation(); closeTab(tab.id, true)"><gc-icon name="x" [size]="10" /></button>
+                </div>
+              }
+            </div>
+            @if (tabStripOverflow()) {
+              <button class="terminal-tab-scroll" type="button" aria-label="Show next terminal tabs" title="Show next terminal tabs" [disabled]="!canScrollTabsForward()" (click)="scrollTabs(1)"><gc-icon name="chevron-right" [size]="11" /></button>
             }
           </div>
           <button class="new-terminal" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab" aria-keyshortcuts="Control+Shift+T" [disabled]="opening() || !nativeAvailable()" (click)="openTab()"><gc-icon name="plus" [size]="12" /></button>
@@ -103,7 +120,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   readonly visible = input(true);
   readonly nativeAvailable = input(true);
   readonly fontFamily = input('"SFMono-Regular", Consolas, "Liberation Mono", monospace');
-  readonly fontSize = input(12);
+  readonly fontSize = input(13);
   readonly lineHeight = input(1.25);
   readonly cursorStyle = input<TerminalCursorStyle>('block');
   readonly theme = input<AppTheme>('chronos');
@@ -115,6 +132,9 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   protected readonly minimized = signal(false);
   protected readonly opening = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly tabStripOverflow = signal(false);
+  protected readonly canScrollTabsBack = signal(false);
+  protected readonly canScrollTabsForward = signal(false);
   protected readonly height = signal(this.readStoredHeight());
   protected readonly terminalMinimumHeight = TERMINAL_PANEL_MIN_HEIGHT;
 
@@ -135,8 +155,15 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       });
     });
     effect(() => {
-      const palette = terminalTheme(this.theme());
-      for (const tab of this.tabs()) tab.terminal.options.theme = palette;
+      const tabs = this.tabs();
+      applyTerminalAppearance(tabs.map((tab) => tab.terminal), terminalAppearance({
+        theme: this.theme(),
+        cursorStyle: this.cursorStyle(),
+        fontFamily: this.fontFamily(),
+        fontSize: this.fontSize(),
+        lineHeight: this.lineHeight(),
+      }));
+      if (tabs.length) setTimeout(() => this.fitActive());
     });
   }
 
@@ -162,8 +189,14 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       this.error.set(this.errorMessage(cause));
       return;
     }
-    this.resizeObserver = new ResizeObserver(() => this.fitActive());
+    this.resizeObserver = new ResizeObserver(() => {
+      this.fitActive();
+      const activeId = this.activeId();
+      if (activeId) this.revealTab(activeId);
+      else this.updateTabOverflow();
+    });
     if (this.terminalBody) this.resizeObserver.observe(this.terminalBody.nativeElement);
+    if (this.terminalTabs) this.resizeObserver.observe(this.terminalTabs.nativeElement);
     await this.openTab();
   }
 
@@ -173,6 +206,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.resizeObserver?.disconnect();
     for (const tab of this.tabs()) {
       tab.input.dispose();
+      tab.titleChange.dispose();
       tab.terminal.dispose();
       void invoke('close_terminal', { sessionId: tab.id });
     }
@@ -195,19 +229,23 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       const terminal = new Terminal({
         allowProposedApi: false,
         cursorBlink: true,
-        cursorStyle: this.cursorStyle(),
-        fontFamily: this.fontFamily(),
-        fontSize: this.fontSize(),
-        lineHeight: this.lineHeight(),
         scrollback: 5000,
-        theme: terminalTheme(this.theme()),
+        ...terminalAppearance({
+          theme: this.theme(),
+          cursorStyle: this.cursorStyle(),
+          fontFamily: this.fontFamily(),
+          fontSize: this.fontSize(),
+          lineHeight: this.lineHeight(),
+        }),
       });
       const fit = new FitAddon();
       terminal.loadAddon(fit);
       const input = terminal.onData((data) => {
         void invoke('write_terminal', { sessionId: info.id, data: [...new TextEncoder().encode(data)] });
       });
-      const tab: TerminalTab = { ...info, title: `${info.label} ${this.nextTabNumber++}`, terminal, fit, input, ended: false };
+      const fallbackTitle = `${info.label} ${this.nextTabNumber++}`;
+      const titleChange = terminal.onTitleChange((title) => this.updateTabTitle(info.id, title));
+      const tab: TerminalTab = { ...info, title: fallbackTitle, fallbackTitle, terminal, fit, input, titleChange, ended: false };
       this.tabs.update((tabs) => [...tabs, tab]);
       this.activeId.set(tab.id);
       setTimeout(() => this.mount(tab));
@@ -220,6 +258,26 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
 
   protected activate(id: string): void {
     this.activateTab(id, true);
+  }
+
+  protected updateTabOverflow(): void {
+    const container = this.terminalTabs?.nativeElement;
+    if (!container) return;
+    const state = terminalTabOverflowState({
+      scrollPosition: container.scrollLeft,
+      viewportWidth: container.clientWidth,
+      contentWidth: container.scrollWidth,
+    });
+    this.tabStripOverflow.set(state.overflowing);
+    this.canScrollTabsBack.set(state.canScrollBack);
+    this.canScrollTabsForward.set(state.canScrollForward);
+  }
+
+  protected scrollTabs(direction: -1 | 1): void {
+    const container = this.terminalTabs?.nativeElement;
+    if (!container) return;
+    container.scrollBy({ left: direction * Math.max(118, Math.round(container.clientWidth * 0.72)) });
+    this.updateTabOverflow();
   }
 
   protected handleTabKeydown(event: KeyboardEvent, id: string): void {
@@ -289,6 +347,21 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private updateTabTitle(id: string, title: string): void {
+    let changed = false;
+    this.tabs.update((tabs) => tabs.map((tab) => {
+      if (tab.id !== id) return tab;
+      const nextTitle = normalizeTerminalTabTitle(title, tab.fallbackTitle);
+      if (nextTitle === tab.title) return tab;
+      changed = true;
+      return { ...tab, title: nextTitle };
+    }));
+    if (changed) setTimeout(() => {
+      if (this.activeId() === id) this.revealTab(id);
+      else this.updateTabOverflow();
+    });
+  }
+
   protected async closeTab(id: string, focusReplacementTab = false): Promise<void> {
     const tabs = this.tabs();
     const closingIndex = tabs.findIndex((candidate) => candidate.id === id);
@@ -296,6 +369,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     if (!tab) return;
     await invoke('close_terminal', { sessionId: id }).catch(() => undefined);
     tab.input.dispose();
+    tab.titleChange.dispose();
     tab.terminal.dispose();
     const state = terminalTabStateAfterClose(tabs.map((candidate) => candidate.id), this.activeId(), id);
     const remaining = tabs.filter((candidate) => candidate.id !== id);
@@ -345,6 +419,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.resizing = false;
     this.storeHeight();
     this.fitActive();
+    this.updateTabOverflow();
   }
 
   @HostListener('window:resize')
@@ -354,7 +429,12 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       this.height.set(height);
       this.storeHeight();
     }
-    this.fitActive();
+    setTimeout(() => {
+      this.fitActive();
+      const activeId = this.activeId();
+      if (activeId) this.revealTab(activeId);
+      else this.updateTabOverflow();
+    });
   }
 
   protected handleResizeKeydown(event: KeyboardEvent): void {
@@ -444,6 +524,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       maximumScrollPosition: Math.max(0, container.scrollWidth - container.clientWidth),
     });
     if (target !== null) container.scrollTo({ left: target });
+    this.updateTabOverflow();
   }
 
   private domIdPart(value: string): string {

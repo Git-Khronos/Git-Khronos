@@ -355,6 +355,45 @@ test('scrolling defers reference-stack pointer previews but preserves keyboard f
   expect(result.keyboard).toBe('keyboard-preview');
 });
 
+test('scrolling releases a pinned reference stack after its virtual row leaves the viewport', async ({ page }) => {
+  await loadLongHistory(page);
+  const result = await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const list = document.querySelector<HTMLElement>('.commit-list')!;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    app.pinnedReferenceStackOid.set('stale-anchor');
+    app.expandedReferenceStackOid.set('stale-anchor');
+    list.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, cancelable: true }));
+    await frame();
+    const afterWheel = {
+      pinned: app.pinnedReferenceStackOid(),
+      expanded: app.expandedReferenceStackOid(),
+    };
+
+    app.openReferenceStack('next-anchor', new FocusEvent('focusin'));
+    const reopened = app.expandedReferenceStackOid();
+
+    app.pinnedReferenceStackOid.set('second-stale-anchor');
+    app.expandedReferenceStackOid.set('second-stale-anchor');
+    list.scrollTop += 4000;
+    list.dispatchEvent(new Event('scroll'));
+    await frame();
+    return {
+      afterWheel,
+      reopened,
+      afterNativeScroll: {
+        pinned: app.pinnedReferenceStackOid(),
+        expanded: app.expandedReferenceStackOid(),
+      },
+    };
+  });
+
+  expect(result.afterWheel).toEqual({ pinned: null, expanded: null });
+  expect(result.reopened).toBe('next-anchor');
+  expect(result.afterNativeScroll).toEqual({ pinned: null, expanded: null });
+});
+
 test('frame-coordinated wheel input preserves distance, delta modes, and zoom gestures', async ({ page }) => {
   await loadLongHistory(page, 20_000);
   const result = await page.evaluate(async () => {

@@ -57,11 +57,11 @@ describe('graph column layout', () => {
 
   it('leaves the author node from the side facing the target lane', () => {
     expect(buildGraphSegmentPath({ x1: 16, y1: 20, x2: 44, y2: 40, sourceNodeRadius: 12 }))
-      .toBe('M 28 20 H 36 A 8 8 0 0 1 44 28 V 40');
+      .toBe('M 28 20 H 32 A 12 12 0 0 1 44 32 V 40');
     expect(buildGraphSegmentPath({ x1: 44, y1: 20, x2: 16, y2: 40, sourceNodeRadius: 12 }))
-      .toBe('M 32 20 H 24 A 8 8 0 0 0 16 28 V 40');
+      .toBe('M 32 20 H 28 A 12 12 0 0 0 16 32 V 40');
     expect(buildGraphSegmentPath({ x1: 14, y1: 20, x2: 34, y2: 40, sourceNodeRadius: 10 }))
-      .toBe('M 24 20 H 26 A 8 8 0 0 1 34 28 V 40');
+      .toBe('M 24 20 H 24 A 10 10 0 0 1 34 30 V 40');
   });
 
   it('joins a converging branch at the parent author node side', () => {

@@ -77,6 +77,69 @@ async function audit(page: Page): Promise<string[]> {
   });
 }
 
+async function auditTextContrast(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    type Color = [number, number, number, number];
+    const parseColor = (value: string): Color => {
+      const channels = value.match(/[\d.]+/g)?.map(Number) ?? [];
+      if (value.startsWith('color(srgb')) {
+        return [(channels[0] ?? 0) * 255, (channels[1] ?? 0) * 255,
+          (channels[2] ?? 0) * 255, channels[3] ?? 1];
+      }
+      return [channels[0] ?? 0, channels[1] ?? 0, channels[2] ?? 0, channels[3] ?? 1];
+    };
+    const composite = (front: Color, back: Color): Color => {
+      const alpha = front[3] + back[3] * (1 - front[3]);
+      return alpha === 0 ? [0, 0, 0, 0] : [
+        (front[0] * front[3] + back[0] * back[3] * (1 - front[3])) / alpha,
+        (front[1] * front[3] + back[1] * back[3] * (1 - front[3])) / alpha,
+        (front[2] * front[3] + back[2] * back[3] * (1 - front[3])) / alpha,
+        alpha,
+      ];
+    };
+    const renderedBackground = (element: Element): Color => {
+      const layers: Color[] = [];
+      for (let current: Element | null = element; current; current = current.parentElement) {
+        layers.push(parseColor(getComputedStyle(current).backgroundColor));
+      }
+      const canvas = parseColor(getComputedStyle(document.body).backgroundColor);
+      return layers.reduceRight((result, layer) => composite(layer, result), canvas);
+    };
+    const luminance = (color: Color): number => {
+      const channels = color.slice(0, 3).map(channel => {
+        const normalized = channel / 255;
+        return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+      });
+      return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2];
+    };
+    const contrastRatio = (foreground: Color, background: Color): number => {
+      const renderedForeground = composite(foreground, background);
+      const values = [luminance(renderedForeground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + .05) / (values[1] + .05);
+    };
+
+    return [...document.querySelectorAll<HTMLElement>('body *')].flatMap(element => {
+      const directText = [...element.childNodes]
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent?.trim() ?? '')
+        .filter(Boolean)
+        .join(' ');
+      const style = getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      const inactive = element.closest('[disabled], [aria-disabled="true"], [aria-hidden="true"], [inert]');
+      if (!directText || inactive || bounds.width === 0 || bounds.height === 0
+        || style.visibility === 'hidden' || Number(style.opacity) === 0) return [];
+      const fontSize = Number.parseFloat(style.fontSize);
+      const threshold = fontSize >= 24 || (fontSize >= 18.66 && Number(style.fontWeight) >= 700) ? 3 : 4.5;
+      const ratio = contrastRatio(parseColor(style.color), renderedBackground(element));
+      if (ratio + .01 >= threshold) return [];
+      const selector = `${element.tagName.toLowerCase()}${[...element.classList]
+        .map(name => `.${name}`).join('')}`;
+      return [`${selector} "${directText.slice(0, 60)}" has ${ratio.toFixed(2)}:1 contrast; expected ${threshold}:1`];
+    });
+  });
+}
+
 const states = [
   '/',
   '/?welcome-preview',
@@ -96,31 +159,61 @@ const states = [
   '/?clean-preview',
 ];
 
-for (const state of states) {
-  test(`has a structurally accessible interface for ${state}`, async ({ page }) => {
-    await page.goto(state);
-    await page.locator('body').getByRole('main').or(page.locator('app-root')).first().waitFor();
-    await page.waitForLoadState('networkidle');
-    expect(await audit(page)).toEqual([]);
-  });
+for (const theme of ['chronos', 'midnight'] as const) {
+  for (const state of states) {
+    test(`has a structurally accessible ${theme} interface for ${state}`, async ({ page }) => {
+      await page.addInitScript((selectedTheme) => {
+        localStorage.setItem('git-chronos.ui.theme', selectedTheme);
+      }, theme);
+      await page.goto(state);
+      await page.locator('body').getByRole('main').or(page.locator('app-root')).first().waitFor();
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      expect(await audit(page)).toEqual([]);
+      expect(await auditTextContrast(page)).toEqual([]);
+    });
+  }
 }
 
-test('keeps open menus and dialogs structurally accessible', async ({ page }) => {
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  const opener = page.getByTitle('Command palette (Ctrl+P)');
-  await opener.focus();
-  await page.keyboard.press('Control+P');
-  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
-  expect(await audit(page)).toEqual([]);
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+/');
-  await expect(page.getByRole('dialog', { name: 'Keyboard Shortcuts' })).toBeVisible();
-  expect(await audit(page)).toEqual([]);
-  await page.keyboard.press('Escape');
-  for (const title of ['Pull options', 'Push options', 'Branch options', 'Configure graph columns']) {
-    await page.getByTitle(title).click();
-    expect(await audit(page), title).toEqual([]);
+for (const theme of ['chronos', 'midnight'] as const) {
+  test(`keeps open ${theme} menus and dialogs accessible`, async ({ page }) => {
+    await page.addInitScript((selectedTheme) => {
+      localStorage.setItem('git-chronos.ui.theme', selectedTheme);
+    }, theme);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await expect(page.getByRole('menu', { name: 'Git Chronos menu' })).toBeVisible();
+    expect(await audit(page)).toEqual([]);
+    expect(await auditTextContrast(page)).toEqual([]);
     await page.keyboard.press('Escape');
-  }
-});
+    const opener = page.getByTitle('Command palette (Ctrl+P)');
+    await opener.focus();
+    await page.keyboard.press('Control+P');
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+    expect(await audit(page)).toEqual([]);
+    expect(await auditTextContrast(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+/');
+    await expect(page.getByRole('dialog', { name: 'Keyboard Shortcuts' })).toBeVisible();
+    expect(await audit(page)).toEqual([]);
+    expect(await auditTextContrast(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    const menuControls = [
+      { label: 'Fetch options', control: page.getByTitle('Fetch options') },
+      { label: 'Pull options', control: page.getByTitle('Pull options') },
+      { label: 'Push options', control: page.getByTitle('Push options') },
+      { label: 'Branch options', control: page.getByTitle('Branch options') },
+      { label: 'Remote selector', control: page.getByRole('button', { name: /Select remote, current origin/ }) },
+      { label: 'Branch selector', control: page.getByRole('button', { name: /Switch branch, current main/ }) },
+      { label: 'Graph columns', control: page.getByRole('button', { name: 'Configure graph columns' }) },
+    ];
+    for (const { label, control } of menuControls) {
+      await control.click();
+      expect(await audit(page), label).toEqual([]);
+      expect(await auditTextContrast(page), label).toEqual([]);
+      await page.keyboard.press('Escape');
+    }
+  });
+}

@@ -105,6 +105,33 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     });
 }
 
+function createPreviewConflictStatus(
+  status: RepositoryStatus,
+  operation: Partial<Pick<RepositoryStatus, 'mergeInProgress' | 'historyOperation'>>,
+): RepositoryStatus {
+  let conflictInserted = false;
+  const entries = status.entries.map((entry) => {
+    if (entry.conflicted) {
+      conflictInserted = true;
+      return entry;
+    }
+    if (conflictInserted) return entry;
+    conflictInserted = true;
+    return { ...entry, indexStatus: 'U', worktreeStatus: 'U', conflicted: true };
+  });
+  const ordinaryEntries = entries.filter((entry) => !entry.conflicted);
+  const untracked = ordinaryEntries.filter((entry) => entry.indexStatus === '?').length;
+  return {
+    ...status,
+    ...operation,
+    staged: ordinaryEntries.filter((entry) => entry.indexStatus !== ' ' && entry.indexStatus !== '!' && entry.indexStatus !== '?').length,
+    unstaged: ordinaryEntries.filter((entry) => entry.indexStatus !== '?' && entry.worktreeStatus !== ' ' && entry.worktreeStatus !== '!').length,
+    untracked,
+    conflicted: entries.filter((entry) => entry.conflicted).length,
+    entries,
+  };
+}
+
 export interface ActivityLogEntry {
   id: number;
   timestamp: string;
@@ -145,6 +172,10 @@ export class GitChronosService {
   );
   readonly recentPaths = signal<string[]>(this.readRecents());
   readonly favoritePaths = signal<string[]>(this.readFavorites());
+  readonly unpinnedRecentPaths = computed(() => {
+    const favorites = new Set(this.favoritePaths());
+    return this.recentPaths().filter((path) => !favorites.has(path));
+  });
   readonly repositoryAliases = signal<Record<string, string>>(this.readAliases());
   readonly recentlyClosedRepositoryPath = signal<string | null>(null);
   readonly busy = signal(false);
@@ -329,25 +360,11 @@ export class GitChronosService {
           });
         }
         if (previewOptions.has('merge-preview')) {
-          preview.status = {
-            ...preview.status,
-            conflicted: 1,
-            mergeInProgress: true,
-            entries: preview.status.entries.map((entry, index) => index === 0
-              ? { ...entry, indexStatus: 'U', worktreeStatus: 'U', conflicted: true }
-              : entry),
-          };
+          preview.status = createPreviewConflictStatus(preview.status, { mergeInProgress: true });
         }
         const historyPreview = previewOptions.get('history-preview');
         if (historyPreview === 'cherry-pick' || historyPreview === 'revert') {
-          preview.status = {
-            ...preview.status,
-            conflicted: 1,
-            historyOperation: historyPreview,
-            entries: preview.status.entries.map((entry, index) => index === 0
-              ? { ...entry, indexStatus: 'U', worktreeStatus: 'U', conflicted: true }
-              : entry),
-          };
+          preview.status = createPreviewConflictStatus(preview.status, { historyOperation: historyPreview });
         }
         const showWorktreeTabs = previewOptions.has('worktree-tabs');
         const linkedWorktree = preview.worktrees.find((worktree) => !worktree.current);
@@ -1196,6 +1213,14 @@ export class GitChronosService {
     );
   }
 
+  async initializeAllSubmodules(): Promise<boolean> {
+    return await this.mutate(
+      'initialize_all_submodules',
+      'Initializing missing submodules…',
+      'Initialized all missing submodules at their recorded commits',
+    ) === 'success';
+  }
+
   async updateSubmodule(path: string): Promise<void> {
     await this.mutate(
       'update_submodule',
@@ -1203,6 +1228,14 @@ export class GitChronosService {
       `Updated ${path}`,
       { path },
     );
+  }
+
+  async updateAllSubmodules(): Promise<boolean> {
+    return await this.mutate(
+      'update_all_submodules',
+      'Updating all submodules from remotes…',
+      'Updated all submodules from their configured remotes',
+    ) === 'success';
   }
 
   async checkoutCommit(oid: string): Promise<void> {
@@ -2372,6 +2405,11 @@ export class GitChronosService {
     return this.repositoryAliases()[repository.path] || repository.name;
   }
 
+  workspaceRepositoryCount(workspace: RepositoryWorkspace): number {
+    if (workspace.id !== this.activeWorkspaceId()) return workspace.repositoryPaths.length;
+    return Math.max(workspace.repositoryPaths.length, this.repositories().length);
+  }
+
   pathLabel(path: string): string {
     return this.repositoryAliases()[path] || path.split(/[\\/]/).filter(Boolean).at(-1) || path;
   }
@@ -2387,6 +2425,17 @@ export class GitChronosService {
       localStorage.setItem(FAVORITE_REPOSITORIES_KEY, JSON.stringify(favorites));
     } catch {
       // Favorites remain available for this session when storage is unavailable.
+    }
+  }
+
+  removeRecentPath(path: string): void {
+    const paths = this.recentPaths().filter((recent) => recent !== path);
+    if (paths.length === this.recentPaths().length) return;
+    this.recentPaths.set(paths);
+    try {
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(paths));
+    } catch {
+      // The current session still reflects the removal when storage is unavailable.
     }
   }
 
@@ -2734,9 +2783,11 @@ export class GitChronosService {
       'lfs_prune',
       'lfs_prune_objects',
       'update_submodule',
+      'update_all_submodules',
       'transport_reference',
       'add_submodule',
       'initialize_submodule',
+      'initialize_all_submodules',
     ].includes(command);
   }
 

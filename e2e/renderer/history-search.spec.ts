@@ -49,7 +49,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => installHistoryFixture(page));
 
 test('deferred history preserves entered filters across closing and restores the search opener', async ({ page }) => {
-  const opener = page.getByRole('button', { name: 'Focus commit search', exact: true });
+  const opener = page.getByRole('button', { name: 'Search all repository history', exact: true });
   await opener.click();
   const dialog = page.getByRole('dialog', { name: 'Search repository history', exact: true });
   await dialog.getByLabel('Message contains').fill('retain my search');
@@ -71,7 +71,7 @@ test('cancelled history chunk loading does not open late or issue a search', asy
     await route.fulfill({ response, body: text });
     if (historyChunk) finished();
   });
-  const opener = page.getByRole('button', { name: 'Focus commit search', exact: true });
+  const opener = page.getByRole('button', { name: 'Search all repository history', exact: true });
   await opener.click();
   const loading = page.getByRole('dialog', { name: 'Loading history search', exact: true });
   await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
@@ -92,7 +92,7 @@ test('failed history chunk has a focused close route and leaves repository state
     if (text.includes('Search repository history') && text.includes('Compare two revisions')) await route.abort();
     else await route.fulfill({ response, body: text });
   });
-  const opener = page.getByRole('button', { name: 'Focus commit search', exact: true });
+  const opener = page.getByRole('button', { name: 'Search all repository history', exact: true });
   await opener.click();
   const error = page.getByRole('dialog', { name: 'History search unavailable', exact: true });
   await expect(error.getByRole('alert')).toContainText('No search was run');
@@ -105,6 +105,10 @@ test('failed history chunk has a focused close route and leaves repository state
 test('opens contextual native history search with keyboard focus and progressive filters', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Search repository history' })).not.toBeVisible();
   await page.keyboard.press('Control+f');
+  await expect(page.getByLabel('Search loaded commits by message, SHA, or author')).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'Search repository history' })).not.toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Shift+f');
   const dialog = page.getByRole('dialog', { name: 'Search repository history' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Message contains')).toBeFocused();
@@ -125,8 +129,39 @@ test('opens contextual native history search with keyboard focus and progressive
   expect(selected).toBe('a'.repeat(40));
 });
 
+test('keeps history search structured, responsive, and easy to reset', async ({ page }) => {
+  await page.keyboard.press('Control+Shift+f');
+  const dialog = page.getByRole('dialog', { name: 'Search repository history' });
+  const message = dialog.getByLabel('Message contains');
+  const close = dialog.getByRole('button', { name: 'Close history search', exact: true });
+
+  await expect(dialog.getByText('Find commits beyond the history currently loaded in the graph.')).toBeVisible();
+  await expect(message).toBeFocused();
+  expect(await close.evaluate((button) => {
+    const bounds = button.getBoundingClientRect();
+    return bounds.width >= 32 && bounds.height >= 32;
+  })).toBe(true);
+
+  await message.fill('keep this message');
+  await dialog.getByText('Advanced filters', { exact: true }).click();
+  await dialog.getByLabel('Author name/email contains').fill('Old Author');
+  await dialog.getByLabel('Repository-relative path').fill('src/history.ts');
+  await expect(dialog.getByText('2 active', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(dialog.getByLabel('Author name/email contains')).toHaveValue('');
+  await expect(dialog.getByLabel('Repository-relative path')).toHaveValue('');
+  await expect(message).toHaveValue('keep this message');
+
+  await page.setViewportSize({ width: 560, height: 640 });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((element) => ({
+    fitsViewport: element.getBoundingClientRect().width <= window.innerWidth,
+    noHorizontalOverflow: element.scrollWidth <= element.clientWidth,
+  }))).toEqual({ fitsViewport: true, noHorizontalOverflow: true });
+});
+
 test('retains results and cursor after real operation cancellation, reports incomplete and supports retry', async ({ page }) => {
-  await page.getByRole('button', { name: 'Focus commit search' }).click();
+  await page.getByRole('button', { name: 'Search all repository history' }).click();
   const dialog = page.getByRole('dialog', { name: 'Search repository history' });
   await dialog.getByRole('button', { name: 'Search repository', exact: true }).click();
   await page.evaluate(() => (window as any).__historyFixture.holdNext = true);
@@ -142,7 +177,7 @@ test('retains results and cursor after real operation cancellation, reports inco
   expect(cursor.offset).toBe(200);
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Focus commit search' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Search all repository history' })).toBeFocused();
 });
 
 test('file pagination opens historical renamed paths and blame can open the first parent', async ({ page }) => {
@@ -170,7 +205,7 @@ test('file pagination opens historical renamed paths and blame can open the firs
 });
 
 test('explicit comparison mode reaches native merge-base command and displays unloaded revisions', async ({ page }) => {
-  await page.getByRole('button', { name: 'Focus commit search' }).click();
+  await page.getByRole('button', { name: 'Search all repository history' }).click();
   const dialog = page.getByRole('dialog', { name: 'Search repository history' });
   await dialog.getByText('Compare two revisions', { exact: true }).click();
   await dialog.getByLabel('Base ref or commit').fill('main');
@@ -184,7 +219,7 @@ test('explicit comparison mode reaches native merge-base command and displays un
 });
 
 test('distinguishes timeout from empty completed results', async ({ page }) => {
-  await page.getByRole('button', { name: 'Focus commit search' }).click();
+  await page.getByRole('button', { name: 'Search all repository history' }).click();
   const dialog = page.getByRole('dialog', { name: 'Search repository history' });
   await page.evaluate(() => (window as any).__historyFixture.failNext = true);
   await dialog.getByRole('button', { name: 'Search repository', exact: true }).click();

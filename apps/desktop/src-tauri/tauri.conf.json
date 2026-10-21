@@ -7,6 +7,7 @@
     "beforeDevCommand": "pnpm nx run desktop:serve -- --host 127.0.0.1",
     "devUrl": "http://127.0.0.1:4200",
     "beforeBuildCommand": "pnpm nx run desktop:build",
+    "beforeBundleCommand": "node tools/prepare-linux-package.mjs",
     "frontendDist": "../../../dist/apps/desktop/browser"
   },
   "app": {
@@ -30,8 +31,9 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
-    "shortDescription": "A free, local-first Git client",
-    "longDescription": "Git Chronos is an approachable, powerful, free and open-source Git desktop client.",
+    "shortDescription": "Free, local-first Git client",
+    "longDescription": "A fast, local-first desktop client for browsing Git history and managing\nrepositories without a required online account.\n\nReview changes, branches, and repository activity in a native visual workspace.",
+    "homepage": "https://github.com/Git-Chronos/Git-Chronos",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,16 +44,20 @@
     "linux": {
       "deb": {
         "depends": [
-          "git (>= 1:2.39)"
+          "git (>= 1:2.39)",
+          "libc6"
         ],
         "recommends": [
           "openssh-client",
           "git-lfs"
         ],
         "section": "vcs",
+        "desktopTemplate": "../../../packaging/linux/git-chronos.desktop.hbs",
         "files": {
-          "/usr/share/doc/git-chronos/copyright": "../../../LICENSE",
-          "/usr/share/doc/git-chronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md"
+          "/usr/share/doc/git-chronos/copyright": "../../../packaging/debian/copyright",
+          "/usr/share/doc/git-chronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md",
+          "/usr/share/doc/git-chronos/changelog.gz": "../../../target/package-assets/changelog.gz",
+          "/usr/share/man/man1/git-chronos-desktop.1.gz": "../../../target/package-assets/git-chronos-desktop.1.gz"
         }
       },
       "rpm": {

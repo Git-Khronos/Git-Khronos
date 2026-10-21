@@ -171,6 +171,7 @@ test('split-only refresh changes at equal file counts invalidate Continue and ex
     await git.refreshStatusInBackground(git.activeRepositoryId(), true);
   });
   await expect(banner).toContainText('Split reset was interrupted');
+  await expect(page.locator('#commit-readiness')).toHaveText('The split reset needs attention. Abort it from the operation banner before committing.');
   await expect(banner.getByRole('button', { name: 'Split this commit…', exact: true })).toHaveCount(0);
   await expect(banner.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
   await expect(page.locator('.commit-form button[type=submit]')).toBeDisabled();
