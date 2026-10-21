@@ -1114,7 +1114,7 @@
         }
       </section>
 
-      <aside id="repository-commit-panel" class="detail-panel commit-panel workspace-focus-region" [attr.aria-label]="selectedLinkedWorktree() ? 'Worktree inspector' : changesOpen() ? 'Working directory inspector' : 'Commit inspector'" tabindex="-1" [class.panel-hidden]="!detailsVisible()" [class.working-tree-inspector]="changesOpen() && !repo.bare && !selectedLinkedWorktree()">
+      <aside #commitPanel id="repository-commit-panel" class="detail-panel commit-panel workspace-focus-region" [attr.aria-label]="selectedLinkedWorktree() ? 'Worktree inspector' : changesOpen() ? 'Working directory inspector' : 'Commit inspector'" tabindex="-1" [class.panel-hidden]="!detailsVisible()" [class.working-tree-inspector]="changesOpen() && !repo.bare && !selectedLinkedWorktree()">
         <div class="panel-resizer left" role="separator" tabindex="0" aria-label="Resize commit panel" aria-controls="repository-commit-panel" aria-orientation="vertical" [attr.aria-valuemin]="280" [attr.aria-valuemax]="560" [attr.aria-valuenow]="detailsWidth()" [attr.aria-valuetext]="detailsWidth() + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('details', $event)" (keydown)="handlePanelResizeKeydown('details', $event)" (dblclick)="resetPanelWidth('details', $event)"></div>
         <ng-template #commitPanelCloseControl>
           <button #commitPanelClose class="panel-close-action" type="button" aria-label="Close commit panel" aria-keyshortcuts="Control+K Meta+K" title="Close commit panel ({{ primaryShortcutKey }}+K)" (click)="setPanelVisibility('commit-panel', false)"><gc-icon name="x" [size]="12" /></button>

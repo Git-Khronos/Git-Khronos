@@ -103,7 +103,7 @@
 .commit-row > .trailing-cell ~ .row-menu { position: relative; z-index: 1; grid-column: -2 / -1; grid-row: 1; }
 .commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) { opacity: 1; }
 .commit-row.branch-dimmed > .trailing-cell:is(.row-author, .row-date, code) > * { opacity: .86; }
-.commit-row-action { position: relative; right: 2px; z-index: 9; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858397; opacity: 0; transition: opacity .1s ease, border-color .1s ease, background-color .1s ease, color .1s ease; }
+.commit-row-action { position: relative; right: 0; z-index: 9; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858397; opacity: 0; transition: opacity .1s ease, border-color .1s ease, background-color .1s ease, color .1s ease; }
 .commit-row:hover .commit-row-action, .commit-row:focus-visible .commit-row-action, .commit-row:focus-within .commit-row-action, .commit-row.selected .commit-row-action, .commit-row-action.menu-open { opacity: 1; }
 .commit-row-action:hover, .commit-row-action:focus-visible { border-color: #55536d; background: #403f58; color: white; }
 .commit-row-action.menu-open { border-color: #736ca0; background: #4a4668; color: #f0edff; box-shadow: 0 0 0 1px #8f84ed26; }

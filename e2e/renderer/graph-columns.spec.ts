@@ -283,6 +283,20 @@ test('discloses hidden graph columns from the column settings control', async ({
   await expect(toggle).toHaveAttribute('aria-describedby', 'graph-hidden-columns-description');
   await expect(toggle.locator('#graph-hidden-columns-description')).toHaveText('3 hidden columns');
   await expect(count).toHaveText('3');
+  const badgeContrast = () => count.evaluate((element) => {
+    const parse = (color: string) => color.match(/[\d.]+/g)?.map(Number).slice(0, 3) ?? [];
+    const weights = [0.2126, 0.7152, 0.0722] as const;
+    const luminance = (color: number[]) => color.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }).reduce((total, value, index) => total + value * (weights[index] ?? 0), 0);
+    const foreground = luminance(parse(getComputedStyle(element).color));
+    const background = luminance(parse(getComputedStyle(element).backgroundColor));
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+  await expect.poll(badgeContrast).toBeGreaterThanOrEqual(4.5);
+  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'midnight'; });
+  await expect.poll(badgeContrast).toBeGreaterThanOrEqual(4.5);
 
   await toggle.click();
   const dialog = page.getByRole('dialog', { name: 'Graph settings' });

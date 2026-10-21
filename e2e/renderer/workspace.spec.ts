@@ -7881,7 +7881,10 @@ test('opens commit details, tree files, and the focused diff through normal clic
 
   const diffViewer = page.getByLabel('Diff viewer');
   await expect(diffViewer).toBeVisible();
-  await expect(commitPanel.locator('.commit-overview .commit-body')).toHaveText('Make operation history easier to scan and diagnose.');
+  const visibleCommitContext = commitPanel.locator('.commit-overview');
+  await expect.poll(() => commitPanel.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(visibleCommitContext).toBeInViewport();
+  await expect(visibleCommitContext.locator('.commit-body')).toHaveText('Make operation history easier to scan and diagnose.');
   await expect(commitPanel.locator('.commit-inspector-revision')).toHaveText('f19b263a');
   await expect(diffViewer.locator('.focus-diff-view')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.sidebar')).toBeVisible();

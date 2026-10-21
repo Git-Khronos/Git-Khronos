@@ -631,6 +631,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly toolbarRemoteToggle = viewChild<ElementRef<HTMLButtonElement>>('toolbarRemoteToggle');
   private readonly responsiveSidebarToggle = viewChild<ElementRef<HTMLButtonElement>>('responsiveSidebarToggle');
   private readonly commitPanelToggle = viewChild<ElementRef<HTMLButtonElement>>('commitPanelToggle');
+  private readonly commitPanel = viewChild<ElementRef<HTMLElement>>('commitPanel');
   private readonly commitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('commitPanelClose');
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
@@ -8176,6 +8177,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private openDiffViewer(): void {
+    const revealCommitContext = !!(this.git.commitFileDiff() || this.git.comparisonFileDiff());
     if (!this.diffViewerOpen()) {
       this.diffViewerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
@@ -8183,6 +8185,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.diffFileMenuOpen.set(false);
     this.diffInsightMode.set('diff');
     this.diffViewerOpen.set(true);
+    if (revealCommitContext) {
+      requestAnimationFrame(() => this.commitPanel()?.nativeElement.scrollTo({ top: 0, behavior: 'auto' }));
+    }
   }
 
   protected closeDiffViewer(): void {
