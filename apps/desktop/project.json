@@ -15,6 +15,7 @@
       "options": { "command": "tauri build --config apps/desktop/src-tauri/tauri.conf.json" }
     },
     "check": {
+      "inputs": ["default", "^production", "rust"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [
@@ -26,6 +27,7 @@
       }
     },
     "test": {
+      "inputs": ["default", "^production", "rust"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [

@@ -7583,6 +7583,14 @@ pub fn is_explicit_bare_repository(path: &Path) -> bool {
 pub(crate) fn git_in(path: &Path) -> Command {
     let mut command = Command::new("git");
     command.arg("-C").arg(path);
+    // Unit fixtures configure their own repositories. Host signing settings,
+    // hooks and LFS filters must not change their inputs or execute user hooks.
+    // Keep normal application commands governed by the user's Git settings.
+    #[cfg(test)]
+    command.env("GIT_CONFIG_NOSYSTEM", "1").env(
+        "GIT_CONFIG_GLOBAL",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/test-support/gitconfig"),
+    );
     if is_explicit_bare_repository(path) {
         command.env("GIT_DIR", path);
     }

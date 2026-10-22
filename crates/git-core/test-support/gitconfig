@@ -1,0 +1,7 @@
+# Deterministic defaults for unit fixtures, including newly cloned repositories.
+# Repository-local configuration remains authoritative for policy tests.
+[user]
+	name = Fixture User
+	email = fixture@example.test
+[init]
+	defaultBranch = main
