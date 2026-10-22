@@ -7,7 +7,7 @@
 /* Each recycled row is its own compositing layer: scrolling and rebinding a row then repaints only
    that row instead of the whole list, which keeps WebKitGTK near one frame per display refresh. */
 .virtual-commit-rows .commit-row { position: absolute; left: 0; will-change: transform; }
-.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 16px 0 6px; border-bottom: 1px solid var(--graph-row-divider); background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
+.commit-row { --row-surface: var(--history-surface); position: relative; width: 100%; min-width: 100%; height: 40px; min-height: 40px; align-items: center; padding: 0 24px 0 6px; border-bottom: 1px solid var(--graph-row-divider); background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: opacity .1s ease, background-color .1s ease, filter .1s ease; }
 .commit-row:hover { background: var(--row-hover); --row-surface: var(--row-hover); }
 .commit-row:focus-visible { z-index: 2; outline: 2px solid var(--graph-row-focus); outline-offset: -2px; }
 .commit-row.selected { background: var(--row-selected); --row-surface: var(--row-selected); box-shadow: inset 3px 0 var(--purple), inset 0 0 0 1px color-mix(in srgb, var(--purple) 28%, transparent); }

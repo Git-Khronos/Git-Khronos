@@ -1633,17 +1633,17 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .graph-columns .date-column-heading .column-heading-icon { justify-content: center; margin-left: -6px; }
 /* Center the Author icon across the whole heading; the filter toggle stays on the right. */
 .graph-columns .author-column-heading .column-heading-icon { position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; }
-.graph-columns.has-trailing-column { padding-right: calc(16px + var(--graph-scrollbar-gutter, 0px)); scroll-padding-inline-end: calc(16px + var(--graph-scrollbar-gutter, 0px)); }
+.graph-columns.has-trailing-column { padding-right: calc(24px + var(--graph-scrollbar-gutter, 0px)); scroll-padding-inline-end: calc(24px + var(--graph-scrollbar-gutter, 0px)); }
 /* Columns are never pinned, so one heading can never cover another: every heading keeps its own grid
    track and scrolls with the history. The trailing column spans its own track and the settings lane,
    keeping the settings button rightmost inside it. */
 .graph-columns > .trailing-column { grid-column: -3 / -1; grid-row: 1; padding-right: 32px; border-right: 0; }
-.graph-columns > .trailing-column::after { content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: calc(16px + var(--graph-scrollbar-gutter, 0px)); background: var(--graph-header); pointer-events: none; }
+.graph-columns > .trailing-column::after { content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: calc(24px + var(--graph-scrollbar-gutter, 0px)); background: var(--graph-header); pointer-events: none; }
 .graph-columns button { order: 99; background: transparent; color: var(--graph-header-text); }
 /* While columns continue past the right edge, an opaque strip behind the settings button marks the
    header's visible edge, so headings end there instead of passing under the button. */
 .history-panel:has(.commit-list-shell.can-scroll-right) .graph-header::after { content: ''; position: absolute; z-index: 5; top: 0; right: 0; bottom: 1px; width: calc(42px + var(--graph-scrollbar-gutter, 0px)); border-left: 1px solid var(--graph-header-divider); background: var(--graph-header); pointer-events: none; }
-.graph-header > .graph-settings-toggle { position: absolute; z-index: 6; top: 2px; right: calc(14px + var(--graph-scrollbar-gutter, 0px)); width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--graph-header-divider); border-radius: 3px; background: color-mix(in srgb, var(--graph-header-hover) 28%, var(--graph-header)); color: var(--graph-header-hover-text); box-shadow: 0 1px 2px rgb(0 0 0 / .18); }
+.graph-header > .graph-settings-toggle { position: absolute; z-index: 6; top: 2px; right: calc(22px + var(--graph-scrollbar-gutter, 0px)); width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--graph-header-divider); border-radius: 3px; background: color-mix(in srgb, var(--graph-header-hover) 28%, var(--graph-header)); color: var(--graph-header-hover-text); box-shadow: 0 1px 2px rgb(0 0 0 / .18); }
 .graph-header > .graph-settings-toggle:hover, .graph-header > .graph-settings-toggle:focus-visible, .graph-header > .graph-settings-toggle[aria-expanded='true'] { border-color: color-mix(in srgb, var(--graph-header-hover-text) 30%, var(--graph-header-divider)); background: var(--graph-header-hover); color: var(--graph-header-hover-text); }
 .graph-settings-hidden-count { position: absolute; top: -5px; right: -6px; min-width: 14px; height: 14px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--graph-header); border-radius: 8px; background: var(--graph-count-badge); color: white; font-size: 9px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
 .graph-settings-toggle:hover .graph-settings-hidden-count, .graph-settings-toggle:focus-visible .graph-settings-hidden-count, .graph-settings-toggle[aria-expanded='true'] .graph-settings-hidden-count { border-color: var(--graph-header-hover); }

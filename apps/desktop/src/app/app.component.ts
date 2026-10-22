@@ -1161,9 +1161,9 @@ export class AppComponent implements OnInit, OnDestroy {
     ? `${this.graphGridColumns()} 26px`
     : this.graphGridColumns());
   protected readonly commitRowGridColumns = computed(() => `${this.graphGridColumns()} 26px`);
-  // Rows span every column track (plus 6px left and 16px right padding and the 26px actions track) so
+  // Rows span every column track (plus 6px left and 24px right padding and the 26px actions track) so
   // hover and selection backgrounds cover columns scrolled past the viewport edge.
-  protected readonly commitRowWidth = computed(() => 22 + 26 + this.graphColumnOrder()
+  protected readonly commitRowWidth = computed(() => 30 + 26 + this.graphColumnOrder()
     .filter((column) => this.isGraphColumnVisible(column))
     .reduce((total, column) => total + this.columnWidthSignal(column)(), 0));
   // Whichever column is last spans the actions lane, so it reaches the panel's right edge with the
@@ -1180,9 +1180,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.graphColumnOrder().filter((column) => this.isGraphColumnVisible(column)));
   protected readonly hiddenGraphColumnCount = computed(() =>
     DEFAULT_GRAPH_COLUMNS.length - this.visibleGraphColumns().length);
-  /** Width the column tracks can use without scrolling: the list minus side padding (6px + 16px) and the 26px actions lane. */
+  /** Width the column tracks can use without scrolling: the list minus side padding (6px + 24px) and the 26px actions lane. */
   private readonly graphColumnsAvailableWidth = computed(() =>
-    this.graphViewportWidth() ? this.graphViewportWidth() - 22 - 26 : 0);
+    this.graphViewportWidth() ? this.graphViewportWidth() - 30 - 26 : 0);
   /** App-wide: when off, the columns always fit the history panel and never scroll horizontally. */
   protected readonly graphHorizontalScroll = signal(readStoredBoolean(GRAPH_HORIZONTAL_SCROLL_KEY, true));
   private readonly graphColumnFitEffect = effect(() => {
