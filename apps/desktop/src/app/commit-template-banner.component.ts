@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal } from '@angular/core';
-import type { AppError } from '@git-chronos/contracts';
+import type { AppError } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
 
 @Component({

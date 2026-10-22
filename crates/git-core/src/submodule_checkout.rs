@@ -148,7 +148,7 @@ fn checkout_one(
     let recovery_reference = preserve_reference(
         &module,
         previous,
-        "Git Chronos: before checking out the recorded submodule commit",
+        "Git Khronos: before checking out the recorded submodule commit",
     )?;
 
     run_mutation(
@@ -313,7 +313,7 @@ fn module_refs(module: &Path) -> Result<Vec<u8>, AppError> {
     )?;
     Ok(output
         .split(|byte| *byte == b'\n')
-        .filter(|line| !line.starts_with(b"refs/git-chronos/recovery/"))
+        .filter(|line| !line.starts_with(b"refs/git-khronos/recovery/"))
         .flat_map(|line| line.iter().copied().chain(*b"\n"))
         .collect())
 }

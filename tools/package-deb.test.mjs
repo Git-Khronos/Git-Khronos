@@ -8,15 +8,15 @@ import { test } from 'node:test';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
-  'target/release/git-chronos-desktop',
-  'target/release/bundle/deb/Git Chronos_0.1.0_amd64.deb',
+  'target/release/git-khronos-desktop',
+  'target/release/bundle/deb/Git Khronos_0.1.0_amd64.deb',
   'target/package-assets/changelog.gz',
-  'target/package-assets/git-chronos-desktop.1.gz',
+  'target/package-assets/git-khronos-desktop.1.gz',
   'dist/apps/desktop/browser/index.html',
 ];
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'git-chronos-incremental-deb-'));
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-incremental-deb-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const put = async (path, content = 'fixture') => {
     await mkdir(dirname(join(root, path)), { recursive: true });

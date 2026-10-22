@@ -314,7 +314,7 @@ fn backup_admin(
     references: &[String],
     entry: &WorktreeRegistration,
 ) -> Result<PathBuf, AppError> {
-    let parent = common.join("git-chronos-worktree-registrations");
+    let parent = common.join("git-khronos-worktree-registrations");
     fs::create_dir_all(&parent).map_err(io_error)?;
     let sequence = SystemTime::now()
         .duration_since(UNIX_EPOCH)

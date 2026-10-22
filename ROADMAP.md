@@ -1,6 +1,6 @@
-# Git Chronos roadmap
+# Git Khronos roadmap
 
-Git Chronos is built in vertical slices. A milestone is complete only when its
+Git Khronos is built in vertical slices. A milestone is complete only when its
 workflows run in the packaged desktop application—not merely in a browser mock.
 
 ## Foundation and repository vertical slice — in progress

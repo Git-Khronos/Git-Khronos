@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, input, output, viewChild } from '@angular/core';
-import type { Remote } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { Remote } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 @Component({
@@ -11,7 +11,7 @@ import { IconComponent } from './icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RepositoryConfirmationsComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly remote = input<Remote | null>(null);
   readonly sparseAction = input<'set' | 'disable' | null>(null);

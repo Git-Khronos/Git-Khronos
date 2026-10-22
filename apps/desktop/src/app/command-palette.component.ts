@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { CommandAction, CommandPaletteScope } from './app.component';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 export type CommandPaletteNavigation = number | 'first' | 'last';
@@ -23,7 +23,7 @@ export type CommandPaletteNavigation = number | 'first' | 'last';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommandPaletteComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   private readonly searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
 
   readonly commands = input.required<readonly CommandAction[]>();

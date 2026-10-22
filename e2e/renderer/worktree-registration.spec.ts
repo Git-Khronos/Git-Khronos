@@ -28,7 +28,7 @@ async function setup(page: Page): Promise<void> {
       if (command === 'prune_worktree_registration') {
         if (fixture.pruneFail) return Promise.reject({ kind: 'staleWorktree', message: 'Worktree registrations changed after review. Nothing was removed; the recovery copy is retained.' });
         fixture.pruned = true;
-        return Promise.resolve({ recoveryReferences: ['refs/git-chronos/recovery/1-2'], metadataBackup: '/workspace/.git/git-chronos-worktree-registrations/1-2-missing' });
+        return Promise.resolve({ recoveryReferences: ['refs/git-khronos/recovery/1-2'], metadataBackup: '/workspace/.git/git-khronos-worktree-registrations/1-2-missing' });
       }
       if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
@@ -194,8 +194,8 @@ test('reviewed registration removal confirms scope, sends the exact expected ide
   await opener.click();
   await confirm.getByRole('button', { name: 'Remove registration', exact: true }).click();
   const done = dialog.locator('[data-prune-result]');
-  await expect(done).toContainText('refs/git-chronos/recovery/1-2');
-  await expect(done).toContainText('git-chronos-worktree-registrations/1-2-missing');
+  await expect(done).toContainText('refs/git-khronos/recovery/1-2');
+  await expect(done).toContainText('git-khronos-worktree-registrations/1-2-missing');
   await expect(done).toBeFocused();
   await expect(dialog.getByRole('status').first()).toBeVisible();
   await expect(dialog).toContainText('2 registrations reported');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SubmoduleState } from '@git-chronos/contracts';
+import type { SubmoduleState } from '@git-khronos/contracts';
 import { submoduleFindings } from './submodule-findings';
 
 const a = 'a'.repeat(40);

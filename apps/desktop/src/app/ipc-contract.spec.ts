@@ -103,7 +103,7 @@ function objectKeys(argument: string | undefined): string[] | null {
 }
 
 function cancelableCommands(): Set<string> {
-  const source = readFileSync(join(rendererDir, 'git-chronos.service.ts'), 'utf8');
+  const source = readFileSync(join(rendererDir, 'git-khronos.service.ts'), 'utf8');
   const start = source.indexOf('private isCancelableCommand(');
   const list = source.slice(source.indexOf('[', start), source.indexOf('].includes(command)', start));
   return new Set([...list.matchAll(/'(\w+)'/g)].map(match => match[1]));

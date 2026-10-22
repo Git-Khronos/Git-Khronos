@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { GitChronosService, type ActivityLogEntry } from './git-chronos.service';
+import { GitKhronosService, type ActivityLogEntry } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 export type ActivityLogTab = 'application' | 'repository';
@@ -20,7 +20,7 @@ export type ActivityLogTab = 'application' | 'repository';
 const DEFAULT_ACTIVITY_LOG_HEIGHT = 285;
 const MINIMUM_ACTIVITY_LOG_HEIGHT = 176;
 const ACTIVITY_LOG_TOP_CLEARANCE = 110;
-const ACTIVITY_LOG_HEIGHT_KEY = 'git-chronos.ui.activity-log-height';
+const ACTIVITY_LOG_HEIGHT_KEY = 'git-khronos.ui.activity-log-height';
 
 @Component({
   selector: 'gc-activity-log-drawer',
@@ -29,7 +29,7 @@ const ACTIVITY_LOG_HEIGHT_KEY = 'git-chronos.ui.activity-log-height';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ActivityLogDrawerComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   private readonly drawer = viewChild.required<ElementRef<HTMLElement>>('drawer');
   readonly tab = model.required<ActivityLogTab>();
   readonly closed = output<void>();

@@ -48,7 +48,7 @@ impl Repository {
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/",
+                    "refs/git-khronos/recovery/",
                 ],
             )
             .unwrap()
@@ -187,7 +187,7 @@ fn ordered_revert_preflights_every_commit_bounds_duplicates_dirty_state_and_reco
     fs::remove_file(repository.0.join("dirty")).unwrap();
     run_mutation(
         &repository.0,
-        &["update-ref", "refs/git-chronos/recovery", &head],
+        &["update-ref", "refs/git-khronos/recovery", &head],
         "obstruct owned recovery namespace",
     )
     .unwrap();

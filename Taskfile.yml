@@ -2,11 +2,11 @@ version: '3'
 
 vars:
   TAURI_CONFIG: apps/desktop/src-tauri/tauri.conf.json
-  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-chronos-desktop.exe{{else}}./target/release/git-chronos-desktop{{end}}'
+  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-khronos-desktop.exe{{else}}./target/release/git-khronos-desktop{{end}}'
 
 tasks:
   default:
-    desc: List the available Git Chronos tasks
+    desc: List the available Git Khronos tasks
     cmds:
       - task --list
 
@@ -98,10 +98,10 @@ tasks:
       - tools/prepare-linux-package.mjs
       - tools/manage-linux-package.sh
     generates:
-      - target/release/git-chronos-desktop
+      - target/release/git-khronos-desktop
       - target/release/bundle/deb/*.deb
       - target/package-assets/changelog.gz
-      - target/package-assets/git-chronos-desktop.1.gz
+      - target/package-assets/git-khronos-desktop.1.gz
       - dist/apps/desktop/browser/index.html
     cmds:
       - pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
@@ -114,7 +114,7 @@ tasks:
 
   install:system:
     aliases: [install:linux]
-    desc: Build and install Git Chronos system-wide on Debian/Ubuntu
+    desc: Build and install Git Khronos system-wide on Debian/Ubuntu
     platforms: [linux]
     deps: [package:deb]
     cmds:

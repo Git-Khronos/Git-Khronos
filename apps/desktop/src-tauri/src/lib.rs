@@ -1,4 +1,4 @@
-use git_chronos_git_core::{
+use git_khronos_git_core::{
     AppError, CancellationToken, CommitComparison, CommitDetails, CommitFileDiff,
     CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions, FileBlameLine,
     FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep, MINIMUM_GIT_VERSION,
@@ -65,7 +65,7 @@ use git_chronos_git_core::{
     update_submodule_cancellable as git_update_submodule_cancellable,
     working_tree_file_diff as git_working_tree_file_diff,
 };
-use git_chronos_git_core::{
+use git_khronos_git_core::{
     DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
     discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard,
     recover_discarded_changes,
@@ -93,7 +93,7 @@ struct AppState {
     repository_watchers: Mutex<HashMap<String, RecommendedWatcher>>,
     discard_recoveries: Mutex<HashMap<String, DiscardRecovery>>,
     discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
-    reset_plans: Mutex<HashMap<String, (String, git_chronos_git_core::ResetPlan)>>,
+    reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     terminals: Mutex<HashMap<String, TerminalSession>>,
     next_id: AtomicU64,
@@ -691,11 +691,11 @@ fn commit_changes(
     amend: bool,
     skip_hooks: bool,
     sign: bool,
-    policy: Option<git_chronos_git_core::CommitPolicy>,
+    policy: Option<git_khronos_git_core::CommitPolicy>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_chronos_git_core::commit_with_policy(
+        git_khronos_git_core::commit_with_policy(
             path,
             &message,
             amend,
@@ -829,7 +829,7 @@ fn remove_worktree(
 #[tauri::command(rename_all = "camelCase")]
 async fn move_worktree(
     repo_id: String,
-    request: git_chronos_git_core::WorktreeMove,
+    request: git_khronos_git_core::WorktreeMove,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -853,7 +853,7 @@ async fn move_worktree(
             });
         }
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::move_worktree(path, &request)
+            git_khronos_git_core::move_worktree(path, &request)
         })
     })
     .await
@@ -863,7 +863,7 @@ async fn move_worktree(
 #[tauri::command(rename_all = "camelCase")]
 async fn repair_worktree(
     repo_id: String,
-    request: git_chronos_git_core::WorktreeRepair,
+    request: git_khronos_git_core::WorktreeRepair,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -888,7 +888,7 @@ async fn repair_worktree(
         }
         drop(sessions);
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::repair_worktree(path, &request)
+            git_khronos_git_core::repair_worktree(path, &request)
         })
     })
     .await
@@ -899,11 +899,11 @@ async fn repair_worktree(
 async fn worktree_registration_review(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::WorktreeRegistrationReview, AppError> {
+) -> Result<git_khronos_git_core::WorktreeRegistrationReview, AppError> {
     with_repository_background(
         repo_id,
         app,
-        git_chronos_git_core::review_worktree_registrations,
+        git_khronos_git_core::review_worktree_registrations,
     )
     .await
 }
@@ -912,18 +912,18 @@ async fn worktree_registration_review(
 async fn submodule_state_review(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleStateReview, AppError> {
-    with_repository_background(repo_id, app, git_chronos_git_core::review_submodule_state).await
+) -> Result<git_khronos_git_core::SubmoduleStateReview, AppError> {
+    with_repository_background(repo_id, app, git_khronos_git_core::review_submodule_state).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 async fn sync_submodule_url(
     repo_id: String,
-    request: git_chronos_git_core::SubmoduleUrlSync,
+    request: git_khronos_git_core::SubmoduleUrlSync,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleUrlSyncResult, AppError> {
+) -> Result<git_khronos_git_core::SubmoduleUrlSyncResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::sync_submodule_url(path, &request)
+        git_khronos_git_core::sync_submodule_url(path, &request)
     })
     .await
 }
@@ -931,11 +931,11 @@ async fn sync_submodule_url(
 #[tauri::command(rename_all = "camelCase")]
 async fn set_submodule_tracking_branch(
     repo_id: String,
-    request: git_chronos_git_core::SubmoduleTrackingBranchChange,
+    request: git_khronos_git_core::SubmoduleTrackingBranchChange,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleTrackingBranchResult, AppError> {
+) -> Result<git_khronos_git_core::SubmoduleTrackingBranchResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::set_submodule_tracking_branch(path, &request)
+        git_khronos_git_core::set_submodule_tracking_branch(path, &request)
     })
     .await
 }
@@ -943,11 +943,11 @@ async fn set_submodule_tracking_branch(
 #[tauri::command(rename_all = "camelCase")]
 async fn checkout_recorded_submodule_commit(
     repo_id: String,
-    request: git_chronos_git_core::SubmoduleRecordedCheckout,
+    request: git_khronos_git_core::SubmoduleRecordedCheckout,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleRecordedCheckoutResult, AppError> {
+) -> Result<git_khronos_git_core::SubmoduleRecordedCheckoutResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::checkout_recorded_submodule_commit(path, &request)
+        git_khronos_git_core::checkout_recorded_submodule_commit(path, &request)
     })
     .await
 }
@@ -955,11 +955,11 @@ async fn checkout_recorded_submodule_commit(
 #[tauri::command(rename_all = "camelCase")]
 async fn deinit_submodule(
     repo_id: String,
-    request: git_chronos_git_core::SubmoduleDeinit,
+    request: git_khronos_git_core::SubmoduleDeinit,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleDeinitResult, AppError> {
+) -> Result<git_khronos_git_core::SubmoduleDeinitResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::deinit_submodule(path, &request)
+        git_khronos_git_core::deinit_submodule(path, &request)
     })
     .await
 }
@@ -967,11 +967,11 @@ async fn deinit_submodule(
 #[tauri::command(rename_all = "camelCase")]
 async fn remove_submodule(
     repo_id: String,
-    request: git_chronos_git_core::SubmoduleRemoval,
+    request: git_khronos_git_core::SubmoduleRemoval,
     app: AppHandle,
-) -> Result<git_chronos_git_core::SubmoduleRemovalResult, AppError> {
+) -> Result<git_khronos_git_core::SubmoduleRemovalResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::remove_submodule(path, &request)
+        git_khronos_git_core::remove_submodule(path, &request)
     })
     .await
 }
@@ -979,11 +979,11 @@ async fn remove_submodule(
 #[tauri::command(rename_all = "camelCase")]
 async fn prune_worktree_registration(
     repo_id: String,
-    request: git_chronos_git_core::WorktreeRegistrationPrune,
+    request: git_khronos_git_core::WorktreeRegistrationPrune,
     app: AppHandle,
-) -> Result<git_chronos_git_core::WorktreeRegistrationPruneResult, AppError> {
+) -> Result<git_khronos_git_core::WorktreeRegistrationPruneResult, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::prune_worktree_registration(path, &request)
+        git_khronos_git_core::prune_worktree_registration(path, &request)
     })
     .await
 }
@@ -993,10 +993,10 @@ async fn inspect_repository_integrity(
     repo_id: String,
     operation_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::IntegrityReport, AppError> {
+) -> Result<git_khronos_git_core::IntegrityReport, AppError> {
     let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::inspect_integrity(path, &cancellation)
+        git_khronos_git_core::inspect_integrity(path, &cancellation)
     })
     .await
 }
@@ -1215,20 +1215,20 @@ fn prepare_merge_rebase(
     source: String,
     target: String,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::MergeRebasePlan, AppError> {
+) -> Result<git_khronos_git_core::MergeRebasePlan, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::prepare_merge_rebase(path, &source, &target)
+        git_khronos_git_core::prepare_merge_rebase(path, &source, &target)
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn execute_merge_rebase(
     repo_id: String,
-    request: git_chronos_git_core::MergeRebaseRequest,
+    request: git_khronos_git_core::MergeRebaseRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_chronos_git_core::execute_merge_rebase(path, &request)
+        git_khronos_git_core::execute_merge_rebase(path, &request)
     })
 }
 
@@ -1241,7 +1241,7 @@ fn export_diff_patch(
     state: tauri::State<'_, AppState>,
 ) -> Result<usize, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::export_patch(path, staged, &paths, std::path::Path::new(&destination))
+        git_khronos_git_core::export_patch(path, staged, &paths, std::path::Path::new(&destination))
     })
 }
 
@@ -1249,22 +1249,22 @@ fn export_diff_patch(
 fn review_diff_patch(
     repo_id: String,
     file: String,
-    target: git_chronos_git_core::PatchTarget,
+    target: git_khronos_git_core::PatchTarget,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::PatchReview, AppError> {
+) -> Result<git_khronos_git_core::PatchReview, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::review_patch(path, std::path::Path::new(&file), target)
+        git_khronos_git_core::review_patch(path, std::path::Path::new(&file), target)
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn import_diff_patch(
     repo_id: String,
-    request: git_chronos_git_core::PatchRequest,
+    request: git_khronos_git_core::PatchRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_chronos_git_core::import_patch(path, &request)
+        git_khronos_git_core::import_patch(path, &request)
     })
 }
 
@@ -1277,7 +1277,7 @@ fn export_git_bundle(
     state: tauri::State<'_, AppState>,
 ) -> Result<usize, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::export_bundle(
+        git_khronos_git_core::export_bundle(
             path,
             &branch,
             &expected_oid,
@@ -1291,21 +1291,21 @@ fn review_git_bundle(
     repo_id: String,
     file: String,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::BundleReview, AppError> {
+) -> Result<git_khronos_git_core::BundleReview, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::review_bundle(path, std::path::Path::new(&file))
+        git_khronos_git_core::review_bundle(path, std::path::Path::new(&file))
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn import_git_bundle(
     repo_id: String,
-    request: git_chronos_git_core::BundleRequest,
-    tip: git_chronos_git_core::BundleTip,
+    request: git_khronos_git_core::BundleRequest,
+    tip: git_khronos_git_core::BundleTip,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::import_bundle(path, &request, &tip)
+        git_khronos_git_core::import_bundle(path, &request, &tip)
     })
 }
 
@@ -1314,21 +1314,21 @@ fn review_mail_patch_export(
     repo_id: String,
     oids: Vec<String>,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::MailPatchReview, AppError> {
+) -> Result<git_khronos_git_core::MailPatchReview, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::review_mail_patch_export(path, &oids)
+        git_khronos_git_core::review_mail_patch_export(path, &oids)
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn export_mail_patch(
     repo_id: String,
-    request: git_chronos_git_core::MailPatchRequest,
+    request: git_khronos_git_core::MailPatchRequest,
     destination: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<usize, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::export_mail_patch(path, &request, std::path::Path::new(&destination))
+        git_khronos_git_core::export_mail_patch(path, &request, std::path::Path::new(&destination))
     })
 }
 
@@ -1337,31 +1337,31 @@ fn review_mail_patch_import(
     repo_id: String,
     file: String,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::MailPatchImportReview, AppError> {
+) -> Result<git_khronos_git_core::MailPatchImportReview, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::review_mail_patch_import(path, std::path::Path::new(&file))
+        git_khronos_git_core::review_mail_patch_import(path, std::path::Path::new(&file))
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn import_mail_patch(
     repo_id: String,
-    request: git_chronos_git_core::MailPatchImportRequest,
+    request: git_khronos_git_core::MailPatchImportRequest,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::MailPatchProgress, AppError> {
+) -> Result<git_khronos_git_core::MailPatchProgress, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::import_mail_patch(path, &request)
+        git_khronos_git_core::import_mail_patch(path, &request)
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn control_mail_patch(
     repo_id: String,
-    action: git_chronos_git_core::MailPatchAction,
+    action: git_khronos_git_core::MailPatchAction,
     state: tauri::State<'_, AppState>,
-) -> Result<git_chronos_git_core::MailPatchProgress, AppError> {
+) -> Result<git_khronos_git_core::MailPatchProgress, AppError> {
     with_repository(&repo_id, &state, |path| {
-        git_chronos_git_core::control_mail_patch(path, action)
+        git_khronos_git_core::control_mail_patch(path, action)
     })
 }
 
@@ -1428,8 +1428,8 @@ async fn fetch_branches(
 async fn shallow_history_state(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::ShallowHistoryState, AppError> {
-    with_repository_background(repo_id, app, git_chronos_git_core::shallow_history_state).await
+) -> Result<git_khronos_git_core::ShallowHistoryState, AppError> {
+    with_repository_background(repo_id, app, git_khronos_git_core::shallow_history_state).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1491,11 +1491,11 @@ async fn lfs_prune(
 async fn lfs_prune_preview(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsPrunePreview, AppError> {
+) -> Result<git_khronos_git_core::LfsPrunePreview, AppError> {
     with_repository_background(repo_id, app, |path| {
-        git_chronos_git_core::preview_lfs_prune(
+        git_khronos_git_core::preview_lfs_prune(
             path,
-            &git_chronos_git_core::CancellationToken::default(),
+            &git_khronos_git_core::CancellationToken::default(),
         )
     })
     .await
@@ -1504,7 +1504,7 @@ async fn lfs_prune_preview(
 #[tauri::command(rename_all = "camelCase")]
 async fn lfs_prune_objects(
     repo_id: String,
-    preview: git_chronos_git_core::LfsPrunePreview,
+    preview: git_khronos_git_core::LfsPrunePreview,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -1513,7 +1513,7 @@ async fn lfs_prune_objects(
         operation_id,
         app,
         move |path, cancellation| {
-            git_chronos_git_core::prune_lfs_objects(path, &preview, cancellation)
+            git_khronos_git_core::prune_lfs_objects(path, &preview, cancellation)
         },
     )
     .await
@@ -1541,8 +1541,8 @@ async fn lfs_track_pattern(
 async fn lfs_tracking_rules(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsTrackingRules, AppError> {
-    with_repository_background(repo_id, app, git_chronos_git_core::lfs_tracking_rules).await
+) -> Result<git_khronos_git_core::LfsTrackingRules, AppError> {
+    with_repository_background(repo_id, app, git_khronos_git_core::lfs_tracking_rules).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1550,9 +1550,9 @@ async fn lfs_file_attributes(
     repo_id: String,
     file: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsFileAttributes, AppError> {
+) -> Result<git_khronos_git_core::LfsFileAttributes, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::lfs_file_attributes(path, &file)
+        git_khronos_git_core::lfs_file_attributes(path, &file)
     })
     .await
 }
@@ -1561,8 +1561,8 @@ async fn lfs_file_attributes(
 async fn lfs_objects(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsObjects, AppError> {
-    with_repository_background(repo_id, app, git_chronos_git_core::lfs_objects).await
+) -> Result<git_khronos_git_core::LfsObjects, AppError> {
+    with_repository_background(repo_id, app, git_khronos_git_core::lfs_objects).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1573,9 +1573,9 @@ async fn lfs_fetch_preview(
     expected_oid: String,
     expected_size: u64,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsFetchPreview, AppError> {
+) -> Result<git_khronos_git_core::LfsFetchPreview, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::preview_lfs_fetch(path, &file, &remote, &expected_oid, expected_size)
+        git_khronos_git_core::preview_lfs_fetch(path, &file, &remote, &expected_oid, expected_size)
     })
     .await
 }
@@ -1583,7 +1583,7 @@ async fn lfs_fetch_preview(
 #[tauri::command(rename_all = "camelCase")]
 async fn lfs_fetch_object(
     repo_id: String,
-    preview: git_chronos_git_core::LfsFetchPreview,
+    preview: git_khronos_git_core::LfsFetchPreview,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -1592,7 +1592,7 @@ async fn lfs_fetch_object(
         operation_id,
         app,
         move |path, cancellation| {
-            git_chronos_git_core::fetch_lfs_object(path, &preview, cancellation)
+            git_khronos_git_core::fetch_lfs_object(path, &preview, cancellation)
         },
     )
     .await
@@ -1605,9 +1605,9 @@ async fn lfs_checkout_preview(
     expected_oid: String,
     expected_size: u64,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsCheckoutPreview, AppError> {
+) -> Result<git_khronos_git_core::LfsCheckoutPreview, AppError> {
     with_repository_background(repo_id, app, move |path| {
-        git_chronos_git_core::preview_lfs_checkout(path, &file, &expected_oid, expected_size)
+        git_khronos_git_core::preview_lfs_checkout(path, &file, &expected_oid, expected_size)
     })
     .await
 }
@@ -1615,7 +1615,7 @@ async fn lfs_checkout_preview(
 #[tauri::command(rename_all = "camelCase")]
 async fn lfs_checkout_object(
     repo_id: String,
-    preview: git_chronos_git_core::LfsCheckoutPreview,
+    preview: git_khronos_git_core::LfsCheckoutPreview,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -1624,7 +1624,7 @@ async fn lfs_checkout_object(
         operation_id,
         app,
         move |path, cancellation| {
-            git_chronos_git_core::checkout_lfs_object(path, &preview, cancellation)
+            git_khronos_git_core::checkout_lfs_object(path, &preview, cancellation)
         },
     )
     .await
@@ -1634,8 +1634,8 @@ async fn lfs_checkout_object(
 async fn lfs_locks(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::LfsLocks, AppError> {
-    with_repository_background(repo_id, app, git_chronos_git_core::lfs_locks).await
+) -> Result<git_khronos_git_core::LfsLocks, AppError> {
+    with_repository_background(repo_id, app, git_khronos_git_core::lfs_locks).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1645,7 +1645,7 @@ async fn lfs_lock_file(
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_background(repo_id, app, move |path| {
-        git_chronos_git_core::lock_lfs_file(path, &file)
+        git_khronos_git_core::lock_lfs_file(path, &file)
     })
     .await
 }
@@ -1653,12 +1653,12 @@ async fn lfs_lock_file(
 #[tauri::command(rename_all = "camelCase")]
 async fn lfs_unlock_file(
     repo_id: String,
-    lock: git_chronos_git_core::LfsLock,
+    lock: git_khronos_git_core::LfsLock,
     force: bool,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_background(repo_id, app, move |path| {
-        git_chronos_git_core::unlock_lfs_file(path, &lock, force)
+        git_khronos_git_core::unlock_lfs_file(path, &lock, force)
     })
     .await
 }
@@ -1671,7 +1671,7 @@ async fn lfs_untrack_pattern(
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_background(repo_id, app, move |path| {
-        git_chronos_git_core::untrack_lfs_pattern(path, &pattern, &expected_state)
+        git_khronos_git_core::untrack_lfs_pattern(path, &pattern, &expected_state)
     })
     .await
 }
@@ -2163,15 +2163,15 @@ fn inspect_file_history(
 #[tauri::command(rename_all = "camelCase")]
 async fn search_repository_history(
     repo_id: String,
-    query: git_chronos_git_core::history_search::HistoryQuery,
-    cursor: Option<git_chronos_git_core::history_search::HistoryCursor>,
+    query: git_khronos_git_core::history_search::HistoryQuery,
+    cursor: Option<git_khronos_git_core::history_search::HistoryCursor>,
     operation_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::history_search::HistorySearchPage, AppError> {
+) -> Result<git_khronos_git_core::history_search::HistorySearchPage, AppError> {
     let (token, guard) = register_active_operation(&app, operation_id)?;
     with_repository_background_read(repo_id, app, move |path| {
         let _guard = guard;
-        git_chronos_git_core::history_search::search_history(path, query, cursor, &token)
+        git_khronos_git_core::history_search::search_history(path, query, cursor, &token)
     })
     .await
 }
@@ -2181,14 +2181,14 @@ async fn inspect_file_history_page(
     repo_id: String,
     revision: String,
     path: String,
-    cursor: Option<git_chronos_git_core::history_search::FileHistoryCursor>,
+    cursor: Option<git_khronos_git_core::history_search::FileHistoryCursor>,
     operation_id: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::history_search::FileHistoryPage, AppError> {
+) -> Result<git_khronos_git_core::history_search::FileHistoryPage, AppError> {
     let (token, guard) = register_active_operation(&app, operation_id)?;
     with_repository_background_read(repo_id, app, move |repository| {
         let _guard = guard;
-        git_chronos_git_core::history_search::file_history_page(
+        git_khronos_git_core::history_search::file_history_page(
             repository, &revision, &path, cursor, &token,
         )
     })
@@ -2201,9 +2201,9 @@ async fn inspect_blame_navigation(
     oid: String,
     path: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::history_search::BlameNavigation, AppError> {
+) -> Result<git_khronos_git_core::history_search::BlameNavigation, AppError> {
     with_repository_background_read(repo_id, app, move |repository| {
-        git_chronos_git_core::history_search::blame_navigation(
+        git_khronos_git_core::history_search::blame_navigation(
             repository,
             &oid,
             &path,
@@ -2218,9 +2218,9 @@ async fn inspect_history_commit(
     repo_id: String,
     oid: String,
     app: AppHandle,
-) -> Result<git_chronos_git_core::CommitSummary, AppError> {
+) -> Result<git_khronos_git_core::CommitSummary, AppError> {
     with_repository_background_read(repo_id, app, move |repository| {
-        git_chronos_git_core::history_search::history_commit(
+        git_khronos_git_core::history_search::history_commit(
             repository,
             &oid,
             &CancellationToken::default(),
@@ -2239,11 +2239,11 @@ async fn compare_history_revisions(
 ) -> Result<CommitComparison, AppError> {
     with_repository_background_read(repo_id, app, move |repository| {
         let token = CancellationToken::default();
-        let base = git_chronos_git_core::history_search::comparison_base(
+        let base = git_khronos_git_core::history_search::comparison_base(
             repository, &base, &target, &mode, &token,
         )?;
         // The resolver validates and freezes the target, including symbolic refs.
-        let target = git_chronos_git_core::history_search::comparison_base(
+        let target = git_khronos_git_core::history_search::comparison_base(
             repository, &target, &target, "direct", &token,
         )?;
         git_compare_commits(repository, &base, &target)
@@ -2648,7 +2648,7 @@ fn register_active_operation(
     if operation_id.is_empty() || operation_id.len() > 128 {
         return Err(AppError {
             kind: "invalidOperationId".into(),
-            message: "Git Chronos received an invalid operation identifier.".into(),
+            message: "Git Khronos received an invalid operation identifier.".into(),
             hint: None,
         });
     }
@@ -2658,7 +2658,7 @@ fn register_active_operation(
     if operations.contains_key(&operation_id) {
         return Err(AppError {
             kind: "duplicateOperationId".into(),
-            message: "Git Chronos already has an operation with that identifier.".into(),
+            message: "Git Khronos already has an operation with that identifier.".into(),
             hint: Some("Retry the operation.".into()),
         });
     }
@@ -2704,7 +2704,7 @@ where
 fn state_error<T>(_: std::sync::PoisonError<T>) -> AppError {
     AppError {
         kind: "internalState".into(),
-        message: "Git Chronos could not access its repository registry.".into(),
+        message: "Git Khronos could not access its repository registry.".into(),
         hint: Some("Restart the application and open the repository again.".into()),
     }
 }
@@ -2712,7 +2712,7 @@ fn state_error<T>(_: std::sync::PoisonError<T>) -> AppError {
 fn background_task_error(error: impl std::fmt::Display) -> AppError {
     AppError {
         kind: "backgroundTaskFailure".into(),
-        message: format!("Git Chronos could not complete a repository task: {error}"),
+        message: format!("Git Khronos could not complete a repository task: {error}"),
         hint: Some("Try the operation again or reopen the repository.".into()),
     }
 }
@@ -2720,7 +2720,7 @@ fn background_task_error(error: impl std::fmt::Display) -> AppError {
 fn terminal_error(action: &str, error: impl std::fmt::Display) -> AppError {
     AppError {
         kind: "terminalFailure".into(),
-        message: format!("Git Chronos could not {action}: {error}"),
+        message: format!("Git Khronos could not {action}: {error}"),
         hint: Some("Close this terminal tab and open a new one.".into()),
     }
 }
@@ -3091,7 +3091,7 @@ pub fn run() {
             close_terminal,
         ])
         .run(tauri::generate_context!())
-        .expect("Git Chronos could not start");
+        .expect("Git Khronos could not start");
 }
 
 #[cfg(all(test, unix))]
@@ -3108,12 +3108,12 @@ mod tests {
 
     #[test]
     fn external_links_require_bounded_https_urls() {
-        assert!(validate_external_url("https://github.com/example/git-chronos/pulls").is_ok());
+        assert!(validate_external_url("https://github.com/example/git-khronos/pulls").is_ok());
         for invalid in [
-            "http://github.com/example/git-chronos/pulls",
-            "file:///tmp/git-chronos",
+            "http://github.com/example/git-khronos/pulls",
+            "file:///tmp/git-khronos",
             "javascript:alert(1)",
-            "https://github.com/example\n/git-chronos",
+            "https://github.com/example\n/git-khronos",
         ] {
             assert_eq!(
                 validate_external_url(invalid)
@@ -3170,7 +3170,7 @@ mod tests {
             .expect("read clock")
             .as_nanos();
         let root =
-            std::env::temp_dir().join(format!("git-chronos-watch-{}-{unique}", std::process::id()));
+            std::env::temp_dir().join(format!("git-khronos-watch-{}-{unique}", std::process::id()));
         fs::create_dir_all(&root).expect("create watcher fixture");
         let initialized = Command::new("git")
             .arg("-C")
@@ -3204,7 +3204,7 @@ mod tests {
         let configured = Command::new("git")
             .arg("-C")
             .arg(&root)
-            .args(["config", "git-chronos.watcher-test", "changed"])
+            .args(["config", "git-khronos.watcher-test", "changed"])
             .output()
             .expect("change Git metadata");
         assert!(configured.status.success());

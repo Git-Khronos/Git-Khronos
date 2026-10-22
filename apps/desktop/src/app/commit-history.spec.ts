@@ -1,4 +1,4 @@
-import type { CommitSummary } from '@git-chronos/contracts';
+import type { CommitSummary } from '@git-khronos/contracts';
 import { describe, expect, it } from 'vitest';
 import { reconcileCommitHistory } from './commit-history';
 

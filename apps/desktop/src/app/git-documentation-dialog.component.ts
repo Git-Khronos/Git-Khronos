@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { GitDocumentationService } from './git-documentation.service';
 import { GIT_DOCUMENTATION_TOPICS, GIT_RELATED_MANUALS } from './git-documentation-topics';
 
@@ -14,7 +14,7 @@ import { GIT_DOCUMENTATION_TOPICS, GIT_RELATED_MANUALS } from './git-documentati
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="git-documentation-title"
           (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
           <h2 id="git-documentation-title">Git command reference</h2>
-          <p>Short hints for Git Chronos workflows. Official manuals describe Git’s full capabilities,
+          <p>Short hints for Git Khronos workflows. Official manuals describe Git’s full capabilities,
             not a promise that every option is supported here. Links open in your browser only when selected.</p>
           <label for="git-documentation-search">Find a feature or command</label>
           <input id="git-documentation-search" type="search" [ngModel]="query()" (ngModelChange)="query.set($event)" />
@@ -61,7 +61,7 @@ import { GIT_DOCUMENTATION_TOPICS, GIT_RELATED_MANUALS } from './git-documentati
 })
 export class GitDocumentationDialogComponent {
   readonly documentation = inject(GitDocumentationService);
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly query = signal('');
   readonly selected = signal<string | null>(null);
   readonly opening = signal(false);

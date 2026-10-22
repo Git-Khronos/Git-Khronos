@@ -39,8 +39,8 @@ import type {
   Submodule,
   Worktree,
   WorkingTreeEntry,
-} from '@git-chronos/contracts';
-import { GitChronosService, type RepositoryWorkspace } from './git-chronos.service';
+} from '@git-khronos/contracts';
+import { GitKhronosService, type RepositoryWorkspace } from './git-khronos.service';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
@@ -518,7 +518,7 @@ const WIDE_GRAPH_METADATA_BREAKPOINT = 1320;
 const GRAPH_METADATA_MIN_VIEWPORT_WIDTH = 780;
 const GRAPH_DATE_COLUMN_FLOOR = 32;
 const GRAPH_MESSAGE_COLUMN_MAX = 2400;
-const GRAPH_HORIZONTAL_SCROLL_KEY = 'git-chronos.graph.horizontal-scroll';
+const GRAPH_HORIZONTAL_SCROLL_KEY = 'git-khronos.graph.horizontal-scroll';
 const GRAPH_COLUMN_RESIZE_LABELS: Record<GraphColumn, string> = {
   branch: 'Resize Branch and Tag column',
   graph: 'Resize Graph column',
@@ -687,7 +687,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   protected readonly historySearch = inject(HistorySearchService);
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
@@ -1547,14 +1547,14 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private repositoryWindowTitle(repository: RepositorySnapshot | null): string {
-    if (!repository) return 'Git Chronos';
+    if (!repository) return 'Git Khronos';
     const repositoryLabel = this.git.repositoryLabel(repository);
     const location = repository.status.branch
       ?? (repository.headOid ? `Detached ${shortLabel(repository.headOid)}` : 'No commits');
     const changes = repository.status.entryCount
       ? ` • ${repository.status.entryCount} ${repository.status.entryCount === 1 ? 'change' : 'changes'}`
       : '';
-    return `${repositoryLabel} — ${location}${changes} — Git Chronos`;
+    return `${repositoryLabel} — ${location}${changes} — Git Khronos`;
   }
 
   protected readonly selectedCommitData = computed(() => {
@@ -3532,9 +3532,9 @@ export class AppComponent implements OnInit, OnDestroy {
       } else if (fileInsight === 'blame') {
         this.diffInsightMode.set('blame');
         this.git.fileBlame.set([
-          { lineNumber: 1, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Chronos desktop', text: 'export class AppComponent {' },
+          { lineNumber: 1, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: 'export class AppComponent {' },
           { lineNumber: 2, oid: 'f19b263a8af31408d5f665caf7a5508e108c0fd1', authorName: 'Leo Martin', authorEmail: 'leo@example.test', authoredAt: 1791019200, summary: 'Support commit comparison', text: '  readonly selectedCommits = signal<string[]>([]);' },
-          { lineNumber: 3, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Chronos desktop', text: '}' },
+          { lineNumber: 3, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: '}' },
         ]);
       }
       if (parameters.has('commit-file-menu')) {
@@ -4605,7 +4605,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.workingTreeFileListHeightSignal(section).set(WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT);
     try {
-      localStorage.removeItem(`git-chronos.working-tree.${section}-file-list-height`);
+      localStorage.removeItem(`git-khronos.working-tree.${section}-file-list-height`);
     } catch {
       // The default remains active for this session when storage is unavailable.
     }
@@ -4647,7 +4647,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = event.currentTarget;
     this.referenceSectionHeights.update((heights) => ({ ...heights, [section]: null }));
     try {
-      localStorage.removeItem(`git-chronos.sidebar.section.${section}.height`);
+      localStorage.removeItem(`git-khronos.sidebar.section.${section}.height`);
     } catch {
       // Automatic sizing remains restored for this session.
     }
@@ -4903,44 +4903,44 @@ export class AppComponent implements OnInit, OnDestroy {
     this.terminalCursorStyle.set('block');
     try {
       const exactKeys = [
-        'git-chronos.ui.theme',
-        'git-chronos.ui.zoom',
-        'git-chronos.ui.toolbar-labels',
-        'git-chronos.ui.worktree-tab-groups',
-        'git-chronos.ui.highlight-related-commits',
-        'git-chronos.ui.left-panel',
-        'git-chronos.ui.commit-panel',
-        'git-chronos.ui.working-tree-view',
-        'git-chronos.ui.working-tree-sort-ascending',
-        'git-chronos.ui.graph-date-format',
-        'git-chronos.ui.author-marker-style',
-        'git-chronos.ui.pane-worktrees',
-        'git-chronos.ui.pane-remote',
-        'git-chronos.ui.pane-pull-requests',
-        'git-chronos.ui.pane-tags',
-        'git-chronos.ui.pane-stashes',
-        'git-chronos.ui.pane-submodules',
-        'git-chronos.ui.section-worktrees-open',
-        'git-chronos.ui.section-local-open',
-        'git-chronos.ui.section-remote-open',
-        'git-chronos.ui.section-pull-requests-open',
-        'git-chronos.ui.section-tags-open',
-        'git-chronos.ui.section-stashes-open',
-        'git-chronos.ui.section-submodules-open',
-        'git-chronos.panel.sidebar.width',
-        'git-chronos.panel.details.width',
-        'git-chronos.diff.view-mode',
-        'git-chronos.diff.word-wrap',
-        'git-chronos.diff.font-size',
-        'git-chronos.diff.tab-size',
-        'git-chronos.terminal.font-family',
-        'git-chronos.terminal.font-size',
-        'git-chronos.terminal.line-height',
-        'git-chronos.terminal.cursor-style',
+        'git-khronos.ui.theme',
+        'git-khronos.ui.zoom',
+        'git-khronos.ui.toolbar-labels',
+        'git-khronos.ui.worktree-tab-groups',
+        'git-khronos.ui.highlight-related-commits',
+        'git-khronos.ui.left-panel',
+        'git-khronos.ui.commit-panel',
+        'git-khronos.ui.working-tree-view',
+        'git-khronos.ui.working-tree-sort-ascending',
+        'git-khronos.ui.graph-date-format',
+        'git-khronos.ui.author-marker-style',
+        'git-khronos.ui.pane-worktrees',
+        'git-khronos.ui.pane-remote',
+        'git-khronos.ui.pane-pull-requests',
+        'git-khronos.ui.pane-tags',
+        'git-khronos.ui.pane-stashes',
+        'git-khronos.ui.pane-submodules',
+        'git-khronos.ui.section-worktrees-open',
+        'git-khronos.ui.section-local-open',
+        'git-khronos.ui.section-remote-open',
+        'git-khronos.ui.section-pull-requests-open',
+        'git-khronos.ui.section-tags-open',
+        'git-khronos.ui.section-stashes-open',
+        'git-khronos.ui.section-submodules-open',
+        'git-khronos.panel.sidebar.width',
+        'git-khronos.panel.details.width',
+        'git-khronos.diff.view-mode',
+        'git-khronos.diff.word-wrap',
+        'git-khronos.diff.font-size',
+        'git-khronos.diff.tab-size',
+        'git-khronos.terminal.font-family',
+        'git-khronos.terminal.font-size',
+        'git-khronos.terminal.line-height',
+        'git-khronos.terminal.cursor-style',
       ];
       for (const key of exactKeys) localStorage.removeItem(key);
       for (const section of ['worktrees', 'local', 'remote', 'tags', 'stashes', 'submodules']) {
-        localStorage.removeItem(`git-chronos.sidebar.section.${section}.height`);
+        localStorage.removeItem(`git-khronos.sidebar.section.${section}.height`);
       }
       const graphPrefix = this.graphPreferenceKey('');
       const graphKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
@@ -5178,7 +5178,7 @@ export class AppComponent implements OnInit, OnDestroy {
     else if (preference === 'worktree-tab-groups') this.showWorktreeTabGroups.set(value);
     else this.highlightRelatedCommits.set(value);
     try {
-      localStorage.setItem(`git-chronos.ui.${preference}`, String(value));
+      localStorage.setItem(`git-khronos.ui.${preference}`, String(value));
     } catch {
       // UI preferences remain active for this session.
     }
@@ -5188,7 +5188,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const format: GraphDateFormat = value === 'relative' || value === 'iso' ? value : 'compact';
     this.graphDateFormat.set(format);
     try {
-      localStorage.setItem('git-chronos.ui.graph-date-format', format);
+      localStorage.setItem('git-khronos.ui.graph-date-format', format);
     } catch {
       // Date formatting remains active for this session.
     }
@@ -5198,7 +5198,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const style: AuthorMarkerStyle = value === 'color' ? 'color' : 'initials';
     this.authorMarkerStyle.set(style);
     try {
-      localStorage.setItem('git-chronos.ui.author-marker-style', style);
+      localStorage.setItem('git-khronos.ui.author-marker-style', style);
     } catch {
       // Author marker choice remains active for this session.
     }
@@ -5209,7 +5209,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const interval = AUTO_FETCH_INTERVALS.includes(candidate) ? candidate : 5;
     this.autoFetchIntervalMinutes.set(interval);
     try {
-      localStorage.setItem('git-chronos.remote.auto-fetch-minutes', String(interval));
+      localStorage.setItem('git-khronos.remote.auto-fetch-minutes', String(interval));
     } catch {
       // Auto-fetch scheduling remains active for this session.
     }
@@ -5359,7 +5359,7 @@ export class AppComponent implements OnInit, OnDestroy {
     else if (preference === 'line-height') this.terminalLineHeight.set(Number(value));
     else this.terminalCursorStyle.set(value as TerminalCursorStyle);
     try {
-      localStorage.setItem(`git-chronos.terminal.${preference}`, String(value));
+      localStorage.setItem(`git-khronos.terminal.${preference}`, String(value));
     } catch {
       // Terminal preferences remain active for this session.
     }
@@ -5381,7 +5381,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.diffWordWrap.set(Boolean(value));
     }
     try {
-      localStorage.setItem(`git-chronos.diff.${preference}`, String(value));
+      localStorage.setItem(`git-khronos.diff.${preference}`, String(value));
     } catch {
       // Diff preferences remain active for this session.
     }
@@ -5419,7 +5419,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (visible && pane === 'submodules') this.submodulesOpen.set(true);
     try {
       const storageName = pane === 'pullRequests' ? 'pull-requests' : pane;
-      localStorage.setItem(`git-chronos.ui.pane-${storageName}`, String(visible));
+      localStorage.setItem(`git-khronos.ui.pane-${storageName}`, String(visible));
     } catch {
       // Pane visibility remains active for this session.
     }
@@ -5823,8 +5823,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.referencePaneVisibility.update((panes) => ({ ...panes, submodules: true }));
     this.submodulesOpen.set(true);
     try {
-      localStorage.setItem('git-chronos.ui.pane-submodules', 'true');
-      localStorage.setItem('git-chronos.ui.section-submodules-open', 'true');
+      localStorage.setItem('git-khronos.ui.pane-submodules', 'true');
+      localStorage.setItem('git-khronos.ui.section-submodules-open', 'true');
     } catch {
       // Submodule controls remain visible for this session.
     }
@@ -5977,7 +5977,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     try {
       if (panel !== 'left-panel' || !this.responsiveSidebarMode) {
-        localStorage.setItem(`git-chronos.ui.${panel}`, String(visible));
+        localStorage.setItem(`git-khronos.ui.${panel}`, String(visible));
       }
     } catch {
       // Panel visibility remains active for this session.
@@ -6021,7 +6021,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected setWorkingTreeViewMode(mode: WorkingTreeViewMode): void {
     this.workingTreeViewMode.set(mode);
     try {
-      localStorage.setItem('git-chronos.ui.working-tree-view', mode);
+      localStorage.setItem('git-khronos.ui.working-tree-view', mode);
     } catch {
       // The selected view remains active for this session.
     }
@@ -6051,7 +6051,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const ascending = !this.workingTreeSortAscending();
     this.workingTreeSortAscending.set(ascending);
     try {
-      localStorage.setItem('git-chronos.ui.working-tree-sort-ascending', String(ascending));
+      localStorage.setItem('git-khronos.ui.working-tree-sort-ascending', String(ascending));
     } catch {
       // The selected sort direction remains active for this session.
     }
@@ -7108,16 +7108,16 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dismissBranchDropMenu();
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('application/x-git-chronos-branch', name);
+      event.dataTransfer.setData('application/x-git-khronos-branch', name);
       event.dataTransfer.setData('text/plain', name);
     }
   }
 
   protected allowBranchDrop(event: DragEvent, target: string): void {
     const commitOid = this.draggedCommit()?.oid
-      ?? event.dataTransfer?.getData('application/x-git-chronos-commit');
+      ?? event.dataTransfer?.getData('application/x-git-khronos-commit');
     const source = this.draggedBranch()
-      ?? event.dataTransfer?.getData('application/x-git-chronos-branch');
+      ?? event.dataTransfer?.getData('application/x-git-khronos-branch');
     const targetBranch = this.git.repository()?.branches.find(
       (branch) => !branch.remote && branch.name === target,
     );
@@ -7130,9 +7130,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected dropBranch(event: DragEvent, target: string): void {
     const commitOid = this.draggedCommit()?.oid
-      ?? event.dataTransfer?.getData('application/x-git-chronos-commit');
+      ?? event.dataTransfer?.getData('application/x-git-khronos-commit');
     const source = this.draggedBranch()
-      ?? event.dataTransfer?.getData('application/x-git-chronos-branch')
+      ?? event.dataTransfer?.getData('application/x-git-khronos-branch')
       ?? (commitOid ? null : event.dataTransfer?.getData('text/plain'));
     const draggedCommit = commitOid
       ? this.graphCommitByOid().get(commitOid) ?? null
@@ -7192,7 +7192,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dismissBranchDropMenu();
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
-      event.dataTransfer.setData('application/x-git-chronos-commit', commit.oid);
+      event.dataTransfer.setData('application/x-git-khronos-commit', commit.oid);
       event.dataTransfer.setData('text/plain', commit.oid);
     }
   }
@@ -8042,7 +8042,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.diffInsightMode.set('diff');
     this.diffViewMode.set(mode);
     try {
-      localStorage.setItem('git-chronos.diff.view-mode', mode);
+      localStorage.setItem('git-khronos.diff.view-mode', mode);
     } catch {
       // The selected diff layout remains active for this session.
     }
@@ -9347,7 +9347,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const zoom = normalizeZoom(value);
     this.zoomPercent.set(zoom);
     try {
-      localStorage.setItem('git-chronos.ui.zoom', String(zoom));
+      localStorage.setItem('git-khronos.ui.zoom', String(zoom));
     } catch {
       // Zoom remains available when WebView storage is unavailable.
     }
@@ -9611,7 +9611,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.pullStrategy.set(strategy);
     try {
-      localStorage.setItem('git-chronos.pull.strategy', strategy);
+      localStorage.setItem('git-khronos.pull.strategy', strategy);
     } catch {
       // The selected strategy remains active for this session.
     }
@@ -9706,7 +9706,7 @@ export class AppComponent implements OnInit, OnDestroy {
     open.set(next);
     const preference = section === 'pullRequests' ? 'pull-requests' : section;
     try {
-      localStorage.setItem(`git-chronos.ui.section-${preference}-open`, String(next));
+      localStorage.setItem(`git-khronos.ui.section-${preference}-open`, String(next));
     } catch {
       // Disclosure state remains active for this session.
     }
@@ -11417,7 +11417,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readWidth(panel: ResizablePanel): number {
     const fallback = PANEL_WIDTH_LIMITS[panel].default;
     try {
-      const value = Number(localStorage.getItem(`git-chronos.panel.${panel}.width`));
+      const value = Number(localStorage.getItem(`git-khronos.panel.${panel}.width`));
       return Number.isFinite(value) && value > 0 ? this.clampPanelWidth(panel, value) : fallback;
     } catch {
       return fallback;
@@ -11431,7 +11431,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readReferenceSectionHeight(section: ReferenceSection): number | null {
     try {
-      const value = Number(localStorage.getItem(`git-chronos.sidebar.section.${section}.height`));
+      const value = Number(localStorage.getItem(`git-khronos.sidebar.section.${section}.height`));
       return Number.isFinite(value) && value >= REFERENCE_SECTION_MIN_HEIGHT
         ? Math.min(value, REFERENCE_SECTION_MAX_HEIGHT)
         : null;
@@ -11442,7 +11442,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private storeReferenceSectionHeight(section: ReferenceSection, height: number): void {
     try {
-      localStorage.setItem(`git-chronos.sidebar.section.${section}.height`, String(Math.round(height)));
+      localStorage.setItem(`git-khronos.sidebar.section.${section}.height`, String(Math.round(height)));
     } catch {
       // Section resizing remains active for this session.
     }
@@ -11454,7 +11454,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readWorkingTreeFileListHeight(section: WorkingTreeFileListSection): number {
     try {
-      const value = Number(localStorage.getItem(`git-chronos.working-tree.${section}-file-list-height`));
+      const value = Number(localStorage.getItem(`git-khronos.working-tree.${section}-file-list-height`));
       return Number.isFinite(value) && value >= WORKING_TREE_FILE_LIST_MIN_HEIGHT
         ? Math.min(value, WORKING_TREE_FILE_LIST_MAX_HEIGHT)
         : WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT;
@@ -11465,7 +11465,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private storeWorkingTreeFileListHeight(section: WorkingTreeFileListSection, height: number): void {
     try {
-      localStorage.setItem(`git-chronos.working-tree.${section}-file-list-height`, String(Math.round(height)));
+      localStorage.setItem(`git-khronos.working-tree.${section}-file-list-height`, String(Math.round(height)));
     } catch {
       // Resizing remains active for this session.
     }
@@ -11473,7 +11473,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private storeWidth(panel: ResizablePanel, width: number): void {
     try {
-      localStorage.setItem(`git-chronos.panel.${panel}.width`, String(width));
+      localStorage.setItem(`git-khronos.panel.${panel}.width`, String(width));
     } catch {
       // Resizing remains usable when WebView storage is unavailable.
     }
@@ -11481,7 +11481,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readZoom(): number {
     try {
-      const stored = localStorage.getItem('git-chronos.ui.zoom');
+      const stored = localStorage.getItem('git-khronos.ui.zoom');
       return stored === null ? DEFAULT_ZOOM : normalizeZoom(stored);
     } catch {
       return DEFAULT_ZOOM;
@@ -11490,7 +11490,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readAppTheme(): AppTheme {
     try {
-      return normalizeAppTheme(localStorage.getItem('git-chronos.ui.theme'));
+      return normalizeAppTheme(localStorage.getItem('git-khronos.ui.theme'));
     } catch {
       return 'chronos';
     }
@@ -11501,7 +11501,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.appTheme.set(theme);
     this.applyAppTheme(theme);
     try {
-      localStorage.setItem('git-chronos.ui.theme', theme);
+      localStorage.setItem('git-khronos.ui.theme', theme);
     } catch {
       // The selected theme remains active for this session.
     }
@@ -11529,7 +11529,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readWorkingTreeViewMode(): WorkingTreeViewMode {
     try {
-      return localStorage.getItem('git-chronos.ui.working-tree-view') === 'tree' ? 'tree' : 'path';
+      return localStorage.getItem('git-khronos.ui.working-tree-view') === 'tree' ? 'tree' : 'path';
     } catch {
       return 'path';
     }
@@ -11537,7 +11537,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readPullStrategy(): PullStrategy {
     try {
-      const value = localStorage.getItem('git-chronos.pull.strategy');
+      const value = localStorage.getItem('git-khronos.pull.strategy');
       return value === 'ff-only' || value === 'rebase' ? value : 'merge';
     } catch {
       return 'merge';
@@ -11546,7 +11546,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readUiPreference(preference: string, fallback: boolean): boolean {
     try {
-      const value = localStorage.getItem(`git-chronos.ui.${preference}`);
+      const value = localStorage.getItem(`git-khronos.ui.${preference}`);
       return value === null ? fallback : value === 'true';
     } catch {
       return fallback;
@@ -11555,7 +11555,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readRecentCommandIds(): string[] {
     try {
-      const value = JSON.parse(localStorage.getItem('git-chronos.ui.recent-commands') ?? '[]');
+      const value = JSON.parse(localStorage.getItem('git-khronos.ui.recent-commands') ?? '[]');
       return Array.isArray(value)
         ? value.filter((id): id is string => typeof id === 'string').slice(0, COMMAND_QUICK_ACTION_LIMIT)
         : [];
@@ -11569,7 +11569,7 @@ export class AppComponent implements OnInit, OnDestroy {
       .slice(0, COMMAND_QUICK_ACTION_LIMIT);
     this.recentCommandIds.set(ids);
     try {
-      localStorage.setItem('git-chronos.ui.recent-commands', JSON.stringify(ids));
+      localStorage.setItem('git-khronos.ui.recent-commands', JSON.stringify(ids));
     } catch {
       // The palette remains fully functional when preference storage is unavailable.
     }
@@ -11577,7 +11577,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readGraphDateFormat(): GraphDateFormat {
     try {
-      const value = localStorage.getItem('git-chronos.ui.graph-date-format');
+      const value = localStorage.getItem('git-khronos.ui.graph-date-format');
       return value === 'relative' || value === 'iso' ? value : 'compact';
     } catch {
       return 'compact';
@@ -11586,7 +11586,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readAuthorMarkerStyle(): AuthorMarkerStyle {
     try {
-      return localStorage.getItem('git-chronos.ui.author-marker-style') === 'color' ? 'color' : 'initials';
+      return localStorage.getItem('git-khronos.ui.author-marker-style') === 'color' ? 'color' : 'initials';
     } catch {
       return 'initials';
     }
@@ -11594,7 +11594,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readAutoFetchInterval(): AutoFetchIntervalMinutes {
     try {
-      const stored = localStorage.getItem('git-chronos.remote.auto-fetch-minutes');
+      const stored = localStorage.getItem('git-khronos.remote.auto-fetch-minutes');
       if (stored === null) return 5;
       const value = Number(stored) as AutoFetchIntervalMinutes;
       return AUTO_FETCH_INTERVALS.includes(value) ? value : 5;
@@ -11675,7 +11675,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readTerminalFontFamily(): string {
     try {
-      return localStorage.getItem('git-chronos.terminal.font-family')
+      return localStorage.getItem('git-khronos.terminal.font-family')
         ?? '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
     } catch {
       return '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
@@ -11684,7 +11684,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readDiffNumber(preference: string, fallback: number, allowed: number[]): number {
     try {
-      const value = Number(localStorage.getItem(`git-chronos.diff.${preference}`));
+      const value = Number(localStorage.getItem(`git-khronos.diff.${preference}`));
       return allowed.includes(value) ? value : fallback;
     } catch {
       return fallback;
@@ -11693,7 +11693,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readDiffBoolean(preference: string, fallback: boolean): boolean {
     try {
-      const value = localStorage.getItem(`git-chronos.diff.${preference}`);
+      const value = localStorage.getItem(`git-khronos.diff.${preference}`);
       return value === null ? fallback : value === 'true';
     } catch {
       return fallback;
@@ -11702,7 +11702,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readDiffViewMode(): DiffViewMode {
     try {
-      const value = localStorage.getItem('git-chronos.diff.view-mode');
+      const value = localStorage.getItem('git-khronos.diff.view-mode');
       return value === 'inline' || value === 'split' ? value : 'hunk';
     } catch {
       return 'hunk';
@@ -11711,7 +11711,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readTerminalNumber(preference: string, fallback: number, allowed: number[]): number {
     try {
-      const value = Number(localStorage.getItem(`git-chronos.terminal.${preference}`));
+      const value = Number(localStorage.getItem(`git-khronos.terminal.${preference}`));
       return allowed.includes(value) ? value : fallback;
     } catch {
       return fallback;
@@ -11720,7 +11720,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readTerminalCursorStyle(): TerminalCursorStyle {
     try {
-      const value = localStorage.getItem('git-chronos.terminal.cursor-style');
+      const value = localStorage.getItem('git-khronos.terminal.cursor-style');
       return value === 'underline' || value === 'bar' ? value : 'block';
     } catch {
       return 'block';
@@ -11930,7 +11930,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private graphPreferenceKey(setting: string): string {
-    return `git-chronos.graph.${encodeURIComponent(this.git.repository()?.path ?? 'default')}.${setting}`;
+    return `git-khronos.graph.${encodeURIComponent(this.git.repository()?.path ?? 'default')}.${setting}`;
   }
 
   private graphColumnWidthPreferenceKey(compact: boolean): string {

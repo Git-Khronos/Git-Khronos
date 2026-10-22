@@ -1,5 +1,5 @@
 use super::*;
-use git_chronos_git_core::StashOptions;
+use git_khronos_git_core::StashOptions;
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn stash_selected(
@@ -10,7 +10,7 @@ pub async fn stash_selected(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::stash_with_options(path, &options)
+            git_khronos_git_core::stash_with_options(path, &options)
         })
     })
     .await
@@ -28,7 +28,7 @@ pub async fn apply_stash_options(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::apply_stash_with_index(
+            git_khronos_git_core::apply_stash_with_index(
                 path,
                 &reference,
                 &expected_oid,
@@ -51,7 +51,7 @@ pub async fn branch_from_stash(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::create_branch_from_stash(path, &reference, &expected_oid, &name)
+            git_khronos_git_core::create_branch_from_stash(path, &reference, &expected_oid, &name)
         })
     })
     .await
@@ -70,7 +70,7 @@ pub async fn stash_checkout(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::stash_and_checkout(
+            git_khronos_git_core::stash_and_checkout(
                 path,
                 &name,
                 &expected_head,

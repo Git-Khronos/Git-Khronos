@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, effect, inj
 import { FormsModule } from '@angular/forms';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { PatchReview, PatchTarget } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { PatchReview, PatchTarget } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { BundleExchangePanelComponent } from './bundle-exchange-panel.component';
 import { MailPatchPanelComponent } from './mail-patch-panel.component';
@@ -99,7 +99,7 @@ import { MailPatchPanelComponent } from './mail-patch-panel.component';
   `],
 })
 export class PatchExchangePanelComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly repositoryId = input.required<string>();
   readonly disabled = input(false);
   readonly pending = signal(false);

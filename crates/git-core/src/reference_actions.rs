@@ -8,7 +8,7 @@ pub fn preserve_reference(path: &Path, oid: &str, label: &str) -> Result<String,
         .map_err(|_| AppError::new("invalidSystemClock", "The system clock is invalid.", None))?
         .as_nanos();
     let reference = format!(
-        "refs/git-chronos/recovery/{sequence}-{}",
+        "refs/git-khronos/recovery/{sequence}-{}",
         std::process::id()
     );
     run_mutation(

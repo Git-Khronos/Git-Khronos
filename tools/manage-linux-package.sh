@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly package_name="git-chronos"
+readonly package_name="git-khronos"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly script_dir
 repository_root="$(cd -- "${script_dir}/.." && pwd)"
@@ -9,7 +9,7 @@ readonly repository_root
 readonly package_directory="${repository_root}/target/release/bundle/deb"
 
 fail() {
-  printf 'Git Chronos: %s\n' "$1" >&2
+  printf 'Git Khronos: %s\n' "$1" >&2
   exit 1
 }
 
@@ -85,32 +85,32 @@ verify_package() {
   [[ "$depends" == *"libwebkit2gtk-4.1-0"* ]] || fail "package does not declare the WebKitGTK runtime."
   [[ "$depends" == *"libgtk-3-0"* ]] || fail "package does not declare the GTK runtime."
 
-  temporary_directory="$(mktemp -d -t git-chronos-package.XXXXXX)"
+  temporary_directory="$(mktemp -d -t git-khronos-package.XXXXXX)"
   trap 'rm -rf -- "$temporary_directory"' EXIT
   dpkg-deb --extract "$package_file" "$temporary_directory"
   extracted="${temporary_directory}/usr"
 
-  [[ -x "${extracted}/bin/git-chronos-desktop" ]] || fail "package executable is missing or is not executable."
+  [[ -x "${extracted}/bin/git-khronos-desktop" ]] || fail "package executable is missing or is not executable."
   local required_file
   for required_file in \
-    "share/applications/Git Chronos.desktop" \
-    "share/icons/hicolor/32x32/apps/git-chronos-desktop.png" \
-    "share/icons/hicolor/128x128/apps/git-chronos-desktop.png" \
-    "share/icons/hicolor/256x256@2/apps/git-chronos-desktop.png" \
-    "share/doc/git-chronos/copyright" \
-    "share/doc/git-chronos/THIRD_PARTY_NOTICES.md" \
-    "share/doc/git-chronos/changelog.gz" \
-    "share/man/man1/git-chronos-desktop.1.gz"; do
+    "share/applications/Git Khronos.desktop" \
+    "share/icons/hicolor/32x32/apps/git-khronos-desktop.png" \
+    "share/icons/hicolor/128x128/apps/git-khronos-desktop.png" \
+    "share/icons/hicolor/256x256@2/apps/git-khronos-desktop.png" \
+    "share/doc/git-khronos/copyright" \
+    "share/doc/git-khronos/THIRD_PARTY_NOTICES.md" \
+    "share/doc/git-khronos/changelog.gz" \
+    "share/man/man1/git-khronos-desktop.1.gz"; do
     [[ -s "${extracted}/${required_file}" ]] || fail "package payload is missing /usr/${required_file}."
   done
 
-  local desktop_file="${extracted}/share/applications/Git Chronos.desktop"
+  local desktop_file="${extracted}/share/applications/Git Khronos.desktop"
   require_desktop_field "$desktop_file" Type "Application"
-  require_desktop_field "$desktop_file" Name "Git Chronos"
-  require_desktop_field "$desktop_file" Exec "git-chronos-desktop"
-  require_desktop_field "$desktop_file" Icon "git-chronos-desktop"
-  gzip --test "${extracted}/share/doc/git-chronos/changelog.gz"
-  gzip --test "${extracted}/share/man/man1/git-chronos-desktop.1.gz"
+  require_desktop_field "$desktop_file" Name "Git Khronos"
+  require_desktop_field "$desktop_file" Exec "git-khronos-desktop"
+  require_desktop_field "$desktop_file" Icon "git-khronos-desktop"
+  gzip --test "${extracted}/share/doc/git-khronos/changelog.gz"
+  gzip --test "${extracted}/share/man/man1/git-khronos-desktop.1.gz"
 
   trap - EXIT
   rm -rf -- "$temporary_directory"
@@ -124,16 +124,16 @@ install_package() {
   require_apt
   printf 'Installing %s system-wide from:\n  %s\n' "$package_name" "$package_file"
   run_as_root apt-get install --reinstall --no-remove "$package_file"
-  printf '\nGit Chronos is installed. Launch it from the application menu or run git-chronos-desktop.\n'
+  printf '\nGit Khronos is installed. Launch it from the application menu or run git-khronos-desktop.\n'
 }
 
 uninstall_package() {
   require_apt
   if ! dpkg-query --show --showformat='${db:Status-Abbrev}' "$package_name" 2>/dev/null | grep -q '^ii'; then
-    printf 'Git Chronos is not installed as a Debian package.\n'
+    printf 'Git Khronos is not installed as a Debian package.\n'
     return
   fi
-  printf 'Removing the system-wide Git Chronos package. Repository data and user preferences are not removed.\n'
+  printf 'Removing the system-wide Git Khronos package. Repository data and user preferences are not removed.\n'
   run_as_root apt-get remove "$package_name"
 }
 

@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { invoke } from '@tauri-apps/api/core';
-import type { FetchOptions, ShallowHistoryState } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { FetchOptions, ShallowHistoryState } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 export interface FetchDialogRequest {
@@ -54,7 +54,7 @@ export interface FetchDialogRequest {
               <label class="checkbox"><input type="radio" name="fetchHistory" value="complete" [ngModel]="history()" (ngModelChange)="history.set($event)" />Download complete history</label>
               @if (history() !== 'keep' && !remote()) { <p role="alert">Choose one remote to extend history.</p> }
               @if (history() === 'deepen' && !validCommits()) { <p role="alert">Enter a whole number from 1 to 1,000,000.</p> }
-              @if (history() === 'complete') { <p>Complete history can be large. If the chosen remote is itself shallow, Git Chronos reports that history is still incomplete.</p> }
+              @if (history() === 'complete') { <p>Complete history can be large. If the chosen remote is itself shallow, Git Khronos reports that history is still incomplete.</p> }
             </fieldset>
           }
           <details><summary>Advanced scope</summary><p>This uses a standard branch-only mapping, not custom fetch refspecs or mirror settings. It never fetches or prunes tags and never updates submodule working trees. Shared tracking destinations are refused; symbolic destinations are checked.</p></details>
@@ -90,7 +90,7 @@ export interface FetchDialogRequest {
   `],
 })
 export class FetchOptionsDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<FetchDialogRequest | null>(null);
   readonly closed = output<void>();
   readonly remote = signal('');

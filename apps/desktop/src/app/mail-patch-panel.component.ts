@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { CommitSummary, MailPatchAction, MailPatchImportReview, MailPatchProgress, MailPatchReview } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { CommitSummary, MailPatchAction, MailPatchImportReview, MailPatchProgress, MailPatchReview } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 const MAX_SERIES = 500;
@@ -100,7 +100,7 @@ const MAX_SERIES = 500;
   `],
 })
 export class MailPatchPanelComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly repositoryId = input.required<string>();
   readonly disabled = input(false);
   readonly max = MAX_SERIES;

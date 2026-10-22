@@ -1,5 +1,5 @@
-use git_chronos_git_core::authentication::{PromptKind, with_authentication};
-use git_chronos_git_core::{AppError, CancellationToken};
+use git_khronos_git_core::authentication::{PromptKind, with_authentication};
+use git_khronos_git_core::{AppError, CancellationToken};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

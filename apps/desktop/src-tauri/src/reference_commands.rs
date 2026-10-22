@@ -23,7 +23,7 @@ pub async fn configure_remote(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| {
-            git_chronos_git_core::configure_remote_urls(
+            git_khronos_git_core::configure_remote_urls(
                 path,
                 &name,
                 &fetch_url,
@@ -50,20 +50,20 @@ pub async fn manage_reference(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         mutate_and_refresh(&repo_id, &state, |path| match action.as_str() {
-            "delete-tag" => git_chronos_git_core::delete_local_tag(
+            "delete-tag" => git_khronos_git_core::delete_local_tag(
                 path,
                 &name,
                 expected_oid.as_deref().unwrap_or(""),
             ),
-            "signed-tag" => git_chronos_git_core::create_signed_tag(
+            "signed-tag" => git_khronos_git_core::create_signed_tag(
                 path,
                 &name,
                 expected_oid.as_deref().unwrap_or(""),
                 message.as_deref().unwrap_or(""),
             ),
-            "verify-tag" => git_chronos_git_core::verify_tag(path, &name),
+            "verify-tag" => git_khronos_git_core::verify_tag(path, &name),
             "set-push-url" => {
-                git_chronos_git_core::set_remote_push_url(path, &name, url.as_deref())
+                git_khronos_git_core::set_remote_push_url(path, &name, url.as_deref())
             }
             _ => Err(AppError {
                 kind: "invalidReferenceAction".into(),
@@ -88,7 +88,7 @@ pub async fn transport_reference(
         operation_id,
         app,
         move |path, cancellation| {
-            git_chronos_git_core::transport_reference(
+            git_khronos_git_core::transport_reference(
                 path,
                 &request.remote,
                 &request.name,
@@ -122,7 +122,7 @@ pub async fn preview_remote_tag(
             &cancellation,
             true,
             || {
-                git_chronos_git_core::remote_tag_object(
+                git_khronos_git_core::remote_tag_object(
                     &session.path,
                     &remote,
                     &name,

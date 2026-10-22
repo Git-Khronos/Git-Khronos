@@ -31,7 +31,7 @@ License: Apache-2.0
 
 Usage:
 
-- Development-only browser automation for Git Chronos renderer tests.
+- Development-only browser automation for Git Khronos renderer tests.
 - No Playwright source code is copied or adapted into this repository.
 
 Required notices:
@@ -48,7 +48,7 @@ License: CC0-1.0
 Usage:
 
 - Cross-platform filesystem notifications for Git metadata directories.
-- Git Chronos supplies its own event coalescing and repository refresh logic.
+- Git Khronos supplies its own event coalescing and repository refresh logic.
 - No notify source code is copied or adapted into this repository.
 
 Required notices:
@@ -65,7 +65,7 @@ Usage:
 
 - In-process object and reference access for incremental commit history
   paging, avoiding one Git process per page in very large repositories.
-- Git Chronos supplies its own date-ordered walk and output formatting,
+- Git Khronos supplies its own date-ordered walk and output formatting,
   verified against `git log` output; reference tips and decorations still come
   from the Git CLI.
 - No gitoxide source code is copied or adapted into this repository.

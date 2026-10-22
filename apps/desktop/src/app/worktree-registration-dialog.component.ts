@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
-import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeRegistrationReview } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeRegistrationReview } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { SubmoduleStateReviewComponent } from './submodule-state-review.component';
 
@@ -108,7 +108,7 @@ export interface WorktreeRegistrationRequest {
   `],
 })
 export class WorktreeRegistrationDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<WorktreeRegistrationRequest | null>(null);
   readonly closed = output<void>();
   readonly review = signal<WorktreeRegistrationReview | null>(null);

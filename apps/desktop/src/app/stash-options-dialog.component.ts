@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { StashEntry, StashOptions } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { StashEntry, StashOptions } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { IconComponent } from './icon.component';
 
@@ -127,7 +127,7 @@ export interface StashDialogRequest {
   `],
 })
 export class StashOptionsDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<StashDialogRequest | null>(null);
   readonly closed = output<void>();
   readonly mode = signal<StashOptions['mode']>('all');

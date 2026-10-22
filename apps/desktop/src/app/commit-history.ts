@@ -1,4 +1,4 @@
-import type { CommitSummary } from '@git-chronos/contracts';
+import type { CommitSummary } from '@git-khronos/contracts';
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);

@@ -46,7 +46,7 @@ SOFTWARE.
 
 ## Rust crate dependencies
 
-Git Chronos links third-party Rust crates that are used unmodified and retain
+Git Khronos links third-party Rust crates that are used unmodified and retain
 their upstream licenses. The gitoxide (`gix`) crates are available under
 MIT OR Apache-2.0. Its dependency `uluru` is available under the Mozilla Public
 License 2.0, and its source code is available at

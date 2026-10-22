@@ -1,11 +1,11 @@
 //! Live SSH qualification against a loopback OpenSSH server.
 //!
-//! Requires an OpenSSH `sshd` binary (set `GIT_CHRONOS_SSHD`, otherwise `/usr/sbin/sshd`)
+//! Requires an OpenSSH `sshd` binary (set `GIT_KHRONOS_SSHD`, otherwise `/usr/sbin/sshd`)
 //! plus `ssh` and `ssh-keygen`. It runs as the current user and never reads or writes the
 //! user's own SSH configuration, keys, agent or known hosts.
 
-use git_chronos_git_core::authentication::{PromptKind, with_authentication};
-use git_chronos_git_core::{
+use git_khronos_git_core::authentication::{PromptKind, with_authentication};
+use git_khronos_git_core::{
     AppError, CancellationToken, fetch_cancellable, push_to_remote_cancellable,
 };
 use std::fs;
@@ -58,12 +58,12 @@ struct SshFixture {
 
 impl SshFixture {
     fn new() -> Self {
-        let sshd = std::env::var_os("GIT_CHRONOS_SSHD")
+        let sshd = std::env::var_os("GIT_KHRONOS_SSHD")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/usr/sbin/sshd"));
         assert!(
             sshd.is_absolute() && sshd.is_file(),
-            "SSH qualification requires an OpenSSH sshd; set GIT_CHRONOS_SSHD to its absolute path"
+            "SSH qualification requires an OpenSSH sshd; set GIT_KHRONOS_SSHD to its absolute path"
         );
         let directory = std::env::current_dir()
             .unwrap()
@@ -248,9 +248,9 @@ impl SshFixture {
     }
 
     fn helper(&self) -> PathBuf {
-        std::env::var_os("GIT_CHRONOS_PACKAGED_BINARY")
+        std::env::var_os("GIT_KHRONOS_PACKAGED_BINARY")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-chronos-desktop")))
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos-desktop")))
     }
 
     fn fetch(
@@ -305,7 +305,7 @@ fn assert_safe_failure(error: &AppError, kind: &str) {
 }
 
 #[test]
-#[ignore = "requires an OpenSSH sshd; set GIT_CHRONOS_SSHD"]
+#[ignore = "requires an OpenSSH sshd; set GIT_KHRONOS_SSHD"]
 fn real_ssh_host_trust_passphrase_rejection_cancel_background_fetch_and_push() {
     let fixture = SshFixture::new();
     let never = || -> Arc<dyn Fn(PromptKind) -> Option<String> + Send + Sync> {

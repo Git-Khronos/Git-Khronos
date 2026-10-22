@@ -137,7 +137,7 @@ fn temporary_path(path: &Path) -> Result<PathBuf, AppError> {
         .map_err(|_| refused("The system clock is invalid."))?
         .as_nanos();
     Ok(PathBuf::from(directory).join(format!(
-        "git-chronos-bundle-{id}-{}.tmp",
+        "git-khronos-bundle-{id}-{}.tmp",
         std::process::id()
     )))
 }
@@ -388,7 +388,7 @@ mod tests {
                     .unwrap()
                     .file_name()
                     .to_string_lossy()
-                    .starts_with("git-chronos-bundle-")
+                    .starts_with("git-khronos-bundle-")
             }));
         }
     }
@@ -436,13 +436,13 @@ mod tests {
         assert_eq!(
             Fixture::output(
                 &fixture.target,
-                &["for-each-ref", "refs/git-chronos/recovery"]
+                &["for-each-ref", "refs/git-khronos/recovery"]
             ),
             b""
         );
         let reference =
             import_bundle(&fixture.target, &review.request, &review.request.tips[0]).unwrap();
-        assert!(reference.starts_with("refs/git-chronos/recovery/"));
+        assert!(reference.starts_with("refs/git-khronos/recovery/"));
         assert_eq!(
             Fixture::output(&fixture.target, &["rev-parse", &reference]),
             format!("{fetched}\n").as_bytes()
@@ -525,7 +525,7 @@ mod tests {
             .contains("500"));
         assert!(Fixture::output(
             &fixture.target,
-            &["for-each-ref", "refs/git-chronos/recovery"]
+            &["for-each-ref", "refs/git-khronos/recovery"]
         )
         .is_empty());
         fixture.no_captures(&fixture.target);
@@ -737,7 +737,7 @@ mod tests {
         assert_eq!(
             Fixture::output(
                 &fixture.target,
-                &["for-each-ref", "refs/git-chronos/recovery"]
+                &["for-each-ref", "refs/git-khronos/recovery"]
             ),
             b""
         );
@@ -797,7 +797,7 @@ mod tests {
         fs::create_dir(&hooks).unwrap();
         let hook = hooks.join("reference-transaction");
         let script =
-            b"#!/bin/sh\nif grep -q 'refs/git-chronos/recovery/'; then exit 1; fi\nexit 0\n";
+            b"#!/bin/sh\nif grep -q 'refs/git-khronos/recovery/'; then exit 1; fi\nexit 0\n";
         fs::write(&hook, script).unwrap();
         fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
         Fixture::git(

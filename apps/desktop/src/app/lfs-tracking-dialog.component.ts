@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { invoke } from '@tauri-apps/api/core';
-import type { LfsCheckoutPreview, LfsLock, LfsLocks, LfsFetchPreview, LfsFileAttributes, LfsObjects, LfsTrackingPattern, LfsTrackingRules } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { LfsCheckoutPreview, LfsLock, LfsLocks, LfsFetchPreview, LfsFileAttributes, LfsObjects, LfsTrackingPattern, LfsTrackingRules } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 export interface LfsTrackingRequest {
@@ -241,7 +241,7 @@ export interface LfsTrackingRequest {
   `],
 })
 export class LfsTrackingDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<LfsTrackingRequest | null>(null);
   readonly closed = output<void>();
   readonly rules = signal<LfsTrackingRules | null>(null);

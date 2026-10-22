@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { CommitIdentity, CommitPolicy } from '@git-chronos/contracts';
+import type { CommitIdentity, CommitPolicy } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
 
 @Component({

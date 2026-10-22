@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, input, output, viewChild } from '@angular/core';
-import type { LfsPrunePreview } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { LfsPrunePreview } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 @Component({
@@ -11,7 +11,7 @@ import { IconComponent } from './icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LfsPruneDialogComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly preview = input<LfsPrunePreview | null>(null);
   readonly reviewing = input(false);

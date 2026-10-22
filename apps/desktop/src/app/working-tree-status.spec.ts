@@ -1,4 +1,4 @@
-import type { RepositoryStatus, WorkingTreeEntry } from '@git-chronos/contracts';
+import type { RepositoryStatus, WorkingTreeEntry } from '@git-khronos/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   describeWorkingTreeStatus,

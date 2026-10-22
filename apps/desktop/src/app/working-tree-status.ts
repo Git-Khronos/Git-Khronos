@@ -1,4 +1,4 @@
-import type { RepositoryStatus, WorkingTreeEntry } from '@git-chronos/contracts';
+import type { RepositoryStatus, WorkingTreeEntry } from '@git-khronos/contracts';
 
 type EntryUpdate = (entry: WorkingTreeEntry) => WorkingTreeEntry | null;
 

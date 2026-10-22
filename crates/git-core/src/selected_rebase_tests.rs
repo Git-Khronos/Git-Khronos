@@ -58,7 +58,7 @@ impl Repository {
             .output(&[
                 "for-each-ref",
                 "--format=%(objectname)",
-                "refs/git-chronos/recovery/"
+                "refs/git-khronos/recovery/"
             ])
             .is_empty());
         assert!(!rebase_support_dir(&self.0).unwrap().exists());
@@ -144,7 +144,7 @@ fn merge_preserving_rebase_recreates_two_parent_topology_without_moving_other_re
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -239,7 +239,7 @@ fn merge_preserving_review_refuses_linear_shallow_stale_dirty_hidden_and_recover
     assert_eq!(fs::read(repository.0.join("main")).unwrap(), b"dirty\n");
     repository.git(&["update-index", "--no-assume-unchanged", "main"]);
     fs::write(repository.0.join("main"), b"main\n").unwrap();
-    let blocked = repository.0.join(".git/refs/git-chronos");
+    let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
     assert!(execute_merge_rebase(&repository.0, &plan.request).is_err());
     assert_eq!(repository.oid(), appended);
@@ -387,7 +387,7 @@ fn merge_preserving_actual_hook_refuses_without_unsigned_or_flattened_fallback()
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -577,7 +577,7 @@ fn selected_onto_replays_complete_suffix_on_captured_destination_without_moving_
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -755,7 +755,7 @@ fn selected_onto_newly_empty_step_requires_explicit_skip_without_hidden_commit()
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -803,7 +803,7 @@ fn selected_onto_preserves_hooks_and_refuses_dirty_hidden_and_recovery_obstructi
     assert_eq!(fs::read(repository.0.join("first")).unwrap(), b"dirty\n");
     repository.git(&["update-index", "--no-assume-unchanged", "first"]);
     fs::write(repository.0.join("first"), b"first\n").unwrap();
-    let blocked = repository.0.join(".git/refs/git-chronos");
+    let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
     assert!(execute_interactive_rebase_with_destination(
         &repository.0,
@@ -846,7 +846,7 @@ fn selected_onto_preserves_hooks_and_refuses_dirty_hidden_and_recovery_obstructi
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         first
     );
@@ -906,7 +906,7 @@ fn root_rebase_reviews_actual_root_and_rewords_it_without_moving_unrelated_refs(
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -1010,7 +1010,7 @@ fn root_rebase_edit_restart_continue_and_abort_retain_protected_history() {
         .output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ])
         .lines()
         .any(|oid| oid == original));
@@ -1199,7 +1199,7 @@ fn root_rebase_dirty_hidden_operation_and_recovery_obstructions_refuse_without_s
     repository.unchanged(&original);
     let plan =
         prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
-    let blocked = repository.0.join(".git/refs/git-chronos");
+    let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
     assert!(execute_interactive_rebase_with_options(
         &repository.0,
@@ -1251,7 +1251,7 @@ fn root_rebase_respects_actual_hook_refusal_and_protects_the_original_tip() {
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -1311,7 +1311,7 @@ fn selected_rebase_reviews_entire_suffix_preserves_base_and_unrelated_refs_with_
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         last
     );
@@ -1406,7 +1406,7 @@ fn selected_rebase_revalidates_appended_tip_current_branch_and_recovery_before_m
     repository.unchanged(&original);
     repository.git(&["checkout", "main"]);
     let plan = repository.plan(&selected);
-    let blocked = repository.0.join(".git/refs/git-chronos");
+    let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
     assert!(execute_interactive_rebase_with_selection(
         &repository.0,
@@ -1505,7 +1505,7 @@ fn selected_rebase_edit_stop_survives_reload_and_abort_restores_whole_reviewed_s
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -1656,7 +1656,7 @@ fn selected_rebase_respects_actual_pre_rebase_hook_refusal_and_retains_protected
         repository.output(&[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]),
         original
     );
@@ -1746,7 +1746,7 @@ fn root_onto_replays_entire_history_on_captured_destination_without_moving_refs(
     assert_eq!(repository.output(&["rev-parse", "refs/heads/platform"]), platform);
     assert_eq!(repository.output(&["rev-parse", "refs/heads/keep"]), first);
     assert_eq!(
-        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]),
+        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]),
         original
     );
     assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
@@ -1773,7 +1773,7 @@ fn root_onto_conflict_stops_for_explicit_resolution_and_abort_restores_history()
     assert_eq!(repository.oid(), original);
     assert_eq!(repository.output(&["rev-parse", "refs/heads/other"]), other);
     assert_eq!(
-        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]),
+        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]),
         original
     );
 }

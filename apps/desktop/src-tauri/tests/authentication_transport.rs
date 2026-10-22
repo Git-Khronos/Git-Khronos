@@ -1,5 +1,5 @@
-use git_chronos_git_core::authentication::{PromptKind, configure, with_authentication};
-use git_chronos_git_core::{CancellationToken, fetch_cancellable};
+use git_khronos_git_core::authentication::{PromptKind, configure, with_authentication};
+use git_khronos_git_core::{CancellationToken, fetch_cancellable};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -13,11 +13,11 @@ use std::time::Duration;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 /// The askpass helper under test: the build's binary, or an installed/packaged
-/// binary named by `GIT_CHRONOS_PACKAGED_BINARY` for packaged acceptance.
+/// binary named by `GIT_KHRONOS_PACKAGED_BINARY` for packaged acceptance.
 fn shipped_binary() -> PathBuf {
-    std::env::var_os("GIT_CHRONOS_PACKAGED_BINARY")
+    std::env::var_os("GIT_KHRONOS_PACKAGED_BINARY")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-chronos-desktop")))
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos-desktop")))
 }
 
 fn git(path: &Path, args: &[&str]) {
@@ -122,7 +122,7 @@ impl Fixture {
     fn fetch(
         &self,
         handler: Option<Arc<dyn Fn(PromptKind) -> Option<String> + Send + Sync>>,
-    ) -> Result<(), git_chronos_git_core::AppError> {
+    ) -> Result<(), git_khronos_git_core::AppError> {
         let cancellation = CancellationToken::default();
         with_authentication(&self.helper, &cancellation, handler, || {
             fetch_cancellable(&self.repository, &cancellation)
@@ -343,7 +343,7 @@ impl HttpsFixture {
                 "-days",
                 "1",
                 "-subj",
-                "/CN=Git Chronos loopback fixture",
+                "/CN=Git Khronos loopback fixture",
                 "-addext",
                 "subjectAltName=IP:127.0.0.1",
                 "-addext",
@@ -423,7 +423,7 @@ impl Drop for HttpsFixture {
     }
 }
 
-fn assert_safe_failure(error: &git_chronos_git_core::AppError, kind: &str) {
+fn assert_safe_failure(error: &git_khronos_git_core::AppError, kind: &str) {
     assert_eq!(error.kind, kind);
     for value in [&error.message, error.hint.as_ref().unwrap()] {
         assert!(!value.contains("fixture-secret"));

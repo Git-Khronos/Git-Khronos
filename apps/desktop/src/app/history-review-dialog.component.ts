@@ -1,7 +1,7 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { ResetMode, ResetPreview } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { ResetMode, ResetPreview } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitDocumentationService } from './git-documentation.service';
 import { IconComponent } from './icon.component';
 
@@ -21,7 +21,7 @@ export interface PendingHistoryAction {
   styleUrl: './history-review-dialog.component.scss',
 })
 export class HistoryReviewDialogComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   protected readonly documentation = inject(GitDocumentationService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly action = input.required<PendingHistoryAction>();

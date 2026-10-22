@@ -138,7 +138,7 @@ test('includes the visible terminal and announces the active inspector context',
   await page.keyboard.press('Alt+T');
   const terminal = page.locator('.terminal-panel:not(.inactive)');
   await expect(terminal).toBeVisible();
-  await expect(terminal).toHaveAttribute('aria-label', 'Repository terminals for git-chronos');
+  await expect(terminal).toHaveAttribute('aria-label', 'Repository terminals for git-khronos');
 
   await inspector.focus();
   await page.keyboard.press('F6');
@@ -161,7 +161,7 @@ test('includes the visible terminal and announces the active inspector context',
 });
 
 test('toggles the repository terminal with both advertised shortcuts', async ({ page }) => {
-  const terminal = page.getByLabel('Repository terminals for git-chronos');
+  const terminal = page.getByLabel('Repository terminals for git-khronos');
   const toggle = page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)');
 
   await expect(toggle).toHaveAttribute('aria-keyshortcuts', 'Alt+T Control+` Meta+`');

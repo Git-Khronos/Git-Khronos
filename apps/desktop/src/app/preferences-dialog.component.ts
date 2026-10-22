@@ -11,10 +11,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { RepositorySnapshot } from '@git-chronos/contracts';
+import type { RepositorySnapshot } from '@git-khronos/contracts';
 import { APP_THEME_OPTIONS } from './app-theme';
 import type { PreferencesDialogView } from './app.component';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { GitDocumentationService } from './git-documentation.service';
 import { IconComponent } from './icon.component';
 import { IntegrityPanelComponent } from './integrity-panel.component';
@@ -61,7 +61,7 @@ const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
 })
 export class PreferencesDialogComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   protected readonly documentation = inject(GitDocumentationService);
   protected readonly appThemeOptions = APP_THEME_OPTIONS;
   protected readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');

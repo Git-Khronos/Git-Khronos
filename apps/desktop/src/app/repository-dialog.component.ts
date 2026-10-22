@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 export type RepositoryDialogMode = 'manager' | 'clone' | 'init';
@@ -101,7 +101,7 @@ class RepositoryFormDrafts {
   `,
 })
 export class RepositoryDialogComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   protected readonly form = inject(RepositoryFormDrafts);
   protected readonly repositoryQuery = signal('');
   protected readonly repositoryHistoryCount = computed(() => this.git.favoritePaths().length + this.git.unpinnedRecentPaths().length);

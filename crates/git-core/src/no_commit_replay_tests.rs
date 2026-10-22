@@ -34,7 +34,7 @@ impl Repository {
     }
 
     fn state_file(&self) -> PathBuf {
-        self.0.join(".git/git-chronos-no-commit.json")
+        self.0.join(".git/git-khronos-no-commit.json")
     }
 
     fn recovery_tip(&self) -> String {
@@ -44,7 +44,7 @@ impl Repository {
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/",
+                    "refs/git-khronos/recovery/",
                 ],
             )
             .unwrap()
@@ -265,7 +265,7 @@ fn no_commit_replay_rejects_dirty_invalid_later_commits_oversized_and_recovery_f
     assert!(repository.recovery_tip().is_empty());
     run_mutation(
         path,
-        &["update-ref", "refs/git-chronos/recovery", &original],
+        &["update-ref", "refs/git-khronos/recovery", &original],
         "obstruct owned namespace",
     )
     .unwrap();

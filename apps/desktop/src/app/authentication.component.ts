@@ -5,7 +5,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 
 interface AuthenticationPrompt {
   requestId: string;
@@ -26,7 +26,7 @@ interface AuthenticationPrompt {
           <h2 id="authentication-title">Git authentication</h2>
           <p>{{ operationName() }} · {{ repositoryName() }}</p>
           <p id="authentication-help">Git requested a credential. Saved credentials remain managed by your
-            configured Git credential helper or SSH agent, not Git Chronos.</p>
+            configured Git credential helper or SSH agent, not Git Khronos.</p>
           <p class="hint">Cancel stops this operation. Git may already have made partial changes;
             repository state is refreshed after cancellation.</p>
           <label for="authentication-value">{{ request.secret ? 'Password or key passphrase' : 'Username' }}</label>
@@ -62,7 +62,7 @@ interface AuthenticationPrompt {
   `,
 })
 export class AuthenticationComponent implements OnDestroy {
-  private readonly git = inject(GitChronosService);
+  private readonly git = inject(GitKhronosService);
   private readonly requests = signal<AuthenticationPrompt[]>([]);
   readonly prompt = computed(() => this.requests()[0] ?? null);
   readonly repositoryName = computed(() => {

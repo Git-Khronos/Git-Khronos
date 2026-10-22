@@ -328,7 +328,7 @@ fn guided_split_abort_after_one_part_restores_original_tip_and_preserves_unrelat
             .text(&[
                 "for-each-ref",
                 "--format=%(objectname)",
-                "refs/git-chronos/recovery/"
+                "refs/git-khronos/recovery/"
             ])
             .lines()
             .any(|oid| oid == tip)

@@ -390,9 +390,9 @@ impl CommitHistoryCursor {
                     "--no-walk",
                     "--decorate=short",
                     "--decorate-refs-exclude=refs/remotes/*/HEAD",
-                    "--decorate-refs-exclude=refs/git-chronos/recovery/*",
+                    "--decorate-refs-exclude=refs/git-khronos/recovery/*",
                     "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
-                    "--exclude=refs/git-chronos/recovery/*",
+                    "--exclude=refs/git-khronos/recovery/*",
                     "--all",
                 ],
             )?;
@@ -412,7 +412,7 @@ impl CommitHistoryCursor {
             &[
                 "rev-list",
                 "--no-walk",
-                "--exclude=refs/git-chronos/recovery/*",
+                "--exclude=refs/git-khronos/recovery/*",
                 "--all",
             ],
         )?;
@@ -742,7 +742,7 @@ fn explicit_bare_repository_root(path: &Path) -> Option<PathBuf> {
     Some(root)
 }
 
-/// Explains repository shapes Git Chronos cannot open as a working tree,
+/// Explains repository shapes Git Khronos cannot open as a working tree,
 /// keeping Git's own wording as the detail.
 fn classify_open_failure(path: &Path, output: &Output) -> AppError {
     let mut error = AppError::git_failure("open this repository", output);
@@ -3288,7 +3288,7 @@ pub fn execute_interactive_rebase_with_destination(
             None,
         )
     })?;
-    fs::write(&editor_path, "#!/bin/sh\ncp \"$GIT_CHRONOS_TODO\" \"$1\"\n").map_err(|error| {
+    fs::write(&editor_path, "#!/bin/sh\ncp \"$GIT_KHRONOS_TODO\" \"$1\"\n").map_err(|error| {
         AppError::new(
             "rebaseSetupFailed",
             format!("Could not create the interactive rebase editor: {error}"),
@@ -3331,7 +3331,7 @@ pub fn execute_interactive_rebase_with_destination(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
         .env("GIT_SEQUENCE_EDITOR", sequence_editor)
-        .env("GIT_CHRONOS_TODO", &todo_path)
+        .env("GIT_KHRONOS_TODO", &todo_path)
         .env("GIT_EDITOR", "true")
         .output()
         .map_err(|error| {
@@ -5543,7 +5543,7 @@ pub fn resolve_conflict_with_preview(
             }
             let destination = path.join(file);
             let temporary = destination.with_file_name(format!(
-                ".git-chronos-resolution-{}-{}",
+                ".git-khronos-resolution-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -6513,7 +6513,7 @@ fn run_status_with_limit(
     let stdout = child.stdout.take().ok_or_else(|| {
         AppError::new(
             "gitFailure",
-            "Git Chronos could not read repository status output.",
+            "Git Khronos could not read repository status output.",
             Some("Try refreshing the repository."),
         )
     })?;
@@ -6531,7 +6531,7 @@ fn run_status_with_limit(
         if reader.read_until(0, &mut record).map_err(|error| {
             AppError::new(
                 "gitFailure",
-                format!("Git Chronos could not read repository status: {error}"),
+                format!("Git Khronos could not read repository status: {error}"),
                 Some("Try refreshing the repository."),
             )
         })? == 0
@@ -6571,7 +6571,7 @@ fn run_status_with_limit(
         stream.read_to_end(&mut stderr).map_err(|error| {
             AppError::new(
                 "gitFailure",
-                format!("Git Chronos could not read a Git error: {error}"),
+                format!("Git Khronos could not read a Git error: {error}"),
                 Some("Try refreshing the repository."),
             )
         })?;
@@ -6579,7 +6579,7 @@ fn run_status_with_limit(
     let status = child.wait().map_err(|error| {
         AppError::new(
             "gitFailure",
-            format!("Git Chronos could not finish reading repository status: {error}"),
+            format!("Git Khronos could not finish reading repository status: {error}"),
             Some("Try refreshing the repository."),
         )
     })?;
@@ -7191,9 +7191,9 @@ fn read_commits_with_pagination(
     args.extend([
         "--decorate=short",
         "--decorate-refs-exclude=refs/remotes/*/HEAD",
-        "--decorate-refs-exclude=refs/git-chronos/recovery/*",
+        "--decorate-refs-exclude=refs/git-khronos/recovery/*",
         "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
-        "--exclude=refs/git-chronos/recovery/*",
+        "--exclude=refs/git-khronos/recovery/*",
         "--all",
     ]);
     read_commits_with_arguments(path, &args)
@@ -7213,7 +7213,7 @@ fn read_commits_from_revisions(
         count.as_str(),
         "--decorate=short",
         "--decorate-refs-exclude=refs/remotes/*/HEAD",
-        "--decorate-refs-exclude=refs/git-chronos/recovery/*",
+        "--decorate-refs-exclude=refs/git-khronos/recovery/*",
         "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
     ];
     args.extend(revisions.iter().map(String::as_str));
@@ -7463,7 +7463,7 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
         ));
     }
     let history_no_commit =
-        no_commit_replay::active(&directory.join("git-chronos-no-commit.json"))?;
+        no_commit_replay::active(&directory.join("git-khronos-no-commit.json"))?;
     let sequence = if history_no_commit {
         None
     } else {
@@ -7535,7 +7535,7 @@ fn rebase_support_dir(path: &Path) -> Result<PathBuf, AppError> {
             "rev-parse",
             "--path-format=absolute",
             "--git-path",
-            "git-chronos-rebase",
+            "git-khronos-rebase",
         ],
     )?;
     ensure_success("locate interactive rebase storage", &output)?;
@@ -8034,7 +8034,7 @@ mod tests {
     impl TestRepository {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "git-chronos-test-{}-{}",
+                "git-khronos-test-{}-{}",
                 std::process::id(),
                 TEST_ID.fetch_add(1, Ordering::Relaxed)
             ));
@@ -8871,7 +8871,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["One", "Renamed Two"]
         );
-        assert!(!repository.path.join(".git/git-chronos-rebase").exists());
+        assert!(!repository.path.join(".git/git-khronos-rebase").exists());
     }
 
     #[test]
@@ -9179,7 +9179,7 @@ mod tests {
                 .unwrap()
                 .file_name()
                 .to_string_lossy()
-                .starts_with(".git-chronos-resolution-")
+                .starts_with(".git-khronos-resolution-")
         }));
     }
 
@@ -9516,7 +9516,7 @@ mod tests {
         stage_all(&source.path).expect("stage seed");
         commit(&source.path, "Seed").expect("commit seed");
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-destination-{}-{}",
+            "git-khronos-destination-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -9547,7 +9547,7 @@ mod tests {
         commit(&source.path, "Seed").expect("commit seed");
 
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-fetch-{}-{}",
+            "git-khronos-fetch-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -9635,7 +9635,7 @@ mod tests {
         commit(&source.path, "Seed").expect("commit seed");
 
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-tracking-{}-{}",
+            "git-khronos-tracking-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -9733,7 +9733,7 @@ mod tests {
         create_branch(&repository.path, "feature").expect("create feature branch");
 
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-publish-{}-{}",
+            "git-khronos-publish-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -9784,7 +9784,7 @@ mod tests {
         commit(&repository.path, "Seed").expect("commit seed");
 
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-selected-remote-{}-{}",
+            "git-khronos-selected-remote-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -9882,7 +9882,7 @@ mod tests {
         commit(&repository.path, "First revision").expect("commit first revision");
 
         let parent = std::env::temp_dir().join(format!(
-            "git-chronos-force-push-{}-{}",
+            "git-khronos-force-push-{}-{}",
             std::process::id(),
             TEST_ID.fetch_add(1, Ordering::Relaxed)
         ));
@@ -10392,7 +10392,7 @@ mod tests {
             "original\n"
         );
 
-        let binary = b"\0git-chronos\xff\n";
+        let binary = b"\0git-khronos\xff\n";
         fs::write(repository.path.join("scratch.bin"), binary).expect("write binary file");
         let untracked_patch =
             working_tree_file_recovery_patch(&repository.path, "scratch.bin", true)
@@ -11040,7 +11040,7 @@ mod tests {
         repository.git(&[
             "config",
             "gpg.program",
-            "/definitely/missing/git-chronos-test-gpg",
+            "/definitely/missing/git-khronos-test-gpg",
         ]);
 
         let error = commit_with_options(
@@ -11071,7 +11071,7 @@ mod tests {
         repository.git(&[
             "config",
             "gpg.program",
-            "/definitely/missing/git-chronos-test-gpg",
+            "/definitely/missing/git-khronos-test-gpg",
         ]);
 
         commit_with_options(
@@ -11235,7 +11235,7 @@ mod tests {
         repository.git(&[
             "config",
             "gpg.program",
-            "/definitely/missing/git-chronos-signing-diagnostic",
+            "/definitely/missing/git-khronos-signing-diagnostic",
         ]);
         repository.git(&["config", "user.signingKey", "A1B2C3D4"]);
 
@@ -11244,7 +11244,7 @@ mod tests {
         assert!(!diagnostic.available);
         assert_eq!(
             diagnostic.program,
-            "/definitely/missing/git-chronos-signing-diagnostic"
+            "/definitely/missing/git-khronos-signing-diagnostic"
         );
         assert!(diagnostic.key_configured);
         assert!(diagnostic.message.contains("was not found"));
@@ -11564,7 +11564,7 @@ mod tests {
             &repository.path,
             "v2.0.0",
             &oid,
-            Some("Git Chronos 2.0 release"),
+            Some("Git Khronos 2.0 release"),
         )
         .expect("create annotated tag");
 
@@ -11578,12 +11578,12 @@ mod tests {
         .expect("read annotated tag message");
         assert_eq!(
             String::from_utf8_lossy(&message.stdout).trim(),
-            "Git Chronos 2.0 release"
+            "Git Khronos 2.0 release"
         );
         let details = tag_details(&repository.path, "v2.0.0").expect("read annotated tag");
         assert!(details.annotated);
         assert_eq!(details.oid, oid);
-        assert_eq!(details.message.as_deref(), Some("Git Chronos 2.0 release"));
+        assert_eq!(details.message.as_deref(), Some("Git Khronos 2.0 release"));
         assert!(details.tagger_name.is_some());
         assert!(details.tagger_email.is_some());
         assert!(details.tagged_at.is_some());

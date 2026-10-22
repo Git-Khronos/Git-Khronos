@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import type { AppTheme } from './app-theme';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 import type { RepositoryDialogMode } from './repository-dialog.component';
 
@@ -24,7 +24,7 @@ import type { RepositoryDialogMode } from './repository-dialog.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WelcomeLauncherComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   private readonly openRepositoryAction = viewChild.required<ElementRef<HTMLButtonElement>>('openRepositoryAction');
   private readonly repositoryFilter = viewChild<ElementRef<HTMLInputElement>>('repositoryFilter');
   protected readonly repositoryQuery = signal('');

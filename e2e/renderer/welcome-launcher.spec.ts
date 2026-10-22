@@ -13,7 +13,7 @@ test('starts an empty welcome screen at its primary repository action', async ({
 test('preserves natural document focus when repository history is available', async ({ page }) => {
   await page.goto('/?welcome-preview');
   await page.evaluate(() => {
-    localStorage.setItem('git-chronos.recent-repositories.v1', JSON.stringify([
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
     ]));
   });

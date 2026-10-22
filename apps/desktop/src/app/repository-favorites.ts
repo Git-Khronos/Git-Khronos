@@ -1,4 +1,4 @@
-export const FAVORITE_REPOSITORIES_KEY = 'git-chronos.favorite-repositories.v1';
+export const FAVORITE_REPOSITORIES_KEY = 'git-khronos.favorite-repositories.v1';
 
 export function toggleFavoriteRepository(
   favorites: readonly string[],

@@ -128,7 +128,7 @@ pub(super) fn inspect(
     if !rebase {
         return Ok(None);
     }
-    let Some(split) = load(&directory.join("git-chronos-rebase/split.json"))? else {
+    let Some(split) = load(&directory.join("git-khronos-rebase/split.json"))? else {
         return Ok(None);
     };
     if oid(path, "REBASE_HEAD")? != split.stopped_oid {

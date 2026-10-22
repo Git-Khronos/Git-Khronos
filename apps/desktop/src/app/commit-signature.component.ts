@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { CommitSignature } from '@git-chronos/contracts';
+import type { CommitSignature } from '@git-khronos/contracts';
 import { IconComponent, type IconName } from './icon.component';
 
 @Component({

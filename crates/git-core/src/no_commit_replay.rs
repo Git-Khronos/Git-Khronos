@@ -29,7 +29,7 @@ fn storage(path: &Path) -> Result<PathBuf, AppError> {
             "rev-parse",
             "--path-format=absolute",
             "--git-path",
-            "git-chronos-no-commit.json",
+            "git-khronos-no-commit.json",
         ],
     )?;
     ensure_success("locate no-commit replay state", &output)?;

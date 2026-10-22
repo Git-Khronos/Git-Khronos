@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { HistoryQuery } from '@git-chronos/contracts';
+import type { HistoryQuery } from '@git-khronos/contracts';
 import { HistorySearchService, emptyHistoryQuery } from './history-search.service';
 import { IconComponent } from './icon.component';
 

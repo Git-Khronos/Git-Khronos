@@ -46,9 +46,9 @@ async function setup(page: Page): Promise<void> {
       if (command === 'import_mail_patch') {
         if (fixture.stop) {
           fixture.setActive(true);
-          return Promise.resolve({ stopped: true, current: 2, total: 2, message: 'Patch is empty.', recoveryRef: 'refs/git-chronos/recovery/mail' });
+          return Promise.resolve({ stopped: true, current: 2, total: 2, message: 'Patch is empty.', recoveryRef: 'refs/git-khronos/recovery/mail' });
         }
-        return Promise.resolve({ stopped: false, current: null, total: null, message: '', recoveryRef: 'refs/git-chronos/recovery/mail' });
+        return Promise.resolve({ stopped: false, current: null, total: null, message: '', recoveryRef: 'refs/git-khronos/recovery/mail' });
       }
       if (command === 'control_mail_patch') {
         fixture.setActive(false);
@@ -128,7 +128,7 @@ test('import review lists authors and empty patches before applying with recover
   await expect(review).toContainText('empty: Git am will stop');
   expect(await calls(page, 'import_mail_patch')).toHaveLength(0);
   await review.getByRole('button', { name: 'Apply patches' }).click();
-  await expect(panel.getByRole('status')).toContainText('Applied 2 patches. Original tip saved at refs/git-chronos/recovery/mail');
+  await expect(panel.getByRole('status')).toContainText('Applied 2 patches. Original tip saved at refs/git-khronos/recovery/mail');
   const [call] = await calls(page, 'import_mail_patch');
   expect(call.args.request).toEqual(await page.evaluate(() => (window as any).__mail.importRequest));
   expect((await calls(page, 'refresh_repository')).length).toBeGreaterThan(0);

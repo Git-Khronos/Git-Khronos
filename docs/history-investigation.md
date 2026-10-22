@@ -9,7 +9,7 @@ path, and a single ref or `A..B` range. Empty scope searches all local refs and
 HEAD, independently of graph loading and visibility. Remote-tracking refs are
 local snapshots; this does not fetch remote history.
 
-Default scope excludes the reserved `refs/git-chronos/recovery/*` namespace,
+Default scope excludes the reserved `refs/git-khronos/recovery/*` namespace,
 so protected recovery captures and their synthetic index/worktree commits do
 not appear solely because an internal recovery ref retains them. Explicit OID
 or range queries can still inspect those objects. Objects also reachable from

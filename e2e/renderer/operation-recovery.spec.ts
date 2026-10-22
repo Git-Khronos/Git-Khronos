@@ -12,8 +12,8 @@ async function mockRecovery(page: Page, stale = false, loadFailure = false): Pro
     const record = {
       id: '1791408000000000000-12', label: 'hard reset to original base',
       headOid: repository.headOid, snapshotOid: 'b'.repeat(40),
-      headReference: 'refs/git-chronos/recovery/1791408000000000000-12-head',
-      snapshotReference: 'refs/git-chronos/recovery/1791408000000000000-12-changes',
+      headReference: 'refs/git-khronos/recovery/1791408000000000000-12-head',
+      snapshotReference: 'refs/git-khronos/recovery/1791408000000000000-12-changes',
       restored: false,
     };
     const fixture = { calls: [] as Array<{ command: string; args: any }>, records: [record], stale };

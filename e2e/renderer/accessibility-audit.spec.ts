@@ -163,7 +163,7 @@ for (const theme of ['chronos', 'midnight'] as const) {
   for (const state of states) {
     test(`has a structurally accessible ${theme} interface for ${state}`, async ({ page }) => {
       await page.addInitScript((selectedTheme) => {
-        localStorage.setItem('git-chronos.ui.theme', selectedTheme);
+        localStorage.setItem('git-khronos.ui.theme', selectedTheme);
       }, theme);
       await page.goto(state);
       await page.locator('body').getByRole('main').or(page.locator('app-root')).first().waitFor();
@@ -178,13 +178,13 @@ for (const theme of ['chronos', 'midnight'] as const) {
 for (const theme of ['chronos', 'midnight'] as const) {
   test(`keeps open ${theme} menus and dialogs accessible`, async ({ page }) => {
     await page.addInitScript((selectedTheme) => {
-      localStorage.setItem('git-chronos.ui.theme', selectedTheme);
+      localStorage.setItem('git-khronos.ui.theme', selectedTheme);
     }, theme);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await page.getByRole('button', { name: 'Main menu' }).click();
-    await expect(page.getByRole('menu', { name: 'Git Chronos menu' })).toBeVisible();
+    await expect(page.getByRole('menu', { name: 'Git Khronos menu' })).toBeVisible();
     expect(await audit(page)).toEqual([]);
     expect(await auditTextContrast(page)).toEqual([]);
     await page.keyboard.press('Escape');

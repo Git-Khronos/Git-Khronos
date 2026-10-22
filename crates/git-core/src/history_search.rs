@@ -177,7 +177,7 @@ fn scope(path: &Path, value: &str, token: &CancellationToken) -> Result<Vec<Stri
         let mut tips = String::from_utf8_lossy(&output.stdout).lines()
             .filter_map(|line| {
                 let (name, oid) = line.split_once(' ')?;
-                (!name.starts_with("refs/git-chronos/recovery/")).then(|| oid.to_owned())
+                (!name.starts_with("refs/git-khronos/recovery/")).then(|| oid.to_owned())
             }).collect::<Vec<_>>();
         if let Ok(head) = resolve(path, "HEAD", token) { tips.push(head); }
         if token.is_cancelled() { return Err(cancelled_history()); }
@@ -565,8 +565,8 @@ mod tests {
         fs::write(repo.0.join("file.txt"), "unstaged\n").unwrap();
         let snapshot = repo.run(&["stash", "create", "internal recovery snapshot"]);
         let index = repo.run(&["rev-parse", &format!("{snapshot}^2")]);
-        repo.run(&["update-ref", "refs/git-chronos/recovery/test/worktree", &snapshot]);
-        repo.run(&["update-ref", "refs/git-chronos/recovery/test/index", &index]);
+        repo.run(&["update-ref", "refs/git-khronos/recovery/test/worktree", &snapshot]);
+        repo.run(&["update-ref", "refs/git-khronos/recovery/test/index", &index]);
         let token = CancellationToken::default();
 
         let ordinary = search_history(&repo.0, HistoryQuery::default(), None, &token).unwrap();

@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const RECOVERY_NAMESPACE: &str = "refs/git-chronos/recovery/";
+const RECOVERY_NAMESPACE: &str = "refs/git-khronos/recovery/";
 const MAX_RECORD_BYTES: u64 = 64 * 1024;
 
 #[derive(Clone, Serialize)]

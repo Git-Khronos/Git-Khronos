@@ -476,7 +476,7 @@ edits, untracked files or a commit other than the recorded one; on success it
 empties the directory, removes the entire local `submodule.<name>` section
 (including update, branch and ignore), keeps `.git/modules/<name>` with its
 references, and leaves the gitlink, `.gitmodules` and status unchanged. An
-embedded `.git` directory is absorbed first. Git Chronos rechecks the reviewed
+embedded `.git` directory is absorbed first. Git Khronos rechecks the reviewed
 commit, then verifies the empty directory, the remaining configuration, the
 kept repository data and references, and the parent HEAD, index and
 `.gitmodules`.
@@ -488,7 +488,7 @@ Uses documented `git rm -q -- <path>` without `--force` or `--cached`. Local Git
 commit and refuses unstaged `.gitmodules` changes; on success it removes the
 directory and stages both the gitlink deletion and the declaration edit, while
 local `submodule.<name>` configuration and `.git/modules/<name>` remain.
-Uninitialized entries are removed the same way. Afterwards Git Chronos verifies
+Uninitialized entries are removed the same way. Afterwards Git Khronos verifies
 that only the path and `.gitmodules` changed in the index, other declarations,
 local configuration, references in the kept repository data and the parent
 HEAD are unchanged. Reading references from that data passes an explicit work
@@ -502,7 +502,7 @@ plain local paths but honored for `file://` sources, producing a shallow
 repository; `--branch` with `--single-branch` fetches only that branch. Git
 removes its destination after an ordinary failure, but cancellation stops the
 whole process group, so Git cannot clean up and a partial destination with
-`.git` can remain. Git Chronos never deletes it automatically; the error names
+`.git` can remain. Git Khronos never deletes it automatically; the error names
 the folder to remove before retrying, and a retry into it is refused because the
 destination exists.
 
@@ -510,7 +510,7 @@ Optional `--recurse-submodules` (no pathspec) clones nested submodules and,
 as documented, records `submodule.active=.`. Observed on Git 2.39 and 2.53:
 `--depth` does not shorten submodule history (`--shallow-submodules` is not
 passed); when a submodule's server repository is missing, clone exits with an
-error but keeps the checked-out superproject, so Git Chronos reports
+error but keeps the checked-out superproject, so Git Khronos reports
 `submoduleCloneIncomplete`, naming the folder instead of claiming a partial
 clone. Default protocol policy refuses `file` transport for submodules, so the
 fixture serves repositories through a local `git daemon`.
@@ -522,7 +522,7 @@ The explicit branch-only fetch can add documented `--deepen=<n>` or
 repository. Local Git 2.53 observations: deepening extends the existing
 boundary while branches first fetched in the same operation arrive with limited
 history; `--deepen` on a complete repository is a no-op and `--unshallow` there
-fails. Because the boundary is repository-wide, Git Chronos requires one
+fails. Because the boundary is repository-wide, Git Khronos requires one
 selected remote, refuses complete repositories and depths outside 1-1,000,000,
 leaves HEAD, local branches and files unchanged, and reports when the
 repository is still shallow after requesting complete history.
@@ -537,12 +537,12 @@ the current commit to a new branch. A bare repository or a `.git` folder fails
 with "must be run in a work tree", or "cannot use bare repository" when
 `safe.bareRepository=explicit`; unknown `extensions.*` with format version 1
 fails with "unknown repository extension"; foreign ownership fails with
-"dubious ownership". Git Chronos keeps Git's detail but classifies these as
+"dubious ownership". Git Khronos keeps Git's detail but classifies these as
 bare, repository-data, unsupported-format or untrusted-owner refusals with
 original guidance, and never fabricates a working tree or changes the
 repository.
 
-Read-only bare browsing: when Git reports a bare repository, Git Chronos accepts
+Read-only bare browsing: when Git reports a bare repository, Git Khronos accepts
 the path only if `git --git-dir=<path> rev-parse --is-bare-repository
 --absolute-git-dir` reports `true` and the same canonical directory. Folders
 inside bare repository data remain refused. Every later command for that
@@ -749,7 +749,7 @@ Observed behavior with Git LFS 3.7.1 against a local test lock server:
 - `git lfs unlock --id` refuses files with uncommitted changes unless forced,
   and makes lockable files read-only again.
 
-Git Chronos lists locks only on request, refuses existing locks and untracked
+Git Khronos lists locks only on request, refuses existing locks and untracked
 paths before locking, confirms the new lock in Git LFS's JSON reply, rechecks
 the server list (id, path, owner and ownership) before unlocking, refuses dirty
 files before an unforced unlock, and requires a separate warning review before
@@ -930,7 +930,7 @@ No external implementation or proprietary assets were used.
 ## Branch and stash deletion checkpoints
 
 Before Git deletes a local branch, including a branch deleted with its
-worktree, Git Chronos protects the branch tip in the same owned recovery
+worktree, Git Khronos protects the branch tip in the same owned recovery
 namespace and journal. Git removes a deleted branch's reflog, so the reflog
 alone cannot recover it. Before a stash entry is dropped, the reviewed stash
 commit and its first parent are protected. The entry is re-resolved just before
@@ -1162,7 +1162,7 @@ The native rebase validation/recovery contract is unchanged.
 
 ## Recoverable bulk discard
 
-Git Chronos independently derives unstaged changes from complete porcelain
+Git Khronos independently derives unstaged changes from complete porcelain
 status and binary, full-index Git diffs. A server-held preview captures the
 affected paths and index state; execution rejects changed previews and applies
 the checked reverse patch without modifying the index.
@@ -1183,7 +1183,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos presents repository identity, terminal and folder access, favorite state, display-name editing, and close actions in a project-designed menu.
+- Git Khronos presents repository identity, terminal and folder access, favorite state, display-name editing, and close actions in a project-designed menu.
 - Closing multiple repositories uses the same draft, terminal, recently-closed, and persistence paths as closing one tab.
 - Counts beside batch actions make their scope visible before activation, and unavailable actions remain disabled.
 - Directional keys traverse enabled actions, while Escape restores focus to the originating tab.
@@ -1199,7 +1199,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos displays the effective author identity and offers an explicit editor for repository-local values.
+- Git Khronos displays the effective author identity and offers an explicit editor for repository-local values.
 - The native layer validates single-line, non-empty values and delegates persistence to `git config --local --replace-all` using argument arrays.
 - The application does not create an account or store identity data outside Git configuration.
 
@@ -1215,7 +1215,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos uses project-owned session state and native pseudo-terminal commands behind a WAI-ARIA tab interface.
+- Git Khronos uses project-owned session state and native pseudo-terminal commands behind a WAI-ARIA tab interface.
 - Each terminal tab and content panel has a unique repository-scoped relationship, and inactive tabs leave the keyboard sequence.
 - The shortcut routing is limited to the visible terminal panel and does not change repository-tab behavior.
 
@@ -1230,7 +1230,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos derives the name and directory from its existing repository-relative path and adapts the header with project-owned responsive styling.
+- Git Khronos derives the name and directory from its existing repository-relative path and adapts the header with project-owned responsive styling.
 - No additional file reads or Git commands are required when switching files.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
@@ -1245,7 +1245,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos derives navigation targets from its own filtered path/tree lists for working changes, commits, and comparisons.
+- Git Khronos derives navigation targets from its own filtered path/tree lists for working changes, commits, and comparisons.
 - Navigation reuses the existing asynchronous inspection APIs and request guards, so stale file loads cannot replace a newer selection.
 - The toolbar controls, counter, shortcuts, and visual treatment are project-created.
 
@@ -1264,7 +1264,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos applies project-owned width bounds and persists the resulting pixel width in local application storage.
+- Git Khronos applies project-owned width bounds and persists the resulting pixel width in local application storage.
 - Double-click restores project defaults or automatic section sizing, while the graph column fits the currently required branch-lane width.
 - The implementation follows the public WAI-ARIA window splitter semantics and does not depend on another application's code or assets.
 
@@ -1280,7 +1280,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos positions the existing project-designed commit or stash menu beside the focused row.
+- Git Khronos positions the existing project-designed commit or stash menu beside the focused row.
 - Reference menus reuse the same focus, directional-navigation, and return-to-origin behavior in the Left Panel, graph, and commit inspector.
 - Focus moves only after the conditional menu view has rendered and returns without scrolling the graph.
 - Disabled actions are excluded from keyboard traversal.
@@ -1295,7 +1295,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos waits for a deliberate hover before requesting one exact tag through Git's public `for-each-ref` interface.
+- Git Khronos waits for a deliberate hover before requesting one exact tag through Git's public `for-each-ref` interface.
 - Preview output is bounded, stale requests are ignored, and successful results are cached by repository, tag name, and target object.
 - Initial repository snapshots remain unchanged, so repositories with thousands of tags do not pay annotation costs before the workspace is interactive.
 
@@ -1310,7 +1310,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos's latency-sensitive snapshot reads every local and remote branch name, object ID, and upstream name without asking Git to traverse each branch history.
+- Git Khronos's latency-sensitive snapshot reads every local and remote branch name, object ID, and upstream name without asking Git to traverse each branch history.
 - Current-branch divergence is retained from the bounded status query.
 - Annotated tags and the broader working-tree snapshot hydrate after the first usable frame, avoiding an eager object walk in tag-heavy repositories.
 - Full git-core snapshots preserve complete per-branch tracking metadata for callers that explicitly request it.
@@ -1325,7 +1325,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos extends an append-only graph-layout cache when another history page arrives instead of rebuilding every earlier row.
+- Git Khronos extends an append-only graph-layout cache when another history page arrives instead of rebuilding every earlier row.
 - Active lanes are bounded by the number that can fit in the configured graph column, with a hard safety ceiling.
 - DOM virtualization and bounded per-row SVG edges keep rendering cost proportional to the visible graph instead of the repository's total ref fan-out.
 
@@ -1340,7 +1340,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos uses a 12 px floor for primary application text at 100% zoom while retaining larger heading and editor-specific type scales.
+- Git Khronos uses a 12 px floor for primary application text at 100% zoom while retaining larger heading and editor-specific type scales.
 - Tiny non-textual initials and corner annotations retain compact dimensions where enlarging them would obscure their container.
 - Renderer coverage checks the graph, sidebar, toolbar, file list, commit form, and status bar as distinct interface regions.
 
@@ -1355,7 +1355,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos derives display labels from the browser platform exposed by the native WebView.
+- Git Khronos derives display labels from the browser platform exposed by the native WebView.
 - Command handling continues to accept the platform's native modifier keys; only the teaching labels vary.
 - A pure platform mapping and renderer journey cover both the mapping and the Linux presentation.
 
@@ -1370,7 +1370,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos records only the before/after local branch names returned by its own repository snapshot.
+- Git Khronos records only the before/after local branch names returned by its own repository snapshot.
 - Undo and redo reuse the validated public `git switch` command path and refresh the repository afterward.
 - Failed, detached, or no-op checkouts are not recorded as reversible actions.
 
@@ -1384,7 +1384,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos records the validated old and new local branch names only after a successful rename.
+- Git Khronos records the validated old and new local branch names only after a successful rename.
 - Undo and redo call the same validated branch-rename command with reversed arguments.
 - If either expected branch name no longer exists, Git rejects the operation instead of overwriting unrelated state.
 
@@ -1399,7 +1399,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos records the repository's before/after HEAD identifiers after successful commits, message edits, cherry-picks, and revert commits.
+- Git Khronos records the repository's before/after HEAD identifiers after successful commits, message edits, cherry-picks, and revert commits.
 - Undo and redo use a guarded soft HEAD move and fail if repository history changed after the recorded action.
 - The guard preserves unrelated external Git activity instead of guessing how history should be rewritten.
 
@@ -1414,9 +1414,9 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos provides compact locale-aware, relative, and ISO 8601 modes using browser internationalization APIs.
+- Git Khronos provides compact locale-aware, relative, and ISO 8601 modes using browser internationalization APIs.
 - The preference is stored locally and never changes commit metadata.
-- Formatting controls and visuals are original to Git Chronos.
+- Formatting controls and visuals are original to Git Khronos.
 
 No proprietary source code, assets, or implementation details were used.
 
@@ -1429,9 +1429,9 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos queries the public `git ls-files` interface with a validated literal search and NUL-delimited output.
+- Git Khronos queries the public `git ls-files` interface with a validated literal search and NUL-delimited output.
 - Native output, result count, and input length are bounded; searches are debounced and stale responses are ignored.
-- Results open Git Chronos's independently designed centered history or blame workspace.
+- Results open Git Khronos's independently designed centered history or blame workspace.
 
 No proprietary source code, assets, wording, or implementation details were used.
 
@@ -1445,7 +1445,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos implements these presets using its own Angular state and Tauri window integration.
+- Git Khronos implements these presets using its own Angular state and Tauri window integration.
 - Previously stored values outside the supported range are normalized to the nearest preset.
 - No proprietary source code, assets, or implementation details were used.
 
@@ -1462,11 +1462,11 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos invokes the public `git sparse-checkout` interface with validated argument arrays and newline-delimited standard input.
+- Git Khronos invokes the public `git sparse-checkout` interface with validated argument arrays and newline-delimited standard input.
 - Repository state comes from documented Git configuration and `git sparse-checkout list` output.
 - After set/reapply, paths Git reported as left outside the selection (read under `LC_ALL=C`) become an explicit `sparsePathsLeft` result naming up to five paths; nothing is deleted, the selection stays applied and the repository is refreshed. Owned real-Git fixtures cover a modified file (set and reapply, then clean reapply) and an unmerged merge conflict; a renderer journey covers the disclosed message, hint and refresh.
 - In sparse checkouts, Stage all checks porcelain-v2 status afterwards and reports skipped paths as `sparsePathsNotStaged` (in-selection changes stay staged); single-file staging outside the selection becomes `sparsePathOutsideSelection`. A real-Git fixture verifies the populated submodule disclosure, unchanged excluded tree after a sparse commit, and both staging outcomes; a renderer journey verifies the alert and refreshed Git status.
-- The UI and confirmation flows are original to Git Chronos; no proprietary code, assets, or visual implementation were used.
+- The UI and confirmation flows are original to Git Khronos; no proprietary code, assets, or visual implementation were used.
 
 ## Compact commit graph column
 
@@ -1477,7 +1477,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos uses its own lane geometry with a smaller lane gap and preferred column width.
+- Git Khronos uses its own lane geometry with a smaller lane gap and preferred column width.
 - Expanded and compact widths are stored separately per repository, so switching layouts preserves user resizing.
 - The resize ceiling is calculated from the peak active-lane count in the loaded topology, allowing every visible branch path to fit without a fixed-width cutoff.
 - The graph settings menu and a resizer double-click provide a project-designed fit-to-paths action.
@@ -1497,7 +1497,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos invokes the public `git bisect start`, `good`, `bad`, `skip`, and `reset` commands through its validated native command boundary.
+- Git Khronos invokes the public `git bisect start`, `good`, `bad`, `skip`, and `reset` commands through its validated native command boundary.
 - The selected historical commit is presented as the known-good endpoint; the current HEAD remains the explicit known-bad endpoint.
 - A project-designed progress bar keeps classification controls visible without reproducing another application's layout or assets.
 - Starting is disabled for dirty worktrees, identical endpoints, rebases, or an already-active bisection.
@@ -1513,7 +1513,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos exposes the public `git push --force-with-lease` behavior only for a local branch with a configured upstream.
+- Git Khronos exposes the public `git push --force-with-lease` behavior only for a local branch with a configured upstream.
 - The action is separated from ordinary Push and requires an explicit confirmation that names the branch and upstream.
 - An unconditional `--force` path is not exposed.
 - Native coverage advances a bare remote behind the client's back and verifies that the stale lease rejects the rewrite without changing the remote reference.
@@ -1529,7 +1529,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos detects the documented `MERGE_HEAD` repository state through Git's resolved metadata path.
+- Git Khronos detects the documented `MERGE_HEAD` repository state through Git's resolved metadata path.
 - A project-designed status bar exposes Continue and Abort throughout the merge instead of relying on a transient error message.
 - Continue uses `git merge --continue` with a non-interactive editor configuration; Abort uses `git merge --abort`.
 - Native tests cover both a completed three-way resolution and restoration after aborting a conflicted merge.
@@ -1545,7 +1545,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos detects Git's documented `CHERRY_PICK_HEAD` and `REVERT_HEAD` metadata in the same bounded operation-state query used for merge, rebase, and bisect.
+- Git Khronos detects Git's documented `CHERRY_PICK_HEAD` and `REVERT_HEAD` metadata in the same bounded operation-state query used for merge, rebase, and bisect.
 - A project-designed history-operation bar stays visible while the sequencer operation is active.
 - Every control invokes the corresponding public Git command through validated fixed choices; arbitrary command or option input is not accepted.
 - Native fixtures verify both cherry-pick completion and abort, plus revert detection and restoration.
@@ -1559,7 +1559,7 @@ Public `git cherry-pick --mainline` and `git revert --mainline` define a
 Cherry-pick produces a single-parent commit; revert retains the original merge
 ancestry, so later merges do not automatically restore its ancestor changes.
 
-Git Chronos independently adds an explicit parent selector with no default for
+Git Khronos independently adds an explicit parent selector with no default for
 single merges. Context-menu, inspector and branch-drop confirmations share the
 review and retain choices on hook failure. A real hook fixture observed Git
 leaving staged inverse changes without `REVERT_HEAD` after revert commit refusal:
@@ -1571,7 +1571,7 @@ confirmations and cannot redirect replay after a delayed target checkout.
 Mixed selections containing a merge require individual review; all selected
 commits are validated before any prefix is replayed. Native execution rechecks
 parent validity, requires a clean complete status and no active operation, and
-preserves the destination tip under `refs/git-chronos/recovery` before merge
+preserves the destination tip under `refs/git-khronos/recovery` before merge
 replay. Recovery-reference failure stops execution. Existing Continue/Skip/Abort
 handle conflicts. Recovery protects committed history, not arbitrary hook
 effects or remote updates.
@@ -1587,7 +1587,7 @@ reviewed-list path. No proprietary code, assets or distinctive wording were copi
 ## Staged no-commit cherry-pick
 
 Documented `git cherry-pick --no-commit` applies differences to the index and
-working tree without creating commits. Git Chronos independently runs reviewed
+working tree without creating commits. Git Khronos independently runs reviewed
 rows one at a time under a bounded worktree-local JSON journal (1-500 full OIDs,
 128 KiB metadata cap). This journal is application metadata, not a public Git
 operation marker. Complete clean status/no active operation and visible index
@@ -1632,7 +1632,7 @@ No third-party implementation code or assets were used.
 
 The official Git revert manual defines a list of commits without traversal,
 inverse commits, native sequencer controls and explicit merge mainlines.
-Git Chronos independently validates 1-500 distinct full commit IDs and every
+Git Khronos independently validates 1-500 distinct full commit IDs and every
 selected parent before mutation, refuses merges in a shared ordinary selection,
 requires complete clean status and visible index entries, and protects the
 original tip before invoking `git revert --no-edit --no-walk=unsorted`.
@@ -1676,7 +1676,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos reads the effective Git signing format and relevant program setting only when the user requests a diagnostic.
+- Git Khronos reads the effective Git signing format and relevant program setting only when the user requests a diagnostic.
 - The diagnostic resolves the configured program or documented default through the repository path and system `PATH` without invoking the signer or requesting credentials.
 - The result distinguishes explicit key selection from Git's default-key selection and remains scoped to the active repository.
 - Signer checks are deliberately excluded from repository snapshot loading to preserve startup performance.
@@ -1701,7 +1701,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos reads a bounded set of reflog records through the system Git executable with a byte-limited output buffer.
+- Git Khronos reads a bounded set of reflog records through the system Git executable with a byte-limited output buffer.
 - A project-designed searchable recovery view shows selectors, actions, authors, and abbreviated commit IDs.
 - Recovery creates a branch through the existing validated branch command and never moves the current branch implicitly.
 - Destructive reset is deliberately excluded from the recovery shortcut.
@@ -1717,10 +1717,10 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos exposes an explicit commit-form option and forwards only a boolean signing request across IPC.
+- Git Khronos exposes an explicit commit-form option and forwards only a boolean signing request across IPC.
 - The native layer asks the system Git executable to sign; private keys and passphrases never enter renderer state.
 - Existing `commit.gpgSign` configuration initializes the explicit commit-form option.
-- Git Chronos reads identity and signing preferences together in one bounded config query, avoiding additional startup subprocesses.
+- Git Khronos reads identity and signing preferences together in one bounded config query, avoiding additional startup subprocesses.
 - The commit checkbox starts from the effective repository default; changing it sends an explicit per-commit sign or no-sign override.
 - Preferences display the effective format and key without reading or storing private-key material.
 - The inspector verifies only the selected commit, avoiding an expensive signature check across the complete graph.
@@ -1780,9 +1780,9 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos provides project-owned Chronos Dark and Midnight Contrast palettes through CSS custom properties.
+- Git Khronos provides project-owned Chronos Dark and Midnight Contrast palettes through CSS custom properties.
 - The selected theme is stored locally and applied at the document root so welcome, repository, overlay, and terminal-adjacent surfaces share the same state.
-- Palette names, color values, controls, and styling are original to Git Chronos.
+- Palette names, color values, controls, and styling are original to Git Khronos.
 
 No proprietary assets, palettes, source code, or visual implementation details were copied.
 
@@ -1795,7 +1795,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos stores three bounded local presentation values and applies them through project-owned CSS custom properties.
+- Git Khronos stores three bounded local presentation values and applies them through project-owned CSS custom properties.
 - Inline, hunk, split, and blame content share the same monospace geometry without modifying repository files or patch data.
 - The in-view wrap control updates the same persisted preference as the Preferences dialog.
 
@@ -1811,7 +1811,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos centralizes its initial visibility policy in a pure project-owned helper.
+- Git Khronos centralizes its initial visibility policy in a pure project-owned helper.
 - Existing per-repository visibility settings continue to take precedence, so upgrades do not overwrite user choices.
 - All six columns retain the existing resize, reorder, and settings-menu controls.
 
@@ -1826,7 +1826,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos derives marker positions from its virtual row geometry without adding off-screen commit rows to the DOM.
+- Git Khronos derives marker positions from its virtual row geometry without adding off-screen commit rows to the DOM.
 - Project-defined colors distinguish working changes, HEAD, selections, and search results.
 - Large selection and search sets are evenly sampled to keep marker rendering bounded.
 
@@ -1841,7 +1841,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos stores an ordered list of repository paths in local application storage.
+- Git Khronos stores an ordered list of repository paths in local application storage.
 - Favorites can be added or removed from recent-repository rows and remain available across restarts.
 - Existing tabs are activated directly; closed favorites use the normal repository-opening path.
 - The star icon and repository-management layout are project-created.
@@ -1857,7 +1857,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos executes each strategy through its existing validated Git command path.
+- Git Khronos executes each strategy through its existing validated Git command path.
 - A project-created star control persists the default locally without starting a network operation.
 - Choosing the strategy label runs that mode once without changing the saved default.
 
@@ -1872,7 +1872,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos reorders its own repository-session array and persists only canonical repository paths.
+- Git Khronos reorders its own repository-session array and persists only canonical repository paths.
 - A project-defined insertion marker indicates whether the dragged tab will land before or after the target.
 - Grouped worktree tabs reuse the same deterministic ordering model.
 
@@ -1887,13 +1887,13 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos requires a complete passing integrity inspection, then invokes
+- Git Khronos requires a complete passing integrity inspection, then invokes
   `git maintenance run --task=commit-graph --task=pack-refs` through its existing
   argument-array execution boundary. Explicit tasks ignore configured enabled
   maintenance tasks. No GC, object pruning, reflog expiry, missing-worktree cleanup,
   prefetch or scheduling is requested.
 - The native command runs away from the renderer thread and is serialized with other operations for the same repository.
-- Progress and completion are reported through Git Chronos's project-defined activity system.
+- Progress and completion are reported through Git Khronos's project-defined activity system.
 - The preferences action requires review before running, disables pending actions,
   retains refusal feedback and requires an explicit retry. Reviews and delayed
   local feedback do not transfer to another repository.
@@ -1917,7 +1917,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos exposes its existing repository forms and validated service operations as searchable command descriptors.
+- Git Khronos exposes its existing repository forms and validated service operations as searchable command descriptors.
 - Dynamic stash commands are derived from the current repository snapshot and use encoded stash references at the UI boundary.
 - Dynamic branch commands are derived from local references; rename uses an editable dialog and deletion retains the existing confirmation and force-delete guard.
 - Destructive actions are not inferred from search text, and commands disable themselves when repository state makes them unavailable.
@@ -1933,7 +1933,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos parses supported GitHub, GitLab, and Bitbucket Cloud HTTPS and SSH clone URL forms locally.
+- Git Khronos parses supported GitHub, GitLab, and Bitbucket Cloud HTTPS and SSH clone URL forms locally.
 - Provider-specific terminology and nested GitLab namespaces are retained in the generated destination.
 - Only validated HTTPS destinations are passed to the operating system's default browser.
 - Unsupported hosting providers retain a neutral empty state; no host API is queried and no credentials are collected.
@@ -1949,7 +1949,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Chronos creates the worktree through its existing native Git command boundary and opens it as a normal repository tab.
+- Git Khronos creates the worktree through its existing native Git command boundary and opens it as a normal repository tab.
 - Users can choose to reveal the existing multi-tab repository terminal immediately after creation.
 - The workflow is tool-neutral and does not assume, install, or invoke a particular coding agent.
 

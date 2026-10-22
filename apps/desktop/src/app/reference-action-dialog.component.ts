@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 export interface ReferenceActionRequest {
@@ -25,7 +25,7 @@ export interface ReferenceActionRequest {
           <p id="reference-action-description">
             @if (target.action === 'delete-tag') {
               Delete only the local tag. Remote tags and working files are unchanged.
-              Its object is preserved under a Git Chronos recovery reference.
+              Its object is preserved under a Git Khronos recovery reference.
             } @else if (target.action === 'push-tag') {
               Push only this tag. Other tags and branches are unchanged. An existing different remote tag is not overwritten.
             } @else {
@@ -79,7 +79,7 @@ export interface ReferenceActionRequest {
   `],
 })
 export class ReferenceActionDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<ReferenceActionRequest | null>(null);
   readonly closed = output<void>();
   readonly remote = signal('');

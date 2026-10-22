@@ -1,6 +1,6 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, inject, Injector, input, output, signal, viewChild } from '@angular/core';
-import type { MergeRebasePlan } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { MergeRebasePlan } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 export interface MergeRebaseDialogState {
@@ -60,7 +60,7 @@ export interface MergeRebaseDialogState {
   `],
 })
 export class MergeRebaseDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly state = input.required<MergeRebaseDialogState>();
   readonly closed = output<void>();
   protected readonly failed = signal(false);

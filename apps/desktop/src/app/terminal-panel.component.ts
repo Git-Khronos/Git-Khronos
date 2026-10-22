@@ -50,7 +50,7 @@ interface TerminalExit {
 const TERMINAL_PANEL_MIN_HEIGHT = 150;
 const TERMINAL_PANEL_DEFAULT_HEIGHT = 280;
 const TERMINAL_PANEL_VIEWPORT_ALLOWANCE = 170;
-const TERMINAL_PANEL_HEIGHT_STORAGE_KEY = 'git-chronos.terminal.panel-height';
+const TERMINAL_PANEL_HEIGHT_STORAGE_KEY = 'git-khronos.terminal.panel-height';
 
 interface TerminalTab extends TerminalInfo {
   title: string;

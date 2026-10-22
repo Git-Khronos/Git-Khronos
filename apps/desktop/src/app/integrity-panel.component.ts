@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
-import type { AppError, IntegrityReport } from '@git-chronos/contracts';
+import type { AppError, IntegrityReport } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 
 @Component({
   selector: 'gc-integrity-panel',
@@ -60,7 +60,7 @@ import { GitChronosService } from './git-chronos.service';
   `],
 })
 export class IntegrityPanelComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly repositoryId = input.required<string>();
   readonly disabled = input(false);
   readonly busy = signal(false);

@@ -39,7 +39,7 @@ async function setup(page: Page): Promise<void> {
         if (fixture.importRefused) return Promise.reject({ kind: 'bundleRecoveryFailed',
           message: 'Bundle objects were imported, but its recovery reference could not be created.',
           hint: 'Inspect and prepare a fresh review.' });
-        return Promise.resolve('refs/git-chronos/recovery/owned-bundle');
+        return Promise.resolve('refs/git-khronos/recovery/owned-bundle');
       }
       if (['refresh_repository', 'refresh_repository_metadata', 'refresh_repository_status'].includes(command)) {
         if (fixture.refreshRefused) return Promise.reject(new Error('Refresh fixture failed'));
@@ -84,7 +84,7 @@ test('bundle review exposes all tips but requires explicit branch-only choice be
   await review.getByLabel('Advertised branch to preserve').selectOption('refs/heads/shared/branch');
   await review.getByRole('button', { name: 'Import into new recovery reference' }).click();
   await expect(review).toHaveCount(0);
-  await expect(panel.getByRole('status')).toContainText('refs/git-chronos/recovery/owned-bundle');
+  await expect(panel.getByRole('status')).toContainText('refs/git-khronos/recovery/owned-bundle');
   await expect(panel.getByRole('status')).toContainText('No existing branch or working file moved');
   const fixture = await page.evaluate(() => (window as any).__bundle);
   expect(fixture.calls.find((call: any) => call.command === 'import_git_bundle').args)
@@ -130,7 +130,7 @@ test('post-import refresh refusal keeps the successful recovery reference visibl
   await panel.getByLabel('Advertised branch to preserve').selectOption('refs/heads/shared/branch');
   await page.evaluate(() => { (window as any).__bundle.refreshRefused = true; });
   await panel.getByRole('button', { name: 'Import into new recovery reference' }).click();
-  await expect(panel.getByRole('status')).toContainText('refs/git-chronos/recovery/owned-bundle');
+  await expect(panel.getByRole('status')).toContainText('refs/git-khronos/recovery/owned-bundle');
   await expect(panel.getByRole('alert')).toContainText('refresh failed');
   await expect(panel.getByRole('alert')).toBeFocused();
   await expect(panel.getByRole('button', { name: 'Import into new recovery reference' })).toHaveCount(0);

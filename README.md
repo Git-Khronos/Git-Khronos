@@ -1,6 +1,6 @@
-# Git Chronos
+# Git Khronos
 
-Git Chronos is a free and open-source, local-first Git desktop client built with
+Git Khronos is a free and open-source, local-first Git desktop client built with
 Angular, Nx, Rust, and Tauri.
 
 > [!NOTE]
@@ -69,8 +69,8 @@ task install:system
 ```
 
 The command builds the optimized application, verifies that the generated
-package belongs to Git Chronos, and then asks for administrator access through
-`sudo`. The package installs `git-chronos-desktop` in `/usr/bin`, registers Git
+package belongs to Git Khronos, and then asks for administrator access through
+`sudo`. The package installs `git-khronos-desktop` in `/usr/bin`, registers Git
 Chronos in the desktop application menu, and installs its icons and license
 notices in the standard system locations. Git 2.39 or newer is a required
 package dependency; OpenSSH client and Git LFS are recommended dependencies.
@@ -88,8 +88,8 @@ task uninstall:system
 The generated package is written to `target/release/bundle/deb/`. The generic
 `task bundle` command continues to build every installer format supported by the
 current platform, while `task install` remains the development-dependency setup
-command. After installation, launch **Git Chronos** from the desktop application
-menu or run `git-chronos-desktop` from any terminal. A locally built package
+command. After installation, launch **Git Khronos** from the desktop application
+menu or run `git-khronos-desktop` from any terminal. A locally built package
 targets the current CPU architecture and native-library baseline; build public
 release packages on the oldest Debian/Ubuntu baseline the release supports.
 
@@ -121,7 +121,7 @@ learning reference for implemented workflows. Each topic explains the underlying
 commands, important precautions and the application's narrower scope. Contextual
 **Learn about…** buttons open the relevant topic without submitting the parent
 dialog. Official Git and Git LFS manuals open in your browser only on request;
-their full option sets do not imply that Git Chronos implements every option.
+their full option sets do not imply that Git Khronos implements every option.
 The explanations are original, not copied documentation.
 
 The commit form's **Commit policy** options are opt-in per repository draft.
@@ -167,7 +167,7 @@ from genuinely unsigned commits. SSH verification follows the user's allowed
 signers and revocation configuration; the application does not create trust
 entries. If Git cannot verify a signature, check the configured tools, keys and
 trust policy. Real disposable SSH signing/trust/revocation qualification is
-available with `cargo test -p git-chronos-git-core signing_ -- --include-ignored`
+available with `cargo test -p git-khronos-git-core signing_ -- --include-ignored`
 when `ssh-keygen` supports SSH signing. It generates and removes test-only keys;
 no existing keys or user trust stores are modified.
 On Unix, the same selector also qualifies real OpenPGP signing when `gpg` and
@@ -293,7 +293,7 @@ In a shallow repository the same dialog shows **History depth**: keep the
 current depth, deepen by a number of commits, or download complete history from
 one selected remote. Branches first fetched while deepening may themselves be
 shallow. A cancelled clone can leave a partial destination folder; the error
-names it, and Git Chronos never deletes it automatically.
+names it, and Git Khronos never deletes it automatically.
 Submodules are cloned only when **Include submodules** is checked: Git then
 clones every submodule, including nested ones, and marks all submodules active
 (`submodule.active=.`) so ones added later are also initialized. A shallow
@@ -324,11 +324,11 @@ storage instead of deleting their metadata. Unsupported output and review
 limits produce explicit errors.
 
 A missing, unlocked linked registration offers **Remove with recovery…**. After
-explicit confirmation, Git Chronos rechecks the reviewed HEAD/branch, that the
+explicit confirmation, Git Khronos rechecks the reviewed HEAD/branch, that the
 directory is still absent and that the exact administrative directory is
 identified by an absolute link. It protects HEAD and any worktree-specific
-references under `refs/git-chronos/recovery/`, then copies the administrative
-index, reflog and per-worktree files to `git-chronos-worktree-registrations/`
+references under `refs/git-khronos/recovery/`, then copies the administrative
+index, reflog and per-worktree files to `git-khronos-worktree-registrations/`
 in the common Git directory. After a final recheck of every registration and the
 metadata, it runs `git worktree remove` without force for that path only, never
 the global prune. It then verifies that other registrations and
@@ -390,13 +390,13 @@ Each declared submodule also shows the branch followed by remote updates.
 parent repository's current branch name, or store a specific branch name.
 The change is written to `.gitmodules` for review and an explicit commit; it
 does not fetch or move the submodule checkout. Stale reviews and invalid branch
-names are refused, and Git Chronos verifies that no other declaration changed.
+names are refused, and Git Khronos verifies that no other declaration changed.
 
 When an initialized submodule's local URL differs from `.gitmodules` (or the
 declaration is relative), **Sync local URL from .gitmodules…** confirms the
 declared and current values, then runs `git submodule sync` for that path only
 (not recursively). The repository and its review must still match. Afterwards
-Git Chronos verifies that only `submodule.<name>.url` and, inside a checked-out
+Git Khronos verifies that only `submodule.<name>.url` and, inside a checked-out
 submodule, one default-remote URL changed, and reports both previous values so
 they can be restored with `git config`. Committed files and the index are not
 changed.
@@ -406,7 +406,7 @@ recorded in the parent index, **Check out recorded commit…** detaches it at th
 recorded commit with `git submodule update --no-fetch --checkout` for that path
 only. It never fetches, overrides a configured merge/rebase/none update mode,
 and refuses tracked changes, conflicts, stale reviews and unavailable commits.
-The previous submodule commit is kept under `refs/git-chronos/recovery/` inside
+The previous submodule commit is kept under `refs/git-khronos/recovery/` inside
 the submodule; branches, untracked files and the parent index are unchanged.
 The optional nested mode then applies the same protected checkout to every
 initialized nested submodule (up to 8 levels), reporting each moved commit,
@@ -450,7 +450,7 @@ are not excluded and no rollback is promised.
 
 Real Git LFS fixtures are opt-in because LFS is an optional system tool. With a
 JSON-capable `git-lfs` on `PATH`, run
-`cargo test -p git-chronos-git-core lfs_tracking -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_tracking -- --include-ignored`.
 The regular native suite explicitly reports these fixtures as ignored when
 they are not selected; renderer journeys use mocked IPC, not packaged Tauri.
 
@@ -466,7 +466,7 @@ unlock recheck the server list first and refuse if the lock changed. Servers
 without locking support, unreachable endpoints and refusals are reported with
 their reason; files, the index and references are not changed. Real lock
 fixtures use a local test server:
-`cargo test -p git-chronos-git-core lfs_locks -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_locks -- --include-ignored`.
 
 The same dialog's **Inspect effective file attributes** accepts one literal
 repository-relative path and works even without Git LFS. It compares `filter`,
@@ -503,7 +503,7 @@ object-availability checks and retry without promising recovery. Filesystem/Git
 state can change externally during the sequential scan. Unsupported JSON/version/
 hash/path values and filesystem read failures are explicit errors, not empty
 successes. Real object fixtures require `git-lfs` on `PATH`; run
-`cargo test -p git-chronos-git-core lfs_objects -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_objects -- --include-ignored`.
 
 After scanning, choose a **Remote for selective fetch** and **Review fetch…**
 on one file. Review its path, committed HEAD, SHA-256 object ID and size, then
@@ -523,7 +523,7 @@ retain downloaded or partial cache data; inspect and review again before retryin
 Successful fetch checks local availability by size, not hash integrity, and
 refreshes diagnostics. External edits remain possible; review is not a filesystem
 transaction. Real fixtures with local bare remotes require Git LFS:
-`cargo test -p git-chronos-git-core lfs_fetch -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_fetch -- --include-ignored`.
 Live HTTPS/SSH LFS endpoints and packaged-native acceptance remain unqualified.
 
 For an existing canonical pointer with an available local object, choose
@@ -549,11 +549,11 @@ External filesystem edits can still race checks; no transactional guarantee or
 automatic rollback is claimed. The ordinary diagnostic scan remains size-only,
 even after a particular hydration verified its copied contents.
 Actual hydration fixtures are opt-in:
-`cargo test -p git-chronos-git-core lfs_checkout -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_checkout -- --include-ignored`.
 Packaged and cross-platform native acceptance remain unqualified.
 
 **Clean LFS storage** reviews an exact list of local LFS objects that no Git
-object references, with their sizes, before anything is removed. Git Chronos
+object references, with their sizes, before anything is removed. Git Khronos
 reads every Git object in the object database, including unreachable objects and
 alternates, so branches, tags, stashes, reflogs, every worktree index and dangling
 blobs all protect their LFS content. Objects written in the last hour are kept so
@@ -563,7 +563,7 @@ because unreferenced objects cannot be proven there. Removal re-scans and requir
 every reviewed object to still be an unreferenced candidate with the same size;
 otherwise nothing is removed. At most 5,000 objects are reviewed per batch.
 Removed local copies have no offline undo. Fixtures are opt-in:
-`cargo test -p git-chronos-git-core lfs_prune -- --include-ignored`.
+`cargo test -p git-khronos-git-core lfs_prune -- --include-ignored`.
 
 The older `git lfs prune` delegation remains as an advanced action inside the same
 dialog. It follows retention and fetch-exclude settings, removes historical objects
@@ -682,7 +682,7 @@ Conflicts or overlapping staged-only edits are reported rather than dropped.
 
 Tag menus distinguish local deletion, signature verification, selected-tag
 push, and remote deletion. A local deletion first preserves the tag object in
-`refs/git-chronos/recovery`; selected transport never automatically includes
+`refs/git-khronos/recovery`; selected transport never automatically includes
 other tags. Remote deletion uses an exact expected-object lease and refuses a
 reference that moved. The selected remote's **push URL**, not its fetch URL,
 defines the destination; multiple push URLs are refused for these actions.
@@ -831,7 +831,7 @@ Partial subject matching and `amend!` message replacement are not supported;
 use explicit row actions for those cases.
 Before any interactive rebase checkout, the complete action/message plan is
 validated and the original source tip is preserved under
-`refs/git-chronos/recovery`. If preserving that tip fails, execution stops.
+`refs/git-khronos/recovery`. If preserving that tip fails, execution stops.
 The reference protects committed history, not arbitrary filesystem/hook effects
 or remote updates. Existing Continue/Skip/Abort handle interrupted execution.
 The row editor remains a linear local-branch workflow; merge preservation uses
@@ -848,7 +848,7 @@ difference while retaining the original merge in history. Parent 1 is never
 selected automatically. Reverting a merge can also affect what later merges
 bring in, since the original ancestry remains.
 Merge replay requires a clean working tree and no active operation, and saves
-the original destination tip under `refs/git-chronos/recovery` before execution.
+the original destination tip under `refs/git-khronos/recovery` before execution.
 Invalid/missing parents and mixed selections containing merges are refused
 before any replay. Hook failures preserve the reviewed choice, but may leave
 applied changes staged. Close the confirmation to review them: Continue/Abort
@@ -945,7 +945,7 @@ notes or committer identity; committed secrets travel in plain text.
 **Choose series to apply…** reviews every patch's author and subject without
 changing anything. **Apply patches** rechecks the exact file, HEAD and branch,
 requires a clean tracked state on a local branch and saves the original tip under
-`refs/git-chronos/recovery/` before `git am` creates one new commit per patch with
+`refs/git-khronos/recovery/` before `git am` creates one new commit per patch with
 you as committer. Hooks run; no three-way fallback, scissors or rerere update is
 used. Conflicts, empty patches or hook refusals pause the series: resolve and
 stage, then **Continue**, **Skip this patch** or **Abort** (restores the original
@@ -969,7 +969,7 @@ trusted files. Git validates the actual object payload during import, not review
 Incremental bundles need their prerequisite commits in the receiving repository.
 Choose an advertised branch explicitly, then **Import into new recovery reference**.
 Objects are imported and the exact branch commit is protected under
-`refs/git-chronos/recovery/`. Use reflog/recovery tools to create a local branch
+`refs/git-khronos/recovery/`. Use reflog/recovery tools to create a local branch
 from that commit afterwards. No checkout or existing branch/tag/tracking-ref,
 HEAD, FETCH_HEAD, index or working-file update is requested. Dirty files can stay
 in place; active Git operations must finish or abort first. Configured reference
@@ -1009,7 +1009,7 @@ to the UI.
 
 ## Privacy
 
-Git Chronos has no telemetry, accounts, advertisements, or hosted backend.
+Git Khronos has no telemetry, accounts, advertisements, or hosted backend.
 Repository information and diagnostics remain on the local machine.
 
 ## License

@@ -11,7 +11,7 @@ impact, and whether the issue requires opening an untrusted repository.
 
 ## Security boundaries
 
-Git Chronos invokes Git directly with argument arrays and does not construct
+Git Khronos invokes Git directly with argument arrays and does not construct
 shell commands. After opening a repository, frontend operations use an opaque
 session identifier rather than supplying a working directory. Tauri capability
 files restrict native access to the application window.

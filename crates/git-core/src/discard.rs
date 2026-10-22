@@ -190,7 +190,7 @@ pub(super) fn recovery_directory(path: &Path) -> Result<PathBuf, AppError> {
             "rev-parse",
             "--path-format=absolute",
             "--git-path",
-            "git-chronos-recovery",
+            "git-khronos-recovery",
         ],
     )?;
     ensure_success("locate discarded-change recovery", &output)?;
@@ -640,7 +640,7 @@ mod tests {
         let repository = Repository::new();
         repository.baseline();
         repository.write("tracked.txt", b"keep\n");
-        repository.write(".git/git-chronos-recovery", b"not a directory");
+        repository.write(".git/git-khronos-recovery", b"not a directory");
         let plan = prepare_discard(&repository.0, None).unwrap();
         assert!(execute_discard(&repository.0, &plan).is_err());
         assert_eq!(

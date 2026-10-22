@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
-import type { SubmoduleDeinitResult, SubmoduleRemovalResult, SubmoduleRecordedCheckoutResult, SubmoduleState, SubmoduleStateReview, SubmoduleTrackingBranchResult, SubmoduleUrlSyncResult } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { SubmoduleDeinitResult, SubmoduleRemovalResult, SubmoduleRecordedCheckoutResult, SubmoduleState, SubmoduleStateReview, SubmoduleTrackingBranchResult, SubmoduleUrlSyncResult } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import type { WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
 import { submoduleFindings } from './submodule-findings';
@@ -235,7 +235,7 @@ import { submoduleFindings } from './submodule-findings';
   `],
 })
 export class SubmoduleStateReviewComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<WorktreeRegistrationRequest | null>(null);
   readonly closed = output<void>();
   readonly review = signal<SubmoduleStateReview | null>(null);

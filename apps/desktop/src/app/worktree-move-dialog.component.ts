@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { Worktree } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { Worktree } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 export interface WorktreeMoveRequest {
@@ -72,7 +72,7 @@ export interface WorktreeMoveRequest {
   `],
 })
 export class WorktreeMoveDialogComponent {
-  readonly git = inject(GitChronosService);
+  readonly git = inject(GitKhronosService);
   readonly request = input<WorktreeMoveRequest | null>(null);
   readonly closed = output<void>();
   readonly parent = signal('');

@@ -40,11 +40,11 @@ async function cssContrastRatio(page: Page, foreground: string, background: stri
   }, { foreground, background });
 }
 
-test('uses the Git Chronos identity throughout the application chrome', async ({ page }) => {
-  await expect(page).toHaveTitle('Git Chronos');
+test('uses the Git Khronos identity throughout the application chrome', async ({ page }) => {
+  await expect(page).toHaveTitle('Git Khronos');
   await expect(page.locator('.app-menu .brand-mark')).toHaveText('GC');
   await page.getByRole('button', { name: 'Main menu' }).click();
-  await expect(page.getByRole('menu', { name: 'Git Chronos menu' })).toContainText('Git Chronos');
+  await expect(page.getByRole('menu', { name: 'Git Khronos menu' })).toContainText('Git Khronos');
 });
 
 test('summarizes branch sync and working-tree state in the primary branch selector', async ({ page }) => {
@@ -210,13 +210,13 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
 test('surfaces the primary repository shortcut on the welcome screen', async ({ page }) => {
   await page.goto('/?welcome-preview');
   await page.evaluate(() => {
-    localStorage.setItem('git-chronos.recent-repositories.v1', JSON.stringify([
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
       '/home/maya/projects/chronos-api',
       '/home/maya/sandboxes/release-candidate',
       '/mnt/work/client-portal',
     ]));
-    localStorage.setItem('git-chronos.favorite-repositories.v1', JSON.stringify([
+    localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
       '/home/maya/projects/chronos-api',
     ]));
@@ -298,7 +298,7 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(2);
   await expect(page.locator('.recents:not(.favorites)')).toContainText('2 repositories');
   await expect(page.locator('.recents:not(.favorites)')).not.toContainText('release-candidate');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.recent-repositories.v1')))
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.recent-repositories.v1')))
     .toBe('["/home/maya/projects/atlas-ui","/home/maya/projects/chronos-api","/mnt/work/client-portal"]');
   await expect(openRepository).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+O Meta+Shift+O');
   await expect(openRepository).toHaveAttribute('title', 'Open a local repository (Ctrl+Shift+O)');
@@ -457,7 +457,7 @@ test('edits the repository-local Git author from the header identity popover', a
 test('presents the sample repository as a complete Git workspace', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos');
   await expect(page.getByLabel('Repository actions', { exact: true })).toBeVisible();
   await expect(page.locator('.toolbar-actions .action-group-divider')).toHaveCount(2);
   await expect(page.locator('.toolbar-actions .action-group-divider').first()).toBeVisible();
@@ -484,9 +484,9 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await remoteSectionToggle.click();
   await expect(remoteSectionToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByLabel('Local branch feature/partial-staging')).toHaveAttribute('title', /Local branch feature\/partial-staging/);
-  const featureWorktree = page.getByLabel(/Worktree feature\/partial-staging, \/home\/maya\/projects\/git-chronos-partial-staging/);
+  const featureWorktree = page.getByLabel(/Worktree feature\/partial-staging, \/home\/maya\/projects\/git-khronos-partial-staging/);
   await expect(featureWorktree).toBeVisible();
-  await expect(featureWorktree.locator('xpath=..')).toHaveAttribute('title', 'feature/partial-staging · /home/maya/projects/git-chronos-partial-staging');
+  await expect(featureWorktree.locator('xpath=..')).toHaveAttribute('title', 'feature/partial-staging · /home/maya/projects/git-khronos-partial-staging');
   await expect(page.locator('.branch-item.current .branch-tracking')).toHaveText('↑1');
   await expect(page.locator('.branch-item.current .branch-tracking')).toHaveAttribute('title', 'Tracking origin/main: ahead 1');
   await expect(page.locator('.commit-row .ref-pill').filter({ hasText: 'main' }).first().locator('.ref-sync')).toHaveText('↑1');
@@ -1165,7 +1165,7 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await resizer.press('ArrowDown');
   await expect(resizer).toHaveAttribute('aria-valuenow', '175');
   await expect(list).toHaveCSS('max-height', '175px');
-  expect(await page.evaluate(() => localStorage.getItem('git-chronos.working-tree.unstaged-file-list-height'))).toBe('175');
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBe('175');
 
   const resizerBox = await resizer.boundingBox();
   expect(resizerBox).not.toBeNull();
@@ -1190,7 +1190,7 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await expect(list).toHaveCSS('max-height', '80px');
   await restoredResizer.dblclick();
   await expect(restoredResizer).toHaveAttribute('aria-valuenow', '165');
-  expect(await page.evaluate(() => localStorage.getItem('git-chronos.working-tree.unstaged-file-list-height'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBeNull();
 });
 
 test('opens branch creation consistently from the primary toolbar action', async ({ page }) => {
@@ -1455,7 +1455,7 @@ test('starts each worktree lane at its own WIP node', async ({ page }) => {
   await expect(currentLabel).toHaveAttribute('title', 'Current worktree · Branch main');
   await expect(currentLabel.locator('gc-icon')).toHaveCount(1);
   await expect(linkedLabel).toContainText('feature/partial-staging');
-  await expect(linkedLabel).toHaveAttribute('title', 'Linked worktree git-chronos-partial-staging · Branch feature/partial-staging');
+  await expect(linkedLabel).toHaveAttribute('title', 'Linked worktree git-khronos-partial-staging · Branch feature/partial-staging');
   await expect(linkedLabel.locator('gc-icon')).toHaveCount(1);
   await expect(currentLabel).not.toHaveCSS('background-color', await linkedLabel.evaluate((element) => getComputedStyle(element).backgroundColor));
 
@@ -2082,7 +2082,7 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   await moreActions.click();
   const compactActionMenu = page.getByRole('menu', { name: 'More repository actions' });
   const compactActionContext = compactActionMenu.locator('.toolbar-menu-context');
-  await expect(compactActionContext.locator('small')).toHaveText('git-chronos');
+  await expect(compactActionContext.locator('small')).toHaveText('git-khronos');
   await expect(compactActionContext.locator('strong')).toHaveText('main');
   await expect(compactActionContext.locator('strong')).toHaveAttribute('title', 'Current branch: main');
   await expect(compactActionContext.locator('b')).toHaveText('origin/main');
@@ -2671,7 +2671,7 @@ test('persists Left Panel disclosures and opens hosted pull requests', async ({ 
   });
   await hostedLink.click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('opened-external-url')))
-    .toBe('https://github.com/example/git-chronos/pulls');
+    .toBe('https://github.com/example/git-khronos/pulls');
 
   await page.reload();
   toggle = page.getByRole('button', { name: 'Pull Requests', exact: true });
@@ -2697,14 +2697,14 @@ test('uses provider-specific hosted review terminology and destinations', async 
       section: 'Merge Requests',
       action: 'Open merge requests',
       detail: 'origin · GitLab',
-      url: 'https://gitlab.com/example/platform/git-chronos/-/merge_requests',
+      url: 'https://gitlab.com/example/platform/git-khronos/-/merge_requests',
     },
     {
       preview: 'bitbucket',
       section: 'Pull Requests',
       action: 'Open pull requests',
       detail: 'origin · Bitbucket',
-      url: 'https://bitbucket.org/example/git-chronos/pull-requests',
+      url: 'https://bitbucket.org/example/git-khronos/pull-requests',
     },
   ]) {
     await page.goto(`/?hosting-preview=${provider.preview}`);
@@ -2745,13 +2745,13 @@ test('resizes reference sections with accessible keyboard splitters', async ({ p
   await page.keyboard.press('End');
   await expect(splitter).toHaveAttribute('aria-valuenow', '420');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.sidebar.section.worktrees.height'),
+    localStorage.getItem('git-khronos.sidebar.section.worktrees.height'),
   )).toBe('420');
   await expect(section).toHaveClass(/resized/);
 
   await splitter.dblclick();
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.sidebar.section.worktrees.height'),
+    localStorage.getItem('git-khronos.sidebar.section.worktrees.height'),
   )).toBeNull();
   await expect(section).not.toHaveClass(/resized/);
   await expect.poll(() => section.evaluate((element) => (element as HTMLElement).style.height)).toBe('');
@@ -3057,7 +3057,7 @@ test('uses one roving Tab stop across WIP and commit graph rows', async ({ page 
   await expect(currentWip).toHaveAttribute('aria-label', 'Working directory, branch main, 4 changed files');
   await expect(currentWip).toHaveAttribute('aria-controls', 'repository-commit-panel');
   await expect(currentWip).toHaveAttribute('aria-pressed', 'true');
-  await expect(linkedWip).toHaveAttribute('aria-label', 'Linked worktree git-chronos-partial-staging, branch feature/partial-staging, 2 changed files');
+  await expect(linkedWip).toHaveAttribute('aria-label', 'Linked worktree git-khronos-partial-staging, branch feature/partial-staging, 2 changed files');
   await expect(linkedWip).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-graph-row][tabindex="0"]')).toHaveCount(1);
   await expect(currentWip).toHaveAttribute('tabindex', '0');
@@ -3228,7 +3228,7 @@ test('groups panel visibility with the panel it controls', async ({ page }) => {
 test('keeps preference hierarchy legible in every application theme', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   for (const theme of ['chronos', 'midnight']) {
-    await page.evaluate((value) => localStorage.setItem('git-chronos.ui.theme', value), theme);
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await page.getByRole('button', { name: 'Preferences', exact: true }).click();
     const preferences = page.getByRole('dialog', { name: 'Preferences' });
@@ -3406,7 +3406,7 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(commitSignature).toHaveCSS('background-color', 'rgb(20, 42, 37)');
   await expect(commitSignature).toHaveCSS('border-color', 'rgb(63, 128, 111)');
   expect(await cssContrastRatio(page, 'var(--inspector-muted)', 'var(--panel-raised)')).toBeGreaterThanOrEqual(4.5);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.theme'))).toBe('midnight');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.theme'))).toBe('midnight');
 
   await preferences.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByRole('button', { name: /Switch branch, current/ }).click();
@@ -3495,22 +3495,22 @@ test('hides and solos an entire remote from its Left Panel heading', async ({ pa
 });
 
 test('favorites repositories and opens them with the familiar numeric shortcut', async ({ page }) => {
-  const currentPath = '/home/maya/projects/git-chronos';
-  const linkedPath = '/home/maya/projects/git-chronos-partial-staging';
+  const currentPath = '/home/maya/projects/git-khronos';
+  const linkedPath = '/home/maya/projects/git-khronos-partial-staging';
   await page.evaluate(({ currentPath, linkedPath }) => {
-    localStorage.setItem('git-chronos.recent-repositories.v1', JSON.stringify([currentPath, linkedPath]));
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([currentPath, linkedPath]));
   }, { currentPath, linkedPath });
   await page.goto('/?worktree-tabs');
 
   await page.keyboard.press('Control+t');
   const manager = page.getByRole('dialog', { name: 'Repository management' });
-  await manager.getByRole('button', { name: 'Add git-chronos-partial-staging to favorites' }).click();
+  await manager.getByRole('button', { name: 'Add git-khronos-partial-staging to favorites' }).click();
   await expect(manager.getByText('Favorites')).toBeVisible();
-  await expect(manager.getByRole('button', { name: /git-chronos-partial-staging/ }).first()).toContainText('Ctrl Alt 1');
+  await expect(manager.getByRole('button', { name: /git-khronos-partial-staging/ }).first()).toContainText('Ctrl Alt 1');
 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+Alt+1');
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 
   await page.reload();
   await page.keyboard.press('Control+t');
@@ -3522,8 +3522,8 @@ test('reorders repository tabs with a persisted drag destination', async ({ page
   const tabs = page.locator('.repo-tab');
   await expect(tabs).toHaveCount(2);
   await expect(tabs.first()).toHaveCSS('font-size', '13px');
-  await expect(tabs.nth(0)).toContainText('git-chronos');
-  await expect(tabs.nth(1)).toContainText('git-chronos-partial-staging');
+  await expect(tabs.nth(0)).toContainText('git-khronos');
+  await expect(tabs.nth(1)).toContainText('git-khronos-partial-staging');
   await expect(tabs.nth(0)).toHaveClass(/has-changes/);
   await expect(tabs.nth(0).getByRole('tab')).toHaveAttribute('aria-label', /4 uncommitted changes/);
   await expect(tabs.nth(0).locator('i')).toHaveAttribute('title', '4 uncommitted changes');
@@ -3535,13 +3535,13 @@ test('reorders repository tabs with a persisted drag destination', async ({ page
   expect(await inactiveClose.evaluate((button) => button.getBoundingClientRect().width >= 24)).toBe(true);
 
   await tabs.nth(0).dragTo(tabs.nth(1));
-  await expect(tabs.nth(0)).toContainText('git-chronos-partial-staging');
-  await expect(tabs.nth(1)).toContainText('git-chronos');
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
   await expect.poll(() => page.evaluate(() => JSON.parse(
-    localStorage.getItem('git-chronos.open-repositories.v1') ?? '[]',
+    localStorage.getItem('git-khronos.open-repositories.v1') ?? '[]',
   ))).toEqual([
-    '/home/maya/projects/git-chronos-partial-staging',
-    '/home/maya/projects/git-chronos',
+    '/home/maya/projects/git-khronos-partial-staging',
+    '/home/maya/projects/git-khronos',
   ]);
 });
 
@@ -3553,23 +3553,23 @@ test('reorders repository tabs from the keyboard and preserves focused selection
   await expect(current).toHaveAttribute('aria-keyshortcuts', /Control\+Shift\+PageDown/);
 
   await page.keyboard.press('Control+Shift+PageDown');
-  await expect(tabs.nth(0)).toContainText('git-chronos-partial-staging');
-  await expect(tabs.nth(1)).toContainText('git-chronos');
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
   const moved = tabs.nth(1).getByRole('tab');
   await expect(moved).toBeFocused();
   await expect(moved).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-chronos moved to position 2 of 2.');
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 2 of 2.');
   await expect.poll(() => page.evaluate(() => JSON.parse(
-    localStorage.getItem('git-chronos.open-repositories.v1') ?? '[]',
+    localStorage.getItem('git-khronos.open-repositories.v1') ?? '[]',
   ))).toEqual([
-    '/home/maya/projects/git-chronos-partial-staging',
-    '/home/maya/projects/git-chronos',
+    '/home/maya/projects/git-khronos-partial-staging',
+    '/home/maya/projects/git-khronos',
   ]);
 
   await page.keyboard.press('Control+Shift+PageUp');
-  await expect(tabs.nth(0)).toContainText('git-chronos');
+  await expect(tabs.nth(0)).toContainText('git-khronos');
   await expect(tabs.nth(0).getByRole('tab')).toBeFocused();
-  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-chronos moved to position 1 of 2.');
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 1 of 2.');
 });
 
 test('offers repository tab utilities and batch closing from the tab menu', async ({ page }) => {
@@ -3578,8 +3578,8 @@ test('offers repository tab utilities and batch closing from the tab menu', asyn
   await expect(tabs).toHaveCount(2);
 
   await tabs.first().click({ button: 'right' });
-  const menu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
-  await expect(menu).toContainText('/home/maya/projects/git-chronos');
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
+  await expect(menu).toContainText('/home/maya/projects/git-khronos');
   await expect(menu.locator('.tab-context-heading strong')).toHaveCSS('font-size', '13px');
   await expect(menu.locator('.tab-context-heading small')).toHaveCSS('font-size', '12px');
   await expect(menu.locator('.tab-menu-action').first()).toHaveCSS('font-size', '13px');
@@ -3597,31 +3597,31 @@ test('offers repository tab utilities and batch closing from the tab menu', asyn
   await expect(menu.getByRole('menuitem', { name: 'Close repositories to the right 1' })).toBeEnabled();
 
   await moveRight.click();
-  await expect(tabs.nth(0)).toContainText('git-chronos-partial-staging');
-  await expect(tabs.nth(1)).toContainText('git-chronos');
-  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-chronos moved to position 2 of 2.');
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 2 of 2.');
 
   await tabs.nth(1).click({ button: 'right' });
-  const movedMenu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
+  const movedMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
   await expect(movedMenu.getByRole('menuitem', { name: /Move tab right/ })).toBeDisabled();
   await movedMenu.getByRole('menuitem', { name: /Move tab left/ }).click();
-  await expect(tabs.nth(0)).toContainText('git-chronos');
-  await expect(tabs.nth(1)).toContainText('git-chronos-partial-staging');
+  await expect(tabs.nth(0)).toContainText('git-khronos');
+  await expect(tabs.nth(1)).toContainText('git-khronos-partial-staging');
 
   await tabs.first().click({ button: 'right' });
-  const restoredMenu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
+  const restoredMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
 
   await restoredMenu.getByRole('menuitem', { name: 'Close repositories to the right 1' }).click();
   await expect(tabs).toHaveCount(1);
-  await expect(tabs.first()).toContainText('git-chronos');
+  await expect(tabs.first()).toContainText('git-khronos');
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
   await tabs.nth(1).click({ button: 'right' });
-  const linkedMenu = page.getByRole('menu', { name: 'Repository actions for git-chronos-partial-staging' });
+  const linkedMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos-partial-staging' });
   await linkedMenu.getByRole('menuitem', { name: 'Close other repositories 1' }).click();
   await expect(tabs).toHaveCount(1);
-  await expect(tabs.first()).toContainText('git-chronos-partial-staging');
+  await expect(tabs.first()).toContainText('git-khronos-partial-staging');
   await expect(tabs.first()).toHaveClass(/active/);
 });
 
@@ -3631,7 +3631,7 @@ test('opens and navigates repository tab actions from the keyboard', async ({ pa
   await tabButton.focus();
   await page.keyboard.press('Shift+F10');
 
-  const menu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Open terminal' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -3651,11 +3651,11 @@ test('reveals repository display-name editing only when requested', async ({ pag
   const tab = page.locator('.repo-tab').first();
   await tab.click({ button: 'right' });
 
-  const menu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
   await expect(menu.getByRole('textbox')).toHaveCount(0);
   await menu.getByRole('menuitem', { name: 'Edit display name…' }).click();
 
-  const editor = page.getByRole('dialog', { name: 'Edit display name for git-chronos' });
+  const editor = page.getByRole('dialog', { name: 'Edit display name for git-khronos' });
   const input = editor.getByRole('textbox', { name: 'Repository display name' });
   await expect(input).toBeFocused();
   await page.keyboard.press('Shift+Tab');
@@ -3683,10 +3683,10 @@ test('reveals repository display-name editing only when requested', async ({ pag
 test('switches repository tabs with standard tablist keys and restores focus after close', async ({ page }) => {
   await page.goto('/?worktree-tabs');
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-  const first = tablist.getByRole('tab', { name: /git-chronos/ }).first();
-  const second = tablist.getByRole('tab', { name: /git-chronos-partial-staging/ });
-  const firstClose = page.getByRole('button', { name: 'Close git-chronos', exact: true });
-  const secondClose = page.getByRole('button', { name: 'Close git-chronos-partial-staging', exact: true });
+  const first = tablist.getByRole('tab', { name: /git-khronos/ }).first();
+  const second = tablist.getByRole('tab', { name: /git-khronos-partial-staging/ });
+  const firstClose = page.getByRole('button', { name: 'Close git-khronos', exact: true });
+  const secondClose = page.getByRole('button', { name: 'Close git-khronos-partial-staging', exact: true });
 
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect(first).toHaveAttribute('tabindex', '0');
@@ -3718,8 +3718,8 @@ test('switches repository tabs with standard tablist keys and restores focus aft
 test('cycles repository tabs with Ctrl+Tab and exposes the commands', async ({ page }) => {
   await page.goto('/?worktree-tabs');
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-  const first = tablist.getByRole('tab', { name: /git-chronos/ }).first();
-  const second = tablist.getByRole('tab', { name: /git-chronos-partial-staging/ });
+  const first = tablist.getByRole('tab', { name: /git-khronos/ }).first();
+  const second = tablist.getByRole('tab', { name: /git-khronos-partial-staging/ });
 
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect(first).toHaveAttribute('aria-keyshortcuts', /Control\+Tab/);
@@ -3738,12 +3738,12 @@ test('cycles repository tabs with Ctrl+Tab and exposes the commands', async ({ p
 });
 
 test('keeps the window title aligned with the active repository state', async ({ page }) => {
-  await expect(page).toHaveTitle('git-chronos — main • 4 changes — Git Chronos');
+  await expect(page).toHaveTitle('git-khronos — main • 4 changes — Git Khronos');
 
   await page.goto('/?worktree-tabs');
-  const linked = page.getByRole('tab', { name: /git-chronos-partial-staging/ });
+  const linked = page.getByRole('tab', { name: /git-khronos-partial-staging/ });
   await linked.click();
-  await expect(page).toHaveTitle('git-chronos-partial-staging — feature/partial-staging • 4 changes — Git Chronos');
+  await expect(page).toHaveTitle('git-khronos-partial-staging — feature/partial-staging • 4 changes — Git Khronos');
 
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -3754,7 +3754,7 @@ test('keeps the window title aligned with the active repository state', async ({
       branches: item.branches.map((branch: any) => ({ ...branch, current: false })),
     } : item));
   });
-  await expect(page).toHaveTitle(/git-chronos-partial-staging — Detached [0-9a-f]{8} — Git Chronos/);
+  await expect(page).toHaveTitle(/git-khronos-partial-staging — Detached [0-9a-f]{8} — Git Khronos/);
 
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -3765,14 +3765,14 @@ test('keeps the window title aligned with the active repository state', async ({
       commits: [],
     } : item));
   });
-  await expect(page).toHaveTitle('git-chronos-partial-staging — No commits — Git Chronos');
+  await expect(page).toHaveTitle('git-khronos-partial-staging — No commits — Git Khronos');
 
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
     git.repositories.set([]);
     git.activeRepositoryId.set(null);
   });
-  await expect(page).toHaveTitle('Git Chronos');
+  await expect(page).toHaveTitle('Git Khronos');
 });
 
 test('keeps the open-repositories menu inside compact windows', async ({ page }) => {
@@ -3811,8 +3811,8 @@ test('uses branch-aware labels for grouped worktree tabs at every width', async 
     await page.goto('/?worktree-tabs');
 
     const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-    const main = tablist.getByRole('tab', { name: 'git-chronos, branch main' });
-    const feature = tablist.getByRole('tab', { name: 'git-chronos-partial-staging, branch feature/partial-staging' });
+    const main = tablist.getByRole('tab', { name: 'git-khronos, branch main' });
+    const feature = tablist.getByRole('tab', { name: 'git-khronos-partial-staging, branch feature/partial-staging' });
     await expect(main).toBeVisible();
     await expect(feature).toBeVisible();
     await expect(main.locator('.repo-tab-full-label')).toBeHidden();
@@ -3841,7 +3841,7 @@ test('reveals the complete active worktree tab and its close control at compact 
   await page.goto('/?worktree-tabs');
 
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-  const feature = tablist.getByRole('tab', { name: 'git-chronos-partial-staging, branch feature/partial-staging' });
+  const feature = tablist.getByRole('tab', { name: 'git-khronos-partial-staging, branch feature/partial-staging' });
   await page.keyboard.press('Control+Tab');
   await expect(feature).toHaveAttribute('aria-selected', 'true');
   const activeTab = page.locator('.repo-tab.active');
@@ -3850,7 +3850,7 @@ test('reveals the complete active worktree tab and its close control at compact 
     const [viewport, tab, close] = await Promise.all([
       tablist.boundingBox(),
       activeTab.boundingBox(),
-      activeTab.getByRole('button', { name: 'Close git-chronos-partial-staging' }).boundingBox(),
+      activeTab.getByRole('button', { name: 'Close git-khronos-partial-staging' }).boundingBox(),
     ]);
     return !!viewport && !!tab && !!close
       && tab.x >= viewport.x - 1
@@ -3864,12 +3864,12 @@ test('prioritizes the repository name over the workspace name in the compact tab
   await page.goto('/');
 
   const workspace = page.getByRole('button', { name: 'Workspace: Default' });
-  const repository = page.getByRole('tab', { name: /git-chronos/i });
+  const repository = page.getByRole('tab', { name: /git-khronos/i });
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute('title', 'Workspace: Default — switch workspace');
   await expect(workspace.locator('span')).toBeHidden();
   await expect(repository.locator('.repo-tab-full-label')).toBeVisible();
-  await expect(repository.locator('.repo-tab-full-label')).toHaveText('git-chronos');
+  await expect(repository.locator('.repo-tab-full-label')).toHaveText('git-khronos');
 
   const visibleLabelWidth = await repository.locator('strong').evaluate((element) => element.getBoundingClientRect().width);
   expect(visibleLabelWidth).toBeGreaterThanOrEqual(48);
@@ -3986,18 +3986,18 @@ test('reopens the most recently closed repository tab', async ({ page }) => {
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 
   await page.locator('.repo-tab.active').getByRole('button', { name: /Close/ }).click();
   await tabs.first().getByRole('button', { name: /Close/ }).click();
-  const reopenFromWelcome = page.getByRole('button', { name: 'Reopen git-chronos' });
+  const reopenFromWelcome = page.getByRole('button', { name: 'Reopen git-khronos' });
   await expect(reopenFromWelcome).toBeVisible();
   await reopenFromWelcome.click();
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos');
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 });
 
 test('offers a terminal handoff for new worktrees', async ({ page }) => {
@@ -4162,9 +4162,9 @@ test('manages repository remotes from the reference panel', async ({ page }) => 
   const editDialog = page.getByRole('dialog', { name: 'Edit Remote' });
   await expect(editDialog.getByLabel('Name')).toHaveValue('origin');
   await expect(editDialog.getByLabel('Name')).toHaveAttribute('readonly', '');
-  await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-chronos.git');
+  await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-khronos.git');
   await expect(editDialog.getByLabel('Fetch URL')).toBeFocused();
-  await expect(editDialog).toContainText('Push currently uses git@github.com:example/git-chronos.git.');
+  await expect(editDialog).toContainText('Push currently uses git@github.com:example/git-khronos.git.');
 
   await editDialog.getByRole('button', { name: 'Remove Remote' }).click();
   const confirmation = page.getByRole('alertdialog', { name: 'origin' });
@@ -4226,7 +4226,7 @@ test('makes submodule management discoverable from the sidebar and command palet
 });
 
 test('preserves an explicit choice to hide the submodule pane', async ({ page }) => {
-  await page.evaluate(() => localStorage.setItem('git-chronos.ui.pane-submodules', 'false'));
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.pane-submodules', 'false'));
   await page.reload();
 
   await expect(page.locator('#reference-section-submodules')).toBeHidden();
@@ -4322,7 +4322,7 @@ test('opens graph column controls from the header and dismisses them predictably
     'Resize Commit Message column',
   ]);
   await expect.poll(() => page.evaluate(() => JSON.parse(
-    localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.order') ?? '[]',
+    localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.order') ?? '[]',
   ))).toEqual(['graph', 'branch', 'message', 'author', 'date', 'sha']);
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
@@ -4378,9 +4378,9 @@ test('restores graph layout defaults without resetting unrelated preferences', a
   await expect(page.locator('.graph-columns')).toContainText('DATE / TIME');
   await expect(settings).toContainText('Drag headers or use the arrow buttons to reorder columns.');
   await expect.poll(() => page.evaluate(() => ({
-    compact: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.graph.compact'),
-    date: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.date.visible'),
-    markers: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.scroll-markers'),
+    compact: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.graph.compact'),
+    date: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.date.visible'),
+    markers: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.scroll-markers'),
   }))).toEqual({ compact: null, date: null, markers: null });
 });
 
@@ -4736,7 +4736,7 @@ test('resizes repository side panels with accessible keyboard splitters', async 
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '260');
   await page.keyboard.press('Shift+ArrowRight');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '292');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.panel.sidebar.width'))).toBe('292');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.panel.sidebar.width'))).toBe('292');
   await page.keyboard.press('Home');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '170');
   await page.keyboard.press('End');
@@ -4764,7 +4764,7 @@ test('resizes repository side panels with accessible keyboard splitters', async 
   await expect(commitSplitter).toHaveAttribute('aria-valuenow', '365');
   await page.keyboard.press('ArrowRight');
   await expect(commitSplitter).toHaveAttribute('aria-valuenow', '355');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.panel.details.width'))).toBe('355');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.panel.details.width'))).toBe('355');
   await expect.poll(() => commitPanel.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(355);
 });
 
@@ -4830,7 +4830,7 @@ test('resizes and restores the repository terminal with an accessible splitter',
   await page.keyboard.press('Shift+ArrowUp');
   await expect(splitter).toHaveAttribute('aria-valuenow', '192');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.terminal.panel-height'),
+    localStorage.getItem('git-khronos.terminal.panel-height'),
   )).toBe('192');
   await expect.poll(() => panel.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBe(192);
 
@@ -4850,7 +4850,7 @@ test('resizes and restores the repository terminal with an accessible splitter',
   await splitter.dblclick();
   await expect(splitter).toHaveAttribute('aria-valuenow', '280');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.terminal.panel-height'),
+    localStorage.getItem('git-khronos.terminal.panel-height'),
   )).toBeNull();
 
   await panel.getByRole('button', { name: 'Hide terminal panel' }).click();
@@ -4926,7 +4926,7 @@ test('keeps the active terminal tab visible when the window narrows', async ({ p
           return Promise.resolve({
             id: `resize-terminal-${terminal}`,
             label: 'bash',
-            cwd: '/home/maya/projects/git-chronos',
+            cwd: '/home/maya/projects/git-khronos',
           });
         }
         if (command === 'plugin:event|listen') return Promise.resolve(terminal + 100);
@@ -4958,7 +4958,7 @@ test('keeps the active terminal tab visible when the window narrows', async ({ p
   });
   const titledTab = panel.getByRole('tab', { name: 'API logs' });
   await expect(titledTab).toBeVisible();
-  await expect(titledTab).toHaveAttribute('title', 'API logs · /home/maya/projects/git-chronos');
+  await expect(titledTab).toHaveAttribute('title', 'API logs · /home/maya/projects/git-khronos');
   await expect(panel.getByRole('button', { name: 'Close API logs' })).toBeVisible();
   for (let index = 0; index < 7; index++) {
     await panel.getByRole('button', { name: 'New terminal tab' }).click();
@@ -5273,7 +5273,7 @@ test('shows shortcuts for the active desktop platform', async ({ page }) => {
 
   await page.getByTitle('Show all open repositories').click();
   const repositoryTabsMenu = page.getByRole('menu', { name: 'Open repositories' });
-  const activeRepositoryItem = repositoryTabsMenu.getByRole('menuitemradio', { name: /git-chronos/ });
+  const activeRepositoryItem = repositoryTabsMenu.getByRole('menuitemradio', { name: /git-khronos/ });
   await expect(page.locator('.tab-list-menu kbd').first()).toHaveText('Ctrl 1');
   await expect(activeRepositoryItem).toBeFocused();
   await expect(activeRepositoryItem).toHaveAttribute('aria-checked', 'true');
@@ -5433,7 +5433,7 @@ test('keeps command palette chrome inside a short desktop window', async ({ page
 test('pairs command palette surfaces with each application theme', async ({ page }) => {
   const appearances: Record<string, string[]> = {};
   for (const theme of ['chronos', 'midnight']) {
-    await page.evaluate((value) => localStorage.setItem('git-chronos.ui.theme', value), theme);
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await page.keyboard.press('Control+P');
     const palette = page.getByRole('dialog', { name: 'Command palette' });
@@ -5506,7 +5506,7 @@ test('exposes familiar repository and application actions from the main menu', a
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-  const menu = page.getByRole('menu', { name: 'Git Chronos menu' });
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   await expect(menu).toBeVisible();
   await expect(menu.locator('header strong')).toHaveCSS('font-size', '13px');
   await expect(menu.locator('header small')).toHaveCSS('font-size', '12px');
@@ -5570,7 +5570,7 @@ test('keeps every main-menu command reachable in compact-height windows', async 
   await page.setViewportSize({ width: 1000, height: 640 });
   await page.getByRole('button', { name: 'Main menu' }).click();
 
-  const menu = page.getByRole('menu', { name: 'Git Chronos menu' });
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   const scrollRegion = menu.locator('.app-menu-scroll');
   const applicationSection = menu.locator('.app-menu-application');
   const preferences = menu.getByRole('menuitem', { name: /Preferences/ });
@@ -5615,7 +5615,7 @@ test('condenses the main menu without hiding commands at the native minimum heig
   await page.setViewportSize({ width: 780, height: 560 });
   await page.getByRole('button', { name: 'Main menu' }).click();
 
-  const menu = page.getByRole('menu', { name: 'Git Chronos menu' });
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   const scrollRegion = menu.locator('.app-menu-scroll');
   const descriptions = menu.locator('.app-menu-section button small');
   const commands = [
@@ -5647,7 +5647,7 @@ test('fits the complete main menu without needless scrolling when the viewport h
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: 'Main menu' }).click();
 
-  const menu = page.getByRole('menu', { name: 'Git Chronos menu' });
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   const scrollRegion = menu.locator('.app-menu-scroll');
   const lastScrollableSection = scrollRegion.locator('.app-menu-section').last();
   const metrics = await Promise.all([
@@ -5672,7 +5672,7 @@ test('fits the complete main menu without needless scrolling when the viewport h
 
 test('finds and safely preserves commits from recovery history', async ({ page }) => {
   await page.getByRole('button', { name: 'Main menu' }).click();
-  await page.getByRole('menu', { name: 'Git Chronos menu' }).getByRole('menuitem', { name: /Recovery History/ }).click();
+  await page.getByRole('menu', { name: 'Git Khronos menu' }).getByRole('menuitem', { name: /Recovery History/ }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Recovery history' });
   await expect(dialog).toBeVisible();
@@ -5769,7 +5769,7 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   await expect(toggle).toBeChecked();
   await toggle.uncheck();
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('false');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBe('false');
   await expectGraphColumnsFit(page);
 
   // End on Commit Message takes only right-hand columns' spare width.
@@ -5845,7 +5845,7 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   // Turning scrolling back on lets columns overflow again.
   await toggle.check();
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('true');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBe('true');
   await message.focus();
   await page.keyboard.press('End');
   await expect(message).toHaveAttribute('aria-valuenow', '2400');
@@ -5871,7 +5871,7 @@ test('keeps fitted graph columns inside the panel when paths are fitted or colum
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await settings.getByRole('button', { name: 'Restore graph defaults' }).click();
   await expect(settings.getByLabel('Horizontal Scrolling')).toBeChecked();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBeNull();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBeNull();
 });
 
 for (const reordered of [false, true]) {
@@ -6441,7 +6441,7 @@ test('previews annotated tags without loading their messages into the graph', as
   await expect(preview).toBeVisible();
   await expect(tag).toHaveAttribute('aria-describedby', 'tag-reference-preview');
   await expect(preview).toContainText('Annotated tag');
-  await expect(preview).toContainText('First Git Chronos preview release');
+  await expect(preview).toContainText('First Git Khronos preview release');
   await expect(preview).toContainText('Maya Chen');
   await expect(preview).toContainText('v0.1.0');
   await expect(preview.locator('header small')).toHaveCSS('font-size', '12px');
@@ -6783,7 +6783,7 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
   expect(originCopyBox!.x + originCopyBox!.width).toBeLessThanOrEqual(originSelectedBox!.x);
   await expect(origin.locator('.remote-picker-url b')).toHaveText('Fetch & push');
   const originUrl = origin.locator('.remote-picker-url > span');
-  await expect(originUrl).toHaveAttribute('title', 'git@github.com:example/git-chronos.git');
+  await expect(originUrl).toHaveAttribute('title', 'git@github.com:example/git-khronos.git');
   await expect(originUrl).toHaveCSS('white-space', 'nowrap');
   await expect(originUrl).toHaveCSS('text-overflow', 'ellipsis');
   const [pickerBeforeNavigation, originBeforeNavigation, upstreamBeforeNavigation] = await Promise.all([
@@ -6832,14 +6832,14 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
     app.git.repositories.update((repositories: any[]) => repositories.map((repository) => ({
       ...repository,
       remotes: repository.remotes.map((remote: any) => remote.name === 'upstream'
-        ? { ...remote, pushUrl: 'git@github.com:example/git-chronos-fork.git' }
+        ? { ...remote, pushUrl: 'git@github.com:example/git-khronos-fork.git' }
         : remote),
     })));
   });
   await expect(persistedUpstream.locator('.remote-picker-url b')).toHaveText(['Fetch', 'Push']);
   const remoteUrls = persistedUpstream.locator('.remote-picker-url > span');
-  await expect(remoteUrls.nth(0)).toHaveAttribute('title', 'https://github.com/example/git-chronos.git');
-  await expect(remoteUrls.nth(1)).toHaveAttribute('title', 'git@github.com:example/git-chronos-fork.git');
+  await expect(remoteUrls.nth(0)).toHaveAttribute('title', 'https://github.com/example/git-khronos.git');
+  await expect(remoteUrls.nth(1)).toHaveAttribute('title', 'git@github.com:example/git-khronos-fork.git');
   await page.keyboard.press('Escape');
   await expect(picker).toBeHidden();
   await expect(remoteToggle).toBeFocused();
@@ -6875,11 +6875,11 @@ test('switches complete repository tab sets with persistent workspaces', async (
   await expect(menu).toHaveCSS('width', '310px');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('strong')).toHaveCSS('font-size', '13px');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small')).toHaveCSS('font-size', '12px');
-  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small > span')).toHaveText('git-chronos');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small > span')).toHaveText('git-khronos');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small > b')).toHaveText('1');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('kbd')).toHaveText('Ctrl ⇧ 1');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+1 Meta+Shift+1');
-  await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAccessibleName('Default, current workspace, 1 repository, git-chronos');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAccessibleName('Default, current workspace, 1 repository, git-khronos');
   await expect(menu.getByRole('menuitem', { name: 'New workspace' })).toHaveCSS('font-size', '13px');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAttribute('aria-checked', 'true');
   await menu.getByRole('menuitem', { name: 'New workspace' }).click();
@@ -6914,7 +6914,7 @@ test('switches complete repository tab sets with persistent workspaces', async (
   await expect(workspaceItems.first().locator('kbd')).toHaveText('Ctrl ⇧ 2');
   await expect(workspaceItems.first()).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+2 Meta+Shift+2');
   await expect(workspaceItems.first().locator('small > span')).toHaveText('No repositories yet');
-  await expect(workspaceItems.nth(1)).toHaveAccessibleName('Default, 1 repository, git-chronos');
+  await expect(workspaceItems.nth(1)).toHaveAccessibleName('Default, 1 repository, git-khronos');
   await expect(workspaceItems.nth(1).locator('kbd')).toHaveText('Ctrl ⇧ 1');
   await page.keyboard.press('Escape');
   await expect(workspaceToggle).toBeFocused();
@@ -7022,7 +7022,7 @@ test('finds repositories, references, and changed files from the command palette
 
   await page.keyboard.press('Control+P');
   await expect(palette.getByRole('option').first()).toContainText('Clone Repository');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.recent-commands'))).toBe('["clone"]');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.recent-commands'))).toBe('["clone"]');
   await page.getByRole('combobox', { name: 'Search commands' }).fill('initialize repository');
   await page.getByRole('option').filter({ hasText: 'Initialize Repository' }).click();
   await expect(page.getByRole('heading', { name: 'Initialize a Repository' })).toBeVisible();
@@ -7157,9 +7157,9 @@ test('makes branch synchronization state explicit and actionable in the status b
   const statusbar = page.locator('.statusbar');
   const statusActions = statusbar.locator('button');
   const repository = statusbar.locator('.status-repository');
-  await expect(repository).toHaveText('git-chronos');
-  await expect(repository).toHaveAttribute('title', '/home/maya/projects/git-chronos');
-  await expect(repository).toHaveAttribute('aria-label', 'Repository git-chronos, /home/maya/projects/git-chronos');
+  await expect(repository).toHaveText('git-khronos');
+  await expect(repository).toHaveAttribute('title', '/home/maya/projects/git-khronos');
+  await expect(repository).toHaveAttribute('aria-label', 'Repository git-khronos, /home/maya/projects/git-khronos');
   expect(await statusActions.count()).toBeGreaterThan(0);
   expect(await statusActions.evaluateAll((controls) => controls.every((control) => {
     const box = control.getBoundingClientRect();
@@ -7511,13 +7511,13 @@ test('reveals the nearest containing branch for an unlabeled commit', async ({ p
 
 test('keeps browser-only repository limitations explicit', async ({ page }) => {
   await page.evaluate(() => {
-    localStorage.setItem('git-chronos.recent-repositories.v1', JSON.stringify([
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
       '/home/maya/projects/chronos-api',
       '/home/maya/sandboxes/release-candidate',
       '/mnt/work/client-portal',
     ]));
-    localStorage.setItem('git-chronos.favorite-repositories.v1', JSON.stringify([
+    localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
       '/home/maya/projects/chronos-api',
     ]));
@@ -7602,7 +7602,7 @@ test('expands summarized untracked directories instead of opening an invalid fil
 test('keeps repository management navigation visible while long lists scroll', async ({ page }) => {
   await page.setViewportSize({ width: 550, height: 560 });
   await page.evaluate(() => localStorage.setItem(
-    'git-chronos.favorite-repositories.v1',
+    'git-khronos.favorite-repositories.v1',
     JSON.stringify(Array.from({ length: 24 }, (_, index) => `/home/maya/projects/favorite-${index + 1}`)),
   ));
   await page.reload();
@@ -7699,7 +7699,7 @@ test('navigates activity scopes as a familiar tab strip', async ({ page }) => {
 test('shows activity outcomes as text with readable theme-paired surfaces', async ({ page }) => {
   const themeSurfaces: string[] = [];
   for (const theme of ['chronos', 'midnight']) {
-    await page.evaluate((value) => localStorage.setItem('git-chronos.ui.theme', value), theme);
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(() => {
@@ -7773,7 +7773,7 @@ test('resizes activity logs with pointer, buttons, and keyboard while preserving
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y - 46);
   await page.mouse.up();
   await expect(drawer).toHaveCSS('height', '361px');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.activity-log-height'))).toBe('361');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.activity-log-height'))).toBe('361');
 
   await drawer.getByRole('button', { name: 'Close Activity Logs' }).click();
   await page.reload();
@@ -8218,7 +8218,7 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await decreaseZoom.click();
   await expect(zoom.locator('option:checked')).toHaveText('90%');
   await expect(resetZoom).toBeEnabled();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('90');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('90');
 
   await decreaseZoom.click();
   await expect(zoom.locator('option:checked')).toHaveText('80%');
@@ -8234,7 +8234,7 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await expect(zoom.locator('option:checked')).toHaveText('125%');
   await expect(decreaseZoom).toBeEnabled();
   await expect(resetZoom).toBeEnabled();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('125');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('125');
 
   await page.reload();
   const restoredZoom = page.getByLabel('Interface zoom', { exact: true });
@@ -8242,20 +8242,20 @@ test('persists the selected interface zoom preset', async ({ page }) => {
 
   await page.keyboard.press('Control+=');
   await expect(restoredZoom.locator('option:checked')).toHaveText('140%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('140');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('140');
 
   await page.keyboard.press('Control+-');
   await expect(restoredZoom.locator('option:checked')).toHaveText('125%');
 
   await page.keyboard.press('Control+0');
   await expect(restoredZoom.locator('option:checked')).toHaveText('100%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('100');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('100');
 
-  await page.evaluate(() => localStorage.setItem('git-chronos.ui.zoom', 'invalid'));
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', 'invalid'));
   await page.reload();
   await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
 
-  await page.evaluate(() => localStorage.setItem('git-chronos.ui.zoom', '  '));
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '  '));
   await page.reload();
   await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
 });
@@ -8371,7 +8371,7 @@ test('keeps secondary workspace text legible and respects reduced motion', async
     }
   };
   for (const theme of ['chronos', 'midnight']) {
-    await page.evaluate((value) => localStorage.setItem('git-chronos.ui.theme', value), theme);
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await assertContrast(workspaceSelectors, theme);
@@ -8559,7 +8559,7 @@ test('persists automatic remote refresh without implying a pull', async ({ page 
   await expect(page.getByText('It never pulls or changes working files.')).toBeVisible();
 
   await interval.selectOption({ label: 'Every 15 minutes' });
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.remote.auto-fetch-minutes'))).toBe('15');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.remote.auto-fetch-minutes'))).toBe('15');
   await page.reload();
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
@@ -8677,7 +8677,7 @@ test('adapts split comparison to the center pane without losing the preferred la
   await expect(split.locator('.diff-mode-split-compact')).toBeVisible();
   await expect(split.locator('.diff-mode-split-wide')).toBeHidden();
   await split.click();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.diff.view-mode'))).toBe('split');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
   await expect(page.locator('.split-diff-stacked-head')).toBeVisible();
   await expect(page.getByLabel('Before and after file changes')).toBeVisible();
   expect(await before.evaluate((element) => getComputedStyle(element, '::before').content)).toContain('Before');
@@ -8710,7 +8710,7 @@ test('adapts split comparison to the center pane without losing the preferred la
   expect(Math.abs(wideAfter!.y - wideBefore!.y)).toBeLessThanOrEqual(1);
   expect(wideAfter!.x).toBeGreaterThanOrEqual(wideBefore!.x + wideBefore!.width - 1);
   await expect(split).toHaveAttribute('aria-pressed', 'true');
-  expect(await page.evaluate(() => localStorage.getItem('git-chronos.diff.view-mode'))).toBe('split');
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
 });
 
 test('includes the active split diff in F6 workspace navigation', async ({ page }) => {
@@ -8758,7 +8758,7 @@ test('remembers the preferred diff layout across files and reloads', async ({ pa
   await page.goto('/?compare-commits&diff-viewer=hunk');
   const layout = page.getByRole('group', { name: 'Diff layout' });
   await layout.getByRole('button', { name: 'Split' }).click();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.diff.view-mode'))).toBe('split');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
 
   await page.goto('/');
   await page.getByTitle('View changes in apps/desktop/src/app/app.component.html').click();
@@ -8882,8 +8882,8 @@ test('persists diff viewer typography and wrapping preferences', async ({ page }
   await expect(page.locator('.split-diff-body')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.split-diff-body')).toHaveCSS('tab-size', '8');
   await expect.poll(() => page.evaluate(() => ({
-    fontSize: localStorage.getItem('git-chronos.diff.font-size'),
-    tabSize: localStorage.getItem('git-chronos.diff.tab-size'),
-    wordWrap: localStorage.getItem('git-chronos.diff.word-wrap'),
+    fontSize: localStorage.getItem('git-khronos.diff.font-size'),
+    tabSize: localStorage.getItem('git-khronos.diff.tab-size'),
+    wordWrap: localStorage.getItem('git-khronos.diff.word-wrap'),
   }))).toEqual({ fontSize: '14', tabSize: '8', wordWrap: 'true' });
 });

@@ -1,5 +1,5 @@
 use super::*;
-use git_chronos_git_core::{
+use git_khronos_git_core::{
     OperationRecovery, ResetPreview, delete_operation_recovery, execute_reset,
     operation_recoveries, prepare_reset, restore_operation_branch,
 };

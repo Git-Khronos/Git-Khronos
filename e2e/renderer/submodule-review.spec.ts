@@ -43,9 +43,9 @@ async function setup(page: Page): Promise<void> {
       if (command === 'checkout_recorded_submodule_commit') {
         if (fixture.checkoutFail) return Promise.reject({ kind: 'submoduleCheckoutRefused', message: 'The recorded commit is not available in this submodule, and this action never fetches.', hint: 'Fetch inside the submodule, then review again. Nothing was changed.' });
         fixture.clean = true;
-        const nested = args.request.recursive ? [{ path: 'moved/inner', previousOid: a, recordedOid: b, recoveryReference: 'refs/git-chronos/recovery/3-4', skipped: null },
+        const nested = args.request.recursive ? [{ path: 'moved/inner', previousOid: a, recordedOid: b, recoveryReference: 'refs/git-khronos/recovery/3-4', skipped: null },
           { path: 'moved/docs', previousOid: null, recordedOid: a, recoveryReference: null, skipped: 'not initialized' }] : [];
-        return Promise.resolve({ path: 'moved', previousOid: b, previousBranch: 'refs/heads/topic', recordedOid: a, recoveryReference: 'refs/git-chronos/recovery/1-2', nested });
+        return Promise.resolve({ path: 'moved', previousOid: b, previousBranch: 'refs/heads/topic', recordedOid: a, recoveryReference: 'refs/git-khronos/recovery/1-2', nested });
       }
       if (command === 'initialize_all_submodules') {
         fixture.initializedAll = true;
@@ -298,7 +298,7 @@ test('recorded-commit checkout is offered only for clean moved checkouts and dis
   await page.keyboard.press('Enter');
   const notice = dialog.locator('[data-submodule-sync]');
   await expect(notice).toContainText('Checked out aaaaaaaaaa in moved');
-  await expect(notice).toContainText('refs/git-chronos/recovery/1-2 inside the submodule');
+  await expect(notice).toContainText('refs/git-khronos/recovery/1-2 inside the submodule');
   await expect(notice).toContainText('Branch topic was left unchanged');
   await expect(notice).toBeFocused();
   const calls = await page.evaluate(() => (window as any).__submoduleReview.calls);
@@ -329,7 +329,7 @@ test('recursive recorded-commit checkout reports each nested result and skip', a
   await expect(confirm).not.toContainText('Nested submodules are left as they are.');
   await confirm.getByRole('button', { name: 'Check out recorded commit', exact: true }).click();
   const notice = dialog.locator('[data-submodule-sync]');
-  await expect(notice).toContainText('Nested moved/inner: aaaaaaaaaa → bbbbbbbbbb, previous kept at refs/git-chronos/recovery/3-4.');
+  await expect(notice).toContainText('Nested moved/inner: aaaaaaaaaa → bbbbbbbbbb, previous kept at refs/git-khronos/recovery/3-4.');
   await expect(notice).toContainText('Nested moved/docs skipped: not initialized');
   const calls = await page.evaluate(() => (window as any).__submoduleReview.calls);
   expect(calls[1].args.request.recursive).toBe(true);

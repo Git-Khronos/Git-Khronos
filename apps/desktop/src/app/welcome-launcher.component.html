@@ -2,7 +2,7 @@
   <div class="ambient ambient-one"></div>
   <div class="ambient ambient-two"></div>
   <header class="welcome-nav">
-    <div class="brand"><span class="brand-mark">GC</span><span>Git Chronos</span></div>
+    <div class="brand"><span class="brand-mark">GC</span><span>Git Khronos</span></div>
     <div class="welcome-controls">
       <ng-container *ngTemplateOutlet="workspaceControl()"></ng-container>
       <button class="welcome-theme-toggle" type="button" title="Switch to {{ appTheme() === 'chronos' ? 'Midnight Contrast' : 'Chronos Dark' }}" aria-label="Switch application theme" (click)="themeToggled.emit()"><gc-icon name="eye" [size]="14" /><span>{{ appTheme() === 'chronos' ? 'Chronos Dark' : 'Midnight Contrast' }}</span></button>

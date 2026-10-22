@@ -14,7 +14,7 @@ await mkdir(outputDirectory, { recursive: true });
 
 for (const [sourceName, outputName] of [
   ['changelog', 'changelog.gz'],
-  ['git-chronos-desktop.1', 'git-chronos-desktop.1.gz'],
+  ['git-khronos-desktop.1', 'git-khronos-desktop.1.gz'],
 ]) {
   const contents = await readFile(join(sourceDirectory, sourceName));
   await writeFile(join(outputDirectory, outputName), gzipSync(contents, { level: 9 }));

@@ -55,7 +55,7 @@ for (const [strategy, label] of [
     await expect(page.locator('.pull-menu').getByRole('menuitemradio', {
       name: 'Rebase is the default pull strategy',
     })).toHaveAttribute('aria-checked', 'true');
-    expect(await page.evaluate(() => localStorage.getItem('git-chronos.pull.strategy'))).toBe('rebase');
+    expect(await page.evaluate(() => localStorage.getItem('git-khronos.pull.strategy'))).toBe('rebase');
   });
 }
 

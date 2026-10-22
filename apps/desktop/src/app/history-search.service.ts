@@ -1,7 +1,7 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
-import type { BlameNavigation, CommitComparison, CommitSummary, FileHistoryCursor, FileHistoryPage, HistoricalFileEntry, HistoryCursor, HistoryQuery, HistorySearchPage } from '@git-chronos/contracts';
-import { GitChronosService } from './git-chronos.service';
+import type { BlameNavigation, CommitComparison, CommitSummary, FileHistoryCursor, FileHistoryPage, HistoricalFileEntry, HistoryCursor, HistoryQuery, HistorySearchPage } from '@git-khronos/contracts';
+import { GitKhronosService } from './git-khronos.service';
 
 export const emptyHistoryQuery = (): HistoryQuery => ({
   message: '', author: '', oid: '', since: '', until: '', path: '', scope: '',
@@ -9,7 +9,7 @@ export const emptyHistoryQuery = (): HistoryQuery => ({
 
 @Injectable({ providedIn: 'root' })
 export class HistorySearchService {
-  private readonly git = inject(GitChronosService);
+  private readonly git = inject(GitKhronosService);
   readonly entries = signal<HistorySearchPage['entries']>([]);
   readonly cursor = signal<HistoryCursor | null>(null);
   readonly complete = signal(false);

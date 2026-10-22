@@ -1,4 +1,4 @@
-import type { SubmoduleState } from '@git-chronos/contracts';
+import type { SubmoduleState } from '@git-khronos/contracts';
 
 export interface SubmoduleFinding {
   label: string;

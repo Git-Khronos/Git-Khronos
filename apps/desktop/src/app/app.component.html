@@ -97,10 +97,10 @@
           <gc-icon class="app-menu-chevron" name="chevron-down" [size]="8" />
         </button>
         @if (appMenuOpen()) {
-          <div class="app-menu-popover" role="menu" aria-label="Git Chronos menu" (click)="$event.stopPropagation()" (keydown)="handleAppMenuKeydown($event)">
+          <div class="app-menu-popover" role="menu" aria-label="Git Khronos menu" (click)="$event.stopPropagation()" (keydown)="handleAppMenuKeydown($event)">
             <header>
               <span class="brand-mark mini">GC</span>
-              <span><strong>Git Chronos</strong><small>{{ git.repositoryLabel(repo) }}</small></span>
+              <span><strong>Git Khronos</strong><small>{{ git.repositoryLabel(repo) }}</small></span>
             </header>
             <div class="app-menu-scroll">
               <div class="app-menu-section">
@@ -1885,7 +1885,7 @@
           (click)="git.cancelActiveOperation()"
         >{{ git.activeOperationCancelling() ? 'Stopping…' : 'Cancel' }}</button>
       }
-      <span class="status-separator"></span><span class="status-version" [class.preview]="git.browserPreview()" [title]="git.browserPreview() ? 'Browser preview environment' : 'Git Chronos version'">{{ git.browserPreview() ? 'Preview' : 'v' + (git.systemInfo()?.appVersion ?? '0.1.0') }}</span>
+      <span class="status-separator"></span><span class="status-version" [class.preview]="git.browserPreview()" [title]="git.browserPreview() ? 'Browser preview environment' : 'Git Khronos version'">{{ git.browserPreview() ? 'Preview' : 'v' + (git.systemInfo()?.appVersion ?? '0.1.0') }}</span>
     </footer>
   }
 
@@ -2465,7 +2465,7 @@
           } @else if (action.kind === 'forget-discard') {
             <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
           } @else if (action.kind === 'discard') {
-            <p>{{ action.untracked ? 'Delete this untracked file from disk. Git Chronos saves a temporary recovery patch so you can restore it with Undo.' : 'Replace the working copy with the staged version. Git Chronos saves a temporary recovery patch so you can restore it with Undo.' }}</p>
+            <p>{{ action.untracked ? 'Delete this untracked file from disk. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' : 'Replace the working copy with the staged version. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' }}</p>
           } @else if (action.kind === 'discard-hunk') {
             <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore the hunk.</p>
           } @else if (action.kind === 'discard-lines') {
@@ -2592,7 +2592,7 @@
             <p>This rewrites commits by rebasing {{ git.repository()?.status?.branch }} onto {{ action.branch }}.</p>
           } @else if (action.unmerged) {
             <p class="unmerged-branch-warning"><gc-icon name="warning" [size]="14" />This branch has commits that are not merged into its upstream or the current branch.</p>
-            <p>Deleting it anyway leaves those commits on no branch. Git Chronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
+            <p>Deleting it anyway leaves those commits on no branch. Git Khronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
           } @else {
             <p>Git refuses to delete an unmerged branch unless force deletion is enabled. The branch tip is saved in <strong>Recovery History</strong> first, so you can restore it later.</p>
             <label class="force-delete-option"><input type="checkbox" [ngModel]="forceBranchDelete()" (ngModelChange)="forceBranchDelete.set($event)" /> Force delete even when the branch is not merged</label>

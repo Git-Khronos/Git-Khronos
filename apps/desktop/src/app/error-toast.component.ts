@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
-import { GitChronosService } from './git-chronos.service';
+import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 @Component({
@@ -18,7 +18,7 @@ import { IconComponent } from './icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ErrorToastComponent {
-  protected readonly git = inject(GitChronosService);
+  protected readonly git = inject(GitKhronosService);
   readonly error = input.required<string>();
   readonly logRequested = output<void>();
 }

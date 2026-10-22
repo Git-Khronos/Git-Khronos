@@ -376,7 +376,7 @@ fn interactive_rebase_preflight_rechecks_operations_before_support_or_recovery_w
             &[
                 "for-each-ref",
                 "--format=%(refname)",
-                "refs/git-chronos/recovery/"
+                "refs/git-khronos/recovery/"
             ]
         )
         .unwrap()
@@ -460,7 +460,7 @@ fn interactive_rebase_refuses_occupied_and_missing_source_worktrees_without_part
         &[
             "for-each-ref",
             "--format=%(refname)",
-            "refs/git-chronos/recovery/"
+            "refs/git-khronos/recovery/"
         ]
     )
     .unwrap()
@@ -574,7 +574,7 @@ fn interactive_rebase_edit_amend_continue_retains_support_for_later_reword_and_r
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/"
+                    "refs/git-khronos/recovery/"
                 ]
             )
             .unwrap()
@@ -656,7 +656,7 @@ fn interactive_rebase_edit_abort_after_amend_restores_original_branch_and_keeps_
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/"
+                    "refs/git-khronos/recovery/"
                 ]
             )
             .unwrap()
@@ -842,7 +842,7 @@ fn interactive_rebase_autosquash_reviewed_order_combines_messages_and_preserves_
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/"
+                    "refs/git-khronos/recovery/"
                 ]
             )
             .unwrap()
@@ -923,7 +923,7 @@ fn mainline_cherry_pick_each_parent_applies_only_the_relative_merge_difference()
                     &[
                         "for-each-ref",
                         "--format=%(objectname)",
-                        "refs/git-chronos/recovery/"
+                        "refs/git-khronos/recovery/"
                     ]
                 )
                 .unwrap()
@@ -963,7 +963,7 @@ fn mainline_revert_each_parent_reverses_difference_without_erasing_merge_history
                     &[
                         "for-each-ref",
                         "--format=%(objectname)",
-                        "refs/git-chronos/recovery/"
+                        "refs/git-khronos/recovery/"
                     ]
                 )
                 .unwrap()
@@ -1037,7 +1037,7 @@ fn mainline_validation_refuses_missing_out_of_range_and_nonmerge_choices_before_
             &[
                 "for-each-ref",
                 "--format=%(refname)",
-                "refs/git-chronos/recovery/"
+                "refs/git-khronos/recovery/"
             ]
         )
         .unwrap()
@@ -1085,7 +1085,7 @@ fn mainline_replay_preserves_conflicts_and_abort_restores_destination_with_recov
                     &[
                         "for-each-ref",
                         "--format=%(objectname)",
-                        "refs/git-chronos/recovery/"
+                        "refs/git-khronos/recovery/"
                     ]
                 )
                 .unwrap()
@@ -1126,7 +1126,7 @@ fn mainline_replay_refuses_dirty_active_operation_and_recovery_failure_without_c
     fs::remove_file(path.join(".git/CHERRY_PICK_HEAD")).unwrap();
     run_mutation(
         path,
-        &["update-ref", "refs/git-chronos/recovery", &first],
+        &["update-ref", "refs/git-khronos/recovery", &first],
         "obstruct recovery namespace",
     )
     .unwrap();
@@ -1197,7 +1197,7 @@ fn mainline_replay_hook_refusal_keeps_staged_changes_for_explicit_continue_or_co
                     &[
                         "for-each-ref",
                         "--format=%(objectname)",
-                        "refs/git-chronos/recovery/"
+                        "refs/git-khronos/recovery/"
                     ]
                 )
                 .unwrap()
@@ -1812,7 +1812,7 @@ fn interactive_rebase_fixup_retains_preceding_message_and_original_tip_for_recov
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/"
+                    "refs/git-khronos/recovery/"
                 ]
             )
             .unwrap()
@@ -1834,7 +1834,7 @@ fn interactive_rebase_fixup_retains_preceding_message_and_original_tip_for_recov
         "3"
     );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    assert!(!path.join(".git/git-chronos-rebase").exists());
+    assert!(!path.join(".git/git-khronos-rebase").exists());
 }
 
 #[test]
@@ -1853,7 +1853,7 @@ fn interactive_rebase_rejects_combination_without_retained_predecessor_before_an
         let head = repository.oid();
         let refs = run_git(path, &["show-ref"]).unwrap().stdout;
         let index = fs::read(path.join(".git/index")).unwrap();
-        let support = path.join(".git/git-chronos-rebase");
+        let support = path.join(".git/git-khronos-rebase");
         fs::create_dir(&support).unwrap();
         fs::write(support.join("preserved"), b"existing support data\n").unwrap();
         let steps = plan
@@ -1936,7 +1936,7 @@ fn interactive_rebase_fixup_after_dropped_commit_combines_into_retained_reword()
                 &[
                     "for-each-ref",
                     "--format=%(objectname)",
-                    "refs/git-chronos/recovery/"
+                    "refs/git-khronos/recovery/"
                 ]
             )
             .unwrap()
@@ -1977,7 +1977,7 @@ fn interactive_rebase_reword_input_validation_precedes_recovery_and_support_writ
         );
         assert_eq!(repository.oid(), head);
         assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
-        assert!(!path.join(".git/git-chronos-rebase").exists());
+        assert!(!path.join(".git/git-khronos-rebase").exists());
     }
 }
 
@@ -1999,7 +1999,7 @@ fn interactive_rebase_refuses_recovery_reference_failure_before_checkout_or_supp
         message: None,
     }];
     fs::write(
-        path.join(".git/refs/git-chronos"),
+        path.join(".git/refs/git-khronos"),
         b"owned recovery namespace obstruction\n",
     )
     .unwrap();
@@ -2017,10 +2017,10 @@ fn interactive_rebase_refuses_recovery_reference_failure_before_checkout_or_supp
     assert!(!path.join("feature").exists());
     assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
     assert_eq!(
-        fs::read(path.join(".git/refs/git-chronos")).unwrap(),
+        fs::read(path.join(".git/refs/git-khronos")).unwrap(),
         b"owned recovery namespace obstruction\n"
     );
-    assert!(!path.join(".git/git-chronos-rebase").exists());
+    assert!(!path.join(".git/git-khronos-rebase").exists());
     assert!(!read_status(path).unwrap().rebase_in_progress);
 }
 
@@ -2066,7 +2066,7 @@ fn interactive_rebase_conflicted_fixup_plan_preserves_source_and_abort_restores_
         &[
             "for-each-ref",
             "--format=%(refname)%00%(objectname)",
-            "refs/git-chronos/recovery/",
+            "refs/git-khronos/recovery/",
         ],
     )
     .unwrap()
@@ -2095,7 +2095,7 @@ fn interactive_rebase_conflicted_fixup_plan_preserves_source_and_abort_restores_
             &[
                 "for-each-ref",
                 "--format=%(refname)%00%(objectname)",
-                "refs/git-chronos/recovery/"
+                "refs/git-khronos/recovery/"
             ]
         )
         .unwrap()
@@ -2103,7 +2103,7 @@ fn interactive_rebase_conflicted_fixup_plan_preserves_source_and_abort_restores_
         recovery
     );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    assert!(!path.join(".git/git-chronos-rebase").exists());
+    assert!(!path.join(".git/git-khronos-rebase").exists());
 }
 
 #[test]
@@ -3873,7 +3873,7 @@ fn worktree_registration_prune_refuses_main_existing_locked_stale_and_unknown_re
     assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
     assert!(
         !path
-            .join(".git/git-chronos-worktree-registrations")
+            .join(".git/git-khronos-worktree-registrations")
             .exists()
     );
     // A directory that reappears is never removed, even after Git reported it missing.
@@ -4254,7 +4254,7 @@ fn recovery_refs(path: &Path) -> String {
             &[
                 "for-each-ref",
                 "--format=%(refname) %(objectname)",
-                "refs/git-chronos/recovery/",
+                "refs/git-khronos/recovery/",
             ],
         )
         .unwrap()
@@ -7894,7 +7894,7 @@ fn operation_recovery_snapshots_do_not_leak_into_graph_pages_or_decorations() {
     let commits = read_commit_page(&repository.0, 0, 100).unwrap();
     assert_eq!(commits.len(), 1);
     assert_eq!(commits[0].oid, repository.oid());
-    assert!(!format!("{:?}", commits[0]).contains("git-chronos/recovery"));
+    assert!(!format!("{:?}", commits[0]).contains("git-khronos/recovery"));
     for fallback in [false, true] {
         let mut cursor = CommitHistoryCursor::default();
         cursor.reset(&repository.0, &[]).unwrap();
@@ -8310,7 +8310,7 @@ fn reference_actions_delete_local_tag_preserves_annotation_and_rejects_stale_tar
         &[
             "for-each-ref",
             "--format=%(objectname)",
-            "refs/git-chronos/recovery",
+            "refs/git-khronos/recovery",
         ],
     )
     .unwrap();
@@ -8656,7 +8656,7 @@ fn reference_actions_sign_and_verify_annotated_tags_with_configured_ssh_key() {
     assert!(matches!(create_signed_tag(&repository.0, "unavailable", &oid, "Missing key").unwrap_err().kind.as_str(), "gitFailure" | "tagSigningFailed"));
     assert_eq!(run_git(&repository.0, &["show-ref", "--verify", "--quiet", "refs/tags/unavailable"]).unwrap().status.code(), Some(1));
     delete_local_tag(&repository.0, "signed", &oid).unwrap();
-    let recovery = run_git(&repository.0, &["for-each-ref", "--format=%(objectname)", "refs/git-chronos/recovery/"]).unwrap().stdout;
+    let recovery = run_git(&repository.0, &["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]).unwrap().stdout;
     assert_eq!(recovery, tag);
     let recovered_oid = String::from_utf8(tag).unwrap().trim().to_owned();
     assert_eq!(run_git(&repository.0, &["cat-file", "tag", &recovered_oid]).unwrap().stdout, object);

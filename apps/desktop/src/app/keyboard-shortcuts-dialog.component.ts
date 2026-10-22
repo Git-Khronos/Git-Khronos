@@ -37,7 +37,7 @@ function chord(value: string): string[] {
   template: `
   <div class="shortcuts-backdrop" (click)="closed.emit()">
     <section class="shortcuts-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
-      <header><span><gc-icon name="keyboard" [size]="18" /></span><div><h2 id="shortcuts-title">Keyboard Shortcuts</h2><small>Fast paths through Git Chronos</small></div><button type="button" aria-label="Close keyboard shortcuts" title="Close keyboard shortcuts (Esc)" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button></header>
+      <header><span><gc-icon name="keyboard" [size]="18" /></span><div><h2 id="shortcuts-title">Keyboard Shortcuts</h2><small>Fast paths through Git Khronos</small></div><button type="button" aria-label="Close keyboard shortcuts" title="Close keyboard shortcuts (Esc)" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button></header>
       <div class="shortcut-search-row">
         <div class="shortcut-search"><gc-icon name="search" [size]="15" /><input #searchInput type="text" role="searchbox" aria-label="Search keyboard shortcuts" placeholder="Search actions or keys" autocomplete="off" [value]="query()" (input)="updateQuery($event)" />@if (query()) { <button type="button" aria-label="Clear shortcut search" title="Clear search" (click)="clearSearch()"><gc-icon name="x" [size]="12" /></button> }</div>
         <small role="status" aria-live="polite">{{ resultCount() }} {{ resultCount() === 1 ? 'shortcut' : 'shortcuts' }}</small>

@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 type Column = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 
-const REPOSITORY_KEY = 'git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos';
+const REPOSITORY_KEY = 'git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos';
 const DEFAULT_VISIBLE: Column[] = ['branch', 'graph', 'message', 'author', 'date'];
 const SEPARATORS: Record<Column, string> = {
   branch: 'Resize Branch and Tag column',
@@ -31,7 +31,7 @@ async function openWithLayout(page: Page, order: Column[], options: { scroll?: b
     const hidden = (['branch', 'graph', 'message', 'author', 'date', 'sha'] as const).filter((column) => !order.includes(column));
     localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...hidden]));
     if (options.sha) localStorage.setItem(`${key}.column.sha.visible`, 'true');
-    if (options.scroll === false) localStorage.setItem('git-chronos.graph.horizontal-scroll', 'false');
+    if (options.scroll === false) localStorage.setItem('git-khronos.graph.horizontal-scroll', 'false');
   }, { key: REPOSITORY_KEY, order, options });
   await page.reload();
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
@@ -205,7 +205,7 @@ test('keeps orderings aligned with only some columns shown', async ({ page }) =>
         const all = ['branch', 'graph', 'message', 'author', 'date', 'sha'];
         for (const column of all) localStorage.setItem(`${key}.column.${column}.visible`, String(order.includes(column)));
         localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...all.filter((column) => !order.includes(column))]));
-        localStorage.setItem('git-chronos.graph.horizontal-scroll', String(scroll));
+        localStorage.setItem('git-khronos.graph.horizontal-scroll', String(scroll));
       }, { key: REPOSITORY_KEY, order, scroll });
       await page.reload();
       await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();

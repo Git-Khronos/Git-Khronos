@@ -40,7 +40,7 @@ import type {
   LfsFetchPreview,
   LfsCheckoutPreview,
   LfsPrunePreview,
-} from '@git-chronos/contracts';
+} from '@git-khronos/contracts';
 import {
   checkoutHistoryTarget,
   createCheckoutHistoryEntry,
@@ -62,12 +62,12 @@ import {
   preserveUntrackedEntries,
 } from './working-tree-status';
 
-const RECENTS_KEY = 'git-chronos.recent-repositories.v1';
-const OPEN_TABS_KEY = 'git-chronos.open-repositories.v1';
-const ACTIVE_PATH_KEY = 'git-chronos.active-repository.v1';
-const REPOSITORY_ALIASES_KEY = 'git-chronos.repository-aliases.v1';
-const WORKSPACES_KEY = 'git-chronos.workspaces.v1';
-const ACTIVE_WORKSPACE_KEY = 'git-chronos.active-workspace.v1';
+const RECENTS_KEY = 'git-khronos.recent-repositories.v1';
+const OPEN_TABS_KEY = 'git-khronos.open-repositories.v1';
+const ACTIVE_PATH_KEY = 'git-khronos.active-repository.v1';
+const REPOSITORY_ALIASES_KEY = 'git-khronos.repository-aliases.v1';
+const WORKSPACES_KEY = 'git-khronos.workspaces.v1';
+const ACTIVE_WORKSPACE_KEY = 'git-khronos.active-workspace.v1';
 const DEFAULT_WORKSPACE_ID = 'default';
 
 function sameItems<T>(left: readonly T[], right: readonly T[], key: (item: T) => string): boolean {
@@ -157,7 +157,7 @@ interface ClosedRepository {
 }
 
 @Injectable({ providedIn: 'root' })
-export class GitChronosService {
+export class GitKhronosService {
   readonly systemInfo = signal<SystemInfo | null>(null);
   readonly browserPreview = computed(() => this.systemInfo()?.appVersion === 'browser preview');
   readonly repositories = signal<RepositorySnapshot[]>([]);
@@ -300,14 +300,14 @@ export class GitChronosService {
         if (hostingPreview === 'gitlab') {
           preview.remotes = [{
             name: 'origin',
-            fetchUrl: 'git@gitlab.com:example/platform/git-chronos.git',
-            pushUrl: 'git@gitlab.com:example/platform/git-chronos.git',
+            fetchUrl: 'git@gitlab.com:example/platform/git-khronos.git',
+            pushUrl: 'git@gitlab.com:example/platform/git-khronos.git',
           }];
         } else if (hostingPreview === 'bitbucket') {
           preview.remotes = [{
             name: 'origin',
-            fetchUrl: 'git@bitbucket.org:example/git-chronos.git',
-            pushUrl: 'git@bitbucket.org:example/git-chronos.git',
+            fetchUrl: 'git@bitbucket.org:example/git-khronos.git',
+            pushUrl: 'git@bitbucket.org:example/git-khronos.git',
           }];
         }
         if (previewOptions.has('clean-preview')) {
@@ -1952,7 +1952,7 @@ export class GitChronosService {
           name,
           oid,
           annotated: name === 'v0.1.0',
-          message: name === 'v0.1.0' ? 'First Git Chronos preview release' : null,
+          message: name === 'v0.1.0' ? 'First Git Khronos preview release' : null,
           taggerName: name === 'v0.1.0' ? 'Maya Chen' : null,
           taggerEmail: name === 'v0.1.0' ? 'maya@example.test' : null,
           taggedAt: name === 'v0.1.0' ? '2026-10-03T11:42:00+00:00' : null,
@@ -3058,7 +3058,7 @@ function createPreviewCommitDetails(repository: RepositorySnapshot, oid: string 
     : commit.subject.includes('staging')
       ? [
           { status: 'M', path: 'crates/git-core/src/lib.rs', previousPath: null, additions: 31, deletions: 9 },
-          { status: 'M', path: 'apps/desktop/src/app/git-chronos.service.ts', previousPath: null, additions: 22, deletions: 7 },
+          { status: 'M', path: 'apps/desktop/src/app/git-khronos.service.ts', previousPath: null, additions: 22, deletions: 7 },
           { status: 'A', path: 'apps/desktop/src/app/virtual-list.spec.ts', previousPath: null, additions: 38, deletions: 0 },
         ]
       : [
@@ -3151,7 +3151,7 @@ function createRepositoryPreview(): RepositorySnapshot {
     { oid: '160acd10ef9e0c202cd3985aa41ee45d971bbb11', parents: ['ca5fa80bf46c95b6c8d4296d47f3fd9e1e77d5c2'], authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: '2026-10-02T12:11:00Z', subject: 'Add hunk-level staging actions', description: 'Stage, unstage, and discard individual diff hunks.', decorations: ['tag: v0.1.0'] },
     { oid: '7c17b9d37d6a36dc9477e611109136f86477041a', parents: ['ca5fa80bf46c95b6c8d4296d47f3fd9e1e77d5c2'], authorName: 'Sam Rivera', authorEmail: 'sam@example.test', authoredAt: '2026-10-02T10:03:00Z', subject: 'Refine graph lane rendering', description: 'Keep first-parent histories straight through commit nodes.', decorations: ['feature/partial-staging'] },
     { oid: 'ca5fa80bf46c95b6c8d4296d47f3fd9e1e77d5c2', parents: ['14adfbb0c1685f62cba66f031306a510e3f501a2'], authorName: 'Alex Kim', authorEmail: 'alex@example.test', authoredAt: '2026-10-01T17:45:00Z', subject: 'Persist graph column preferences', description: 'Restore widths, ordering, and visibility per repository.', decorations: ['heads/release', 'remotes/origin/release', 'refs/remotes/upstream/release'] },
-    { oid: '14adfbb0c1685f62cba66f031306a510e3f501a2', parents: [], authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: '2026-09-29T08:17:00Z', subject: 'Initialize Git Chronos desktop', description: 'Create the Angular, Nx, Rust, and Tauri workspace.', decorations: [] },
+    { oid: '14adfbb0c1685f62cba66f031306a510e3f501a2', parents: [], authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: '2026-09-29T08:17:00Z', subject: 'Initialize Git Khronos desktop', description: 'Create the Angular, Nx, Rust, and Tauri workspace.', decorations: [] },
   ];
   const headOid = commits[0].oid;
   const mergeOid = commits[1].oid;
@@ -3162,8 +3162,8 @@ function createRepositoryPreview(): RepositorySnapshot {
   commits.unshift({ oid: stashOid, parents: [headOid], authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: '2026-10-03T10:05:00Z', subject: 'WIP on graph polish', description: '', decorations: ['refs/stash'] });
   return {
     id: 'browser-preview',
-    name: 'git-chronos',
-    path: '/home/maya/projects/git-chronos',
+    name: 'git-khronos',
+    path: '/home/maya/projects/git-khronos',
     identity: { name: 'Maya Chen', email: 'maya@example.test' },
     headOid,
     status: {
@@ -3177,8 +3177,8 @@ function createRepositoryPreview(): RepositorySnapshot {
     },
     signing: { enabled: false, format: 'openpgp', key: null },
     remotes: [
-      { name: 'origin', fetchUrl: 'git@github.com:example/git-chronos.git', pushUrl: 'git@github.com:example/git-chronos.git' },
-      { name: 'upstream', fetchUrl: 'https://github.com/example/git-chronos.git', pushUrl: 'https://github.com/example/git-chronos.git' },
+      { name: 'origin', fetchUrl: 'git@github.com:example/git-khronos.git', pushUrl: 'git@github.com:example/git-khronos.git' },
+      { name: 'upstream', fetchUrl: 'https://github.com/example/git-khronos.git', pushUrl: 'https://github.com/example/git-khronos.git' },
     ],
     branches: [
       { fullName: 'refs/heads/feature/partial-staging', name: 'feature/partial-staging', oid: featureOid, current: false, remote: false, upstream: null, tracking: null },
@@ -3194,12 +3194,12 @@ function createRepositoryPreview(): RepositorySnapshot {
     stashes: [{ reference: 'stash@{0}', oid: stashOid, message: 'WIP on graph polish' }],
     tags: [{ fullName: 'refs/tags/v0.1.0', name: 'v0.1.0', oid: tagOid }],
     worktrees: [
-      { path: '/home/maya/projects/git-chronos', oid: headOid, branch: 'main', current: true, locked: false, prunable: false, statusLoaded: true, changes: 4, ahead: 1, behind: 0 },
-      { path: '/home/maya/projects/git-chronos-partial-staging', oid: featureOid, branch: 'feature/partial-staging', current: false, locked: false, prunable: false, statusLoaded: true, changes: 2, ahead: 0, behind: 0 },
+      { path: '/home/maya/projects/git-khronos', oid: headOid, branch: 'main', current: true, locked: false, prunable: false, statusLoaded: true, changes: 4, ahead: 1, behind: 0 },
+      { path: '/home/maya/projects/git-khronos-partial-staging', oid: featureOid, branch: 'feature/partial-staging', current: false, locked: false, prunable: false, statusLoaded: true, changes: 2, ahead: 0, behind: 0 },
     ],
     submodules: [
-      { name: 'vendor/lane-engine', path: 'vendor/lane-engine', absolutePath: '/home/maya/projects/git-chronos/vendor/lane-engine', url: 'https://github.com/example/lane-engine.git', oid: commits[4].oid, headOid: commits[4].oid, initialized: true, outOfSync: false },
-      { name: 'plugins/diff-driver', path: 'plugins/diff-driver', absolutePath: '/home/maya/projects/git-chronos/plugins/diff-driver', url: 'git@github.com:example/diff-driver.git', oid: commits[5].oid, headOid: null, initialized: false, outOfSync: false },
+      { name: 'vendor/lane-engine', path: 'vendor/lane-engine', absolutePath: '/home/maya/projects/git-khronos/vendor/lane-engine', url: 'https://github.com/example/lane-engine.git', oid: commits[4].oid, headOid: commits[4].oid, initialized: true, outOfSync: false },
+      { name: 'plugins/diff-driver', path: 'plugins/diff-driver', absolutePath: '/home/maya/projects/git-khronos/plugins/diff-driver', url: 'git@github.com:example/diff-driver.git', oid: commits[5].oid, headOid: null, initialized: false, outOfSync: false },
     ],
     lfs: { enabled: false, available: false, version: null, trackedFiles: null },
     sparseCheckout: { enabled: false, coneMode: true, sparseIndex: false, paths: [] },

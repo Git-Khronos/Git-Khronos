@@ -499,7 +499,7 @@ fn temporary_directory(path: &Path) -> Result<PathBuf, AppError> {
         .map_err(|_| refused("The system clock is invalid."))?
         .as_nanos();
     let directory =
-        git_directory(path)?.join(format!("git-chronos-mail-{id}-{}.tmp", std::process::id()));
+        git_directory(path)?.join(format!("git-khronos-mail-{id}-{}.tmp", std::process::id()));
     fs::create_dir(&directory).map_err(io_error)?;
     Ok(directory)
 }
@@ -1339,7 +1339,7 @@ mod tests {
         assert_eq!(Fixture::head(&target), moved);
         assert!(!Fixture::in_progress(&target));
         assert_eq!(
-            Fixture::output(&target, &["for-each-ref", "refs/git-chronos"]),
+            Fixture::output(&target, &["for-each-ref", "refs/git-khronos"]),
             b""
         );
     }

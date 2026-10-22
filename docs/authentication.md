@@ -1,7 +1,7 @@
 # Standard Git authentication
 
-Git Chronos uses system Git for HTTPS and OpenSSH for SSH. Existing Git credential
-helpers and SSH agents are tried normally. Git Chronos does not keep credentials
+Git Khronos uses system Git for HTTPS and OpenSSH for SSH. Existing Git credential
+helpers and SSH agents are tried normally. Git Khronos does not keep credentials
 in application settings or its activity history.
 
 ## Explicit operations
@@ -26,7 +26,7 @@ uses OpenSSH batch mode. A failure remains visible in the existing fetch-status
 control; automatic retries pause until an explicit successful Fetch. Clicking the
 status control performs an explicit fetch, which can request credentials.
 
-Custom credential helpers are user-configured external programs. Git Chronos
+Custom credential helpers are user-configured external programs. Git Khronos
 cannot prevent a helper which ignores Git/GCM's noninteractive controls from
 launching its own interface. Use helpers supporting noninteractive retrieval for
 background fetch.
@@ -35,7 +35,7 @@ background fetch.
 
 OpenSSH receives `StrictHostKeyChecking=yes` for every transport. Unknown and
 changed keys are rejected, never accepted through askpass. Verify the server's
-fingerprint independently and establish trust outside Git Chronos before retrying.
+fingerprint independently and establish trust outside Git Khronos before retrying.
 
 Standard password and encrypted-key passphrase prompts are supported. SSH agent
 keys and `~/.ssh/config` host/identity/proxy settings remain available. Arbitrary
@@ -80,14 +80,14 @@ failure, rejected passphrases through the shipped askpass, cancellation, and
 successful fetch and push. Fixture trust comes from a fixture-only SSH config added
 by a test `ssh` wrapper; the app's forced OpenSSH options stay in effect and the
 user's SSH directory and agent are not used. Run it with
-`GIT_CHRONOS_SSHD=/absolute/path/to/sshd cargo test -p git-chronos-desktop --test ssh_transport -- --include-ignored`;
+`GIT_KHRONOS_SSHD=/absolute/path/to/sshd cargo test -p git-khronos-desktop --test ssh_transport -- --include-ignored`;
 a missing `sshd` is a test failure.
 
 Both transport suites can drive a packaged executable as the askpass helper in
-place of the test build. Set `GIT_CHRONOS_PACKAGED_BINARY` to the
-`usr/bin/git-chronos-desktop` extracted from a built Debian package
+place of the test build. Set `GIT_KHRONOS_PACKAGED_BINARY` to the
+`usr/bin/git-khronos-desktop` extracted from a built Debian package
 (`dpkg-deb -x`), then run
-`cargo test -p git-chronos-desktop --test authentication_transport --test ssh_transport -- --include-ignored`.
+`cargo test -p git-khronos-desktop --test authentication_transport --test ssh_transport -- --include-ignored`.
 A locally built `.deb` has passed both suites this way. That shows the shipped
 binary contains the askpass entry point. It does not qualify installation through
 a package manager.

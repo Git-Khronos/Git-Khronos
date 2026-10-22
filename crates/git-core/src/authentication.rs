@@ -13,7 +13,7 @@ use std::time::Duration;
 
 const MAX_RESPONSE: usize = 16 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(120);
-const HELPER_ENV: &str = "GIT_CHRONOS_ASKPASS";
+const HELPER_ENV: &str = "GIT_KHRONOS_ASKPASS";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptKind {
@@ -176,14 +176,14 @@ pub fn helper_entry() -> Option<i32> {
 fn helper_run() -> Result<(), ()> {
     let prompt = std::env::args().nth(1).ok_or(())?;
     let kind = prompt_kind(&prompt).ok_or(())?;
-    let address: std::net::SocketAddr = std::env::var("GIT_CHRONOS_ASKPASS_ADDRESS")
+    let address: std::net::SocketAddr = std::env::var("GIT_KHRONOS_ASKPASS_ADDRESS")
         .map_err(|_| ())?
         .parse()
         .map_err(|_| ())?;
     if !address.ip().is_loopback() {
         return Err(());
     }
-    let token = std::env::var("GIT_CHRONOS_ASKPASS_TOKEN").map_err(|_| ())?;
+    let token = std::env::var("GIT_KHRONOS_ASKPASS_TOKEN").map_err(|_| ())?;
     if token.len() != 64 {
         return Err(());
     }
@@ -322,10 +322,10 @@ pub fn configure(command: &mut Command) -> Option<CancellationToken> {
                 .env("GIT_ASKPASS", &context.executable)
                 .env("SSH_ASKPASS", &context.executable)
                 .env("SSH_ASKPASS_REQUIRE", "force")
-                .env("DISPLAY", "git-chronos")
+                .env("DISPLAY", "git-khronos")
                 .env(HELPER_ENV, "1")
-                .env("GIT_CHRONOS_ASKPASS_ADDRESS", &context.address)
-                .env("GIT_CHRONOS_ASKPASS_TOKEN", &context.token);
+                .env("GIT_KHRONOS_ASKPASS_ADDRESS", &context.address)
+                .env("GIT_KHRONOS_ASKPASS_TOKEN", &context.token);
             command.env("GIT_SSH_COMMAND", if context.interactive {
                 "ssh -o StrictHostKeyChecking=yes -o BatchMode=no -o NumberOfPasswordPrompts=3"
             } else { "ssh -o StrictHostKeyChecking=yes -o BatchMode=yes" })
@@ -368,7 +368,7 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
             "sshHostTrustRequired",
             "SSH host verification failed.",
             Some(
-                "Verify the server fingerprint independently and update known_hosts using SSH outside Git Chronos. Unknown and changed keys are never accepted automatically.",
+                "Verify the server fingerprint independently and update known_hosts using SSH outside Git Khronos. Unknown and changed keys are never accepted automatically.",
             ),
         ));
     }

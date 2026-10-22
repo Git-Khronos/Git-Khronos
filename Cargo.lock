@@ -1210,10 +1210,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-chronos-desktop"
+name = "git-khronos-desktop"
 version = "0.1.0"
 dependencies = [
- "git-chronos-git-core",
+ "git-khronos-git-core",
  "notify",
  "portable-pty",
  "serde",
@@ -1224,7 +1224,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-chronos-git-core"
+name = "git-khronos-git-core"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
