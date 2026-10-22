@@ -105,6 +105,7 @@ tasks:
       - dist/apps/desktop/browser/index.html
     cmds:
       - pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
+      - tools/manage-linux-package.sh name
 
   package:deb:path:
     desc: Print the latest Debian/Ubuntu package path

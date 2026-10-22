@@ -53,6 +53,16 @@ package_field() {
   dpkg-deb --field "$1" "$2" 2>/dev/null
 }
 
+name_package() {
+  local package_file destination
+  package_file="$(latest_package)"
+  destination="${package_directory}/Git-Khronos_$(package_field "$package_file" Version)_$(package_field "$package_file" Architecture).deb"
+  if [[ "$package_file" != "$destination" ]]; then
+    mv -- "$package_file" "$destination"
+  fi
+  printf '%s\n' "$destination"
+}
+
 require_package_field() {
   local package_file="$1" field="$2" expected="$3" actual
   actual="$(package_field "$package_file" "$field")"
@@ -139,9 +149,10 @@ uninstall_package() {
 
 require_package_tools
 case "${1:-}" in
+  name) name_package ;;
   verify) verify_package ;;
   install) install_package ;;
   uninstall) uninstall_package ;;
   print-package) latest_package ;;
-  *) fail "usage: $0 {verify|install|uninstall|print-package}" ;;
+  *) fail "usage: $0 {name|verify|install|uninstall|print-package}" ;;
 esac

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { test } from 'node:test';
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
   'target/release/git-khronos-desktop',
-  'target/release/bundle/deb/Git Khronos_0.1.0_amd64.deb',
+  'target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb',
   'target/package-assets/changelog.gz',
   'target/package-assets/git-khronos-desktop.1.gz',
   'dist/apps/desktop/browser/index.html',
@@ -50,6 +50,7 @@ if (process.argv[2] === '--version') {
 `);
   await put('bin/rustc', '#!/bin/sh\nprintf "rustc fixture\\n"\n');
   await put('tools/manage-linux-package.sh', `#!/bin/sh
+[ "$1" = name ] && exit 0
 printf '%s\\n' "$1" >> calls
 test -z "$FAIL_VERIFY"
 `);
@@ -154,4 +155,35 @@ test('system installation uses the same incremental packaging path', async (t) =
   f.ok(['install:system']);
   f.ok(['install:system']);
   assert.deepEqual(await f.calls(), ['build', 'verify', 'install', 'verify', 'install']);
+});
+
+test('names the real Debian artifact without spaces and keeps naming idempotent', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-deb-name-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'tools'), { recursive: true });
+  const script = join(root, 'tools/manage-linux-package.sh');
+  await copyFile(join(repositoryRoot, 'tools/manage-linux-package.sh'), script);
+  const payload = join(root, 'payload');
+  await mkdir(join(payload, 'DEBIAN'), { recursive: true });
+  await writeFile(join(payload, 'DEBIAN/control'), [
+    'Package: git-khronos',
+    'Version: 0.1.0',
+    'Architecture: amd64',
+    'Maintainer: Fixture <fixture@example.test>',
+    'Description: Filename regression fixture',
+    '',
+  ].join('\n'));
+  const directory = join(root, 'target/release/bundle/deb');
+  await mkdir(directory, { recursive: true });
+  const original = join(directory, 'Git Khronos_0.1.0_amd64.deb');
+  const expected = join(directory, 'Git-Khronos_0.1.0_amd64.deb');
+  const built = spawnSync('dpkg-deb', ['--build', payload, original], { encoding: 'utf8' });
+  assert.equal(built.status, 0, built.stderr);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = spawnSync('bash', [script, 'name'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), expected);
+    assert.ok((await stat(expected)).isFile());
+    await assert.rejects(stat(original), { code: 'ENOENT' });
+  }
 });
