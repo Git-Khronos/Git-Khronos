@@ -266,7 +266,9 @@ fn create_series(
             return Err(AppError::new(
                 "mailPatchEmptyCommitsUnsupported",
                 "This Git version leaves empty commits out of mail patches, so the series would be incomplete.",
-                Some("Deselect the empty commits or upgrade Git (2.43 includes them), then prepare a fresh review. No file was written."),
+                Some(
+                    "Deselect the empty commits or upgrade Git (2.43 includes them), then prepare a fresh review. No file was written.",
+                ),
             ));
         }
         return Err(refused(
@@ -277,7 +279,11 @@ fn create_series(
 }
 
 /// True when Git reported the selection in order except for commits that change nothing.
-fn omitted_only_empty_commits(path: &Path, oids: &[String], reported: &[&[u8]]) -> Result<bool, AppError> {
+fn omitted_only_empty_commits(
+    path: &Path,
+    oids: &[String],
+    reported: &[&[u8]],
+) -> Result<bool, AppError> {
     let mut found = reported.iter().peekable();
     let mut omitted = Vec::new();
     for oid in oids {
@@ -298,7 +304,10 @@ fn omitted_only_empty_commits(path: &Path, oids: &[String], reported: &[&[u8]]) 
         let tree = fields.next().unwrap_or_default();
         let parent_tree = match fields.next() {
             Some(parent) => {
-                let tree = run_git(path, &["rev-parse", "--verify", &format!("{parent}^{{tree}}")])?;
+                let tree = run_git(
+                    path,
+                    &["rev-parse", "--verify", &format!("{parent}^{{tree}}")],
+                )?;
                 ensure_success("inspect an omitted commit's parent", &tree)?;
                 String::from_utf8_lossy(&tree.stdout).trim().to_owned()
             }

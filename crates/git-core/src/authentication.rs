@@ -654,7 +654,8 @@ mod tests {
                 Output {
                     status: std::process::ExitStatus::from_raw(256),
                     stdout: b"Automatic merge failed; fix conflicts fixture-secret".to_vec(),
-                    stderr: b"fatal: Not possible to fast-forward, aborting.\nfixture-secret".to_vec(),
+                    stderr: b"fatal: Not possible to fast-forward, aborting.\nfixture-secret"
+                        .to_vec(),
                 },
                 &[command],
             )
@@ -675,11 +676,14 @@ mod tests {
             "Authentication failed for 'https://user:fixture-secret@example.test'",
             "arbitrary remote error fixture-secret",
         ] {
-            let failure = check_output(Output {
-                status: std::process::ExitStatus::from_raw(256),
-                stdout: Vec::new(),
-                stderr: diagnostic.as_bytes().to_vec(),
-            }, &["fetch"])
+            let failure = check_output(
+                Output {
+                    status: std::process::ExitStatus::from_raw(256),
+                    stdout: Vec::new(),
+                    stderr: diagnostic.as_bytes().to_vec(),
+                },
+                &["fetch"],
+            )
             .unwrap_err();
             assert!(!failure.message.contains("fixture-secret"));
             assert!(!failure.hint.as_ref().unwrap().contains("fixture-secret"));

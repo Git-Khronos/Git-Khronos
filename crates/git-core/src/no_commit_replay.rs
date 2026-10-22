@@ -38,13 +38,23 @@ fn storage(path: &Path) -> Result<PathBuf, AppError> {
 }
 
 fn invalid_state() -> AppError {
-    AppError::new("invalidNoCommitReplay", "The saved no-commit replay state is incomplete or unsupported.",
-        Some("Do not replay automatically. Inspect the repository and preserve its current changes before manual recovery."))
+    AppError::new(
+        "invalidNoCommitReplay",
+        "The saved no-commit replay state is incomplete or unsupported.",
+        Some(
+            "Do not replay automatically. Inspect the repository and preserve its current changes before manual recovery.",
+        ),
+    )
 }
 
 fn io_error(error: std::io::Error) -> AppError {
-    AppError::new("noCommitReplayStorage",     format!("Could not access no-commit replay state: {error}"),
-        Some("Applied changes may remain in the index. Inspect them before retrying; the original history is protected by a recovery reference."))
+    AppError::new(
+        "noCommitReplayStorage",
+        format!("Could not access no-commit replay state: {error}"),
+        Some(
+            "Applied changes may remain in the index. Inspect them before retrying; the original history is protected by a recovery reference.",
+        ),
+    )
 }
 
 fn read(file: &Path) -> Result<Option<Plan>, AppError> {
@@ -136,8 +146,13 @@ fn current_head(path: &Path) -> Result<(String, String), AppError> {
 fn require_original_head(path: &Path, plan: &Plan) -> Result<(), AppError> {
     let (head, reference) = current_head(path)?;
     if head != plan.head_oid || reference != plan.head_reference {
-        return Err(AppError::new("staleNoCommitReplay", "The destination HEAD changed during no-commit replay.",
-            Some("Finish manually to retain the current files and end the saved sequence; inspect the protected original tip before recovery.")));
+        return Err(AppError::new(
+            "staleNoCommitReplay",
+            "The destination HEAD changed during no-commit replay.",
+            Some(
+                "Finish manually to retain the current files and end the saved sequence; inspect the protected original tip before recovery.",
+            ),
+        ));
     }
     Ok(())
 }
@@ -159,8 +174,13 @@ pub(super) fn start(path: &Path, oids: &[String], mainline: Option<u32>) -> Resu
     let protected_head = preserve_replay_tip(path)?;
     let (head_oid, head_reference) = current_head(path)?;
     if head_oid != protected_head {
-        return Err(AppError::new("staleNoCommitReplay", "HEAD changed while protecting the no-commit replay destination.",
-            Some("No changes were applied. Refresh and review the intended destination before retrying.")));
+        return Err(AppError::new(
+            "staleNoCommitReplay",
+            "HEAD changed while protecting the no-commit replay destination.",
+            Some(
+                "No changes were applied. Refresh and review the intended destination before retrying.",
+            ),
+        ));
     }
     let file = storage(path)?;
     let mut plan = Plan {
@@ -226,20 +246,38 @@ pub(super) fn control(path: &Path, action: &str) -> Result<(), AppError> {
     match action {
         "continue" => {
             if plan.phase != Phase::Conflicted {
-                return Err(AppError::new("uncertainNoCommitReplay", "The last no-commit replay step did not finish reliably.",
-                    Some("Inspect current changes. Abort restores the original tracked state; Finish manually retains all current files. No step is silently repeated or skipped.")));
+                return Err(AppError::new(
+                    "uncertainNoCommitReplay",
+                    "The last no-commit replay step did not finish reliably.",
+                    Some(
+                        "Inspect current changes. Abort restores the original tracked state; Finish manually retains all current files. No step is silently repeated or skipped.",
+                    ),
+                ));
             }
             let status = read_status(path)?;
             if status.conflicted > 0 || status.unstaged > 0 || status.entries_truncated {
-                return Err(AppError::new("noCommitResolutionRequired", "Resolve and stage all tracked changes before continuing without a commit.", None));
+                return Err(AppError::new(
+                    "noCommitResolutionRequired",
+                    "Resolve and stage all tracked changes before continuing without a commit.",
+                    None,
+                ));
             }
             apply_remaining(path, &file, &mut plan)
         }
         "abort" => {
-            run_mutation(path, &["reset", "--merge", &plan.head_oid], "abort no-commit replay")?;
+            run_mutation(
+                path,
+                &["reset", "--merge", &plan.head_oid],
+                "abort no-commit replay",
+            )?;
             remove(&file)
         }
-        _ => Err(AppError::new("invalidHistoryOperationAction", "No-commit replay supports Continue, Abort or Finish manually.",
-            Some("Skip is unavailable because it would need to discard only one step while preserving earlier staged changes."))),
+        _ => Err(AppError::new(
+            "invalidHistoryOperationAction",
+            "No-commit replay supports Continue, Abort or Finish manually.",
+            Some(
+                "Skip is unavailable because it would need to discard only one step while preserving earlier staged changes.",
+            ),
+        )),
     }
 }

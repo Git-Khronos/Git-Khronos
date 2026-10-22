@@ -371,17 +371,19 @@ fn interactive_rebase_preflight_rechecks_operations_before_support_or_recovery_w
             fs::read(repository.0.join(".git").join(marker)).unwrap(),
             format!("{original}\n").as_bytes()
         );
-        assert!(run_git(
-            &repository.0,
-            &[
-                "for-each-ref",
-                "--format=%(refname)",
-                "refs/git-khronos/recovery/"
-            ]
-        )
-        .unwrap()
-        .stdout
-        .is_empty());
+        assert!(
+            run_git(
+                &repository.0,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/git-khronos/recovery/"
+                ]
+            )
+            .unwrap()
+            .stdout
+            .is_empty()
+        );
         assert!(!rebase_support_dir(&repository.0).unwrap().exists());
     }
 }
@@ -455,17 +457,19 @@ fn interactive_rebase_refuses_occupied_and_missing_source_worktrees_without_part
         "branchInAnotherWorktree"
     );
     assert_eq!(repository.oid(), original);
-    assert!(run_git(
-        &repository.0,
-        &[
-            "for-each-ref",
-            "--format=%(refname)",
-            "refs/git-khronos/recovery/"
-        ]
-    )
-    .unwrap()
-    .stdout
-    .is_empty());
+    assert!(
+        run_git(
+            &repository.0,
+            &[
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-khronos/recovery/"
+            ]
+        )
+        .unwrap()
+        .stdout
+        .is_empty()
+    );
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
 }
 
@@ -516,10 +520,12 @@ fn interactive_rebase_edit_amend_continue_retains_support_for_later_reword_and_r
     assert_eq!(stopped.conflicted, 0);
     assert_eq!(stopped.entry_count, 0);
     assert!(read_head_status(path).unwrap().rebase_edit_stopped);
-    assert!(rebase_support_dir(path)
-        .unwrap()
-        .join("message-1.txt")
-        .is_file());
+    assert!(
+        rebase_support_dir(path)
+            .unwrap()
+            .join("message-1.txt")
+            .is_file()
+    );
     assert_eq!(
         String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout)
             .unwrap()
@@ -537,10 +543,12 @@ fn interactive_rebase_edit_amend_continue_retains_support_for_later_reword_and_r
     let error = continue_rebase(path).unwrap_err();
     assert_eq!(error.kind, "rebaseEditNeedsAmend");
     assert_eq!(repository.oid(), paused_head);
-    assert!(rebase_support_dir(path)
-        .unwrap()
-        .join("message-1.txt")
-        .is_file());
+    assert!(
+        rebase_support_dir(path)
+            .unwrap()
+            .join("message-1.txt")
+            .is_file()
+    );
     commit_with_options(path, "Amended first commit", true, false, Some(false)).unwrap();
     assert!(read_status(path).unwrap().rebase_edit_stopped);
     continue_rebase(path).unwrap();
@@ -708,7 +716,12 @@ fn interactive_rebase_edit_hook_refusal_preserves_pause_index_and_support_for_ex
     use std::os::unix::fs::PermissionsExt;
     let (repository, _, _, steps) = edit_rebase_fixture();
     let path = &repository.0;
-    run_mutation(path, &["config", "core.hooksPath", ".git/hooks"], "use owned edit fixture hooks").unwrap();
+    run_mutation(
+        path,
+        &["config", "core.hooksPath", ".git/hooks"],
+        "use owned edit fixture hooks",
+    )
+    .unwrap();
     execute_interactive_rebase(path, "feature", "main", &steps).unwrap();
     let stopped = repository.oid();
     let support = rebase_support_dir(path).unwrap();
@@ -762,8 +775,8 @@ fn interactive_rebase_edit_hook_refusal_preserves_pause_index_and_support_for_ex
 }
 
 #[test]
-fn interactive_rebase_autosquash_reviewed_order_combines_messages_and_preserves_independent_commits(
-) {
+fn interactive_rebase_autosquash_reviewed_order_combines_messages_and_preserves_independent_commits()
+ {
     let repository = Repository::new();
     let path = &repository.0;
     let base = repository.oid();
@@ -3104,7 +3117,11 @@ fn signing_ssh_round_trip_preserves_policy_and_distinguishes_trust_revocation_an
         .arg(&key)
         .output()
         .expect("ssh-keygen is required for this optional qualification");
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let public_key = fs::read_to_string(key.with_extension("pub")).unwrap();
     let signers = path.join(".git/allowed-signers-fixture");
     let revoked = path.join(".git/revoked-signers-fixture");
@@ -3119,7 +3136,12 @@ fn signing_ssh_round_trip_preserves_policy_and_distinguishes_trust_revocation_an
         ("commit.gpgsign", "true"),
         ("core.hooksPath", ".git/hooks"),
     ] {
-        run_mutation(path, &["config", name, value], "set disposable signing policy").unwrap();
+        run_mutation(
+            path,
+            &["config", name, value],
+            "set disposable signing policy",
+        )
+        .unwrap();
     }
     let config = fs::read(path.join(".git/config")).unwrap();
     let diagnostic = signing_diagnostic(path).unwrap();
@@ -3129,7 +3151,10 @@ fn signing_ssh_round_trip_preserves_policy_and_distinguishes_trust_revocation_an
         sign_off: true,
         allow_empty: true,
         author: Some(commit_identity("Fixture Author", "author@example.test")),
-        committer: Some(commit_identity("Fixture Committer", "committer@example.test")),
+        committer: Some(commit_identity(
+            "Fixture Committer",
+            "committer@example.test",
+        )),
     };
     fs::write(path.join("file"), b"unstaged remains during signing\n").unwrap();
     let index = fs::read(path.join(".git/index")).unwrap();
@@ -3137,53 +3162,136 @@ fn signing_ssh_round_trip_preserves_policy_and_distinguishes_trust_revocation_an
     let signed = repository.oid();
     let details = commit_details(path, &signed).unwrap();
     assert_eq!(details.signature.status, "valid");
-    assert_eq!(details.signature.signer.as_deref(), Some("signer@example.test"));
+    assert_eq!(
+        details.signature.signer.as_deref(),
+        Some("signer@example.test")
+    );
     assert_eq!(details.signature.trust.as_deref(), Some("fully"));
-    assert!(details.signature.fingerprint.as_deref().is_some_and(|value| value.starts_with("SHA256:")));
-    assert!(details.message.contains("Signed-off-by: Fixture Committer <committer@example.test>"));
-    let identities = run_git(path, &["show", "-s", "--format=%an <%ae>%n%cn <%ce>", &signed]).unwrap();
-    assert_eq!(String::from_utf8(identities.stdout).unwrap().trim(),
-        "Fixture Author <author@example.test>\nFixture Committer <committer@example.test>");
-    ensure_success("verify generated fixture signature", &run_git(path, &["verify-commit", &signed]).unwrap()).unwrap();
+    assert!(
+        details
+            .signature
+            .fingerprint
+            .as_deref()
+            .is_some_and(|value| value.starts_with("SHA256:"))
+    );
+    assert!(
+        details
+            .message
+            .contains("Signed-off-by: Fixture Committer <committer@example.test>")
+    );
+    let identities = run_git(
+        path,
+        &["show", "-s", "--format=%an <%ae>%n%cn <%ce>", &signed],
+    )
+    .unwrap();
+    assert_eq!(
+        String::from_utf8(identities.stdout).unwrap().trim(),
+        "Fixture Author <author@example.test>\nFixture Committer <committer@example.test>"
+    );
+    ensure_success(
+        "verify generated fixture signature",
+        &run_git(path, &["verify-commit", &signed]).unwrap(),
+    )
+    .unwrap();
     assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"unstaged remains during signing\n");
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"unstaged remains during signing\n"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
 
     fs::write(&signers, "").unwrap();
     let unknown = commit_details(path, &signed).unwrap().signature;
     assert_ne!(unknown.status, "valid");
     assert_ne!(unknown.status, "unsigned");
-    assert!(!run_git(path, &["verify-commit", &signed]).unwrap().status.success());
-    run_mutation(path, &["config", "--unset", "gpg.ssh.allowedSignersFile"], "remove fixture trust configuration").unwrap();
+    assert!(
+        !run_git(path, &["verify-commit", &signed])
+            .unwrap()
+            .status
+            .success()
+    );
+    run_mutation(
+        path,
+        &["config", "--unset", "gpg.ssh.allowedSignersFile"],
+        "remove fixture trust configuration",
+    )
+    .unwrap();
     let unconfigured = commit_details(path, &signed).unwrap().signature;
     assert_eq!(unconfigured.status, "unverifiable");
-    run_mutation(path, &["config", "gpg.ssh.allowedSignersFile", signers.to_str().unwrap()], "restore fixture trust configuration").unwrap();
+    run_mutation(
+        path,
+        &[
+            "config",
+            "gpg.ssh.allowedSignersFile",
+            signers.to_str().unwrap(),
+        ],
+        "restore fixture trust configuration",
+    )
+    .unwrap();
     fs::write(&signers, format!("signer@example.test {public_key}")).unwrap();
     fs::write(&revoked, &public_key).unwrap();
     let revoked_signature = commit_details(path, &signed).unwrap().signature;
     assert_eq!(revoked_signature.status, "invalid");
-    assert!(!run_git(path, &["verify-commit", &signed]).unwrap().status.success());
+    assert!(
+        !run_git(path, &["verify-commit", &signed])
+            .unwrap()
+            .status
+            .success()
+    );
     fs::write(&revoked, "").unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
 
     let parent = run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout;
-    commit_with_policy(path, "Unsigned amend opt-out", true, false, Some(false),
-        &CommitPolicy { allow_empty: true, ..CommitPolicy::default() }).unwrap();
-    assert_eq!(commit_details(path, &repository.oid()).unwrap().signature.status, "unsigned");
-    assert_eq!(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout, parent);
+    commit_with_policy(
+        path,
+        "Unsigned amend opt-out",
+        true,
+        false,
+        Some(false),
+        &CommitPolicy {
+            allow_empty: true,
+            ..CommitPolicy::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .signature
+            .status,
+        "unsigned"
+    );
+    assert_eq!(
+        run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout,
+        parent
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"unstaged remains during signing\n");
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"unstaged remains during signing\n"
+    );
 
     fs::write(path.join("staged"), b"keep staged on signing failure\n").unwrap();
     stage_path(path, "staged").unwrap();
-    let staged = run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout;
+    let staged = run_git(path, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
     let unsigned = repository.oid();
     fs::remove_file(&key).unwrap();
-    let error = commit_with_policy(path, "Signer key unavailable", false, false, None, &policy).unwrap_err();
+    let error = commit_with_policy(path, "Signer key unavailable", false, false, None, &policy)
+        .unwrap_err();
     assert_eq!(error.kind, "gitFailure");
     assert_eq!(repository.oid(), unsigned);
-    assert_eq!(run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout, staged);
-    assert_eq!(fs::read(path.join("staged")).unwrap(), b"keep staged on signing failure\n");
+    assert_eq!(
+        run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        staged
+    );
+    assert_eq!(
+        fs::read(path.join("staged")).unwrap(),
+        b"keep staged on signing failure\n"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
 }
 
@@ -3195,30 +3303,88 @@ fn commit_hook_opt_out_retains_prepare_hook_and_custom_hook_configuration() {
     let path = &repository.0;
     let hooks = path.join(".git/custom-fixture-hooks");
     fs::create_dir(&hooks).unwrap();
-    run_mutation(path, &["config", "core.hooksPath", ".git/custom-fixture-hooks"], "set custom fixture hooks").unwrap();
+    run_mutation(
+        path,
+        &["config", "core.hooksPath", ".git/custom-fixture-hooks"],
+        "set custom fixture hooks",
+    )
+    .unwrap();
     for name in ["pre-commit", "commit-msg"] {
         let hook = hooks.join(name);
-        fs::write(&hook, b"#!/bin/sh\nprintf 'Verification hook refused\\n' >&2\nexit 1\n").unwrap();
+        fs::write(
+            &hook,
+            b"#!/bin/sh\nprintf 'Verification hook refused\\n' >&2\nexit 1\n",
+        )
+        .unwrap();
         fs::set_permissions(hook, fs::Permissions::from_mode(0o755)).unwrap();
     }
     let prepare = hooks.join("prepare-commit-msg");
-    fs::write(&prepare, b"#!/bin/sh\nprintf '\\nPrepared by fixture\\n' >> \"$1\"\n").unwrap();
+    fs::write(
+        &prepare,
+        b"#!/bin/sh\nprintf '\\nPrepared by fixture\\n' >> \"$1\"\n",
+    )
+    .unwrap();
     fs::set_permissions(&prepare, fs::Permissions::from_mode(0o755)).unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
     fs::write(path.join("file"), b"staged fixture change\n").unwrap();
     stage_path(path, "file").unwrap();
     let head = repository.oid();
-    let index = run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout;
-    assert!(commit_with_policy(path, "Default retains hooks", false, false, Some(false), &CommitPolicy::default()).is_err());
+    let index = run_git(path, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
+    assert!(
+        commit_with_policy(
+            path,
+            "Default retains hooks",
+            false,
+            false,
+            Some(false),
+            &CommitPolicy::default()
+        )
+        .is_err()
+    );
     assert_eq!(repository.oid(), head);
-    assert_eq!(run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout, index);
-    commit_with_policy(path, "Explicit verification opt-out", false, true, Some(false), &CommitPolicy::default()).unwrap();
-    assert!(commit_details(path, &repository.oid()).unwrap().message.contains("Prepared by fixture"));
+    assert_eq!(
+        run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        index
+    );
+    commit_with_policy(
+        path,
+        "Explicit verification opt-out",
+        false,
+        true,
+        Some(false),
+        &CommitPolicy::default(),
+    )
+    .unwrap();
+    assert!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .message
+            .contains("Prepared by fixture")
+    );
 
-    fs::write(&prepare, b"#!/bin/sh\nprintf 'Prepare hook still refuses\\n' >&2\nexit 1\n").unwrap();
+    fs::write(
+        &prepare,
+        b"#!/bin/sh\nprintf 'Prepare hook still refuses\\n' >&2\nexit 1\n",
+    )
+    .unwrap();
     let head = repository.oid();
-    let policy = CommitPolicy { allow_empty: true, ..CommitPolicy::default() };
-    let error = commit_with_policy(path, "Prepare hook must still run", false, true, Some(false), &policy).unwrap_err();
+    let policy = CommitPolicy {
+        allow_empty: true,
+        ..CommitPolicy::default()
+    };
+    let error = commit_with_policy(
+        path,
+        "Prepare hook must still run",
+        false,
+        true,
+        Some(false),
+        &policy,
+    )
+    .unwrap_err();
     assert!(error.message.contains("Prepare hook still refuses"));
     assert_eq!(repository.oid(), head);
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
@@ -3234,24 +3400,77 @@ struct GnuPgHome {
 fn signing_diagnostic_respects_openpgp_alias_order_and_other_format_programs() {
     let repository = Repository::new();
     let path = &repository.0;
-    run_mutation(path, &["config", "gpg.format", "openpgp"], "select fixture format").unwrap();
-    run_mutation(path, &["config", "gpg.program", "legacy-first-fixture"], "set legacy alias first").unwrap();
-    run_mutation(path, &["config", "gpg.openpgp.program", "format-last-fixture"], "set format alias last").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap().program, "format-last-fixture");
-    run_mutation(path, &["config", "--add", "gpg.program", "legacy-last-fixture"], "append legacy alias").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap().program, "format-last-fixture");
-    fs::OpenOptions::new().append(true).open(path.join(".git/config")).unwrap()
-        .write_all(b"\n[gpg]\nprogram = legacy-last-fixture\n").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap().program, "legacy-last-fixture");
-    run_mutation(path, &["config", "gpg.ssh.program", "ssh-fixture"], "set SSH fixture program").unwrap();
-    run_mutation(path, &["config", "gpg.x509.program", "x509-fixture"], "set X509 fixture program").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.format", "openpgp"],
+        "select fixture format",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.program", "legacy-first-fixture"],
+        "set legacy alias first",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.openpgp.program", "format-last-fixture"],
+        "set format alias last",
+    )
+    .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap().program,
+        "format-last-fixture"
+    );
+    run_mutation(
+        path,
+        &["config", "--add", "gpg.program", "legacy-last-fixture"],
+        "append legacy alias",
+    )
+    .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap().program,
+        "format-last-fixture"
+    );
+    fs::OpenOptions::new()
+        .append(true)
+        .open(path.join(".git/config"))
+        .unwrap()
+        .write_all(b"\n[gpg]\nprogram = legacy-last-fixture\n")
+        .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap().program,
+        "legacy-last-fixture"
+    );
+    run_mutation(
+        path,
+        &["config", "gpg.ssh.program", "ssh-fixture"],
+        "set SSH fixture program",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.x509.program", "x509-fixture"],
+        "set X509 fixture program",
+    )
+    .unwrap();
     for (format, program) in [("ssh", "ssh-fixture"), ("x509", "x509-fixture")] {
-        run_mutation(path, &["config", "gpg.format", format], "switch fixture format").unwrap();
+        run_mutation(
+            path,
+            &["config", "gpg.format", format],
+            "switch fixture format",
+        )
+        .unwrap();
         let diagnostic = signing_diagnostic(path).unwrap();
         assert_eq!(diagnostic.format, format);
         assert_eq!(diagnostic.program, program);
     }
-    run_mutation(path, &["config", "gpg.format", "unknown-fixture"], "select unsupported fixture format").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.format", "unknown-fixture"],
+        "select unsupported fixture format",
+    )
+    .unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
     let diagnostic = signing_diagnostic(path).unwrap();
     assert!(!diagnostic.available);
@@ -3269,8 +3488,18 @@ fn signing_diagnostic_preserves_literal_program_paths_and_never_invokes_them() {
     let marker = path.join("signer-was-invoked");
     fs::write(&program, b"#!/bin/sh\ntouch signer-was-invoked\nexit 1\n").unwrap();
     fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
-    run_mutation(path, &["config", "gpg.format", "openpgp"], "select fixture format").unwrap();
-    run_mutation(path, &["config", "gpg.openpgp.program", program.to_str().unwrap()], "set literal fixture program").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.format", "openpgp"],
+        "select fixture format",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.openpgp.program", program.to_str().unwrap()],
+        "set literal fixture program",
+    )
+    .unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
     let diagnostic = signing_diagnostic(path).unwrap();
     assert!(diagnostic.available);
@@ -3283,22 +3512,60 @@ fn signing_diagnostic_preserves_literal_program_paths_and_never_invokes_them() {
 fn signing_diagnostic_refuses_empty_malformed_and_oversized_settings_without_defaults() {
     let repository = Repository::new();
     let path = &repository.0;
-    run_mutation(path, &["config", "gpg.format", "openpgp"], "select fixture format").unwrap();
-    run_mutation(path, &["config", "gpg.openpgp.program", ""], "set empty fixture program").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.format", "openpgp"],
+        "select fixture format",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.openpgp.program", ""],
+        "set empty fixture program",
+    )
+    .unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap_err().kind, "invalidSigningProgram");
+    assert_eq!(
+        signing_diagnostic(path).unwrap_err().kind,
+        "invalidSigningProgram"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    run_mutation(path, &["config", "gpg.openpgp.program", &"x".repeat(65 * 1024)], "set oversized fixture program").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap_err().kind, "signingConfigIncomplete");
-    fs::write(path.join(".git/config"), b"[gpg]\nformat = openpgp\n[gpg \"openpgp\"]\nprogram\n").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap_err().kind, "invalidSigningConfig");
-    fs::write(path.join(".git/config"), b"[gpg]\nformat = openpgp\n[gpg \"openpgp\"]\nprogram = invalid-\xff\n").unwrap();
-    assert_eq!(signing_diagnostic(path).unwrap_err().kind, "invalidSigningConfig");
+    run_mutation(
+        path,
+        &["config", "gpg.openpgp.program", &"x".repeat(65 * 1024)],
+        "set oversized fixture program",
+    )
+    .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap_err().kind,
+        "signingConfigIncomplete"
+    );
+    fs::write(
+        path.join(".git/config"),
+        b"[gpg]\nformat = openpgp\n[gpg \"openpgp\"]\nprogram\n",
+    )
+    .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap_err().kind,
+        "invalidSigningConfig"
+    );
+    fs::write(
+        path.join(".git/config"),
+        b"[gpg]\nformat = openpgp\n[gpg \"openpgp\"]\nprogram = invalid-\xff\n",
+    )
+    .unwrap();
+    assert_eq!(
+        signing_diagnostic(path).unwrap_err().kind,
+        "invalidSigningConfig"
+    );
     fs::write(path.join(".git/config"), b"[gpg\nmalformed\n").unwrap();
     let error = signing_diagnostic(path).unwrap_err();
     assert_eq!(error.kind, "gitFailure");
     assert!(error.message.contains("bad config"));
-    assert_eq!(fs::read(path.join(".git/config")).unwrap(), b"[gpg\nmalformed\n");
+    assert_eq!(
+        fs::read(path.join(".git/config")).unwrap(),
+        b"[gpg\nmalformed\n"
+    );
 }
 
 #[cfg(unix)]
@@ -3306,12 +3573,19 @@ impl GnuPgHome {
     fn new(program: &'static str) -> Self {
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
         assert!(matches!(program, "gpg" | "gpgsm"));
-        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("chronos-pgp-{}-{id}", std::process::id()));
         fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
         let home = Self { path, program };
         let signer = home.signer();
-        let offline = if program == "gpgsm" { " --disable-dirmngr --disable-crl-checks" } else { "" };
+        let offline = if program == "gpgsm" {
+            " --disable-dirmngr --disable-crl-checks"
+        } else {
+            ""
+        };
         fs::write(&signer, format!("#!/bin/sh\nexec {program} --no-options --homedir \"$(dirname \"$0\")\" --batch --no-tty --pinentry-mode loopback{offline} \"$@\"\n")).unwrap();
         fs::set_permissions(signer, fs::Permissions::from_mode(0o700)).unwrap();
         home
@@ -3333,7 +3607,11 @@ impl GnuPgHome {
         }
         let mut child = command
             .args(args)
-            .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -3342,7 +3620,11 @@ impl GnuPgHome {
             child.stdin.take().unwrap().write_all(input).unwrap();
         }
         let output = child.wait_with_output().unwrap();
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         output.stdout
     }
 }
@@ -3357,16 +3639,26 @@ impl Drop for GnuPgHome {
             .output();
         let result = stopped
             .and_then(|output| {
-                if output.status.success() { Ok(()) } else {
-                    Err(std::io::Error::other(String::from_utf8_lossy(&output.stderr).into_owned()))
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::other(
+                        String::from_utf8_lossy(&output.stderr).into_owned(),
+                    ))
                 }
             })
             .and_then(|()| fs::remove_dir_all(&self.path));
         if let Err(error) = result {
             if std::thread::panicking() {
-                eprintln!("Could not clean disposable signing fixture {}: {error}", self.path.display());
+                eprintln!(
+                    "Could not clean disposable signing fixture {}: {error}",
+                    self.path.display()
+                );
             } else {
-                panic!("Could not clean disposable signing fixture {}: {error}", self.path.display());
+                panic!(
+                    "Could not clean disposable signing fixture {}: {error}",
+                    self.path.display()
+                );
             }
         }
     }
@@ -3380,13 +3672,27 @@ fn signing_openpgp_round_trip_distinguishes_trust_missing_keys_tampering_and_exp
     let path = &repository.0;
     let signer = GnuPgHome::new("gpg");
     let verifier = GnuPgHome::new("gpg");
-    signer.run(&["--passphrase", "", "--quick-generate-key",
-        "Chronos Signing Fixture <signer@example.test>", "ed25519", "sign", "0"], None);
-    let keys = String::from_utf8(signer.run(&["--with-colons", "--list-secret-keys"], None)).unwrap();
-    let fingerprint = keys.lines().find_map(|line| {
-        let fields: Vec<_> = line.split(':').collect();
-        (fields.first() == Some(&"fpr")).then(|| fields[9].to_owned())
-    }).expect("generated fixture fingerprint");
+    signer.run(
+        &[
+            "--passphrase",
+            "",
+            "--quick-generate-key",
+            "Chronos Signing Fixture <signer@example.test>",
+            "ed25519",
+            "sign",
+            "0",
+        ],
+        None,
+    );
+    let keys =
+        String::from_utf8(signer.run(&["--with-colons", "--list-secret-keys"], None)).unwrap();
+    let fingerprint = keys
+        .lines()
+        .find_map(|line| {
+            let fields: Vec<_> = line.split(':').collect();
+            (fields.first() == Some(&"fpr")).then(|| fields[9].to_owned())
+        })
+        .expect("generated fixture fingerprint");
     let public = signer.run(&["--export", &fingerprint], None);
     verifier.run(&["--import"], Some(&public));
     let program = signer.signer();
@@ -3398,13 +3704,21 @@ fn signing_openpgp_round_trip_distinguishes_trust_missing_keys_tampering_and_exp
         ("commit.gpgsign", "true"),
         ("core.hooksPath", ".git/hooks"),
     ] {
-        run_mutation(path, &["config", name, value], "set isolated fixture OpenPGP policy").unwrap();
+        run_mutation(
+            path,
+            &["config", name, value],
+            "set isolated fixture OpenPGP policy",
+        )
+        .unwrap();
     }
     let config = fs::read(path.join(".git/config")).unwrap();
     let policy = CommitPolicy {
         sign_off: true,
         author: Some(commit_identity("Fixture Author", "author@example.test")),
-        committer: Some(commit_identity("Fixture Committer", "committer@example.test")),
+        committer: Some(commit_identity(
+            "Fixture Committer",
+            "committer@example.test",
+        )),
         ..CommitPolicy::default()
     };
     fs::write(path.join("staged"), b"OpenPGP staged change\n").unwrap();
@@ -3415,68 +3729,212 @@ fn signing_openpgp_round_trip_distinguishes_trust_missing_keys_tampering_and_exp
     let signed = repository.oid();
     let details = commit_details(path, &signed).unwrap();
     assert_eq!(details.signature.status, "valid");
-    assert_eq!(details.signature.fingerprint.as_deref(), Some(fingerprint.as_str()));
+    assert_eq!(
+        details.signature.fingerprint.as_deref(),
+        Some(fingerprint.as_str())
+    );
     assert_eq!(details.signature.trust.as_deref(), Some("ultimate"));
-    assert_eq!(details.signature.signer.as_deref(), Some("Chronos Signing Fixture <signer@example.test>"));
-    assert!(details.message.contains("Signed-off-by: Fixture Committer <committer@example.test>"));
-    assert_eq!(String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout).unwrap().trim(), parent);
-    assert_eq!(run_git(path, &["show", "HEAD:staged"]).unwrap().stdout, b"OpenPGP staged change\n");
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"OpenPGP unstaged remains\n");
+    assert_eq!(
+        details.signature.signer.as_deref(),
+        Some("Chronos Signing Fixture <signer@example.test>")
+    );
+    assert!(
+        details
+            .message
+            .contains("Signed-off-by: Fixture Committer <committer@example.test>")
+    );
+    assert_eq!(
+        String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout)
+            .unwrap()
+            .trim(),
+        parent
+    );
+    assert_eq!(
+        run_git(path, &["show", "HEAD:staged"]).unwrap().stdout,
+        b"OpenPGP staged change\n"
+    );
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"OpenPGP unstaged remains\n"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
     let diagnostic = signing_diagnostic(path).unwrap();
     assert!(diagnostic.available && diagnostic.key_configured);
     assert_eq!(diagnostic.format, "openpgp");
-    ensure_success("verify isolated OpenPGP signature", &run_git(path, &["verify-commit", &signed]).unwrap()).unwrap();
+    ensure_success(
+        "verify isolated OpenPGP signature",
+        &run_git(path, &["verify-commit", &signed]).unwrap(),
+    )
+    .unwrap();
     create_signed_tag(path, "openpgp-release", &signed, "Isolated OpenPGP release").unwrap();
     verify_tag(path, "openpgp-release").unwrap();
     assert_eq!(tag_details(path, "openpgp-release").unwrap().oid, signed);
 
     let verify_program = verifier.signer();
-    run_mutation(path, &["config", "gpg.openpgp.program", verify_program.to_str().unwrap()], "select fixture verifier").unwrap();
+    run_mutation(
+        path,
+        &[
+            "config",
+            "gpg.openpgp.program",
+            verify_program.to_str().unwrap(),
+        ],
+        "select fixture verifier",
+    )
+    .unwrap();
     let unknown = commit_details(path, &signed).unwrap().signature;
     assert_eq!(unknown.status, "valid-unknown");
     assert_ne!(unknown.trust.as_deref(), Some("ultimate"));
     assert_eq!(unknown.fingerprint.as_deref(), Some(fingerprint.as_str()));
     verify_tag(path, "openpgp-release").unwrap();
-    let object = run_git(path, &["cat-file", "commit", &signed]).unwrap().stdout;
-    let tampered = String::from_utf8(object).unwrap().replace("OpenPGP fixture signed", "OpenPGP fixture altered");
-    let mut writer = Command::new("git").arg("-C").arg(path)
+    let object = run_git(path, &["cat-file", "commit", &signed])
+        .unwrap()
+        .stdout;
+    let tampered = String::from_utf8(object)
+        .unwrap()
+        .replace("OpenPGP fixture signed", "OpenPGP fixture altered");
+    let mut writer = Command::new("git")
+        .arg("-C")
+        .arg(path)
         .args(["hash-object", "-t", "commit", "-w", "--stdin"])
-        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
-    writer.stdin.take().unwrap().write_all(tampered.as_bytes()).unwrap();
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    writer
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(tampered.as_bytes())
+        .unwrap();
     let output = writer.wait_with_output().unwrap();
     ensure_success("write owned tampered signature fixture", &output).unwrap();
     let tampered_oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
-    assert_eq!(commit_details(path, &tampered_oid).unwrap().signature.status, "invalid");
-    assert!(!run_git(path, &["verify-commit", &tampered_oid]).unwrap().status.success());
+    assert_eq!(
+        commit_details(path, &tampered_oid)
+            .unwrap()
+            .signature
+            .status,
+        "invalid"
+    );
+    assert!(
+        !run_git(path, &["verify-commit", &tampered_oid])
+            .unwrap()
+            .status
+            .success()
+    );
     assert_eq!(repository.oid(), signed);
     verifier.run(&["--yes", "--delete-key", &fingerprint], None);
-    assert_eq!(commit_details(path, &signed).unwrap().signature.status, "unverifiable");
-    assert!(!run_git(path, &["verify-commit", &signed]).unwrap().status.success());
+    assert_eq!(
+        commit_details(path, &signed).unwrap().signature.status,
+        "unverifiable"
+    );
+    assert!(
+        !run_git(path, &["verify-commit", &signed])
+            .unwrap()
+            .status
+            .success()
+    );
 
     fs::write(path.join("staged"), b"retained on missing OpenPGP key\n").unwrap();
     stage_path(path, "staged").unwrap();
-    let staged = run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout;
+    let staged = run_git(path, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
     let failed_config = fs::read(path.join(".git/config")).unwrap();
-    assert_eq!(verify_tag(path, "openpgp-release").unwrap_err().kind, "gitFailure");
-    assert_eq!(create_signed_tag(path, "openpgp-unavailable", &signed, "Key unavailable").unwrap_err().kind, "gitFailure");
-    assert_eq!(run_git(path, &["show-ref", "--verify", "--quiet", "refs/tags/openpgp-unavailable"]).unwrap().status.code(), Some(1));
-    let error = commit_with_policy(path, "Retry after correcting signer", false, false, None, &policy).unwrap_err();
+    assert_eq!(
+        verify_tag(path, "openpgp-release").unwrap_err().kind,
+        "gitFailure"
+    );
+    assert_eq!(
+        create_signed_tag(path, "openpgp-unavailable", &signed, "Key unavailable")
+            .unwrap_err()
+            .kind,
+        "gitFailure"
+    );
+    assert_eq!(
+        run_git(
+            path,
+            &[
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/tags/openpgp-unavailable"
+            ]
+        )
+        .unwrap()
+        .status
+        .code(),
+        Some(1)
+    );
+    let error = commit_with_policy(
+        path,
+        "Retry after correcting signer",
+        false,
+        false,
+        None,
+        &policy,
+    )
+    .unwrap_err();
     assert_eq!(error.kind, "gitFailure");
     assert_eq!(repository.oid(), signed);
-    assert_eq!(run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout, staged);
+    assert_eq!(
+        run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        staged
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), failed_config);
-    run_mutation(path, &["config", "gpg.openpgp.program", program.to_str().unwrap()], "restore owned fixture signer").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.openpgp.program", program.to_str().unwrap()],
+        "restore owned fixture signer",
+    )
+    .unwrap();
     create_signed_tag(path, "openpgp-unavailable", &signed, "Corrected signer").unwrap();
     verify_tag(path, "openpgp-unavailable").unwrap();
-    commit_with_policy(path, "Retry after correcting signer", false, false, Some(true), &policy).unwrap();
-    assert_eq!(commit_details(path, &repository.oid()).unwrap().signature.status, "valid");
+    commit_with_policy(
+        path,
+        "Retry after correcting signer",
+        false,
+        false,
+        Some(true),
+        &policy,
+    )
+    .unwrap();
+    assert_eq!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .signature
+            .status,
+        "valid"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
     let parent = run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout;
-    commit_with_policy(path, "Explicit OpenPGP unsigned amend", true, false, Some(false), &CommitPolicy::default()).unwrap();
-    assert_eq!(commit_details(path, &repository.oid()).unwrap().signature.status, "unsigned");
-    assert_eq!(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout, parent);
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"OpenPGP unstaged remains\n");
+    commit_with_policy(
+        path,
+        "Explicit OpenPGP unsigned amend",
+        true,
+        false,
+        Some(false),
+        &CommitPolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .signature
+            .status,
+        "unsigned"
+    );
+    assert_eq!(
+        run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout,
+        parent
+    );
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"OpenPGP unstaged remains\n"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
 }
 
@@ -3491,29 +3949,74 @@ fn signing_x509_round_trip_keeps_certificate_trust_and_signing_failures_explicit
     let key = signer.path.join("fixture-private.pem");
     let certificate = signer.path.join("fixture-certificate.pem");
     let container = signer.path.join("fixture-certificate.p12");
-    let created = Command::new("openssl").args([
-        "req", "-new", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
-        "-subj", "/CN=Chronos X509 Fixture/emailAddress=signer@example.test",
-        "-addext", "keyUsage=critical,digitalSignature",
-        "-addext", "extendedKeyUsage=emailProtection",
-        "-keyout",
-    ]).arg(&key).arg("-out").arg(&certificate).output().expect("openssl is required");
-    assert!(created.status.success(), "{}", String::from_utf8_lossy(&created.stderr));
-    let packed = Command::new("openssl").args(["pkcs12", "-export", "-passout", "pass:", "-inkey"])
-        .arg(&key).arg("-in").arg(&certificate).arg("-out").arg(&container)
-        .output().unwrap();
-    assert!(packed.status.success(), "{}", String::from_utf8_lossy(&packed.stderr));
-    signer.run(&["--passphrase", "", "--import", container.to_str().unwrap()], None);
-    let keys = String::from_utf8(signer.run(&["--with-colons", "--list-secret-keys"], None)).unwrap();
-    let fingerprint = keys.lines().find_map(|line| {
-        let fields: Vec<_> = line.split(':').collect();
-        (fields.first() == Some(&"fpr")).then(|| fields[9].to_owned())
-    }).expect("generated fixture certificate fingerprint");
+    let created = Command::new("openssl")
+        .args([
+            "req",
+            "-new",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "2",
+            "-subj",
+            "/CN=Chronos X509 Fixture/emailAddress=signer@example.test",
+            "-addext",
+            "keyUsage=critical,digitalSignature",
+            "-addext",
+            "extendedKeyUsage=emailProtection",
+            "-keyout",
+        ])
+        .arg(&key)
+        .arg("-out")
+        .arg(&certificate)
+        .output()
+        .expect("openssl is required");
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let packed = Command::new("openssl")
+        .args(["pkcs12", "-export", "-passout", "pass:", "-inkey"])
+        .arg(&key)
+        .arg("-in")
+        .arg(&certificate)
+        .arg("-out")
+        .arg(&container)
+        .output()
+        .unwrap();
+    assert!(
+        packed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&packed.stderr)
+    );
+    signer.run(
+        &["--passphrase", "", "--import", container.to_str().unwrap()],
+        None,
+    );
+    let keys =
+        String::from_utf8(signer.run(&["--with-colons", "--list-secret-keys"], None)).unwrap();
+    let fingerprint = keys
+        .lines()
+        .find_map(|line| {
+            let fields: Vec<_> = line.split(':').collect();
+            (fields.first() == Some(&"fpr")).then(|| fields[9].to_owned())
+        })
+        .expect("generated fixture certificate fingerprint");
     let trusted = format!("{fingerprint} S\n");
     fs::write(signer.path.join("trustlist.txt"), &trusted).unwrap();
-    let reloaded = Command::new("gpgconf").arg("--homedir").arg(&signer.path)
-        .args(["--reload", "gpg-agent"]).output().unwrap();
-    assert!(reloaded.status.success(), "{}", String::from_utf8_lossy(&reloaded.stderr));
+    let reloaded = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&signer.path)
+        .args(["--reload", "gpg-agent"])
+        .output()
+        .unwrap();
+    assert!(
+        reloaded.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reloaded.stderr)
+    );
     let program = signer.signer();
     for (name, value) in [
         ("gpg.format", "x509"),
@@ -3522,77 +4025,262 @@ fn signing_x509_round_trip_keeps_certificate_trust_and_signing_failures_explicit
         ("commit.gpgsign", "true"),
         ("core.hooksPath", ".git/hooks"),
     ] {
-        run_mutation(path, &["config", name, value], "set isolated fixture X509 policy").unwrap();
+        run_mutation(
+            path,
+            &["config", name, value],
+            "set isolated fixture X509 policy",
+        )
+        .unwrap();
     }
     let config = fs::read(path.join(".git/config")).unwrap();
     fs::write(path.join("staged"), b"X509 staged change\n").unwrap();
     stage_path(path, "staged").unwrap();
     fs::write(path.join("file"), b"X509 unstaged remains\n").unwrap();
     let parent = repository.oid();
-    commit_with_policy(path, "X509 fixture signed", false, false, None, &CommitPolicy::default()).unwrap();
+    commit_with_policy(
+        path,
+        "X509 fixture signed",
+        false,
+        false,
+        None,
+        &CommitPolicy::default(),
+    )
+    .unwrap();
     let signed = repository.oid();
     let details = commit_details(path, &signed).unwrap();
     assert_eq!(details.signature.status, "valid");
-    assert_eq!(details.signature.fingerprint.as_deref(), Some(fingerprint.as_str()));
-    assert!(details.signature.signer.as_deref().is_some_and(|value| value.contains("Chronos X509 Fixture")));
-    assert_eq!(String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout).unwrap().trim(), parent);
-    ensure_success("verify isolated fixture certificate signature", &run_git(path, &["verify-commit", &signed]).unwrap()).unwrap();
-    create_signed_tag(path, "x509-release", &signed, "Isolated offline certificate release").unwrap();
+    assert_eq!(
+        details.signature.fingerprint.as_deref(),
+        Some(fingerprint.as_str())
+    );
+    assert!(
+        details
+            .signature
+            .signer
+            .as_deref()
+            .is_some_and(|value| value.contains("Chronos X509 Fixture"))
+    );
+    assert_eq!(
+        String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout)
+            .unwrap()
+            .trim(),
+        parent
+    );
+    ensure_success(
+        "verify isolated fixture certificate signature",
+        &run_git(path, &["verify-commit", &signed]).unwrap(),
+    )
+    .unwrap();
+    create_signed_tag(
+        path,
+        "x509-release",
+        &signed,
+        "Isolated offline certificate release",
+    )
+    .unwrap();
     verify_tag(path, "x509-release").unwrap();
     assert_eq!(tag_details(path, "x509-release").unwrap().oid, signed);
     let diagnostic = signing_diagnostic(path).unwrap();
     assert!(diagnostic.available && diagnostic.key_configured);
     assert_eq!(diagnostic.format, "x509");
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"X509 unstaged remains\n");
-    let object = run_git(path, &["cat-file", "commit", &signed]).unwrap().stdout;
-    let tampered = String::from_utf8(object).unwrap().replace("X509 fixture signed", "X509 fixture altered");
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"X509 unstaged remains\n"
+    );
+    let object = run_git(path, &["cat-file", "commit", &signed])
+        .unwrap()
+        .stdout;
+    let tampered = String::from_utf8(object)
+        .unwrap()
+        .replace("X509 fixture signed", "X509 fixture altered");
     fs::write(path.join(".git/tampered-certificate-commit"), tampered).unwrap();
-    let output = run_git(path, &["hash-object", "-t", "commit", "-w", "--", ".git/tampered-certificate-commit"]).unwrap();
+    let output = run_git(
+        path,
+        &[
+            "hash-object",
+            "-t",
+            "commit",
+            "-w",
+            "--",
+            ".git/tampered-certificate-commit",
+        ],
+    )
+    .unwrap();
     ensure_success("write owned tampered certificate fixture", &output).unwrap();
     let tampered_oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
-    assert_eq!(commit_details(path, &tampered_oid).unwrap().signature.status, "invalid");
-    assert!(!run_git(path, &["verify-commit", &tampered_oid]).unwrap().status.success());
+    assert_eq!(
+        commit_details(path, &tampered_oid)
+            .unwrap()
+            .signature
+            .status,
+        "invalid"
+    );
+    assert!(
+        !run_git(path, &["verify-commit", &tampered_oid])
+            .unwrap()
+            .status
+            .success()
+    );
     assert_eq!(repository.oid(), signed);
 
     verifier.run(&["--import", certificate.to_str().unwrap()], None);
     let rejected_trust = format!("!{fingerprint} S\n");
     fs::write(verifier.path.join("trustlist.txt"), &rejected_trust).unwrap();
-    let reloaded = Command::new("gpgconf").arg("--homedir").arg(&verifier.path)
-        .args(["--reload", "gpg-agent"]).output().unwrap();
-    assert!(reloaded.status.success(), "{}", String::from_utf8_lossy(&reloaded.stderr));
+    let reloaded = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&verifier.path)
+        .args(["--reload", "gpg-agent"])
+        .output()
+        .unwrap();
+    assert!(
+        reloaded.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reloaded.stderr)
+    );
     let verify_program = verifier.signer();
-    run_mutation(path, &["config", "gpg.x509.program", verify_program.to_str().unwrap()], "select public-only fixture verifier").unwrap();
+    run_mutation(
+        path,
+        &[
+            "config",
+            "gpg.x509.program",
+            verify_program.to_str().unwrap(),
+        ],
+        "select public-only fixture verifier",
+    )
+    .unwrap();
     let untrusted = commit_details(path, &signed).unwrap().signature;
     assert_ne!(untrusted.status, "valid");
     assert_ne!(untrusted.status, "unsigned");
-    assert!(!run_git(path, &["verify-commit", &signed]).unwrap().status.success());
-    fs::write(path.join("staged"), b"retained on unavailable certificate key\n").unwrap();
+    assert!(
+        !run_git(path, &["verify-commit", &signed])
+            .unwrap()
+            .status
+            .success()
+    );
+    fs::write(
+        path.join("staged"),
+        b"retained on unavailable certificate key\n",
+    )
+    .unwrap();
     stage_path(path, "staged").unwrap();
-    let staged = run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout;
+    let staged = run_git(path, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
     let failed_config = fs::read(path.join(".git/config")).unwrap();
-    assert_eq!(verify_tag(path, "x509-release").unwrap_err().kind, "gitFailure");
-    assert_eq!(create_signed_tag(path, "x509-unavailable", &signed, "Certificate key unavailable").unwrap_err().kind, "gitFailure");
-    assert_eq!(run_git(path, &["show-ref", "--verify", "--quiet", "refs/tags/x509-unavailable"]).unwrap().status.code(), Some(1));
-    let error = commit_with_policy(path, "X509 retry after signer correction", false, false, None, &CommitPolicy::default()).unwrap_err();
+    assert_eq!(
+        verify_tag(path, "x509-release").unwrap_err().kind,
+        "gitFailure"
+    );
+    assert_eq!(
+        create_signed_tag(
+            path,
+            "x509-unavailable",
+            &signed,
+            "Certificate key unavailable"
+        )
+        .unwrap_err()
+        .kind,
+        "gitFailure"
+    );
+    assert_eq!(
+        run_git(
+            path,
+            &[
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/tags/x509-unavailable"
+            ]
+        )
+        .unwrap()
+        .status
+        .code(),
+        Some(1)
+    );
+    let error = commit_with_policy(
+        path,
+        "X509 retry after signer correction",
+        false,
+        false,
+        None,
+        &CommitPolicy::default(),
+    )
+    .unwrap_err();
     assert_eq!(error.kind, "gitFailure");
     assert_eq!(repository.oid(), signed);
-    assert_eq!(run_git(path, &["ls-files", "--stage", "-z"]).unwrap().stdout, staged);
+    assert_eq!(
+        run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        staged
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), failed_config);
-    run_mutation(path, &["config", "gpg.x509.program", program.to_str().unwrap()], "restore fixture certificate signer").unwrap();
-    create_signed_tag(path, "x509-unavailable", &signed, "Corrected certificate signer").unwrap();
+    run_mutation(
+        path,
+        &["config", "gpg.x509.program", program.to_str().unwrap()],
+        "restore fixture certificate signer",
+    )
+    .unwrap();
+    create_signed_tag(
+        path,
+        "x509-unavailable",
+        &signed,
+        "Corrected certificate signer",
+    )
+    .unwrap();
     verify_tag(path, "x509-unavailable").unwrap();
-    commit_with_policy(path, "X509 retry after signer correction", false, false, Some(true), &CommitPolicy::default()).unwrap();
-    assert_eq!(commit_details(path, &repository.oid()).unwrap().signature.status, "valid");
+    commit_with_policy(
+        path,
+        "X509 retry after signer correction",
+        false,
+        false,
+        Some(true),
+        &CommitPolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .signature
+            .status,
+        "valid"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
     let parent = run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout;
-    commit_with_policy(path, "X509 explicit unsigned amend", true, false, Some(false), &CommitPolicy::default()).unwrap();
-    assert_eq!(commit_details(path, &repository.oid()).unwrap().signature.status, "unsigned");
-    assert_eq!(fs::read(path.join("file")).unwrap(), b"X509 unstaged remains\n");
+    commit_with_policy(
+        path,
+        "X509 explicit unsigned amend",
+        true,
+        false,
+        Some(false),
+        &CommitPolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        commit_details(path, &repository.oid())
+            .unwrap()
+            .signature
+            .status,
+        "unsigned"
+    );
+    assert_eq!(
+        fs::read(path.join("file")).unwrap(),
+        b"X509 unstaged remains\n"
+    );
     assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
-    assert_eq!(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout, parent);
-    assert_eq!(fs::read_to_string(signer.path.join("trustlist.txt")).unwrap(), trusted);
-    assert_eq!(fs::read_to_string(verifier.path.join("trustlist.txt")).unwrap(), rejected_trust);
+    assert_eq!(
+        run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout,
+        parent
+    );
+    assert_eq!(
+        fs::read_to_string(signer.path.join("trustlist.txt")).unwrap(),
+        trusted
+    );
+    assert_eq!(
+        fs::read_to_string(verifier.path.join("trustlist.txt")).unwrap(),
+        rejected_trust
+    );
 }
 
 #[test]
@@ -4215,8 +4903,14 @@ fn submodule_url_sync_follows_renamed_remotes_relative_urls_and_refuses_uninitia
     if result.remote_name.as_deref() == Some("origin") {
         // Git before 2.42 uses "origin" when the branch has no upstream and reports the new remote.
         assert_eq!(result.previous_remote_url, None);
-        assert_eq!(config_value(&module, "remote.origin.url"), Some(previous.clone()));
-        assert_eq!(config_value(&module, "remote.up.url").as_deref(), Some("/old-remote"));
+        assert_eq!(
+            config_value(&module, "remote.origin.url"),
+            Some(previous.clone())
+        );
+        assert_eq!(
+            config_value(&module, "remote.up.url").as_deref(),
+            Some("/old-remote")
+        );
     } else {
         assert_eq!(result.remote_name.as_deref(), Some("up"));
         assert_eq!(result.previous_remote_url.as_deref(), Some("/old-remote"));
@@ -4488,7 +5182,12 @@ fn submodule_deinit_keeps_repository_data_and_removes_only_its_local_settings() 
     add_fixture_submodule(root, &module.0, "other");
     commit(root, "Add submodules").unwrap();
     let lib = root.join("lib");
-    run_mutation(root, &["config", "submodule.lib.update", "rebase"], "update").unwrap();
+    run_mutation(
+        root,
+        &["config", "submodule.lib.update", "rebase"],
+        "update",
+    )
+    .unwrap();
     run_mutation(&lib, &["branch", "keep"], "branch").unwrap();
     fs::write(lib.join("notes.txt"), b"untracked\n").unwrap();
     let untracked = deinit_submodule(root, &deinit("lib", &recorded)).unwrap_err();
@@ -4497,7 +5196,12 @@ fn submodule_deinit_keeps_repository_data_and_removes_only_its_local_settings() 
     fs::remove_file(lib.join("notes.txt")).unwrap();
     let stale = deinit_submodule(root, &deinit("lib", &repository.oid())).unwrap_err();
     assert!(stale.message.contains("changed after the review"));
-    run_mutation(&lib, &["commit", "-q", "--allow-empty", "-m", "local"], "ahead").unwrap();
+    run_mutation(
+        &lib,
+        &["commit", "-q", "--allow-empty", "-m", "local"],
+        "ahead",
+    )
+    .unwrap();
     let ahead = deinit_submodule(root, &deinit("lib", &rev(&lib, "HEAD"))).unwrap_err();
     assert!(ahead.message.contains("not at the commit recorded"));
     run_mutation(&lib, &["checkout", "-q", "--detach", &recorded], "back").unwrap();
@@ -4506,15 +5210,46 @@ fn submodule_deinit_keeps_repository_data_and_removes_only_its_local_settings() 
     let result = deinit_submodule(root, &deinit("lib", &recorded)).unwrap();
     assert!(fs::read_dir(&lib).unwrap().next().is_none());
     assert!(!result.absorbed);
-    let keys: Vec<_> = result.removed_settings.iter().map(|setting| setting.key.as_str()).collect();
-    assert!(keys.contains(&"submodule.lib.url") && keys.contains(&"submodule.lib.update") && keys.contains(&"submodule.lib.active"));
+    let keys: Vec<_> = result
+        .removed_settings
+        .iter()
+        .map(|setting| setting.key.as_str())
+        .collect();
+    assert!(
+        keys.contains(&"submodule.lib.url")
+            && keys.contains(&"submodule.lib.update")
+            && keys.contains(&"submodule.lib.active")
+    );
     assert_eq!(config_value(root, "submodule.lib.url"), None);
     assert!(config_value(root, "submodule.other.url").is_some());
     let data = PathBuf::from(&result.git_directory);
     let dir = data.to_string_lossy().into_owned();
-    assert!(run_git(root, &["--git-dir", &dir, "rev-parse", "--verify", "-q", "refs/heads/keep"]).unwrap().status.success());
-    assert_eq!(run_git(root, &["ls-files", "-s"]).unwrap().stdout, index_before);
-    assert!(run_git(root, &["status", "--porcelain"]).unwrap().stdout.is_empty());
+    assert!(
+        run_git(
+            root,
+            &[
+                "--git-dir",
+                &dir,
+                "rev-parse",
+                "--verify",
+                "-q",
+                "refs/heads/keep"
+            ]
+        )
+        .unwrap()
+        .status
+        .success()
+    );
+    assert_eq!(
+        run_git(root, &["ls-files", "-s"]).unwrap().stdout,
+        index_before
+    );
+    assert!(
+        run_git(root, &["status", "--porcelain"])
+            .unwrap()
+            .stdout
+            .is_empty()
+    );
     let again = deinit_submodule(root, &deinit("lib", &recorded)).unwrap_err();
     assert!(again.message.contains("not checked out"));
 }
@@ -4525,8 +5260,20 @@ fn submodule_deinit_absorbs_an_embedded_repository_before_clearing_it() {
     let module = Repository::new();
     let recorded = module.oid();
     let root = &repository.0;
-    run_mutation(root, &["clone", "-q", module.0.to_str().unwrap(), "lib"], "clone").unwrap();
-    fs::write(root.join(".gitmodules"), format!("[submodule \"lib\"]\n\tpath = lib\n\turl = {}\n", module.0.display())).unwrap();
+    run_mutation(
+        root,
+        &["clone", "-q", module.0.to_str().unwrap(), "lib"],
+        "clone",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".gitmodules"),
+        format!(
+            "[submodule \"lib\"]\n\tpath = lib\n\turl = {}\n",
+            module.0.display()
+        ),
+    )
+    .unwrap();
     run_mutation(root, &["add", ".gitmodules", "lib"], "stage").unwrap();
     commit(root, "Embedded").unwrap();
     run_mutation(root, &["submodule", "init", "-q"], "init").unwrap();
@@ -4539,7 +5286,13 @@ fn submodule_deinit_absorbs_an_embedded_repository_before_clearing_it() {
 }
 
 fn rev_in(root: &Path, git_dir: &str) -> String {
-    String::from_utf8_lossy(&run_git(root, &["--git-dir", git_dir, "rev-parse", "HEAD"]).unwrap().stdout).trim().to_owned()
+    String::from_utf8_lossy(
+        &run_git(root, &["--git-dir", git_dir, "rev-parse", "HEAD"])
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_owned()
 }
 
 fn removal(path: &str, oid: &str) -> SubmoduleRemoval {
@@ -4564,9 +5317,21 @@ fn submodule_removal_stages_only_its_gitlink_and_declaration_and_keeps_data() {
     let untracked = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
     assert_eq!(untracked.kind, "submoduleRemovalRefused");
     fs::remove_file(lib.join("notes.txt")).unwrap();
-    fs::write(root.join(".gitmodules"), [fs::read(root.join(".gitmodules")).unwrap(), b"# note\n".to_vec()].concat()).unwrap();
+    fs::write(
+        root.join(".gitmodules"),
+        [
+            fs::read(root.join(".gitmodules")).unwrap(),
+            b"# note\n".to_vec(),
+        ]
+        .concat(),
+    )
+    .unwrap();
     let declaration = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
-    assert!(declaration.message.contains(".gitmodules has unstaged changes"));
+    assert!(
+        declaration
+            .message
+            .contains(".gitmodules has unstaged changes")
+    );
     run_mutation(root, &["checkout", "-q", "--", ".gitmodules"], "restore").unwrap();
     let stale = remove_submodule(root, &removal("lib", &repository.oid())).unwrap_err();
     assert!(stale.message.contains("changed after the review"));
@@ -4575,14 +5340,42 @@ fn submodule_removal_stages_only_its_gitlink_and_declaration_and_keeps_data() {
 
     let result = remove_submodule(root, &removal("lib", &recorded)).unwrap();
     assert!(!lib.exists());
-    let status = String::from_utf8_lossy(&run_git(root, &["status", "--porcelain"]).unwrap().stdout).into_owned();
+    let status =
+        String::from_utf8_lossy(&run_git(root, &["status", "--porcelain"]).unwrap().stdout)
+            .into_owned();
     assert_eq!(status, "M  .gitmodules\nD  lib\nA  staged.txt\n");
-    let declared = String::from_utf8_lossy(&fs::read(root.join(".gitmodules")).unwrap()).into_owned();
+    let declared =
+        String::from_utf8_lossy(&fs::read(root.join(".gitmodules")).unwrap()).into_owned();
     assert!(!declared.contains("\"lib\"") && declared.contains("\"other\""));
-    assert_eq!(config_value(root, "submodule.lib.url").as_deref(), Some(module.0.to_str().unwrap()));
-    assert!(result.kept_settings.iter().any(|setting| setting.key == "submodule.lib.url"));
+    assert_eq!(
+        config_value(root, "submodule.lib.url").as_deref(),
+        Some(module.0.to_str().unwrap())
+    );
+    assert!(
+        result
+            .kept_settings
+            .iter()
+            .any(|setting| setting.key == "submodule.lib.url")
+    );
     let dir = result.git_directory.clone().unwrap();
-    assert!(run_git(root, &["--git-dir", &dir, "--work-tree", ".", "rev-parse", "--verify", "-q", "refs/heads/keep"]).unwrap().status.success());
+    assert!(
+        run_git(
+            root,
+            &[
+                "--git-dir",
+                &dir,
+                "--work-tree",
+                ".",
+                "rev-parse",
+                "--verify",
+                "-q",
+                "refs/heads/keep"
+            ]
+        )
+        .unwrap()
+        .status
+        .success()
+    );
     assert_eq!(result.recorded_oid, recorded);
     assert!(remove_submodule(root, &removal("lib", &recorded)).is_err());
 }
@@ -4597,13 +5390,21 @@ fn submodule_removal_handles_uninitialized_entries_and_refuses_moved_checkouts()
     add_fixture_submodule(root, &module.0, "idle");
     commit(root, "Add submodules").unwrap();
     let lib = root.join("lib");
-    run_mutation(&lib, &["commit", "-q", "--allow-empty", "-m", "ahead"], "ahead").unwrap();
+    run_mutation(
+        &lib,
+        &["commit", "-q", "--allow-empty", "-m", "ahead"],
+        "ahead",
+    )
+    .unwrap();
     let moved = remove_submodule(root, &removal("lib", &recorded)).unwrap_err();
     assert!(moved.message.contains("another commit"));
     assert!(lib.join(".git").exists());
     let deinit_result = deinit_submodule(root, &deinit("idle", &recorded)).unwrap();
     let result = remove_submodule(root, &removal("idle", &recorded)).unwrap();
-    assert_eq!(result.git_directory.as_deref(), Some(deinit_result.git_directory.as_str()));
+    assert_eq!(
+        result.git_directory.as_deref(),
+        Some(deinit_result.git_directory.as_str())
+    );
     assert!(result.kept_settings.is_empty());
     assert!(!root.join("idle").exists());
 }
@@ -4612,7 +5413,12 @@ fn submodule_removal_handles_uninitialized_entries_and_refuses_moved_checkouts()
 fn clone_limits_history_depth_and_selected_branch() {
     let source = Repository::new();
     for message in ["second", "third"] {
-        run_mutation(&source.0, &["commit", "-q", "--allow-empty", "-m", message], message).unwrap();
+        run_mutation(
+            &source.0,
+            &["commit", "-q", "--allow-empty", "-m", message],
+            message,
+        )
+        .unwrap();
     }
     run_mutation(&source.0, &["branch", "side"], "branch").unwrap();
     let parent = source.0.with_extension("clones");
@@ -4620,7 +5426,9 @@ fn clone_limits_history_depth_and_selected_branch() {
     let url = format!("file://{}", source.0.display());
     let shallow = clone_repository(&url, &parent, "shallow", Some("side"), Some(2)).unwrap();
     let text = |args: &[&str]| {
-        String::from_utf8_lossy(&run_git(&shallow, args).unwrap().stdout).trim().to_owned()
+        String::from_utf8_lossy(&run_git(&shallow, args).unwrap().stdout)
+            .trim()
+            .to_owned()
     };
     assert_eq!(text(&["rev-parse", "--is-shallow-repository"]), "true");
     assert_eq!(text(&["rev-list", "--count", "HEAD"]), "2");
@@ -4630,7 +5438,9 @@ fn clone_limits_history_depth_and_selected_branch() {
         "refs/remotes/origin/side"
     );
     let full = clone_repository(&url, &parent, "full", None, None).unwrap();
-    let count = run_git(&full, &["rev-list", "--count", "HEAD"]).unwrap().stdout;
+    let count = run_git(&full, &["rev-list", "--count", "HEAD"])
+        .unwrap()
+        .stdout;
     assert_eq!(String::from_utf8_lossy(&count).trim(), "3");
     let zero = clone_repository(&url, &parent, "zero", None, Some(0)).unwrap_err();
     assert_eq!(zero.kind, "invalidCloneDepth");
@@ -4682,7 +5492,12 @@ fn cancelled_clone_discloses_partial_destination() {
 fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     let source = Repository::new();
     for message in ["c2", "c3", "c4", "c5", "c6"] {
-        run_mutation(&source.0, &["commit", "-q", "--allow-empty", "-m", message], message).unwrap();
+        run_mutation(
+            &source.0,
+            &["commit", "-q", "--allow-empty", "-m", message],
+            message,
+        )
+        .unwrap();
     }
     let parent = source.0.with_extension("deepen");
     fs::create_dir(&parent).unwrap();
@@ -4690,8 +5505,13 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     let clone = clone_repository(&url, &parent, "work", None, Some(1)).unwrap();
     run_mutation(&clone, &["remote", "add", "mirror", &url], "mirror").unwrap();
     let count = |rev: &str| {
-        let out = run_git(&clone, &["rev-list", "--count", rev]).unwrap().stdout;
-        String::from_utf8_lossy(&out).trim().parse::<usize>().unwrap()
+        let out = run_git(&clone, &["rev-list", "--count", rev])
+            .unwrap()
+            .stdout;
+        String::from_utf8_lossy(&out)
+            .trim()
+            .parse::<usize>()
+            .unwrap()
     };
     let token = CancellationToken::default();
     let options = |remote: Option<&str>, history| FetchOptions {
@@ -4699,13 +5519,14 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
         prune: false,
         history: Some(history),
     };
-    assert_eq!(
-        shallow_history_state(&clone).unwrap().boundary_commits,
-        1
-    );
+    assert_eq!(shallow_history_state(&clone).unwrap().boundary_commits, 1);
     let head = run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout;
-    let all = fetch_with_options(&clone, &options(None, FetchHistory::Deepen { commits: 2 }), &token)
-        .unwrap_err();
+    let all = fetch_with_options(
+        &clone,
+        &options(None, FetchHistory::Deepen { commits: 2 }),
+        &token,
+    )
+    .unwrap_err();
     assert_eq!(all.kind, "historyDepthRefused");
     let zero = fetch_with_options(
         &clone,
@@ -4715,19 +5536,35 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     .unwrap_err();
     assert_eq!(zero.kind, "historyDepthRefused");
     assert_eq!(count("HEAD"), 1);
-    fetch_with_options(&clone, &options(Some("origin"), FetchHistory::Deepen { commits: 2 }), &token)
-        .unwrap();
+    fetch_with_options(
+        &clone,
+        &options(Some("origin"), FetchHistory::Deepen { commits: 2 }),
+        &token,
+    )
+    .unwrap();
     assert_eq!(count("HEAD"), 3);
     assert!(shallow_history_state(&clone).unwrap().shallow);
-    assert_eq!(run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout, head);
-    fetch_with_options(&clone, &options(Some("mirror"), FetchHistory::Complete), &token).unwrap();
+    assert_eq!(
+        run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout,
+        head
+    );
+    fetch_with_options(
+        &clone,
+        &options(Some("mirror"), FetchHistory::Complete),
+        &token,
+    )
+    .unwrap();
     assert_eq!(count("HEAD"), 6);
     assert_eq!(count("refs/remotes/mirror/main"), 6);
     let state = shallow_history_state(&clone).unwrap();
     assert!(!state.shallow);
     assert_eq!(state.boundary_commits, 0);
-    let complete = fetch_with_options(&clone, &options(Some("origin"), FetchHistory::Complete), &token)
-        .unwrap_err();
+    let complete = fetch_with_options(
+        &clone,
+        &options(Some("origin"), FetchHistory::Complete),
+        &token,
+    )
+    .unwrap_err();
     assert_eq!(complete.kind, "historyDepthRefused");
     assert!(complete.message.contains("already has complete history"));
     fs::remove_dir_all(parent).unwrap();
@@ -4740,7 +5577,10 @@ fn unborn_and_detached_heads_open_commit_and_attach_without_fabricating_branches
     let unborn = base.join("unborn");
     fs::create_dir(&unborn).unwrap();
     run_mutation(&unborn, &["init", "-q", "-b", "trunk"], "init").unwrap();
-    for args in [["config", "user.name", "Test"], ["config", "user.email", "test@example.test"]] {
+    for args in [
+        ["config", "user.name", "Test"],
+        ["config", "user.email", "test@example.test"],
+    ] {
         run_mutation(&unborn, &args, "identity").unwrap();
     }
     fs::write(unborn.join("first.txt"), "first\n").unwrap();
@@ -4755,7 +5595,10 @@ fn unborn_and_detached_heads_open_commit_and_attach_without_fabricating_branches
     let refs = run_git(&unborn, &["for-each-ref"]).unwrap().stdout;
     assert!(refs.is_empty());
     create_branch(&unborn, "feature").unwrap();
-    assert_eq!(snapshot(&unborn).unwrap().status.branch.as_deref(), Some("feature"));
+    assert_eq!(
+        snapshot(&unborn).unwrap().status.branch.as_deref(),
+        Some("feature")
+    );
     stage_all(&unborn).unwrap();
     commit(&unborn, "First").unwrap();
     let first = snapshot(&unborn).unwrap();
@@ -4773,11 +5616,16 @@ fn unborn_and_detached_heads_open_commit_and_attach_without_fabricating_branches
     let after = snapshot(&repository.0).unwrap();
     assert!(after.status.branch.is_none());
     assert_ne!(repository.oid(), original);
-    let main = run_git(&repository.0, &["rev-parse", "main"]).unwrap().stdout;
+    let main = run_git(&repository.0, &["rev-parse", "main"])
+        .unwrap()
+        .stdout;
     assert_eq!(String::from_utf8_lossy(&main).trim(), original);
     let detached_tip = repository.oid();
     create_branch(&repository.0, "rescued").unwrap();
-    assert_eq!(snapshot(&repository.0).unwrap().status.branch.as_deref(), Some("rescued"));
+    assert_eq!(
+        snapshot(&repository.0).unwrap().status.branch.as_deref(),
+        Some("rescued")
+    );
     assert_eq!(repository.oid(), detached_tip);
     fs::remove_dir_all(base).unwrap();
 }
@@ -4790,12 +5638,21 @@ fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
     let bare = base.join("shared.git");
     run_mutation(
         &base,
-        &["clone", "-q", "--bare", &repository.0.display().to_string(), &bare.display().to_string()],
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            &repository.0.display().to_string(),
+            &bare.display().to_string(),
+        ],
         "bare",
     )
     .unwrap();
     let config = fs::read(bare.join("config")).unwrap();
-    assert_eq!(resolve_repository(&bare).unwrap(), bare.canonicalize().unwrap());
+    assert_eq!(
+        resolve_repository(&bare).unwrap(),
+        bare.canonicalize().unwrap()
+    );
     let error = resolve_repository(&bare.join("refs")).unwrap_err();
     assert_eq!(error.kind, "bareRepositoryUnsupported", "{}", error.message);
     assert!(error.message.contains("bare repository"));
@@ -4811,8 +5668,18 @@ fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
         repository.0.canonicalize().unwrap()
     );
 
-    run_mutation(&repository.0, &["config", "core.repositoryformatversion", "1"], "format").unwrap();
-    run_mutation(&repository.0, &["config", "extensions.chronosUnknownFeature", "true"], "ext").unwrap();
+    run_mutation(
+        &repository.0,
+        &["config", "core.repositoryformatversion", "1"],
+        "format",
+    )
+    .unwrap();
+    run_mutation(
+        &repository.0,
+        &["config", "extensions.chronosUnknownFeature", "true"],
+        "ext",
+    )
+    .unwrap();
     let format = resolve_repository(&repository.0).unwrap_err();
     assert_eq!(format.kind, "unsupportedRepositoryFormat");
     assert!(format.message.contains("chronosunknownfeature"));
@@ -4829,13 +5696,20 @@ fn foreign_owner_refusal_keeps_git_detail_and_explains_trust_choice() {
     };
     let error = classify_open_failure(Path::new("/srv/project"), &output);
     assert_eq!(error.kind, "untrustedRepositoryOwner");
-    assert!(error.message.contains("dubious ownership in repository at '/srv/project'"));
+    assert!(
+        error
+            .message
+            .contains("dubious ownership in repository at '/srv/project'")
+    );
     assert!(error.hint.unwrap().contains("safe.directory"));
     let other = std::process::Output {
         stderr: b"fatal: not a git repository (or any of the parent directories): .git\n".to_vec(),
         ..output
     };
-    assert_eq!(classify_open_failure(Path::new("/tmp"), &other).kind, "gitFailure");
+    assert_eq!(
+        classify_open_failure(Path::new("/tmp"), &other).kind,
+        "gitFailure"
+    );
 }
 
 fn stash_options(mode: &str, include_untracked: bool, paths: Option<Vec<String>>) -> StashOptions {
@@ -7157,7 +8031,10 @@ fn lfs_attributes_inspect_sparse_excluded_paths_without_hydration_or_index_chang
         Err(error) => {
             assert_eq!(error.kind, "sparseAttributesUnreadable");
             assert!(error.message.contains("assets/.gitattributes"), "{error:?}");
-            assert!(!version_at_least(detect_git().version.as_deref().unwrap(), "2.43.0"));
+            assert!(!version_at_least(
+                detect_git().version.as_deref().unwrap(),
+                "2.43.0"
+            ));
         }
     }
     assert_eq!(
@@ -8618,32 +9495,75 @@ fn reference_actions_sign_and_verify_annotated_tags_with_configured_ssh_key() {
     fs::write(repository.0.join("file"), b"unstaged tag fixture\n").unwrap();
     fs::write(repository.0.join("staged"), b"staged tag fixture\n").unwrap();
     stage_path(&repository.0, "staged").unwrap();
-    let staged = run_git(&repository.0, &["ls-files", "--stage", "-z"]).unwrap().stdout;
+    let staged = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
     let config = fs::read(repository.0.join(".git/config")).unwrap();
     create_signed_tag(&repository.0, "signed", &oid, "Signed release").unwrap();
     verify_tag(&repository.0, "signed").unwrap();
-    let tag = run_git(&repository.0, &["rev-parse", "refs/tags/signed"]).unwrap().stdout;
+    let tag = run_git(&repository.0, &["rev-parse", "refs/tags/signed"])
+        .unwrap()
+        .stdout;
     let details = tag_details(&repository.0, "signed").unwrap();
     assert!(details.annotated);
     assert_eq!(details.oid, oid);
     assert_eq!(details.message.as_deref(), Some("Signed release"));
-    assert_eq!(create_signed_tag(&repository.0, "signed", &oid, "Must not overwrite").unwrap_err().kind, "gitFailure");
-    assert_eq!(run_git(&repository.0, &["rev-parse", "refs/tags/signed"]).unwrap().stdout, tag);
+    assert_eq!(
+        create_signed_tag(&repository.0, "signed", &oid, "Must not overwrite")
+            .unwrap_err()
+            .kind,
+        "gitFailure"
+    );
+    assert_eq!(
+        run_git(&repository.0, &["rev-parse", "refs/tags/signed"])
+            .unwrap()
+            .stdout,
+        tag
+    );
     fs::write(&allowed, "").unwrap();
-    assert_eq!(verify_tag(&repository.0, "signed").unwrap_err().kind, "gitFailure");
+    assert_eq!(
+        verify_tag(&repository.0, "signed").unwrap_err().kind,
+        "gitFailure"
+    );
     fs::write(&allowed, format!("test@example.test {public}")).unwrap();
     fs::write(&revoked, &public).unwrap();
-    assert_eq!(verify_tag(&repository.0, "signed").unwrap_err().kind, "gitFailure");
+    assert_eq!(
+        verify_tag(&repository.0, "signed").unwrap_err().kind,
+        "gitFailure"
+    );
     fs::write(&revoked, "").unwrap();
     verify_tag(&repository.0, "signed").unwrap();
-    let object = run_git(&repository.0, &["cat-file", "tag", "refs/tags/signed"]).unwrap().stdout;
-    let altered = String::from_utf8(object.clone()).unwrap().replace("Signed release", "Altered release");
+    let object = run_git(&repository.0, &["cat-file", "tag", "refs/tags/signed"])
+        .unwrap()
+        .stdout;
+    let altered = String::from_utf8(object.clone())
+        .unwrap()
+        .replace("Signed release", "Altered release");
     fs::write(repository.0.join(".git/tampered-tag-fixture"), altered).unwrap();
-    let output = run_git(&repository.0, &["hash-object", "-t", "tag", "-w", "--", ".git/tampered-tag-fixture"]).unwrap();
+    let output = run_git(
+        &repository.0,
+        &[
+            "hash-object",
+            "-t",
+            "tag",
+            "-w",
+            "--",
+            ".git/tampered-tag-fixture",
+        ],
+    )
+    .unwrap();
     ensure_success("write owned tampered tag fixture", &output).unwrap();
     let altered_oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
-    run_mutation(&repository.0, &["update-ref", "refs/tags/tampered", &altered_oid, ""], "reference owned tampered tag").unwrap();
-    assert_eq!(verify_tag(&repository.0, "tampered").unwrap_err().kind, "gitFailure");
+    run_mutation(
+        &repository.0,
+        &["update-ref", "refs/tags/tampered", &altered_oid, ""],
+        "reference owned tampered tag",
+    )
+    .unwrap();
+    assert_eq!(
+        verify_tag(&repository.0, "tampered").unwrap_err().kind,
+        "gitFailure"
+    );
     create_tag(
         &repository.0,
         "unsigned",
@@ -8653,19 +9573,64 @@ fn reference_actions_sign_and_verify_annotated_tags_with_configured_ssh_key() {
     .unwrap();
     assert!(verify_tag(&repository.0, "unsigned").is_err());
     fs::remove_file(&key).unwrap();
-    assert!(matches!(create_signed_tag(&repository.0, "unavailable", &oid, "Missing key").unwrap_err().kind.as_str(), "gitFailure" | "tagSigningFailed"));
-    assert_eq!(run_git(&repository.0, &["show-ref", "--verify", "--quiet", "refs/tags/unavailable"]).unwrap().status.code(), Some(1));
+    assert!(matches!(
+        create_signed_tag(&repository.0, "unavailable", &oid, "Missing key")
+            .unwrap_err()
+            .kind
+            .as_str(),
+        "gitFailure" | "tagSigningFailed"
+    ));
+    assert_eq!(
+        run_git(
+            &repository.0,
+            &["show-ref", "--verify", "--quiet", "refs/tags/unavailable"]
+        )
+        .unwrap()
+        .status
+        .code(),
+        Some(1)
+    );
     delete_local_tag(&repository.0, "signed", &oid).unwrap();
-    let recovery = run_git(&repository.0, &["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]).unwrap().stdout;
+    let recovery = run_git(
+        &repository.0,
+        &[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/git-khronos/recovery/",
+        ],
+    )
+    .unwrap()
+    .stdout;
     assert_eq!(recovery, tag);
     let recovered_oid = String::from_utf8(tag).unwrap().trim().to_owned();
-    assert_eq!(run_git(&repository.0, &["cat-file", "tag", &recovered_oid]).unwrap().stdout, object);
-    run_mutation(&repository.0, &["update-ref", "refs/tags/restored", &recovered_oid, ""], "restore owned signed tag fixture").unwrap();
+    assert_eq!(
+        run_git(&repository.0, &["cat-file", "tag", &recovered_oid])
+            .unwrap()
+            .stdout,
+        object
+    );
+    run_mutation(
+        &repository.0,
+        &["update-ref", "refs/tags/restored", &recovered_oid, ""],
+        "restore owned signed tag fixture",
+    )
+    .unwrap();
     verify_tag(&repository.0, "restored").unwrap();
     assert_eq!(repository.oid(), oid);
-    assert_eq!(run_git(&repository.0, &["ls-files", "--stage", "-z"]).unwrap().stdout, staged);
-    assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"unstaged tag fixture\n");
-    assert_eq!(fs::read(repository.0.join("staged")).unwrap(), b"staged tag fixture\n");
+    assert_eq!(
+        run_git(&repository.0, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        staged
+    );
+    assert_eq!(
+        fs::read(repository.0.join("file")).unwrap(),
+        b"unstaged tag fixture\n"
+    );
+    assert_eq!(
+        fs::read(repository.0.join("staged")).unwrap(),
+        b"staged tag fixture\n"
+    );
     assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
 }
 
@@ -8680,9 +9645,18 @@ impl Drop for GitDaemon {
 
 /// Serves `base` over git:// so submodule clones use an allowed transport.
 fn serve_git_daemon(base: &Path) -> (GitDaemon, String) {
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
     let child = std::process::Command::new("git")
-        .args(["daemon", "--export-all", "--reuseaddr", "--listen=127.0.0.1"])
+        .args([
+            "daemon",
+            "--export-all",
+            "--reuseaddr",
+            "--listen=127.0.0.1",
+        ])
         .arg(format!("--port={port}"))
         .arg(format!("--base-path={}", base.display()))
         .arg(base)
@@ -8694,7 +9668,10 @@ fn serve_git_daemon(base: &Path) -> (GitDaemon, String) {
     let daemon = GitDaemon(child);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(std::time::Instant::now() < deadline, "git daemon did not start");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "git daemon did not start"
+        );
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     (daemon, format!("git://127.0.0.1:{port}"))
@@ -8718,7 +9695,12 @@ fn recursive_clone_initializes_nested_submodules() {
     let middle = make("middle");
     let top = make("top");
     let add = |parent: &Path, child: &str, path: &str| {
-        run_mutation(parent, &["submodule", "add", "-q", &format!("{url}/{child}"), path], "add").unwrap();
+        run_mutation(
+            parent,
+            &["submodule", "add", "-q", &format!("{url}/{child}"), path],
+            "add",
+        )
+        .unwrap();
         run_mutation(parent, &["commit", "-q", "-m", "add submodule"], "commit").unwrap();
     };
     add(&middle, "inner", "deps/inner");
@@ -8731,9 +9713,17 @@ fn recursive_clone_initializes_nested_submodules() {
     assert!(plain.join("vendor/middle").is_dir());
     assert!(!plain.join("vendor/middle/middle.txt").exists());
 
-    let full = clone_repository_with_submodules(&format!("{url}/top"), &parent, "full", None, None, true).unwrap();
-    assert_eq!(fs::read_to_string(full.join("vendor/middle/middle.txt")).unwrap(), "middle");
-    assert_eq!(fs::read_to_string(full.join("vendor/middle/deps/inner/inner.txt")).unwrap(), "inner");
+    let full =
+        clone_repository_with_submodules(&format!("{url}/top"), &parent, "full", None, None, true)
+            .unwrap();
+    assert_eq!(
+        fs::read_to_string(full.join("vendor/middle/middle.txt")).unwrap(),
+        "middle"
+    );
+    assert_eq!(
+        fs::read_to_string(full.join("vendor/middle/deps/inner/inner.txt")).unwrap(),
+        "inner"
+    );
     let active = run_git(&full, &["config", "--get-all", "submodule.active"]).unwrap();
     assert_eq!(String::from_utf8_lossy(&active.stdout).trim(), ".");
     let status = run_git(&full, &["submodule", "status", "--recursive"]).unwrap();
@@ -8741,17 +9731,41 @@ fn recursive_clone_initializes_nested_submodules() {
     assert_eq!(status.lines().count(), 2, "{status}");
     assert!(status.lines().all(|line| line.starts_with(' ')), "{status}");
 
-    let shallow = clone_repository_with_submodules(&format!("{url}/top"), &parent, "shallow", None, Some(1), true).unwrap();
+    let shallow = clone_repository_with_submodules(
+        &format!("{url}/top"),
+        &parent,
+        "shallow",
+        None,
+        Some(1),
+        true,
+    )
+    .unwrap();
     assert!(shallow.join("vendor/middle/deps/inner/inner.txt").is_file());
 
     // A submodule whose server repository disappeared leaves the superproject usable.
     fs::rename(&middle, base.join("moved")).unwrap();
-    let error = clone_repository_with_submodules(&format!("{url}/top"), &parent, "broken", None, None, true).unwrap_err();
+    let error = clone_repository_with_submodules(
+        &format!("{url}/top"),
+        &parent,
+        "broken",
+        None,
+        None,
+        true,
+    )
+    .unwrap_err();
     assert_eq!(error.kind, "submoduleCloneIncomplete", "{error:?}");
     let broken = parent.join("broken");
     assert!(broken.join("top.txt").is_file());
     assert!(error.hint.unwrap().contains(&broken.display().to_string()));
-    let retry = clone_repository_with_submodules(&format!("{url}/top"), &parent, "broken", None, None, true).unwrap_err();
+    let retry = clone_repository_with_submodules(
+        &format!("{url}/top"),
+        &parent,
+        "broken",
+        None,
+        None,
+        true,
+    )
+    .unwrap_err();
     assert_eq!(retry.kind, "destinationExists");
     drop(_daemon);
     fs::remove_dir_all(base).unwrap();
@@ -8762,7 +9776,18 @@ fn bare_repository_opens_read_only_with_explicit_git_dir() {
     let source = Repository::new();
     run_git(&source.0, &["tag", "v1"]).unwrap();
     let bare = source.0.with_extension("bare.git");
-    run_git(&source.0, &["clone", "-q", "--bare", "--", source.0.to_str().unwrap(), bare.to_str().unwrap()]).unwrap();
+    run_git(
+        &source.0,
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            "--",
+            source.0.to_str().unwrap(),
+            bare.to_str().unwrap(),
+        ],
+    )
+    .unwrap();
     let before = fs::read_dir(&bare).unwrap().count();
 
     let resolved = resolve_repository(&bare).unwrap();
@@ -8785,7 +9810,10 @@ fn bare_repository_opens_read_only_with_explicit_git_dir() {
     assert_eq!(fs::read_dir(&bare).unwrap().count(), before);
 
     let refs = bare.join("refs");
-    assert_eq!(resolve_repository(&refs).unwrap_err().kind, "bareRepositoryUnsupported");
+    assert_eq!(
+        resolve_repository(&refs).unwrap_err().kind,
+        "bareRepositoryUnsupported"
+    );
     fs::remove_dir_all(bare).unwrap();
 }
 
@@ -8866,7 +9894,9 @@ fn lfs_prune_offers_only_old_objects_no_git_object_references_and_removes_exactl
     let old = Duration::from_secs(2 * 60 * 60);
     let orphan = lfs_orphan(path, b"orphaned object\n", old);
     let recent = lfs_orphan(path, b"recent orphan\n", Duration::ZERO);
-    let pointer = run_git(path, &["show", "HEAD:committed.bin"]).unwrap().stdout;
+    let pointer = run_git(path, &["show", "HEAD:committed.bin"])
+        .unwrap()
+        .stdout;
     let pointer = String::from_utf8(pointer).unwrap();
     let committed = pointer
         .lines()
@@ -8896,7 +9926,10 @@ fn lfs_prune_offers_only_old_objects_no_git_object_references_and_removes_exactl
     assert!(lfs_object_path(path, &recent).exists());
     assert_eq!(lfs_stored(path), 3);
     assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
-    assert_eq!(fs::read(path.join("committed.bin")).unwrap(), b"committed object\n");
+    assert_eq!(
+        fs::read(path.join("committed.bin")).unwrap(),
+        b"committed object\n"
+    );
     let again = preview_lfs_prune(path, &cancellation).unwrap();
     assert!(again.objects.is_empty());
     let failure = prune_lfs_objects(path, &again, &cancellation).unwrap_err();
@@ -8914,14 +9947,20 @@ fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancell
     assert_eq!(preview.objects.len(), 1);
 
     // A pointer written after review, even only as a loose Git object, protects the object.
-    let pointer = format!("version https://git-lfs.github.com/spec/v1\noid sha256:{orphan}\nsize 16\n");
+    let pointer =
+        format!("version https://git-lfs.github.com/spec/v1\noid sha256:{orphan}\nsize 16\n");
     let mut child = git_in(path)
         .args(["hash-object", "-w", "--stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(pointer.as_bytes()).unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(pointer.as_bytes())
+        .unwrap();
     assert!(child.wait().unwrap().success());
     let failure = prune_lfs_objects(path, &preview, &cancellation).unwrap_err();
     assert_eq!(failure.kind, "staleLfsPrune");
@@ -8929,7 +9968,9 @@ fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancell
     let mut changed = preview.clone();
     changed.objects[0].size += 1;
     assert_eq!(
-        prune_lfs_objects(path, &changed, &cancellation).unwrap_err().kind,
+        prune_lfs_objects(path, &changed, &cancellation)
+            .unwrap_err()
+            .kind,
         "staleLfsPrune"
     );
 
@@ -8940,13 +9981,29 @@ fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancell
         "operationCancelled"
     );
 
-    run_mutation(path, &["config", "remote.origin.promisor", "true"], "promisor").unwrap();
-    assert_eq!(preview_lfs_prune(path, &cancellation).unwrap_err().kind, "unsafeLfsPrune");
-    run_mutation(path, &["config", "--unset", "remote.origin.promisor"], "unset").unwrap();
+    run_mutation(
+        path,
+        &["config", "remote.origin.promisor", "true"],
+        "promisor",
+    )
+    .unwrap();
+    assert_eq!(
+        preview_lfs_prune(path, &cancellation).unwrap_err().kind,
+        "unsafeLfsPrune"
+    );
+    run_mutation(
+        path,
+        &["config", "--unset", "remote.origin.promisor"],
+        "unset",
+    )
+    .unwrap();
 
     let head = repository.oid();
     fs::write(path.join(".git/shallow"), format!("{head}\n")).unwrap();
-    assert_eq!(preview_lfs_prune(path, &cancellation).unwrap_err().kind, "unsafeLfsPrune");
+    assert_eq!(
+        preview_lfs_prune(path, &cancellation).unwrap_err().kind,
+        "unsafeLfsPrune"
+    );
     fs::remove_file(path.join(".git/shallow")).unwrap();
 
     let shared = path.with_extension("shared-lfs");
@@ -8960,8 +10017,18 @@ fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancell
     assert_eq!(failure.kind, "unsafeLfsPrune");
     assert!(failure.message.contains("shared"));
     assert!(lfs_object_path(path, &orphan).starts_with(&shared));
-    run_mutation(path, &["config", "lfs.storage", "private-lfs"], "private storage").unwrap();
-    assert!(preview_lfs_prune(path, &cancellation).unwrap().objects.is_empty());
+    run_mutation(
+        path,
+        &["config", "lfs.storage", "private-lfs"],
+        "private storage",
+    )
+    .unwrap();
+    assert!(
+        preview_lfs_prune(path, &cancellation)
+            .unwrap()
+            .objects
+            .is_empty()
+    );
     let _ = fs::remove_dir_all(shared);
 }
 
@@ -8985,7 +10052,12 @@ fn branch_deletion_keeps_a_restorable_capture_and_refusals_leave_none() {
     assert_eq!(records[0].label, "Delete branch topic");
     assert_eq!(records[0].head_oid, tip);
     assert!(records[0].snapshot_oid.is_none());
-    run_mutation(&repository.0, &["reflog", "expire", "--expire=now", "--all"], "expire").unwrap();
+    run_mutation(
+        &repository.0,
+        &["reflog", "expire", "--expire=now", "--all"],
+        "expire",
+    )
+    .unwrap();
     run_mutation(&repository.0, &["gc", "--prune=now"], "prune").unwrap();
     restore_operation_branch(&repository.0, &records[0].id, "topic-restored").unwrap();
     assert_eq!(repository.oid(), tip);
@@ -9004,7 +10076,12 @@ fn stash_deletion_keeps_index_worktree_and_untracked_contents_restorable() {
     stage_all(&repository.0).unwrap();
     fs::write(repository.0.join("file"), b"working\n").unwrap();
     fs::write(repository.0.join("new"), b"untracked\n").unwrap();
-    run_mutation(&repository.0, &["stash", "push", "-u", "-m", "Keep me"], "stash").unwrap();
+    run_mutation(
+        &repository.0,
+        &["stash", "push", "-u", "-m", "Keep me"],
+        "stash",
+    )
+    .unwrap();
     fs::write(repository.0.join("file"), b"other\n").unwrap();
     stash_with_message(&repository.0, Some("Other")).unwrap();
     let kept = reference_tip(&repository.0, "stash@{0}").unwrap();
@@ -9020,7 +10097,12 @@ fn stash_deletion_keeps_index_worktree_and_untracked_contents_restorable() {
     assert_eq!(records[0].head_oid, base);
 
     run_mutation(&repository.0, &["stash", "clear"], "clear").unwrap();
-    run_mutation(&repository.0, &["reflog", "expire", "--expire=now", "--all"], "expire").unwrap();
+    run_mutation(
+        &repository.0,
+        &["reflog", "expire", "--expire=now", "--all"],
+        "expire",
+    )
+    .unwrap();
     run_mutation(&repository.0, &["gc", "--prune=now"], "prune").unwrap();
     restore_operation_branch(&repository.0, &records[0].id, "stash-restored").unwrap();
     assert_eq!(repository.oid(), base);

@@ -167,14 +167,26 @@ pub fn prepare_partial_discard(
 ) -> Result<DiscardPlan, AppError> {
     let mut plan = prepare_discard(path, Some(vec![file.to_owned()]))?;
     if plan.preview.untracked > 0 {
-        return Err(AppError::new("untrackedPartialDiscardUnsupported",
-            "Discard an untracked file as a whole, not as individual changes.", None));
+        return Err(AppError::new(
+            "untrackedPartialDiscardUnsupported",
+            "Discard an untracked file as a whole, not as individual changes.",
+            None,
+        ));
     }
-    let patch = std::str::from_utf8(&plan.patch).map_err(|_| AppError::new(
-        "unsupportedPartialDiscard", "This patch is not UTF-8; discard the complete file instead.", None))?;
+    let patch = std::str::from_utf8(&plan.patch).map_err(|_| {
+        AppError::new(
+            "unsupportedPartialDiscard",
+            "This patch is not UTF-8; discard the complete file instead.",
+            None,
+        )
+    })?;
     plan.mutation_patch = if let Some(lines) = lines {
         if lines.is_empty() || lines.len() > 10_000 {
-            return Err(AppError::new("invalidLineSelection", "Select at least one changed line.", None));
+            return Err(AppError::new(
+                "invalidLineSelection",
+                "Select at least one changed line.",
+                None,
+            ));
         }
         select_patch_lines_with_context(patch, hunk_index, lines, true)?.into_bytes()
     } else {
@@ -280,7 +292,9 @@ pub fn execute_discard(path: &Path, plan: &DiscardPlan) -> Result<String, AppErr
     let capture = directory.join(format!("{id}.patch"));
     fs::rename(pending, &capture).map_err(io_error)?;
     #[cfg(unix)]
-    fs::File::open(&directory).and_then(|directory| directory.sync_all()).map_err(io_error)?;
+    fs::File::open(&directory)
+        .and_then(|directory| directory.sync_all())
+        .map_err(io_error)?;
     // Retain the capture even if applying fails: a filesystem error can leave partial effects.
     apply_patch(path, &capture, true, false).map_err(|error| AppError::new(
         "discardFailedWithRecovery", error.message,
@@ -653,27 +667,51 @@ mod tests {
     fn bulk_discard_partial_captures_survive_restart_and_leave_unselected_edits() {
         for selected_lines in [false, true] {
             let repository = Repository::new();
-            let original = (1..=20).map(|line| format!("line {line}\n")).collect::<String>();
+            let original = (1..=20)
+                .map(|line| format!("line {line}\n"))
+                .collect::<String>();
             repository.write("forest", original.as_bytes());
             stage_all(&repository.0).unwrap();
             commit(&repository.0, "Original").unwrap();
-            let changed = original.replace("line 2\n", "changed two\n")
-                .replace(if selected_lines { "line 5\n" } else { "line 15\n" }, "another edit\n");
+            let changed = original.replace("line 2\n", "changed two\n").replace(
+                if selected_lines {
+                    "line 5\n"
+                } else {
+                    "line 15\n"
+                },
+                "another edit\n",
+            );
             repository.write("forest", changed.as_bytes());
-            let index = run_git(&repository.0, &["ls-files", "--stage", "-z"]).unwrap().stdout;
+            let index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout;
             let lines = selected_lines.then_some([0usize, 1]);
-            let plan = prepare_partial_discard(&repository.0, "forest", 0, lines.as_ref().map(|lines| lines.as_slice())).unwrap();
+            let plan = prepare_partial_discard(
+                &repository.0,
+                "forest",
+                0,
+                lines.as_ref().map(|lines| lines.as_slice()),
+            )
+            .unwrap();
             let id = execute_discard(&repository.0, &plan).unwrap();
             drop(plan);
             let remaining = fs::read_to_string(repository.0.join("forest")).unwrap();
             assert!(remaining.contains("line 2\n"));
             assert!(remaining.contains("another edit\n"));
             assert!(!remaining.contains("changed two\n"));
-            assert_eq!(run_git(&repository.0, &["ls-files", "--stage", "-z"]).unwrap().stdout, index);
+            assert_eq!(
+                run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                    .unwrap()
+                    .stdout,
+                index
+            );
             let captures = discarded_change_recoveries(&repository.0).unwrap();
             assert_eq!(captures[0].id, id);
             recover_discarded_changes(&repository.0, &id, false).unwrap();
-            assert_eq!(fs::read_to_string(repository.0.join("forest")).unwrap(), changed);
+            assert_eq!(
+                fs::read_to_string(repository.0.join("forest")).unwrap(),
+                changed
+            );
             assert!(discarded_change_recoveries(&repository.0).unwrap()[0].restored);
             recover_discarded_changes(&repository.0, &id, true).unwrap();
             assert!(!discarded_change_recoveries(&repository.0).unwrap()[0].restored);
@@ -691,26 +729,45 @@ mod tests {
         let plan = prepare_discard(&repository.0, Some(vec!["link".into()])).unwrap();
         let id = execute_discard(&repository.0, &plan).unwrap();
         assert!(!repository.0.join("link").exists());
-        assert_eq!(fs::read(repository.0.join("target")).unwrap(), b"keep target\n");
+        assert_eq!(
+            fs::read(repository.0.join("target")).unwrap(),
+            b"keep target\n"
+        );
         recover_discarded_changes(&repository.0, &id, false).unwrap();
-        assert_eq!(fs::read_link(repository.0.join("link")).unwrap(), Path::new("target"));
-        assert_eq!(fs::read(repository.0.join("target")).unwrap(), b"keep target\n");
+        assert_eq!(
+            fs::read_link(repository.0.join("link")).unwrap(),
+            Path::new("target")
+        );
+        assert_eq!(
+            fs::read(repository.0.join("target")).unwrap(),
+            b"keep target\n"
+        );
     }
 
     #[test]
     fn bulk_discard_partial_lines_keep_unselected_insertions_and_deletions() {
         let repository = Repository::new();
-        let original = (1..=10).map(|line| format!("line {line}\n")).collect::<String>();
+        let original = (1..=10)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>();
         repository.write("forest", original.as_bytes());
         stage_all(&repository.0).unwrap();
         commit(&repository.0, "Original").unwrap();
-        let changed = original.replace("line 2\n", "changed two\n").replace("line 5\n", "")
+        let changed = original
+            .replace("line 2\n", "changed two\n")
+            .replace("line 5\n", "")
             .replace("line 7\n", "line 7\ninserted seven\n");
         repository.write("forest", changed.as_bytes());
         let plan = prepare_partial_discard(&repository.0, "forest", 0, Some(&[0, 1])).unwrap();
         let id = execute_discard(&repository.0, &plan).unwrap();
-        assert_eq!(fs::read_to_string(repository.0.join("forest")).unwrap(), changed.replace("changed two\n", "line 2\n"));
+        assert_eq!(
+            fs::read_to_string(repository.0.join("forest")).unwrap(),
+            changed.replace("changed two\n", "line 2\n")
+        );
         recover_discarded_changes(&repository.0, &id, false).unwrap();
-        assert_eq!(fs::read_to_string(repository.0.join("forest")).unwrap(), changed);
+        assert_eq!(
+            fs::read_to_string(repository.0.join("forest")).unwrap(),
+            changed
+        );
     }
 }

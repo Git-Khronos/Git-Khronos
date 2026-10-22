@@ -71,8 +71,8 @@ impl Drop for Repository {
 }
 
 #[test]
-fn ordered_revert_dependent_changes_reverse_newest_first_preserve_unselected_work_and_original_history(
-) {
+fn ordered_revert_dependent_changes_reverse_newest_first_preserve_unselected_work_and_original_history()
+ {
     let repository = Repository::new();
     let mut oids = vec![];
     for (bytes, message) in [
@@ -158,8 +158,8 @@ fn ordered_revert_uses_exact_argument_order_without_date_sorting_or_revision_tra
 }
 
 #[test]
-fn ordered_revert_preflights_every_commit_bounds_duplicates_dirty_state_and_recovery_before_any_prefix(
-) {
+fn ordered_revert_preflights_every_commit_bounds_duplicates_dirty_state_and_recovery_before_any_prefix()
+ {
     let repository = Repository::new();
     let oid = repository.edit("first", b"first\n", "First");
     let head = repository.oid();

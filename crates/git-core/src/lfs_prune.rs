@@ -76,9 +76,7 @@ pub fn prune_lfs_objects(
                 return Err(AppError::new(
                     "staleLfsPrune",
                     "LFS storage or references changed after review.",
-                    Some(
-                        "Review unreferenced LFS objects again. Nothing was removed.",
-                    ),
+                    Some("Review unreferenced LFS objects again. Nothing was removed."),
                 ));
             }
         }
@@ -171,7 +169,9 @@ fn media_directory(path: &Path) -> Result<PathBuf, AppError> {
         existing = existing.parent().unwrap_or(Path::new("/"));
     }
     let resolved = fs::canonicalize(existing).map_err(prune_io)?;
-    if !resolved.join(media.strip_prefix(existing).unwrap_or(Path::new(""))).starts_with(&common)
+    if !resolved
+        .join(media.strip_prefix(existing).unwrap_or(Path::new("")))
+        .starts_with(&common)
     {
         return Err(unsafe_prune(
             "LFS storage outside this repository's Git directory may be shared with other repositories.",
@@ -341,7 +341,9 @@ fn referenced_oids(
         return Err(failure);
     }
     if !status.success() {
-        return Err(unsafe_prune("Git could not read candidate pointer objects."));
+        return Err(unsafe_prune(
+            "Git could not read candidate pointer objects.",
+        ));
     }
     Ok(referenced)
 }
@@ -359,7 +361,9 @@ fn unsafe_prune(message: &str) -> AppError {
     AppError::new(
         "unsafeLfsPrune",
         message,
-        Some("Nothing was removed. Only objects that no Git object references are offered for removal."),
+        Some(
+            "Nothing was removed. Only objects that no Git object references are offered for removal.",
+        ),
     )
 }
 
@@ -367,6 +371,8 @@ fn prune_io(error: impl std::fmt::Display) -> AppError {
     AppError::new(
         "lfsPruneFailed",
         format!("LFS storage could not be reviewed or cleaned: {error}"),
-        Some("Review unreferenced LFS objects again. Objects already removed have no offline undo."),
+        Some(
+            "Review unreferenced LFS objects again. Objects already removed have no offline undo.",
+        ),
     )
 }

@@ -574,9 +574,19 @@ pub(crate) fn preserve_commits(
         snapshot_reference,
         restored: false,
     };
-    write_record(path, &record).map_err(|error| AppError::new("recoveryCaptureIncomplete",
-        format!("The operation was not started. Could not persist its recovery record: {}", error.message),
-        Some(&format!("The saved history remains protected at {}. Fix recovery storage before retrying.", record.head_reference))))?;
+    write_record(path, &record).map_err(|error| {
+        AppError::new(
+            "recoveryCaptureIncomplete",
+            format!(
+                "The operation was not started. Could not persist its recovery record: {}",
+                error.message
+            ),
+            Some(&format!(
+                "The saved history remains protected at {}. Fix recovery storage before retrying.",
+                record.head_reference
+            )),
+        )
+    })?;
     Ok(record)
 }
 

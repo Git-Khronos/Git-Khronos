@@ -113,8 +113,8 @@ fn fixture(conflicting: bool) -> (Repository, Vec<String>, String, String) {
 }
 
 #[test]
-fn no_commit_replay_combines_reviewed_order_in_index_without_commits_and_explicit_commit_has_current_identity(
-) {
+fn no_commit_replay_combines_reviewed_order_in_index_without_commits_and_explicit_commit_has_current_identity()
+ {
     let (repository, oids, source, original) = fixture(false);
     let path = &repository.0;
     cherry_pick_commits_with_options(path, &oids, None, true).unwrap();
@@ -148,8 +148,8 @@ fn no_commit_replay_combines_reviewed_order_in_index_without_commits_and_explici
 }
 
 #[test]
-fn no_commit_replay_restart_continues_staged_resolution_and_remaining_rows_without_creating_commits(
-) {
+fn no_commit_replay_restart_continues_staged_resolution_and_remaining_rows_without_creating_commits()
+ {
     let (repository, oids, _, original) = fixture(true);
     let path = &repository.0;
     cherry_pick_commits_with_options(path, &oids, None, true).unwrap_err();
@@ -241,8 +241,8 @@ fn no_commit_replay_quit_keeps_current_conflict_stages_and_files_exactly_unchang
 }
 
 #[test]
-fn no_commit_replay_rejects_dirty_invalid_later_commits_oversized_and_recovery_failure_before_application(
-) {
+fn no_commit_replay_rejects_dirty_invalid_later_commits_oversized_and_recovery_failure_before_application()
+ {
     let (repository, oids, _, original) = fixture(false);
     let path = &repository.0;
     fs::write(path.join("dirty"), b"retained\n").unwrap();
@@ -318,8 +318,8 @@ fn no_commit_replay_uncertain_state_cannot_repeat_a_step_or_reset_a_changed_head
 }
 
 #[test]
-fn no_commit_replay_uses_explicit_mainline_and_retains_identical_effects_without_an_implicit_commit(
-) {
+fn no_commit_replay_uses_explicit_mainline_and_retains_identical_effects_without_an_implicit_commit()
+ {
     for parent in [1, 2] {
         let repository = Repository::new();
         let path = &repository.0;
@@ -362,8 +362,8 @@ fn no_commit_replay_uses_explicit_mainline_and_retains_identical_effects_without
 }
 
 #[test]
-fn no_commit_replay_rejects_hidden_changes_and_competing_sequences_and_keeps_abort_refusals_recoverable(
-) {
+fn no_commit_replay_rejects_hidden_changes_and_competing_sequences_and_keeps_abort_refusals_recoverable()
+ {
     let (repository, oids, _, original) = fixture(true);
     let path = &repository.0;
     run_mutation(
@@ -509,10 +509,12 @@ fn no_commit_replay_does_not_run_commit_hooks_and_the_later_explicit_commit_keep
     let index = run_git(path, &["ls-files", "--stage", "-z"])
         .unwrap()
         .stdout;
-    assert!(commit(path, "Explicit reviewed changes")
-        .unwrap_err()
-        .message
-        .contains("Owned explicit commit refused"));
+    assert!(
+        commit(path, "Explicit reviewed changes")
+            .unwrap_err()
+            .message
+            .contains("Owned explicit commit refused")
+    );
     assert_eq!(repository.oid(), original);
     assert_eq!(
         run_git(path, &["ls-files", "--stage", "-z"])

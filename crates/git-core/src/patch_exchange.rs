@@ -43,7 +43,9 @@ fn failure(message: impl Into<String>) -> AppError {
     AppError::new(
         "patchExchangeRefused",
         message,
-        Some("Preserve local files, correct the patch or repository state, and prepare a fresh review."),
+        Some(
+            "Preserve local files, correct the patch or repository state, and prepare a fresh review.",
+        ),
     )
 }
 
@@ -152,7 +154,9 @@ fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String),
             || line == b"old mode 160000"
             || line == b"new mode 160000"
     }) {
-        return Err(failure("Symlink, submodule, copy and extended-rename patches require local Git. Export renames as deletion/addition."));
+        return Err(failure(
+            "Symlink, submodule, copy and extended-rename patches require local Git. Export renames as deletion/addition.",
+        ));
     }
     let report = apply_command(path, bytes, &["--numstat", "-z"])?;
     if !report.stdout.ends_with(&[0]) {
@@ -180,7 +184,9 @@ fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String),
             ))
         };
         if !seen.insert(file.to_owned()) || files.len() == MAX_PATCH_FILES {
-            return Err(failure("Review requires 1-2000 distinct file paths; repeated-path patches require local Git."));
+            return Err(failure(
+                "Review requires 1-2000 distinct file paths; repeated-path patches require local Git.",
+            ));
         }
         files.push(PatchFile {
             path: file.into(),
@@ -218,7 +224,9 @@ fn clean_state(path: &Path) -> Result<(String, String, Vec<u8>), AppError> {
     patch_root(path)?;
     let status = read_status(path)?;
     if status.entry_count != 0 || status.entries_truncated {
-        return Err(failure("Patch import requires a completely clean index and working tree, including untracked files."));
+        return Err(failure(
+            "Patch import requires a completely clean index and working tree, including untracked files.",
+        ));
     }
 
     if status.merge_in_progress
@@ -241,7 +249,9 @@ fn clean_state(path: &Path) -> Result<(String, String, Vec<u8>), AppError> {
             .split(|byte| *byte == 0)
             .any(|record| record.starts_with(b"S "))
     {
-        return Err(failure("Sparse or skip-worktree entries prevent complete patch import. Restore a full working tree first."));
+        return Err(failure(
+            "Sparse or skip-worktree entries prevent complete patch import. Restore a full working tree first.",
+        ));
     }
     require_no_git_sequence(path)?;
     let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
@@ -392,7 +402,9 @@ pub fn export_patch(
                 .iter()
                 .any(|file| !files.iter().any(|entry| entry.path == *file)))
     {
-        return Err(failure("Every selected file must have a complete tracked diff in the chosen scope; no partial selection was exported."));
+        return Err(failure(
+            "Every selected file must have a complete tracked diff in the chosen scope; no partial selection was exported.",
+        ));
     }
     let parent = destination
         .parent()
@@ -501,16 +513,20 @@ mod tests {
             fs::write(fixture.repository.join("binary"), [0, 4, 5, 6, 255]).unwrap();
             let file = fixture.patch(false);
             let exported = fs::read(&file).unwrap();
-            assert!(exported
-                .windows(16)
-                .any(|bytes| bytes == b"GIT binary patch"));
+            assert!(
+                exported
+                    .windows(16)
+                    .any(|bytes| bytes == b"GIT binary patch")
+            );
             fixture.clean();
             let review = review_patch(&fixture.repository, &file, target).unwrap();
             assert_eq!(review.files.len(), 2);
-            assert!(review
-                .files
-                .iter()
-                .any(|file| file.path == "binary" && file.added.is_none()));
+            assert!(
+                review
+                    .files
+                    .iter()
+                    .any(|file| file.path == "binary" && file.added.is_none())
+            );
             assert_eq!(fixture.output(&["status", "--porcelain"]), b"");
             import_patch(&fixture.repository, &review.request).unwrap();
             let staged = fixture.output(&["show", ":text"]);
@@ -598,9 +614,11 @@ mod tests {
             fs::read(fixture.repository.join("moved")).unwrap(),
             b"old\n"
         );
-        assert!(fixture
-            .output(&["ls-files", "--stage", "moved"])
-            .starts_with(b"100755 "));
+        assert!(
+            fixture
+                .output(&["ls-files", "--stage", "moved"])
+                .starts_with(b"100755 ")
+        );
     }
 
     fn text_patch(fixture: &Fixture) -> PathBuf {
@@ -682,27 +700,33 @@ mod tests {
             "C:/escape",
             "dir\\escape",
         ] {
-            let patch = format!("diff --git a/{name} b/{name}\nnew file mode 100644\n--- /dev/null\n+++ b/{name}\n@@ -0,0 +1 @@\n+new\n");
+            let patch = format!(
+                "diff --git a/{name} b/{name}\nnew file mode 100644\n--- /dev/null\n+++ b/{name}\n@@ -0,0 +1 @@\n+new\n"
+            );
             assert!(
                 describe_patch(&fixture.repository, patch.as_bytes()).is_err(),
                 "{name}"
             );
         }
         for mode in ["120000", "160000"] {
-            let patch = format!("diff --git a/new b/new\nnew file mode {mode}\n--- /dev/null\n+++ b/new\n@@ -0,0 +1 @@\n+new\n");
+            let patch = format!(
+                "diff --git a/new b/new\nnew file mode {mode}\n--- /dev/null\n+++ b/new\n@@ -0,0 +1 @@\n+new\n"
+            );
             assert!(describe_patch(&fixture.repository, patch.as_bytes()).is_err());
         }
         let rename = b"diff --git a/text b/moved\nsimilarity index 100%\nrename from text\nrename to moved\n";
         assert!(describe_patch(&fixture.repository, rename).is_err());
         fs::create_dir_all(fixture.repository.join("nested/.git")).unwrap();
         assert!(safe_path(&fixture.repository, "nested/file").is_err());
-        assert!(export_patch(
-            &fixture.repository,
-            false,
-            &[],
-            &fixture.repository.join("unsafe.patch")
-        )
-        .is_err());
+        assert!(
+            export_patch(
+                &fixture.repository,
+                false,
+                &[],
+                &fixture.repository.join("unsafe.patch")
+            )
+            .is_err()
+        );
     }
 
     #[cfg(unix)]
@@ -799,13 +823,15 @@ mod tests {
         assert_eq!(fs::read(linked.join("text")).unwrap(), b"linked\n");
         assert_eq!(fs::read(fixture.repository.join("text")).unwrap(), b"old\n");
         assert_eq!(fixture.output(&["status", "--porcelain"]), b"");
-        assert!(export_patch(
-            &linked,
-            true,
-            &[],
-            &fixture.repository.join(".git/forbidden.patch")
-        )
-        .is_err());
+        assert!(
+            export_patch(
+                &linked,
+                true,
+                &[],
+                &fixture.repository.join(".git/forbidden.patch")
+            )
+            .is_err()
+        );
         assert!(!fixture.repository.join(".git/forbidden.patch").exists());
     }
 
@@ -826,17 +852,21 @@ mod tests {
         export_patch(&fixture.repository, false, &[], &destination).unwrap();
         let bytes = fs::read(&destination).unwrap();
         assert!(bytes.starts_with(b"diff --git a/text b/text\n"));
-        assert!(bytes
-            .windows(b" old\n+extra\n".len())
-            .any(|line| line == b" old\n+extra\n"));
+        assert!(
+            bytes
+                .windows(b" old\n+extra\n".len())
+                .any(|line| line == b" old\n+extra\n")
+        );
         let partial = fixture.directory.join("partial.patch");
-        assert!(export_patch(
-            &fixture.repository,
-            false,
-            &["text".into(), "untracked".into()],
-            &partial
-        )
-        .is_err());
+        assert!(
+            export_patch(
+                &fixture.repository,
+                false,
+                &["text".into(), "untracked".into()],
+                &partial
+            )
+            .is_err()
+        );
         assert!(!partial.exists());
         let empty = fixture.directory.join("empty.patch");
         fs::write(&empty, []).unwrap();

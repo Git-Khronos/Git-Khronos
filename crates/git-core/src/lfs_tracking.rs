@@ -96,7 +96,10 @@ pub fn lfs_file_attributes(path: &Path, file: &str) -> Result<LfsFileAttributes,
 /// Git before 2.43 ignores attribute files that sparse checkout excludes, which
 /// would make inherited rules look unspecified.
 fn ensure_sparse_attributes_readable(path: &Path, file: &str) -> Result<(), AppError> {
-    if detect_git().version.is_some_and(|version| version_at_least(&version, "2.43.0")) {
+    if detect_git()
+        .version
+        .is_some_and(|version| version_at_least(&version, "2.43.0"))
+    {
         return Ok(());
     }
     let parts: Vec<&str> = file.split('/').collect();
@@ -121,8 +124,12 @@ fn ensure_sparse_attributes_readable(path: &Path, file: &str) -> Result<(), AppE
     match excluded {
         Some(attributes) => Err(AppError::new(
             "sparseAttributesUnreadable",
-            format!("{attributes} is outside the sparse checkout, and this Git version ignores it when resolving attributes."),
-            Some("Upgrade to Git 2.43 or newer, or include that folder in the sparse selection, then inspect again. Nothing was changed."),
+            format!(
+                "{attributes} is outside the sparse checkout, and this Git version ignores it when resolving attributes."
+            ),
+            Some(
+                "Upgrade to Git 2.43 or newer, or include that folder in the sparse selection, then inspect again. Nothing was changed.",
+            ),
         )),
         None => Ok(()),
     }

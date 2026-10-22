@@ -211,12 +211,21 @@ pub fn stash_and_checkout(
     require_stash_checkout_ready(path)?;
     let status = read_status(path)?;
     if status.branch.as_deref() == Some(name) {
-        return Err(AppError::new("alreadyCurrentBranch", "That branch is already checked out.", None));
+        return Err(AppError::new(
+            "alreadyCurrentBranch",
+            "That branch is already checked out.",
+            None,
+        ));
     }
-    if read_worktrees(path, &status, false)?.iter().any(|worktree|
-        !worktree.current && worktree.branch.as_deref() == Some(name)) {
-        return Err(AppError::new("branchInAnotherWorktree", "That branch is checked out in another worktree.",
-            Some("Open that worktree instead; current changes have not been stashed.")));
+    if read_worktrees(path, &status, false)?
+        .iter()
+        .any(|worktree| !worktree.current && worktree.branch.as_deref() == Some(name))
+    {
+        return Err(AppError::new(
+            "branchInAnotherWorktree",
+            "That branch is checked out in another worktree.",
+            Some("Open that worktree instead; current changes have not been stashed."),
+        ));
     }
     let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
     ensure_success("check the current branch before switching", &head)?;
@@ -251,8 +260,11 @@ pub fn stash_and_checkout(
 fn require_stash_checkout_ready(path: &Path) -> Result<(), AppError> {
     let operations = repository_operation_state(path)?;
     if operations.merge || operations.rebase || operations.bisect || operations.history.is_some() {
-        return Err(AppError::new("historyOperationInProgress",
-            "Finish or abort the active Git operation before restoring or switching branches.", None));
+        return Err(AppError::new(
+            "historyOperationInProgress",
+            "Finish or abort the active Git operation before restoring or switching branches.",
+            None,
+        ));
     }
     Ok(())
 }

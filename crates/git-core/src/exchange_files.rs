@@ -5,7 +5,9 @@ fn refused(message: impl Into<String>) -> AppError {
     AppError::new(
         "offlineExchangeRefused",
         message,
-        Some("Inspect the repository and destination, then prepare a fresh review. No existing file or reference is replaced."),
+        Some(
+            "Inspect the repository and destination, then prepare a fresh review. No existing file or reference is replaced.",
+        ),
     )
 }
 
@@ -14,7 +16,9 @@ fn refused(message: impl Into<String>) -> AppError {
 pub(crate) fn require_local_exchange_objects(path: &Path) -> Result<(), AppError> {
     let partial = run_git(path, &["config", "--get", "extensions.partialClone"])?;
     if partial.status.success() {
-        return Err(refused("Offline exchange refuses partial clones to avoid implicit network downloads. Use local Git after obtaining complete objects."));
+        return Err(refused(
+            "Offline exchange refuses partial clones to avoid implicit network downloads. Use local Git after obtaining complete objects.",
+        ));
     }
     if partial.status.code() != Some(1) {
         ensure_success("inspect partial-clone exchange scope", &partial)?;
@@ -35,7 +39,9 @@ pub(crate) fn require_local_exchange_objects(path: &Path) -> Result<(), AppError
             .split(|byte| *byte == b'\n')
             .any(|line| line.ends_with(b" true"))
         {
-            return Err(refused("Offline exchange refuses promisor repositories to avoid implicit network downloads. Use local Git after obtaining complete objects."));
+            return Err(refused(
+                "Offline exchange refuses promisor repositories to avoid implicit network downloads. Use local Git after obtaining complete objects.",
+            ));
         }
     }
     Ok(())

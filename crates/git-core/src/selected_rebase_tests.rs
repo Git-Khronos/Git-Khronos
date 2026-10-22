@@ -54,13 +54,14 @@ impl Repository {
 
     fn unchanged(&self, original: &str) {
         assert_eq!(self.oid(), original);
-        assert!(self
-            .output(&[
+        assert!(
+            self.output(&[
                 "for-each-ref",
                 "--format=%(objectname)",
                 "refs/git-khronos/recovery/"
             ])
-            .is_empty());
+            .is_empty()
+        );
         assert!(!rebase_support_dir(&self.0).unwrap().exists());
         assert!(!read_status(&self.0).unwrap().rebase_in_progress);
     }
@@ -377,10 +378,12 @@ fn merge_preserving_actual_hook_refuses_without_unsigned_or_flattened_fallback()
     fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
     repository.git(&["config", "core.hooksPath", hooks.to_str().unwrap()]);
     let plan = prepare_merge_rebase(&repository.0, "main", "destination").unwrap();
-    assert!(execute_merge_rebase(&repository.0, &plan.request)
-        .unwrap_err()
-        .message
-        .contains("owned-merge-rebase-hook"));
+    assert!(
+        execute_merge_rebase(&repository.0, &plan.request)
+            .unwrap_err()
+            .message
+            .contains("owned-merge-rebase-hook")
+    );
     assert_eq!(repository.oid(), original);
     assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
     assert_eq!(
@@ -599,16 +602,18 @@ fn selected_onto_refuses_missing_tree_in_range_and_wrong_mode_before_recovery() 
         "f".repeat(40),
         "--invalid".into(),
     ] {
-        assert!(execute_interactive_rebase_with_destination(
-            &repository.0,
-            "main",
-            "main",
-            &picks(&plan),
-            Some(&selected),
-            false,
-            Some(&destination),
-        )
-        .is_err());
+        assert!(
+            execute_interactive_rebase_with_destination(
+                &repository.0,
+                "main",
+                "main",
+                &picks(&plan),
+                Some(&selected),
+                false,
+                Some(&destination),
+            )
+            .is_err()
+        );
         repository.unchanged(&original);
     }
     let base = plan.base;
@@ -617,16 +622,18 @@ fn selected_onto_refuses_missing_tree_in_range_and_wrong_mode_before_recovery() 
         (None, true),
         (Some(selected.as_slice()), true),
     ] {
-        assert!(execute_interactive_rebase_with_destination(
-            &repository.0,
-            "main",
-            "main",
-            &[],
-            selection,
-            root,
-            Some(&base),
-        )
-        .is_err());
+        assert!(
+            execute_interactive_rebase_with_destination(
+                &repository.0,
+                "main",
+                "main",
+                &[],
+                selection,
+                root,
+                Some(&base),
+            )
+            .is_err()
+        );
         repository.unchanged(&original);
     }
 }
@@ -642,16 +649,18 @@ fn selected_onto_conflict_continue_and_abort_keep_destination_and_original_histo
     let original = repository.edit("later", b"later\n", "Later");
     let selected = [first];
     let plan = repository.plan(&selected);
-    assert!(execute_interactive_rebase_with_destination(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        Some(&selected),
-        false,
-        Some(&destination),
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_destination(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            Some(&selected),
+            false,
+            Some(&destination),
+        )
+        .is_err()
+    );
     assert!(read_status(&repository.0).unwrap().conflicted > 0);
     abort_rebase(&repository.0).unwrap();
     assert_eq!(repository.oid(), original);
@@ -660,16 +669,18 @@ fn selected_onto_conflict_continue_and_abort_keep_destination_and_original_histo
         repository.output(&["rev-parse", "refs/heads/destination"]),
         destination
     );
-    assert!(execute_interactive_rebase_with_destination(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        Some(&selected),
-        false,
-        Some(&destination),
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_destination(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            Some(&selected),
+            false,
+            Some(&destination),
+        )
+        .is_err()
+    );
     fs::write(repository.0.join("base"), b"reviewed resolution\n").unwrap();
     stage_all(&repository.0).unwrap();
     continue_rebase(&repository.0).unwrap();
@@ -736,16 +747,18 @@ fn selected_onto_newly_empty_step_requires_explicit_skip_without_hidden_commit()
     let original = repository.edit("later", b"later\n", "Later");
     let selected = [first];
     let plan = repository.plan(&selected);
-    assert!(execute_interactive_rebase_with_destination(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        Some(&selected),
-        false,
-        Some(&destination),
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_destination(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            Some(&selected),
+            false,
+            Some(&destination),
+        )
+        .is_err()
+    );
     assert!(read_status(&repository.0).unwrap().rebase_in_progress);
     assert_eq!(repository.oid(), destination);
     skip_rebase(&repository.0).unwrap();
@@ -805,16 +818,18 @@ fn selected_onto_preserves_hooks_and_refuses_dirty_hidden_and_recovery_obstructi
     fs::write(repository.0.join("first"), b"first\n").unwrap();
     let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
-    assert!(execute_interactive_rebase_with_destination(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        Some(&selected),
-        false,
-        Some(&base),
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_destination(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            Some(&selected),
+            false,
+            Some(&base),
+        )
+        .is_err()
+    );
     assert_eq!(repository.oid(), first);
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
     fs::remove_file(&blocked).unwrap();
@@ -959,10 +974,12 @@ fn root_rebase_edit_restart_continue_and_abort_retain_protected_history() {
     assert!(status.rebase_edit_stopped);
     assert_eq!(repository.oid(), root);
     assert!(begin_rebase_split(&repository.0, &root).is_err());
-    assert!(!rebase_support_dir(&repository.0)
-        .unwrap()
-        .join("split.json")
-        .exists());
+    assert!(
+        !rebase_support_dir(&repository.0)
+            .unwrap()
+            .join("split.json")
+            .exists()
+    );
     fs::write(repository.0.join("base"), b"Reviewed root edit\n").unwrap();
     stage_all(&repository.0).unwrap();
     assert!(continue_rebase(&repository.0).is_err());
@@ -1006,14 +1023,16 @@ fn root_rebase_edit_restart_continue_and_abort_retain_protected_history() {
         original
     );
     assert_eq!(fs::read(repository.0.join("unrelated")).unwrap(), b"keep\n");
-    assert!(repository
-        .output(&[
-            "for-each-ref",
-            "--format=%(objectname)",
-            "refs/git-khronos/recovery/"
-        ])
-        .lines()
-        .any(|oid| oid == original));
+    assert!(
+        repository
+            .output(&[
+                "for-each-ref",
+                "--format=%(objectname)",
+                "refs/git-khronos/recovery/"
+            ])
+            .lines()
+            .any(|oid| oid == original)
+    );
 }
 
 #[test]
@@ -1059,14 +1078,10 @@ fn root_rebase_refuses_selected_moving_detached_shallow_merge_and_stale_history(
         ("main", "main", Some(std::slice::from_ref(&original))),
         ("other", "other", None),
     ] {
-        assert!(prepare_interactive_rebase_with_options(
-            &repository.0,
-            source,
-            target,
-            selection,
-            true
-        )
-        .is_err());
+        assert!(
+            prepare_interactive_rebase_with_options(&repository.0, source, target, selection, true)
+                .is_err()
+        );
         repository.unchanged(&original);
     }
     repository.git(&["checkout", "--detach"]);
@@ -1087,15 +1102,17 @@ fn root_rebase_refuses_selected_moving_detached_shallow_merge_and_stale_history(
     let plan =
         prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
     let appended = repository.edit("appended", b"appended\n", "Appended after review");
-    assert!(execute_interactive_rebase_with_options(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        None,
-        true
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_options(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            None,
+            true
+        )
+        .is_err()
+    );
     repository.unchanged(&appended);
     repository.git(&["checkout", "other"]);
     repository.edit("side", b"side\n", "Side");
@@ -1119,15 +1136,10 @@ fn root_rebase_conflict_preserves_original_history_and_abort_restores_files() {
         prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
     let mut steps = picks(&plan);
     steps.reverse();
-    assert!(execute_interactive_rebase_with_options(
-        &repository.0,
-        "main",
-        "main",
-        &steps,
-        None,
-        true
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_options(&repository.0, "main", "main", &steps, None, true)
+            .is_err()
+    );
     let status = read_status(&repository.0).unwrap();
     assert!(status.rebase_in_progress);
     assert!(status.conflicted > 0);
@@ -1201,15 +1213,17 @@ fn root_rebase_dirty_hidden_operation_and_recovery_obstructions_refuse_without_s
         prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
     let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
-    assert!(execute_interactive_rebase_with_options(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        None,
-        true
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_options(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            None,
+            true
+        )
+        .is_err()
+    );
     assert_eq!(repository.oid(), original);
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
     assert_eq!(fs::read(blocked).unwrap(), b"owned recovery obstruction");
@@ -1258,8 +1272,8 @@ fn root_rebase_respects_actual_hook_refusal_and_protects_the_original_tip() {
 }
 
 #[test]
-fn selected_rebase_reviews_entire_suffix_preserves_base_and_unrelated_refs_with_configured_update_refs(
-) {
+fn selected_rebase_reviews_entire_suffix_preserves_base_and_unrelated_refs_with_configured_update_refs()
+ {
     let repository = Repository::new();
     let base = repository.oid();
     let first = repository.edit("first", b"first\n", "First");
@@ -1323,8 +1337,8 @@ fn selected_rebase_reviews_entire_suffix_preserves_base_and_unrelated_refs_with_
 }
 
 #[test]
-fn selected_rebase_rejects_noncontiguous_reversed_duplicate_unrelated_root_missing_and_invalid_selections(
-) {
+fn selected_rebase_rejects_noncontiguous_reversed_duplicate_unrelated_root_missing_and_invalid_selections()
+ {
     let repository = Repository::new();
     let base = repository.oid();
     let first = repository.edit("first", b"first\n", "First");
@@ -1344,30 +1358,31 @@ fn selected_rebase_rejects_noncontiguous_reversed_duplicate_unrelated_root_missi
         vec!["HEAD".to_owned()],
         vec![first.clone(); 501],
     ] {
-        assert!(prepare_interactive_rebase_with_selection(
-            &repository.0,
-            "main",
-            "main",
-            Some(&selected)
-        )
-        .is_err());
-        assert!(execute_interactive_rebase_with_selection(
-            &repository.0,
-            "main",
-            "main",
-            &[],
-            Some(&selected)
-        )
-        .is_err());
+        assert!(
+            prepare_interactive_rebase_with_selection(
+                &repository.0,
+                "main",
+                "main",
+                Some(&selected)
+            )
+            .is_err()
+        );
+        assert!(
+            execute_interactive_rebase_with_selection(
+                &repository.0,
+                "main",
+                "main",
+                &[],
+                Some(&selected)
+            )
+            .is_err()
+        );
         repository.unchanged(&last);
     }
-    assert!(prepare_interactive_rebase_with_selection(
-        &repository.0,
-        "main",
-        "other",
-        Some(&[first])
-    )
-    .is_err());
+    assert!(
+        prepare_interactive_rebase_with_selection(&repository.0, "main", "other", Some(&[first]))
+            .is_err()
+    );
     repository.unchanged(&last);
 }
 
@@ -1408,14 +1423,16 @@ fn selected_rebase_revalidates_appended_tip_current_branch_and_recovery_before_m
     let plan = repository.plan(&selected);
     let blocked = repository.0.join(".git/refs/git-khronos");
     fs::write(&blocked, b"owned recovery obstruction").unwrap();
-    assert!(execute_interactive_rebase_with_selection(
-        &repository.0,
-        "main",
-        "main",
-        &picks(&plan),
-        Some(&selected)
-    )
-    .is_err());
+    assert!(
+        execute_interactive_rebase_with_selection(
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            Some(&selected)
+        )
+        .is_err()
+    );
     assert_eq!(repository.oid(), original);
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
     assert_eq!(fs::read(blocked).unwrap(), b"owned recovery obstruction");
@@ -1444,13 +1461,10 @@ fn selected_rebase_dirty_hidden_and_native_operation_state_are_preserved_on_refu
     repository.git(&["update-index", "--no-assume-unchanged", "first"]);
     fs::write(repository.0.join("first"), b"first\n").unwrap();
     fs::create_dir(repository.0.join(".git/rebase-apply")).unwrap();
-    assert!(prepare_interactive_rebase_with_selection(
-        &repository.0,
-        "main",
-        "main",
-        Some(&selected)
-    )
-    .is_err());
+    assert!(
+        prepare_interactive_rebase_with_selection(&repository.0, "main", "main", Some(&selected))
+            .is_err()
+    );
     assert_eq!(repository.oid(), first);
     assert!(!rebase_support_dir(&repository.0).unwrap().exists());
 }
@@ -1663,8 +1677,8 @@ fn selected_rebase_respects_actual_pre_rebase_hook_refusal_and_retains_protected
 }
 
 #[test]
-fn selected_rebase_continue_after_edit_keeps_unrelated_refs_and_original_author_with_auto_updates_configured(
-) {
+fn selected_rebase_continue_after_edit_keeps_unrelated_refs_and_original_author_with_auto_updates_configured()
+ {
     let repository = Repository::new();
     let base = repository.oid();
     let first = repository.edit("first", b"first\n", "First");
@@ -1721,7 +1735,13 @@ fn root_onto_replays_entire_history_on_captured_destination_without_moving_refs(
     assert_eq!(plan.commits[0].oid, root);
     for inside in [&root, &first, &original] {
         let error = execute_interactive_rebase_with_destination(
-            &repository.0, "main", "main", &picks(&plan), None, true, Some(inside),
+            &repository.0,
+            "main",
+            "main",
+            &picks(&plan),
+            None,
+            true,
+            Some(inside),
         )
         .unwrap_err();
         assert_eq!(error.kind, "invalidRebaseDestination");
@@ -1731,7 +1751,13 @@ fn root_onto_replays_entire_history_on_captured_destination_without_moving_refs(
     steps[0].action = "reword".into();
     steps[0].message = Some("Base on platform".into());
     execute_interactive_rebase_with_destination(
-        &repository.0, "main", "main", &steps, None, true, Some(&platform),
+        &repository.0,
+        "main",
+        "main",
+        &steps,
+        None,
+        true,
+        Some(&platform),
     )
     .unwrap();
     assert_eq!(
@@ -1743,10 +1769,17 @@ fn root_onto_replays_entire_history_on_captured_destination_without_moving_refs(
         repository.output(&["ls-tree", "--name-only", "HEAD"]),
         "base\nfirst\nlast\nplatform"
     );
-    assert_eq!(repository.output(&["rev-parse", "refs/heads/platform"]), platform);
+    assert_eq!(
+        repository.output(&["rev-parse", "refs/heads/platform"]),
+        platform
+    );
     assert_eq!(repository.output(&["rev-parse", "refs/heads/keep"]), first);
     assert_eq!(
-        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]),
+        repository.output(&[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/git-khronos/recovery/"
+        ]),
         original
     );
     assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
@@ -1763,7 +1796,13 @@ fn root_onto_conflict_stops_for_explicit_resolution_and_abort_restores_history()
     let plan =
         prepare_interactive_rebase_with_options(&repository.0, "main", "main", None, true).unwrap();
     let error = execute_interactive_rebase_with_destination(
-        &repository.0, "main", "main", &picks(&plan), None, true, Some(&other),
+        &repository.0,
+        "main",
+        "main",
+        &picks(&plan),
+        None,
+        true,
+        Some(&other),
     );
     assert!(error.is_err() || read_status(&repository.0).unwrap().rebase_in_progress);
     let status = read_status(&repository.0).unwrap();
@@ -1773,7 +1812,11 @@ fn root_onto_conflict_stops_for_explicit_resolution_and_abort_restores_history()
     assert_eq!(repository.oid(), original);
     assert_eq!(repository.output(&["rev-parse", "refs/heads/other"]), other);
     assert_eq!(
-        repository.output(&["for-each-ref", "--format=%(objectname)", "refs/git-khronos/recovery/"]),
+        repository.output(&[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/git-khronos/recovery/"
+        ]),
         original
     );
 }

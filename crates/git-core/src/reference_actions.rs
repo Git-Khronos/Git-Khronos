@@ -81,7 +81,12 @@ pub fn create_signed_tag(
     let reference = format!("refs/tags/{name}");
     let inspected = run_git(
         path,
-        &["for-each-ref", "--format=%(objectname)%00%(contents:signature)", "--", &reference],
+        &[
+            "for-each-ref",
+            "--format=%(objectname)%00%(contents:signature)",
+            "--",
+            &reference,
+        ],
     )?;
     ensure_success("confirm the tag signature", &inspected)?;
     let text = String::from_utf8_lossy(&inspected.stdout);
@@ -91,7 +96,12 @@ pub fn create_signed_tag(
     }
     let tag_oid = tag_oid.trim();
     let removed = !tag_oid.is_empty()
-        && run_mutation(path, &["update-ref", "-d", &reference, tag_oid], "remove the unsigned tag").is_ok();
+        && run_mutation(
+            path,
+            &["update-ref", "-d", &reference, tag_oid],
+            "remove the unsigned tag",
+        )
+        .is_ok();
     Err(AppError::new(
         "tagSigningFailed",
         "Git created the tag without a signature, so it was not kept.",

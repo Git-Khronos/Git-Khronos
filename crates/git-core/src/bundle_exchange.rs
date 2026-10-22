@@ -29,8 +29,13 @@ pub struct BundleReview {
 }
 
 fn refused(message: impl Into<String>) -> AppError {
-    AppError::new("bundleExchangeRefused", message,
-        Some("Keep the source bundle, inspect the repository and prepare a fresh review. No existing reference or working file is replaced."))
+    AppError::new(
+        "bundleExchangeRefused",
+        message,
+        Some(
+            "Keep the source bundle, inspect the repository and prepare a fresh review. No existing reference or working file is replaced.",
+        ),
+    )
 }
 
 fn io_error(error: std::io::Error) -> AppError {
@@ -50,7 +55,9 @@ fn read_bundle(file: &Path) -> Result<Vec<u8>, AppError> {
         .read_to_end(&mut bytes)
         .map_err(io_error)?;
     if bytes.is_empty() || bytes.len() > MAX_BUNDLE_BYTES {
-        return Err(refused("This workflow accepts complete bundles up to 16 MiB; no partial object import is offered."));
+        return Err(refused(
+            "This workflow accepts complete bundles up to 16 MiB; no partial object import is offered.",
+        ));
     }
     Ok(bytes)
 }
@@ -119,7 +126,9 @@ fn tips(path: &Path, file: &Path) -> Result<Vec<BundleTip>, AppError> {
         .iter()
         .any(|tip| tip.reference.starts_with("refs/heads/"))
     {
-        return Err(refused("This import workflow requires an advertised branch tip. Tag-only bundles require local Git."));
+        return Err(refused(
+            "This import workflow requires an advertised branch tip. Tag-only bundles require local Git.",
+        ));
     }
     Ok(tips)
 }
@@ -158,8 +167,14 @@ fn captured<T>(
     let result = written.map_err(io_error).and_then(|_| action(&file));
     match fs::remove_file(&file) {
         Ok(()) => result,
-        Err(error) => Err(refused(format!("Bundle operation {} and temporary capture cleanup failed at '{}': {error}. Inspect object/recovery effects before retrying.",
-            match result { Ok(_) => "finished".into(), Err(error) => format!("failed ({})", error.message) }, file.display()))),
+        Err(error) => Err(refused(format!(
+            "Bundle operation {} and temporary capture cleanup failed at '{}': {error}. Inspect object/recovery effects before retrying.",
+            match result {
+                Ok(_) => "finished".into(),
+                Err(error) => format!("failed ({})", error.message),
+            },
+            file.display()
+        ))),
     }
 }
 
@@ -259,7 +274,9 @@ pub fn import_bundle(
             error.message
         )))?;
         if resolved.stdout != format!("{}\n", tip.oid).as_bytes() {
-            return Err(refused("The imported branch tip is not the advertised commit. Objects may have been imported; no recovery ref was created."));
+            return Err(refused(
+                "The imported branch tip is not the advertised commit. Objects may have been imported; no recovery ref was created.",
+            ));
         }
         preserve_reference(path, &tip.oid, &format!("Imported bundle branch {}", tip.reference))
             .map_err(|error| AppError::new("bundleRecoveryFailed",
@@ -278,7 +295,9 @@ pub fn export_bundle(
     let shallow = run_git(path, &["rev-parse", "--is-shallow-repository"])?;
     ensure_success("inspect complete bundle history", &shallow)?;
     if shallow.stdout != b"false\n" {
-        return Err(refused("Self-contained bundle export requires complete, non-shallow history. Unshallow through local Git before exporting."));
+        return Err(refused(
+            "Self-contained bundle export requires complete, non-shallow history. Unshallow through local Git before exporting.",
+        ));
     }
     validate_branch_name(path, branch)?;
     validate_commit_oid(expected_oid)?;
@@ -519,15 +538,19 @@ mod tests {
             &fixture.source,
             &["bundle", "create", refused.to_str().unwrap(), "--branches"],
         );
-        assert!(review_bundle(&fixture.target, &refused)
-            .unwrap_err()
-            .message
-            .contains("500"));
-        assert!(Fixture::output(
-            &fixture.target,
-            &["for-each-ref", "refs/git-khronos/recovery"]
-        )
-        .is_empty());
+        assert!(
+            review_bundle(&fixture.target, &refused)
+                .unwrap_err()
+                .message
+                .contains("500")
+        );
+        assert!(
+            Fixture::output(
+                &fixture.target,
+                &["for-each-ref", "refs/git-khronos/recovery"]
+            )
+            .is_empty()
+        );
         fixture.no_captures(&fixture.target);
     }
 
@@ -607,10 +630,12 @@ mod tests {
         let error =
             import_bundle(&fixture.target, &review.request, &review.request.tips[0]).unwrap_err();
         assert_eq!(error.kind, "bundleImportFailed");
-        assert!(error
-            .hint
-            .unwrap()
-            .contains("Objects may have been imported"));
+        assert!(
+            error
+                .hint
+                .unwrap()
+                .contains("Objects may have been imported")
+        );
         assert_eq!(Fixture::output(&fixture.target, &["for-each-ref"]), refs);
         assert_eq!(
             Fixture::output(&fixture.target, &["ls-files", "--stage", "-z"]),
@@ -644,10 +669,12 @@ mod tests {
             &fixture.target,
             &["config", "remote.owned.promisor", "true"],
         );
-        assert!(review_bundle(&fixture.target, &file)
-            .unwrap_err()
-            .message
-            .contains("promisor"));
+        assert!(
+            review_bundle(&fixture.target, &file)
+                .unwrap_err()
+                .message
+                .contains("promisor")
+        );
         Fixture::git(
             &fixture.target,
             &["config", "remote.owned.promisor", "false"],
@@ -678,25 +705,29 @@ mod tests {
         assert!(export_bundle(&fixture.source, "main", &original, &file).is_err());
         assert!(!file.exists());
         fs::write(&file, b"keep destination\n").unwrap();
-        assert!(export_bundle(
-            &fixture.source,
-            "main",
-            &Fixture::oid(&fixture.source),
-            &file
-        )
-        .is_err());
+        assert!(
+            export_bundle(
+                &fixture.source,
+                "main",
+                &Fixture::oid(&fixture.source),
+                &file
+            )
+            .is_err()
+        );
         assert_eq!(fs::read(file).unwrap(), b"keep destination\n");
         for destination in [
             fixture.source.join("inside.bundle"),
             fixture.source.join(".git/inside.bundle"),
         ] {
-            assert!(export_bundle(
-                &fixture.source,
-                "main",
-                &Fixture::oid(&fixture.source),
-                &destination
-            )
-            .is_err());
+            assert!(
+                export_bundle(
+                    &fixture.source,
+                    "main",
+                    &Fixture::oid(&fixture.source),
+                    &destination
+                )
+                .is_err()
+            );
             assert!(!destination.exists());
         }
         fixture.no_captures(&fixture.source);
