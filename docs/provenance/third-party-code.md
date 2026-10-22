@@ -1,5 +1,41 @@
 # Third-party code and development tools
 
+## Nx agent skills and Codex integration
+
+Sources:
+
+- <https://github.com/nrwl/nx-ai-agents-config/tree/525ce266e2>
+- Nx 23.2.1 package, `dist/src/ai/set-up-ai-agents/get-agent-rules.js`
+  (<https://github.com/nrwl/nx>, MIT).
+
+License: MIT, verified against the cached upstream snapshot's `LICENSE`.
+The copyright and full permission notice are retained in
+`THIRD_PARTY_NOTICES.md` under "Nx agent tooling".
+
+Copied development-only skills from the snapshot's `generated/.agents/skills`:
+
+- `link-workspace-packages`, `monitor-ci`
+- `nx-cloud-api`, `nx-cloud-cache-investigator`, `nx-cloud-ci-failure-review`
+- `nx-generate`, `nx-import`, `nx-plugins`, `nx-run-tasks`, `nx-workspace`
+
+The copied files include the skills' references and CI-monitor scripts.
+`.codex/agents/ci-monitor-subagent.toml` comes from `generated/.codex/agents`;
+`.codex/config.toml` is adapted from the generated Codex configuration.
+The Nx section in `AGENTS.md` comes from the installed Nx generator.
+
+Local adaptations:
+
+- Use `pnpm exec nx mcp` for the workspace's installed Nx version.
+- Identify the CI-monitor role as optional; Nx Cloud is not enabled by this
+  configuration and must be connected separately to use Cloud-specific skills.
+- Require user authorization for CI/Git mutations, preserve existing scoped
+  authorization, and remove automatic empty-commit and known-failing-push fallbacks.
+- Make the `AGENTS.md` MCP guidance conditional on server availability and tidy
+  its generated section spacing.
+
+The remaining copied skill files and decision scripts are unmodified. They are
+development tooling and are not embedded in the desktop executable.
+
 ## serde_json
 
 Source: <https://github.com/serde-rs/json>
