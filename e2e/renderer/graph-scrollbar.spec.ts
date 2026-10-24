@@ -9,7 +9,10 @@ test('keeps the last graph column aligned with the settings button at its right 
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.addStyleTag({ content: '.commit-list { overflow-y: scroll !important; }' });
   const list = page.locator('.commit-list');
-  await expect.poll(() => list.evaluate((element) => element.offsetWidth - element.clientWidth)).toBeGreaterThan(0);
+  await expect.poll(() => list.evaluate((element) => {
+    if (!(element instanceof HTMLElement)) throw new Error('The commit list must be an HTML element.');
+    return element.offsetWidth - element.clientWidth;
+  })).toBeGreaterThan(0);
   await page.setViewportSize({ width: 1601, height: 700 });
   const dateSeparator = page.getByRole('separator', { name: 'Resize Date and Time column', exact: true });
   const geometry = () => page.evaluate(() => {
@@ -84,8 +87,8 @@ test('never lets graph headings or row cells overlap while columns overflow', as
     expect(headings, `headings at ${scrollLeft}`).toBeLessThanOrEqual(1);
     expect(cells, `cells at ${scrollLeft}`).toBeLessThanOrEqual(1);
   }
-  // Scrolled to the end, the last column reaches the right edge with the settings button and row
-  // actions inside its right end.
+  // Scrolled to the end, the last column and row actions end before the 24px
+  // marker rail. The settings button stays inside the trailing heading.
   const geometry = () => page.evaluate(() => {
     const heading = document.querySelector<HTMLElement>('.graph-columns > .trailing-column')!.getBoundingClientRect();
     const row = document.querySelector('.commit-row:not(.wip-row)')!;
@@ -98,7 +101,12 @@ test('never lets graph headings or row cells overlap while columns overflow', as
   });
   await expect.poll(async () => {
     const { headingRight, cellRight, menuRight, listRight, buttonLeft } = await geometry();
-    return Math.abs(headingRight - cellRight) <= 1 && Math.abs(listRight - 16 - cellRight) <= 1 && buttonLeft >= headingRight - 32 && buttonLeft < headingRight && menuRight >= listRight - 17 && menuRight <= listRight - 13;
-  }).toBe(true);
+    return {
+      aligned: Math.abs(headingRight - cellRight) <= 1,
+      cellEndInset: Math.round(listRight - cellRight),
+      settingsInside: buttonLeft >= headingRight - 32 && buttonLeft < headingRight,
+      menuEndInset: Math.round(listRight - menuRight),
+    };
+  }).toEqual({ aligned: true, cellEndInset: 24, settingsInside: true, menuEndInset: 24 });
   await expect(page.locator('.graph-columns > .trailing-column')).toHaveAttribute('title', /Date/);
 });

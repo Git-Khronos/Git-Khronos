@@ -307,12 +307,12 @@ test('reopening attributes in another repository does not retain the previous pa
 test('lazy LFS panel loading can be cancelled by keyboard before any panel IPC runs', async ({ page }) => {
   await setup(page);
   const gate = Promise.withResolvers<void>();
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
   await page.route(/\.js(?:\?.*)?$/, async (route) => {
     await gate.promise;
     await route.continue();
   });
-  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
   await page.getByRole('button', { name: 'Manage tracking patterns…', exact: true }).click();
   const loader = page.getByRole('dialog', { name: 'Loading LFS tools', exact: true });
   await expect(loader).toBeVisible();
@@ -329,9 +329,9 @@ test('lazy LFS panel loading can be cancelled by keyboard before any panel IPC r
 
 test('failed lazy LFS panel load shows an explicit focused escape route', async ({ page }) => {
   await setup(page);
-  await page.route(/\.js(?:\?.*)?$/, (route) => route.abort('failed'));
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
+  await page.route(/\.js(?:\?.*)?$/, (route) => route.abort('failed'));
   await page.getByRole('button', { name: 'Manage tracking patterns…', exact: true }).click();
   const error = page.getByRole('dialog', { name: 'LFS tools unavailable', exact: true });
   await expect(error.getByRole('alert')).toContainText('could not be loaded');

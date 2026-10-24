@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchOptions {
     pub remote: Option<String>,
@@ -10,7 +10,7 @@ pub struct FetchOptions {
 }
 
 /// Optional history extension for shallow repositories.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", tag = "mode", deny_unknown_fields)]
 pub enum FetchHistory {
     Deepen { commits: u32 },
@@ -19,7 +19,7 @@ pub enum FetchHistory {
 
 pub const MAX_DEEPEN_COMMITS: u32 = 1_000_000;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ShallowHistoryState {
     pub shallow: bool,

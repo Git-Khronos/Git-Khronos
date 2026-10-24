@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeRebaseCommit {
     #[serde(flatten)]
@@ -8,7 +8,7 @@ pub struct MergeRebaseCommit {
     pub parents: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MergeRebaseRequest {
     pub source: String,
@@ -18,7 +18,7 @@ pub struct MergeRebaseRequest {
     pub base: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeRebasePlan {
     pub request: MergeRebaseRequest,

@@ -5,19 +5,24 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthenticationPrompt {
+pub struct GitAuthenticationPrompt {
     request_id: String,
     operation_id: String,
     repository_id: Option<String>,
     secret: bool,
 }
 
+#[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
+#[serde(transparent)]
+pub struct GitAuthenticationDismissed(pub String);
+
 struct Pending {
-    prompt: AuthenticationPrompt,
+    prompt: GitAuthenticationPrompt,
     sender: mpsc::SyncSender<Option<String>>,
 }
 
@@ -36,6 +41,7 @@ fn auth_error() -> AppError {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub fn answer_authentication(
     request_id: String,
     answer: Option<String>,
@@ -55,10 +61,11 @@ pub fn answer_authentication(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn pending_authentication(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AuthenticationState>,
-) -> Result<Vec<AuthenticationPrompt>, AppError> {
+) -> Result<Vec<GitAuthenticationPrompt>, AppError> {
     if window.label() != "main" {
         return Err(auth_error());
     }
@@ -88,7 +95,7 @@ pub fn run<T>(
         Arc::new(move |kind: PromptKind| {
             let state = handle.state::<AuthenticationState>();
             let request_id = format!("auth-{}", state.next_id.fetch_add(1, Ordering::Relaxed));
-            let prompt = AuthenticationPrompt {
+            let prompt = GitAuthenticationPrompt {
                 request_id: request_id.clone(),
                 operation_id: operation_id.clone(),
                 repository_id: repository_id.clone(),
@@ -102,9 +109,7 @@ pub fn run<T>(
                     sender,
                 },
             );
-            let emitted = handle
-                .emit_to("main", "git-authentication-prompt", &prompt)
-                .is_ok();
+            let emitted = prompt.emit_to(&handle, "main").is_ok();
             let started = Instant::now();
             let answer = loop {
                 if !emitted || token.is_cancelled() || started.elapsed() >= Duration::from_secs(110)
@@ -120,7 +125,7 @@ pub fn run<T>(
             if let Ok(mut pending) = state.pending.lock() {
                 pending.remove(&request_id);
             }
-            let _ = handle.emit_to("main", "git-authentication-dismissed", &request_id);
+            let _ = GitAuthenticationDismissed(request_id.clone()).emit_to(&handle, "main");
             if answer.is_none() {
                 token.cancel();
             }

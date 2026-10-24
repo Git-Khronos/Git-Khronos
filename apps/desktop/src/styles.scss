@@ -616,7 +616,8 @@ code, kbd { font-family: var(--font-mono); }
 .focus-diff-view, .split-diff-body { min-width: 0; overflow: auto; background: #171722; font: var(--diff-font-size, 12px)/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace; tab-size: var(--diff-tab-size, 4); }
 .focus-diff-view { padding: 8px 0 18px; }
 .focus-diff-line { min-width: max-content; display: grid; grid-template-columns: 48px 48px minmax(calc(100cqw - 144px), max-content); min-height: 22px; }
-.focus-diff-line { content-visibility: auto; contain-intrinsic-block-size: auto 22px; }
+// Match the source line box plus vertical padding, including larger user fonts.
+.focus-diff-line { content-visibility: auto; contain-intrinsic-block-size: auto max(22px, calc(var(--diff-font-size, 12px) * 1.55 + 4px)); }
 .focus-diff-line > span { padding: 2px 8px; border-right: 1px solid #2e2d40; color: var(--muted); text-align: right; user-select: none; }
 .focus-diff-line code { display: block; padding: 2px 11px; color: #bdbcca; white-space: pre; }
 .focus-diff-code { min-width: 0; display: flex; align-items: center; }
@@ -663,7 +664,7 @@ code, kbd { font-family: var(--font-mono); }
 .split-diff-head .split-diff-stacked-head { display: none; }
 .split-diff-body { padding-bottom: 18px; }
 .split-row { min-width: 720px; display: grid; grid-template-columns: 1fr 1fr; }
-.split-row { content-visibility: auto; contain-intrinsic-block-size: auto 22px; }
+.split-row { content-visibility: auto; contain-intrinsic-block-size: auto max(22px, calc(var(--diff-font-size, 12px) * 1.55 + 4px)); }
 .split-side { min-width: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); min-height: 22px; background: #171722; }
 .split-side + .split-side { border-left: 1px solid #3d3c50; }
 .split-side > span { padding: 2px 8px; border-right: 1px solid #2e2d40; color: var(--muted); text-align: right; user-select: none; }
@@ -708,6 +709,7 @@ code, kbd { font-family: var(--font-mono); }
   .split-diff-head > span:not(.split-diff-stacked-head) { display: none; }
   .split-diff-head .split-diff-stacked-head { display: flex; border-left: 0; color: #8f8da1; letter-spacing: .035em; }
   .split-row { min-width: 100%; grid-template-columns: minmax(0, 1fr); border-bottom: 1px solid #29283a; }
+  .split-row { contain-intrinsic-block-size: auto calc(2 * max(22px, calc(var(--diff-font-size, 12px) * 1.55 + 4px)) + 1px); }
   .split-side { grid-template-columns: 46px 42px minmax(0, 1fr); }
   .split-side::before { display: flex; align-items: center; justify-content: center; border-right: 1px solid #2e2d40; color: #77758b; content: attr(data-side); font: 750 9px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .035em; text-transform: uppercase; }
   .split-side + .split-side { border-top: 1px solid #3d3c50; border-left: 0; }
@@ -1383,29 +1385,20 @@ code, kbd { font-family: var(--font-mono); }
 .branch-column { position: relative; min-width: 0; display: flex; align-content: center; align-items: center; justify-content: flex-end; overflow: visible; padding: 0 4px 0 5px; }
 .workspace-focus-region:focus-visible,
 .focus-diff-view:focus-visible { position: relative; z-index: 2; outline: 2px solid var(--graph-row-focus); outline-offset: -2px; }
-.commit-ref-stack { position: absolute; inset-inline: 5px 4px; width: auto; min-width: 0; height: 24px; display: flex; align-items: center; justify-content: flex-end; overflow: visible; }
-.commit-ref-stack.single-ref > .ref-pill:is(:hover, :focus-visible) {
-  position: absolute;
+.commit-ref-stack { position: absolute; inset-inline: 5px 4px; width: auto; min-width: 0; height: 24px; display: flex; align-items: center; overflow: visible; }
+/* Auto margins collapse to zero on overflow, keeping the left edge anchored
+   when a clipped label expands, including in WebKit without safe alignment. */
+.commit-ref-stack.single-ref > .ref-pill { margin-inline-start: auto; }
+.commit-ref-stack.single-ref:is(:hover, :focus-within) > .ref-pill {
+  position: relative;
   z-index: 21;
-  left: 0;
+  flex-shrink: 0;
   width: max-content;
   max-width: min(420px, calc(100vw - 40px));
   overflow: visible;
   box-shadow: 0 5px 16px #0009;
 }
-.commit-ref-stack.single-ref > .ref-pill.remote:is(:hover, :focus-visible) > span { overflow: visible; }
-@media (hover: none) {
-  .commit-ref-stack.single-ref > .ref-pill:focus {
-    position: absolute;
-    z-index: 21;
-    left: 0;
-    width: max-content;
-    max-width: min(420px, calc(100vw - 40px));
-    overflow: visible;
-    box-shadow: 0 5px 16px #0009;
-  }
-  .commit-ref-stack.single-ref > .ref-pill.remote:focus > span { overflow: visible; }
-}
+.commit-ref-stack.single-ref:is(:hover, :focus-within) > .ref-pill.remote > span { overflow: visible; }
 .ref-stack-heading { display: none; }
 .commit-ref-stack.multi-ref { z-index: 1; outline: none; }
 .commit-ref-stack.multi-ref.pointer-expanded { z-index: 21; }

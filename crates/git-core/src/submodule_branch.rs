@@ -1,7 +1,7 @@
 use super::submodule_review::{config, parse_config};
 use super::*;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmoduleTrackingBranchChange {
     pub path: String,
@@ -9,7 +9,7 @@ pub struct SubmoduleTrackingBranchChange {
     pub tracking_branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleTrackingBranchResult {
     pub path: String,

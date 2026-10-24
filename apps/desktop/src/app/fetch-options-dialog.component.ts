@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import type { FetchOptions, ShallowHistoryState } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
@@ -112,7 +112,7 @@ export class FetchOptionsDialogComponent {
       this.history.set('keep');
       this.commits.set(50);
       // Best effort: without this state the dialog keeps the ordinary branch fetch only.
-      invoke<ShallowHistoryState>('shallow_history_state', { repoId: request.repositoryId })
+      ipc.shallow_history_state({ repoId: request.repositoryId })
         .then((state) => { if (this.request() === request && state.shallow) this.shallow.set(state); }, () => undefined);
       setTimeout(() => {
         if (this.request() === request) this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-fetch-cancel]')?.focus();

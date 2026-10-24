@@ -5,11 +5,14 @@ use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
+
+mod lfs_configuration;
+pub(crate) mod diagnostics;
 
 const MAX_RESPONSE: usize = 16 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(120);
@@ -259,7 +262,14 @@ pub(crate) fn validate_arguments(args: &[&str]) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(crate) fn validate_repository_urls(path: &Path, args: &[&str]) -> Result<(), AppError> {
+pub(crate) fn validate_repository_urls(
+    path: &Path,
+    args: &[&str],
+    cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    if cancellation.is_cancelled() {
+        return Err(crate::operation_cancelled());
+    }
     if args.first() == Some(&"clone") {
         return Ok(());
     }
@@ -268,10 +278,9 @@ pub(crate) fn validate_repository_urls(path: &Path, args: &[&str]) -> Result<(),
         "config",
         "--null",
         "--get-regexp",
-        r"^(remote\..*\.(url|pushurl)|url\..*\.(insteadof|pushinsteadof))$",
+        r"^(remote\..*\.(url|pushurl|lfsurl|lfspushurl)|url\..*\.(insteadof|pushinsteadof)|lfs\.(url|pushurl))$",
     ]);
-    configure(&mut command);
-    let output = command.output().map_err(|_| bridge_error())?;
+    let output = lfs_configuration::query(command, cancellation)?;
     if !output.status.success() && output.status.code() != Some(1) {
         return Err(AppError::new(
             "remoteConfigurationUnavailable",
@@ -281,6 +290,9 @@ pub(crate) fn validate_repository_urls(path: &Path, args: &[&str]) -> Result<(),
     }
     for record in String::from_utf8_lossy(&output.stdout).split('\0') {
         if let Some((key, value)) = record.split_once('\n') {
+            if lfs_configuration::is_endpoint_key(key) {
+                continue;
+            }
             validate_arguments(&[value])?;
             if let Some(base) = key.strip_prefix("url.")
                 && let Some((base, _)) = base.rsplit_once('.')
@@ -289,7 +301,46 @@ pub(crate) fn validate_repository_urls(path: &Path, args: &[&str]) -> Result<(),
             }
         }
     }
+    // Local LFS metadata does not open an endpoint. Keep its settings reads
+    // separate from network preflight (and usable before LFS is installed).
+    if lfs_configuration::requires_review(args) {
+        lfs_configuration::validate(path, cancellation, &output.stdout)?;
+    }
     Ok(())
+}
+
+pub(crate) fn validate_clone_url(
+    remote: &str,
+    destination: &Path,
+    cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    // The application clone builder exclusively reserves this empty directory.
+    // Do not discover configuration from the launching repository.
+    let mut command = crate::git_in(destination);
+    command
+        .env("GIT_DIR", destination.join(".git"))
+        // Clone writes its URL before opening the transport. Supply it to Git's
+        // conditional-include evaluation without creating a provisional .git.
+        .args(["-c", &format!("remote.origin.url={remote}")])
+        .args(["ls-remote", "--get-url", "--", remote]);
+    configure(&mut command);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("GIT_TERMINAL_PROMPT", "0");
+    crate::configure_process_tree(&mut command);
+    // --get-url only expands Git's configured rewrite; it never contacts the
+    // remote. Keep even this configuration-only process cancellable.
+    let output = crate::run_cancellable_command(command, cancellation)?;
+    if !output.status.success() {
+        return Err(AppError::new(
+            "remoteConfigurationUnavailable",
+            "The clone URL configuration could not be inspected safely.",
+            Some("Check the Git configuration before retrying."),
+        ));
+    }
+    validate_arguments(&[String::from_utf8_lossy(&output.stdout).trim_end_matches('\n')])
 }
 
 /// Applies the current operation's authentication environment to a transport
@@ -354,15 +405,45 @@ pub(crate) fn interactive() -> bool {
     })
 }
 
-pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppError> {
+#[cfg(all(test, unix))]
+fn check_output(output: Output, args: &[&str]) -> Result<Output, AppError> {
+    let facts = diagnostics::DiagnosticFacts::from_bytes(&output.stderr);
+    check_output_with_facts(output, args, facts)
+}
+
+pub(crate) fn check_output_with_facts(
+    mut output: Output,
+    args: &[&str],
+    facts: diagnostics::DiagnosticFacts,
+) -> Result<Output, AppError> {
+    if output.status.success() {
+        return Ok(output);
+    }
+    // The excerpt is not authoritative: facts were collected from the entire
+    // drained stream. Keep askpass context and branch priority on this thread.
+    output.stderr = facts.canonical_stderr();
+    classify_output(output, args)
+}
+
+fn classify_output(output: Output, args: &[&str]) -> Result<Output, AppError> {
     if output.status.success() {
         return Ok(output);
     }
     // Transport diagnostics can contain credentials from arbitrary helpers or URLs.
     // Only classified, original messages reach logs and the renderer.
     let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
-    if stderr.contains("host key verification failed")
-        || stderr.contains("remote host identification has changed")
+    if stderr.lines().any(|line| {
+        line.starts_with("fatal: url '") && line.ends_with("' uses plaintext credentials")
+    }) {
+        return Err(AppError::new(
+            "credentialsInUrl",
+            "Use a repository URL without embedded credentials.",
+            Some("Remove credentials from Git URL configuration or clone templates and use a credential helper or the authentication dialog."),
+        ));
+    }
+    let contains_diagnostic = |message: &str| diagnostic_lines(&stderr).any(|line| line.contains(message));
+    if contains_diagnostic("host key verification failed")
+        || contains_diagnostic("remote host identification has changed")
     {
         return Err(AppError::new(
             "sshHostTrustRequired",
@@ -389,9 +470,9 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
         "unable to get username",
     ]
     .iter()
-    .any(|message| stderr.contains(message));
+    .any(|message| contains_diagnostic(message));
     if !authentication_failed && args.first() == Some(&"pull") {
-        if stderr.contains("not possible to fast-forward") {
+        if contains_diagnostic("not possible to fast-forward") {
             return Err(AppError::new(
                 "gitFailure",
                 "Pull stopped because the histories cannot fast-forward.",
@@ -402,8 +483,7 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
         }
         let stdout = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
         if stdout.contains("automatic merge failed; fix conflicts")
-            || stderr
-                .split(['\r', '\n'])
+            || diagnostic_lines(&stderr)
                 .any(|line| line.starts_with("error: could not apply "))
         {
             return Err(AppError::new(
@@ -414,10 +494,9 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
                 ),
             ));
         }
-        if stderr.contains("there is no tracking information for the current branch")
-            || stderr.contains("but no such ref was fetched")
-            || stderr
-                .lines()
+        if contains_diagnostic("there is no tracking information for the current branch")
+            || contains_diagnostic("but no such ref was fetched")
+            || diagnostic_lines(&stderr)
                 .any(|line| line.starts_with("fatal: couldn't find remote ref "))
         {
             return Err(AppError::new(
@@ -437,7 +516,7 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
             "cannot rebase: your index contains uncommitted changes",
         ]
         .iter()
-        .any(|message| stderr.contains(message))
+        .any(|message| contains_diagnostic(message))
         {
             return Err(AppError::new(
                 "gitFailure",
@@ -448,18 +527,13 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
             ));
         }
     }
-    if requested || authentication_failed {
-        return Err(AppError::new(
-            "authenticationRequired",
-            "Git authentication is required or was rejected.",
-            Some(
-                "Retry with an explicit Fetch, Pull or Push. Check your Git credential helper, SSH agent, credentials and repository access.",
-            ),
-        ));
-    }
-    if stderr.contains("non-fast-forward")
-        || stderr.contains("[rejected]")
-        || stderr.contains("failed to push some refs")
+    // A prompt does not mean authentication failed: Git may authenticate and
+    // then reject a push or fail a later connection for a different reason.
+    if !authentication_failed
+        && args.first() == Some(&"push")
+        && (contains_diagnostic("non-fast-forward")
+            || contains_diagnostic("[rejected]")
+            || contains_diagnostic("failed to push some refs"))
     {
         return Err(AppError::new(
             "gitFailure",
@@ -469,12 +543,21 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
             ),
         ));
     }
-    if stderr.contains("certificate") || stderr.contains("ssl") {
+    if !authentication_failed && has_tls_failure(&stderr) {
         return Err(AppError::new(
             "tlsVerificationFailed",
             "The HTTPS connection could not be verified.",
             Some(
                 "Check the server certificate and your Git TLS configuration. Do not disable certificate verification to retry.",
+            ),
+        ));
+    }
+    if requested || authentication_failed {
+        return Err(AppError::new(
+            "authenticationRequired",
+            "Git authentication is required or was rejected.",
+            Some(
+                "Retry with an explicit Fetch, Pull or Push. Check your Git credential helper, SSH agent, credentials and repository access.",
             ),
         ));
     }
@@ -487,9 +570,100 @@ pub(crate) fn check_output(output: Output, args: &[&str]) -> Result<Output, AppE
     ))
 }
 
+fn diagnostic_lines(stderr: &str) -> impl Iterator<Item = &str> {
+    stderr.split(['\r', '\n']).filter_map(|line| {
+        let line = line.trim_start();
+        // These Git messages quote an arbitrary target, not a failure cause.
+        // Match their framing rather than attempt to parse quotes inside paths.
+        if (line.starts_with("fatal: '")
+            && line.ends_with("' does not appear to be a git repository"))
+            || (line.starts_with("fatal: repository '") && line.ends_with("' not found"))
+            || line.starts_with("to ")
+        {
+            return None;
+        }
+        if let Some(access) = line.strip_prefix("fatal: unable to access '") {
+            return access.rsplit_once("': ").map(|(_, detail)| detail);
+        }
+        if let Some(batch) = line.strip_prefix("batch response: ") {
+            return Some(batch.rsplit_once("\": ").map_or(batch, |(_, detail)| detail));
+        }
+        for (prefix, diagnostic) in [
+            ("fatal: could not read username for '", "fatal: could not read username"),
+            ("fatal: could not read password for '", "fatal: could not read password"),
+            ("fatal: authentication failed for '", "fatal: authentication failed"),
+            ("error: failed to push some refs to '", "error: failed to push some refs"),
+        ] {
+            if line.starts_with(prefix) {
+                return Some(diagnostic);
+            }
+        }
+        Some(line)
+    })
+}
+
+fn has_tls_failure(stderr: &str) -> bool {
+    diagnostic_lines(stderr).any(|line| {
+        let detail = line
+            .strip_prefix("fatal: ")
+            .or_else(|| line.strip_prefix("error: "))
+            .unwrap_or(line);
+        [
+            "ssl certificate problem",
+            "ssl certificate verification failed",
+            "server certificate verification failed",
+            "ssl peer certificate",
+            "ssl: certificate",
+            "ssl: no alternative certificate subject name",
+            "error setting certificate",
+            "could not load pem client certificate",
+            "tls: failed to verify certificate",
+            "tls: bad certificate",
+            "x509: certificate",
+            "ssl connect error",
+            "openssl ssl_connect:",
+            "gnutls_handshake() failed",
+        ]
+        .iter()
+        .any(|prefix| detail.starts_with(prefix))
+            || (detail.starts_with("schannel:")
+                && [
+                    "sec_e_untrusted_root",
+                    "sec_e_cert_expired",
+                    "sec_e_wrong_principal",
+                    "cert_e_",
+                    "certificate verification failed",
+                ]
+                .iter()
+                .any(|marker| detail.contains(marker)))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn git_url_policy_refusals_are_classified_without_exposing_diagnostics() {
+        use std::os::unix::process::ExitStatusExt;
+        for (stderr, expected) in [
+            ("fatal: URL 'https://fixture-user:<redacted>@example.test/source' uses plaintext credentials\n", "credentialsInUrl"),
+            ("remote: uses plaintext credentials\n", "gitTransportFailure"),
+        ] {
+            let error = check_output(
+                Output {
+                    status: std::process::ExitStatus::from_raw(128 << 8),
+                    stdout: b"fixture-not-a-secret".to_vec(),
+                    stderr: stderr.as_bytes().to_vec(),
+                },
+                &["clone"],
+            ).unwrap_err();
+            assert_eq!(error.kind, expected);
+            assert!(!error.message.contains("fixture-user"));
+            assert!(!error.message.contains("fixture-not-a-secret"));
+        }
+    }
 
     #[test]
     fn rejects_host_trust_and_unrecognized_prompts() {
@@ -604,6 +778,48 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn concrete_transport_failures_remain_actionable_after_an_authentication_prompt() {
+        use std::os::unix::process::ExitStatusExt;
+        with_authentication(
+            Path::new("helper"),
+            &CancellationToken::default(),
+            Some(Arc::new(|_| None)),
+            || {
+                CONTEXT.with(|slot| {
+                    slot.borrow()
+                        .as_ref()
+                        .unwrap()
+                        .requested
+                        .store(true, Ordering::Release);
+                });
+                for (command, diagnostic, kind, message) in [
+                    ("push", "! [rejected] main -> main (non-fast-forward)\nfixture-secret", "gitFailure", "remote rejected"),
+                    ("push", "error: failed to push some refs to fixture-secret", "gitFailure", "remote rejected"),
+                    ("fetch", "fatal: unable to access 'https://example.test/fixture-secret': SSL certificate problem", "tlsVerificationFailed", "HTTPS connection"),
+                    ("push", "Authentication failed\n! [rejected] fixture-secret", "authenticationRequired", "authentication"),
+                    ("fetch", "Authentication failed\nSSL certificate problem fixture-secret", "authenticationRequired", "authentication"),
+                    ("fetch", "unrecognized transport failure fixture-secret", "authenticationRequired", "authentication"),
+                ] {
+                    let error = check_output(
+                        Output {
+                            status: std::process::ExitStatus::from_raw(256),
+                            stdout: b"fixture-secret".to_vec(),
+                            stderr: diagnostic.as_bytes().to_vec(),
+                        },
+                        &[command],
+                    ).unwrap_err();
+                    assert_eq!(error.kind, kind, "{command}: {diagnostic}");
+                    assert!(error.message.contains(message));
+                    assert!(!error.message.contains("fixture-secret"));
+                    assert!(!error.hint.unwrap().contains("fixture-secret"));
+                }
+                Ok(())
+            },
+        ).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn pull_local_failures_remain_actionable_and_redacted_after_an_authentication_prompt() {
         use std::os::unix::process::ExitStatusExt;
         with_authentication(
@@ -661,6 +877,84 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(error.kind, "gitTransportFailure");
+            assert!(!error.message.contains("fixture-secret"));
+            assert!(!error.hint.unwrap().contains("fixture-secret"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quoted_targets_do_not_impersonate_transport_failures() {
+        use std::os::unix::process::ExitStatusExt;
+        let diagnostics = [
+            "fatal: '/tmp/authentication failed.git' does not appear to be a git repository",
+            "fatal: '/tmp/Host key verification failed.git' does not appear to be a git repository",
+            "fatal: '/tmp/[rejected].git' does not appear to be a git repository",
+            "fatal: '/tmp/authentication failed' quoted.git' does not appear to be a git repository",
+            "fatal: unable to access 'https://example.test/[rejected].git/': The requested URL returned error: 404",
+            "fatal: unable to access 'https://example.test/Host key verification failed.git/': URL rejected: Malformed input to a URL function",
+        ];
+        let kinds: Vec<_> = diagnostics.iter().map(|diagnostic| {
+            let error = check_output(Output {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: Vec::new(),
+                stderr: diagnostic.as_bytes().to_vec(),
+            }, &["fetch"]).unwrap_err();
+            error.kind
+        }).collect();
+        assert_eq!(kinds, vec!["gitTransportFailure"; diagnostics.len()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn diagnostic_targets_cannot_override_genuine_transport_failures() {
+        use std::os::unix::process::ExitStatusExt;
+        for (command, diagnostic, expected) in [
+            ("fetch", "fatal: Authentication failed for 'https://example.test/Host key verification failed/fixture-secret'", "authenticationRequired"),
+            ("fetch", "fatal: could not read Username for 'https://example.test/Host key verification failed/fixture-secret': terminal prompts disabled", "authenticationRequired"),
+            ("fetch", "fatal: could not read Password for 'https://example.test/Host key verification failed/fixture-secret': terminal prompts disabled", "authenticationRequired"),
+            ("push", "To /tmp/authentication failed/fixture-secret\n ! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs to '/tmp/Host key verification failed/fixture-secret'", "gitFailure"),
+            ("fetch", "remote: [rejected] fixture-secret", "gitTransportFailure"),
+            ("ls-remote", "error: failed to push some refs to '/tmp/fixture-secret'", "gitTransportFailure"),
+            ("push", "error: failed to push some refs to '/tmp/authentication failed/fixture-secret'", "gitFailure"),
+            ("fetch", "Host key verification failed. fixture-secret", "sshHostTrustRequired"),
+            ("fetch", "fatal: unable to access 'https://example.test/authentication failed/fixture-secret': SSL certificate verification failed: certificate signer not trusted", "tlsVerificationFailed"),
+        ] {
+            let error = check_output(Output {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: b"fixture-secret".to_vec(),
+                stderr: diagnostic.as_bytes().to_vec(),
+            }, &[command]).unwrap_err();
+            assert_eq!(error.kind, expected, "{command}: {diagnostic}");
+            assert!(!error.message.contains("fixture-secret"));
+            assert!(!error.hint.unwrap().contains("fixture-secret"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tls_classification_uses_failure_messages_not_repository_names() {
+        use std::os::unix::process::ExitStatusExt;
+        for (diagnostic, expected) in [
+            ("fatal: '/tmp/certificate-assets.git' does not appear to be a git repository", "gitTransportFailure"),
+            ("fatal: '/tmp/ssl-assets.git' does not appear to be a git repository", "gitTransportFailure"),
+            ("fatal: '/tmp/SSL certificate problem.git' does not appear to be a git repository", "gitTransportFailure"),
+            ("fatal: unable to access 'https://example.test/ssl-certificate-assets.git': Could not resolve host: example.test", "gitTransportFailure"),
+            ("fatal: unable to access 'https://example.test/fixture-secret': SSL certificate problem: self-signed certificate", "tlsVerificationFailed"),
+            ("fatal: unable to access 'https://127.0.0.1/repo.git/': SSL certificate verification failed: certificate signer not trusted. (CAfile: /etc/ssl/certs/ca-certificates.crt CRLfile: none)", "tlsVerificationFailed"),
+            ("fatal: unable to access 'https://example.test/fixture-secret': server certificate verification failed. CAfile: none CRLfile: none", "tlsVerificationFailed"),
+            ("SSL peer certificate or SSH remote key was not OK: fixture-secret", "tlsVerificationFailed"),
+            ("fatal: unable to access 'https://example.test/fixture-secret': SSL: no alternative certificate subject name matches target host name", "tlsVerificationFailed"),
+            ("batch response: Post \"https://example.test/fixture-secret\": tls: failed to verify certificate: x509: certificate signed by unknown authority", "tlsVerificationFailed"),
+            ("fatal: unable to access 'https://example.test/fixture-secret': schannel: next InitializeSecurityContext failed: SEC_E_UNTRUSTED_ROOT", "tlsVerificationFailed"),
+            ("fatal: unable to access 'https://example.test/fixture-secret': gnutls_handshake() failed: Error in the certificate", "tlsVerificationFailed"),
+        ] {
+            let error = check_output(Output {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: b"fixture-secret".to_vec(),
+                stderr: diagnostic.as_bytes().to_vec(),
+            }, &["fetch"]).unwrap_err();
+            assert_eq!(error.kind, expected, "{diagnostic}");
             assert!(!error.message.contains("fixture-secret"));
             assert!(!error.hint.unwrap().contains("fixture-secret"));
         }

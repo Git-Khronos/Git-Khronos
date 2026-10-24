@@ -2,7 +2,7 @@ use super::*;
 use std::fs::OpenOptions;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscardPreview {
     pub paths: Vec<String>,
@@ -16,9 +16,10 @@ pub struct DiscardPlan {
     patch: Vec<u8>,
     mutation_patch: Vec<u8>,
     index: Vec<u8>,
+    selection_preview: Option<(String, String)>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscardRecoveryInfo {
     pub id: String,
@@ -100,12 +101,20 @@ pub fn prepare_discard(
             run_git_allow_diff_exit(
                 path,
                 &[
+                    "-c",
+                    "diff.noprefix=false",
+                    "-c",
+                    "diff.mnemonicPrefix=false",
                     "diff",
                     "--no-index",
                     "--binary",
                     "--full-index",
                     "--no-ext-diff",
+                    "--no-textconv",
                     "--no-color",
+                    "--src-prefix=a/",
+                    "--dst-prefix=b/",
+                    "--unified=3",
                     "--",
                     "/dev/null",
                     &entry.path,
@@ -115,6 +124,10 @@ pub fn prepare_discard(
             let output = run_git(
                 path,
                 &[
+                    "-c",
+                    "diff.noprefix=false",
+                    "-c",
+                    "diff.mnemonicPrefix=false",
                     "diff",
                     "--binary",
                     "--full-index",
@@ -122,6 +135,9 @@ pub fn prepare_discard(
                     "--no-textconv",
                     "--no-color",
                     "--no-renames",
+                    "--src-prefix=a/",
+                    "--dst-prefix=b/",
+                    "--unified=3",
                     "--",
                     &pathspec(&entry.path),
                 ],
@@ -156,6 +172,7 @@ pub fn prepare_discard(
         mutation_patch: patch.clone(),
         patch,
         index: index_output.stdout,
+        selection_preview: None,
     })
 }
 
@@ -165,6 +182,16 @@ pub fn prepare_partial_discard(
     hunk_index: usize,
     lines: Option<&[usize]>,
 ) -> Result<DiscardPlan, AppError> {
+    prepare_partial_discard_with_preview(path, file, hunk_index, lines, None)
+}
+
+pub fn prepare_partial_discard_with_preview(
+    path: &Path,
+    file: &str,
+    hunk_index: usize,
+    lines: Option<&[usize]>,
+    expected_patch: Option<&str>,
+) -> Result<DiscardPlan, AppError> {
     let mut plan = prepare_discard(path, Some(vec![file.to_owned()]))?;
     if plan.preview.untracked > 0 {
         return Err(AppError::new(
@@ -173,13 +200,9 @@ pub fn prepare_partial_discard(
             None,
         ));
     }
-    let patch = std::str::from_utf8(&plan.patch).map_err(|_| {
-        AppError::new(
-            "unsupportedPartialDiscard",
-            "This patch is not UTF-8; discard the complete file instead.",
-            None,
-        )
-    })?;
+    // Select from the same canonical preview the user saw, not the binary
+    // recovery patch or repository-specific diff presentation settings.
+    let patch = read_selection_patch(path, file, false, "discard", expected_patch)?;
     plan.mutation_patch = if let Some(lines) = lines {
         if lines.is_empty() || lines.len() > 10_000 {
             return Err(AppError::new(
@@ -188,27 +211,60 @@ pub fn prepare_partial_discard(
                 None,
             ));
         }
-        select_patch_lines_with_context(patch, hunk_index, lines, true)?.into_bytes()
+        select_patch_lines_with_context(&patch, hunk_index, lines, true)?.into_bytes()
     } else {
-        select_patch_hunk(patch, hunk_index)?.into_bytes()
+        select_patch_hunk(&patch, hunk_index)?.into_bytes()
     };
+    plan.selection_preview = Some((file.to_owned(), patch));
     Ok(plan)
 }
 
 pub(super) fn recovery_directory(path: &Path) -> Result<PathBuf, AppError> {
-    let output = run_git(
-        path,
-        &[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "git-khronos-recovery",
-        ],
-    )?;
+    // Ask for the owning Git directory, not an absolute --git-path: Git
+    // canonicalizes the latter and hides a symlink at the recovery entry.
+    let output = run_git(path, &["rev-parse", "--absolute-git-dir"])?;
     ensure_success("locate discarded-change recovery", &output)?;
-    Ok(PathBuf::from(
-        String::from_utf8_lossy(&output.stdout).trim(),
-    ))
+    let git_directory = String::from_utf8_lossy(&output.stdout);
+    let directory = PathBuf::from(git_directory.strip_suffix('\n').unwrap_or(&git_directory))
+        .join("git-khronos-recovery");
+    validate_recovery_directory(&directory)?;
+    Ok(directory)
+}
+
+fn validate_recovery_directory(directory: &Path) -> Result<(), AppError> {
+    match fs::symlink_metadata(directory) {
+        Ok(metadata) if metadata.is_dir() && !metadata.is_symlink() => Ok(()),
+        Ok(_) => Err(AppError::new(
+            "invalidRecoveryPath",
+            "The recovery directory must be an ordinary directory, not a symbolic link.",
+            Some("Preserve the recovery data and inspect the Git directory before retrying."),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(error)),
+    }
+}
+
+fn recovery_file_exists(file: &Path) -> Result<bool, AppError> {
+    match fs::symlink_metadata(file) {
+        Ok(metadata) if metadata.is_file() && !metadata.is_symlink() => Ok(true),
+        Ok(_) => Err(AppError::new(
+            "invalidRecoveryPath",
+            "Recovery patches and markers must be ordinary files, not symbolic links.",
+            Some("Preserve the recovery data and inspect the Git directory before retrying."),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(io_error(error)),
+    }
+}
+
+fn require_recovery_file(file: &Path) -> Result<(), AppError> {
+    if !recovery_file_exists(file)? {
+        return Err(io_error(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "The recovery file is missing.",
+        )));
+    }
+    Ok(())
 }
 
 pub(super) fn io_error(error: std::io::Error) -> AppError {
@@ -222,6 +278,7 @@ pub(super) fn io_error(error: std::io::Error) -> AppError {
 }
 
 fn apply_patch(path: &Path, capture: &Path, reverse: bool, check: bool) -> Result<(), AppError> {
+    require_recovery_file(capture)?;
     let mut args = vec!["apply", "--binary", "--recount", "--whitespace=nowarn"];
     if reverse {
         args.push("--reverse");
@@ -261,8 +318,12 @@ pub fn execute_discard(path: &Path, plan: &DiscardPlan) -> Result<String, AppErr
             Some("Nothing was discarded. Review a new preview before continuing."),
         ));
     }
+    if let Some((file, preview)) = &plan.selection_preview {
+        read_selection_patch(path, file, false, "discard", Some(preview))?;
+    }
     let directory = recovery_directory(path)?;
     fs::create_dir_all(&directory).map_err(io_error)?;
+    validate_recovery_directory(&directory)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -328,9 +389,10 @@ pub fn discarded_change_recoveries(path: &Path) -> Result<Vec<DiscardRecoveryInf
             continue;
         };
         validate_id(id)?;
+        require_recovery_file(&entry.path())?;
         recoveries.push(DiscardRecoveryInfo {
             id: id.to_owned(),
-            restored: directory.join(format!("{id}.restored")).exists(),
+            restored: recovery_file_exists(&directory.join(format!("{id}.restored")))?,
         });
     }
     recoveries.sort_by(|left, right| right.id.cmp(&left.id));
@@ -341,7 +403,7 @@ pub fn recover_discarded_changes(path: &Path, id: &str, reverse: bool) -> Result
     validate_id(id)?;
     let directory = recovery_directory(path)?;
     let marker = directory.join(format!("{id}.restored"));
-    if marker.exists() != reverse {
+    if recovery_file_exists(&marker)? != reverse {
         return Err(AppError::new(
             "discardRecoveryStateChanged",
             "That recovery was already applied.",
@@ -354,7 +416,17 @@ pub fn recover_discarded_changes(path: &Path, id: &str, reverse: bool) -> Result
     if reverse {
         fs::remove_file(marker).map_err(io_error)?;
     } else {
-        fs::write(marker, []).map_err(io_error)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options
+            .open(marker)
+            .and_then(|file| file.sync_all())
+            .map_err(io_error)?;
     }
     Ok(())
 }
@@ -362,8 +434,13 @@ pub fn recover_discarded_changes(path: &Path, id: &str, reverse: bool) -> Result
 pub fn delete_discard_recovery(path: &Path, id: &str) -> Result<(), AppError> {
     validate_id(id)?;
     let directory = recovery_directory(path)?;
-    fs::remove_file(directory.join(format!("{id}.patch"))).map_err(io_error)?;
+    let capture = directory.join(format!("{id}.patch"));
     let marker = directory.join(format!("{id}.restored"));
+    // Validate both paths before removing either: a corrupt marker must not
+    // cause the otherwise usable capture to be deleted on a refused request.
+    require_recovery_file(&capture)?;
+    recovery_file_exists(&marker)?;
+    fs::remove_file(capture).map_err(io_error)?;
     match fs::remove_file(marker) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -661,6 +738,450 @@ mod tests {
             fs::read(repository.0.join("tracked.txt")).unwrap(),
             b"keep\n"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn discard_refuses_a_redirected_recovery_directory_without_external_writes() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let repository = Repository::new();
+        let outside = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"keep this edit\n");
+        let storage = outside.0.join("protected");
+        fs::create_dir(&storage).unwrap();
+        fs::set_permissions(&storage, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(storage.join("123.patch"), b"outside sentinel\n").unwrap();
+        symlink(&storage, repository.0.join(".git/git-khronos-recovery")).unwrap();
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        assert!(execute_discard(&repository.0, &plan).is_err());
+        assert!(discarded_change_recoveries(&repository.0).is_err());
+        assert!(delete_discard_recovery(&repository.0, "123").is_err());
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"keep this edit\n"
+        );
+        assert_eq!(
+            fs::read(storage.join("123.patch")).unwrap(),
+            b"outside sentinel\n"
+        );
+        assert_eq!(fs::read_dir(&storage).unwrap().count(), 1);
+        assert_eq!(
+            fs::metadata(&storage).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recovery_refuses_a_linked_capture_before_changing_files() {
+        use std::os::unix::fs::symlink;
+        let repository = Repository::new();
+        let outside = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"captured edit\n");
+        let id = execute_discard(
+            &repository.0,
+            &prepare_discard(&repository.0, None).unwrap(),
+        )
+        .unwrap();
+        let capture = repository
+            .0
+            .join(format!(".git/git-khronos-recovery/{id}.patch"));
+        let external = outside.0.join("outside.patch");
+        fs::rename(&capture, &external).unwrap();
+        symlink(&external, &capture).unwrap();
+        let bytes = fs::read(&external).unwrap();
+        assert!(recover_discarded_changes(&repository.0, &id, false).is_err());
+        assert!(discarded_change_recoveries(&repository.0).is_err());
+        assert!(delete_discard_recovery(&repository.0, &id).is_err());
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"base\n"
+        );
+        assert_eq!(fs::read(&external).unwrap(), bytes);
+        assert!(fs::symlink_metadata(&capture).unwrap().is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recovery_refuses_a_dangling_marker_link_without_creating_its_target() {
+        use std::os::unix::fs::symlink;
+        let repository = Repository::new();
+        let outside = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"captured edit\n");
+        let id = execute_discard(
+            &repository.0,
+            &prepare_discard(&repository.0, None).unwrap(),
+        )
+        .unwrap();
+        let capture = repository
+            .0
+            .join(format!(".git/git-khronos-recovery/{id}.patch"));
+        let marker = capture.with_extension("restored");
+        let target = outside.0.join("must-not-be-created");
+        symlink(&target, &marker).unwrap();
+        assert!(recover_discarded_changes(&repository.0, &id, false).is_err());
+        assert!(discarded_change_recoveries(&repository.0).is_err());
+        assert!(delete_discard_recovery(&repository.0, &id).is_err());
+        assert!(!target.exists());
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"base\n"
+        );
+        assert!(capture.is_file());
+        assert!(fs::symlink_metadata(&marker).unwrap().is_symlink());
+    }
+
+    #[test]
+    fn recovery_refuses_directory_entries_without_losing_the_capture() {
+        for extension in ["patch", "restored"] {
+            let repository = Repository::new();
+            repository.baseline();
+            repository.write("tracked.txt", b"captured edit\n");
+            let id = execute_discard(
+                &repository.0,
+                &prepare_discard(&repository.0, None).unwrap(),
+            )
+            .unwrap();
+            let capture = repository
+                .0
+                .join(format!(".git/git-khronos-recovery/{id}.patch"));
+            let bytes = fs::read(&capture).unwrap();
+            let invalid = capture.with_extension(extension);
+            if extension == "patch" {
+                fs::remove_file(&capture).unwrap();
+            }
+            fs::create_dir(&invalid).unwrap();
+            assert_eq!(
+                recover_discarded_changes(&repository.0, &id, false)
+                    .unwrap_err()
+                    .kind,
+                "invalidRecoveryPath"
+            );
+            assert!(discarded_change_recoveries(&repository.0).is_err());
+            assert!(delete_discard_recovery(&repository.0, &id).is_err());
+            assert_eq!(
+                fs::read(repository.0.join("tracked.txt")).unwrap(),
+                b"base\n"
+            );
+            fs::remove_dir(&invalid).unwrap();
+            if extension == "patch" {
+                fs::write(&capture, &bytes).unwrap();
+            } else {
+                assert_eq!(fs::read(&capture).unwrap(), bytes);
+            }
+            recover_discarded_changes(&repository.0, &id, false).unwrap();
+            assert_eq!(
+                fs::read(repository.0.join("tracked.txt")).unwrap(),
+                b"captured edit\n"
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(capture.with_extension("restored"))
+                        .unwrap()
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    0o600
+                );
+            }
+            recover_discarded_changes(&repository.0, &id, true).unwrap();
+            delete_discard_recovery(&repository.0, &id).unwrap();
+            assert!(
+                discarded_change_recoveries(&repository.0)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn discard_and_recovery_preserve_crlf_working_tree_contents() {
+        let repository = Repository::new();
+        repository.write(".gitattributes", b"tracked.txt text eol=crlf\n");
+        repository.write("tracked.txt", b"base\r\n");
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "CRLF baseline").unwrap();
+        repository.write("tracked.txt", b"changed\r\n");
+        let index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout;
+        let plan = prepare_discard(&repository.0, Some(vec!["tracked.txt".to_owned()])).unwrap();
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"base\r\n"
+        );
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"changed\r\n"
+        );
+        assert_eq!(
+            run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            index
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discard_capture_never_executes_an_untracked_text_converter() {
+        use std::os::unix::fs::PermissionsExt;
+        let repository = Repository::new();
+        repository.write(".gitattributes", b"*.owned diff=owned\n");
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "Attributes").unwrap();
+        let script = repository.0.join(".git/owned-textconv");
+        fs::write(
+            &script,
+            b"#!/bin/sh\nprintf called > .git/textconv-called\nprintf 'converted contents\\n'\n",
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        ensure_success(
+            "configure owned converter",
+            &run_git(
+                &repository.0,
+                &["config", "diff.owned.textconv", script.to_str().unwrap()],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let bytes = b"owned raw contents\0\xff\n";
+        repository.write("payload.owned", bytes);
+        let plan = prepare_discard(&repository.0, Some(vec!["payload.owned".to_owned()])).unwrap();
+        assert!(!repository.0.join(".git/textconv-called").exists());
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert!(!repository.0.join("payload.owned").exists());
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(fs::read(repository.0.join("payload.owned")).unwrap(), bytes);
+        assert!(!repository.0.join(".git/textconv-called").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discard_and_recovery_preserve_reversible_clean_smudge_filters() {
+        let repository = Repository::new();
+        repository.write(".gitattributes", b"*.owned filter=owned\n");
+        for (key, value) in [
+            ("filter.owned.clean", "sed 's/^WORK://'"),
+            ("filter.owned.smudge", "sed 's/^/WORK:/'"),
+        ] {
+            ensure_success(
+                "configure owned conversion",
+                &run_git(&repository.0, &["config", key, value]).unwrap(),
+            )
+            .unwrap();
+        }
+        repository.write("tracked.owned", b"WORK:base\n");
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "Filtered baseline").unwrap();
+        assert_eq!(
+            run_git(&repository.0, &["show", ":tracked.owned"])
+                .unwrap()
+                .stdout,
+            b"base\n"
+        );
+        repository.write("tracked.owned", b"WORK:changed\n");
+        let index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout;
+        let plan = prepare_discard(&repository.0, Some(vec!["tracked.owned".to_owned()])).unwrap();
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.owned")).unwrap(),
+            b"WORK:base\n"
+        );
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.owned")).unwrap(),
+            b"WORK:changed\n"
+        );
+        assert_eq!(
+            run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            index
+        );
+    }
+
+    #[test]
+    fn partial_discard_refuses_a_stale_review_without_capture_or_index_changes() {
+        for selected_lines in [false, true] {
+            for changed_index in [false, true] {
+                let repository = Repository::new();
+                repository.baseline();
+                repository.write("tracked.txt", b"reviewed\n");
+                let preview = working_tree_file_diff(&repository.0, "tracked.txt", false).unwrap();
+                if changed_index {
+                    stage_path(&repository.0, "tracked.txt").unwrap();
+                }
+                repository.write("tracked.txt", b"later edit\n");
+                let index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                    .unwrap()
+                    .stdout;
+                let lines = selected_lines.then_some([0usize, 1]);
+                let error = prepare_partial_discard_with_preview(
+                    &repository.0,
+                    "tracked.txt",
+                    0,
+                    lines.as_ref().map(|lines| lines.as_slice()),
+                    Some(&preview.patch),
+                )
+                .err()
+                .expect("stale review must fail");
+                assert_eq!(error.kind, "staleDiffSelection");
+                assert_eq!(
+                    fs::read(repository.0.join("tracked.txt")).unwrap(),
+                    b"later edit\n"
+                );
+                assert_eq!(
+                    run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                        .unwrap()
+                        .stdout,
+                    index
+                );
+                assert!(
+                    discarded_change_recoveries(&repository.0)
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn partial_discard_rechecks_the_displayed_preview_before_capture_creation() {
+        let repository = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"reviewed\n");
+        let preview = working_tree_file_diff(&repository.0, "tracked.txt", false).unwrap();
+        let plan = prepare_partial_discard_with_preview(
+            &repository.0,
+            "tracked.txt",
+            0,
+            None,
+            Some(&preview.patch),
+        )
+        .unwrap();
+        ensure_success(
+            "change displayed object abbreviation",
+            &run_git(&repository.0, &["config", "core.abbrev", "20"]).unwrap(),
+        )
+        .unwrap();
+        let error = execute_discard(&repository.0, &plan).unwrap_err();
+        assert_eq!(error.kind, "staleDiffSelection");
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"reviewed\n"
+        );
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn bulk_discard_and_recovery_ignore_diff_presentation_configuration() {
+        let repository = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"changed\n");
+        repository.write("new.txt", b"new contents\n");
+        for (key, value) in [
+            ("diff.context", "0"),
+            ("diff.noprefix", "true"),
+            ("diff.mnemonicPrefix", "true"),
+        ] {
+            ensure_success(
+                "configure diff presentation",
+                &run_git(&repository.0, &["config", key, value]).unwrap(),
+            )
+            .unwrap();
+        }
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"base\n"
+        );
+        assert!(!repository.0.join("new.txt").exists());
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"changed\n"
+        );
+        assert_eq!(
+            fs::read(repository.0.join("new.txt")).unwrap(),
+            b"new contents\n"
+        );
+        assert!(
+            run_git(&repository.0, &["diff", "--cached", "--name-only"])
+                .unwrap()
+                .stdout
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn partial_discard_uses_displayed_hunks_despite_git_diff_configuration() {
+        for selected_lines in [false, true] {
+            let repository = Repository::new();
+            let original = (1..=20)
+                .map(|line| format!("line {line}\n"))
+                .collect::<String>();
+            repository.write("forest", original.as_bytes());
+            stage_all(&repository.0).unwrap();
+            commit(&repository.0, "Original").unwrap();
+            for (key, value) in [
+                ("diff.context", "0"),
+                ("diff.noprefix", "true"),
+                ("diff.mnemonicPrefix", "true"),
+            ] {
+                ensure_success(
+                    "configure diff presentation",
+                    &run_git(&repository.0, &["config", key, value]).unwrap(),
+                )
+                .unwrap();
+            }
+            let changed = original
+                .replace("line 2\n", "changed two\n")
+                .replace("line 5\n", "changed five\n")
+                .replace("line 15\n", "changed fifteen\n");
+            repository.write("forest", changed.as_bytes());
+            let displayed = working_tree_file_diff(&repository.0, "forest", false).unwrap();
+            assert_eq!(displayed.patch.matches("@@ -").count(), 2);
+            let lines = selected_lines.then_some([0usize, 1]);
+            let plan = prepare_partial_discard(
+                &repository.0,
+                "forest",
+                0,
+                lines.as_ref().map(|lines| lines.as_slice()),
+            )
+            .unwrap();
+            let id = execute_discard(&repository.0, &plan).unwrap();
+            let remaining = fs::read_to_string(repository.0.join("forest")).unwrap();
+            assert!(remaining.contains("line 2\n"));
+            assert_eq!(remaining.contains("changed five\n"), selected_lines);
+            assert!(remaining.contains("changed fifteen\n"));
+            assert!(
+                run_git(&repository.0, &["diff", "--cached", "--name-only"])
+                    .unwrap()
+                    .stdout
+                    .is_empty()
+            );
+            recover_discarded_changes(&repository.0, &id, false).unwrap();
+            assert_eq!(
+                fs::read_to_string(repository.0.join("forest")).unwrap(),
+                changed
+            );
+        }
     }
 
     #[test]

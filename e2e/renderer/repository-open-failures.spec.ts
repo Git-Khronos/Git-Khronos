@@ -62,7 +62,7 @@ test('opening a bare repository browses history read-only', async ({ page }) => 
   await expect(page.locator('#unstaged-files-list')).toHaveCount(0);
   await expect(page.locator('.wip-row')).toHaveCount(0);
   await expect(page.locator('.commit-row').first()).toBeVisible();
-  const pull = page.locator('.toolbar-actions .split-main').first();
+  const pull = page.getByRole('button', { name: /^Pull from/ });
   await expect(pull).toBeDisabled();
   expect(await page.evaluate(() => (window as any).__calls.filter((call: string) => /stage|commit|stash|discard|checkout/.test(call)))).toEqual([]);
 });

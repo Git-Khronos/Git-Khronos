@@ -4,7 +4,7 @@ use git_khronos_git_core::{
     operation_recoveries, prepare_reset, restore_operation_branch,
 };
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub struct PreparedReset {
     token: String,
     #[serde(flatten)]
@@ -12,6 +12,7 @@ pub struct PreparedReset {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn preview_reset(
     repo_id: String,
     oid: String,
@@ -35,6 +36,7 @@ pub async fn preview_reset(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn execute_prepared_reset(
     repo_id: String,
     token: String,
@@ -65,6 +67,7 @@ pub async fn execute_prepared_reset(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn load_operation_recoveries(
     repo_id: String,
     app: AppHandle,
@@ -80,6 +83,7 @@ pub async fn load_operation_recoveries(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn restore_operation_recovery(
     repo_id: String,
     id: String,
@@ -97,6 +101,7 @@ pub async fn restore_operation_recovery(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn forget_operation_recovery(
     repo_id: String,
     id: String,

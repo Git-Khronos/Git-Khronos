@@ -96,13 +96,17 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__recoveryCalls = [];
+    (window as any).__recoveryRepositoryId = app.git.activeRepositoryId();
+    let records = [{ id: '1791408000000000000-12', restored: false }];
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         (window as any).__recoveryCalls.push({ command, args });
-        if (command === 'load_discard_recoveries') return Promise.resolve([
-          { id: '1791408000000000000-12', restored: false },
-        ]);
-        if (command === 'forget_saved_discard') return Promise.resolve();
+        if (command === 'load_discard_recoveries') return Promise.resolve(records);
+        if (command === 'forget_saved_discard') {
+          records = records.filter(record => record.id !== args.id);
+          return Promise.resolve();
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(app.git.repository().status);
         return Promise.reject(new Error(`Unexpected command ${command}`));
       },
     };
@@ -119,8 +123,29 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
   await recovery.getByRole('button', { name: 'Remove capture…' }).click();
   const confirmation = page.getByRole('alertdialog');
   await expect(confirmation).toContainText('Permanently remove');
+  expect(await page.evaluate(() => (window as any).__recoveryCalls.filter(
+    (call: { command: string }) => call.command === 'forget_saved_discard'))).toEqual([]);
   await confirmation.getByRole('button', { name: 'Remove capture', exact: true }).click();
-  expect(await page.evaluate(() => (window as any).__recoveryCalls.at(-1))).toEqual({
-    command: 'forget_saved_discard', args: { repoId: expect.any(String), id: '1791408000000000000-12' },
+  // A legitimate background read can follow deletion; it is not the mutation
+  // under test and must not determine whether capture removal succeeded.
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    await app.git.refreshStatusInBackground(app.git.activeRepositoryId(), true);
   });
+  await expect(confirmation).toHaveCount(0);
+  await opener.click();
+  await page.getByRole('menuitem', { name: /^Recover discarded/ }).click();
+  await expect(recovery).toContainText('No saved bulk discards in this worktree.');
+  await expect(recovery.getByRole('button', { name: 'Remove capture…' })).toHaveCount(0);
+  const result = await page.evaluate(() => ({
+    repositoryId: (window as any).__recoveryRepositoryId,
+    calls: (window as any).__recoveryCalls.filter(
+      (call: { command: string }) => call.command !== 'refresh_repository_status'),
+  }));
+  expect(result.repositoryId).toEqual(expect.any(String));
+  const load = { command: 'load_discard_recoveries', args: { repoId: result.repositoryId } };
+  expect(result.calls).toEqual([load, load, {
+    command: 'forget_saved_discard',
+    args: { repoId: result.repositoryId, id: '1791408000000000000-12' },
+  }, load]);
 });

@@ -1,6 +1,153 @@
 use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(target_os = "linux")]
+#[test]
+fn transport_remote_config_read_remains_cancellable_before_fetch_starts() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::mpsc;
+
+    let repository = Repository::new();
+    fs::set_permissions(&repository.0, fs::Permissions::from_mode(0o700)).unwrap();
+    run_mutation(
+        &repository.0,
+        &["remote", "add", "origin", "."],
+        "owned remote",
+    )
+    .unwrap();
+    let head = repository.oid();
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let config = repository.0.join(".git/config");
+    let saved = repository.0.join(".git/config.owned-backup");
+    let original = fs::read(&config).unwrap();
+    fs::rename(&config, &saved).unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(&config)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let done = Arc::new(AtomicBool::new(false));
+    let writer_done = done.clone();
+    let writer_config = config.clone();
+    let (stop, stopped) = mpsc::channel();
+    // Old code needs a bounded release so a failing cancellation test cannot
+    // leave Git blocked on the owned FIFO. A fixed reader needs no release.
+    let release = thread::spawn(move || {
+        if stopped.recv_timeout(Duration::from_millis(1500)).is_ok() {
+            return;
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !writer_done.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            if let Ok(fd) = rustix::fs::open(
+                &writer_config,
+                rustix::fs::OFlags::WRONLY | rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            ) {
+                let _ = fs::File::from(fd).write_all(&original);
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+    let token = CancellationToken::default();
+    let cancel = token.clone();
+    let controller = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        cancel.cancel();
+    });
+    let started = std::time::Instant::now();
+    let result = run_transport(&repository.0, &["fetch", "origin"], Some(&token), None);
+    let elapsed = started.elapsed();
+    done.store(true, Ordering::Release);
+    let _ = stop.send(());
+    release.join().unwrap();
+    controller.join().unwrap();
+    fs::remove_file(&config).unwrap();
+    fs::rename(&saved, &config).unwrap();
+    assert_eq!(result.unwrap_err().kind, "operationCancelled");
+    assert_eq!(repository.oid(), head);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "configuration query ignored cancellation for {elapsed:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn cancellable_command_preserves_delayed_output_and_parent_exit_status() {
+    for code in ["0", "7"] {
+        let mut command = Command::new("sh");
+        command
+            .args([
+                "-c",
+                "(sleep 0.05; printf tail; printf errtail >&2) & printf head; printf errhead >&2; exit \"$1\"",
+                "owned-delayed-output-fixture",
+                code,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_process_tree(&mut command);
+        let output = run_cancellable_command(command, &CancellationToken::default()).unwrap();
+        assert_eq!(output.status.code(), Some(code.parse().unwrap()));
+        assert_eq!(output.stdout, b"headtail");
+        assert_eq!(output.stderr, b"errheaderrtail");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cancellable_command_remains_cancellable_after_parent_exit_with_inherited_pipes() {
+    let repository = Repository::new();
+    let marker = repository.0.join(".git/owned-parent-pid");
+    let observed_marker = marker.clone();
+    let token = CancellationToken::default();
+    let cancel = token.clone();
+    let controller = thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            if let Ok(pid) = fs::read_to_string(&observed_marker)
+                && pid.trim().parse::<u32>().is_ok()
+            {
+                let alive = Command::new("sh")
+                    .args(["-c", "kill -0 \"$1\"", "owned-parent-probe", pid.trim()])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .unwrap()
+                    .success();
+                if !alive {
+                    cancel.cancel();
+                    return true;
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        false
+    });
+    let mut command = Command::new("sh");
+    command
+        .args([
+            "-c",
+            "printf '%s' \"$$\" > \"$1\"; sleep 2 & printf 'owned output'; exit 0",
+            "owned-inherited-pipe-fixture",
+        ])
+        .arg(&marker)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    configure_process_tree(&mut command);
+    let started = std::time::Instant::now();
+    let result = run_cancellable_command(command, &token);
+    assert!(
+        controller.join().unwrap(),
+        "parent must be reaped before cancel"
+    );
+    assert_eq!(result.unwrap_err().kind, "operationCancelled");
+    assert!(started.elapsed() < Duration::from_secs(1));
+}
+
 struct Repository(PathBuf);
 
 impl Repository {
@@ -9934,6 +10081,212 @@ fn lfs_prune_offers_only_old_objects_no_git_object_references_and_removes_exactl
     assert!(again.objects.is_empty());
     let failure = prune_lfs_objects(path, &again, &cancellation).unwrap_err();
     assert_eq!(failure.kind, "unsafeLfsPrune");
+}
+
+#[test]
+#[cfg(unix)]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_preserves_trailing_spaces_in_the_common_git_directory() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let oid = lfs_orphan(
+        path,
+        b"owned separate-directory orphan\n",
+        Duration::from_secs(7200),
+    );
+    let index = fs::read(path.join(".git/index")).unwrap();
+    let administration = path.join("git administration ");
+    fs::rename(path.join(".git"), &administration).unwrap();
+    fs::write(
+        path.join(".git"),
+        format!("gitdir: {}\n", administration.display()),
+    )
+    .unwrap();
+    let common = run_git(
+        path,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .unwrap();
+    ensure_success("verify the owned separate Git directory", &common).unwrap();
+    assert_eq!(
+        common.stdout,
+        format!("{}\n", administration.display()).as_bytes()
+    );
+    let token = CancellationToken::default();
+    let preview = preview_lfs_prune(path, &token).unwrap();
+    assert!(preview.objects.iter().any(|object| object.oid == oid));
+    let cache = lfs_object_path(path, &oid);
+    prune_lfs_objects(path, &preview, &token).unwrap();
+    assert!(!cache.exists());
+    assert_eq!(fs::read(administration.join("index")).unwrap(), index);
+    assert_eq!(
+        fs::read(path.join("committed.bin")).unwrap(),
+        b"committed object\n"
+    );
+}
+
+#[test]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_validates_clone_configuration_without_treating_remote_names_as_booleans() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let contents = b"retain while clone settings are incomplete\n";
+    let oid = lfs_orphan(path, contents, Duration::from_secs(7200));
+    let token = CancellationToken::default();
+    let before = preview_lfs_prune(path, &token).unwrap();
+    assert!(before.objects.iter().any(|object| object.oid == oid));
+    for disabled in ["false", "OFF", "No", "0"] {
+        run_mutation(
+            path,
+            &["config", "remote.owned.promisor", disabled],
+            "configure owned disabled promisor",
+        )
+        .unwrap();
+        let value = run_git(
+            path,
+            &["config", "--type=bool", "--get", "remote.owned.promisor"],
+        )
+        .unwrap();
+        ensure_success("read owned promisor boolean", &value).unwrap();
+        assert_eq!(value.stdout, b"false\n");
+        assert!(
+            preview_lfs_prune(path, &token)
+                .unwrap()
+                .objects
+                .iter()
+                .any(|object| object.oid == oid)
+        );
+    }
+    run_mutation(
+        path,
+        &["config", "--unset", "remote.owned.promisor"],
+        "clear owned promisor",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "extensions.partialclone", "false"],
+        "configure partial-clone remote named false",
+    )
+    .unwrap();
+    let head = repository.oid();
+    let index = fs::read(path.join(".git/index")).unwrap();
+    assert_eq!(
+        preview_lfs_prune(path, &token).unwrap_err().kind,
+        "unsafeLfsPrune"
+    );
+    assert_eq!(
+        prune_lfs_objects(path, &before, &token).unwrap_err().kind,
+        "unsafeLfsPrune"
+    );
+    assert_eq!(fs::read(lfs_object_path(path, &oid)).unwrap(), contents);
+    assert_eq!(repository.oid(), head);
+    assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+}
+
+#[test]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_retains_original_pointer_hidden_by_replacement_refs() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let contents = b"protected replaced pointer object\n";
+    let oid = lfs_orphan(path, contents, Duration::from_secs(7200));
+    let cancellation = CancellationToken::default();
+    let before = preview_lfs_prune(path, &cancellation).unwrap();
+    assert!(before.objects.iter().any(|object| object.oid == oid));
+    fs::write(
+        path.join("original.pointer"),
+        format!(
+            "version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {}\n",
+            contents.len()
+        ),
+    )
+    .unwrap();
+    fs::write(path.join("replacement.pointer"), b"hidden pointer\n").unwrap();
+    let hash = |file: &str| {
+        let output = run_git(path, &["hash-object", "-w", "--no-filters", "--", file]).unwrap();
+        ensure_success("write owned pointer fixture", &output).unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    };
+    let original = hash("original.pointer");
+    let replacement = hash("replacement.pointer");
+    run_mutation(
+        path,
+        &["replace", &original, &replacement],
+        "replace owned pointer",
+    )
+    .unwrap();
+    let visible = run_git(path, &["cat-file", "-p", &original]).unwrap();
+    ensure_success("read the replaced fixture", &visible).unwrap();
+    assert_eq!(visible.stdout, b"hidden pointer\n");
+    let head = repository.oid();
+    let index = fs::read(path.join(".git/index")).unwrap();
+    let after = preview_lfs_prune(path, &cancellation).unwrap();
+    assert!(
+        after.objects.iter().all(|object| object.oid != oid),
+        "Replacement references must not hide original pointer objects from cleanup"
+    );
+    assert_eq!(
+        prune_lfs_objects(path, &before, &cancellation)
+            .unwrap_err()
+            .kind,
+        "staleLfsPrune"
+    );
+    assert_eq!(fs::read(lfs_object_path(path, &oid)).unwrap(), contents);
+    assert_eq!(repository.oid(), head);
+    assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+}
+
+#[test]
+#[ignore = "requires Git LFS with clean and env commands; run with --ignored"]
+fn lfs_prune_retains_git_lfs_accepted_crlf_pointers() {
+    let repository = lfs_prune_fixture();
+    let path = &repository.0;
+    let contents = b"protected CRLF object\n";
+    let oid = lfs_orphan(path, contents, Duration::from_secs(7200));
+    let cancellation = CancellationToken::default();
+    let before = preview_lfs_prune(path, &cancellation).unwrap();
+    assert!(before.objects.iter().any(|object| object.oid == oid));
+    let pointer = format!(
+        "version https://git-lfs.github.com/spec/v1\r\noid sha256:{oid}\r\nsize {}\r\n",
+        contents.len()
+    );
+    fs::write(path.join("crlf.pointer"), &pointer).unwrap();
+    let checked = run_git(
+        path,
+        &[
+            "lfs",
+            "pointer",
+            "--check",
+            "--no-strict",
+            "--file",
+            "crlf.pointer",
+        ],
+    )
+    .unwrap();
+    ensure_success("verify the fixture is an accepted LFS pointer", &checked).unwrap();
+    run_mutation(
+        path,
+        &["hash-object", "-w", "--no-filters", "--", "crlf.pointer"],
+        "write an unreachable CRLF pointer",
+    )
+    .unwrap();
+    let head = repository.oid();
+    let index = fs::read(path.join(".git/index")).unwrap();
+    let after = preview_lfs_prune(path, &cancellation).unwrap();
+    assert!(
+        after.objects.iter().all(|object| object.oid != oid),
+        "A Git LFS accepted pointer must protect its object from pruning"
+    );
+    assert_eq!(
+        prune_lfs_objects(path, &before, &cancellation)
+            .unwrap_err()
+            .kind,
+        "staleLfsPrune"
+    );
+    assert_eq!(fs::read(lfs_object_path(path, &oid)).unwrap(), contents);
+    assert_eq!(repository.oid(), head);
+    assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
 }
 
 #[test]

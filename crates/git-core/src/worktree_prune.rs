@@ -5,7 +5,7 @@ const MAX_ADMIN_ENTRIES: usize = 4096;
 const MAX_ADMIN_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_LINK_BYTES: u64 = 16 * 1024;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorktreeRegistrationPrune {
     pub path: String,
@@ -13,7 +13,7 @@ pub struct WorktreeRegistrationPrune {
     pub expected_branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeRegistrationPruneResult {
     pub recovery_references: Vec<String>,

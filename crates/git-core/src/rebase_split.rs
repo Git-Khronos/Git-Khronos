@@ -2,7 +2,7 @@ use super::*;
 
 const LIMIT: u64 = 4096;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Split {
     stopped_oid: String,
@@ -12,14 +12,14 @@ struct Split {
     phase: Phase,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 enum Phase {
     Preparing,
     Active,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RebaseSplitStatus {
     pub preparing: bool,
@@ -84,6 +84,11 @@ fn load(file: &Path) -> Result<Option<Split>, AppError> {
 }
 
 fn save(file: &Path, split: &Split) -> Result<(), AppError> {
+    operation_storage::directory(
+        file.parent()
+            .ok_or_else(|| failure("Split metadata has no parent directory."))?,
+    )?;
+    operation_storage::file(file)?;
     let bytes = serde_json::to_vec(split)
         .map_err(|error| failure(format!("Could not encode split metadata: {error}")))?;
     let lock = file.with_extension("json.lock");
@@ -92,6 +97,7 @@ fn save(file: &Path, split: &Split) -> Result<(), AppError> {
         .create_new(true)
         .open(&lock)
         .map_err(|error| failure(format!("Could not lock split metadata: {error}")))?;
+    let mut lock_owned = true;
     let result = (|| {
         stream
             .write_all(&bytes)
@@ -100,6 +106,7 @@ fn save(file: &Path, split: &Split) -> Result<(), AppError> {
         drop(stream);
         fs::rename(&lock, file)
             .map_err(|error| failure(format!("Could not install split metadata: {error}")))?;
+        lock_owned = false;
         #[cfg(unix)]
         fs::File::open(
             file.parent()
@@ -109,7 +116,7 @@ fn save(file: &Path, split: &Split) -> Result<(), AppError> {
         .map_err(|error| failure(format!("Could not synchronize split metadata: {error}")))?;
         Ok(())
     })();
-    if result.is_err() && lock.exists() {
+    if result.is_err() && lock_owned {
         fs::remove_file(&lock).map_err(|error| {
             failure(format!(
                 "Could not remove this operation's failed split metadata lock: {error}"
@@ -128,7 +135,9 @@ pub(super) fn inspect(
     if !rebase {
         return Ok(None);
     }
-    let Some(split) = load(&directory.join("git-khronos-rebase/split.json"))? else {
+    let support = directory.join("git-khronos-rebase");
+    operation_storage::directory(&support)?;
+    let Some(split) = load(&support.join("split.json"))? else {
         return Ok(None);
     };
     if oid(path, "REBASE_HEAD")? != split.stopped_oid {
@@ -287,6 +296,7 @@ pub fn begin_rebase_split(path: &Path, expected_head: &str) -> Result<(), AppErr
     preserve_reference(path, &head, "Commit before guided split")?;
     fs::create_dir_all(&directory)
         .map_err(|error| failure(format!("Could not prepare split storage: {error}")))?;
+    operation_storage::directory(&directory)?;
     let file = directory.join("split.json");
     save(&file, &split)?;
     if oid(path, "HEAD")? != head || oid(path, "REBASE_HEAD")? != split.stopped_oid {

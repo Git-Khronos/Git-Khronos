@@ -1,14 +1,14 @@
 use super::submodule_review::{config, unavailable};
 use super::*;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmoduleDeinit {
     pub path: String,
     pub expected_checkout_oid: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleDeinitResult {
     pub path: String,
@@ -19,7 +19,7 @@ pub struct SubmoduleDeinitResult {
     pub absorbed: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleSetting {
     pub key: String,

@@ -4,15 +4,18 @@ import {
   Component,
   ElementRef,
   HostListener,
+  Injector,
   OnDestroy,
   ViewChild,
+  afterNextRender,
   effect,
+  inject,
   input,
   output,
   signal,
 } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { ipc, events, type TerminalInfo } from '@git-khronos/contracts';
+import { type UnlistenFn } from '@tauri-apps/api/event';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type IDisposable } from '@xterm/xterm';
 import type { AppTheme } from './app-theme';
@@ -32,25 +35,11 @@ import {
   type TerminalTabNavigationKey,
 } from './terminal-tab-navigation';
 
-interface TerminalInfo {
-  id: string;
-  label: string;
-  cwd: string;
-}
-
-interface TerminalOutput {
-  sessionId: string;
-  data: number[];
-}
-
-interface TerminalExit {
-  sessionId: string;
-}
-
 const TERMINAL_PANEL_MIN_HEIGHT = 150;
 const TERMINAL_PANEL_DEFAULT_HEIGHT = 280;
 const TERMINAL_PANEL_VIEWPORT_ALLOWANCE = 170;
 const TERMINAL_PANEL_HEIGHT_STORAGE_KEY = 'git-khronos.terminal.panel-height';
+const TERMINAL_EXIT_MESSAGE = '\r\n\x1b[38;5;245m[Process exited]\x1b[0m\r\n';
 
 interface TerminalTab extends TerminalInfo {
   title: string;
@@ -58,6 +47,7 @@ interface TerminalTab extends TerminalInfo {
   terminal: Terminal;
   fit: FitAddon;
   input: IDisposable;
+  cancelQueuedInput: () => void;
   titleChange: IDisposable;
   ended: boolean;
 }
@@ -91,21 +81,19 @@ interface TerminalTab extends TerminalInfo {
               <button class="terminal-tab-scroll" type="button" aria-label="Show next terminal tabs" title="Show next terminal tabs" [disabled]="!canScrollTabsForward()" (click)="scrollTabs(1)"><gc-icon name="chevron-right" [size]="11" /></button>
             }
           </div>
-          <button class="new-terminal" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab" aria-keyshortcuts="Control+Shift+T" [disabled]="opening() || !nativeAvailable()" (click)="openTab()"><gc-icon name="plus" [size]="12" /></button>
+          <button class="new-terminal" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab" aria-keyshortcuts="Control+Shift+T" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openTab()"><gc-icon name="plus" [size]="12" /></button>
         </div>
         <span class="terminal-context"><gc-icon name="repo" [size]="11" />{{ repositoryLabel() }}</span>
         <button type="button" [attr.aria-label]="minimized() ? 'Restore terminal' : 'Minimize terminal'" [attr.aria-expanded]="!minimized()" [attr.aria-controls]="terminalBodyId()" title="{{ minimized() ? 'Restore terminal' : 'Minimize terminal' }}" (click)="toggleMinimized()"><gc-icon [name]="minimized() ? 'chevron-up' : 'chevron-down'" [size]="12" /></button>
         <button type="button" title="Hide terminal panel" aria-label="Hide terminal panel" (click)="dismissed.emit()"><gc-icon name="x" [size]="12" /></button>
       </header>
-      @if (!minimized()) {
-        <div #terminalBody [attr.id]="terminalBodyId()" class="terminal-body">
-          @for (tab of tabs(); track tab.id) {
-            <div class="terminal-host" role="tabpanel" [attr.id]="tabPanelId(tab.id)" [attr.aria-labelledby]="tabId(tab.id)" [attr.aria-hidden]="activeId() !== tab.id" [class.active]="activeId() === tab.id" [attr.data-terminal-id]="tab.id"></div>
-          }
-          @if (error(); as message) { <div class="terminal-error" role="status" aria-live="polite"><strong>Terminal unavailable</strong><span>{{ message }}</span>@if (nativeAvailable()) { <button type="button" (click)="openTab()">Try again</button> }</div> }
-          @if (opening() && !tabs().length) { <div class="terminal-loading" role="status" aria-live="polite">Starting terminal…</div> }
-        </div>
-      }
+      <div #terminalBody [attr.id]="terminalBodyId()" class="terminal-body" [hidden]="minimized()">
+        @for (tab of tabs(); track tab.id) {
+          <div class="terminal-host" role="tabpanel" [attr.id]="tabPanelId(tab.id)" [attr.aria-labelledby]="tabId(tab.id)" [attr.aria-hidden]="activeId() !== tab.id" [class.active]="activeId() === tab.id" [attr.data-terminal-id]="tab.id"></div>
+        }
+        @if (error(); as message) { <div class="terminal-error" role="status" aria-live="polite"><strong>{{ failedCloseId() ? 'Terminal could not close' : 'Terminal unavailable' }}</strong><span>{{ message }}</span>@if (nativeAvailable()) { @if (failedCloseId(); as id) { <button type="button" (click)="closeTab(id)">Retry closing terminal</button> } @else { <button type="button" (click)="openTab()">Try again</button> } }</div> }
+        @if (opening() && !tabs().length) { <div class="terminal-loading" role="status" aria-live="polite">Starting terminal…</div> }
+      </div>
     </section>
   `,
   styleUrl: './terminal-panel.component.scss',
@@ -132,6 +120,8 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   protected readonly minimized = signal(false);
   protected readonly opening = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly failedCloseId = signal<string | null>(null);
+  protected readonly failedStartup = signal<{ id: string; message: string } | null>(null);
   protected readonly tabStripOverflow = signal(false);
   protected readonly canScrollTabsBack = signal(false);
   protected readonly canScrollTabsForward = signal(false);
@@ -142,10 +132,15 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   private unlistenExit?: UnlistenFn;
   private resizeObserver?: ResizeObserver;
   private readonly pendingOutput = new Map<string, Uint8Array[]>();
+  private readonly pendingExits = new Set<string>();
   private resizeStartY = 0;
   private resizeStartHeight = 0;
   private resizing = false;
   private nextTabNumber = 1;
+  private destroyed = false;
+  private readonly closingTabs = new Set<string>();
+  private readonly injector = inject(Injector);
+  private finishPendingRender?: () => void;
 
   constructor() {
     effect(() => {
@@ -173,16 +168,38 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
       return;
     }
     try {
-      this.unlistenOutput = await listen<TerminalOutput>('terminal-output', ({ payload }) => {
+      this.unlistenOutput = await events.terminalOutput.listen(({ payload }) => {
+        if (this.destroyed) return;
         const bytes = new Uint8Array(payload.data);
         const tab = this.tabs().find((candidate) => candidate.id === payload.sessionId);
         if (tab) tab.terminal.write(bytes);
-        else this.pendingOutput.set(payload.sessionId, [...(this.pendingOutput.get(payload.sessionId) ?? []), bytes]);
+        else if (this.opening()) {
+          // Output can precede open_terminal's reply. Ignore sessions belonging
+          // to other repository panels once our own startup has completed.
+          const pending = this.pendingOutput.get(payload.sessionId);
+          if (pending) pending.push(bytes);
+          else this.pendingOutput.set(payload.sessionId, [bytes]);
+        }
       });
-      this.unlistenExit = await listen<TerminalExit>('terminal-exit', ({ payload }) => {
+      if (this.destroyed) {
+        this.unlistenOutput();
+        return;
+      }
+      this.unlistenExit = await events.terminalExit.listen(({ payload }) => {
+        if (this.destroyed) return;
+        const tab = this.tabs().find((tab) => tab.id === payload.sessionId);
+        if (!tab) {
+          if (this.opening()) this.pendingExits.add(payload.sessionId);
+          return;
+        }
+        if (tab.ended) return;
         this.tabs.update((tabs) => tabs.map((tab) => tab.id === payload.sessionId ? { ...tab, ended: true } : tab));
-        this.tabs().find((tab) => tab.id === payload.sessionId)?.terminal.write('\r\n\x1b[38;5;245m[Process exited]\x1b[0m\r\n');
+        if (tab.terminal.element) tab.terminal.write(TERMINAL_EXIT_MESSAGE);
       });
+      if (this.destroyed) {
+        this.unlistenExit();
+        return;
+      }
     } catch (cause: unknown) {
       this.unlistenOutput?.();
       this.unlistenOutput = undefined;
@@ -201,31 +218,52 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
+    this.finishPendingRender?.();
+    this.finishPendingRender = undefined;
     this.unlistenOutput?.();
     this.unlistenExit?.();
     this.resizeObserver?.disconnect();
     for (const tab of this.tabs()) {
-      tab.input.dispose();
-      tab.titleChange.dispose();
-      tab.terminal.dispose();
-      void invoke('close_terminal', { sessionId: tab.id });
+      this.disposeResources([tab.input, tab.titleChange, tab.terminal]);
+      void ipc.close_terminal({ sessionId: tab.id }).catch(() => undefined);
     }
+    const failedStartup = this.failedStartup();
+    if (failedStartup) void ipc.close_terminal({ sessionId: failedStartup.id }).catch(() => undefined);
+    this.failedStartup.set(null);
+    this.tabs.set([]);
+    this.pendingOutput.clear();
+    this.pendingExits.clear();
   }
 
   protected async openTab(): Promise<void> {
+    if (this.destroyed) return;
     if (!this.nativeAvailable()) {
       this.error.set('Terminal sessions are available in the desktop app.');
       return;
     }
-    if (this.opening()) return;
+    if (this.opening() || this.failedStartup()) return;
     this.opening.set(true);
     this.error.set(null);
+    this.failedCloseId.set(null);
+    let nativeSession: TerminalInfo | null = null;
+    let createdTerminal: Terminal | undefined;
+    let createdInput: IDisposable | undefined;
+    let createdTitleChange: IDisposable | undefined;
     try {
-      const info = await invoke<TerminalInfo>('open_terminal', {
+      const info = await ipc.open_terminal({
         repoId: this.repositoryId(),
         rows: 24,
         cols: 80,
       });
+      nativeSession = info;
+      if (this.destroyed) {
+        await ipc.close_terminal({ sessionId: info.id }).catch(() => undefined);
+        return;
+      }
+      for (const id of this.pendingOutput.keys()) {
+        if (id !== info.id) this.pendingOutput.delete(id);
+      }
       const terminal = new Terminal({
         allowProposedApi: false,
         cursorBlink: true,
@@ -238,20 +276,67 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
           lineHeight: this.lineHeight(),
         }),
       });
+      createdTerminal = terminal;
       const fit = new FitAddon();
       terminal.loadAddon(fit);
+      let inputTail = Promise.resolve();
+      let inputEpoch = 0;
       const input = terminal.onData((data) => {
-        void invoke('write_terminal', { sessionId: info.id, data: [...new TextEncoder().encode(data)] });
+        const current = this.tabs().find((tab) => tab.id === info.id);
+        if (this.destroyed || !current || current.ended || this.closingTabs.has(info.id)) return;
+        const epoch = inputEpoch;
+        inputTail = inputTail.then(async () => {
+          const tab = this.tabs().find((candidate) => candidate.id === info.id);
+          if (epoch !== inputEpoch || this.destroyed || !tab || tab.ended || this.closingTabs.has(info.id)) return;
+          await ipc.write_terminal({ sessionId: info.id, data: [...new TextEncoder().encode(data)] });
+        }).catch((cause: unknown) => {
+          // A failed write may have sent a prefix. Never replay it or dispatch
+          // its queued suffix as a new command after an uncertain failure.
+          inputEpoch += 1;
+          const tab = this.tabs().find((candidate) => candidate.id === info.id);
+          if (!this.destroyed && tab && !tab.ended && !this.closingTabs.has(info.id)) {
+            this.failedCloseId.set(null);
+            this.error.set(this.errorMessage(cause));
+          }
+        });
       });
+      createdInput = input;
       const fallbackTitle = `${info.label} ${this.nextTabNumber++}`;
       const titleChange = terminal.onTitleChange((title) => this.updateTabTitle(info.id, title));
-      const tab: TerminalTab = { ...info, title: fallbackTitle, fallbackTitle, terminal, fit, input, titleChange, ended: false };
+      createdTitleChange = titleChange;
+      const tab: TerminalTab = { ...info, title: fallbackTitle, fallbackTitle, terminal, fit, input, cancelQueuedInput: () => { inputEpoch += 1; }, titleChange, ended: this.pendingExits.has(info.id) };
+      this.pendingExits.clear();
       this.tabs.update((tabs) => [...tabs, tab]);
       this.activeId.set(tab.id);
-      setTimeout(() => this.mount(tab));
+      // Mount within this transaction, after Angular has created the host.
+      // Destruction resolves the wait too; ngOnDestroy already owns cleanup.
+      await new Promise<void>((resolve) => {
+        this.finishPendingRender = resolve;
+        afterNextRender(() => {
+          this.finishPendingRender = undefined;
+          resolve();
+        }, { injector: this.injector });
+      });
+      if (!this.destroyed) this.mount(tab);
     } catch (cause: unknown) {
-      this.error.set(this.errorMessage(cause));
+      const message = this.errorMessage(cause);
+      if (nativeSession) {
+        const id = nativeSession.id;
+        const tabs = this.tabs();
+        const state = terminalTabStateAfterClose(tabs.map((tab) => tab.id), this.activeId(), id);
+        this.tabs.set(tabs.filter((tab) => tab.id !== id));
+        this.activeId.set(state.activeId);
+        this.disposeResources([createdInput, createdTitleChange, createdTerminal]);
+        this.failedStartup.set({ id, message });
+        await this.closeFailedStartup();
+      } else if (!this.destroyed) {
+        this.failedCloseId.set(null);
+        this.error.set(message);
+      }
     } finally {
+      this.finishPendingRender = undefined;
+      this.pendingOutput.clear();
+      this.pendingExits.clear();
       this.opening.set(false);
     }
   }
@@ -363,17 +448,42 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   }
 
   protected async closeTab(id: string, focusReplacementTab = false): Promise<void> {
+    const requested = this.tabs().find((tab) => tab.id === id);
+    if (this.closingTabs.has(id)) return;
+    if (!requested) {
+      if (this.failedStartup()?.id === id) await this.closeFailedStartup();
+      return;
+    }
+    // A refused close must not allow old queued keystrokes to become commands
+    // once the closing flag is cleared. Only explicit new input may resume.
+    requested.cancelQueuedInput();
+    this.closingTabs.add(id);
+    if (this.failedCloseId() === id) {
+      this.failedCloseId.set(null);
+      this.error.set(null);
+    }
+    try {
+      await ipc.close_terminal({ sessionId: id });
+    } catch (cause: unknown) {
+      this.closingTabs.delete(id);
+      if (!this.destroyed && this.tabs().some((tab) => tab.id === id)) {
+        this.failedCloseId.set(id);
+        this.error.set(this.errorMessage(cause));
+      }
+      return;
+    }
+    if (this.destroyed) { this.closingTabs.delete(id); return; }
+    // Other tabs may have opened or closed while the native request was in flight.
+    // Never restore a snapshot captured before that request.
     const tabs = this.tabs();
     const closingIndex = tabs.findIndex((candidate) => candidate.id === id);
     const tab = tabs[closingIndex];
-    if (!tab) return;
-    await invoke('close_terminal', { sessionId: id }).catch(() => undefined);
-    tab.input.dispose();
-    tab.titleChange.dispose();
-    tab.terminal.dispose();
+    if (!tab) { this.closingTabs.delete(id); return; }
+    this.disposeResources([tab.input, tab.titleChange, tab.terminal]);
     const state = terminalTabStateAfterClose(tabs.map((candidate) => candidate.id), this.activeId(), id);
     const remaining = tabs.filter((candidate) => candidate.id !== id);
     this.tabs.set(remaining);
+    this.closingTabs.delete(id);
     this.pendingOutput.delete(id);
     this.activeId.set(state.activeId);
     const active = remaining.find((candidate) => candidate.id === state.activeId) ?? null;
@@ -390,6 +500,38 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     const id = this.activeId();
     if (id) void this.closeTab(id);
     else this.closed.emit();
+  }
+
+  private async closeFailedStartup(): Promise<void> {
+    const failed = this.failedStartup();
+    if (!failed || this.closingTabs.has(failed.id)) return;
+    this.closingTabs.add(failed.id);
+    this.failedCloseId.set(null);
+    this.error.set(null);
+    try {
+      await ipc.close_terminal({ sessionId: failed.id });
+      if (this.destroyed) return;
+      this.failedStartup.set(null);
+      // Cleanup succeeded, but creating the screen did not. Keep the original
+      // failure visible and let the user explicitly try a fresh session.
+      this.error.set(failed.message);
+    } catch (cause: unknown) {
+      if (!this.destroyed) {
+        this.failedCloseId.set(failed.id);
+        this.error.set(`${failed.message} Cleanup also failed: ${this.errorMessage(cause)}`);
+      }
+    } finally {
+      this.closingTabs.delete(failed.id);
+    }
+  }
+
+  private disposeResources(resources: readonly (IDisposable | undefined)[]): void {
+    for (const resource of resources) {
+      try { resource?.dispose(); } catch {
+        // One renderer teardown failure must not skip the remaining resources
+        // or prevent the native process from being closed.
+      }
+    }
   }
 
   protected toggleMinimized(): void {
@@ -475,14 +617,18 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private mount(tab: TerminalTab): void {
+    const current = this.tabs().find((candidate) => candidate.id === tab.id);
+    if (this.destroyed || !current) return;
     const host = this.terminalBody?.nativeElement.querySelector<HTMLElement>(`[data-terminal-id="${tab.id}"]`);
-    if (!host || host.childElementCount) return;
+    if (!host) throw new Error('The terminal screen could not be created.');
+    if (host.childElementCount) return;
     tab.terminal.open(host);
     for (const bytes of this.pendingOutput.get(tab.id) ?? []) tab.terminal.write(bytes);
     this.pendingOutput.delete(tab.id);
+    if (current.ended) tab.terminal.write(TERMINAL_EXIT_MESSAGE);
     this.revealTab(tab.id);
     this.fitActive();
-    tab.terminal.focus();
+    if (this.visible() && !this.minimized() && this.activeId() === tab.id) tab.terminal.focus();
   }
 
   private fitActive(): void {
@@ -490,7 +636,8 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     if (!tab || this.minimized()) return;
     try {
       tab.fit.fit();
-      void invoke('resize_terminal', { sessionId: tab.id, rows: tab.terminal.rows, cols: tab.terminal.cols });
+      if (!tab.ended) void ipc.resize_terminal({ sessionId: tab.id, rows: tab.terminal.rows, cols: tab.terminal.cols })
+        .catch(() => undefined);
     } catch {
       // The terminal can be between Angular layout frames while switching tabs.
     }

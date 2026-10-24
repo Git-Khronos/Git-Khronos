@@ -3,5 +3,24 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/contracts/src",
+  "targets": {
+    "generate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "node tools/generate-ipc.mjs" }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "commands": [
+          "node tools/generate-ipc.mjs --check",
+          "pnpm exec tsc --noEmit --strict --skipLibCheck --target ES2022 --module preserve --moduleResolution bundler libs/contracts/src/contract-typecheck.ts",
+          "node --test tools/generate-ipc.test.mjs"
+        ],
+        "parallel": false
+      }
+    }
+  },
   "tags": ["type:contracts", "scope:shared"]
 }

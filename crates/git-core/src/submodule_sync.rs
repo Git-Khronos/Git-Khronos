@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmoduleUrlSync {
     pub path: String,
@@ -12,7 +12,7 @@ pub struct SubmoduleUrlSync {
     pub expected_registered_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleUrlSyncResult {
     pub path: String,

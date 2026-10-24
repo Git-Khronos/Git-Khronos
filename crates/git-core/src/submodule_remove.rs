@@ -1,14 +1,14 @@
 use super::submodule_deinit::{SubmoduleSetting, absolute_git_dir, index_entries, refs, settings};
 use super::*;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmoduleRemoval {
     pub path: String,
     pub expected_index_oid: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleRemovalResult {
     pub path: String,

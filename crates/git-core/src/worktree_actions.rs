@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorktreeMove {
     pub path: String,
@@ -94,7 +94,7 @@ fn move_io_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorktreeRepair {
     pub path: String,

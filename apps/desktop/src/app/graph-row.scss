@@ -57,8 +57,10 @@
 .wip-edges { height: 100%; }
 .node { z-index: 1; width: 9px; height: 9px; border: 2px solid var(--graph-lane-color, #55c9a5); border-radius: 50%; background: var(--row-surface); }
 .multi-lane .node { position: absolute; top: 15px; background: var(--row-surface) !important; }
-.multi-lane .author-node { top: 7px; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: color-mix(in srgb, var(--author-color) 80%, var(--canvas)) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 0 0 2px var(--row-surface); }
-.commit-list.compact-graph .author-node { top: 9px; width: 20px; height: 20px; font-size: 10px; }
+/* Match the SVG's y=20 midpoint even when the row divider reduces its height. */
+.multi-lane .author-node { top: 50%; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: color-mix(in srgb, var(--author-color) 80%, var(--canvas)) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--row-surface); }
+.commit-list.compact-graph .author-node { width: 20px; height: 20px; font-size: 10px; }
+.commit-row[data-commit-oid] .ref-connector { top: 50%; transform: translateY(-50%); }
 .multi-lane .author-node.head-node { box-shadow: 0 0 0 2px var(--row-surface), 0 0 0 4px var(--accent), 0 0 10px #54d6ad66; }
 .multi-lane .stash-node { top: 10px; width: 20px; height: 19px; display: grid; place-items: center; border: 1px solid #ffc98e; border-radius: 3px; background: #a56835 !important; color: #fff3e3; box-shadow: 0 0 0 2px var(--row-surface); }
 .stash-row .subject { color: #efbd88; }

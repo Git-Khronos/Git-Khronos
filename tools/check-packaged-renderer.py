@@ -56,6 +56,13 @@ JSON.stringify((() => {
   const list = document.querySelector('.commit-list');
   const rows = [...document.querySelectorAll('.commit-row[data-commit-oid]')];
   const styles = [...document.querySelectorAll('style')];
+  const referenceOffsets = [...document.querySelectorAll('.single-ref > button.ref-pill')].map(button => {
+    const left = button.getBoundingClientRect().left;
+    button.focus({ preventScroll: true });
+    const offset = button.getBoundingClientRect().left - left;
+    button.blur();
+    return offset;
+  });
   const bounds = list?.getBoundingClientRect();
   return {
     workspace: workspace && getComputedStyle(workspace).display,
@@ -67,6 +74,7 @@ JSON.stringify((() => {
     blockedStyles: styles.filter(s => !s.sheet).length,
     missingNonces: styles.filter(s => !s.nonce).length,
     styles: styles.length,
+    referenceOffsets,
   };
 })())
 """
@@ -133,6 +141,7 @@ def main():
             assert report["styles"] > 1, "Angular component styles are missing"
             assert report["blockedStyles"] == 0, "CSP blocked a component stylesheet"
             assert report["missingNonces"] == 0, "Angular did not reuse the Tauri nonce"
+            assert report["referenceOffsets"] and all(abs(offset) <= 1 for offset in report["referenceOffsets"]), "reference labels moved on focus"
             assert 0 < report["listHeight"] < report["viewportHeight"], "history is unbounded"
             assert report["listBottom"] <= report["viewportHeight"], "history exceeds the window"
         except Exception as error:

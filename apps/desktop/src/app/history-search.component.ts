@@ -278,6 +278,7 @@ export class HistorySearchComponent {
   private opener: HTMLElement | null = null;
   readonly comparing = signal(false);
   readonly comparisonError = signal<string | null>(null);
+  private comparisonRequest = 0;
   query = emptyHistoryQuery();
   base = 'HEAD~1';
   target = 'HEAD';
@@ -293,6 +294,9 @@ export class HistorySearchComponent {
   close(): void { this.dialog().nativeElement.close(); }
   closed(): void {
     this.opened.set(false);
+    this.comparisonRequest++;
+    this.comparing.set(false);
+    this.history.cancelComparison();
     void this.history.cancel();
     const target = this.opener?.isConnected && this.opener !== document.body && this.opener !== document.documentElement
       ? this.opener
@@ -312,9 +316,16 @@ export class HistorySearchComponent {
   }
 
   async compare(): Promise<void> {
+    const request = ++this.comparisonRequest;
     this.comparing.set(true); this.comparisonError.set(null);
-    try { await this.history.compare(this.base, this.target, this.mode); this.comparisonReady.emit(); this.close(); }
-    catch (error) { this.comparisonError.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error)); }
-    finally { this.comparing.set(false); }
+    try {
+      const accepted = await this.history.compare(this.base, this.target, this.mode);
+      if (request !== this.comparisonRequest || !accepted) return;
+      this.comparisonReady.emit(); this.close();
+    } catch (error) {
+      if (request === this.comparisonRequest) this.comparisonError.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+    } finally {
+      if (request === this.comparisonRequest) this.comparing.set(false);
+    }
   }
 }

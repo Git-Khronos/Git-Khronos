@@ -47,7 +47,7 @@ const FORMAT_PATCH_ARGS: &[&str] = &[
     "--quiet",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MailPatchRequest {
     pub oids: Vec<String>,
@@ -55,7 +55,7 @@ pub struct MailPatchRequest {
     pub fingerprint: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPatchCommit {
     pub oid: String,
@@ -66,7 +66,7 @@ pub struct MailPatchCommit {
     pub empty: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPatchReview {
     pub request: MailPatchRequest,
@@ -364,7 +364,7 @@ const AM_ARGS: &[&str] = &[
     "--whitespace=nowarn",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MailPatchImportRequest {
     pub file: String,
@@ -375,7 +375,7 @@ pub struct MailPatchImportRequest {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPatchEntry {
     pub author_name: String,
@@ -384,14 +384,14 @@ pub struct MailPatchEntry {
     pub empty: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPatchImportReview {
     pub request: MailPatchImportRequest,
     pub patches: Vec<MailPatchEntry>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum MailPatchAction {
     Continue,
@@ -399,7 +399,7 @@ pub enum MailPatchAction {
     Abort,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPatchProgress {
     pub stopped: bool,

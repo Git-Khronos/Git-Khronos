@@ -3,7 +3,7 @@ use super::*;
 const MAX_REPORT_BYTES: usize = 1024 * 1024;
 const MAX_REGISTRATIONS: usize = 1000;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeRegistration {
     pub path: String,
@@ -16,7 +16,7 @@ pub struct WorktreeRegistration {
     pub prune_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeRegistrationReview {
     pub registrations: Vec<WorktreeRegistration>,

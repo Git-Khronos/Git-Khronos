@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toBeVisible();
 });
 test('keeps the global command launcher discoverable without crowding compact chrome', async ({ page }) => {
   const launcher = page.getByRole('button', { name: 'Command palette', exact: true });

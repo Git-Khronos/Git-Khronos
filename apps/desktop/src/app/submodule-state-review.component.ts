@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import type { SubmoduleDeinitResult, SubmoduleRemovalResult, SubmoduleRecordedCheckoutResult, SubmoduleState, SubmoduleStateReview, SubmoduleTrackingBranchResult, SubmoduleUrlSyncResult } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
@@ -284,7 +284,7 @@ export class SubmoduleStateReviewComponent {
     const branch = mode === 'default' ? null : mode === 'same' ? '.' : this.trackingBranchName().trim();
     if (mode === 'specific' && !branch) return Promise.resolve();
     return this.run(async target => {
-      const result = await invoke<SubmoduleTrackingBranchResult>('set_submodule_tracking_branch', { repoId: target.repositoryId, request: {
+      const result = await ipc.set_submodule_tracking_branch({ repoId: target.repositoryId, request: {
         path: entry.path, expectedTrackingBranch: entry.trackingBranch, trackingBranch: branch } });
       return `Tracking branch for ${result.path} changed from ${this.trackingBranchLabel(result.previousTrackingBranch)} to ${this.trackingBranchLabel(result.trackingBranch)}. Review and commit .gitmodules to share this setting.`;
     });
@@ -306,9 +306,11 @@ export class SubmoduleStateReviewComponent {
   }
 
   remove(entry: SubmoduleState): Promise<void> {
+    if (!entry.indexOid) return Promise.resolve();
+    const expectedIndexOid = entry.indexOid;
     return this.run(async target => {
-      const result = await invoke<SubmoduleRemovalResult>('remove_submodule', {
-        repoId: target.repositoryId, request: { path: entry.path, expectedIndexOid: entry.indexOid } });
+      const result = await ipc.remove_submodule({
+        repoId: target.repositoryId, request: { path: entry.path, expectedIndexOid } });
       const data = result.gitDirectory ? ` Repository data remains at ${result.gitDirectory}.` : '';
       const settings = result.keptSettings.length
         ? ` Local settings were kept; remove them with git config --remove-section submodule.${result.name} once committed.` : '';
@@ -327,9 +329,11 @@ export class SubmoduleStateReviewComponent {
   }
 
   deinit(entry: SubmoduleState): Promise<void> {
+    if (!entry.checkoutOid) return Promise.resolve();
+    const expectedCheckoutOid = entry.checkoutOid;
     return this.run(async target => {
-      const result = await invoke<SubmoduleDeinitResult>('deinit_submodule', {
-        repoId: target.repositoryId, request: { path: entry.path, expectedCheckoutOid: entry.checkoutOid } });
+      const result = await ipc.deinit_submodule({
+        repoId: target.repositoryId, request: { path: entry.path, expectedCheckoutOid } });
       const settings = result.removedSettings.map(setting => `${setting.key}=${setting.value}`).join(', ');
       const absorbed = result.absorbed ? ' Its embedded repository was first moved there by Git.' : '';
       return `Deinitialized ${result.path}. Repository data remains at ${result.gitDirectory}.${absorbed} Removed local settings: ${settings || 'none'}.`;
@@ -348,9 +352,11 @@ export class SubmoduleStateReviewComponent {
   }
 
   checkout(entry: SubmoduleState): Promise<void> {
+    if (!entry.indexOid || !entry.checkoutOid) return Promise.resolve();
+    const expectedIndexOid = entry.indexOid, expectedCheckoutOid = entry.checkoutOid;
     return this.run(async target => {
-      const result = await invoke<SubmoduleRecordedCheckoutResult>('checkout_recorded_submodule_commit', {
-        repoId: target.repositoryId, request: { path: entry.path, expectedIndexOid: entry.indexOid, expectedCheckoutOid: entry.checkoutOid,
+      const result = await ipc.checkout_recorded_submodule_commit({
+        repoId: target.repositoryId, request: { path: entry.path, expectedIndexOid, expectedCheckoutOid,
           recursive: this.recursive() || entry.indexOid === entry.checkoutOid } });
       const branch = result.previousBranch ? ` Branch ${result.previousBranch.replace(/^refs\/heads\//, '')} was left unchanged.` : '';
       const top = result.recoveryReference
@@ -377,9 +383,11 @@ export class SubmoduleStateReviewComponent {
   }
 
   sync(entry: SubmoduleState): Promise<void> {
+    if (!entry.declaredUrl || !entry.registeredUrl) return Promise.resolve();
+    const expectedDeclaredUrl = entry.declaredUrl, expectedRegisteredUrl = entry.registeredUrl;
     return this.run(async target => {
-      const result = await invoke<SubmoduleUrlSyncResult>('sync_submodule_url', { repoId: target.repositoryId, request: {
-        path: entry.path, expectedDeclaredUrl: entry.declaredUrl, expectedRegisteredUrl: entry.registeredUrl } });
+      const result = await ipc.sync_submodule_url({ repoId: target.repositoryId, request: {
+        path: entry.path, expectedDeclaredUrl, expectedRegisteredUrl } });
       const remote = result.remoteName
         ? ` Submodule remote ${result.remoteName} changed from ${result.previousRemoteUrl ?? 'unset'} to ${result.remoteUrl}.`
         : ' The submodule remote was unchanged or not checked out.';
@@ -483,7 +491,7 @@ export class SubmoduleStateReviewComponent {
     this.review.set(null);
     this.error.set('');
     try {
-      const review = await invoke<SubmoduleStateReview>('submodule_state_review', { repoId: target.repositoryId });
+      const review = await ipc.submodule_state_review({ repoId: target.repositoryId });
       if (this.request() === target && target.repositoryId === this.git.activeRepositoryId()) this.review.set(review);
     } catch (failure) {
       if (this.request() === target) this.error.set(this.message(failure));

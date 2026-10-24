@@ -5,7 +5,7 @@ use git_khronos_git_core::{
     ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic, TagDetails, TrackedFileSearch,
     WorkingTreeFileDiff, abort_merge as git_abort_merge, abort_rebase as git_abort_rebase,
     add_remote as git_add_remote, add_submodule as git_add_submodule,
-    apply_stash as git_apply_stash,
+    apply_stash_checked as git_apply_stash,
     apply_working_tree_hunk_with_preview as git_apply_working_tree_hunk,
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     begin_rebase_split as git_begin_rebase_split, checkout_branch as git_checkout_branch,
@@ -22,7 +22,7 @@ use git_khronos_git_core::{
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
     delete_branch as git_delete_branch, detect_git,
-    disable_sparse_checkout as git_disable_sparse_checkout, drop_stash as git_drop_stash,
+    disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
     execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
     fetch_remote_cancellable as git_fetch_remote_cancellable,
@@ -33,7 +33,7 @@ use git_khronos_git_core::{
     initialize_submodule as git_initialize_submodule, integrate_branch as git_integrate_branch,
     mark_bisect as git_mark_bisect, move_head_if_current as git_move_head,
     perform_repository_maintenance as git_perform_repository_maintenance,
-    pop_stash as git_pop_stash, pop_stash_entry as git_pop_stash_entry,
+    pop_stash_checked as git_pop_stash_entry,
     prepare_interactive_rebase_with_options as git_prepare_interactive_rebase,
     prune_lfs_cancellable as git_prune_lfs_cancellable,
     publish_branch_cancellable as git_publish_branch_cancellable,
@@ -56,7 +56,7 @@ use git_khronos_git_core::{
     signing_diagnostic as git_signing_diagnostic, skip_rebase as git_skip_rebase,
     snapshot_with_limits_fast, snapshot_with_limits_startup, stage_all as git_stage_all,
     stage_path as git_stage_path, start_bisect as git_start_bisect,
-    stash_details as git_stash_details, stash_file_diff as git_stash_file_diff,
+    stash_details_at_oid as git_stash_details, stash_file_diff_at_oid as git_stash_file_diff,
     stash_with_message as git_stash, status_with_entry_limit, status_with_entry_limit_fast,
     tag_details as git_tag_details, track_lfs_pattern as git_track_lfs_pattern,
     unstage_all as git_unstage_all, unstage_path as git_unstage_path,
@@ -67,12 +67,15 @@ use git_khronos_git_core::{
 };
 use git_khronos_git_core::{
     DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
-    discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard,
+    discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard_with_preview,
     recover_discarded_changes,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 mod reference_commands;
 mod stash_commands;
+mod terminal_io;
+#[cfg(test)]
+mod terminal_lifecycle_tests;
 use portable_pty::{Child, CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -82,7 +85,8 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 
 mod authentication;
 mod recovery_commands;
@@ -118,7 +122,7 @@ struct DiscardRecovery {
     undone: bool,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 struct RepositoryChanged {
     repository_id: String,
@@ -139,11 +143,30 @@ const STATUS_PAGE_SIZE: usize = 1_000;
 
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    writer: Arc<tauri::async_runtime::Mutex<Box<dyn Write + Send>>>,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    lifecycle: Arc<Mutex<TerminalLifecycle>>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Default)]
+struct TerminalLifecycle {
+    reader_finished: bool,
+    reaped: bool,
+    announced: bool,
+}
+
+impl TerminalLifecycle {
+    fn claim_exit(&mut self) -> bool {
+        if !self.reader_finished || !self.reaped || self.announced {
+            return false;
+        }
+        self.announced = true;
+        true
+    }
+}
+
+#[derive(Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct TerminalInfo {
     id: String,
@@ -151,20 +174,20 @@ struct TerminalInfo {
     cwd: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 struct TerminalOutput {
     session_id: String,
     data: Vec<u8>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 struct TerminalExit {
     session_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct SystemInfo {
     app_version: &'static str,
@@ -173,7 +196,7 @@ struct SystemInfo {
     minimum_git_version: &'static str,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct RepositorySnapshot {
     id: String,
@@ -182,6 +205,7 @@ struct RepositorySnapshot {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn system_info() -> SystemInfo {
     let git = detect_git();
     SystemInfo {
@@ -193,6 +217,7 @@ fn system_info() -> SystemInfo {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn cancel_git_operation(
     operation_id: String,
     state: tauri::State<'_, AppState>,
@@ -206,6 +231,7 @@ fn cancel_git_operation(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn open_repository(path: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = resolve_repository(Path::new(&path))?;
@@ -218,6 +244,7 @@ async fn open_repository(path: String, app: AppHandle) -> Result<RepositorySnaps
 
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn clone_repository(
     remote: String,
     parent_path: String,
@@ -248,6 +275,7 @@ async fn clone_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn initialize_repository(
     parent_path: String,
     folder: String,
@@ -315,12 +343,10 @@ fn install_repository_watcher(
             if matches!(event.kind, EventKind::Access(_)) {
                 return;
             }
-            let _ = event_app.emit(
-                "repository-changed",
-                RepositoryChanged {
-                    repository_id: event_repository_id.clone(),
-                },
-            );
+            let _ = RepositoryChanged {
+                repository_id: event_repository_id.clone(),
+            }
+            .emit(&event_app);
         })
     else {
         return;
@@ -347,6 +373,7 @@ fn install_repository_watcher(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn refresh_repository(
     repo_id: String,
     app: AppHandle,
@@ -360,6 +387,7 @@ async fn refresh_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn refresh_repository_status(
     repo_id: String,
     app: AppHandle,
@@ -374,26 +402,37 @@ async fn refresh_repository_status(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn diagnose_signing(repo_id: String, app: AppHandle) -> Result<SigningDiagnostic, AppError> {
     with_repository_background_read(repo_id, app, git_signing_diagnostic).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_more_commits(repo_id: String, app: AppHandle) -> Result<CommitHistoryPage, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        session
+        // Snapshot refreshes reset the cursor. Keep the page and its retained
+        // snapshot limit in the same repository operation as that reset.
+        let _operation = session.operation.lock().map_err(state_error)?;
+        let page = session
             .history_cursor
             .lock()
             .map_err(state_error)?
-            .next_page(&session.path, HISTORY_PAGE_SIZE)
+            .next_page(&session.path, HISTORY_PAGE_SIZE)?;
+        let limit = session.history_limit.load(Ordering::Relaxed);
+        session
+            .history_limit
+            .store(limit.saturating_add(page.commits.len()), Ordering::Relaxed);
+        Ok(page)
     })
     .await
     .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn search_tracked_files(
     repo_id: String,
     query: String,
@@ -410,6 +449,7 @@ async fn search_tracked_files(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_reflog(repo_id: String, app: AppHandle) -> Result<ReflogPage, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -421,6 +461,7 @@ async fn load_reflog(repo_id: String, app: AppHandle) -> Result<ReflogPage, AppE
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_more_changes(repo_id: String, app: AppHandle) -> Result<RepositoryStatus, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -437,6 +478,7 @@ async fn load_more_changes(repo_id: String, app: AppHandle) -> Result<Repository
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn open_repository_in_file_manager(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -446,6 +488,7 @@ fn open_repository_in_file_manager(
 }
 
 #[tauri::command]
+#[specta::specta]
 fn open_external_url(url: String) -> Result<(), AppError> {
     validate_external_url(&url)?;
 
@@ -483,6 +526,7 @@ fn validate_external_url(url: &str) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, AppError> {
     let fullscreen = window.is_fullscreen().map_err(|_| AppError {
         kind: "windowStateUnavailable".into(),
@@ -498,16 +542,19 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, AppError> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn stage_all(repo_id: String, app: AppHandle) -> Result<RepositoryStatus, AppError> {
     mutate_working_tree_background(repo_id, app, git_stage_all).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn unstage_all(repo_id: String, app: AppHandle) -> Result<RepositoryStatus, AppError> {
     mutate_working_tree_background(repo_id, app, git_unstage_all).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn stage_path(
     repo_id: String,
     path: String,
@@ -520,6 +567,7 @@ async fn stage_path(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn unstage_path(
     repo_id: String,
     path: String,
@@ -532,6 +580,7 @@ async fn unstage_path(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn discard_path(
     repo_id: String,
     path: String,
@@ -561,7 +610,7 @@ async fn discard_path(
     .map_err(background_task_error)?
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct PreparedDiscard {
     token: String,
@@ -570,6 +619,7 @@ struct PreparedDiscard {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn preview_discard(
     repo_id: String,
     paths: Option<Vec<String>>,
@@ -592,6 +642,7 @@ async fn preview_discard(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn discard_changes(
     repo_id: String,
     token: String,
@@ -624,7 +675,7 @@ async fn discard_changes(
     .map_err(background_task_error)?
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct DiscardResult {
     id: String,
@@ -632,6 +683,7 @@ struct DiscardResult {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_discard_recoveries(
     repo_id: String,
     app: AppHandle,
@@ -647,6 +699,7 @@ async fn load_discard_recoveries(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn apply_saved_discard(
     repo_id: String,
     id: String,
@@ -660,6 +713,7 @@ async fn apply_saved_discard(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn forget_saved_discard(repo_id: String, id: String, app: AppHandle) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -672,6 +726,7 @@ async fn forget_saved_discard(repo_id: String, id: String, app: AppHandle) -> Re
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn ignore_path(
     repo_id: String,
     path: String,
@@ -685,6 +740,7 @@ fn ignore_path(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn commit_changes(
     repo_id: String,
     message: String,
@@ -707,6 +763,7 @@ fn commit_changes(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn update_head_message(
     repo_id: String,
     expected_oid: String,
@@ -720,6 +777,7 @@ fn update_head_message(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn checkout_branch(
     repo_id: String,
     name: String,
@@ -729,6 +787,7 @@ fn checkout_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn checkout_remote_branch(
     repo_id: String,
     name: String,
@@ -740,6 +799,7 @@ fn checkout_remote_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn create_branch(
     repo_id: String,
     name: String,
@@ -749,6 +809,7 @@ fn create_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn create_branch_at(
     repo_id: String,
     name: String,
@@ -761,6 +822,7 @@ fn create_branch_at(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn create_worktree(
     repo_id: String,
     parent_path: String,
@@ -775,6 +837,7 @@ fn create_worktree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn create_worktree_for_branch(
     repo_id: String,
     parent_path: String,
@@ -788,6 +851,7 @@ fn create_worktree_for_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn set_worktree_locked(
     repo_id: String,
     path: String,
@@ -800,6 +864,7 @@ fn set_worktree_locked(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn remove_worktree(
     repo_id: String,
     path: String,
@@ -827,6 +892,7 @@ fn remove_worktree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn move_worktree(
     repo_id: String,
     request: git_khronos_git_core::WorktreeMove,
@@ -861,6 +927,7 @@ async fn move_worktree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn repair_worktree(
     repo_id: String,
     request: git_khronos_git_core::WorktreeRepair,
@@ -896,6 +963,7 @@ async fn repair_worktree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn worktree_registration_review(
     repo_id: String,
     app: AppHandle,
@@ -909,6 +977,7 @@ async fn worktree_registration_review(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn submodule_state_review(
     repo_id: String,
     app: AppHandle,
@@ -917,6 +986,7 @@ async fn submodule_state_review(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn sync_submodule_url(
     repo_id: String,
     request: git_khronos_git_core::SubmoduleUrlSync,
@@ -929,6 +999,7 @@ async fn sync_submodule_url(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn set_submodule_tracking_branch(
     repo_id: String,
     request: git_khronos_git_core::SubmoduleTrackingBranchChange,
@@ -941,6 +1012,7 @@ async fn set_submodule_tracking_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn checkout_recorded_submodule_commit(
     repo_id: String,
     request: git_khronos_git_core::SubmoduleRecordedCheckout,
@@ -953,6 +1025,7 @@ async fn checkout_recorded_submodule_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn deinit_submodule(
     repo_id: String,
     request: git_khronos_git_core::SubmoduleDeinit,
@@ -965,6 +1038,7 @@ async fn deinit_submodule(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn remove_submodule(
     repo_id: String,
     request: git_khronos_git_core::SubmoduleRemoval,
@@ -977,6 +1051,7 @@ async fn remove_submodule(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn prune_worktree_registration(
     repo_id: String,
     request: git_khronos_git_core::WorktreeRegistrationPrune,
@@ -989,6 +1064,7 @@ async fn prune_worktree_registration(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_repository_integrity(
     repo_id: String,
     operation_id: String,
@@ -1002,6 +1078,7 @@ async fn inspect_repository_integrity(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn add_submodule(
     repo_id: String,
     url: String,
@@ -1016,6 +1093,7 @@ async fn add_submodule(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn initialize_submodule(
     repo_id: String,
     path: String,
@@ -1029,6 +1107,7 @@ async fn initialize_submodule(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn initialize_all_submodules(
     repo_id: String,
     operation_id: String,
@@ -1046,6 +1125,7 @@ async fn initialize_all_submodules(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn update_submodule(
     repo_id: String,
     path: String,
@@ -1064,6 +1144,7 @@ async fn update_submodule(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn update_all_submodules(
     repo_id: String,
     operation_id: String,
@@ -1081,6 +1162,7 @@ async fn update_all_submodules(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn checkout_commit(
     repo_id: String,
     oid: String,
@@ -1090,6 +1172,7 @@ fn checkout_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn rename_branch(
     repo_id: String,
     old_name: String,
@@ -1102,6 +1185,7 @@ fn rename_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn set_branch_upstream(
     repo_id: String,
     branch: String,
@@ -1114,6 +1198,7 @@ fn set_branch_upstream(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn delete_branch(
     repo_id: String,
     name: String,
@@ -1126,6 +1211,7 @@ fn delete_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn integrate_branch(
     repo_id: String,
     name: String,
@@ -1138,6 +1224,7 @@ fn integrate_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn continue_merge(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -1146,6 +1233,7 @@ fn continue_merge(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn abort_merge(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -1154,6 +1242,7 @@ fn abort_merge(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn prepare_interactive_rebase(
     repo_id: String,
     source: String,
@@ -1174,6 +1263,7 @@ fn prepare_interactive_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 #[allow(clippy::too_many_arguments)]
 fn execute_interactive_rebase(
     repo_id: String,
@@ -1199,6 +1289,7 @@ fn execute_interactive_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn begin_rebase_split(
     repo_id: String,
     expected_head: String,
@@ -1210,6 +1301,7 @@ fn begin_rebase_split(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn prepare_merge_rebase(
     repo_id: String,
     source: String,
@@ -1222,6 +1314,7 @@ fn prepare_merge_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn execute_merge_rebase(
     repo_id: String,
     request: git_khronos_git_core::MergeRebaseRequest,
@@ -1233,6 +1326,7 @@ fn execute_merge_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn export_diff_patch(
     repo_id: String,
     staged: bool,
@@ -1246,6 +1340,7 @@ fn export_diff_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn review_diff_patch(
     repo_id: String,
     file: String,
@@ -1258,6 +1353,7 @@ fn review_diff_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn import_diff_patch(
     repo_id: String,
     request: git_khronos_git_core::PatchRequest,
@@ -1269,6 +1365,7 @@ fn import_diff_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn export_git_bundle(
     repo_id: String,
     branch: String,
@@ -1287,6 +1384,7 @@ fn export_git_bundle(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn review_git_bundle(
     repo_id: String,
     file: String,
@@ -1298,6 +1396,7 @@ fn review_git_bundle(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn import_git_bundle(
     repo_id: String,
     request: git_khronos_git_core::BundleRequest,
@@ -1310,6 +1409,7 @@ fn import_git_bundle(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn review_mail_patch_export(
     repo_id: String,
     oids: Vec<String>,
@@ -1321,6 +1421,7 @@ fn review_mail_patch_export(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn export_mail_patch(
     repo_id: String,
     request: git_khronos_git_core::MailPatchRequest,
@@ -1333,6 +1434,7 @@ fn export_mail_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn review_mail_patch_import(
     repo_id: String,
     file: String,
@@ -1344,6 +1446,7 @@ fn review_mail_patch_import(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn import_mail_patch(
     repo_id: String,
     request: git_khronos_git_core::MailPatchImportRequest,
@@ -1355,6 +1458,7 @@ fn import_mail_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn control_mail_patch(
     repo_id: String,
     action: git_khronos_git_core::MailPatchAction,
@@ -1366,6 +1470,7 @@ fn control_mail_patch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn continue_rebase(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -1374,6 +1479,7 @@ fn continue_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn skip_rebase(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -1382,6 +1488,7 @@ fn skip_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn abort_rebase(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -1390,6 +1497,7 @@ fn abort_rebase(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn fetch_repository(
     repo_id: String,
     remote: Option<String>,
@@ -1409,6 +1517,7 @@ async fn fetch_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn fetch_branches(
     repo_id: String,
     options: FetchOptions,
@@ -1425,6 +1534,7 @@ async fn fetch_branches(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn shallow_history_state(
     repo_id: String,
     app: AppHandle,
@@ -1433,11 +1543,13 @@ async fn shallow_history_state(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn perform_repository_maintenance(repo_id: String, app: AppHandle) -> Result<(), AppError> {
     with_repository_background(repo_id, app, git_perform_repository_maintenance).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn sync_repository(
     repo_id: String,
     app: AppHandle,
@@ -1464,6 +1576,7 @@ async fn sync_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_pull(
     repo_id: String,
     operation_id: String,
@@ -1476,6 +1589,7 @@ async fn lfs_pull(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_prune(
     repo_id: String,
     operation_id: String,
@@ -1488,6 +1602,7 @@ async fn lfs_prune(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_prune_preview(
     repo_id: String,
     app: AppHandle,
@@ -1502,6 +1617,7 @@ async fn lfs_prune_preview(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_prune_objects(
     repo_id: String,
     preview: git_khronos_git_core::LfsPrunePreview,
@@ -1520,11 +1636,13 @@ async fn lfs_prune_objects(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_initialize(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_background(repo_id, app, git_initialize_lfs).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_track_pattern(
     repo_id: String,
     pattern: String,
@@ -1538,6 +1656,7 @@ async fn lfs_track_pattern(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_tracking_rules(
     repo_id: String,
     app: AppHandle,
@@ -1546,6 +1665,7 @@ async fn lfs_tracking_rules(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_file_attributes(
     repo_id: String,
     file: String,
@@ -1558,6 +1678,7 @@ async fn lfs_file_attributes(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_objects(
     repo_id: String,
     app: AppHandle,
@@ -1566,6 +1687,7 @@ async fn lfs_objects(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_fetch_preview(
     repo_id: String,
     file: String,
@@ -1581,6 +1703,7 @@ async fn lfs_fetch_preview(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_fetch_object(
     repo_id: String,
     preview: git_khronos_git_core::LfsFetchPreview,
@@ -1599,6 +1722,7 @@ async fn lfs_fetch_object(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_checkout_preview(
     repo_id: String,
     file: String,
@@ -1613,6 +1737,7 @@ async fn lfs_checkout_preview(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_checkout_object(
     repo_id: String,
     preview: git_khronos_git_core::LfsCheckoutPreview,
@@ -1631,6 +1756,7 @@ async fn lfs_checkout_object(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_locks(
     repo_id: String,
     app: AppHandle,
@@ -1639,6 +1765,7 @@ async fn lfs_locks(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_lock_file(
     repo_id: String,
     file: String,
@@ -1651,6 +1778,7 @@ async fn lfs_lock_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_unlock_file(
     repo_id: String,
     lock: git_khronos_git_core::LfsLock,
@@ -1664,6 +1792,7 @@ async fn lfs_unlock_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn lfs_untrack_pattern(
     repo_id: String,
     pattern: String,
@@ -1677,6 +1806,7 @@ async fn lfs_untrack_pattern(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn sparse_checkout_set(
     repo_id: String,
     paths: Vec<String>,
@@ -1690,6 +1820,7 @@ async fn sparse_checkout_set(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn sparse_checkout_reapply(
     repo_id: String,
     app: AppHandle,
@@ -1698,6 +1829,7 @@ async fn sparse_checkout_reapply(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn sparse_checkout_disable(
     repo_id: String,
     app: AppHandle,
@@ -1706,6 +1838,7 @@ async fn sparse_checkout_disable(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn pull_repository(
     repo_id: String,
     strategy: Option<String>,
@@ -1732,6 +1865,7 @@ async fn pull_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn push_repository(
     repo_id: String,
     remote: Option<String>,
@@ -1759,6 +1893,7 @@ async fn push_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn force_push_repository(
     repo_id: String,
     remote: Option<String>,
@@ -1786,6 +1921,7 @@ async fn force_push_repository(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn publish_branch(
     repo_id: String,
     remote: String,
@@ -1805,6 +1941,7 @@ async fn publish_branch(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn add_remote(
     repo_id: String,
     name: String,
@@ -1815,6 +1952,7 @@ fn add_remote(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn set_remote_url(
     repo_id: String,
     name: String,
@@ -1827,6 +1965,7 @@ fn set_remote_url(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn set_repository_identity(
     repo_id: String,
     name: String,
@@ -1839,6 +1978,7 @@ fn set_repository_identity(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn remove_remote(
     repo_id: String,
     name: String,
@@ -1848,6 +1988,7 @@ fn remove_remote(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn stash_changes(
     repo_id: String,
     message: Option<String>,
@@ -1857,43 +1998,52 @@ fn stash_changes(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn pop_stash(
     repo_id: String,
+    expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_pop_stash)
+    mutate_and_refresh(&repo_id, &state, |path| git_pop_stash_entry(path, "stash@{0}", &expected_oid))
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn apply_stash(
     repo_id: String,
     reference: String,
+    expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_apply_stash(path, &reference))
+    mutate_and_refresh(&repo_id, &state, |path| git_apply_stash(path, &reference, &expected_oid))
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn pop_stash_entry(
     repo_id: String,
     reference: String,
+    expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_pop_stash_entry(path, &reference)
+        git_pop_stash_entry(path, &reference, &expected_oid)
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn drop_stash(
     repo_id: String,
     reference: String,
+    expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_drop_stash(path, &reference))
+    mutate_and_refresh(&repo_id, &state, |path| git_drop_stash(path, &reference, &expected_oid))
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn rename_stash(
     repo_id: String,
     reference: String,
@@ -1907,6 +2057,7 @@ fn rename_stash(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn create_tag(
     repo_id: String,
     name: String,
@@ -1920,6 +2071,7 @@ fn create_tag(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn cherry_pick_commits(
     repo_id: String,
     oids: Vec<String>,
@@ -1933,6 +2085,7 @@ fn cherry_pick_commits(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn revert_commit(
     repo_id: String,
     oid: String,
@@ -1957,6 +2110,7 @@ fn revert_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn reset_to_commit(
     repo_id: String,
     oid: String,
@@ -1969,6 +2123,7 @@ fn reset_to_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn control_history_operation(
     repo_id: String,
     operation: String,
@@ -1981,6 +2136,7 @@ fn control_history_operation(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn start_bisect(
     repo_id: String,
     bad_oid: String,
@@ -1993,6 +2149,7 @@ fn start_bisect(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn mark_bisect(
     repo_id: String,
     verdict: String,
@@ -2002,6 +2159,7 @@ fn mark_bisect(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn reset_bisect(
     repo_id: String,
     state: tauri::State<'_, AppState>,
@@ -2010,6 +2168,7 @@ fn reset_bisect(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn move_head(
     repo_id: String,
     expected_oid: String,
@@ -2022,6 +2181,7 @@ fn move_head(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_commit(
     repo_id: String,
     oid: String,
@@ -2031,6 +2191,7 @@ async fn inspect_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_tag(
     repo_id: String,
     name: String,
@@ -2040,6 +2201,7 @@ async fn inspect_tag(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_commit_file(
     repo_id: String,
     oid: String,
@@ -2054,28 +2216,31 @@ async fn inspect_commit_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn inspect_stash(
     repo_id: String,
-    reference: String,
+    oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<CommitDetails, AppError> {
-    with_repository(&repo_id, &state, |path| git_stash_details(path, &reference))
+    with_repository(&repo_id, &state, |path| git_stash_details(path, &oid))
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn inspect_stash_file(
     repo_id: String,
-    reference: String,
+    oid: String,
     path: String,
     previous_path: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<CommitFileDiff, AppError> {
     with_repository(&repo_id, &state, |repository| {
-        git_stash_file_diff(repository, &reference, &path, previous_path.as_deref())
+        git_stash_file_diff(repository, &oid, &path, previous_path.as_deref())
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn compare_commits(
     repo_id: String,
     base_oid: String,
@@ -2088,6 +2253,7 @@ fn compare_commits(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn compare_commit_file(
     repo_id: String,
     base_oid: String,
@@ -2108,6 +2274,7 @@ fn compare_commit_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn compare_commit_with_working_tree(
     repo_id: String,
     base_oid: String,
@@ -2119,6 +2286,7 @@ fn compare_commit_with_working_tree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn compare_commit_file_with_working_tree(
     repo_id: String,
     base_oid: String,
@@ -2137,6 +2305,7 @@ fn compare_commit_file_with_working_tree(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn inspect_working_tree_file(
     repo_id: String,
     path: String,
@@ -2149,18 +2318,21 @@ fn inspect_working_tree_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn inspect_file_history(
+#[specta::specta]
+async fn inspect_file_history(
     repo_id: String,
     revision: String,
     path: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<Vec<FileHistoryEntry>, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background_read(repo_id, app, move |repository| {
         git_file_history(repository, &revision, &path)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn search_repository_history(
     repo_id: String,
     query: git_khronos_git_core::history_search::HistoryQuery,
@@ -2177,6 +2349,7 @@ async fn search_repository_history(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_file_history_page(
     repo_id: String,
     revision: String,
@@ -2196,6 +2369,7 @@ async fn inspect_file_history_page(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_blame_navigation(
     repo_id: String,
     oid: String,
@@ -2214,6 +2388,7 @@ async fn inspect_blame_navigation(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_history_commit(
     repo_id: String,
     oid: String,
@@ -2230,6 +2405,7 @@ async fn inspect_history_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn compare_history_revisions(
     repo_id: String,
     base: String,
@@ -2252,18 +2428,30 @@ async fn compare_history_revisions(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn inspect_file_blame(
+#[specta::specta]
+async fn inspect_file_blame(
     repo_id: String,
     revision: String,
     path: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<Vec<FileBlameLine>, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background_read(repo_id, app, move |repository| {
         git_file_blame(repository, &revision, &path)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn inspect_file_blame_page(repo_id: String, revision: String, path: String, first_line: usize, app: AppHandle)
+    -> Result<git_khronos_git_core::FileBlamePage, AppError> {
+    with_repository_background_read(repo_id, app, move |repository| {
+        git_khronos_git_core::file_blame_page(repository, &revision, &path, first_line)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn restore_files_from_commit(
     repo_id: String,
     oid: String,
@@ -2276,6 +2464,7 @@ fn restore_files_from_commit(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn inspect_conflict(
     repo_id: String,
     path: String,
@@ -2287,6 +2476,7 @@ fn inspect_conflict(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn resolve_conflict(
     repo_id: String,
     path: String,
@@ -2307,6 +2497,7 @@ fn resolve_conflict(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn apply_working_tree_hunk(
     repo_id: String,
     path: String,
@@ -2329,7 +2520,15 @@ async fn apply_working_tree_hunk(
             return mutate_with_discard_recovery(
                 &repo_id,
                 &state,
-                |repository| prepare_partial_discard(repository, &path, hunk_index, None),
+                |repository| {
+                    prepare_partial_discard_with_preview(
+                        repository,
+                        &path,
+                        hunk_index,
+                        None,
+                        expected_patch.as_deref(),
+                    )
+                },
                 working_tree_status,
             );
         }
@@ -2349,6 +2548,7 @@ async fn apply_working_tree_hunk(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 #[allow(clippy::too_many_arguments)]
 async fn apply_working_tree_lines(
     repo_id: String,
@@ -2385,7 +2585,13 @@ async fn apply_working_tree_lines(
                 &repo_id,
                 &state,
                 |repository| {
-                    prepare_partial_discard(repository, &path, hunk_index, Some(&line_indices))
+                    prepare_partial_discard_with_preview(
+                        repository,
+                        &path,
+                        hunk_index,
+                        Some(&line_indices),
+                        expected_patch.as_deref(),
+                    )
                 },
                 working_tree_status,
             );
@@ -2397,6 +2603,7 @@ async fn apply_working_tree_lines(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn undo_discard(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -2407,6 +2614,7 @@ async fn undo_discard(repo_id: String, app: AppHandle) -> Result<RepositorySnaps
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn redo_discard(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -2725,7 +2933,37 @@ fn terminal_error(action: &str, error: impl std::fmt::Display) -> AppError {
     }
 }
 
+fn configure_terminal_command(command: &mut CommandBuilder, repository: &Path) {
+    command.cwd(repository);
+    for variable in git_khronos_git_core::GIT_CONTEXT_ENVIRONMENT_VARIABLES {
+        command.env_remove(variable);
+    }
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+}
+
+fn stop_terminal_child(child: &mut (dyn Child + Send + Sync)) -> Result<(), AppError> {
+    if child
+        .try_wait()
+        .map_err(|error| terminal_error("check the terminal process", error))?
+        .is_some()
+    {
+        return Ok(());
+    }
+    if let Err(error) = child.kill() {
+        // The shell may exit between the status check and the signal.
+        if child.try_wait().ok().flatten().is_none() {
+            return Err(terminal_error("stop the terminal", error));
+        }
+    }
+    child
+        .wait()
+        .map_err(|error| terminal_error("reap the terminal process", error))?;
+    Ok(())
+}
+
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn open_terminal(
     repo_id: String,
     rows: u16,
@@ -2758,60 +2996,65 @@ fn open_terminal(
         })
         .map_err(|error| terminal_error("open a pseudo-terminal", error))?;
     let mut command = CommandBuilder::new(&shell);
-    command.cwd(&repository.path);
-    command.env("TERM", "xterm-256color");
-    command.env("COLORTERM", "truecolor");
+    configure_terminal_command(&mut command, &repository.path);
+    let terminal_io::Endpoints { mut reader, writer, cancelled } = terminal_io::connect(pair.master.as_ref())
+        .map_err(|error| terminal_error("connect terminal I/O", error))?;
+    // Finish fallible I/O setup and acquire registry ownership before spawning.
+    // Otherwise an early return can leave an unregistered shell running.
+    let mut terminals = state.terminals.lock().map_err(state_error)?;
     let child = pair
         .slave
         .spawn_command(command)
         .map_err(|error| terminal_error("start the default shell", error))?;
     drop(pair.slave);
-    let mut reader = pair
-        .master
-        .try_clone_reader()
-        .map_err(|error| terminal_error("connect terminal output", error))?;
-    let writer = pair
-        .master
-        .take_writer()
-        .map_err(|error| terminal_error("connect terminal input", error))?;
     let id = format!(
         "terminal-{}",
         state.next_terminal_id.fetch_add(1, Ordering::Relaxed) + 1
     );
-    state.terminals.lock().map_err(state_error)?.insert(
+    let lifecycle = Arc::new(Mutex::new(TerminalLifecycle::default()));
+    terminals.insert(
         id.clone(),
         TerminalSession {
             master: pair.master,
-            writer,
-            child,
+            writer: Arc::new(tauri::async_runtime::Mutex::new(writer)),
+            cancelled,
+            child: Arc::new(Mutex::new(child)),
+            lifecycle: lifecycle.clone(),
         },
     );
+    drop(terminals);
     let output_id = id.clone();
     std::thread::spawn(move || {
         let mut buffer = vec![0_u8; 8192];
         loop {
             match reader.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
                 Ok(length) => {
-                    let _ = app.emit(
-                        "terminal-output",
-                        TerminalOutput {
-                            session_id: output_id.clone(),
-                            data: buffer[..length].to_vec(),
-                        },
-                    );
+                    let _ = TerminalOutput {
+                        session_id: output_id.clone(),
+                        data: buffer[..length].to_vec(),
+                    }
+                    .emit(&app);
                 }
             }
         }
-        let _ = app.emit(
-            "terminal-exit",
-            TerminalExit {
+        if let Err(error) = close_terminal_session(&app.state::<AppState>(), &output_id) {
+            // EOF is not proof that the process was reaped. Retain the
+            // handle for an explicit close retry and do not announce exit.
+            let _ = TerminalOutput {
                 session_id: output_id.clone(),
-            },
-        );
-        if let Ok(mut terminals) = app.state::<AppState>().terminals.lock() {
-            terminals.remove(&output_id);
+                data: format!(
+                    "\r\nTerminal cleanup failed: {} Close this tab to retry.\r\n",
+                    error.message,
+                ).into_bytes(),
+            }.emit(&app);
         }
+        if let Ok(mut lifecycle) = lifecycle.lock() {
+            lifecycle.reader_finished = true;
+        }
+        announce_terminal_exit(&app, &output_id, &lifecycle);
     });
     Ok(TerminalInfo {
         id,
@@ -2821,25 +3064,46 @@ fn open_terminal(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn write_terminal(
+#[specta::specta]
+async fn write_terminal(
     session_id: String,
     data: Vec<u8>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let mut terminals = state.terminals.lock().map_err(state_error)?;
-    let terminal = terminals.get_mut(&session_id).ok_or_else(|| AppError {
-        kind: "unknownTerminal".into(),
-        message: "That terminal session has ended.".into(),
-        hint: Some("Open a new terminal tab.".into()),
-    })?;
-    terminal
-        .writer
-        .write_all(&data)
-        .and_then(|_| terminal.writer.flush())
-        .map_err(|error| terminal_error("write to the terminal", error))
+    write_terminal_data(&state, &session_id, data).await
+}
+
+async fn write_terminal_data(
+    state: &AppState,
+    session_id: &str,
+    data: Vec<u8>,
+) -> Result<(), AppError> {
+    let writer = state
+        .terminals
+        .lock()
+        .map_err(state_error)?
+        .get(session_id)
+        .map(|terminal| terminal.writer.clone())
+        .ok_or_else(|| AppError {
+            kind: "unknownTerminal".into(),
+            message: "That terminal session has ended.".into(),
+            hint: Some("Open a new terminal tab.".into()),
+        })?;
+    // Only writes to the same PTY are serialized. Waiting for a busy writer is
+    // asynchronous and never holds the registry or a blocking-pool thread.
+    let mut writer = writer.lock_owned().await;
+    tauri::async_runtime::spawn_blocking(move || {
+        writer
+            .write_all(&data)
+            .and_then(|_| writer.flush())
+            .map_err(|error| terminal_error("write to the terminal", error))
+    })
+    .await
+    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn resize_terminal(
     session_id: String,
     rows: u16,
@@ -2864,19 +3128,61 @@ fn resize_terminal(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn close_terminal(session_id: String, state: tauri::State<'_, AppState>) -> Result<(), AppError> {
-    let Some(mut terminal) = state
+#[specta::specta]
+async fn close_terminal(session_id: String, app: tauri::AppHandle) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(lifecycle) = close_terminal_session(&app.state::<AppState>(), &session_id)? {
+            announce_terminal_exit(&app, &session_id, &lifecycle);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+fn announce_terminal_exit(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    lifecycle: &Mutex<TerminalLifecycle>,
+) {
+    let announce = lifecycle.lock().is_ok_and(|mut lifecycle| lifecycle.claim_exit());
+    if announce {
+        let _ = TerminalExit {
+            session_id: session_id.to_owned(),
+        }.emit(app);
+    }
+}
+
+fn close_terminal_session(
+    state: &AppState,
+    session_id: &str,
+) -> Result<Option<Arc<Mutex<TerminalLifecycle>>>, AppError> {
+    let Some((child, cancelled, lifecycle)) = state
         .terminals
         .lock()
         .map_err(state_error)?
-        .remove(&session_id)
+        .get(session_id)
+        .map(|terminal| (
+            terminal.child.clone(),
+            terminal.cancelled.clone(),
+            terminal.lifecycle.clone(),
+        ))
     else {
-        return Ok(());
+        return Ok(None);
     };
-    terminal
-        .child
-        .kill()
-        .map_err(|error| terminal_error("stop the terminal", error))
+    cancelled.store(true, Ordering::Release);
+    // Never hold the global registry while signalling or waiting. EOF cleanup
+    // and explicit close may race; only this session's process is serialized.
+    stop_terminal_child(child.lock().map_err(state_error)?.as_mut())?;
+    lifecycle.lock().map_err(state_error)?.reaped = true;
+    let mut terminals = state.terminals.lock().map_err(state_error)?;
+    let owns_entry = terminals
+        .get(session_id)
+        .is_some_and(|terminal| Arc::ptr_eq(&terminal.child, &child));
+    if owns_entry {
+        terminals.remove(session_id);
+    }
+    Ok(Some(lifecycle))
 }
 
 #[cfg(unix)]
@@ -2915,11 +3221,31 @@ fn default_shell() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let bindings = ipc_registry();
     tauri::Builder::default()
         .manage(authentication::AuthenticationState::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(bindings.invoke_handler())
+        .setup(move |app| {
+            bindings.mount_events(app);
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("Git Khronos could not start");
+}
+
+pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::new()
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        .events(tauri_specta::collect_events![
+            RepositoryChanged,
+            TerminalOutput,
+            TerminalExit,
+            authentication::GitAuthenticationPrompt,
+            authentication::GitAuthenticationDismissed
+        ])
+        .commands(tauri_specta::collect_commands![
             authentication::answer_authentication,
             authentication::pending_authentication,
             system_info,
@@ -3078,6 +3404,7 @@ pub fn run() {
             inspect_history_commit,
             compare_history_revisions,
             inspect_file_blame,
+            inspect_file_blame_page,
             restore_files_from_commit,
             inspect_conflict,
             resolve_conflict,
@@ -3090,8 +3417,6 @@ pub fn run() {
             resize_terminal,
             close_terminal,
         ])
-        .run(tauri::generate_context!())
-        .expect("Git Khronos could not start");
 }
 
 #[cfg(all(test, unix))]
@@ -3140,7 +3465,7 @@ mod tests {
             .expect("open test pseudo-terminal");
         let mut command = CommandBuilder::new("/bin/sh");
         command.args(["-c", "printf '%s\\n' \"$PWD\""]);
-        command.cwd(expected);
+        super::configure_terminal_command(&mut command, expected);
         let mut child = pair
             .slave
             .spawn_command(command)
@@ -3160,6 +3485,131 @@ mod tests {
             String::from_utf8_lossy(&output).contains(&expected.to_string_lossy().to_string()),
             "PTY output did not contain its requested cwd: {}",
             String::from_utf8_lossy(&output),
+        );
+    }
+
+    #[test]
+    fn terminal_context_clears_git_overrides_but_preserves_user_configuration() {
+        let mut command = CommandBuilder::new("/bin/sh");
+        for variable in git_khronos_git_core::GIT_CONTEXT_ENVIRONMENT_VARIABLES {
+            command.env(variable, "inherited override");
+        }
+        for (variable, value) in [
+            ("PATH", "/owned/test/bin"),
+            ("SSH_AUTH_SOCK", "/owned/test/agent"),
+            ("GIT_CONFIG_GLOBAL", "/owned/test/gitconfig"),
+        ] {
+            command.env(variable, value);
+        }
+        super::configure_terminal_command(&mut command, Path::new(env!("CARGO_MANIFEST_DIR")));
+        for variable in git_khronos_git_core::GIT_CONTEXT_ENVIRONMENT_VARIABLES {
+            assert!(
+                command.get_env(variable).is_none(),
+                "Inherited {variable} survived terminal startup"
+            );
+        }
+        for (variable, value) in [
+            ("PATH", "/owned/test/bin"),
+            ("SSH_AUTH_SOCK", "/owned/test/agent"),
+            ("GIT_CONFIG_GLOBAL", "/owned/test/gitconfig"),
+            ("TERM", "xterm-256color"),
+            ("COLORTERM", "truecolor"),
+        ] {
+            assert_eq!(command.get_env(variable), Some(std::ffi::OsStr::new(value)));
+        }
+    }
+
+    #[test]
+    fn stopping_a_terminal_reaps_the_owned_child_and_is_idempotent() {
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 30"])
+            .spawn()
+            .expect("spawn owned terminal process");
+        let pid = child.id();
+        super::stop_terminal_child(&mut child).expect("terminate and reap owned child");
+        assert!(child.try_wait().unwrap().is_some());
+        super::stop_terminal_child(&mut child).expect("already exited child is harmless");
+        #[cfg(target_os = "linux")]
+        assert!(
+            !Path::new(&format!("/proc/{pid}/stat")).exists(),
+            "Terminal process was not reaped"
+        );
+        #[cfg(not(target_os = "linux"))]
+        let _ = pid;
+    }
+
+    #[test]
+    fn blocked_terminal_input_does_not_hold_the_shared_registry() {
+        use std::io::Write;
+        use std::sync::{Arc, Condvar, Mutex};
+        struct BlockedWriter {
+            entered: mpsc::Sender<()>,
+            release: Arc<(Mutex<bool>, Condvar)>,
+        }
+        impl Write for BlockedWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.entered.send(()).unwrap();
+                let (lock, ready) = &*self.release;
+                let mut released = lock.lock().unwrap();
+                while !*released {
+                    released = ready.wait(released).unwrap();
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let state = Arc::new(super::AppState::default());
+        let pair = NativePtySystem::default()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "exec sleep 30"]);
+        let child = pair.slave.spawn_command(command).unwrap();
+        drop(pair.slave);
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let (entered, observed) = mpsc::channel();
+        state.terminals.lock().unwrap().insert(
+            "blocked".into(),
+            super::TerminalSession {
+                master: pair.master,
+                child: Arc::new(Mutex::new(child)),
+                lifecycle: Arc::default(),
+                cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                writer: Arc::new(tauri::async_runtime::Mutex::new(Box::new(BlockedWriter {
+                    entered,
+                    release: release.clone(),
+                }))),
+            },
+        );
+        let writer_state = state.clone();
+        let worker = std::thread::spawn(move || {
+            tauri::async_runtime::block_on(super::write_terminal_data(
+                &writer_state, "blocked", b"paste".to_vec(),
+            ))
+        });
+        let started = observed.recv_timeout(Duration::from_secs(5)).is_ok();
+        let controls_available = state.terminals.try_lock().is_ok();
+        // Release and reap the owned fixture before asserting, including on red.
+        *release.0.lock().unwrap() = true;
+        release.1.notify_all();
+        let written = worker.join().unwrap();
+        let terminal = state.terminals.lock().unwrap().remove("blocked").unwrap();
+        super::stop_terminal_child(terminal.child.lock().unwrap().as_mut()).unwrap();
+        assert!(
+            started,
+            "Owned writer did not reach its controlled blocking point"
+        );
+        written.unwrap();
+        assert!(
+            controls_available,
+            "Blocked input held the shared terminal registry"
         );
     }
 

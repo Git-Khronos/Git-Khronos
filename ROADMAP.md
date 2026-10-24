@@ -30,11 +30,21 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Repository-scoped sparse checkout with preferences and toolbar actions
   (modified/unmerged paths and populated submodules left outside a selection,
   and changes Stage all cannot stage there, are named; nothing is deleted)
-- [ ] Generated Rust-to-TypeScript IPC bindings
-  (a source-parsed contract test checks every command name, registration,
-  argument name and cancellation identifier; generated payload types remain)
+- [x] Generated Rust-to-TypeScript IPC bindings
+  (one Rust registry drives runtime registration and checked-in command,
+  payload and event bindings; freshness, serialization, safe-integer and
+  compile-time misuse checks guard the boundary)
 
 ## Linux daily-driver beta — in progress
+
+- [x] Automated packaged Linux acceptance
+  (the production Debian package is extracted and driven through WebKitGTK;
+  smoke runs on pull requests, full-toolkit acceptance runs on `dev`, and
+  manual performance qualification records package hashes and retained
+  evidence—see [Linux packaged acceptance](docs/linux-acceptance.md))
+- [ ] System-installed Linux desktop acceptance
+  (headless extracted-package proof does not replace desktop-entry, host
+  integration, hardware-key, or real hosted-service validation)
 
 - [x] File, hunk, and line staging with safe discard recovery
   (new-file line selection and native displayed-diff guards are qualified with

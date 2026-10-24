@@ -40,6 +40,9 @@ test('stage all discloses changed paths outside the sparse selection and shows G
     hint: 'Add their directories to the sparse checkout selection and stage again, or restore those files.' };
   await page.evaluate((skipped) => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    // Exercise native reconciliation rather than the browser sample's deliberate
+    // background-read suppression. The transport remains owned by this test.
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const status = git.repository().status;
     const actual = { ...status, entries: status.entries.map((entry: any, index: number) => index ? entry : { ...entry, path: 'docs/guide.md' }) };
     const calls: any[] = (window as any).__sparseCalls = [];

@@ -49,7 +49,7 @@
       }
     </div>
     <footer class="palette-footer">
-      <small class="palette-result-count" aria-live="polite">{{ items.length }} {{ scope() === 'branches' ? (items.length === 1 ? 'branch' : 'branches') : query().trim() ? (items.length === 1 ? 'result' : 'results') : (items.length === 1 ? 'command' : 'commands') }}</small>
+      <small class="palette-result-count" aria-live="polite">{{ items.length }} {{ scope() === 'branches' ? (items.length === 1 ? 'branch' : 'branches') : scope() === 'files' || query().trim() ? (items.length === 1 ? 'result' : 'results') : (items.length === 1 ? 'command' : 'commands') }}</small>
       @if (!query().trim() && scope() === 'all') { <span class="palette-search-hint">Commands · repos · refs · files</span> }
       @if (scope() === 'branches') { <span class="palette-search-hint">Local · remote</span> }
       <span class="palette-navigation-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span class="palette-jump-hint"><kbd>PgUp</kbd><kbd>PgDn</kbd> Jump</span><span><kbd>↵</kbd> {{ scope() === 'branches' ? 'Switch' : 'Run' }}</span><span><kbd>Esc</kbd> Close</span>

@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsObjectFile {
     pub name: String,
@@ -11,11 +11,20 @@ pub struct LfsObjectFile {
     pub oid_type: String,
     pub oid: String,
     pub version: String,
-    #[serde(skip_deserializing)]
+    #[serde(default, deserialize_with = "ignore_working_state")]
     pub working_state: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+// This is computed locally, never trusted from git-lfs output. Keep it in the
+// serialized DTO so generated renderer types describe the outgoing payload.
+fn ignore_working_state<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    serde::de::IgnoredAny::deserialize(deserializer)?;
+    Ok(String::new())
+}
+
+#[derive(Debug, Deserialize, Serialize, specta::Type)]
 pub struct LfsObjects {
     #[serde(deserialize_with = "deserialize_files")]
     pub files: Vec<LfsObjectFile>,

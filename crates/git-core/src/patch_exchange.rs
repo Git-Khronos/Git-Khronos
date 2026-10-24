@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 const MAX_PATCH_BYTES: usize = 4 * 1024 * 1024;
 const MAX_PATCH_FILES: usize = 2000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum PatchTarget {
     Worktree,
@@ -12,7 +12,7 @@ pub enum PatchTarget {
     Both,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PatchRequest {
     pub file: String,
@@ -23,7 +23,7 @@ pub struct PatchRequest {
     pub index_state: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchFile {
     pub path: String,
@@ -31,7 +31,7 @@ pub struct PatchFile {
     pub deleted: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchReview {
     pub request: PatchRequest,

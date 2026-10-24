@@ -5,14 +5,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_BUNDLE_REFS: usize = 500;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleTip {
     pub reference: String,
     pub oid: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleRequest {
     pub file: String,
@@ -21,7 +21,7 @@ pub struct BundleRequest {
     pub tips: Vec<BundleTip>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleReview {
     pub request: BundleRequest,

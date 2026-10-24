@@ -1,5 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
+import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
   CommitComparison,
@@ -27,6 +28,7 @@ import type {
   RepositorySnapshot,
   SigningDiagnostic,
   StashOptions,
+  StashEntry,
   SystemInfo,
   TagDetails,
   TrackedFileSearch,
@@ -69,6 +71,19 @@ const REPOSITORY_ALIASES_KEY = 'git-khronos.repository-aliases.v1';
 const WORKSPACES_KEY = 'git-khronos.workspaces.v1';
 const ACTIVE_WORKSPACE_KEY = 'git-khronos.active-workspace.v1';
 const DEFAULT_WORKSPACE_ID = 'default';
+
+export type ActivityReporter = (message: string) => void;
+
+interface WorkingTreeMutationResult {
+  succeeded: boolean;
+  // Recheck after awaiting: later navigation must keep its own inspection.
+  inspectionRequest: number;
+}
+
+interface MutationInspection {
+  workingTree: number;
+  conflict: number;
+}
 
 function sameItems<T>(left: readonly T[], right: readonly T[], key: (item: T) => string): boolean {
   return left.length === right.length && left.every((item, index) => key(item) === key(right[index]));
@@ -179,11 +194,13 @@ export class GitKhronosService {
   readonly repositoryAliases = signal<Record<string, string>>(this.readAliases());
   readonly recentlyClosedRepositoryPath = signal<string | null>(null);
   readonly busy = signal(false);
+  private runningOperations = 0;
   readonly backgroundFetchBusy = signal(false);
   readonly backgroundFetchRepositoryId = signal<string | null>(null);
   readonly backgroundFetchLastAt = signal<Record<string, number>>({});
   readonly backgroundFetchErrors = signal<Record<string, string>>({});
   readonly historyLoading = signal(false);
+  private historyRequest: { repoId: string } | null = null;
   readonly changesLoading = signal(false);
   readonly trackedFileSearch = signal<TrackedFileSearch | null>(null);
   readonly trackedFileSearchBusy = signal(false);
@@ -224,6 +241,11 @@ export class GitKhronosService {
   private conflictRequest = 0;
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
+  readonly fileBlameStart = signal(1);
+  readonly fileBlameNext = signal<number | null>(null);
+  readonly fileBlameError = signal<string | null>(null);
+  private fileBlameTarget: { repoId: string; revision: string; path: string } | null = null;
+  private fileBlameRequestedLine = 1;
   readonly fileInsightBusy = signal(false);
   private readonly operationHistory = signal<Record<string, OperationHistoryEntry>>({});
   readonly undoLabel = computed(() => {
@@ -238,6 +260,7 @@ export class GitKhronosService {
   });
 
   private detailsRequest = 0;
+  private historyComparisonRequest: number | null = null;
   private readonly workspaceRepositoryCache = new Map<string, RepositorySnapshot[]>();
   private tagDetailsRequest = 0;
   private readonly tagDetailsCache = new Map<string, TagDetails>();
@@ -256,7 +279,7 @@ export class GitKhronosService {
 
   async initialize(): Promise<void> {
     try {
-      this.systemInfo.set(await invoke<SystemInfo>('system_info'));
+      this.systemInfo.set(await ipc.system_info());
       await this.restoreRepositories();
     } catch {
       this.systemInfo.set({
@@ -409,8 +432,8 @@ export class GitKhronosService {
 
   async openRepository(path: string): Promise<void> {
     let openedRepositoryId: string | null = null;
-    await this.run('Opening repository…', async () => {
-      const snapshot = await invoke<RepositorySnapshot>('open_repository', { path });
+    await this.run('Opening repository…', async report => {
+      const snapshot = await ipc.open_repository({ path });
       openedRepositoryId = snapshot.id;
       this.storeSnapshot(snapshot, true);
       this.activeRepositoryId.set(snapshot.id);
@@ -418,7 +441,7 @@ export class GitKhronosService {
       this.remember(snapshot.path);
       this.persistOpenTabs();
       this.forgetClosedRepository(snapshot.path);
-      this.activity.set(`Opened ${snapshot.name}`);
+      report(`Opened ${snapshot.name}`);
     });
     if (openedRepositoryId) this.deferMetadataRefresh(openedRepositoryId);
   }
@@ -430,8 +453,8 @@ export class GitKhronosService {
     options: { branch?: string; depth?: number; recurseSubmodules?: boolean } = {},
   ): Promise<boolean> {
     const operationId = crypto.randomUUID();
-    await this.run(`Cloning ${folder.trim() || 'repository'}…`, async () => {
-      const snapshot = await invoke<RepositorySnapshot>('clone_repository', {
+    await this.run(`Cloning ${folder.trim() || 'repository'}…`, async report => {
+      const snapshot = await ipc.clone_repository({
         remote: remote.trim(),
         parentPath,
         folder: folder.trim(),
@@ -440,7 +463,7 @@ export class GitKhronosService {
         recurseSubmodules: options.recurseSubmodules ?? false,
         operationId,
       });
-      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`);
+      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
     }, null, operationId);
     return !this.error();
   }
@@ -451,14 +474,14 @@ export class GitKhronosService {
     initialBranch: string,
     createReadme: boolean,
   ): Promise<boolean> {
-    await this.run('Creating repository…', async () => {
-      const snapshot = await invoke<RepositorySnapshot>('initialize_repository', {
+    await this.run('Creating repository…', async report => {
+      const snapshot = await ipc.initialize_repository({
         parentPath,
         folder: folder.trim(),
         initialBranch: initialBranch.trim(),
         createReadme,
       });
-      this.acceptOpenedRepository(snapshot, `Created ${snapshot.name}`);
+      this.acceptOpenedRepository(snapshot, `Created ${snapshot.name}`, report);
     });
     return !this.error();
   }
@@ -466,10 +489,10 @@ export class GitKhronosService {
   async refresh(): Promise<void> {
     const repo = this.repository();
     if (!repo) return;
-    await this.run('Refreshing…', async () => {
-      this.storeSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repo.id }));
+    await this.run('Refreshing…', async report => {
+      await this.storeRefreshedSnapshot(await ipc.refresh_repository({ repoId: repo.id }));
       this.deferredMetadataRefreshes.delete(repo.id);
-      this.activity.set('Repository refreshed');
+      report('Repository refreshed');
     }, repo.id);
   }
 
@@ -483,12 +506,10 @@ export class GitKhronosService {
     this.liveRefreshes.add(repositoryId);
     const generation = this.statusGeneration(repositoryId);
     try {
-      const snapshot = await invoke<RepositorySnapshot>('refresh_repository', { repoId: repositoryId });
+      const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
       if (generation !== this.statusGeneration(repositoryId)) return true;
-      if (this.repositories().some((candidate) => candidate.id === repositoryId)) {
-        this.storeSnapshot(snapshot);
-        this.deferredMetadataRefreshes.delete(repositoryId);
-      }
+      await this.storeRefreshedSnapshot(snapshot);
+      this.deferredMetadataRefreshes.delete(repositoryId);
       return true;
     } catch {
       return false;
@@ -510,14 +531,17 @@ export class GitKhronosService {
     this.liveRefreshes.add(repository.id);
     const generation = this.statusGeneration(repository.id);
     try {
-      const status = await invoke<RepositoryStatus>('refresh_repository_status', { repoId: repository.id });
+      const status = await ipc.refresh_repository_status({ repoId: repository.id });
       const currentRepository = this.repositories().find((candidate) => candidate.id === repository.id);
       if (!currentRepository) return false;
-      // A stage/unstage/discard started meanwhile; its own result is newer.
-      if (generation !== this.statusGeneration(repository.id)) return true;
+      // Preserve pending predictions and results from newer mutations.
+      if (generation !== this.statusGeneration(repository.id)
+        || this.pendingWorkingTreeMutations.has(repository.id)) return true;
       if (status.branch !== currentRepository.status.branch) {
-        const snapshot = await invoke<RepositorySnapshot>('refresh_repository', { repoId: repository.id });
-        if (generation === this.statusGeneration(repository.id)) this.storeSnapshot(snapshot);
+        const snapshot = await ipc.refresh_repository({ repoId: repository.id });
+        // Branch changes need metadata too, but its fast status omits untracked
+        // discovery. Reconcile it just like other metadata refreshes.
+        if (generation === this.statusGeneration(repository.id)) await this.storeRefreshedSnapshot(snapshot);
       } else {
         this.storeStatus(repository.id, status);
       }
@@ -543,10 +567,10 @@ export class GitKhronosService {
     });
     const generation = this.statusGeneration(repository.id);
     try {
-      const snapshot = await invoke<RepositorySnapshot | null>('sync_repository', { repoId: repository.id });
-      if (snapshot && generation === this.statusGeneration(repository.id)
-        && this.repositories().some((candidate) => candidate.id === repository.id)) {
-        this.storeSnapshot(snapshot);
+      const snapshot = await ipc.sync_repository({ repoId: repository.id });
+      // Reconciliation itself ignores repositories closed while fetch ran.
+      if (snapshot && generation === this.statusGeneration(repository.id)) {
+        await this.storeRefreshedSnapshot(snapshot);
       }
       if (this.repositories().some((candidate) => candidate.id === repository.id)) {
         this.backgroundFetchLastAt.update((timestamps) => ({
@@ -570,9 +594,9 @@ export class GitKhronosService {
   async openRepositoryInFileManager(repoId = this.activeRepositoryId()): Promise<void> {
     const repository = this.repositories().find((candidate) => candidate.id === repoId);
     if (!repository) return;
-    await this.run('Opening repository folder…', async () => {
-      await invoke('open_repository_in_file_manager', { repoId: repository.id });
-      this.activity.set('Repository folder opened');
+    await this.run('Opening repository folder…', async report => {
+      await ipc.open_repository_in_file_manager({ repoId: repository.id });
+      report('Repository folder opened');
     }, repository.id);
   }
 
@@ -586,16 +610,16 @@ export class GitKhronosService {
       this.activity.set(successMessage);
       return;
     }
-    await this.run('Opening link…', async () => {
-      await invoke('open_external_url', { url });
-      this.activity.set(successMessage);
+    await this.run('Opening link…', async report => {
+      await ipc.open_external_url({ url });
+      report(successMessage);
     }, this.activeRepositoryId());
   }
 
   async toggleFullscreen(): Promise<void> {
     this.error.set(null);
     try {
-      await invoke<boolean>('toggle_fullscreen');
+      await ipc.toggle_fullscreen();
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
     }
@@ -604,29 +628,33 @@ export class GitKhronosService {
   async loadMoreHistory(): Promise<boolean> {
     const repository = this.repository();
     if (!repository?.historyTruncated || this.historyLoading()) return false;
+    const request = { repoId: repository.id };
+    this.historyRequest = request;
     this.historyLoading.set(true);
     this.error.set(null);
     try {
-      const page = await invoke<CommitHistoryPage>('load_more_commits', {
+      const page = await ipc.load_more_commits({
         repoId: repository.id,
       });
-      if (this.repositories().some((candidate) => candidate.id === repository.id)) {
-        this.repositories.update((repositories) => repositories.map((candidate) => {
-          if (candidate.id !== repository.id) return candidate;
-          const known = new Set(candidate.commits.map((commit) => commit.oid));
-          return {
-            ...candidate,
-            commits: [...candidate.commits, ...page.commits.filter((commit) => !known.has(commit.oid))],
-            historyTruncated: page.historyTruncated,
-          };
-        }));
-      }
+      if (this.historyRequest !== request) return false;
+      this.repositories.update((repositories) => repositories.map((candidate) => {
+        if (candidate.id !== repository.id) return candidate;
+        const known = new Set(candidate.commits.map((commit) => commit.oid));
+        return {
+          ...candidate,
+          commits: [...candidate.commits, ...page.commits.filter((commit) => !known.has(commit.oid))],
+          historyTruncated: page.historyTruncated,
+        };
+      }));
       return true;
     } catch (error: unknown) {
-      this.error.set(this.formatError(error));
+      if (this.historyRequest === request) this.error.set(this.formatError(error));
       return false;
     } finally {
-      this.historyLoading.set(false);
+      if (this.historyRequest === request) {
+        this.historyRequest = null;
+        this.historyLoading.set(false);
+      }
     }
   }
 
@@ -648,7 +676,7 @@ export class GitKhronosService {
             .slice(0, limit);
           return { paths, truncated: false };
         })()
-        : await invoke<TrackedFileSearch>('search_tracked_files', {
+        : await ipc.search_tracked_files({
           repoId: repository.id,
           query: normalized,
           limit,
@@ -687,7 +715,7 @@ export class GitKhronosService {
             })),
             truncated: false,
           }
-        : await invoke<ReflogPage>('load_reflog', { repoId: repository.id });
+        : await ipc.load_reflog({ repoId: repository.id });
       if (request === this.reflogRequest && repository.id === this.activeRepositoryId()) {
         this.reflog.set(result);
       }
@@ -707,6 +735,7 @@ export class GitKhronosService {
   async loadMoreChanges(force = false): Promise<void> {
     const repository = this.repository();
     if (!repository || (!force && !repository.status.entriesTruncated) || this.changesLoading()) return;
+    const generation = this.statusGeneration(repository.id);
     this.changesLoading.set(true);
     this.error.set(null);
     try {
@@ -715,18 +744,13 @@ export class GitKhronosService {
           entry.indexStatus === '?' && entry.path.endsWith('/')
             ? [{ ...entry, path: `${entry.path}example.txt` }]
             : [entry]);
-        this.repositories.update((repositories) => repositories.map((candidate) =>
-          candidate.id === repository.id
-            ? { ...candidate, status: { ...candidate.status, entries, entriesTruncated: false } }
-            : candidate));
+        this.storeStatus(repository.id, { ...repository.status, entries, entriesTruncated: false });
         return;
       }
-      const status = await invoke<RepositoryStatus>('load_more_changes', {
+      const status = await ipc.load_more_changes({
         repoId: repository.id,
       });
-      this.repositories.update((repositories) => repositories.map((candidate) =>
-        candidate.id === repository.id ? { ...candidate, status } : candidate
-      ));
+      if (generation === this.statusGeneration(repository.id)) this.storeStatus(repository.id, status);
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
     } finally {
@@ -754,11 +778,11 @@ export class GitKhronosService {
 
   async discardPath(path: string, untracked: boolean): Promise<void> {
     const repositoryId = this.activeRepositoryId();
-    await this.mutateWorkingTree('discard_path', `Discarding changes in ${path}…`, 'Changes discarded', {
+    const result = await this.mutateWorkingTree('discard_path', `Discarding changes in ${path}…`, 'Changes discarded', {
       path,
       untracked,
     }, (status) => predictDiscardPath(status, path));
-    if (repositoryId && !this.error()) {
+    if (repositoryId && result.succeeded) {
       this.recordDiscard(repositoryId, untracked ? 'Discard Untracked File' : 'Discard Changes');
     }
   }
@@ -779,38 +803,23 @@ export class GitKhronosService {
             untracked: entries.filter(entry => entry.indexStatus === '?').length,
           };
         } else {
-          preview = await invoke<DiscardPreview>('preview_discard', { repoId: repository.id, paths });
+          preview = await ipc.preview_discard({ repoId: repository.id, paths });
         }
       }, repository.id);
       return preview;
     }
 
-    async discardPrepared(preview: DiscardPreview, repositoryId: string): Promise<void> {
-      if (repositoryId !== this.activeRepositoryId()) {
-        this.error.set('The active repository changed. Review a new discard preview.');
-        return;
-      }
-      this.bumpStatusGeneration(repositoryId);
-      const result = await this.run('Discarding captured unstaged changes…', async () => {
-        let id: string;
-        let status: RepositoryStatus;
-        if (this.browserPreview()) {
-          id = 'preview';
-          status = preview.paths.reduce((current, path) => predictDiscardPath(current, path), this.repository()!.status);
-        } else {
-          const response = await invoke<{ id: string; status: RepositoryStatus }>('discard_changes', {
-            repoId: repositoryId, token: preview.token,
-          });
-          id = response.id;
-          status = response.status;
-        }
-        this.storeStatus(repositoryId, status);
-        this.clearWorkingTreeInspection();
-        this.recordDiscard(repositoryId, 'Discard Unstaged Changes', id);
-        this.activity.set('Unstaged changes discarded; recovery saved');
-      }, repositoryId);
-      this.bumpStatusGeneration(repositoryId);
-      if (result !== 'success') await this.refreshStatusInBackground(repositoryId, true);
+    async discardPrepared(preview: DiscardPreview, repositoryId: string): Promise<boolean> {
+      if (!this.requireRecoveryRepository(repositoryId)) return false;
+      const result = await this.changeWorkingTree('Discarding captured unstaged changes…',
+        'Unstaged changes discarded; recovery saved', async repoId => {
+          const { id, status } = this.browserPreview()
+            ? { id: 'preview', status: preview.paths.reduce((current, path) => predictDiscardPath(current, path), this.repository()!.status) }
+            : await ipc.discard_changes({ repoId, token: preview.token });
+          this.recordDiscard(repoId, 'Discard Unstaged Changes', id);
+          return status;
+        });
+      return result.succeeded;
     }
 
     async loadDiscardRecoveries(): Promise<DiscardRecovery[]> {
@@ -819,22 +828,23 @@ export class GitKhronosService {
       let recoveries: DiscardRecovery[] = [];
       await this.run('Loading discarded-change recovery…', async () => {
         recoveries = this.browserPreview() ? []
-          : await invoke<DiscardRecovery[]>('load_discard_recoveries', { repoId: repository.id });
+          : await ipc.load_discard_recoveries({ repoId: repository.id });
       }, repository.id);
       return recoveries;
     }
 
-    async applySavedDiscard(id: string, reverse = false): Promise<void> {
-      await this.mutateWorkingTree('apply_saved_discard', reverse ? 'Discarding recovered changes…' : 'Recovering discarded changes…',
+    async applySavedDiscard(id: string, reverse = false): Promise<boolean> {
+      const result = await this.mutateWorkingTree('apply_saved_discard', reverse ? 'Discarding recovered changes…' : 'Recovering discarded changes…',
         reverse ? 'Recovered changes discarded again' : 'Discarded changes recovered', { id, reverse });
+      return result.succeeded;
     }
 
     async forgetSavedDiscard(id: string): Promise<void> {
       const repository = this.repository();
       if (!repository) return;
-      await this.run('Removing saved recovery…', async () => {
-        await invoke('forget_saved_discard', { repoId: repository.id, id });
-        this.activity.set('Saved recovery removed');
+      await this.run('Removing saved recovery…', async report => {
+        await ipc.forget_saved_discard({ repoId: repository.id, id });
+        report('Saved recovery removed');
       }, repository.id);
     }
 
@@ -857,27 +867,14 @@ export class GitKhronosService {
     hunkIndex: number,
     action: 'stage' | 'unstage' | 'discard',
     expectedPatch?: string,
-  ): Promise<void> {
-    const repositoryId = this.activeRepositoryId();
-    const labels = {
-      stage: ['Staging hunk…', 'Hunk staged'],
-      unstage: ['Unstaging hunk…', 'Hunk unstaged'],
-      discard: ['Discarding hunk…', 'Hunk discarded'],
-    } as const;
-    await this.mutateWorkingTree('apply_working_tree_hunk', labels[action][0], labels[action][1], {
+  ): Promise<boolean> {
+    return this.applyWorkingTreeSelection('apply_working_tree_hunk', 'Hunk', {
       path,
       staged,
       hunkIndex,
       action,
       ...(expectedPatch !== undefined ? { expectedPatch } : {}),
     });
-    if (this.error()) return;
-    if (action === 'discard' && repositoryId) this.recordDiscard(repositoryId, 'Discard Hunk');
-    const entry = this.repository()?.status.entries.find((candidate) => candidate.path === path);
-    const stillVisible = staged
-      ? entry && entry.indexStatus !== ' ' && entry.indexStatus !== '?'
-      : entry && (entry.worktreeStatus !== ' ' || entry.indexStatus === '?');
-    if (stillVisible) await this.inspectWorkingTreeFile(path, staged);
   }
 
   async applyWorkingTreeLines(
@@ -887,14 +884,8 @@ export class GitKhronosService {
     lineIndices: number[],
     action: 'stage' | 'unstage' | 'discard',
     expectedPatch?: string,
-  ): Promise<void> {
-    const repositoryId = this.activeRepositoryId();
-    const labels = {
-      stage: ['Staging selected lines…', 'Selected lines staged'],
-      unstage: ['Unstaging selected lines…', 'Selected lines unstaged'],
-      discard: ['Discarding selected lines…', 'Selected lines discarded'],
-    } as const;
-    await this.mutateWorkingTree('apply_working_tree_lines', labels[action][0], labels[action][1], {
+  ): Promise<boolean> {
+    return this.applyWorkingTreeSelection('apply_working_tree_lines', 'Selected lines', {
       path,
       staged,
       hunkIndex,
@@ -902,8 +893,30 @@ export class GitKhronosService {
       action,
       ...(expectedPatch !== undefined ? { expectedPatch } : {}),
     });
-    if (this.error()) return;
-    if (action === 'discard' && repositoryId) this.recordDiscard(repositoryId, 'Discard Selected Lines');
+  }
+
+  private async applyWorkingTreeSelection<K extends 'apply_working_tree_hunk' | 'apply_working_tree_lines'>(
+    command: K,
+    subject: 'Hunk' | 'Selected lines',
+    extra: Omit<CommandArgs<K>, 'repoId'> & { action: 'stage' | 'unstage' | 'discard' },
+  ): Promise<boolean> {
+    const repositoryId = this.activeRepositoryId();
+    const labels = { stage: ['Staging', 'staged'], unstage: ['Unstaging', 'unstaged'], discard: ['Discarding', 'discarded'] };
+    const [pending, done] = labels[extra.action];
+    const result = await this.mutateWorkingTree(command, `${pending} ${subject.toLowerCase()}…`, `${subject} ${done}`, extra);
+    if (!result.succeeded) return false;
+    if (extra.action === 'discard' && repositoryId) this.recordDiscard(repositoryId, subject === 'Hunk' ? 'Discard Hunk' : 'Discard Selected Lines');
+    await this.refreshWorkingTreeSelection(repositoryId, extra.path, extra.staged, result.inspectionRequest);
+    return true;
+  }
+
+  private async refreshWorkingTreeSelection(
+    repoId: string | null,
+    path: string,
+    staged: boolean,
+    inspectionRequest: number,
+  ): Promise<void> {
+    if (repoId !== this.activeRepositoryId() || inspectionRequest !== this.workingTreeRequest) return;
     const entry = this.repository()?.status.entries.find((candidate) => candidate.path === path);
     const stillVisible = staged
       ? entry && entry.indexStatus !== ' ' && entry.indexStatus !== '?'
@@ -927,8 +940,7 @@ export class GitKhronosService {
         author: options.author ?? null, committer: options.committer ?? null },
     });
     if (outcome !== 'success') return false;
-    const afterOid = this.repositories().find(candidate => candidate.id === repository?.id)?.headOid;
-    this.recordHeadChange(repository?.id, beforeOid, afterOid, options.amend ? 'Amend Commit' : 'Commit');
+    this.recordHeadChange(repository?.id, beforeOid, options.amend ? 'Amend Commit' : 'Commit');
     if (options.pushAfter && repository && this.requireRecoveryRepository(repository.id)) await this.remote('push_repository');
     return true;
   }
@@ -937,95 +949,80 @@ export class GitKhronosService {
     if (!message.trim()) return false;
     const repository = this.repository();
     if (!repository || repository.headOid !== expectedOid) return false;
-    await this.mutate(
+    const outcome = await this.mutate(
       'update_head_message',
       'Updating commit message…',
       'Commit message updated',
       { expectedOid, message: message.trim(), skipHooks: false },
     );
-    if (this.error()) return false;
-    const afterOid = this.repository()?.headOid;
-    this.recordHeadChange(repository.id, expectedOid, afterOid, 'Edit Commit Message');
+    if (outcome !== 'success') return false;
+    const afterOid = this.repositories().find(candidate => candidate.id === repository.id)?.headOid;
+    this.recordHeadChange(repository.id, expectedOid, 'Edit Commit Message');
     return !!afterOid;
   }
 
-  async undo(): Promise<void> {
-    const repo = this.repository();
-    const entry = repo ? this.operationHistory()[repo.id] : null;
-    if (!repo || !entry || entry.undone) return;
-    if (entry.kind === 'discard') {
-      if (entry.recoveryId) await this.applySavedDiscard(entry.recoveryId);
-      else await this.mutate('undo_discard', `Undoing ${entry.label.toLocaleLowerCase()}…`, 'Discarded changes restored');
-    } else if (entry.kind === 'checkout') {
-      const branch = checkoutHistoryTarget(entry, 'undo')!;
-      await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
-        name: branch,
-      });
-    } else if (entry.kind === 'rename-branch') {
-      const rename = renameBranchHistoryTarget(entry, 'undo')!;
-      await this.mutate(
-        'rename_branch',
-        `Restoring branch name ${rename.newName}…`,
-        `Renamed ${rename.oldName} to ${rename.newName}`,
-        rename,
-      );
-    } else {
-      const targetOid = headHistoryTarget(entry, 'undo')!;
-      await this.mutate('move_head', `Undoing ${entry.label.toLocaleLowerCase()}…`, `${entry.label} undone`, {
-        expectedOid: entry.afterOid,
-        targetOid,
-      });
-    }
-    if (!this.error()) this.setHistoryUndone(repo.id, true);
+  undo(): Promise<void> {
+    return this.replayHistory(true);
   }
 
-  async redo(): Promise<void> {
+  redo(): Promise<void> {
+    return this.replayHistory(false);
+  }
+
+  private async replayHistory(undone: boolean): Promise<void> {
     const repo = this.repository();
     const entry = repo ? this.operationHistory()[repo.id] : null;
-    if (!repo || !entry || !entry.undone) return;
+    if (!repo || !entry || entry.undone === undone) return;
+    const direction = undone ? 'undo' : 'redo';
+    let succeeded: boolean;
     if (entry.kind === 'discard') {
-      if (entry.recoveryId) await this.applySavedDiscard(entry.recoveryId, true);
-      else await this.mutate('redo_discard', `Redoing ${entry.label.toLocaleLowerCase()}…`, 'Changes discarded again');
+      succeeded = entry.recoveryId
+        ? await this.applySavedDiscard(entry.recoveryId, !undone)
+        : await this.mutate(undone ? 'undo_discard' : 'redo_discard',
+          `${undone ? 'Undoing' : 'Redoing'} ${entry.label.toLocaleLowerCase()}…`,
+          undone ? 'Discarded changes restored' : 'Changes discarded again') === 'success';
     } else if (entry.kind === 'checkout') {
-      const branch = checkoutHistoryTarget(entry, 'redo')!;
-      await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
+      const branch = checkoutHistoryTarget(entry, direction)!;
+      succeeded = await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
         name: branch,
-      });
+      }) === 'success';
     } else if (entry.kind === 'rename-branch') {
-      const rename = renameBranchHistoryTarget(entry, 'redo')!;
-      await this.mutate(
+      const rename = renameBranchHistoryTarget(entry, direction)!;
+      succeeded = await this.mutate(
         'rename_branch',
-        `Renaming branch to ${rename.newName} again…`,
+        undone ? `Restoring branch name ${rename.newName}…` : `Renaming branch to ${rename.newName} again…`,
         `Renamed ${rename.oldName} to ${rename.newName}`,
         rename,
-      );
+      ) === 'success';
     } else {
-      const targetOid = headHistoryTarget(entry, 'redo')!;
-      await this.mutate('move_head', `Redoing ${entry.label.toLocaleLowerCase()}…`, `${entry.label} redone`, {
-        expectedOid: entry.beforeOid,
-        targetOid,
-      });
+      const targetOid = headHistoryTarget(entry, direction)!;
+      succeeded = await this.mutate(
+        'move_head',
+        `${undone ? 'Undoing' : 'Redoing'} ${entry.label.toLocaleLowerCase()}…`,
+        `${entry.label} ${undone ? 'undone' : 'redone'}`,
+        { expectedOid: undone ? entry.afterOid : entry.beforeOid, targetOid },
+      ) === 'success';
     }
-    if (!this.error()) this.setHistoryUndone(repo.id, false);
+    if (succeeded) this.setHistoryUndone(repo.id, entry, undone);
   }
 
   async checkout(name: string): Promise<void> {
     const repository = this.repository();
     const beforeBranch = repository?.status.branch;
-    await this.mutate('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name });
-    this.recordCheckout(repository?.id, beforeBranch, this.repository()?.status.branch);
+    const outcome = await this.mutate('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name });
+    if (outcome === 'success') this.recordCheckout(repository?.id, beforeBranch);
   }
 
   async checkoutRemote(name: string): Promise<void> {
     const repository = this.repository();
     const beforeBranch = repository?.status.branch;
-    await this.mutate(
+    const outcome = await this.mutate(
       'checkout_remote_branch',
       `Creating a tracking branch for ${name}…`,
       `Checked out ${name} as a local tracking branch`,
       { name },
     );
-    this.recordCheckout(repository?.id, beforeBranch, this.repository()?.status.branch);
+    if (outcome === 'success') this.recordCheckout(repository?.id, beforeBranch);
   }
 
   async createBranch(name: string): Promise<void> {
@@ -1101,51 +1098,40 @@ export class GitKhronosService {
       'Worktree registration repaired; files and branch unchanged', { request }) === 'success';
   }
 
-  async reviewWorktreeRegistrations(repositoryId: string): Promise<WorktreeRegistrationReview | null> {
+  private async readRepository<T>(repositoryId: string, pending: string, read: () => Promise<T>): Promise<T | null> {
     if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let review: WorktreeRegistrationReview | null = null;
-    const result = await this.run('Reviewing worktree registrations…', async () => {
-      review = await invoke<WorktreeRegistrationReview>('worktree_registration_review', { repoId: repositoryId });
+    let value: T | null = null;
+    const result = await this.run(pending, async () => {
+      value = await read();
     }, repositoryId);
-    return result === 'success' ? review : null;
+    return result === 'success' ? value : null;
   }
 
-  async loadLfsTrackingRules(repositoryId: string): Promise<LfsTrackingRules | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let rules: LfsTrackingRules | null = null;
-    const result = await this.run('Loading LFS tracking patterns…', async () => {
-      rules = await invoke<LfsTrackingRules>('lfs_tracking_rules', { repoId: repositoryId });
-    }, repositoryId);
-    return result === 'success' ? rules : null;
+  reviewWorktreeRegistrations(repositoryId: string): Promise<WorktreeRegistrationReview | null> {
+    return this.readRepository(repositoryId, 'Reviewing worktree registrations…',
+      () => ipc.worktree_registration_review({ repoId: repositoryId }));
   }
 
-  async inspectLfsAttributes(file: string, repositoryId: string): Promise<LfsFileAttributes | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let attributes: LfsFileAttributes | null = null;
-    const result = await this.run('Inspecting effective file attributes…', async () => {
-      attributes = await invoke<LfsFileAttributes>('lfs_file_attributes', { repoId: repositoryId, file });
-    }, repositoryId);
-    return result === 'success' ? attributes : null;
+  loadLfsTrackingRules(repositoryId: string): Promise<LfsTrackingRules | null> {
+    return this.readRepository(repositoryId, 'Loading LFS tracking patterns…',
+      () => ipc.lfs_tracking_rules({ repoId: repositoryId }));
   }
 
-  async inspectLfsObjects(repositoryId: string): Promise<LfsObjects | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let objects: LfsObjects | null = null;
-    const result = await this.run('Inspecting local LFS objects…', async () => {
-      objects = await invoke<LfsObjects>('lfs_objects', { repoId: repositoryId });
-    }, repositoryId);
-    return result === 'success' ? objects : null;
+  inspectLfsAttributes(file: string, repositoryId: string): Promise<LfsFileAttributes | null> {
+    return this.readRepository(repositoryId, 'Inspecting effective file attributes…',
+      () => ipc.lfs_file_attributes({ repoId: repositoryId, file }));
   }
 
-  async previewLfsFetch(file: LfsObjects['files'][number], remote: string, repositoryId: string): Promise<LfsFetchPreview | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let preview: LfsFetchPreview | null = null;
-    const result = await this.run('Reviewing selective LFS fetch…', async () => {
-      preview = await invoke<LfsFetchPreview>('lfs_fetch_preview', {
+  inspectLfsObjects(repositoryId: string): Promise<LfsObjects | null> {
+    return this.readRepository(repositoryId, 'Inspecting local LFS objects…',
+      () => ipc.lfs_objects({ repoId: repositoryId }));
+  }
+
+  previewLfsFetch(file: LfsObjects['files'][number], remote: string, repositoryId: string): Promise<LfsFetchPreview | null> {
+    return this.readRepository(repositoryId, 'Reviewing selective LFS fetch…',
+      () => ipc.lfs_fetch_preview({
         repoId: repositoryId, file: file.name, remote, expectedOid: file.oid, expectedSize: file.size,
-      });
-    }, repositoryId);
-    return result === 'success' ? preview : null;
+      }));
   }
 
   async fetchLfsObject(preview: LfsFetchPreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
@@ -1154,15 +1140,11 @@ export class GitKhronosService {
       'Reviewed LFS object fetched into local storage; working files were not hydrated', { preview });
   }
 
-  async previewLfsCheckout(file: LfsObjects['files'][number], repositoryId: string): Promise<LfsCheckoutPreview | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let preview: LfsCheckoutPreview | null = null;
-    const result = await this.run('Reviewing local LFS hydration…', async () => {
-      preview = await invoke<LfsCheckoutPreview>('lfs_checkout_preview', {
+  previewLfsCheckout(file: LfsObjects['files'][number], repositoryId: string): Promise<LfsCheckoutPreview | null> {
+    return this.readRepository(repositoryId, 'Reviewing local LFS hydration…',
+      () => ipc.lfs_checkout_preview({
         repoId: repositoryId, file: file.name, expectedOid: file.oid, expectedSize: file.size,
-      });
-    }, repositoryId);
-    return result === 'success' ? preview : null;
+      }));
   }
 
   async checkoutLfsObject(preview: LfsCheckoutPreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
@@ -1171,13 +1153,9 @@ export class GitKhronosService {
       'Working pointer replaced with SHA-256-verified local contents; index and references unchanged', { preview });
   }
 
-  async previewLfsPrune(repositoryId: string): Promise<LfsPrunePreview | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let preview: LfsPrunePreview | null = null;
-    const result = await this.run('Reviewing unreferenced LFS objects…', async () => {
-      preview = await invoke<LfsPrunePreview>('lfs_prune_preview', { repoId: repositoryId });
-    }, repositoryId);
-    return result === 'success' ? preview : null;
+  previewLfsPrune(repositoryId: string): Promise<LfsPrunePreview | null> {
+    return this.readRepository(repositoryId, 'Reviewing unreferenced LFS objects…',
+      () => ipc.lfs_prune_preview({ repoId: repositoryId }));
   }
 
   async pruneLfsObjects(preview: LfsPrunePreview, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
@@ -1246,12 +1224,12 @@ export class GitKhronosService {
     const normalized = newName.trim();
     if (!normalized) return;
     const repositoryId = this.activeRepositoryId();
-    await this.mutate('rename_branch', `Renaming ${oldName}…`, `Renamed ${oldName} to ${normalized}`, {
+    const outcome = await this.mutate('rename_branch', `Renaming ${oldName}…`, `Renamed ${oldName} to ${normalized}`, {
       oldName,
       newName: normalized,
     });
     const entry = createRenameBranchHistoryEntry(oldName, normalized);
-    if (repositoryId && !this.error() && entry) {
+    if (repositoryId && outcome === 'success' && entry) {
       this.operationHistory.update((history) => ({ ...history, [repositoryId]: entry }));
     }
   }
@@ -1289,15 +1267,15 @@ export class GitKhronosService {
     const repo = this.repository();
     if (!repo) return null;
     let plan: InteractiveRebasePlan | null = null;
-    await this.run('Preparing interactive rebase…', async () => {
-      plan = await invoke<InteractiveRebasePlan>('prepare_interactive_rebase', {
+    await this.run('Preparing interactive rebase…', async report => {
+      plan = await ipc.prepare_interactive_rebase({
         repoId: repo.id,
         source,
         target,
         ...(selectionOids ? { selectionOids } : {}),
         ...(root ? { root: true } : {}),
       });
-      this.activity.set(root ? `Whole-history rebase ready on ${source}` : selectionOids ? `Selected-range rebase ready on ${source}` : `Interactive rebase ready: ${source} onto ${target}`);
+      report(root ? `Whole-history rebase ready on ${source}` : selectionOids ? `Selected-range rebase ready on ${source}` : `Interactive rebase ready: ${source} onto ${target}`);
     }, repo.id);
     return plan;
   }
@@ -1325,9 +1303,9 @@ export class GitKhronosService {
   async prepareMergeRebase(repositoryId: string, source: string, target: string): Promise<MergeRebasePlan | null> {
     if (!this.requireRecoveryRepository(repositoryId)) return null;
     let plan: MergeRebasePlan | null = null;
-    await this.run('Reviewing merge-preserving rebase…', async () => {
-      plan = await invoke<MergeRebasePlan>('prepare_merge_rebase', { repoId: repositoryId, source, target });
-      this.activity.set('Merge-preserving review ready; no history changed');
+    await this.run('Reviewing merge-preserving rebase…', async report => {
+      plan = await ipc.prepare_merge_rebase({ repoId: repositoryId, source, target });
+      report('Merge-preserving review ready; no history changed');
     }, repositoryId);
     return plan;
   }
@@ -1447,11 +1425,11 @@ export class GitKhronosService {
     const request = ++this.conflictRequest;
     if (this.conflictDetails()?.path !== path) this.conflictDetails.set(null);
     this.conflictRepositoryId = repo.id;
-    await this.run(`Opening merge tool for ${path}…`, async () => {
-      details = await invoke<ConflictDetails>('inspect_conflict', { repoId: repo.id, path });
+    await this.run(`Opening merge tool for ${path}…`, async report => {
+      details = await ipc.inspect_conflict({ repoId: repo.id, path });
       if (this.activeRepositoryId() !== repo.id || request !== this.conflictRequest) return;
       this.conflictDetails.set(details);
-      this.activity.set(`Resolving conflict in ${path}`);
+      report(`Resolving conflict in ${path}`);
     }, repo.id);
     return this.activeRepositoryId() === repo.id && request === this.conflictRequest ? details : null;
   }
@@ -1466,20 +1444,21 @@ export class GitKhronosService {
     path: string,
     resolution: 'current' | 'incoming' | 'output',
     output?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     let details = this.conflictDetails();
     if (!details || details.path !== path) {
       details = await this.inspectConflict(path);
     }
-    if (!details || !this.conflictRepositoryId || !this.requireRecoveryRepository(this.conflictRepositoryId)) return;
-    await this.mutate(
+    if (!details || !this.conflictRepositoryId || !this.requireRecoveryRepository(this.conflictRepositoryId)) return false;
+    const result = await this.mutate(
       'resolve_conflict',
       `Resolving ${path}…`,
       `Resolved ${path}`,
       { path, resolution, output: output ?? null, expectedState: details.state },
       true,
     );
-    if (!this.error()) this.conflictDetails.set(null);
+    if (result === 'success' && this.conflictDetails() === details) this.closeConflict();
+    return result === 'success';
   }
 
   async remote(
@@ -1491,9 +1470,11 @@ export class GitKhronosService {
       pull_repository: ['Pulling…', 'Pull complete'],
       push_repository: ['Pushing…', 'Push complete'],
     } as const;
-    await this.mutate(operation, labels[operation][0], labels[operation][1], target);
-    if (operation === 'fetch_repository' && !this.error()) {
-      const repositoryId = this.activeRepositoryId();
+    const repositoryId = this.activeRepositoryId();
+    const result = await this.mutate(operation, labels[operation][0], labels[operation][1], target);
+    // Retry state belongs to the initiating repository and this operation's
+    // result, not whichever tab or error toast is visible on completion.
+    if (operation === 'fetch_repository' && result === 'success') {
       if (repositoryId) this.backgroundFetchErrors.update((errors) => {
         const updated = { ...errors };
         delete updated[repositoryId];
@@ -1535,7 +1516,7 @@ export class GitKhronosService {
 
     async transportReference(remote: string, name: string, kind: 'tag' | 'branch', deleteReference: boolean, expectedOid?: string): Promise<void> {
       await this.mutate('transport_reference', 'Updating selected remote reference…', 'Remote reference updated',
-        { request: { remote, name, kind, delete: deleteReference, expectedOid } });
+        { request: { remote, name, kind, delete: deleteReference, expectedOid: expectedOid ?? null } });
     }
 
     async previewRemoteTag(remote: string, name: string): Promise<string | null> {
@@ -1544,7 +1525,7 @@ export class GitKhronosService {
       const operationId = crypto.randomUUID();
       let oid: string | null = null;
       await this.run('Checking selected remote tag…', async () => {
-        oid = await invoke<string>('preview_remote_tag', { repoId: repository.id, remote, name, operationId });
+        oid = await ipc.preview_remote_tag({ repoId: repository.id, remote, name, operationId });
       }, repository.id, operationId);
       return oid;
     }
@@ -1556,9 +1537,9 @@ export class GitKhronosService {
       this.activity.set('Repository maintenance complete');
       return true;
     }
-    const outcome = await this.run('Checking integrity and packing metadata…', async () => {
-      await invoke('perform_repository_maintenance', { repoId: repository.id });
-      this.activity.set('Repository maintenance complete');
+    const outcome = await this.run('Checking integrity and packing metadata…', async report => {
+      await ipc.perform_repository_maintenance({ repoId: repository.id });
+      report('Repository maintenance complete');
     }, repository.id);
     return outcome === 'success';
   }
@@ -1584,7 +1565,7 @@ export class GitKhronosService {
               ? 'The configured signing program was not found in the system PATH.'
               : `${repository.signing.format === 'ssh' ? 'ssh-keygen' : 'gpg'} is available and Git has an explicit signing key configured.`,
           }
-        : await invoke<SigningDiagnostic>('diagnose_signing', { repoId: repository.id });
+        : await ipc.diagnose_signing({ repoId: repository.id });
       this.signingDiagnostics.update((diagnostics) => ({ ...diagnostics, [repository.id]: diagnostic }));
       this.activity.set(diagnostic.available ? 'Commit signer is available' : 'Commit signer needs attention');
     } catch (error: unknown) {
@@ -1728,29 +1709,42 @@ export class GitKhronosService {
       `Checked out ${name}; previous changes saved in stash`, { name, expectedHead, expectedTarget, message });
   }
 
-  async popStash(): Promise<void> {
-    await this.mutate('pop_stash', 'Popping latest stash…', 'Stash popped');
+  async popStash(stash: StashEntry | undefined, repositoryId: string): Promise<boolean> {
+    if (!stash || !this.requireSelectedStash(stash.reference, stash.oid, repositoryId)) return false;
+    return await this.mutate('pop_stash', 'Popping latest stash…', 'Stash popped', { expectedOid: stash.oid }) === 'success';
   }
 
-  async applyStash(reference: string): Promise<void> {
-    await this.mutate('apply_stash', `Applying ${reference}…`, `${reference} applied`, { reference });
+  async applyStash(reference: string, expectedOid: string, repositoryId: string): Promise<boolean> {
+    if (!this.requireSelectedStash(reference, expectedOid, repositoryId)) return false;
+    return await this.mutate('apply_stash', `Applying ${reference}…`, `${reference} applied; stash kept`, { reference, expectedOid }) === 'success';
   }
 
-  async popStashEntry(reference: string): Promise<void> {
-    await this.mutate('pop_stash_entry', `Popping ${reference}…`, `${reference} popped`, { reference });
+  async popStashEntry(reference: string, expectedOid: string, repositoryId: string): Promise<boolean> {
+    if (!this.requireSelectedStash(reference, expectedOid, repositoryId)) return false;
+    return await this.mutate('pop_stash_entry', `Popping ${reference}…`, `${reference} popped`, { reference, expectedOid }) === 'success';
   }
 
-  async dropStash(reference: string): Promise<void> {
-    await this.mutate('drop_stash', `Deleting ${reference}…`, `${reference} deleted`, { reference });
+  private requireSelectedStash(reference: string, expectedOid: string, repositoryId: string): boolean {
+    if (this.busy()) return false;
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    if (this.repository()?.stashes.some(stash => stash.reference === reference && stash.oid === expectedOid)) return true;
+    this.error.set('The stash list changed. Refresh and select the intended stash again.');
+    return false;
   }
 
-  async renameStash(reference: string, expectedOid: string, message: string): Promise<void> {
-    await this.mutate(
+  async dropStash(reference: string, expectedOid: string, repositoryId: string): Promise<boolean> {
+    if (!this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('drop_stash', `Deleting ${reference}…`, `${reference} deleted`, { reference, expectedOid }) === 'success';
+  }
+
+  async renameStash(reference: string, expectedOid: string, message: string, repositoryId: string): Promise<boolean> {
+    if (!this.requireSelectedStash(reference, expectedOid, repositoryId)) return false;
+    return await this.mutate(
       'rename_stash',
       `Renaming ${reference}…`,
       'Stash message updated',
       { reference, expectedOid, message },
-    );
+    ) === 'success';
   }
 
   async createTag(name: string, oid: string, message: string | null = null): Promise<void> {
@@ -1767,7 +1761,7 @@ export class GitKhronosService {
     if (!count) return;
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    await this.mutate(
+    const outcome = await this.mutate(
       'cherry_pick_commits',
       noCommit ? 'Applying selected changes without committing…' : count === 1 ? 'Cherry-picking commit…' : `Cherry-picking ${count} commits…`,
       snapshot => noCommit
@@ -1775,11 +1769,10 @@ export class GitKhronosService {
         : count === 1 ? 'Commit cherry-picked' : `${count} commits cherry-picked`,
       { oids, mainline, noCommit },
     );
-    if (noCommit) return;
+    if (noCommit || outcome !== 'success') return;
     this.recordHeadChange(
       repository?.id,
       beforeOid,
-      this.repository()?.headOid,
       count === 1 ? 'Cherry-pick Commit' : `Cherry-pick ${count} Commits`,
     );
   }
@@ -1787,17 +1780,16 @@ export class GitKhronosService {
   async revertCommit(oid: string, mainline: number | null = null): Promise<void> {
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    await this.mutate('revert_commit', 'Reverting commit…', 'Revert commit created', { oid, mainline });
-    this.recordHeadChange(repository?.id, beforeOid, this.repository()?.headOid, 'Revert Commit');
+    const outcome = await this.mutate('revert_commit', 'Reverting commit…', 'Revert commit created', { oid, mainline });
+    if (outcome === 'success') this.recordHeadChange(repository?.id, beforeOid, 'Revert Commit');
   }
 
   async revertCommits(oids: string[]): Promise<void> {
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    await this.mutate('revert_commit', `Reverting ${oids.length} commits…`,
+    const outcome = await this.mutate('revert_commit', `Reverting ${oids.length} commits…`,
       `${oids.length} revert commits created`, { oid: oids[0], oids, mainline: null });
-    const afterOid = this.repositories().find(candidate => candidate.id === repository?.id)?.headOid;
-    this.recordHeadChange(repository?.id, beforeOid, afterOid, `Revert ${oids.length} Commits`);
+    if (outcome === 'success') this.recordHeadChange(repository?.id, beforeOid, `Revert ${oids.length} Commits`);
   }
 
   async resetToCommit(oid: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
@@ -1809,7 +1801,7 @@ export class GitKhronosService {
     if (!repository) return null;
     let preview: ResetPreview | null = null;
     const result = await this.run('Reviewing reset scope…', async () => {
-      preview = await invoke<ResetPreview>('preview_reset', { repoId: repository.id, oid, mode });
+      preview = await ipc.preview_reset({ repoId: repository.id, oid, mode });
     }, repository.id);
     return result === 'success' ? preview : null;
   }
@@ -1826,7 +1818,7 @@ export class GitKhronosService {
     let records: OperationRecovery[] | null = null;
     const result = await this.run('Loading saved operation recovery…', async () => {
       records = this.browserPreview() ? []
-        : await invoke<OperationRecovery[]>('load_operation_recoveries', { repoId: repositoryId });
+        : await ipc.load_operation_recoveries({ repoId: repositoryId });
     }, repositoryId);
     return result === 'success' ? records : null;
   }
@@ -1839,9 +1831,9 @@ export class GitKhronosService {
 
   async forgetOperationRecovery(id: string, repositoryId: string): Promise<void> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
-    await this.run('Removing saved capture…', async () => {
-      await invoke('forget_operation_recovery', { repoId: repositoryId, id });
-      this.activity.set('Saved capture removed; current branch and files unchanged');
+    await this.run('Removing saved capture…', async report => {
+      await ipc.forget_operation_recovery({ repoId: repositoryId, id });
+      report('Saved capture removed; current branch and files unchanged');
     }, repositoryId);
   }
 
@@ -1900,13 +1892,13 @@ export class GitKhronosService {
     await this.mutate('reset_bisect', 'Resetting bisect…', 'Bisect reset');
   }
 
-  async restoreFilesFromCommit(oid: string, paths: string[]): Promise<void> {
-    await this.mutate(
+  async restoreFilesFromCommit(oid: string, paths: string[]): Promise<boolean> {
+    return await this.mutate(
       'restore_files_from_commit',
       paths.length === 1 ? 'Restoring file…' : `Restoring ${paths.length} files…`,
       paths.length === 1 ? 'File restored and staged' : `${paths.length} files restored and staged`,
       { oid, paths },
-    );
+    ) === 'success';
   }
 
   async inspectCommit(oid: string): Promise<void> {
@@ -1927,7 +1919,7 @@ export class GitKhronosService {
     try {
       const details = this.browserPreview()
         ? createPreviewCommitDetails(repository, oid)
-        : await invoke<CommitDetails>('inspect_commit', { repoId: repository.id, oid });
+        : await ipc.inspect_commit({ repoId: repository.id, oid });
       if (request !== this.detailsRequest || repository.id !== this.activeRepositoryId()) return;
       this.commitDetails.set(details);
     } catch (error: unknown) {
@@ -1957,7 +1949,7 @@ export class GitKhronosService {
           taggerEmail: name === 'v0.1.0' ? 'maya@example.test' : null,
           taggedAt: name === 'v0.1.0' ? '2026-10-03T11:42:00+00:00' : null,
         } satisfies TagDetails
-        : await invoke<TagDetails>('inspect_tag', { repoId: repository.id, name });
+        : await ipc.inspect_tag({ repoId: repository.id, name });
       this.tagDetailsCache.set(cacheKey, details);
       if (request !== this.tagDetailsRequest || repository.id !== this.activeRepositoryId()) return;
       this.tagDetails.set(details);
@@ -1974,13 +1966,13 @@ export class GitKhronosService {
     this.tagDetailsBusy.set(false);
   }
 
-  async inspectStash(reference: string): Promise<void> {
+  async inspectStash(stash: StashEntry): Promise<void> {
     const repository = this.repository();
     if (!repository) return;
     const request = ++this.detailsRequest;
     this.fileRequest += 1;
     this.commitDetails.set(null);
-    this.inspectedStashReference.set(reference);
+    this.inspectedStashReference.set(stash.reference);
     this.commitFileDiff.set(null);
     this.selectedCommitFile.set(null);
     this.commitComparison.set(null);
@@ -1990,10 +1982,9 @@ export class GitKhronosService {
     this.detailsBusy.set(true);
     this.error.set(null);
     try {
-      const stash = repository.stashes.find((candidate) => candidate.reference === reference);
       const details = this.browserPreview()
-        ? createPreviewCommitDetails(repository, stash?.oid ?? repository.headOid)
-        : await invoke<CommitDetails>('inspect_stash', { repoId: repository.id, reference });
+        ? createPreviewCommitDetails(repository, stash.oid)
+        : await ipc.inspect_stash({ repoId: repository.id, oid: stash.oid });
       if (request !== this.detailsRequest || repository.id !== this.activeRepositoryId()) return;
       this.commitDetails.set(details);
     } catch (error: unknown) {
@@ -2018,13 +2009,13 @@ export class GitKhronosService {
       const diff = this.browserPreview()
         ? createPreviewCommitFileDiff(details.oid, file)
         : stashReference
-          ? await invoke<CommitFileDiff>('inspect_stash_file', {
+          ? await ipc.inspect_stash_file({
           repoId: repository.id,
-          reference: stashReference,
+          oid: details.oid,
           path: file.path,
           previousPath: file.previousPath,
         })
-          : await invoke<CommitFileDiff>('inspect_commit_file', {
+          : await ipc.inspect_commit_file({
             repoId: repository.id,
             oid: details.oid,
             path: file.path,
@@ -2044,67 +2035,56 @@ export class GitKhronosService {
     }
   }
 
-  async compareCommits(baseOid: string, targetOid: string): Promise<void> {
+  async compareCommits(baseOid: string, targetOid: string, mode?: CommitComparison['comparisonMode']): Promise<boolean> {
     const repository = this.repository();
-    if (!repository) return;
-    const request = ++this.detailsRequest;
-    this.fileRequest += 1;
-    this.commitDetails.set(null);
-    this.commitFileDiff.set(null);
-    this.selectedCommitFile.set(null);
-    this.commitComparison.set(null);
-    this.comparisonFileDiff.set(null);
-    this.selectedComparisonFile.set(null);
-    this.clearWorkingTreeInspection();
-    this.detailsBusy.set(true);
-    this.error.set(null);
-    try {
-      const comparison = this.browserPreview()
-        ? createPreviewCommitComparison(baseOid, targetOid)
-        : await invoke<CommitComparison>('compare_commits', {
-          repoId: repository.id,
-          baseOid,
-          targetOid,
-        });
-      if (request !== this.detailsRequest || repository.id !== this.activeRepositoryId()) return;
-      this.commitComparison.set(comparison);
-      const firstFile = comparison.files[0];
-      if (firstFile) await this.inspectComparisonFile(firstFile);
-    } catch (error: unknown) {
-      if (request === this.detailsRequest) this.error.set(this.formatError(error));
-    } finally {
-      if (request === this.detailsRequest) this.detailsBusy.set(false);
-    }
+    if (!repository) return false;
+    return this.loadComparison(repository.id, () => mode
+      ? ipc.compare_history_revisions({ repoId: repository.id, base: baseOid, target: targetOid, mode })
+      : this.browserPreview()
+        ? Promise.resolve(createPreviewCommitComparison(baseOid, targetOid))
+        : ipc.compare_commits({ repoId: repository.id, baseOid, targetOid }), mode);
   }
 
   async compareCommitWithWorkingTree(baseOid: string): Promise<void> {
     const repository = this.repository();
     if (!repository) return;
-    const request = ++this.detailsRequest;
-    this.fileRequest += 1;
-    this.commitDetails.set(null);
-    this.commitFileDiff.set(null);
-    this.selectedCommitFile.set(null);
-    this.commitComparison.set(null);
-    this.comparisonFileDiff.set(null);
-    this.selectedComparisonFile.set(null);
+    await this.loadComparison(repository.id, () => this.browserPreview()
+      ? Promise.resolve(createPreviewWorkingTreeComparison(baseOid))
+      : ipc.compare_commit_with_working_tree({ repoId: repository.id, baseOid }));
+  }
+
+  cancelHistoryComparison(): void {
+    if (this.historyComparisonRequest === this.detailsRequest) this.clearComparisonInspection();
+    this.historyComparisonRequest = null;
+  }
+
+  private async loadComparison(
+    repositoryId: string,
+    load: () => Promise<CommitComparison>,
+    mode?: CommitComparison['comparisonMode'],
+  ): Promise<boolean> {
+    this.clearComparisonInspection();
+    const request = this.detailsRequest;
+    if (mode) this.historyComparisonRequest = request;
     this.clearWorkingTreeInspection();
     this.detailsBusy.set(true);
     this.error.set(null);
     try {
-      const comparison = this.browserPreview()
-        ? createPreviewWorkingTreeComparison(baseOid)
-        : await invoke<CommitComparison>('compare_commit_with_working_tree', {
-          repoId: repository.id,
-          baseOid,
-        });
-      if (request !== this.detailsRequest || repository.id !== this.activeRepositoryId()) return;
-      this.commitComparison.set(comparison);
+      const comparison = await load();
+      if (request !== this.detailsRequest || repositoryId !== this.activeRepositoryId()) return false;
+      this.commitComparison.set(mode ? { ...comparison, comparisonMode: mode } : comparison);
       const firstFile = comparison.files[0];
       if (firstFile) await this.inspectComparisonFile(firstFile);
+      return request === this.detailsRequest && repositoryId === this.activeRepositoryId();
     } catch (error: unknown) {
-      if (request === this.detailsRequest) this.error.set(this.formatError(error));
+      if (request === this.detailsRequest) {
+        // History dialogs own their inline errors; graph inspections use the toast.
+        if (mode) throw error;
+        this.error.set(this.formatError(error));
+      }
+      return false;
     } finally {
+      if (this.historyComparisonRequest === request) this.historyComparisonRequest = null;
       if (request === this.detailsRequest) this.detailsBusy.set(false);
     }
   }
@@ -2123,13 +2103,13 @@ export class GitKhronosService {
       const diff = this.browserPreview()
         ? createPreviewCommitFileDiff(comparison.targetOid, file)
         : comparison.workingTree
-          ? await invoke<CommitFileDiff>('compare_commit_file_with_working_tree', {
+          ? await ipc.compare_commit_file_with_working_tree({
             repoId: repository.id,
             baseOid: comparison.baseOid,
             path: file.path,
             previousPath: file.previousPath,
           })
-          : await invoke<CommitFileDiff>('compare_commit_file', {
+          : await ipc.compare_commit_file({
             repoId: repository.id,
             baseOid: comparison.baseOid,
             targetOid: comparison.targetOid,
@@ -2175,7 +2155,7 @@ export class GitKhronosService {
     try {
       const diff = this.browserPreview()
         ? createPreviewWorkingTreeDiff(path, staged)
-        : await invoke<WorkingTreeFileDiff>('inspect_working_tree_file', {
+        : await ipc.inspect_working_tree_file({
           repoId: repository.id,
           path,
           staged,
@@ -2207,7 +2187,7 @@ export class GitKhronosService {
           authoredAt: commit.authoredAt,
           subject: commit.subject,
         }))
-        : await invoke<FileHistoryEntry[]>('inspect_file_history', {
+        : await ipc.inspect_file_history({
           repoId: repository.id,
           revision,
           path,
@@ -2225,32 +2205,61 @@ export class GitKhronosService {
   async inspectFileBlame(path: string, revision: string): Promise<void> {
     const repository = this.repository();
     if (!repository) return;
+    this.fileBlameTarget = { repoId: repository.id, path, revision };
+    this.fileBlameStart.set(1);
+    this.fileBlameNext.set(null);
+    this.fileBlame.set(null);
+    await this.loadFileBlamePage(1, true);
+  }
+
+  async resumeFileBlame(path: string, revision: string): Promise<void> {
+    const target = this.fileBlameTarget;
+    if (target?.repoId === this.activeRepositoryId() && target.path === path && target.revision === revision) return;
+    await this.inspectFileBlame(path, revision);
+  }
+
+  async retryFileBlame(): Promise<void> {
+    await this.loadFileBlamePage(this.fileBlameRequestedLine);
+  }
+
+  async loadFileBlamePage(firstLine: number, replacePending = false): Promise<void> {
+    const target = this.fileBlameTarget;
+    const repository = this.repository();
+    if (!target || target.repoId !== repository?.id || (this.fileInsightBusy() && !replacePending)) return;
+    if (!Number.isInteger(firstLine) || firstLine < 1 || firstLine > 4_294_967_195) {
+      this.fileBlameError.set('Choose a positive whole line number within the file.');
+      return;
+    }
+    this.fileBlameRequestedLine = firstLine;
     const request = ++this.fileInsightRequest;
     this.fileHistory.set(null);
-    this.fileBlame.set(null);
+    this.fileBlameError.set(null);
     this.fileInsightBusy.set(true);
-    this.error.set(null);
     try {
       const blame = this.browserPreview()
-        ? repository.commits.slice(0, 3).map((commit, index) => ({
+        ? { lines: repository.commits.slice(0, 3).map((commit, index) => ({
           lineNumber: index + 1,
           oid: commit.oid,
           authorName: commit.authorName,
           authorEmail: commit.authorEmail,
           authoredAt: Math.floor(Date.parse(commit.authoredAt) / 1_000),
           summary: commit.subject,
-          text: index === 0 ? `// ${path}` : `preview line ${index + 1}`,
-        }))
-        : await invoke<FileBlameLine[]>('inspect_file_blame', {
+          text: index === 0 ? `// ${target.path}` : `preview line ${index + 1}`,
+          path: target.path,
+        })), nextLine: null }
+        : await ipc.inspect_file_blame_page({
           repoId: repository.id,
-          revision,
-          path,
+          revision: target.revision,
+          path: target.path,
+          firstLine,
         });
-      if (request === this.fileInsightRequest && repository.id === this.activeRepositoryId()) {
-        this.fileBlame.set(blame);
+      if (request === this.fileInsightRequest && repository.id === this.activeRepositoryId() && target === this.fileBlameTarget) {
+        this.fileBlame.set(blame.lines);
+        this.fileBlameStart.set(firstLine);
+        this.fileBlameNext.set(blame.nextLine);
       }
     } catch (error: unknown) {
-      if (request === this.fileInsightRequest) this.error.set(this.formatError(error));
+      if (request === this.fileInsightRequest && target === this.fileBlameTarget && repository.id === this.activeRepositoryId()) this.fileBlameError.set(this.formatError(error));
     } finally {
       if (request === this.fileInsightRequest) this.fileInsightBusy.set(false);
     }
@@ -2349,6 +2358,12 @@ export class GitKhronosService {
     const closingIndex = repositories.findIndex((repository) => repository.id === repoId);
     const closingRepository = repositories[closingIndex];
     if (!closingRepository) return;
+    // A reopened path may reuse the same ID, but not the closed session's page.
+    if (this.historyRequest?.repoId === repoId) {
+      this.historyRequest = null;
+      this.historyLoading.set(false);
+    }
+    this.bumpStatusGeneration(repoId);
     this.closedRepositories = [
       {
         path: closingRepository.path,
@@ -2474,7 +2489,7 @@ export class GitKhronosService {
     if (!operationId || !operation.cancelable || this.cancellingOperationIds().includes(operationId)) return;
     this.cancellingOperationIds.update((ids) => [...ids, operationId]);
     try {
-      const accepted = await invoke<boolean>('cancel_git_operation', { operationId });
+      const accepted = await ipc.cancel_git_operation({ operationId });
       if (!accepted) this.finishCancellationRequest(operationId);
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
@@ -2482,31 +2497,43 @@ export class GitKhronosService {
     }
   }
 
-  private async mutate(
-    command: string,
+  private async mutate<K extends SnapshotCommand>(
+    command: K,
     pending: string,
     done: string | ((snapshot: RepositorySnapshot) => string),
-    extra: Record<string, unknown> = {},
-    preserveConflictOnFailure = false,
+    ...options: MutationOptions<K>
   ): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    const [extra = {}, preserveConflictOnFailure = false] = options;
     const repo = this.repository();
     if (!repo) return;
+    const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
     this.bumpStatusGeneration(repo.id);
+    const generation = this.statusGeneration(repo.id);
     const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
-    const result = await this.run(pending, async () => {
-      const snapshot = await invoke<RepositorySnapshot>(command, {
+    const result = await this.run(pending, async report => {
+      const snapshot = await invokeCommand(command, {
         repoId: repo.id,
         ...extra,
         ...(operationId ? { operationId } : {}),
-      });
-      this.storeMutationSnapshot(snapshot);
-      this.clearWorkingTreeInspection();
-      this.activity.set(typeof done === 'function' ? done(snapshot) : done);
+      } as CommandArgs<K>) as RepositorySnapshot;
+      if (generation === this.statusGeneration(repo.id)) {
+        this.storeMutationSnapshot(snapshot);
+      } else if (this.repositories().some((repository) => repository.id === repo.id)) {
+        // Reply order need not match Git's mutation order. Read current state
+        // instead of replacing a newer result with this action's snapshot.
+        try {
+          await this.refreshMutationSnapshot(repo.id, inspectionRequest);
+        } catch {
+          // The mutation succeeded even if reconciliation needs a later retry.
+          this.deferMetadataRefresh(repo.id);
+        }
+      }
+      this.clearMutationInspection(repo.id, inspectionRequest);
+      report(typeof done === 'function' ? done(snapshot) : done);
     }, repo.id, operationId);
-    if (result === 'error' && this.error() && this.repositories().some((repository) => repository.id === repo.id)) {
+    if (result === 'error' && this.repositories().some((repository) => repository.id === repo.id)) {
       try {
-        this.storeMutationSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repo.id }));
-        this.clearWorkingTreeInspection(preserveConflictOnFailure);
+        await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
       } catch {
         // Keep the original mutation error; a manual refresh can retry the snapshot.
       }
@@ -2523,43 +2550,60 @@ export class GitKhronosService {
    * history. The predicted status is shown immediately, and the backend
    * returns only the refreshed status instead of a full snapshot.
    */
-  private async mutateWorkingTree(
-    command: string,
+  private async mutateWorkingTree<K extends StatusCommand>(
+    command: K,
     pending: string,
     done: string,
-    extra: Record<string, unknown>,
-    predict: (status: RepositoryStatus) => RepositoryStatus = (status) => status,
-  ): Promise<void> {
+    extra: Omit<CommandArgs<K>, 'repoId'>,
+    predict?: (status: RepositoryStatus) => RepositoryStatus,
+  ): Promise<WorkingTreeMutationResult> {
+    return this.changeWorkingTree(pending, done,
+      repoId => invokeCommand(command, { repoId, ...extra } as CommandArgs<K>) as Promise<RepositoryStatus>, predict);
+  }
+
+  private async changeWorkingTree(
+    pending: string,
+    done: string,
+    change: (repoId: string) => Promise<RepositoryStatus>,
+    predict: (status: RepositoryStatus) => RepositoryStatus = status => status,
+  ): Promise<WorkingTreeMutationResult> {
     const repo = this.repository();
-    if (!repo) return;
+    if (!repo) return { succeeded: false, inspectionRequest: this.workingTreeRequest };
     const repoId = repo.id;
+    let inspectionRequest = this.workingTreeRequest;
+    const conflictRequest = this.conflictRequest;
     this.bumpStatusGeneration(repoId);
+    const generation = this.statusGeneration(repoId);
     this.storeStatus(repoId, predict(repo.status));
     this.pendingWorkingTreeMutations.set(repoId, (this.pendingWorkingTreeMutations.get(repoId) ?? 0) + 1);
     let status: RepositoryStatus | null = null;
-    await this.run(pending, async () => {
-      status = await invoke<RepositoryStatus>(command, { repoId, ...extra });
-      this.clearWorkingTreeInspection();
-      this.activity.set(done);
+    const outcome = await this.run(pending, async report => {
+      status = await change(repoId);
+      // Only invalidate the inspection that existed when this change began.
+      if (repoId === this.activeRepositoryId() && inspectionRequest === this.workingTreeRequest) {
+        this.clearWorkingTreeInspection(conflictRequest !== this.conflictRequest);
+        inspectionRequest = this.workingTreeRequest;
+      }
+      report(done);
     }, repoId);
+    const result = { succeeded: outcome === 'success', inspectionRequest };
+    const statusIsCurrent = generation === this.statusGeneration(repoId);
+    // Every completion invalidates older replies, including overlapping work.
+    this.bumpStatusGeneration(repoId);
     const remaining = (this.pendingWorkingTreeMutations.get(repoId) ?? 1) - 1;
     if (remaining > 0) {
-      // A later change is still running; its status will include this one.
+      // Reply order does not establish the order in which Git applied changes.
       this.pendingWorkingTreeMutations.set(repoId, remaining);
-      return;
+      return result;
     }
     this.pendingWorkingTreeMutations.delete(repoId);
-    this.bumpStatusGeneration(repoId);
-    if (status) {
+    if (status && statusIsCurrent) {
       this.storeStatus(repoId, status);
-    } else if (this.repositories().some((repository) => repository.id === repoId)) {
-      // Replace the prediction with Git's actual state after a failure.
-      try {
-        this.storeStatus(repoId, await invoke<RepositoryStatus>('refresh_repository_status', { repoId }));
-      } catch {
-        // Keep the original mutation error; the live refresh retries later.
-      }
+    } else {
+      // Reconcile failures and changed contexts without overwriting newer work.
+      await this.refreshStatusInBackground(repoId, true);
     }
+    return result;
   }
 
   private statusGeneration(repoId: string): number {
@@ -2595,28 +2639,48 @@ export class GitKhronosService {
       : snapshot);
   }
 
-  private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string): void {
+  private clearMutationInspection(repoId: string, request: MutationInspection, preserveConflict = false): void {
+    // A completion may invalidate its original inspection, never a newer one.
+    if (repoId === this.activeRepositoryId() && request.workingTree === this.workingTreeRequest) {
+      this.clearWorkingTreeInspection(preserveConflict || request.conflict !== this.conflictRequest);
+    }
+  }
+
+  private async refreshMutationSnapshot(repoId: string, request: MutationInspection, preserveConflict = false): Promise<void> {
+    const generation = this.statusGeneration(repoId);
+    const snapshot = await ipc.refresh_repository({ repoId });
+    // A newer mutation or close/reopen owns the state once this read is stale.
+    if (generation !== this.statusGeneration(repoId)) return;
+    this.storeMutationSnapshot(snapshot);
+    this.clearMutationInspection(repoId, request, preserveConflict);
+  }
+
+  private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string, report: ActivityReporter): void {
     this.storeSnapshot(snapshot, true);
     this.activeRepositoryId.set(snapshot.id);
     this.clearInspection();
     this.remember(snapshot.path);
     this.persistOpenTabs();
-    this.activity.set(activity);
+    report(activity);
     this.deferMetadataRefresh(snapshot.id);
   }
 
+  // Report completion through the callback; the shared status can belong to
+  // another operation by the time this action's promise resolves.
   async run(
     label: string,
-    action: () => Promise<void>,
+    action: (report: ActivityReporter) => Promise<void>,
     repositoryId: string | null = null,
     operationId: string | null = null,
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
+    const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
+    let description = label.replace(/…$/, '');
     const entry: ActivityLogEntry = {
       id,
       timestamp: new Date(startedAt).toISOString(),
-      description: label.replace(/…$/, ''),
+      description,
       durationMs: null,
       status: 'running',
       repositoryId,
@@ -2628,13 +2692,17 @@ export class GitKhronosService {
       ...entries,
       entry,
     ].slice(-250));
-    this.busy.set(true);
+    this.updateRunningOperations(1);
     this.error.set(null);
     this.lastFailureKind = null;
     this.activity.set(label);
+    const report: ActivityReporter = message => {
+      description = message;
+      this.activity.set(message);
+    };
     try {
-      await action();
-      this.finishActivity(id, 'success', this.activity(), startedAt, null);
+      await action(report);
+      this.finishActivity(id, 'success', description, startedAt, null);
       return 'success';
     } catch (error: unknown) {
       this.lastFailureKind = this.errorKind(error);
@@ -2642,8 +2710,7 @@ export class GitKhronosService {
       let detail = this.formatError(error);
       if (cancelled && repositoryId) {
         try {
-          this.storeSnapshot(await invoke<RepositorySnapshot>('refresh_repository', { repoId: repositoryId }));
-          this.clearWorkingTreeInspection();
+          await this.refreshMutationSnapshot(repositoryId, inspectionRequest);
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
           detail += ` Repository refresh also failed: ${this.formatError(refreshError)}`;
@@ -2659,8 +2726,13 @@ export class GitKhronosService {
       return status;
     } finally {
       if (operationId) this.finishCancellationRequest(operationId);
-      this.busy.set(false);
+      this.updateRunningOperations(-1);
     }
+  }
+
+  private updateRunningOperations(delta: 1 | -1): void {
+    this.runningOperations += delta;
+    this.busy.set(this.runningOperations > 0);
   }
 
   private finishActivity(
@@ -2679,10 +2751,10 @@ export class GitKhronosService {
     } : entry));
   }
 
-  private setHistoryUndone(repoId: string, undone: boolean): void {
+  private setHistoryUndone(repoId: string, entry: OperationHistoryEntry, undone: boolean): void {
     this.operationHistory.update((history) => {
-      const entry = history[repoId];
-      return entry ? { ...history, [repoId]: { ...entry, undone } } : history;
+      // A late replay must not toggle an entry recorded while it was pending.
+      return history[repoId] === entry ? { ...history, [repoId]: { ...entry, undone } } : history;
     });
   }
 
@@ -2693,13 +2765,15 @@ export class GitKhronosService {
     }));
   }
 
+  // Completion belongs to the originating repository, not the active tab.
+  // Callers check the mutation outcome; the shared error toast is independent.
   private recordCheckout(
     repoId: string | undefined,
     beforeBranch: string | null | undefined,
-    afterBranch: string | null | undefined,
   ): void {
+    const afterBranch = this.repositories().find(repository => repository.id === repoId)?.status.branch;
     const entry = createCheckoutHistoryEntry(beforeBranch, afterBranch);
-    if (!repoId || this.error() || !entry) return;
+    if (!repoId || !entry) return;
     this.operationHistory.update((history) => ({
       ...history,
       [repoId]: entry,
@@ -2709,11 +2783,11 @@ export class GitKhronosService {
   private recordHeadChange(
     repoId: string | undefined,
     beforeOid: string | null | undefined,
-    afterOid: string | null | undefined,
     label: string,
   ): void {
+    const afterOid = this.repositories().find(repository => repository.id === repoId)?.headOid;
     const entry = createHeadHistoryEntry(beforeOid, afterOid, label);
-    if (!repoId || this.error() || !entry) return;
+    if (!repoId || !entry) return;
     this.operationHistory.update((history) => ({ ...history, [repoId]: entry }));
   }
 
@@ -2748,6 +2822,10 @@ export class GitKhronosService {
     this.fileInsightRequest += 1;
     this.fileHistory.set(null);
     this.fileBlame.set(null);
+    this.fileBlameTarget = null;
+    this.fileBlameStart.set(1);
+    this.fileBlameNext.set(null);
+    this.fileBlameError.set(null);
     this.fileInsightBusy.set(false);
   }
 
@@ -2820,13 +2898,13 @@ export class GitKhronosService {
       ...paths.filter((path) => path === activePath),
       ...paths.filter((path) => path !== activePath),
     ];
-    this.busy.set(true);
+    this.updateRunningOperations(1);
     this.activity.set('Restoring active repository…');
     let restoredPath: string | null = null;
     try {
       for (const path of ordered) {
         try {
-          const snapshot = await invoke<RepositorySnapshot>('open_repository', { path });
+          const snapshot = await ipc.open_repository({ path });
           if (this.activeWorkspaceId() !== workspaceId) return;
           this.storeSnapshot(snapshot, true);
           this.activeRepositoryId.set(snapshot.id);
@@ -2839,7 +2917,7 @@ export class GitKhronosService {
       }
       this.activity.set('Ready');
     } finally {
-      this.busy.set(false);
+      this.updateRunningOperations(-1);
     }
     if (!restoredPath) {
       this.persistOpenTabs();
@@ -2872,7 +2950,7 @@ export class GitKhronosService {
     for (const path of paths) {
       if (this.activeWorkspaceId() !== workspaceId) return;
       try {
-        const snapshot = await invoke<RepositorySnapshot>('open_repository', { path });
+        const snapshot = await ipc.open_repository({ path });
         if (this.activeWorkspaceId() !== workspaceId) return;
         this.deferredMetadataRefreshes.add(snapshot.id);
         this.storeSnapshot(snapshot, true);
@@ -2915,6 +2993,15 @@ export class GitKhronosService {
       }
       void this.refreshRepositoryInBackground(repositoryId);
     }, 1_200);
+  }
+
+  private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<void> {
+    const previous = this.repositories().find((repository) => repository.id === snapshot.id);
+    if (!previous) return;
+    // Metadata snapshots omit untracked discovery. Keep known entries visible
+    // until the asynchronous status scan can discover additions and removals.
+    this.storeSnapshot({ ...snapshot, status: preserveUntrackedEntries(previous.status, snapshot.status) });
+    await this.refreshStatusInBackground(snapshot.id, true);
   }
 
   private storeSnapshot(snapshot: RepositorySnapshot, addIfMissing = false): void {
@@ -3167,7 +3254,7 @@ function createRepositoryPreview(): RepositorySnapshot {
     identity: { name: 'Maya Chen', email: 'maya@example.test' },
     headOid,
     status: {
-      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, mergeInProgress: false, historyOperation: null, historyNoCommit: false, rebaseInProgress: false, rebaseEditStopped: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
+      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, mergeInProgress: false, historyOperation: null, historyNoCommit: false, rebaseInProgress: false, rebaseEditStopped: false, rebaseSplit: null, mailPatchInProgress: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
       entries: [
         { path: 'apps/desktop/src/app/app.component.ts', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
         { path: 'apps/desktop/src/app/app.component.html', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
@@ -3204,6 +3291,8 @@ function createRepositoryPreview(): RepositorySnapshot {
     lfs: { enabled: false, available: false, version: null, trackedFiles: null },
     sparseCheckout: { enabled: false, coneMode: true, sparseIndex: false, paths: [] },
     commitTemplate: null,
+    commitTemplateError: null,
+    bare: false,
     commits,
     historyTruncated: false,
   };

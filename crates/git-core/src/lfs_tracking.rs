@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsTrackingPattern {
     pub pattern: String,
@@ -9,7 +9,7 @@ pub struct LfsTrackingPattern {
     pub tracked: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsTrackingRules {
     pub patterns: Vec<LfsTrackingPattern>,
@@ -17,14 +17,14 @@ pub struct LfsTrackingRules {
     pub root_attributes: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 struct PatternOutput {
     patterns: Vec<LfsTrackingPattern>,
 }
 
 type AttributesState = (Vec<u8>, Vec<u8>, Vec<u8>, Option<String>, u32);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsAttribute {
     pub name: String,
@@ -32,7 +32,7 @@ pub struct LfsAttribute {
     pub index: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsFileAttributes {
     pub path: String,

@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const PASSPHRASE: &str = "fixture-secret";
 
@@ -65,12 +66,25 @@ impl SshFixture {
             sshd.is_absolute() && sshd.is_file(),
             "SSH qualification requires an OpenSSH sshd; set GIT_KHRONOS_SSHD to its absolute path"
         );
-        let directory = std::env::current_dir()
+        let parent = std::env::current_dir()
             .unwrap()
-            .join("target/authentication-fixtures")
-            .join(format!("ssh-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&directory);
-        fs::create_dir_all(&directory).unwrap();
+            .join("target/authentication-fixtures");
+        fs::create_dir_all(&parent).unwrap();
+        let directory = parent.join(format!(
+            "ssh-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(&directory).unwrap();
         let path = |name: &str| directory.join(name);
         let text = |path: &Path| path.to_str().unwrap().to_owned();
 
@@ -250,7 +264,7 @@ impl SshFixture {
     fn helper(&self) -> PathBuf {
         std::env::var_os("GIT_KHRONOS_PACKAGED_BINARY")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos-desktop")))
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos")))
     }
 
     fn fetch(
@@ -379,4 +393,36 @@ fn real_ssh_host_trust_passphrase_rejection_cancel_background_fetch_and_push() {
         .push(Some(answering(PASSPHRASE, Arc::new(AtomicU64::new(0)))))
         .unwrap();
     assert_eq!(git(&fixture.remote, &["rev-parse", "main"]), local);
+
+    // Authentication can succeed before Git discovers divergent history. Keep
+    // that rejection actionable instead of asking for the same credentials again.
+    let source = fixture.directory.join("source");
+    git(&source, &["fetch", fixture.remote.to_str().unwrap(), "main"]);
+    git(&source, &["merge", "--ff-only", "FETCH_HEAD"]);
+    fs::write(source.join("file.txt"), b"advanced remote\n").unwrap();
+    git(&source, &["commit", "-q", "-am", "remote advance"]);
+    git(&source, &["push", fixture.remote.to_str().unwrap(), "main"]);
+    let remote = git(&fixture.remote, &["rev-parse", "main"]);
+    fs::write(fixture.repository.join("file.txt"), b"divergent local\n").unwrap();
+    git(&fixture.repository, &["commit", "-q", "-am", "local advance"]);
+    let local = git(&fixture.repository, &["rev-parse", "HEAD"]);
+    let index = fs::read(fixture.repository.join(".git/index")).unwrap();
+    let prompts = Arc::new(AtomicU64::new(0));
+    let failure = fixture
+        .push(Some(answering(PASSPHRASE, prompts.clone())))
+        .unwrap_err();
+    assert!(
+        prompts.load(Ordering::Relaxed) >= 1,
+        "the rejected push must authenticate through the shipped askpass helper"
+    );
+    assert_safe_failure(&failure, "gitFailure");
+    assert!(failure.message.contains("remote rejected"));
+    assert!(failure.hint.unwrap().contains("Fetch and inspect"));
+    assert_eq!(git(&fixture.remote, &["rev-parse", "main"]), remote);
+    assert_eq!(git(&fixture.repository, &["rev-parse", "HEAD"]), local);
+    assert_eq!(fs::read(fixture.repository.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read(fixture.repository.join("file.txt")).unwrap(),
+        b"divergent local\n"
+    );
 }

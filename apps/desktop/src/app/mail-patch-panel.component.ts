@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { CommitSummary, MailPatchAction, MailPatchImportReview, MailPatchProgress, MailPatchReview } from '@git-khronos/contracts';
-import { GitKhronosService } from './git-khronos.service';
+import { GitKhronosService, type ActivityReporter } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 const MAX_SERIES = 500;
@@ -158,12 +158,12 @@ export class MailPatchPanelComponent {
   private focusLater(repositoryId: string, generation: number, target: () => HTMLElement | null | undefined): void {
     setTimeout(() => { if (this.current(repositoryId, generation)) target()?.focus(); });
   }
-  private async run(label: string, action: (repositoryId: string, generation: number) => Promise<void>, refresh = false): Promise<void> {
+  private async run(label: string, action: (repositoryId: string, generation: number, report: ActivityReporter) => Promise<void>, refresh = false): Promise<void> {
     if (this.pending() || this.disabled() || !this.git.requireRecoveryRepository(this.repositoryId())) return;
     const repositoryId = this.repositoryId(), generation = this.generation;
     this.pending.set(true); this.error.set(''); this.notice.set('');
     try {
-      const result = await this.git.run(label, () => action(repositoryId, generation), repositoryId);
+      const result = await this.git.run(label, report => action(repositoryId, generation, report), repositoryId);
       if (refresh && !await this.git.refreshRepositoryInBackground(repositoryId) && this.current(repositoryId, generation) && result === 'success') {
         this.error.set('Git finished, but repository refresh failed. Refresh manually before continuing; do not reapply blindly.');
       } else if (result !== 'success' && this.current(repositoryId, generation)) {
@@ -178,9 +178,9 @@ export class MailPatchPanelComponent {
     const oids = this.chosen().map(commit => commit.oid);
     if (!oids.length) return;
     this.exportReview.set(null);
-    await this.run('Preparing mail-patch series…', async (repositoryId, generation) => {
-      const review = await invoke<MailPatchReview>('review_mail_patch_export', { repoId: repositoryId, oids });
-      this.git.activity.set('Mail-patch series reviewed; nothing written');
+    await this.run('Preparing mail-patch series…', async (repositoryId, generation, report) => {
+      const review = await ipc.review_mail_patch_export({ repoId: repositoryId, oids });
+      report('Mail-patch series reviewed; nothing written');
       if (this.current(repositoryId, generation)) {
         this.exportReview.set(review);
         this.focusLater(repositoryId, generation, () => this.exportRegion()?.nativeElement);
@@ -190,13 +190,13 @@ export class MailPatchPanelComponent {
   async exportSeries(): Promise<void> {
     const review = this.exportReview();
     if (!review) return;
-    await this.run('Saving mail-patch series…', async (repositoryId, generation) => {
+    await this.run('Saving mail-patch series…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new mail-patch series outside the repository',
         filters: [{ name: 'Mailbox patch series', extensions: ['mbox', 'patch'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a destination. Nothing was written.');
-      if (!destination) { this.notice.set('Export cancelled. No file written.'); this.git.activity.set('Mail-patch export cancelled'); return; }
-      const bytes = await invoke<number>('export_mail_patch', { repoId: repositoryId, request: review.request, destination });
-      this.git.activity.set('Mail-patch series exported');
+      if (!destination) { this.notice.set('Export cancelled. No file written.'); report('Mail-patch export cancelled'); return; }
+      const bytes = await ipc.export_mail_patch({ repoId: repositoryId, request: review.request, destination });
+      report('Mail-patch series exported');
       if (this.current(repositoryId, generation)) {
         this.exportReview.set(null);
         this.notice.set(`Saved ${review.commits.length} patches (${bytes} bytes) to ${destination}.`);
@@ -209,14 +209,14 @@ export class MailPatchPanelComponent {
   }
   async reviewImport(): Promise<void> {
     this.importReview.set(null);
-    await this.run('Reviewing mail-patch series…', async (repositoryId, generation) => {
+    await this.run('Reviewing mail-patch series…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a mail-patch series to apply', directory: false, multiple: false,
         filters: [{ name: 'Mailbox patch series', extensions: ['mbox', 'patch', 'eml', 'txt'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a series. Nothing was applied.');
-      if (!file) { this.notice.set('Selection cancelled. Nothing was applied.'); this.git.activity.set('Mail-patch selection cancelled'); return; }
+      if (!file) { this.notice.set('Selection cancelled. Nothing was applied.'); report('Mail-patch selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('Select one series file. Nothing was applied.');
-      const review = await invoke<MailPatchImportReview>('review_mail_patch_import', { repoId: repositoryId, file });
-      this.git.activity.set('Mail-patch series reviewed; nothing applied');
+      const review = await ipc.review_mail_patch_import({ repoId: repositoryId, file });
+      report('Mail-patch series reviewed; nothing applied');
       if (this.current(repositoryId, generation)) {
         this.importReview.set(review);
         this.focusLater(repositoryId, generation, () => this.importRegion()?.nativeElement);
@@ -227,20 +227,20 @@ export class MailPatchPanelComponent {
     const review = this.importReview();
     if (!review) return;
     this.importReview.set(null);
-    await this.run('Applying mail patches…', async (repositoryId, generation) => {
-      const progress = await invoke<MailPatchProgress>('import_mail_patch', { repoId: repositoryId, request: review.request });
-      this.report(progress, repositoryId, generation, `Applied ${review.patches.length} patches.`);
+    await this.run('Applying mail patches…', async (repositoryId, generation, report) => {
+      const progress = await ipc.import_mail_patch({ repoId: repositoryId, request: review.request });
+      this.report(progress, repositoryId, generation, `Applied ${review.patches.length} patches.`, report);
     }, true);
   }
   async control(action: MailPatchAction): Promise<void> {
     await this.run(action === 'abort' ? 'Aborting mail-patch application…' : action === 'skip' ? 'Skipping current patch…' : 'Continuing mail-patch application…',
-      async (repositoryId, generation) => {
-        const progress = await invoke<MailPatchProgress>('control_mail_patch', { repoId: repositoryId, action });
-        this.report(progress, repositoryId, generation, action === 'abort' ? 'Application aborted; the branch is back at its original tip.' : 'All remaining patches applied.');
+      async (repositoryId, generation, report) => {
+        const progress = await ipc.control_mail_patch({ repoId: repositoryId, action });
+        this.report(progress, repositoryId, generation, action === 'abort' ? 'Application aborted; the branch is back at its original tip.' : 'All remaining patches applied.', report);
       }, true);
   }
-  private report(progress: MailPatchProgress, repositoryId: string, generation: number, done: string): void {
-    this.git.activity.set(progress.stopped ? 'Mail-patch application paused' : 'Mail-patch application finished');
+  private report(progress: MailPatchProgress, repositoryId: string, generation: number, done: string, reportActivity: ActivityReporter): void {
+    reportActivity(progress.stopped ? 'Mail-patch application paused' : 'Mail-patch application finished');
     if (!this.current(repositoryId, generation)) return;
     this.progress.set(progress.stopped ? progress : null);
     const recovery = progress.recoveryRef ? ` Original tip saved at ${progress.recoveryRef}.` : '';

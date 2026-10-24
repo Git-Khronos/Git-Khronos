@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const RECOVERY_NAMESPACE: &str = "refs/git-khronos/recovery/";
 const MAX_RECORD_BYTES: u64 = 64 * 1024;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ResetPreview {
     pub head_oid: String,
@@ -30,7 +30,7 @@ struct OperationState {
     status: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OperationRecovery {
     pub id: String,

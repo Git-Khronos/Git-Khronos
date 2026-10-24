@@ -45,6 +45,7 @@ header { min-width: 0; display: flex; align-items: stretch; border-bottom: 1px s
 }
 .terminal-context { max-width: 240px; display: flex; align-items: center; gap: 5px; overflow: hidden; padding: 0 10px; border-left: 1px solid var(--terminal-divider); color: var(--terminal-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-body { position: relative; min-height: 0; overflow: hidden; padding: 7px 8px 4px; background: var(--terminal-surface); }
+.terminal-body[hidden] { display: none; }
 .terminal-host { position: absolute; inset: 7px 8px 4px; visibility: hidden; }
 .terminal-host.active { visibility: visible; }
 .terminal-error, .terminal-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--terminal-muted); font-size: 12px; }

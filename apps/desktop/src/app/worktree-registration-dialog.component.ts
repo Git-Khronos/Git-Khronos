@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeRegistrationReview } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
@@ -165,13 +165,14 @@ export class WorktreeRegistrationDialogComponent {
   async prune(entry: WorktreeRegistration): Promise<void> {
     const target = this.request();
     if (!target || !entry.oid || this.unavailable() || !this.git.requireRecoveryRepository(target.repositoryId)) return;
+    const expectedOid = entry.oid;
     this.pending.set(true);
     this.error.set('');
     let result: WorktreeRegistrationPruneResult | null = null;
     try {
       const outcome = await this.git.run('Removing reviewed worktree registration…', async () => {
-        result = await invoke<WorktreeRegistrationPruneResult>('prune_worktree_registration', { repoId: target.repositoryId,
-          request: { path: entry.path, expectedOid: entry.oid, expectedBranch: entry.branch } });
+        result = await ipc.prune_worktree_registration({ repoId: target.repositoryId,
+          request: { path: entry.path, expectedOid, expectedBranch: entry.branch } });
       }, target.repositoryId);
       if (this.request() !== target) return;
       if (outcome !== 'success' || !result) {

@@ -1,5 +1,18 @@
 # Informational sources
 
+## Native Tauri acceptance and typed IPC
+
+Sources:
+
+- https://v2.tauri.app/develop/tests/webdriver/manual-setup/
+- https://github.com/specta-rs/tauri-specta/tree/v2.0.0-rc.21
+- https://github.com/specta-rs/specta
+
+Used for the public WebDriver setup and the supported Tauri command/event type
+generation model. The harness, fixtures, safe-integer validation, generated
+adapter, and acceptance scenarios are independently written for Git Khronos.
+No external source code, assets, or documentation prose copied.
+
 ## Mail-patch exchange
 
 Sources:
@@ -359,12 +372,18 @@ Sources:
 - [OpenSSH client manual](https://man.openbsd.org/ssh.1)
 - [OpenSSH configuration manual](https://man.openbsd.org/ssh_config.5)
 - [OpenSSH server configuration manual](https://man.openbsd.org/sshd_config.5)
+- [libcurl error categories](https://curl.se/libcurl/c/libcurl-errors.html)
 
 The server manual informed only the disposable loopback `sshd` test fixture.
 
 Used for Git askpass/helper ownership, SSH askpass behavior and strict host-key
 verification. The operation bridge, protocol and interface are independent
 implementations; no upstream source code or assets were copied.
+
+The libcurl reference distinguishes connection, TLS and certificate failures;
+it does not define a stable Git stderr protocol. Transport classification is an
+independent best-effort implementation, tested against owned Git/HTTPS fixtures.
+Repository names and quoted URLs alone are not evidence of a TLS failure.
 
 ## Desktop interface behavior
 
@@ -468,6 +487,12 @@ Sources:
 Used for:
 
 - Showing repository-scoped LFS actions only when LFS tracking is configured.
+- Existing-repository endpoint credential review uses the Git LFS configuration
+  manual's documented endpoint keys, working/index/HEAD `.lfsconfig` selection,
+  bare-repository behavior, and ordinary Git configuration overrides. Git itself
+  parses configuration; the preflight, bounds, and cancellation lifecycle are
+  independently implemented. Owned loopback fixtures verify refusal before any
+  connection and preserve safe overrides. No upstream implementation was copied.
 - Initializing repository-local Git LFS filters and hooks.
 - Adding ordinary or lockable tracking patterns through `.gitattributes`.
 - Pulling objects required by the current checkout through the documented Git LFS CLI.
@@ -479,6 +504,22 @@ Used for:
   documented local media storage layout, object-database enumeration including
   unreachable objects and alternates, and shallow/partial-clone detection.
   Implementation and local bare-remote fixtures are original.
+- Retaining CRLF pointer references during cleanup. An original fixture asks
+  `git lfs pointer --check --no-strict` to validate its noncanonical pointer,
+  stores it as an unreachable Git blob, and checks that a previously reviewed
+  removal is refused without deleting cache data or changing HEAD/index bytes.
+  This behavior was independently verified with Git LFS 3.7.1; no upstream code
+  was copied or adapted.
+- Retaining original pointer content hidden by Git replacement refs. An original
+  local Git 2.53 fixture writes both blobs and a replacement ref, verifies the
+  changed ordinary `cat-file` output, and checks cleanup against raw stored
+  objects with replacement presentation disabled. No external implementation
+  was copied or adapted.
+- Clone-configuration safety checks were independently exercised with local Git
+  2.53, using NUL-framed `config --get-regexp` output and `config --type=bool`
+  as a separate oracle for disabled promisor values. Original fixtures distinguish
+  the partial-clone extension's remote name from booleans and require failed
+  configuration queries to refuse cleanup. No external source code was reused.
 - Independent local single-pointer hydration, narrower than CLI checkout:
   existing matching index/working pointer only, configured cache from the
   supported environment output, SHA-256/size verification of an exclusive
@@ -573,6 +614,72 @@ Used for:
 - Keeping maintenance serialized with other repository operations while the UI remains responsive.
 
 No source code, assets, wording collections, or visual implementation were copied.
+
+## Responsive terminal input
+
+Sources:
+
+- [Tauri asynchronous commands](https://v2.tauri.app/develop/calling-rust/)
+- [Tokio asynchronous mutex behavior](https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html)
+- [Linux readiness polling](https://man7.org/linux/man-pages/man2/poll.2.html)
+- [Linux file status flags](https://man7.org/linux/man-pages/man2/F_GETFL.2const.html)
+
+Used for keeping blocking PTY writes off the UI thread and awaiting a per-terminal
+writer without holding the shared session registry or occupying a blocking worker
+while queued. Frontend input is sequenced per tab and queued suffixes are cancelled
+after a failed write or close request. The IPC contract is unchanged. Tests use a
+controlled blocked writer and an owned stopped shell with a full PTY input buffer.
+Explicit close also runs on the blocking pool. Per-child ownership is retained
+through status, signal, or wait failures, so an explicit retry can still reap the
+same child. EOF and explicit close serialize process cleanup without holding the
+shared registry; a separate lifecycle guard announces exit only once, after both
+output handling and reaping complete. Independent fault-injection and native
+event fixtures verify these boundaries.
+Unix PTY streams use owned duplicate descriptors with nonblocking I/O and bounded
+readiness polling. Closing a session sets a shared cancellation flag, allowing
+pending writes to settle even if reaping the shell does not release the PTY's
+blocked system call. Buffered output is drained before treating a hangup as EOF.
+The non-Unix stream implementation retains the portable-pty backend; the new
+cancellation regression and native acceptance evidence are Linux-specific.
+No upstream code was copied or adapted.
+
+## Renderer terminal startup ownership
+
+Sources:
+
+- [Angular render callbacks](https://angular.dev/api/core/afterNextRender)
+- [xterm.js terminal lifecycle API](https://xtermjs.org/docs/api/terminal/classes/terminal/)
+
+Used for independently ordering screen creation after the Angular host render
+and disposing acquired terminal resources when setup or mounting fails. Native
+session cleanup remains part of the startup transaction. A failed native close
+retains its session ID for an explicit cleanup retry before another startup is
+allowed. Renderer disposal failures do not skip native cleanup or other resource
+disposals. No upstream implementation code was copied or adapted.
+
+## Authentication interface delivery
+
+Source: [Angular deferred loading](https://angular.dev/guide/templates/defer).
+
+Used for independently deferring the authentication component immediately after
+the first view render, with explicit load-failure feedback and pending-request
+reconciliation. This keeps the existing initial-bundle hard limit while preserving
+credential masking, per-request submission ownership, and cancellation feedback.
+No framework implementation code was copied or adapted.
+
+## Browser drag-and-drop verification
+
+Source:
+
+- [Playwright pointer and drag actions](https://playwright.dev/docs/input#dragging-manually)
+
+Used for:
+
+- Driving branch-drop menu tests with hit-tested pointer actions and repeated
+  target movement so browsers deliver the required `dragover` event.
+- Retaining menu placement, keyboard navigation, and focus-return assertions.
+
+The tests use standard documented APIs. No third-party implementation was copied.
 
 ## Commit bisection
 
@@ -824,3 +931,283 @@ Used for:
 - Keeping browser-preview document titles useful without invoking native APIs.
 
 No source code, assets, wording collections, or visual implementation were copied.
+
+## Untracked diff statistics
+
+Sources:
+
+- [Git attributes documentation](https://git-scm.com/docs/gitattributes)
+- [Git configuration documentation](https://git-scm.com/docs/git-config)
+- [Git diff driver behavior](https://github.com/git/git/blob/master/userdiff.c)
+- [Git diff size classification](https://github.com/git/git/blob/master/diff.c)
+
+Used for:
+
+- Resolving typed effective diff attributes with gitoxide, including inherited
+  rules and index fallbacks, verified against the Git CLI.
+- Using read-only Git index metadata for attribute paths so sparse trees and
+  executable attribute files retain their effective rules without checkout.
+- Respecting explicit text/binary settings, automatic driver settings, and the
+  configured size threshold while computing untracked additions.
+- Deriving behavioral tests against local Git without executing diff converters
+  or changing the application user's index.
+
+The implementation is independently written. No upstream source code was copied
+or adapted.
+
+## Selected-file stash boundaries
+
+Sources:
+
+- [Git stash documentation](https://git-scm.com/docs/git-stash)
+- [Git 2.53 stash command behavior](https://github.com/git/git/blob/v2.53.0/builtin/stash.c)
+
+Used for independently implementing complete rename selection, literal NUL-framed
+path scopes, and explicit index-restoration options. Disposable CLI fixtures
+verify staged deletion validation and Git's keep-index capture/reapply behavior.
+Git's staged-only reverse patch does not honor the selected path scope; an
+isolated index containing only selected staged changes avoids changing other
+staged files. The real index remains locked until its selected entries are
+published. Ordinary and keep-index selected stashes retain Git's full staged-tree
+parent; restoring that index can conflict with staged changes that were left in
+place. Tests distinguish this existing Git behavior from rollback or
+data-preservation failures.
+
+No upstream implementation was copied or adapted.
+
+## Inherited Git environment boundaries
+
+Source: [Git command and environment documentation](https://git-scm.com/docs/git).
+
+Used for interpreting repository-routing and pathspec environment variables.
+Internal Git commands clear inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+and `GIT_INDEX_FILE`, plus the four `GIT_*_PATHSPECS` flags, before applying their
+explicit repository and path selections. Scoped internal alternate indexes and
+explicit bare-repository access are applied afterward. Normal Git configuration
+and authentication environment are retained. Independently written isolated
+process tests verify these boundaries. The in-process attribute engine explicitly
+sets its selected working directory after opening, so inherited `GIT_WORK_TREE`
+cannot substitute another repository's attribute files. No source code was
+copied or adapted.
+
+## Commit-history record framing
+
+Sources: [Git pretty-format documentation](https://git-scm.com/docs/pretty-formats)
+and [Git log options](https://git-scm.com/docs/git-log).
+
+Used for the documented literal-byte placeholders and `tformat` terminator
+semantics. History transport uses eight NUL-terminated fields followed by Git's
+record newline, instead of field/record separators that valid commit text can
+contain. The decoder rejects incomplete records, invalid object IDs, and duplicate
+commit records rather than silently dropping them. Ordinary control-character
+messages are compared with independent per-field Git queries. Malformed raw NUL
+commit fixtures separately check that message data cannot forge records or
+metadata. Output is explicitly UTF-8 even when `i18n.logOutputEncoding` requests
+UTF-16; configured output encoding cannot introduce NULs into the field stream.
+Signature, notes, and color presentation are disabled for this transport.
+No upstream source code was copied or adapted.
+
+## Stash-list record framing and recovery labels
+
+Source: [Git stash documentation](https://git-scm.com/docs/git-stash), including
+its documented Git log options and newest-first reflog selectors.
+
+Stash transport independently uses three NUL-terminated fields and validates
+the complete ordinal selector sequence and full object IDs. Repeated object IDs
+remain valid when their stash selectors differ. Unicode/control-character
+labels, configured output encoding, exact-target stash actions, and restoration
+after deletion are checked with owned Git repositories. Deletion recovery uses
+an explicitly UTF-8, bounded display-label preview; the full stash object remains
+protected by its unchanged object ID. No upstream implementation was copied and
+no new dependencies were introduced.
+
+## Selected stash application and partial pop outcomes
+
+Source: [Git stash documentation](https://git-scm.com/docs/git-stash), specifically
+immutable stash-like commit arguments for apply, pop retaining a stash on
+conflict, and the `stash.index` configuration behavior.
+
+Selected apply/pop commands independently validate the captured selector/object
+pair, then apply the immutable object ID. Pop revalidates before removal and
+reports an explicit applied-but-not-removed outcome when removal fails. Owned
+merge-driver fixtures renumber the stash stack during application to check that
+the applied contents remain those selected and neither entry is removed on the
+changed-stack path. No upstream source code was copied.
+
+## Immutable stash preview transport
+
+Sources: [Git show documentation](https://git-scm.com/docs/git-show) for explicit
+UTF-8 output, notes suppression, and signature presentation; and
+[Git stash documentation](https://git-scm.com/docs/git-stash) for stash object
+structure and including saved untracked files.
+
+Preview messages, file lists, statistics, and patches independently use one
+selected immutable object ID, not a later interpretation of a stash ordinal.
+Optional notes, colour, external diff/text conversion, and signature-verifier
+presentation are suppressed. Existing bounded complete-header inspection detects
+signature presence without invoking a verifier, so a signed object is not
+misrepresented as unsigned. Owned Git fixtures cover Unicode, stack renumbering,
+signature-helper suppression, message limits, and incomplete headers. No external
+implementation was copied or new dependency added.
+
+## Commit preview and file-history metadata
+
+Sources: [Git show documentation](https://git-scm.com/docs/git-show) and
+[Git pretty formats](https://git-scm.com/docs/pretty-formats).
+
+Ordinary commit previews explicitly request UTF-8 and suppress notes, colour,
+and additional signature presentation while retaining verification through the
+documented signature placeholders. Incomplete or unknown verification metadata
+is rejected rather than treated as unsigned. Legacy file history independently
+uses five NUL-terminated fields and a record newline, rejecting incomplete,
+duplicate, or invalid object-ID records. Search and paginated file history also
+explicitly request UTF-8. Owned fixtures exercise control characters, Unicode,
+configured UTF-16 output, and real SSH signature verification. No external code
+was copied and no dependency was added.
+
+Legacy file-history reads additionally use the project's bounded, deadline-aware
+history process runner with a 2 MiB per-pipe cap. The native command runs outside
+the UI thread. Owned fixtures verify an oversized subject is refused without a
+partial list and that unrelated controls respond while Git is deliberately held
+open. Exact-boundary and stderr-overflow checks exercise the shared collector;
+an owned shell-alias fixture checks cancellation remains active after Git exits
+while a descendant still holds a pipe. No external process-runner implementation
+was used.
+
+## Bounded blame investigation
+
+Source: [Git blame documentation](https://git-scm.com/docs/git-blame), including
+line ranges, line-porcelain metadata, encoding, and boundary configuration; and
+[Git pathname quoting](https://git-scm.com/docs/git-config#Documentation/git-config.txt-corequotePath).
+
+Blame pages independently request 100 lines plus one lookahead line from a pinned
+commit, with explicit UTF-8 metadata and no text conversion. Both the legacy and
+paged commands run outside the UI thread with bounded pipes and a deadline.
+The decoder requires complete source/attribution records and consecutive final
+line numbers instead of inventing missing text or epoch timestamps. Empty-file
+range failures are checked against the actual empty blob, not stderr wording.
+Owned fixtures cover Unicode, renamed paths, CRLF data, malformed output, text
+converter suppression, large files, and pending-read responsiveness. The original
+UI provides bounded pages, line jumps, explicit local errors/retry, preserved
+loaded pages, and horizontal source scrolling. No upstream code or assets were
+copied; no new dependency was introduced.
+The independent path decoder removes exactly one enclosing quote pair, supports
+Git's C control escapes and octal bytes, and rejects malformed/NUL paths. Literal
+argv validation preserves valid spaces and control characters without weakening
+the separate validators used by mutation workflows.
+
+## Native WebDriver session transport
+
+Sources: [Tauri manual WebDriver setup](https://tauri.app/develop/tests/webdriver/manual-setup/)
+and [Tauri driver request routing](https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-driver/src/server.rs).
+
+The Linux harness independently routes session creation through Tauri and
+subsequent commands directly to the native WebKit driver owning that session.
+This removes an intermediary HTTP hop after repeated lost replies at unrelated
+operations; it does not establish the underlying cause of those lost replies.
+The packaged application and native bridge remain unchanged. Mutation replies
+are never recovered by replay or fallback; owned unit tests assert endpoint
+selection and exactly one attempted mutation on connection loss. No upstream
+source code was copied or adapted, and no dependency was introduced.
+
+## Directory-relative LFS removal
+
+Sources:
+
+- rustix filesystem API: <https://docs.rs/rustix/1.1.5/rustix/fs/index.html>
+- openat: <https://docs.rs/rustix/1.1.5/rustix/fs/fn.openat.html>
+- unlinkat: <https://docs.rs/rustix/1.1.5/rustix/fs/fn.unlinkat.html>
+
+Used for directory-handle-relative filesystem operations and no-follow flags.
+The requirement was independently derived from a disposable native regression
+that swaps an LFS cache directory after inventory and requires an outside
+sentinel to survive. No implementation source code copied.
+
+## Namespace-relative reference names
+
+Source: [Git for-each-ref documentation](https://git-scm.com/docs/git-for-each-ref).
+
+Used for distinguishing ambiguity-dependent `refname:short` display values from
+namespace-relative branch, remote-tracking, tag, and upstream names. Original
+fixtures create branches and tags with the same names under both ambiguity
+settings and verify exact action scope. No source code was copied.
+
+## Build-output isolation
+
+Source: [Nx output configuration](https://nx.dev/docs/guides/tasks--caching/configure-outputs).
+
+Used for binding cached build artifacts to the selected output directory instead
+of a shared release path. Original tests separately qualify development checks,
+fresh development builds, cache restoration, and the production asset guard.
+No external implementation code was copied.
+
+## Menu keyboard exit
+
+Source: [WAI menu and menubar pattern](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/).
+
+Used for the requirement that Tab and Shift+Tab leave transient menus rather
+than cycling through their items. Original browser regressions compare normal
+focus order against menu dismissal, including the document boundary. A native
+WebKit fixture uses real keyboard input against the packaged application.
+No implementation code was copied.
+
+## Clone URL review
+
+Sources:
+
+- [Git ls-remote documentation](https://git-scm.com/docs/git-ls-remote/2.28.0)
+- [Git configuration conditional includes](https://git-scm.com/docs/git-config/2.39.0#_conditional_includes)
+
+Used for delegating URL expansion to Git without contacting the remote and for
+scoping conditional includes to the clone destination. Disposable local-only
+probes distinguish launching-repository settings from destination and remote-URL
+conditions. Original integration tests isolate global and system configuration
+in subprocesses; native acceptance exercises the existing packaged clone command.
+No implementation source code was copied or adapted.
+
+## Transport-time credential URL refusal
+
+Source: [Git 2.39 configuration documentation](https://git-scm.com/docs/git-config/2.39.0#Documentation/git-config.txt-transfercredentialsInUrl).
+
+Used for enforcing Git's password-in-URL refusal during the actual transport,
+including rewrites copied from clone templates after preflight. Original local-only
+regressions require HTTP and SSH password refusal despite configured `allow`,
+preserve a safe template's rewrite and files, and classify the diagnostic without
+returning its URL. This safeguard supplements existing validation; it does not
+claim to cover HTTP username-only template URLs or replace push-URL preflight.
+No implementation code was copied or adapted.
+
+## Debian package-name transition
+
+Sources:
+
+- [Debian package relationships policy](https://www.debian.org/doc/debian-policy/ch-relationships.html)
+- [APT transaction hook protocol](https://manpages.debian.org/bookworm/apt/apt.conf.5.en.html)
+- [APT removal refusal](https://manpages.ubuntu.com/manpages/noble/man8/apt-get.8.html)
+- [APT's official hook configuration implementation](https://github.com/Debian/apt/blob/main/apt-pkg/deb/dpkgpm.cc)
+
+Used for exact legacy-package replacement fields, the documented version-2
+action stream, and per-command protocol selection. The guard is independently
+implemented, never parses translated simulation output, and does not execute
+configuration values. No upstream implementation code was copied or adapted.
+Private fakeroot/dpkg regressions, protocol/mocked-installer checks, and real
+isolated APT transactions passed. These cover user decline, legacy-only
+replacement, refusal of an unrelated transitive removal before dpkg mutation,
+and preservation of existing hooks' protocols. They use private configuration,
+databases, roots, logs, and fixture packages; no host packages are installed or
+removed. Rebuilt-artifact acceptance remains a separate gate.
+
+## Interruptible Unix child-output reads
+
+Sources: existing Rustix 1.1.5 API declarations and
+[fcntl_getfl](https://docs.rs/rustix/1.1.5/rustix/fs/fn.fcntl_getfl.html) /
+[fcntl_setfl](https://docs.rs/rustix/1.1.5/rustix/fs/fn.fcntl_setfl.html)
+documentation.
+
+Used for preserving the owned read descriptor's flags while enabling
+nonblocking reads. The independently written stop-aware adapter lets the
+capture, history, and LFS-scan workers join on requested termination even when an original
+fixture helper retains inherited writers outside Git's process group. Normal
+EOF remains distinct from requested termination. No upstream implementation
+was copied, and no dependency was added. Linux regression proof does not
+qualify Windows or other reader implementations.

@@ -11,8 +11,13 @@ use std::thread;
 use std::time::Duration;
 
 mod discard;
+#[cfg(unix)]
+mod process_pipe;
+mod ignore_rules;
+mod file_statistics;
 mod no_commit_replay;
 mod operation_recovery;
+mod operation_storage;
 mod rebase_split;
 pub use rebase_split::{RebaseSplitStatus, begin_rebase_split};
 mod merge_rebase;
@@ -110,6 +115,10 @@ mod rebase_split_tests;
 mod reference_actions_tests;
 #[cfg(test)]
 mod selected_rebase_tests;
+#[cfg(all(test, unix))]
+mod literal_file_tests;
+#[cfg(all(test, unix))]
+mod transport_stderr_tests;
 pub use reference_actions::{
     configure_remote_urls, create_signed_tag, delete_local_tag, preserve_reference,
     remote_tag_object, set_remote_push_url, transport_reference, verify_tag,
@@ -119,11 +128,12 @@ pub mod history_search;
 pub use discard::{
     DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
     discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard,
-    recover_discarded_changes,
+    prepare_partial_discard_with_preview, recover_discarded_changes,
 };
 
 pub const MINIMUM_GIT_VERSION: &str = "2.39.0";
 const EMPTY_TREE_OID: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+const EMPTY_TREE_SHA256_OID: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
 const MAX_REFLOG_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_TAG_DETAILS_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -140,14 +150,14 @@ impl CancellationToken {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemGitInfo {
     pub version: Option<String>,
     pub supported: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryData {
     pub name: String,
@@ -172,7 +182,7 @@ pub struct RepositoryData {
     pub bare: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsInfo {
     pub enabled: bool,
@@ -181,7 +191,7 @@ pub struct LfsInfo {
     pub tracked_files: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SparseCheckoutInfo {
     pub enabled: bool,
@@ -190,7 +200,7 @@ pub struct SparseCheckoutInfo {
     pub paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ReflogEntry {
     pub oid: String,
@@ -200,14 +210,14 @@ pub struct ReflogEntry {
     pub author_email: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ReflogPage {
     pub entries: Vec<ReflogEntry>,
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Remote {
     pub name: String,
@@ -215,14 +225,14 @@ pub struct Remote {
     pub push_url: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GitIdentity {
     pub name: Option<String>,
     pub email: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SigningInfo {
     pub enabled: bool,
@@ -230,7 +240,7 @@ pub struct SigningInfo {
     pub key: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SigningDiagnostic {
     pub available: bool,
@@ -240,7 +250,7 @@ pub struct SigningDiagnostic {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Submodule {
     pub name: String,
@@ -253,7 +263,7 @@ pub struct Submodule {
     pub out_of_sync: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Worktree {
     pub path: String,
@@ -268,7 +278,7 @@ pub struct Worktree {
     pub behind: usize,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryStatus {
     pub branch: Option<String>,
@@ -291,7 +301,7 @@ pub struct RepositoryStatus {
     pub entries: Vec<WorkingTreeEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkingTreeEntry {
     pub path: String,
@@ -300,7 +310,7 @@ pub struct WorkingTreeEntry {
     pub conflicted: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Branch {
     pub full_name: String,
@@ -312,7 +322,7 @@ pub struct Branch {
     pub tracking: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct StashEntry {
     pub reference: String,
@@ -320,7 +330,7 @@ pub struct StashEntry {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub full_name: String,
@@ -328,7 +338,7 @@ pub struct Tag {
     pub oid: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TagDetails {
     pub name: String,
@@ -340,7 +350,7 @@ pub struct TagDetails {
     pub tagged_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitSummary {
     pub oid: String,
@@ -353,7 +363,7 @@ pub struct CommitSummary {
     pub decorations: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitHistoryPage {
     pub commits: Vec<CommitSummary>,
@@ -371,16 +381,25 @@ pub struct CommitHistoryCursor {
     frontier: Vec<String>,
     walk: Option<history_walk::HistoryWalk>,
     stashes: Vec<StashEntry>,
+    reset_failure: Option<AppError>,
 }
 
 impl CommitHistoryCursor {
     pub fn reset(&mut self, path: &Path, initial: &[CommitSummary]) -> Result<(), AppError> {
+        // Reset may clear the old frontier before a metadata read fails. An
+        // empty, partially initialized cursor must never mean complete history.
+        let result = self.reset_inner(path, initial);
+        self.reset_failure = result.as_ref().err().cloned();
+        result
+    }
+
+    fn reset_inner(&mut self, path: &Path, initial: &[CommitSummary]) -> Result<(), AppError> {
         self.emitted = initial.iter().map(|commit| commit.oid.clone()).collect();
         self.frontier.clear();
         self.stashes.clear();
         // Reusing the open repository keeps its loaded pack indexes and
         // object cache warm across refreshes of the same repository.
-        let reusable = self.walk.take().filter(|walk| walk.opened_from(path));
+        let reusable = self.walk.take().filter(|walk| walk.can_reuse_for(path));
 
         if let Some(mut walk) = reusable.or_else(|| history_walk::HistoryWalk::open(path)) {
             let tips = read_commits_with_arguments(
@@ -391,7 +410,7 @@ impl CommitHistoryCursor {
                     "--decorate=short",
                     "--decorate-refs-exclude=refs/remotes/*/HEAD",
                     "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-                    "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
+                    HISTORY_FORMAT,
                     "--exclude=refs/git-khronos/recovery/*",
                     "--all",
                 ],
@@ -402,9 +421,10 @@ impl CommitHistoryCursor {
                 .iter()
                 .map(|stash| stash.oid.clone())
                 .collect::<Vec<_>>();
-            walk.reset(&tips, initial, &stash_oids);
-            self.walk = Some(walk);
-            return Ok(());
+            if walk.reset(&tips, initial, &stash_oids).is_ok() {
+                self.walk = Some(walk);
+                return Ok(());
+            }
         }
 
         let tips = run_git(
@@ -436,8 +456,11 @@ impl CommitHistoryCursor {
     }
 
     pub fn next_page(&mut self, path: &Path, limit: usize) -> Result<CommitHistoryPage, AppError> {
+        if let Some(error) = &self.reset_failure {
+            return Err(error.clone());
+        }
         if let Some(walk) = self.walk.as_mut() {
-            let commits = walk.next_page(limit);
+            let commits = walk.next_page(limit)?;
             return Ok(CommitHistoryPage {
                 commits: normalize_stash_history(commits, &self.stashes),
                 history_truncated: walk.has_more(),
@@ -486,14 +509,14 @@ impl CommitHistoryCursor {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackedFileSearch {
     pub paths: Vec<String>,
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitFile {
     pub status: String,
@@ -503,7 +526,7 @@ pub struct CommitFile {
     pub deletions: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitDetails {
     pub oid: String,
@@ -513,7 +536,7 @@ pub struct CommitDetails {
     pub files_truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitSignature {
     pub status: String,
@@ -523,7 +546,7 @@ pub struct CommitSignature {
     pub trust: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitComparison {
     pub base_oid: String,
@@ -532,7 +555,7 @@ pub struct CommitComparison {
     pub files: Vec<CommitFile>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct InteractiveRebaseCommit {
     pub oid: String,
@@ -542,7 +565,7 @@ pub struct InteractiveRebaseCommit {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct InteractiveRebasePlan {
     pub source: String,
@@ -552,7 +575,7 @@ pub struct InteractiveRebasePlan {
     pub remote_reachable_oids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct InteractiveRebaseStep {
     pub oid: String,
@@ -560,7 +583,7 @@ pub struct InteractiveRebaseStep {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitFileDiff {
     pub oid: String,
@@ -569,7 +592,7 @@ pub struct CommitFileDiff {
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkingTreeFileDiff {
     pub path: String,
@@ -578,7 +601,7 @@ pub struct WorkingTreeFileDiff {
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FileHistoryEntry {
     pub oid: String,
@@ -588,7 +611,7 @@ pub struct FileHistoryEntry {
     pub subject: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FileBlameLine {
     pub line_number: usize,
@@ -601,7 +624,14 @@ pub struct FileBlameLine {
     pub path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBlamePage {
+    pub lines: Vec<FileBlameLine>,
+    pub next_line: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConflictDetails {
     pub path: String,
@@ -628,13 +658,14 @@ const MAX_FILE_DIFF_BYTES: usize = 256_000;
 // root/generated commits from turning one click into a multi-megabyte UI update.
 const MAX_COMMIT_DETAILS_BYTES: usize = 256_000;
 const MAX_COMMIT_MESSAGE_BYTES: usize = 256_000;
+const MAX_FILE_HISTORY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_INTERACTIVE_REBASE_COMMITS: usize = 500;
 const MAX_INTERACTIVE_REBASE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_COMMIT_FILES: usize = 300;
 const COMMIT_RENAME_LIMIT: usize = 200;
 const MAX_TRACKED_FILE_SEARCH_BYTES: usize = 1_000_000;
 
-#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, specta::Type)]
 #[serde(rename_all = "camelCase")]
 #[error("{message}")]
 pub struct AppError {
@@ -722,7 +753,7 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
 /// under `safe.bareRepository=explicit`, which refuses implicit discovery.
 fn explicit_bare_repository_root(path: &Path) -> Option<PathBuf> {
     let root = path.canonicalize().ok()?;
-    let output = Command::new("git")
+    let output = git_in(&root)
         .arg("--git-dir")
         .arg(&root)
         .args(["rev-parse", "--is-bare-repository", "--absolute-git-dir"])
@@ -873,6 +904,28 @@ pub fn clone_repository_with_submodules(
             Some("Choose another folder name or open the existing repository."),
         ));
     }
+    authentication::validate_arguments(&[remote])?;
+    // Reserve only the new, empty directory. Git's URL review needs the actual
+    // destination context for conditional includes, not the parent repository.
+    fs::create_dir(&destination).map_err(|error| {
+        AppError::new(
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "destinationExists"
+            } else {
+                "createCloneDestinationFailed"
+            },
+            "The clone destination could not be created.",
+            Some("Check the destination permissions or choose another folder name."),
+        )
+    })?;
+    let destination = destination.canonicalize().map_err(|error| {
+        let _ = fs::remove_dir(&destination);
+        AppError::new(
+            "invalidRepositoryPath",
+            format!("Could not resolve the clone destination: {error}"),
+            None,
+        )
+    })?;
     let mut args = vec!["clone".to_owned()];
     if let Some(branch) = branch.filter(|value| !value.is_empty()) {
         args.extend([
@@ -893,9 +946,12 @@ pub fn clone_repository_with_submodules(
         destination.to_string_lossy().into_owned(),
     ]);
     let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let cloned = run_git(parent, &borrowed)
+    let cloned = run_transport(parent, &borrowed, None, Some((remote, &destination)))
         .and_then(|output| ensure_success("clone that repository", &output));
     if let Err(mut error) = cloned {
+        // Never recursively remove partial work. This succeeds only when the
+        // directory reserved above is still empty (for example after refusal).
+        let _ = fs::remove_dir(&destination);
         // Git keeps a checked-out superproject when only a submodule clone fails.
         let superproject_ready = recurse_submodules
             && error.kind != "operationCancelled"
@@ -1843,13 +1899,13 @@ pub fn discard_path(path: &Path, file: &str, untracked: bool) -> Result<(), AppE
     if untracked {
         run_mutation(
             path,
-            &["clean", "-f", "-d", "--", file],
+            &["--literal-pathspecs", "clean", "-f", "-d", "--", file],
             "discard that untracked file",
         )
     } else {
         run_mutation(
             path,
-            &["restore", "--worktree", "--", file],
+            &["--literal-pathspecs", "restore", "--worktree", "--", file],
             "discard that file's changes",
         )
     }
@@ -1872,10 +1928,20 @@ pub fn working_tree_file_recovery_patch(
         run_git_allow_diff_exit(
             path,
             &[
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
                 "diff",
                 "--no-index",
                 "--binary",
                 "--full-index",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                "--unified=3",
                 "--",
                 "/dev/null",
                 file,
@@ -1885,11 +1951,20 @@ pub fn working_tree_file_recovery_patch(
         run_git(
             path,
             &[
+                "--literal-pathspecs",
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
                 "diff",
                 "--binary",
                 "--full-index",
                 "--no-ext-diff",
+                "--no-textconv",
                 "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                "--unified=3",
                 "--",
                 file,
             ],
@@ -2032,38 +2107,14 @@ pub fn ignore_path(
         }
     };
 
-    let ignore_file = path.join(".gitignore");
-    let existing = fs::read_to_string(&ignore_file).unwrap_or_default();
-    if !existing.lines().any(|line| line == rule) {
-        let mut updated = existing;
-        if !updated.is_empty() && !updated.ends_with('\n') {
-            updated.push('\n');
-        }
-        updated.push_str(&rule);
-        updated.push('\n');
-        fs::write(&ignore_file, updated).map_err(|error| {
-            AppError::new(
-                "writeIgnoreFileFailed",
-                format!("Could not update .gitignore: {error}"),
-                Some("Check that the repository is writable."),
-            )
-        })?;
-    }
-    if stop_tracking {
-        run_mutation(
-            path,
-            &["rm", "--cached", "--ignore-unmatch", "--", file],
-            "stop tracking that file",
-        )?;
-    }
-    Ok(())
+    ignore_rules::update(path, &rule, stop_tracking.then_some(file))
 }
 
 pub fn commit(path: &Path, message: &str) -> Result<(), AppError> {
     commit_with_options(path, message, false, false, None)
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommitPolicy {
     pub sign_off: bool,
@@ -2074,7 +2125,7 @@ pub struct CommitPolicy {
     pub committer: Option<CommitIdentity>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct CommitIdentity {
     pub name: String,
@@ -3210,6 +3261,7 @@ pub fn execute_interactive_rebase_with_destination(
             Some("Prepare and review the complete history again."),
         ));
     }
+    let support_dir = rebase_support_dir(path)?;
     preserve_reference(
         path,
         &source_tip,
@@ -3223,7 +3275,6 @@ pub fn execute_interactive_rebase_with_destination(
             format!("Interactive rebase {source} onto {target}")
         },
     )?;
-    let support_dir = rebase_support_dir(path)?;
     if support_dir.exists() {
         fs::remove_dir_all(&support_dir).map_err(|error| {
             AppError::new(
@@ -3240,6 +3291,7 @@ pub fn execute_interactive_rebase_with_destination(
             None,
         )
     })?;
+    operation_storage::directory(&support_dir)?;
     let mut todo = String::new();
     for (index, step) in steps.iter().enumerate() {
         match step.action.as_str() {
@@ -4189,6 +4241,43 @@ pub fn apply_stash(path: &Path, reference: &str) -> Result<(), AppError> {
     run_mutation(path, &["stash", "apply", reference], "apply that stash")
 }
 
+fn validate_selected_stash(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+    validate_stash_reference(reference)?;
+    validate_commit_oid(expected_oid)?;
+    if !reference_tip(path, reference).is_some_and(|oid| oid.eq_ignore_ascii_case(expected_oid)) {
+        return Err(AppError::new(
+            "staleStash",
+            "The selected stash changed before the action could start.",
+            Some("Refresh the repository and select the stash again. No saved changes were applied."),
+        ));
+    }
+    Ok(())
+}
+
+pub fn apply_stash_checked(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+    validate_selected_stash(path, reference, expected_oid)?;
+    // A concurrent push may renumber the stack after validation. Apply the
+    // captured object, never resolve the mutable selector a second time.
+    run_mutation(path, &["stash", "apply", expected_oid], "apply the selected stash")
+        .map_err(|mut error| {
+            error.hint = Some("The stash was kept. Inspect the working directory for restored changes or conflicts before retrying.".to_owned());
+            error
+        })
+}
+
+pub fn pop_stash_checked(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+    apply_stash_checked(path, reference, expected_oid)?;
+    // Do not replay an apply when only removal failed. Revalidate the selected
+    // entry before capture/removal and report this partial outcome explicitly.
+    drop_stash_checked(path, reference, expected_oid).map_err(|error| {
+        AppError::new(
+            "stashAppliedButRetained",
+            format!("Saved changes were applied, but stash removal did not complete: {}", error.message),
+            Some("Do not apply or pop this stash again. Review the working directory, refresh the stash list, then delete the saved entry separately if it is no longer needed. Recovery History may also contain its capture."),
+        )
+    })
+}
+
 pub fn stash_details(path: &Path, reference: &str) -> Result<CommitDetails, AppError> {
     validate_stash_reference(reference)?;
     let oid_output = run_git(path, &["rev-parse", "--verify", reference])?;
@@ -4196,9 +4285,14 @@ pub fn stash_details(path: &Path, reference: &str) -> Result<CommitDetails, AppE
     let oid = String::from_utf8_lossy(&oid_output.stdout)
         .trim()
         .to_owned();
+    stash_details_at_oid(path, &oid)
+}
+
+pub fn stash_details_at_oid(path: &Path, oid: &str) -> Result<CommitDetails, AppError> {
+    validate_commit_oid(oid)?;
     let (message_output, message_truncated) = run_git_with_stdout_limit(
         path,
-        &["show", "-s", "--format=%B", &oid, "--"],
+        &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color", "--format=%B", oid, "--"],
         MAX_COMMIT_MESSAGE_BYTES,
     )?;
     if !message_truncated {
@@ -4213,7 +4307,10 @@ pub fn stash_details(path: &Path, reference: &str) -> Result<CommitDetails, AppE
             "-z",
             "--include-untracked",
             "--find-renames",
-            reference,
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            oid,
         ],
         MAX_COMMIT_DETAILS_BYTES,
     )?;
@@ -4229,7 +4326,10 @@ pub fn stash_details(path: &Path, reference: &str) -> Result<CommitDetails, AppE
             "-z",
             "--include-untracked",
             "--find-renames",
-            reference,
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            oid,
         ],
         MAX_COMMIT_DETAILS_BYTES,
     )?;
@@ -4246,11 +4346,20 @@ pub fn stash_details(path: &Path, reference: &str) -> Result<CommitDetails, AppE
     if message_truncated {
         message.push_str("\n\n[Commit message truncated]");
     }
+    // Detect presence without invoking a configured verifier merely to preview
+    // a stash. A signed object must not be presented as unsigned.
+    let (object, truncated) = run_git_with_stdout_limit(
+        path, &["cat-file", "commit", oid], MAX_COMMIT_DETAILS_BYTES,
+    )?;
+    if !truncated {
+        ensure_success("inspect the stash signature header", &object)?;
+    }
+    let has_signature = commit_has_signature_header(&object.stdout)?;
     Ok(CommitDetails {
-        oid,
+        oid: oid.to_owned(),
         message,
         signature: CommitSignature {
-            status: "unsigned".to_owned(),
+            status: if has_signature { "unverifiable" } else { "unsigned" }.to_owned(),
             signer: None,
             key: None,
             fingerprint: None,
@@ -4268,6 +4377,19 @@ pub fn stash_file_diff(
     previous_file: Option<&str>,
 ) -> Result<CommitFileDiff, AppError> {
     validate_stash_reference(reference)?;
+    let oid_output = run_git(path, &["rev-parse", "--verify", reference])?;
+    ensure_success("resolve that stash", &oid_output)?;
+    let oid = String::from_utf8_lossy(&oid_output.stdout).trim().to_owned();
+    stash_file_diff_at_oid(path, &oid, file, previous_file)
+}
+
+pub fn stash_file_diff_at_oid(
+    path: &Path,
+    oid: &str,
+    file: &str,
+    previous_file: Option<&str>,
+) -> Result<CommitFileDiff, AppError> {
+    validate_commit_oid(oid)?;
     if file.is_empty() {
         return Err(AppError::new(
             "invalidPath",
@@ -4275,15 +4397,11 @@ pub fn stash_file_diff(
             None,
         ));
     }
-    let oid_output = run_git(path, &["rev-parse", "--verify", reference])?;
-    ensure_success("resolve that stash", &oid_output)?;
-    let oid = String::from_utf8_lossy(&oid_output.stdout)
-        .trim()
-        .to_owned();
     let untracked_tree = format!("{oid}^3");
     let untracked = run_git(
         path,
         &[
+            "--literal-pathspecs",
             "ls-tree",
             "-r",
             "--name-only",
@@ -4295,16 +4413,19 @@ pub fn stash_file_diff(
     )
     .is_ok_and(|output| output.status.success() && !output.stdout.is_empty());
     let base = if untracked {
-        EMPTY_TREE_OID.to_owned()
+        // Both IDs hash the canonical `tree 0\0` object header. The selected
+        // full OID identifies which of Git's supported object formats to use.
+        if oid.len() == 64 { EMPTY_TREE_SHA256_OID } else { EMPTY_TREE_OID }.to_owned()
     } else {
         format!("{oid}^1")
     };
     let target = if untracked {
         untracked_tree
     } else {
-        oid.clone()
+        oid.to_owned()
     };
     let mut args = vec![
+        "--literal-pathspecs",
         "diff",
         "--no-ext-diff",
         "--no-textconv",
@@ -4325,7 +4446,7 @@ pub fn stash_file_diff(
     }
     let bytes = &output.stdout[..output.stdout.len().min(MAX_FILE_DIFF_BYTES)];
     Ok(CommitFileDiff {
-        oid,
+        oid: oid.to_owned(),
         path: file.to_owned(),
         patch: String::from_utf8_lossy(bytes).into_owned(),
         truncated,
@@ -4333,6 +4454,15 @@ pub fn stash_file_diff(
 }
 
 pub fn drop_stash(path: &Path, reference: &str) -> Result<(), AppError> {
+    drop_stash_inner(path, reference, None)
+}
+
+pub fn drop_stash_checked(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+    validate_commit_oid(expected_oid)?;
+    drop_stash_inner(path, reference, Some(expected_oid))
+}
+
+fn drop_stash_inner(path: &Path, reference: &str, expected_oid: Option<&str>) -> Result<(), AppError> {
     validate_stash_reference(reference)?;
     let stale = || {
         AppError::new(
@@ -4342,10 +4472,34 @@ pub fn drop_stash(path: &Path, reference: &str) -> Result<(), AppError> {
         )
     };
     let oid = reference_tip(path, reference).ok_or_else(stale)?;
+    if expected_oid.is_some_and(|expected| !expected.eq_ignore_ascii_case(&oid)) {
+        return Err(stale());
+    }
     let base = reference_tip(path, &format!("{oid}^1")).ok_or_else(stale)?;
-    let subject = run_git(path, &["log", "-1", "--format=%s", &oid])?;
-    ensure_success("read the stash message", &subject)?;
-    let subject = String::from_utf8_lossy(&subject.stdout).trim().to_owned();
+    let (subject, truncated) = run_git_with_stdout_limit(
+        path,
+        &[
+            "log", "-1", "--encoding=UTF-8", "--no-show-signature", "--no-notes",
+            "--no-color", "--format=%s", &oid,
+        ],
+        2048,
+    )?;
+    if !truncated {
+        ensure_success("read the stash message", &subject)?;
+    }
+    // This is a bounded display label, not the saved stash message. Preserve
+    // the complete stash object by OID below; external Git can create labels
+    // much longer than this application's input limit or in legacy encodings.
+    let text = String::from_utf8_lossy(&subject.stdout[..subject.stdout.len().min(2048)]);
+    let mut characters = text.trim().chars();
+    let mut subject = characters
+        .by_ref()
+        .take(512)
+        .map(|character| if character.is_control() { ' ' } else { character })
+        .collect::<String>();
+    if truncated || characters.next().is_some() {
+        subject.push('…');
+    }
     let record = operation_recovery::preserve_commits(
         path,
         &format!("Delete stash: {subject}"),
@@ -4363,11 +4517,7 @@ pub fn drop_stash(path: &Path, reference: &str) -> Result<(), AppError> {
             run_mutation(path, &["stash", "drop", reference], "delete that stash")
         },
         || {
-            run_git(path, &["stash", "list", "--format=%H"]).is_ok_and(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line == oid)
-            })
+            read_stashes(path).is_ok_and(|entries| entries.iter().any(|entry| entry.oid == oid))
         },
     )
 }
@@ -4766,7 +4916,7 @@ pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError>
     let read_message = |format: &str| {
         run_git_with_stdout_limit(
             path,
-            &["show", "-s", format, oid, "--"],
+            &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color", format, oid, "--"],
             MAX_COMMIT_MESSAGE_BYTES,
         )
     };
@@ -4824,7 +4974,7 @@ pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError>
     let files_truncated =
         files_output_truncated || stats_output_truncated || files.len() > MAX_COMMIT_FILES;
     files.truncate(MAX_COMMIT_FILES);
-    let (mut signature, mut message) = parse_commit_signature(&message_output.stdout);
+    let (mut signature, mut message) = parse_commit_signature(&message_output.stdout)?;
     if signature.status == "unsigned" {
         let (object, truncated) = run_git_with_stdout_limit(
             path,
@@ -4851,10 +5001,16 @@ pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError>
     })
 }
 
-fn parse_commit_signature(output: &[u8]) -> (CommitSignature, String) {
+fn parse_commit_signature(output: &[u8]) -> Result<(CommitSignature, String), AppError> {
     let text = String::from_utf8_lossy(output);
-    let mut fields = text.splitn(6, '\0');
-    let status = match fields.next().unwrap_or("N").trim() {
+    let fields = text.splitn(6, '\0').collect::<Vec<_>>();
+    let invalid = || AppError::new(
+        "invalidCommitSignatureOutput",
+        "Commit verification metadata is incomplete or invalid.",
+        Some("Refresh the commit details. Incomplete metadata cannot establish a signature status."),
+    );
+    if fields.len() != 6 { return Err(invalid()); }
+    let status = match fields[0] {
         "G" => "valid",
         "U" => "valid-unknown",
         "B" => "invalid",
@@ -4863,23 +5019,21 @@ fn parse_commit_signature(output: &[u8]) -> (CommitSignature, String) {
         "R" => "revoked-key",
         "E" => "unverifiable",
         "N" => "unsigned",
-        _ => "unverifiable",
+        _ => return Err(invalid()),
     };
-    let optional_field = |field: Option<&str>| {
-        field
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
+    let optional_field = |field: &str| {
+        let value = field.trim();
+        (!value.is_empty()).then(|| value.to_owned())
     };
     let signature = CommitSignature {
         status: status.to_owned(),
-        signer: optional_field(fields.next()),
-        key: optional_field(fields.next()),
-        fingerprint: optional_field(fields.next()),
-        trust: optional_field(fields.next()),
+        signer: optional_field(fields[1]),
+        key: optional_field(fields[2]),
+        fingerprint: optional_field(fields[3]),
+        trust: optional_field(fields[4]),
     };
-    let message = fields.next().unwrap_or_default().trim_end().to_owned();
-    (signature, message)
+    let message = fields[5].trim_end().to_owned();
+    Ok((signature, message))
 }
 
 fn commit_has_signature_header(object: &[u8]) -> Result<bool, AppError> {
@@ -4912,6 +5066,7 @@ pub fn commit_file_diff(
         ));
     }
     let mut args = vec![
+        "--literal-pathspecs",
         "show",
         "--format=",
         "--no-ext-diff",
@@ -5016,20 +5171,15 @@ pub fn compare_commit_with_working_tree(
         &stats_output,
     )?;
     let mut files = parse_commit_files_with_stats(&output.stdout, &stats_output.stdout);
-    for entry in read_status(path)?.entries {
-        if entry.index_status != "?" || files.iter().any(|file| file.path == entry.path) {
-            continue;
-        }
-        let contents = fs::read(path.join(&entry.path)).ok();
-        let additions = contents.as_deref().and_then(|bytes| {
-            if bytes.contains(&0) {
-                None
-            } else {
-                std::str::from_utf8(bytes)
-                    .ok()
-                    .map(|text| text.lines().count())
-            }
-        });
+    let known: HashSet<_> = files.iter().map(|file| file.path.as_str()).collect();
+    let entries: Vec<_> = read_status(path)?
+        .entries
+        .into_iter()
+        .filter(|entry| entry.index_status == "?" && !known.contains(entry.path.as_str()))
+        .collect();
+    let paths: Vec<_> = entries.iter().map(|entry| entry.path.as_str()).collect();
+    let counts = file_statistics::untracked_additions(path, &paths)?;
+    for (entry, additions) in entries.into_iter().zip(counts) {
         files.push(CommitFile {
             status: "A".to_owned(),
             path: entry.path,
@@ -5063,22 +5213,25 @@ pub fn compare_commit_file_with_working_tree(
         .entries
         .into_iter()
         .any(|entry| entry.path == file && entry.index_status == "?");
-    let output = if untracked {
-        run_git(
+    let (output, truncated) = if untracked {
+        run_git_with_stdout_limit(
             path,
             &[
                 "diff",
                 "--no-index",
                 "--no-ext-diff",
+                "--no-textconv",
                 "--no-color",
                 "--unified=3",
                 "--",
                 "/dev/null",
                 file,
             ],
+            MAX_FILE_DIFF_BYTES,
         )?
     } else {
         let mut args = vec![
+            "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
             "--no-textconv",
@@ -5092,16 +5245,17 @@ pub fn compare_commit_file_with_working_tree(
         if let Some(previous_file) = previous_file.filter(|previous| *previous != file) {
             args.push(previous_file);
         }
-        run_git(path, &args)?
+        run_git_with_stdout_limit(path, &args, MAX_FILE_DIFF_BYTES)?
     };
-    if untracked {
-        if !output.status.success() && output.status.code() != Some(1) {
-            ensure_success("compare that untracked file", &output)?;
+    if !truncated {
+        if untracked {
+            if !output.status.success() && output.status.code() != Some(1) {
+                ensure_success("compare that untracked file", &output)?;
+            }
+        } else {
+            ensure_success("compare that working directory file", &output)?;
         }
-    } else {
-        ensure_success("compare that working directory file", &output)?;
     }
-    let truncated = output.stdout.len() > MAX_FILE_DIFF_BYTES;
     let bytes = &output.stdout[..output.stdout.len().min(MAX_FILE_DIFF_BYTES)];
     Ok(CommitFileDiff {
         oid: base_oid.to_owned(),
@@ -5128,6 +5282,7 @@ pub fn compare_commit_file(
         ));
     }
     let mut args = vec![
+        "--literal-pathspecs",
         "diff",
         "--no-ext-diff",
         "--no-textconv",
@@ -5187,35 +5342,51 @@ pub fn file_history(
             None,
         ));
     }
-    let output = run_git(
+    let output = history_search::bounded_git_with_limit(
         path,
         &[
+            "--literal-pathspecs",
             "log",
             "--follow",
             "-200",
-            "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e",
+            "--encoding=UTF-8",
+            "--no-notes",
+            "--no-show-signature",
+            "--no-color",
+            "--no-decorate",
+            "--no-patch",
+            "--format=tformat:%H%x00%an%x00%ae%x00%aI%x00%s%x00",
             revision,
             "--",
             file,
-        ],
+        ].map(str::to_owned),
+        &CancellationToken::default(),
+        MAX_FILE_HISTORY_BYTES,
     )?;
     ensure_success("read that file's history", &output)?;
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .split('\x1e')
-        .filter_map(|record| {
-            let fields = record
-                .trim_start_matches('\n')
-                .split('\x1f')
-                .collect::<Vec<_>>();
-            (fields.len() >= 5).then(|| FileHistoryEntry {
-                oid: fields[0].to_owned(),
-                author_name: fields[1].to_owned(),
-                author_email: fields[2].to_owned(),
-                authored_at: fields[3].to_owned(),
-                subject: fields[4].trim_end_matches('\n').to_owned(),
-            })
-        })
-        .collect())
+    parse_file_history_records(&output.stdout)
+}
+
+fn parse_file_history_records(mut bytes: &[u8]) -> Result<Vec<FileHistoryEntry>, AppError> {
+    let invalid = || AppError::new(
+        "invalidFileHistoryOutput",
+        "Git returned incomplete or invalid file-history records.",
+        Some("File history was not replaced with partial results. Check repository integrity and retry the read."),
+    );
+    let mut history = Vec::new();
+    let mut seen = HashSet::new();
+    while !bytes.is_empty() {
+        let fields = decode_nul_record::<5>(&mut bytes).ok_or_else(invalid)?.map(String::from_utf8_lossy);
+        if validate_commit_oid(&fields[0]).is_err() || !seen.insert(fields[0].to_string()) {
+            return Err(invalid());
+        }
+        history.push(FileHistoryEntry {
+            oid: fields[0].to_string(), author_name: fields[1].to_string(),
+            author_email: fields[2].to_string(), authored_at: fields[3].to_string(),
+            subject: fields[4].to_string(),
+        });
+    }
+    Ok(history)
 }
 
 pub fn file_blame(path: &Path, revision: &str, file: &str) -> Result<Vec<FileBlameLine>, AppError> {
@@ -5227,9 +5398,51 @@ pub fn file_blame(path: &Path, revision: &str, file: &str) -> Result<Vec<FileBla
             None,
         ));
     }
-    let output = run_git(path, &["blame", "--line-porcelain", revision, "--", file])?;
-    ensure_success("read blame information for that file", &output)?;
+    let output = read_blame_output(path, revision, file, None, 16 * 1024 * 1024)?;
     parse_blame_porcelain(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn read_blame_output(path: &Path, revision: &str, file: &str, range: Option<&str>, limit: usize) -> Result<Output, AppError> {
+    let mut args = vec!["--literal-pathspecs", "-c", "core.quotePath=true", "-c", "blame.blankBoundary=false", "-c", "blame.coloring=none", "blame",
+        "--line-porcelain", "--encoding=UTF-8", "--no-textconv", "--root"];
+    if let Some(range) = range { args.extend(["-L", range]); }
+    args.extend([revision, "--", file]);
+    history_search::bounded_git_with_limit(path, &args.into_iter().map(str::to_owned).collect::<Vec<_>>(), &CancellationToken::default(), limit)
+}
+
+pub fn file_blame_page(path: &Path, revision: &str, file: &str, first_line: usize) -> Result<FileBlamePage, AppError> {
+    validate_commit_oid(revision)?;
+    // This is a single literal argv path, not line-framed input. Whitespace and
+    // control characters other than NUL are valid Git filename bytes.
+    if file.is_empty() || file.contains('\0') || !Path::new(file).components().all(|component| matches!(component, Component::Normal(_))) {
+        return Err(AppError::new("invalidPath", "Choose a repository-relative file.", None));
+    }
+    if first_line == 0 || first_line > u32::MAX as usize - 100 {
+        return Err(AppError::new("invalidBlameRange", "Choose a positive whole line number within the file.", None));
+    }
+    let range = format!("{first_line},+101");
+    let output = match read_blame_output(path, revision, file, Some(&range), 2 * 1024 * 1024) {
+        Ok(output) => output,
+        Err(error) => {
+            // Git refuses -L on an empty blob. Verify the object, not a localized
+            // stderr substring, before treating that failure as an empty file.
+            if first_line == 1 && error.kind != "historyTimeout" && error.kind != "historyOutputLimit" {
+                let object = format!("{revision}:{file}");
+                let query = |flag: &str| history_search::bounded_git_with_limit(path,
+                    &["cat-file".into(), flag.into(), object.clone()], &CancellationToken::default(), 1024);
+                if query("-t").is_ok_and(|result| result.stdout == b"blob\n")
+                    && query("-s").is_ok_and(|result| result.stdout == b"0\n") {
+                    return Ok(FileBlamePage { lines: Vec::new(), next_line: None });
+                }
+            }
+            return Err(error);
+        }
+    };
+    let mut lines = parse_blame_porcelain_from(&String::from_utf8_lossy(&output.stdout), first_line)?;
+    if lines.len() > 101 { return Err(AppError::new("invalidBlameOutput", "Git returned lines outside the requested blame page.", None)); }
+    let next_line = (lines.len() > 100).then_some(first_line + 100);
+    lines.truncate(100);
+    Ok(FileBlamePage { lines, next_line })
 }
 
 pub fn restore_files_from_commit(path: &Path, oid: &str, files: &[String]) -> Result<(), AppError> {
@@ -5242,6 +5455,7 @@ pub fn restore_files_from_commit(path: &Path, oid: &str, files: &[String]) -> Re
         ));
     }
     let mut arguments = vec![
+        "--literal-pathspecs".to_owned(),
         "restore".to_owned(),
         "--source".to_owned(),
         oid.to_owned(),
@@ -5821,6 +6035,10 @@ fn read_working_tree_patch(
         run_git(
             path,
             &[
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
                 "--literal-pathspecs",
                 "diff",
                 "--cached",
@@ -5838,6 +6056,10 @@ fn read_working_tree_patch(
         run_git_allow_diff_exit(
             path,
             &[
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
                 "--literal-pathspecs",
                 "diff",
                 "--no-index",
@@ -5856,6 +6078,10 @@ fn read_working_tree_patch(
         run_git(
             path,
             &[
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
                 "--literal-pathspecs",
                 "diff",
                 "--no-ext-diff",
@@ -6248,32 +6474,29 @@ fn parse_numstat_count(value: &[u8]) -> Option<usize> {
 }
 
 fn parse_blame_porcelain(output: &str) -> Result<Vec<FileBlameLine>, AppError> {
-    let mut lines = output.lines();
+    parse_blame_porcelain_from(output, 1)
+}
+
+fn parse_blame_porcelain_from(output: &str, first_line: usize) -> Result<Vec<FileBlameLine>, AppError> {
+    let invalid = || AppError::new("invalidBlameOutput", "Git returned incomplete or inconsistent blame information.",
+        Some("No partial blame lines were accepted. Retry the read or inspect the file with Git."));
+    if !output.is_empty() && !output.ends_with('\n') { return Err(invalid()); }
+    let mut lines = output.split_terminator('\n');
     let mut blamed = Vec::new();
     while let Some(header) = lines.next() {
         let fields = header.split_ascii_whitespace().collect::<Vec<_>>();
-        if fields.len() < 3
-            || !(fields[0].len() == 40 || fields[0].len() == 64)
-            || !fields[0].bytes().all(|byte| byte.is_ascii_hexdigit())
-        {
-            return Err(AppError::new(
-                "invalidBlameOutput",
-                "Git returned blame data in an unsupported format.",
-                Some("Update Git and try inspecting the file again."),
-            ));
+        if !(fields.len() == 3 || fields.len() == 4) || validate_commit_oid(fields[0]).is_err()
+            || fields[0].bytes().all(|byte| byte == b'0')
+            || fields[1..].iter().any(|field| field.parse::<usize>().map_or(true, |number| number == 0)) {
+            return Err(invalid());
         }
-        let line_number = fields[2].parse::<usize>().map_err(|_| {
-            AppError::new(
-                "invalidBlameOutput",
-                "Git returned an invalid blame line number.",
-                None,
-            )
-        })?;
+        let line_number = fields[2].parse::<usize>().map_err(|_| invalid())?;
+        if Some(line_number) != first_line.checked_add(blamed.len()) { return Err(invalid()); }
         let oid = fields[0].to_owned();
-        let mut author_name = String::new();
-        let mut author_email = String::new();
-        let mut authored_at = 0_i64;
-        let mut summary = String::new();
+        let mut author_name = None;
+        let mut author_email = None;
+        let mut authored_at = None;
+        let mut summary = None;
         let mut text = None;
         let mut historical_path = None;
         for metadata in lines.by_ref() {
@@ -6282,26 +6505,31 @@ fn parse_blame_porcelain(output: &str) -> Result<Vec<FileBlameLine>, AppError> {
                 break;
             }
             if let Some(value) = metadata.strip_prefix("author ") {
-                author_name = value.to_owned();
+                if author_name.replace(value.to_owned()).is_some() { return Err(invalid()); }
             } else if let Some(value) = metadata.strip_prefix("author-mail ") {
-                author_email = value.trim_matches(['<', '>']).to_owned();
+                let email = value.strip_prefix('<').and_then(|value| value.strip_suffix('>')).ok_or_else(invalid)?;
+                if author_email.replace(email.to_owned()).is_some() { return Err(invalid()); }
             } else if let Some(value) = metadata.strip_prefix("author-time ") {
-                authored_at = value.parse().unwrap_or_default();
+                let time = value.parse::<i64>().map_err(|_| invalid())?;
+                if !(-8_640_000_000_000..=8_640_000_000_000).contains(&time) || authored_at.replace(time).is_some() { return Err(invalid()); }
             } else if let Some(value) = metadata.strip_prefix("summary ") {
-                summary = value.to_owned();
+                if summary.replace(value.to_owned()).is_some() { return Err(invalid()); }
             } else if let Some(value) = metadata.strip_prefix("filename ") {
-                historical_path = Some(history_search::decode_git_path(value)?);
+                let decoded = history_search::decode_git_path(value)?;
+                if decoded.is_empty() || historical_path.replace(decoded).is_some() { return Err(invalid()); }
+            } else if metadata.split_ascii_whitespace().next().is_some_and(|field| validate_commit_oid(field).is_ok()) {
+                return Err(invalid());
             }
         }
         blamed.push(FileBlameLine {
             line_number,
             oid,
-            author_name,
-            author_email,
-            authored_at,
-            summary,
-            text: text.unwrap_or_default(),
-            path: historical_path,
+            author_name: author_name.ok_or_else(invalid)?,
+            author_email: author_email.ok_or_else(invalid)?,
+            authored_at: authored_at.ok_or_else(invalid)?,
+            summary: summary.ok_or_else(invalid)?,
+            text: text.ok_or_else(invalid)?,
+            path: Some(historical_path.ok_or_else(invalid)?),
         });
     }
     Ok(blamed)
@@ -6629,10 +6857,12 @@ fn read_branches(
     // that optional decoration can dominate the entire first-frame snapshot.
     // The latency-sensitive snapshot keeps upstream names and derives current
     // branch divergence from `git status`; full snapshots retain all tracking.
+    // Names are action inputs: strip the known namespace, rather than using
+    // ambiguity-dependent abbreviations such as `heads/main` or `remotes/x/y`.
     let format = if include_all_tracking {
-        "%(refname)%1f%(refname:short)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)%1f%(symref)%1e"
+        "%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(HEAD)%1f%(upstream:lstrip=2)%1f%(upstream:track)%1f%(symref)%1e"
     } else {
-        "%(refname)%1f%(refname:short)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%1f%(symref)%1e"
+        "%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(HEAD)%1f%(upstream:lstrip=2)%1f%1f%(symref)%1e"
     };
     let format_argument = format!("--format={format}");
     let output = run_git(
@@ -6999,23 +7229,45 @@ fn read_stashes(path: &Path) -> Result<Vec<StashEntry>, AppError> {
     if is_explicit_bare_repository(path) {
         return Ok(Vec::new());
     }
-    let output = run_git(path, &["stash", "list", "--format=%gd%x1f%H%x1f%gs%x1e"])?;
+    let output = run_git(
+        path,
+        &[
+            "stash", "list", "--encoding=UTF-8", "--no-color", "--no-notes",
+            "--no-show-signature", "--format=tformat:%gd%x00%H%x00%gs%x00",
+        ],
+    )?;
     ensure_success("read stashes", &output)?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text
-        .split('\x1e')
-        .filter_map(|record| {
-            let fields = record
-                .trim_start_matches('\n')
-                .split('\x1f')
-                .collect::<Vec<_>>();
-            (fields.len() >= 3).then(|| StashEntry {
-                reference: fields[0].to_owned(),
-                oid: fields[1].to_owned(),
-                message: fields[2].trim_end_matches('\n').to_owned(),
-            })
-        })
-        .collect())
+    parse_stash_records(&output.stdout)
+}
+
+fn parse_stash_records(mut bytes: &[u8]) -> Result<Vec<StashEntry>, AppError> {
+    let invalid = || {
+        AppError::new(
+            "invalidStashOutput",
+            "Git returned incomplete or invalid stash records.",
+            Some("The stash list was not replaced with partial results. Check the stash reflog, then refresh. No stash was applied or removed by this read."),
+        )
+    };
+    let mut stashes = Vec::new();
+    while !bytes.is_empty() {
+        let fields = decode_nul_record::<3>(&mut bytes)
+            .ok_or_else(invalid)?
+            .map(String::from_utf8_lossy);
+        // This command lists the complete, newest-first stash reflog. Selectors
+        // must remain its actual ordinals; a label cannot supply a new selector.
+        if fields[0] != format!("stash@{{{}}}", stashes.len())
+            || validate_commit_oid(&fields[1]).is_err()
+        {
+            return Err(invalid());
+        }
+        // Repeated object IDs are valid: Git can store one stash more than once.
+        stashes.push(StashEntry {
+            reference: fields[0].to_string(),
+            oid: fields[1].to_string(),
+            message: fields[2].to_string(),
+        });
+    }
+    Ok(stashes)
 }
 
 fn normalize_stash_history(
@@ -7041,11 +7293,12 @@ fn normalize_stash_history(
 }
 
 fn read_tags(path: &Path) -> Result<Vec<Tag>, AppError> {
+    // Keep the exact tag name even when a branch has the same name.
     let output = run_git(
         path,
         &[
             "for-each-ref",
-            "--format=%(refname)%1f%(refname:short)%1f%(objectname)%1f%(*objectname)%1e",
+            "--format=%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(*objectname)%1e",
             "refs/tags",
         ],
     )?;
@@ -7164,6 +7417,10 @@ fn validate_stash_message(message: &str) -> Result<&str, AppError> {
     }
 }
 
+// Git-produced field terminators cannot collide with ordinary commit text.
+// Explicit tformat also terminates the last record with a newline.
+const HISTORY_FORMAT: &str = "--format=tformat:%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00%D%x00";
+
 fn read_commits(path: &Path, limit: usize) -> Result<Vec<CommitSummary>, AppError> {
     let count = format!("-{limit}");
     read_commits_with_pagination(path, &count, None)
@@ -7192,7 +7449,7 @@ fn read_commits_with_pagination(
         "--decorate=short",
         "--decorate-refs-exclude=refs/remotes/*/HEAD",
         "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-        "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
+        HISTORY_FORMAT,
         "--exclude=refs/git-khronos/recovery/*",
         "--all",
     ]);
@@ -7214,14 +7471,22 @@ fn read_commits_from_revisions(
         "--decorate=short",
         "--decorate-refs-exclude=refs/remotes/*/HEAD",
         "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-        "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%D%x1e",
+        HISTORY_FORMAT,
     ];
     args.extend(revisions.iter().map(String::as_str));
     read_commits_with_arguments(path, &args)
 }
 
 fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitSummary>, AppError> {
-    let output = run_git(path, args)?;
+    let mut arguments = args.to_vec();
+    // These are log commands, not human-readable displays. Repository settings
+    // must not inject notes, signature output, colors, or encoded NUL bytes into
+    // the framed UTF-8 stream.
+    arguments.splice(
+        1..1,
+        ["--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color"],
+    );
+    let output = run_git(path, &arguments)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("does not have any commits yet")
@@ -7231,35 +7496,66 @@ fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitS
         }
         ensure_success("read commit history", &output)?;
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text
-        .split('\x1e')
-        .filter_map(|record| {
-            let fields = record
-                .trim_start_matches('\n')
-                .split('\x1f')
-                .collect::<Vec<_>>();
-            (fields.len() >= 8).then(|| CommitSummary {
-                oid: fields[0].to_owned(),
-                parents: fields[1]
-                    .split_ascii_whitespace()
-                    .map(str::to_owned)
-                    .collect(),
-                author_name: fields[2].to_owned(),
-                author_email: fields[3].to_owned(),
-                authored_at: fields[4].to_owned(),
-                subject: fields[5].to_owned(),
-                description: fields[6].trim().to_owned(),
-                decorations: fields[7]
-                    .trim_end_matches('\n')
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|item| !item.is_empty())
-                    .map(str::to_owned)
-                    .collect(),
-            })
-        })
-        .collect())
+    parse_history_records(&output.stdout)
+}
+
+fn decode_nul_record<'a, const N: usize>(bytes: &mut &'a [u8]) -> Option<[&'a [u8]; N]> {
+    let mut fields = [&[][..]; N];
+    for field in &mut fields {
+        let remaining = *bytes;
+        let end = remaining.iter().position(|byte| *byte == 0)?;
+        *field = &remaining[..end];
+        *bytes = &remaining[end + 1..];
+    }
+    *bytes = bytes.strip_prefix(b"\n")?;
+    Some(fields)
+}
+
+fn parse_history_records(mut bytes: &[u8]) -> Result<Vec<CommitSummary>, AppError> {
+    let invalid = || {
+        AppError::new(
+            "invalidHistoryOutput",
+            "Git returned incomplete or invalid commit history records.",
+            Some("History was not replaced with partial results. Check repository integrity, then refresh history."),
+        )
+    };
+    let valid_oid = |oid: &str| {
+        matches!(oid.len(), 40 | 64) && oid.as_bytes().iter().all(u8::is_ascii_hexdigit)
+    };
+    let mut commits = Vec::new();
+    let mut seen = HashSet::new();
+    while !bytes.is_empty() {
+        let fields = decode_nul_record::<8>(&mut bytes)
+            .ok_or_else(invalid)?
+            .map(String::from_utf8_lossy);
+        let oid = fields[0].as_ref();
+        let parents = fields[1]
+            .split_ascii_whitespace()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        if !valid_oid(oid)
+            || !seen.insert(oid.to_owned())
+            || parents.iter().any(|oid| !valid_oid(oid))
+        {
+            return Err(invalid());
+        }
+        commits.push(CommitSummary {
+            oid: oid.to_owned(),
+            parents,
+            author_name: fields[2].to_string(),
+            author_email: fields[3].to_string(),
+            authored_at: fields[4].to_string(),
+            subject: fields[5].to_string(),
+            description: fields[6].trim().to_owned(),
+            decorations: fields[7]
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        });
+    }
+    Ok(commits)
 }
 
 fn non_empty(value: &str) -> Option<String> {
@@ -7529,24 +7825,9 @@ fn rebase_in_progress(path: &Path) -> Result<bool, AppError> {
 }
 
 fn rebase_support_dir(path: &Path) -> Result<PathBuf, AppError> {
-    let output = run_git(
-        path,
-        &[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "git-khronos-rebase",
-        ],
-    )?;
-    ensure_success("locate interactive rebase storage", &output)?;
-    let text = std::str::from_utf8(&output.stdout).map_err(|_| {
-        AppError::new(
-            "rebaseSetupFailed",
-            "Git returned an unsupported rebase storage path.",
-            None,
-        )
-    })?;
-    Ok(PathBuf::from(text.strip_suffix('\n').unwrap_or(text)))
+    let directory = operation_storage::git_entry(path, "git-khronos-rebase")?;
+    operation_storage::directory(&directory)?;
+    Ok(directory)
 }
 
 fn cleanup_rebase_support(path: &Path) {
@@ -7579,10 +7860,28 @@ pub fn is_explicit_bare_repository(path: &Path) -> bool {
         .is_ok_and(|paths| paths.iter().any(|known| known == path))
 }
 
+/// Inherited shell overrides that must not replace a UI-selected Git context.
+pub const GIT_CONTEXT_ENVIRONMENT_VARIABLES: [&str; 8] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_LITERAL_PATHSPECS",
+    "GIT_GLOB_PATHSPECS",
+    "GIT_NOGLOB_PATHSPECS",
+    "GIT_ICASE_PATHSPECS",
+];
+
 /// Starts a Git command scoped to `path`, the only way repository commands are spawned.
 pub(crate) fn git_in(path: &Path) -> Command {
     let mut command = Command::new("git");
     command.arg("-C").arg(path);
+    // UI commands choose their repository and exact paths explicitly. Shell
+    // overrides must not redirect its index/worktree or reinterpret path magic.
+    // Internal callers can still set a scoped alternate index after this step.
+    for variable in GIT_CONTEXT_ENVIRONMENT_VARIABLES {
+        command.env_remove(variable);
+    }
     // Unit fixtures configure their own repositories. Host signing settings,
     // hooks and LFS filters must not change their inputs or execute user hooks.
     // Keep normal application commands governed by the user's Git settings.
@@ -7599,7 +7898,7 @@ pub(crate) fn git_in(path: &Path) -> Command {
 
 fn run_git(path: &Path, args: &[&str]) -> Result<Output, AppError> {
     if authentication::is_transport(args) {
-        return run_transport(path, args, None);
+        return run_transport(path, args, None, None);
     }
     run_git_with_environment(path, args, &[])
 }
@@ -7631,7 +7930,7 @@ fn run_git_with_cancellation(
     cancellation: Option<&CancellationToken>,
 ) -> Result<Output, AppError> {
     if authentication::is_transport(args) {
-        return run_transport(path, args, cancellation);
+        return run_transport(path, args, cancellation, None);
     }
     let Some(cancellation) = cancellation else {
         return run_git(path, args);
@@ -7656,15 +7955,29 @@ fn run_transport(
     path: &Path,
     args: &[&str],
     cancellation: Option<&CancellationToken>,
+    clone_url: Option<(&str, &Path)>,
 ) -> Result<Output, AppError> {
+    run_transport_with_stdout_limit(path, args, cancellation, clone_url, None)
+        .map(|(output, _)| output)
+}
+
+fn run_transport_with_stdout_limit(
+    path: &Path,
+    args: &[&str],
+    cancellation: Option<&CancellationToken>,
+    clone_url: Option<(&str, &Path)>,
+    stdout_limit: Option<usize>,
+) -> Result<(Output, bool), AppError> {
     authentication::validate_arguments(args)?;
-    authentication::validate_repository_urls(path, args)?;
     let mut command = git_in(path);
     command.arg("-c").arg(if authentication::interactive() {
         "credential.interactive=true"
     } else {
         "credential.interactive=false"
     });
+    // Git sees configuration copied by clone templates only after preflight.
+    // Enforce its password-in-URL refusal at the actual transport boundary too.
+    command.args(["-c", "transfer.credentialsInUrl=die"]);
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -7678,17 +7991,62 @@ fn run_transport(
     let cancellation = cancellation
         .or(scoped_cancellation.as_ref())
         .unwrap_or(&fallback);
-    let output = run_cancellable_command(command, cancellation)?;
+    if let Some((remote, destination)) = clone_url {
+        authentication::validate_clone_url(remote, destination, cancellation)?;
+    } else {
+        authentication::validate_repository_urls(path, args, cancellation)?;
+    }
+    let CapturedCommand { output, truncated, diagnostics } =
+        capture_cancellable_command(command, cancellation, stdout_limit, StderrCapture::Transport)?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
-    authentication::check_output(output, args)
+    // A size refusal terminates the owned process group deliberately. Let the
+    // caller report its inspection limit instead of classifying that termination
+    // as an authentication or network failure.
+    if truncated {
+        Ok((output, true))
+    } else {
+        let facts = diagnostics.expect("transport capture always collects diagnostic facts");
+        authentication::check_output_with_facts(output, args, facts)
+            .map(|output| (output, false))
+    }
 }
 
 fn run_cancellable_command(
-    mut command: Command,
+    command: Command,
     cancellation: &CancellationToken,
 ) -> Result<Output, AppError> {
+    run_cancellable_command_with_stdout_limit(command, cancellation, None)
+        .map(|(output, _)| output)
+}
+
+fn run_cancellable_command_with_stdout_limit(
+    command: Command,
+    cancellation: &CancellationToken,
+    stdout_limit: Option<usize>,
+) -> Result<(Output, bool), AppError> {
+    capture_cancellable_command(command, cancellation, stdout_limit, StderrCapture::Complete)
+        .map(|capture| (capture.output, capture.truncated))
+}
+
+enum StderrCapture {
+    Complete,
+    Transport,
+}
+
+struct CapturedCommand {
+    output: Output,
+    truncated: bool,
+    diagnostics: Option<authentication::diagnostics::DiagnosticFacts>,
+}
+
+fn capture_cancellable_command(
+    mut command: Command,
+    cancellation: &CancellationToken,
+    stdout_limit: Option<usize>,
+    stderr_capture: StderrCapture,
+) -> Result<CapturedCommand, AppError> {
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -7707,41 +8065,98 @@ fn run_cancellable_command(
         terminate_process_tree(&mut child);
         AppError::new("gitOutputUnavailable", "Could not read Git errors.", None)
     })?;
+    let stop_readers = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    let stdout =
+        process_pipe::InterruptiblePipe::new(stdout, stop_readers.clone()).map_err(|error| {
+            terminate_process_tree(&mut child);
+            let _ = child.wait();
+            AppError::new(
+                "gitOutputUnavailable",
+                format!("Could not prepare Git output: {error}"),
+                None,
+            )
+        })?;
+    #[cfg(unix)]
+    let stderr =
+        process_pipe::InterruptiblePipe::new(stderr, stop_readers.clone()).map_err(|error| {
+            terminate_process_tree(&mut child);
+            let _ = child.wait();
+            AppError::new(
+                "gitOutputUnavailable",
+                format!("Could not prepare Git errors: {error}"),
+                None,
+            )
+        })?;
+    let truncated = Arc::new(AtomicBool::new(false));
+    let reader_truncated = truncated.clone();
     let stdout_reader = thread::spawn(move || {
         let mut output = Vec::new();
         stdout
-            .take(u64::MAX)
+            .take(stdout_limit.map_or(u64::MAX, |limit| limit.saturating_add(1) as u64))
             .read_to_end(&mut output)
-            .map(|_| output)
+            .map(|_| {
+                if let Some(limit) = stdout_limit
+                    && output.len() > limit
+                {
+                    output.truncate(limit);
+                    reader_truncated.store(true, Ordering::Release);
+                }
+                output
+            })
     });
-    let stderr_reader = thread::spawn(move || {
-        let mut output = Vec::new();
-        let mut stderr = stderr;
-        stderr.read_to_end(&mut output).map(|_| output)
+    let stderr_reader = thread::spawn(move || match stderr_capture {
+        StderrCapture::Complete => {
+            let mut output = Vec::new();
+            let mut stderr = stderr;
+            stderr.read_to_end(&mut output).map(|_| (output, None))
+        }
+        StderrCapture::Transport => {
+            authentication::diagnostics::read_transport_stderr(stderr)
+                .map(|capture| (capture.retained, Some(capture.diagnostics)))
+        }
     });
 
+    let mut parent_status = None;
+    let mut limit_terminated = false;
     let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {}
-            Err(error) => {
-                terminate_process_tree(&mut child);
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(AppError::new(
-                    "gitWaitFailed",
-                    format!("Could not check whether Git completed: {error}"),
-                    None,
-                ));
+        if truncated.load(Ordering::Acquire) && !limit_terminated {
+            stop_readers.store(true, Ordering::Release);
+            terminate_process_tree(&mut child);
+            limit_terminated = true;
+        }
+        if parent_status.is_none() {
+            match child.try_wait() {
+                Ok(status) => parent_status = status,
+                Err(error) => {
+                    stop_readers.store(true, Ordering::Release);
+                    terminate_process_tree(&mut child);
+                    let _ = child.wait();
+                    let _ = stdout_reader.join();
+                    let _ = stderr_reader.join();
+                    return Err(AppError::new(
+                        "gitWaitFailed",
+                        format!("Could not check whether Git completed: {error}"),
+                        None,
+                    ));
+                }
             }
         }
         if cancellation.is_cancelled() {
+            stop_readers.store(true, Ordering::Release);
             terminate_process_tree(&mut child);
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
             return Err(operation_cancelled());
+        }
+        // A descendant may still own a pipe after Git exits. Keep cancellation
+        // active until both readers finish instead of blocking in their joins.
+        if let Some(status) = parent_status
+            && stdout_reader.is_finished()
+            && stderr_reader.is_finished()
+        {
+            break status;
         }
         thread::sleep(Duration::from_millis(30));
     };
@@ -7755,7 +8170,7 @@ fn run_cancellable_command(
                 None,
             )
         })?;
-    let stderr = stderr_reader
+    let (stderr, diagnostics) = stderr_reader
         .join()
         .map_err(|_| AppError::new("gitOutputFailed", "Could not collect Git errors.", None))?
         .map_err(|error| {
@@ -7765,10 +8180,14 @@ fn run_cancellable_command(
                 None,
             )
         })?;
-    Ok(Output {
-        status,
-        stdout,
-        stderr,
+    Ok(CapturedCommand {
+        output: Output {
+            status,
+            stdout,
+            stderr,
+        },
+        truncated: truncated.load(Ordering::Acquire),
+        diagnostics,
     })
 }
 
@@ -7822,88 +8241,23 @@ fn run_git_with_stdout_limit(
     args: &[&str],
     limit: usize,
 ) -> Result<(Output, bool), AppError> {
-    let mut child = git_in(path)
+    // These commands inspect local LFS metadata. In particular, `lfs env`
+    // fingerprints effective settings before and inside an authenticated action;
+    // transport-only configuration would make an unchanged review look stale.
+    let local_lfs_metadata = matches!(args, ["lfs", "env" | "ls-files", ..]);
+    if authentication::is_transport(args) && !local_lfs_metadata {
+        return run_transport_with_stdout_limit(path, args, None, None, Some(limit));
+    }
+    let mut command = git_in(path);
+    command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| {
-            AppError::new(
-                "gitUnavailable",
-                format!("Could not start Git: {error}"),
-                Some("Install Git and ensure it is available on PATH."),
-            )
-        })?;
-    let Some(stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(AppError::new(
-            "gitOutputUnavailable",
-            "Could not read Git output.",
-            None,
-        ));
-    };
-    let Some(mut stderr) = child.stderr.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(AppError::new(
-            "gitOutputUnavailable",
-            "Could not read Git errors.",
-            None,
-        ));
-    };
-    let stderr_reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let result = stderr.read_to_end(&mut bytes);
-        (bytes, result)
-    });
-    let mut output_bytes = Vec::with_capacity(limit.saturating_add(1));
-    let output_result = stdout
-        .take(limit.saturating_add(1) as u64)
-        .read_to_end(&mut output_bytes);
-    if let Err(error) = output_result {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = stderr_reader.join();
-        return Err(AppError::new(
-            "gitOutputFailed",
-            format!("Could not read Git output: {error}"),
-            None,
-        ));
-    }
-    let truncated = output_bytes.len() > limit;
-    if truncated {
-        let _ = child.kill();
-    }
-    let status = child.wait().map_err(|error| {
-        AppError::new(
-            "gitWaitFailed",
-            format!("Could not finish the Git operation: {error}"),
-            None,
-        )
-    })?;
-    let (error_bytes, error_result) = stderr_reader
-        .join()
-        .map_err(|_| AppError::new("gitOutputFailed", "Could not collect Git errors.", None))?;
-    error_result.map_err(|error| {
-        AppError::new(
-            "gitOutputFailed",
-            format!("Could not read Git errors: {error}"),
-            None,
-        )
-    })?;
-    output_bytes.truncate(limit);
-    Ok((
-        Output {
-            status,
-            stdout: output_bytes,
-            stderr: error_bytes,
-        },
-        truncated,
-    ))
+        .stderr(Stdio::piped());
+    configure_process_tree(&mut command);
+    run_cancellable_command_with_stdout_limit(command, &CancellationToken::default(), Some(limit))
 }
 
 fn run_git_with_input(
@@ -7916,10 +8270,20 @@ fn run_git_with_input(
 }
 
 fn run_git_with_input_output(path: &Path, args: &[&str], input: &[u8]) -> Result<Output, AppError> {
+    run_git_with_input_environment(path, args, input, &[])
+}
+
+fn run_git_with_input_environment(
+    path: &Path,
+    args: &[&str],
+    input: &[u8],
+    environment: &[(&str, &std::ffi::OsStr)],
+) -> Result<Output, AppError> {
     let mut child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
+        .envs(environment.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -7931,30 +8295,39 @@ fn run_git_with_input_output(path: &Path, args: &[&str], input: &[u8]) -> Result
                 Some("Install Git and ensure it is available on PATH."),
             )
         })?;
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| {
+    let Some(mut input_pipe) = child.stdin.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(AppError::new(
+            "gitInputUnavailable",
+            "Could not send input to Git.",
+            None,
+        ));
+    };
+    thread::scope(|scope| {
+        // Drain output while sending input: commands that respond per input
+        // record can otherwise fill stdout and deadlock against a full stdin.
+        let writer = scope.spawn(move || input_pipe.write_all(input));
+        let output = child.wait_with_output().map_err(|error| {
             AppError::new(
-                "gitInputUnavailable",
-                "Could not send the patch to Git.",
-                None,
-            )
-        })?
-        .write_all(input)
-        .map_err(|error| {
-            AppError::new(
-                "gitInputFailed",
-                format!("Could not send the patch to Git: {error}"),
+                "gitWaitFailed",
+                format!("Could not finish the Git operation: {error}"),
                 None,
             )
         })?;
-    child.wait_with_output().map_err(|error| {
-        AppError::new(
-            "gitWaitFailed",
-            format!("Could not finish the Git operation: {error}"),
-            None,
-        )
+        let sent = writer.join();
+        if !output.status.success() {
+            // Preserve Git's diagnostic when it closes stdin early. The child
+            // has been reaped and callers still inspect its exit status.
+            return Ok(output);
+        }
+        sent.map_err(|_| {
+            AppError::new("gitInputFailed", "Could not finish sending input to Git.", None)
+        })?
+        .map_err(|error| {
+            AppError::new("gitInputFailed", format!("Could not send input to Git: {error}"), None)
+        })?;
+        Ok(output)
     })
 }
 
@@ -8090,6 +8463,97 @@ mod tests {
         assert!(page.entries[0].subject.contains("Second recovery point"));
         assert_eq!(page.entries[0].author_name, "Chronos Tester");
         assert_eq!(page.entries[0].author_email, "chronos@example.test");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bounded_command_preserves_complete_bytes_and_original_exit_status() {
+        for limit in [3, 10] {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", "printf abc; printf diagnostic >&2; exit 7"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            configure_process_tree(&mut command);
+            let (output, truncated) = run_cancellable_command_with_stdout_limit(
+                command,
+                &CancellationToken::default(),
+                Some(limit),
+            )
+            .unwrap();
+            assert!(!truncated);
+            assert_eq!(output.status.code(), Some(7));
+            assert_eq!(output.stdout, b"abc");
+            assert_eq!(output.stderr, b"diagnostic");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bounded_command_limit_stops_descendants_holding_error_pipes() {
+        for limit in [0, 3] {
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", "sleep 20 & printf abcdef; wait"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            configure_process_tree(&mut command);
+            let cancellation = CancellationToken::default();
+            let worker_cancellation = cancellation.clone();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            thread::spawn(move || {
+                let _ = sender.send(run_cancellable_command_with_stdout_limit(
+                    command,
+                    &worker_cancellation,
+                    Some(limit),
+                ));
+            });
+            let result = receiver.recv_timeout(Duration::from_secs(2));
+            if result.is_err() {
+                cancellation.cancel();
+                let _ = receiver.recv_timeout(Duration::from_secs(2));
+            }
+            let (output, truncated) = result
+                .expect("the size refusal must stop inherited pipe holders promptly")
+                .unwrap();
+            assert!(truncated);
+            assert_eq!(output.stdout, &b"abcdef"[..limit]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bounded_command_remains_cancellable_after_parent_exit() {
+        let repository = TestRepository::new();
+        let marker = repository.path.join("bounded-child-started");
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "sleep 20 & echo started > \"$1\"; exit 0", "git-test"])
+            .arg(&marker)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_process_tree(&mut command);
+        let cancellation = CancellationToken::default();
+        let worker_cancellation = cancellation.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let _ = sender.send(run_cancellable_command_with_stdout_limit(
+                command,
+                &worker_cancellation,
+                Some(1024),
+            ));
+        });
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !marker.exists() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        cancellation.cancel();
+        let error = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("bounded capture must remain cancellable while descendants hold pipes")
+            .unwrap_err();
+        assert_eq!(error.kind, "operationCancelled");
+        assert!(marker.exists());
     }
 
     #[cfg(unix)]
@@ -8272,6 +8736,392 @@ mod tests {
             observed.len()
         );
         assert_eq!(observed.into_iter().collect::<HashSet<_>>(), expected);
+    }
+
+    #[test]
+    fn incremental_history_honors_shallow_boundaries_with_locally_present_parents() {
+        let repository = TestRepository::new();
+        for index in 1..=4 {
+            repository.write("history.txt", &format!("revision {index}\n"));
+            repository.git(&["add", "history.txt"]);
+            repository.git(&["commit", "-m", &format!("Revision {index}")]);
+        }
+        let complete = read_commits(&repository.path, 20).unwrap();
+        let boundary = &complete[1].oid;
+        fs::write(repository.path.join(".git/shallow"), format!("{boundary}\n")).unwrap();
+        repository.git(&["cat-file", "-e", &complete[3].oid]);
+        let expected = read_commits(&repository.path, 20).unwrap();
+        assert_eq!(expected.len(), 2);
+        assert!(expected[1].parents.is_empty());
+        let mut cursor = CommitHistoryCursor::default();
+        cursor.reset(&repository.path, &expected[..1]).unwrap();
+        assert!(
+            cursor.walk.is_some(),
+            "Shallow history must retain the in-process walk"
+        );
+        let page = cursor.next_page(&repository.path, 20).unwrap();
+        assert_eq!(page.commits.len(), 1, "History crossed the shallow boundary");
+        assert_eq!(page.commits[0].oid, *boundary);
+        assert!(
+            page.commits[0].parents.is_empty(),
+            "Shallow commit exposed grafted-away parents"
+        );
+        assert!(!page.history_truncated);
+    }
+
+    #[test]
+    fn incremental_history_refreshes_shallow_boundaries_in_main_and_linked_worktrees() {
+        let repository = TestRepository::new();
+        for index in 1..=5 {
+            repository.write("history.txt", &format!("revision {index}\n"));
+            repository.git(&["add", "history.txt"]);
+            repository.git(&["commit", "-m", &format!("Revision {index}")]);
+        }
+        let complete = read_commits(&repository.path, 20).unwrap();
+        let linked = repository.path.join("linked-worktree");
+        repository.git(&[
+            "worktree",
+            "add",
+            "--detach",
+            linked.to_str().unwrap(),
+            "HEAD",
+        ]);
+        let shallow = repository.path.join(".git/shallow");
+        for path in [&repository.path, &linked] {
+            let mut cursor = CommitHistoryCursor::default();
+            for visible in [1, 2, 4, 5] {
+                if visible < 5 {
+                    fs::write(&shallow, format!("{}\n", complete[visible - 1].oid)).unwrap();
+                } else {
+                    fs::remove_file(&shallow).unwrap();
+                }
+                let expected = read_commits(path, 20).unwrap();
+                assert_eq!(expected.len(), visible);
+                cursor.reset(path, &expected[..1]).unwrap();
+                assert!(
+                    cursor.walk.is_some(),
+                    "Valid shallow walks must stay in-process"
+                );
+                let mut actual = expected[..1].to_vec();
+                loop {
+                    let page = cursor.next_page(path, 1).unwrap();
+                    actual.extend(page.commits);
+                    if !page.history_truncated {
+                        break;
+                    }
+                    assert!(
+                        actual.len() < expected.len(),
+                        "Walk did not stop at its boundary"
+                    );
+                }
+                assert_eq!(
+                    serde_json::to_value(&actual).unwrap(),
+                    serde_json::to_value(&expected).unwrap(),
+                    "History differs from Git at depth {visible} in {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn incremental_history_refuses_invalid_shallow_metadata_after_refresh() {
+        let repository = TestRepository::new();
+        for index in 1..=3 {
+            repository.write("history.txt", &format!("revision {index}\n"));
+            repository.git(&["add", "history.txt"]);
+            repository.git(&["commit", "-m", &format!("Revision {index}")]);
+        }
+        let complete = read_commits(&repository.path, 20).unwrap();
+        let initial = &complete[..1];
+        let mut cursor = CommitHistoryCursor::default();
+        cursor.reset(&repository.path, initial).unwrap();
+        assert!(cursor.walk.is_some());
+        fs::write(repository.path.join(".git/shallow"), "invalid object id\n").unwrap();
+        let error = cursor.reset(&repository.path, initial).unwrap_err();
+        assert!(
+            cursor.walk.is_none(),
+            "Invalid metadata retained a stale walk"
+        );
+        let page_error = cursor
+            .next_page(&repository.path, 20)
+            .expect_err("A failed reset was reported as complete history");
+        assert_eq!(page_error.message, error.message);
+        fs::remove_file(repository.path.join(".git/shallow")).unwrap();
+        assert!(cursor.next_page(&repository.path, 20).is_err());
+        cursor.reset(&repository.path, initial).unwrap();
+        let page = cursor.next_page(&repository.path, 20).unwrap();
+        assert_eq!(
+            serde_json::to_value(page.commits).unwrap(),
+            serde_json::to_value(&complete[1..]).unwrap()
+        );
+        assert!(!page.history_truncated);
+    }
+
+    #[test]
+    fn incremental_history_keeps_failed_cli_initialization_unusable_until_reset() {
+        let repository = TestRepository::new();
+        for index in 1..=3 {
+            repository.write("history.txt", &format!("revision {index}\n"));
+            repository.git(&["add", "history.txt"]);
+            repository.git(&["commit", "-m", &format!("Revision {index}")]);
+        }
+        let complete = read_commits(&repository.path, 20).unwrap();
+        let config_path = repository.path.join(".git/config");
+        let config = fs::read(&config_path).unwrap();
+        repository.git(&["config", "core.repositoryformatversion", "999"]);
+        let fast_walk_available = history_walk::HistoryWalk::open(&repository.path).is_some();
+        let mut cursor = CommitHistoryCursor::default();
+        let result = cursor.reset(&repository.path, &complete[..1]);
+        fs::write(&config_path, config).unwrap();
+        assert!(!fast_walk_available, "Fixture did not exercise CLI initialization");
+        let error = result.unwrap_err();
+        let page_error = cursor
+            .next_page(&repository.path, 20)
+            .expect_err("Repair alone exposed an uninitialized CLI cursor as complete");
+        assert_eq!(page_error.message, error.message);
+        cursor.reset(&repository.path, &complete[..1]).unwrap();
+        let page = cursor.next_page(&repository.path, 20).unwrap();
+        assert_eq!(
+            serde_json::to_value(page.commits).unwrap(),
+            serde_json::to_value(&complete[1..]).unwrap()
+        );
+        assert!(!page.history_truncated);
+    }
+
+    #[test]
+    fn incremental_history_reports_damaged_objects_until_an_explicit_refresh() {
+        for damage in ["missing", "compressed", "decoded"] {
+            let repository = TestRepository::new();
+            for index in 1..=5 {
+                repository.write("history.txt", &format!("revision {index}\n"));
+                repository.git(&["add", "history.txt"]);
+                repository.git(&["commit", "-m", &format!("Revision {index}")]);
+            }
+            let expected = read_commits(&repository.path, 20).unwrap();
+            let mut cursor = CommitHistoryCursor::default();
+            cursor.reset(&repository.path, &expected[..1]).unwrap();
+            assert!(cursor.walk.is_some());
+            let oid = &expected[3].oid;
+            let object = repository
+                .path
+                .join(".git/objects")
+                .join(&oid[..2])
+                .join(&oid[2..]);
+            let backup = object.with_extension("owned-backup");
+            let replacement = match damage {
+                "compressed" => Some(b"invalid compressed commit object".to_vec()),
+                "decoded" => {
+                    let output = run_git_with_input_output(
+                        &repository.path,
+                        &["hash-object", "--literally", "-t", "commit", "-w", "--stdin"],
+                        b"invalid commit\n",
+                    )
+                    .unwrap();
+                    ensure_success("prepare malformed owned object", &output).unwrap();
+                    let malformed = String::from_utf8(output.stdout).unwrap();
+                    let malformed = malformed.trim();
+                    Some(
+                        fs::read(
+                            repository
+                                .path
+                                .join(".git/objects")
+                                .join(&malformed[..2])
+                                .join(&malformed[2..]),
+                        )
+                        .unwrap(),
+                    )
+                }
+                _ => None,
+            };
+            fs::rename(&object, &backup).unwrap();
+            if let Some(bytes) = &replacement {
+                fs::write(&object, bytes).unwrap();
+            }
+            let result = cursor.next_page(&repository.path, 20);
+            if replacement.is_some() {
+                fs::remove_file(&object).unwrap();
+            }
+            fs::rename(&backup, &object).unwrap();
+            let error = result.expect_err("Object failure was reported as complete history");
+            assert_eq!(error.kind, "historyObjectFailure");
+            assert!(error.message.contains(oid));
+            let repeated = cursor.next_page(&repository.path, 20).unwrap_err();
+            assert_eq!(
+                repeated.message, error.message,
+                "A failed page silently skipped commits on retry"
+            );
+            cursor.reset(&repository.path, &expected[..1]).unwrap();
+            let page = cursor.next_page(&repository.path, 20).unwrap();
+            assert_eq!(
+                serde_json::to_value(&page.commits).unwrap(),
+                serde_json::to_value(&expected[1..]).unwrap(),
+                "Refresh after repair failed to recover every commit"
+            );
+            assert!(!page.history_truncated);
+        }
+    }
+
+    #[test]
+    fn history_preserves_control_characters_without_phantom_commits() {
+        let repository = TestRepository::new();
+        repository.git(&["config", "user.name", "Author\u{1f}Field\u{1e}Record élève"]);
+        repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
+        let forged = "f".repeat(40);
+        let messages = [
+            "Ordinary root".to_owned(),
+            "Subject\u{1f}field\n\nBody\u{1e}record\u{1f}field\nlast line".to_owned(),
+            format!(
+                "Newest subject\u{1e}record\n\nBefore\u{1e}{forged}\u{1f}\u{1f}Forged Author\u{1f}forged@example.test\u{1f}2020-01-01T00:00:00Z\u{1f}Forged subject\u{1f}Forged body\u{1f}forged/ref\u{1e}After"
+            ),
+        ];
+        let mut oids = Vec::new();
+        for message in messages {
+            repository.git(&["commit", "--allow-empty", "--cleanup=verbatim", "-m", &message]);
+            let output = run_git(&repository.path, &["rev-parse", "HEAD"]).unwrap();
+            oids.push(String::from_utf8(output.stdout).unwrap().trim().to_owned());
+        }
+        // Read each field independently: this oracle cannot be confused by the
+        // combined record framing being tested, or by forged delimiter payloads.
+        let expected = oids.iter().rev().map(|oid| {
+            let field = |token: &str| {
+                let format = format!("--format={token}");
+                let output = run_git(&repository.path, &["show", "-s", "--encoding=UTF-8", "--decorate=short", &format, oid]).unwrap();
+                ensure_success("read owned commit field", &output).unwrap();
+                String::from_utf8(output.stdout).unwrap().strip_suffix('\n').unwrap().to_owned()
+            };
+            CommitSummary {
+                oid: oid.clone(),
+                parents: field("%P").split_ascii_whitespace().map(str::to_owned).collect(),
+                author_name: field("%an"),
+                author_email: field("%ae"),
+                authored_at: field("%aI"),
+                subject: field("%s"),
+                description: field("%b").trim().to_owned(),
+                decorations: field("%D").split(',').map(str::trim)
+                    .filter(|value| !value.is_empty()).map(str::to_owned).collect(),
+            }
+        }).collect::<Vec<_>>();
+        let actual = read_commits(&repository.path, 20).unwrap();
+        assert_eq!(serde_json::to_value(&actual).unwrap(), serde_json::to_value(&expected).unwrap());
+        let page = read_commit_page(&repository.path, 1, 1).unwrap();
+        assert_eq!(serde_json::to_value(page).unwrap(), serde_json::to_value(&expected[1..2]).unwrap());
+        for in_process in [true, false] {
+            let mut cursor = CommitHistoryCursor::default();
+            cursor.reset(&repository.path, &expected[..1]).unwrap();
+            assert!(cursor.walk.is_some());
+            if !in_process {
+                cursor.walk = None;
+                cursor.frontier = expected[0].parents.clone();
+            }
+            let page = cursor.next_page(&repository.path, 20).unwrap();
+            assert_eq!(serde_json::to_value(page.commits).unwrap(), serde_json::to_value(&expected[1..]).unwrap());
+            assert!(!page.history_truncated);
+        }
+    }
+
+    #[test]
+    fn malformed_nul_commit_cannot_inject_history_metadata_or_records() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Root"]);
+        let output = run_git(&repository.path, &["rev-parse", "HEAD^{tree}"]).unwrap();
+        let tree = String::from_utf8(output.stdout).unwrap();
+        let forged = "f".repeat(40);
+        let raw = format!(
+            "tree {}\nauthor Author <mail@example.test> 1700000000 +0000\ncommitter Author <mail@example.test> 1700000000 +0000\n\nOriginal subject\n\nprefix\0forged/ref\0\n{forged}\0\0Forged Author\0forged@example.test\02020-01-01T00:00:00Z\0Forged subject\0Forged body",
+            tree.trim()
+        );
+        let output = run_git_with_input_output(
+            &repository.path, &["hash-object", "--literally", "-t", "commit", "-w", "--stdin"], raw.as_bytes(),
+        ).unwrap();
+        ensure_success("create malformed owned NUL fixture", &output).unwrap();
+        let oid = String::from_utf8(output.stdout).unwrap();
+        let oid = oid.trim();
+        repository.git(&["update-ref", "refs/heads/main", oid]);
+        match read_commits(&repository.path, 20) {
+            Err(error) => assert_eq!(error.kind, "invalidHistoryOutput"),
+            Ok(commits) => {
+                assert_eq!(commits.len(), 1, "Malformed NUL message created phantom history");
+                assert_eq!(commits[0].oid, oid);
+                assert_eq!(commits[0].author_name, "Author");
+                assert_eq!(commits[0].subject, "Original subject");
+                assert_eq!(commits[0].decorations, vec!["HEAD -> main"]);
+                let output = run_git(&repository.path, &["show", "-s", "--format=%b", oid]).unwrap();
+                assert_eq!(commits[0].description, String::from_utf8(output.stdout).unwrap().trim());
+            }
+        }
+    }
+
+    #[test]
+    fn history_record_decoder_refuses_partial_duplicate_and_invalid_oid_records() {
+        let oid = "a".repeat(40);
+        let parent = "b".repeat(40);
+        let fields = [oid.as_str(), parent.as_str(), "Author", "mail@example.test",
+            "2020-01-01T00:00:00Z", "Subject\u{1f}field", "Body\u{1e}record", "HEAD -> main"];
+        let mut bytes = fields.join("\0").into_bytes();
+        bytes.extend_from_slice(b"\0\n");
+        assert_eq!(parse_history_records(&bytes).unwrap().len(), 1);
+        assert!(parse_history_records(b"").unwrap().is_empty());
+        for end in 1..bytes.len() {
+            assert!(parse_history_records(&bytes[..end]).is_err(), "Accepted truncated prefix {end}");
+        }
+        let duplicate = [bytes.as_slice(), bytes.as_slice()].concat();
+        assert!(parse_history_records(&duplicate).is_err());
+        let mut invalid = bytes.clone();
+        invalid[0] = b'z';
+        assert!(parse_history_records(&invalid).is_err());
+        invalid = bytes.clone();
+        invalid[41] = b'z';
+        assert!(parse_history_records(&invalid).is_err());
+        bytes.extend_from_slice(b"unframed output");
+        assert!(parse_history_records(&bytes).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn history_transport_does_not_run_configured_signature_presentation() {
+        use std::os::unix::fs::PermissionsExt;
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Root"]);
+        let output = run_git(&repository.path, &["rev-parse", "HEAD^{tree}"]).unwrap();
+        let tree = String::from_utf8(output.stdout).unwrap();
+        let raw = format!(
+            "tree {}\nauthor Author <mail@example.test> 1700000000 +0000\ncommitter Author <mail@example.test> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n bogus\n -----END PGP SIGNATURE-----\n\nSigned-looking subject\n",
+            tree.trim()
+        );
+        let output = run_git_with_input_output(
+            &repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], raw.as_bytes(),
+        ).unwrap();
+        ensure_success("create owned signature fixture", &output).unwrap();
+        let oid = String::from_utf8(output.stdout).unwrap();
+        let oid = oid.trim();
+        repository.git(&["update-ref", "refs/heads/main", oid]);
+        repository.write("signature-helper", "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n");
+        let helper = repository.path.join("signature-helper");
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        repository.git(&["config", "gpg.program", helper.to_str().unwrap()]);
+        repository.git(&["config", "log.showSignature", "true"]);
+        let marker = repository.path.join("signature-helper-invoked");
+        let baseline = run_git(&repository.path, &["log", "-1", "--show-signature", "--format=%H"]).unwrap();
+        ensure_success("verify owned signature fixture", &baseline).unwrap();
+        assert!(marker.exists(), "Signature fixture did not exercise the configured helper");
+        fs::remove_file(&marker).unwrap();
+        let commits = read_commits(&repository.path, 20).unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].oid, oid);
+        assert_eq!(commits[0].subject, "Signed-looking subject");
+        assert!(!marker.exists(), "History executed an optional signature presentation helper");
+        let mut cursor = CommitHistoryCursor::default();
+        cursor.reset(&repository.path, &commits).unwrap();
+        assert!(!marker.exists(), "History tips executed the presentation helper");
+        repository.git(&[
+            "update-ref", "--create-reflog", "-m", "Owned signature fixture",
+            "refs/stash", oid,
+        ]);
+        let stashes = read_stashes(&repository.path).unwrap();
+        assert_eq!(stashes.len(), 1);
+        assert_eq!(stashes[0].oid, oid);
+        assert!(!marker.exists(), "Stash listing executed the presentation helper");
     }
 
     #[test]
@@ -10267,6 +11117,113 @@ mod tests {
     }
 
     #[test]
+    fn blame_decoder_refuses_incomplete_metadata_and_invalid_line_order() {
+        let oid = "a".repeat(40);
+        let record = format!("{oid} 1 1 1\nauthor Name\nauthor-mail <name@example.test>\nauthor-time 1767225600\nsummary Subject\nfilename file.txt\n\tline\n");
+        assert_eq!(parse_blame_porcelain(&record).unwrap().len(), 1);
+        for invalid in [
+            format!("{oid} 1 1 1\n"),
+            record.replace("\tline\n", ""),
+            record.replace("author-time 1767225600\n", ""),
+            record.replace("1767225600", "not-a-time"),
+            record.replace("filename file.txt\n", ""),
+            record.replace(" 1 1 1\n", " 1 0 1\n"),
+            format!("{record}{record}"),
+        ] {
+            assert!(parse_blame_porcelain(&invalid).is_err(), "Incomplete or inconsistent blame must not become valid lines");
+        }
+    }
+
+    #[test]
+    fn blame_pages_preserve_unicode_paths_and_cover_exact_boundaries_and_empty_files() {
+        let repository = TestRepository::new();
+        repository.git(&["config", "user.name", "Élodie😀"]);
+        let contents = (1..=205).map(|number| format!("élève😀 line {number}\r\n")).collect::<String>();
+        repository.write("old.txt", &contents);
+        repository.write("empty.txt", "");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "élève😀 subject"]);
+        let original = reference_tip(&repository.path, "HEAD").unwrap();
+        repository.git(&["mv", "old.txt", "renamed.txt"]);
+        repository.git(&["commit", "-m", "Rename only"]);
+        let revision = reference_tip(&repository.path, "HEAD").unwrap();
+        repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
+        repository.git(&["config", "blame.blankBoundary", "true"]);
+        repository.git(&["config", "blame.coloring", "highlightRecent"]);
+        let mut all = Vec::new();
+        for (first, length, next) in [(1, 100, Some(101)), (101, 100, Some(201)), (201, 5, None)] {
+            let page = file_blame_page(&repository.path, &revision, "renamed.txt", first).unwrap();
+            assert_eq!(page.lines.len(), length);
+            assert_eq!(page.next_line, next);
+            assert_eq!(page.lines[0].line_number, first);
+            assert!(page.lines.iter().all(|line| line.oid == original && line.path.as_deref() == Some("old.txt") && line.author_name == "Élodie😀"));
+            all.extend(page.lines);
+        }
+        assert_eq!(all.iter().map(|line| format!("{}\n", line.text)).collect::<String>(), contents);
+        assert!(file_blame_page(&repository.path, &revision, "empty.txt", 1).unwrap().lines.is_empty());
+        assert!(file_blame_page(&repository.path, &revision, "renamed.txt", 206).is_err());
+        assert_eq!(file_blame_page(&repository.path, &revision, "renamed.txt", 0).unwrap_err().kind, "invalidBlameRange");
+    }
+
+    #[test]
+    fn blame_pages_bound_large_files_and_refuse_oversized_lines() {
+        let repository = TestRepository::new();
+        repository.write("large.txt", &(1..=100_000).map(|number| format!("line {number}\n")).collect::<String>());
+        repository.write("huge-line.txt", &"x".repeat(2 * 1024 * 1024));
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Large blame fixtures"]);
+        let revision = reference_tip(&repository.path, "HEAD").unwrap();
+        let page = file_blame_page(&repository.path, &revision, "large.txt", 99_901).unwrap();
+        assert_eq!(page.lines.len(), 100);
+        assert!(page.next_line.is_none());
+        assert_eq!(page.lines[99].text, "line 100000");
+        assert_eq!(file_blame_page(&repository.path, &revision, "huge-line.txt", 1).unwrap_err().kind, "historyOutputLimit");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn blame_inspection_never_executes_configured_text_conversion() {
+        use std::os::unix::fs::PermissionsExt;
+        let repository = TestRepository::new();
+        repository.write("file.txt", "raw owned source\n");
+        repository.write(".gitattributes", "*.txt diff=owned\n");
+        let helper = repository.path.join(".git/blame-textconv");
+        fs::write(&helper, "#!/bin/sh\nprintf called > .git/blame-converter-called\nprintf converted\\n\n").unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        repository.git(&["config", "diff.owned.textconv", ".git/blame-textconv"]);
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Owned raw source"]);
+        let revision = reference_tip(&repository.path, "HEAD").unwrap();
+        repository.git(&["blame", "--textconv", "--line-porcelain", &revision, "--", "file.txt"]);
+        let marker = repository.path.join(".git/blame-converter-called");
+        assert!(marker.exists(), "The fixture must prove the converter is executable");
+        fs::remove_file(&marker).unwrap();
+        assert_eq!(file_blame(&repository.path, &revision, "file.txt").unwrap()[0].text, "raw owned source");
+        assert_eq!(file_blame_page(&repository.path, &revision, "file.txt", 1).unwrap().lines[0].text, "raw owned source");
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn blame_pages_accept_literal_control_space_and_quoted_filenames() {
+        let repository = TestRepository::new();
+        let files = ["line\nname.txt", " tail ", "quote\"", "bell\u{7}.txt", "*.txt"];
+        for file in files { repository.write(file, "literal file\n"); }
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Literal filenames"]);
+        let revision = reference_tip(&repository.path, "HEAD").unwrap();
+        for file in files {
+            let page = file_blame_page(&repository.path, &revision, file, 1).unwrap();
+            assert_eq!(page.lines.len(), 1);
+            assert_eq!(page.lines[0].path.as_deref(), Some(file));
+            assert_eq!(page.lines[0].text, "literal file");
+        }
+        for file in ["", "../outside", "/absolute", "bad\0path"] {
+            assert_eq!(file_blame_page(&repository.path, &revision, file, 1).unwrap_err().kind, "invalidPath");
+        }
+    }
+
+    #[test]
     fn reads_file_history_and_line_blame() {
         let repository = TestRepository::new();
         repository.write("forest.txt", "oak\nbirch\n");
@@ -10371,6 +11328,133 @@ mod tests {
                 .lines()
                 .any(|line| line == "*.toml")
         );
+    }
+
+    #[test]
+    fn ignore_preserves_existing_non_utf8_rules_and_line_endings() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "keep\n");
+        let existing = b"# existing rules\r\n/old-\xff.log\r\n";
+        fs::write(repository.path.join(".gitignore"), existing).unwrap();
+        ignore_path(&repository.path, "secret.log", "file", false).unwrap();
+        let updated = fs::read(repository.path.join(".gitignore")).unwrap();
+        assert!(updated.starts_with(existing));
+        assert!(updated.ends_with(b"/secret.log\n"));
+        assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"keep\n");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ignore_refuses_existing_and_dangling_ignore_file_symlinks() {
+        use std::os::unix::fs::symlink;
+        for existing in [false, true] {
+            let repository = TestRepository::new();
+            repository.write("secret.log", "keep\n");
+            let target = repository.path.join(".git/outside-ignore");
+            if existing { fs::write(&target, b"# preserve outside\n").unwrap(); }
+            let ignore = repository.path.join(".gitignore");
+            symlink(&target, &ignore).unwrap();
+            assert!(ignore_path(&repository.path, "secret.log", "file", false).is_err());
+            assert!(fs::symlink_metadata(ignore).unwrap().is_symlink());
+            if existing { assert_eq!(fs::read(target).unwrap(), b"# preserve outside\n"); }
+            else { assert!(!target.exists()); }
+            assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"keep\n");
+        }
+    }
+
+    #[test]
+    fn ignore_and_stop_tracking_treats_pattern_looking_filenames_literally() {
+        for file in ["*.log", ":(glob)*.log", "[ab].log"] {
+            let repository = TestRepository::new();
+            repository.write(file, "selected\n");
+            repository.write("a.log", "unrelated\n");
+            repository.git(&["add", "."]);
+            repository.git(&["commit", "-m", "Literal paths"]);
+            repository.write(file, "selected edit\n");
+            ignore_path(&repository.path, file, "file", true).unwrap();
+            let retained = run_git(&repository.path, &["ls-files", "-z"]).unwrap().stdout;
+            assert_eq!(retained, b"a.log\0", "untracking {file}");
+            assert_eq!(fs::read(repository.path.join(file)).unwrap(), b"selected edit\n");
+            assert_eq!(fs::read(repository.path.join("a.log")).unwrap(), b"unrelated\n");
+        }
+    }
+
+    #[test]
+    fn ignore_honors_an_existing_ignore_file_lock_without_changing_rules_or_index() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "edit\n");
+        repository.write(".gitignore", "# existing\n");
+        repository.write(".gitignore.lock", "another writer\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
+        assert_eq!(fs::read(repository.path.join(".gitignore")).unwrap(), b"# existing\n");
+        assert_eq!(fs::read(repository.path.join(".gitignore.lock")).unwrap(), b"another writer\n");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+    }
+
+    #[test]
+    fn ignore_refuses_untracking_before_updating_rules_when_staged_contents_would_be_lost() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "staged\n");
+        repository.git(&["add", "secret.log"]);
+        repository.write("secret.log", "worktree\n");
+        repository.write(".gitignore", "# existing\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
+        assert_eq!(fs::read(repository.path.join(".gitignore")).unwrap(), b"# existing\n");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"worktree\n");
+    }
+
+    #[test]
+    fn ignore_preserves_duplicate_crlf_rules_and_refuses_directory_or_index_locks() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "edit\n");
+        let ignore = repository.path.join(".gitignore");
+        fs::create_dir(&ignore).unwrap();
+        assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
+        assert!(ignore.is_dir());
+        assert!(!repository.path.join(".gitignore.lock").exists());
+        fs::remove_dir(&ignore).unwrap();
+        let existing = b"# existing\r\n/secret.log\r\n";
+        fs::write(&ignore, existing).unwrap();
+        repository.write(".git/index.lock", "other Git writer\n");
+        assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
+        assert_eq!(fs::read(&ignore).unwrap(), existing);
+        assert_eq!(fs::read(repository.path.join(".git/index.lock")).unwrap(), b"other Git writer\n");
+        assert!(!repository.path.join(".gitignore.lock").exists());
+        fs::remove_file(repository.path.join(".git/index.lock")).unwrap();
+        ignore_path(&repository.path, "secret.log", "file", true).unwrap();
+        assert_eq!(fs::read(&ignore).unwrap(), existing);
+        assert_eq!(run_git(&repository.path, &["ls-files", "-z"]).unwrap().stdout, b"");
+        assert!(!repository.path.join(".gitignore.lock").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ignore_replaces_only_the_owned_entry_preserving_permissions_and_other_hard_links() {
+        use std::os::unix::fs::PermissionsExt;
+        let repository = TestRepository::new();
+        repository.write("secret.log", "keep\n");
+        let external = repository.path.join(".git/shared-ignore");
+        fs::write(&external, b"# no final newline").unwrap();
+        fs::set_permissions(&external, fs::Permissions::from_mode(0o600)).unwrap();
+        let ignore = repository.path.join(".gitignore");
+        fs::hard_link(&external, &ignore).unwrap();
+        ignore_path(&repository.path, "secret.log", "file", false).unwrap();
+        assert_eq!(fs::read(&external).unwrap(), b"# no final newline");
+        assert_eq!(fs::read(&ignore).unwrap(), b"# no final newline\n/secret.log\n");
+        assert_eq!(fs::metadata(&ignore).unwrap().permissions().mode() & 0o777, 0o600);
+        assert!(!repository.path.join(".gitignore.lock").exists());
     }
 
     #[test]
@@ -11103,7 +12187,7 @@ mod tests {
     fn parses_verified_commit_signature_metadata() {
         let (signature, message) = parse_commit_signature(
             b"G\0Maya Chen <maya@example.test>\0A1B2C3D4\0FFEEDDCCBBAA\0ultimate\0Signed work\n",
-        );
+        ).unwrap();
 
         assert_eq!(signature.status, "valid");
         assert_eq!(
@@ -11114,6 +12198,92 @@ mod tests {
         assert_eq!(signature.fingerprint.as_deref(), Some("FFEEDDCCBBAA"));
         assert_eq!(signature.trust.as_deref(), Some("ultimate"));
         assert_eq!(message, "Signed work");
+    }
+
+    #[test]
+    fn incomplete_signature_metadata_cannot_establish_a_valid_or_unsigned_status() {
+        for output in [b"".as_slice(), b"G", b"G\0Signer", b"G\0Signer\0Key\0Fingerprint\0Trust", b"N"] {
+            assert_eq!(parse_commit_signature(output).unwrap_err().kind, "invalidCommitSignatureOutput");
+        }
+        assert!(parse_commit_signature(b"unexpected\0\0\0\0\0body").is_err());
+        let (signature, message) = parse_commit_signature(b"N\0\0\0\0\0body\0literal NUL").unwrap();
+        assert_eq!(signature.status, "unsigned");
+        assert_eq!(message, "body\0literal NUL");
+    }
+
+    #[test]
+    fn file_history_decoder_rejects_incomplete_duplicate_and_invalid_frames() {
+        let oid = "a".repeat(40);
+        let frame = format!("{oid}\0Name\0mail@example.test\02026-01-01T00:00:00Z\0Subject\0\n");
+        assert_eq!(parse_file_history_records(frame.as_bytes()).unwrap().len(), 1);
+        for end in 1..frame.len() {
+            assert!(parse_file_history_records(&frame.as_bytes()[..end]).is_err());
+        }
+        assert!(parse_file_history_records(format!("{frame}{frame}").as_bytes()).is_err());
+        assert!(parse_file_history_records(frame.replacen(&oid, "not-an-oid", 1).as_bytes()).is_err());
+        let sha256 = frame.replacen(&oid, &"a".repeat(64), 1);
+        assert_eq!(parse_file_history_records(sha256.as_bytes()).unwrap()[0].oid.len(), 64);
+    }
+
+    #[test]
+    fn commit_details_preserve_unicode_message_and_unsigned_status_under_log_presentation_settings() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "élève😀 summary\n\nUnicode élève😀 body"]);
+        let oid = reference_tip(&repository.path, "HEAD").unwrap();
+        repository.git(&["notes", "add", "-m", "Unexpected presentation note", &oid]);
+        repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
+        repository.git(&["config", "color.ui", "always"]);
+        repository.git(&["config", "log.showNotes", "true"]);
+        repository.git(&["config", "log.showSignature", "true"]);
+        let details = commit_details(&repository.path, &oid).unwrap();
+        assert_eq!(details.message, "élève😀 summary\n\nUnicode élève😀 body");
+        assert_eq!(details.signature.status, "unsigned");
+        assert!(details.signature.signer.is_none());
+        assert!(details.signature.key.is_none());
+    }
+
+    #[test]
+    fn file_history_preserves_unicode_and_separator_bytes_without_phantom_entries() {
+        let repository = TestRepository::new();
+        let name = "Élodie\x1ffield\x1erecord";
+        repository.git(&["config", "user.name", name]);
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        let first = reference_tip(&repository.path, "HEAD").unwrap();
+        repository.write("file.txt", "updated\n");
+        repository.git(&["add", "."]);
+        let subject = format!("élève😀\x1ffield\x1erecord\x1e{}\x1fForged\x1ffake@example.test\x1f2020-01-01T00:00:00Z\x1fInjected", "f".repeat(40));
+        repository.git(&["commit", "-m", &subject]);
+        let last = reference_tip(&repository.path, "HEAD").unwrap();
+        for encoding in ["UTF-8", "UTF-16"] {
+            repository.git(&["config", "i18n.logOutputEncoding", encoding]);
+            let history = file_history(&repository.path, &last, "file.txt").unwrap();
+            assert_eq!(history.len(), 2, "File history admitted a forged record");
+            assert_eq!(history[0].oid, last);
+            assert_eq!(history[1].oid, first);
+            assert_eq!(history[0].subject, subject);
+            assert_eq!(history[0].author_name, name);
+        }
+    }
+
+    #[test]
+    fn file_history_refuses_oversized_metadata_without_partial_results_or_repository_changes() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "owned contents\n");
+        repository.git(&["add", "file.txt"]);
+        fs::write(repository.path.join(".git/large-message"), "m".repeat(2 * 1024 * 1024 + 1)).unwrap();
+        repository.git(&["commit", "-F", ".git/large-message"]);
+        let oid = reference_tip(&repository.path, "HEAD").unwrap();
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let result = file_history(&repository.path, &oid, "file.txt");
+        assert!(matches!(result, Err(ref error) if error.kind == "historyOutputLimit"),
+            "Oversized file-history metadata must fail instead of returning a large or partial result");
+        assert_eq!(reference_tip(&repository.path, "HEAD").unwrap(), oid);
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(repository.path.join("file.txt")).unwrap(), b"owned contents\n");
     }
 
     #[test]
@@ -11139,10 +12309,10 @@ mod tests {
             "commitSignatureHeaderIncomplete"
         );
         assert_eq!(
-            parse_commit_signature(b"?\0\0\0\0\0message").0.status,
-            "unverifiable"
+            parse_commit_signature(b"?\0\0\0\0\0message").unwrap_err().kind,
+            "invalidCommitSignatureOutput"
         );
-        assert_eq!(parse_commit_signature(b"").0.status, "unverifiable");
+        assert_eq!(parse_commit_signature(b"").unwrap_err().kind, "invalidCommitSignatureOutput");
     }
 
     #[test]
@@ -11379,6 +12549,370 @@ mod tests {
     }
 
     #[test]
+    fn stash_delete_rejects_a_shifted_selected_object_before_capture_or_mutation() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "file.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "selected\n");
+        stash(&repository.path).unwrap();
+        let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write("file.txt", "newer\n");
+        stash(&repository.path).unwrap();
+        let before = read_stashes(&repository.path).unwrap();
+        let error = drop_stash_checked(&repository.path, "stash@{0}", &selected).unwrap_err();
+        assert_eq!(error.kind, "staleStash");
+        assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+        assert_eq!(
+            serde_json::to_value(read_stashes(&repository.path).unwrap()).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "base\n");
+        drop_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
+        let after = read_stashes(&repository.path).unwrap();
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].oid, before[0].oid);
+    }
+
+    #[test]
+    fn selected_stash_apply_and_pop_reject_shifted_ordinals_and_restore_only_the_selected_object() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "selected\n");
+        stash(&repository.path).unwrap();
+        let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write("file.txt", "newer\n");
+        stash(&repository.path).unwrap();
+        let newer = reference_tip(&repository.path, "refs/stash").unwrap();
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        for operation in [apply_stash_checked, pop_stash_checked] {
+            assert_eq!(operation(&repository.path, "stash@{0}", &selected).unwrap_err().kind, "staleStash");
+            assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+            assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "base\n");
+            assert_eq!(read_stashes(&repository.path).unwrap().len(), 2);
+            assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+        }
+        apply_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
+        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+        assert_eq!(read_stashes(&repository.path).unwrap().len(), 2);
+        repository.git(&["restore", "file.txt"]);
+        pop_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
+        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+        let remaining = read_stashes(&repository.path).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].oid, newer);
+    }
+
+    #[test]
+    fn stash_preview_is_utf8_and_excludes_presentation_notes_and_colour() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "saved élève😀\n");
+        repository.write("*.tmp", "untracked saved\n");
+        stash_with_message(&repository.path, Some("élève😀 selected stash")).unwrap();
+        let oid = reference_tip(&repository.path, "refs/stash").unwrap();
+        let expected = run_git(&repository.path, &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--format=%B", &oid]).unwrap();
+        repository.git(&["notes", "add", "-m", "Unexpected preview note", &oid]);
+        repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
+        repository.git(&["config", "log.showNotes", "true"]);
+        repository.git(&["config", "color.ui", "always"]);
+        let details = stash_details(&repository.path, "stash@{0}").unwrap();
+        assert_eq!(details.oid, oid);
+        assert_eq!(details.message, String::from_utf8(expected.stdout).unwrap().trim_end());
+        assert!(!details.message.contains('\0'));
+        assert!(details.files.iter().any(|file| file.path == "file.txt"));
+        assert!(details.files.iter().any(|file| file.path == "*.tmp"));
+        assert_eq!(details.files.len(), 2);
+        let patch = stash_file_diff(&repository.path, "stash@{0}", "file.txt", None).unwrap();
+        assert!(patch.patch.contains("saved élève😀"));
+        assert!(!patch.patch.contains('\u{1b}'));
+    }
+
+    #[test]
+    fn stash_previews_pin_message_files_stats_and_untracked_diffs_after_stack_renumbering() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "selected\n");
+        repository.write("*.tmp", "selected untracked\n");
+        stash_with_message(&repository.path, Some("Selected stash")).unwrap();
+        let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write("other.txt", "newer unrelated\n");
+        stash_with_message(&repository.path, Some("Newer stash")).unwrap();
+        let details = stash_details_at_oid(&repository.path, &selected).unwrap();
+        assert_eq!(details.oid, selected);
+        assert!(details.message.contains("Selected stash"));
+        assert_eq!(details.signature.status, "unsigned");
+        assert_eq!(details.files.len(), 2);
+        assert!(details.files.iter().all(|file| file.path != "other.txt"));
+        for file in &details.files {
+            let patch = stash_file_diff_at_oid(&repository.path, &selected, &file.path, None).unwrap();
+            assert_eq!(patch.oid, selected);
+            assert!(patch.patch.contains("selected"));
+            assert!(!patch.patch.contains("newer unrelated"));
+        }
+        assert!(stash_details(&repository.path, "stash@{0}").unwrap().message.contains("Newer stash"));
+        assert!(stash_details_at_oid(&repository.path, "--all").is_err());
+        assert!(stash_file_diff_at_oid(&repository.path, "--all", "file.txt", None).is_err());
+    }
+
+    #[test]
+    fn stash_preview_bounds_large_messages_and_refuses_an_incomplete_signature_header() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "saved\n");
+        stash(&repository.path).unwrap();
+        let raw = run_git(&repository.path, &["cat-file", "commit", "refs/stash"]).unwrap();
+        let raw = String::from_utf8(raw.stdout).unwrap();
+        let (headers, _) = raw.split_once("\n\n").unwrap();
+        for large_header in [false, true] {
+            let payload = if large_header {
+                format!("{headers}\ngpgsig signature\n {}\n\nSmall message\n", "x".repeat(MAX_COMMIT_DETAILS_BYTES))
+            } else {
+                format!("{headers}\n\n{}\n", "é".repeat(MAX_COMMIT_MESSAGE_BYTES))
+            };
+            let output = run_git_with_input_output(&repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], payload.as_bytes()).unwrap();
+            ensure_success("create owned bounded preview fixture", &output).unwrap();
+            let oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+            let result = stash_details_at_oid(&repository.path, &oid);
+            if large_header {
+                assert_eq!(result.unwrap_err().kind, "commitSignatureHeaderIncomplete");
+            } else {
+                let details = result.unwrap();
+                assert!(details.message.ends_with("[Commit message truncated]"));
+                assert!(details.message.len() < MAX_COMMIT_MESSAGE_BYTES + 100);
+                assert_eq!(details.signature.status, "unsigned");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stash_preview_does_not_execute_signature_helpers_or_call_signed_objects_unsigned() {
+        use std::os::unix::fs::PermissionsExt;
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "saved\n");
+        stash(&repository.path).unwrap();
+        let raw = run_git(&repository.path, &["cat-file", "commit", "refs/stash"]).unwrap();
+        let raw = String::from_utf8(raw.stdout).unwrap();
+        let (headers, body) = raw.split_once("\n\n").unwrap();
+        let signed = format!("{headers}\ngpgsig -----BEGIN PGP SIGNATURE-----\n bogus\n -----END PGP SIGNATURE-----\n\n{body}");
+        let output = run_git_with_input_output(&repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], signed.as_bytes()).unwrap();
+        ensure_success("create owned signed-looking stash", &output).unwrap();
+        let oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+        repository.git(&["update-ref", "refs/stash", &oid]);
+        repository.write("signature-helper", "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n");
+        let helper = repository.path.join("signature-helper");
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        repository.git(&["config", "gpg.program", helper.to_str().unwrap()]);
+        repository.git(&["config", "log.showSignature", "true"]);
+        let baseline = run_git(&repository.path, &["show", "-s", "--show-signature", "--format=%B", &oid]).unwrap();
+        ensure_success("exercise owned signature helper", &baseline).unwrap();
+        let marker = repository.path.join("signature-helper-invoked");
+        assert!(marker.exists());
+        fs::remove_file(&marker).unwrap();
+        let details = stash_details(&repository.path, "stash@{0}").unwrap();
+        assert!(!marker.exists(), "Stash preview executed a signature presentation helper");
+        assert_eq!(details.signature.status, "unverifiable");
+        assert_eq!(details.files.len(), 1);
+    }
+
+    #[test]
+    fn selected_pop_reports_applied_but_retained_when_only_removal_is_locked() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        let head = reference_tip(&repository.path, "HEAD");
+        repository.write("file.txt", "saved\n");
+        stash(&repository.path).unwrap();
+        let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write(".git/refs/stash.lock", "owned lock\n");
+        let error = pop_stash_checked(&repository.path, "stash@{0}", &selected).unwrap_err();
+        assert_eq!(error.kind, "stashAppliedButRetained");
+        assert!(error.hint.unwrap().contains("Do not apply or pop"));
+        assert_eq!(reference_tip(&repository.path, "HEAD"), head);
+        assert_eq!(reference_tip(&repository.path, "refs/stash"), Some(selected.clone()));
+        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "saved\n");
+        // Refused removal leaves the original stash reachable; the unused
+        // deletion recovery capture is correctly discarded by its owner.
+        assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn selected_pop_keeps_the_stash_and_conflict_stages_when_apply_conflicts() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "base\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("file.txt", "saved\n");
+        stash(&repository.path).unwrap();
+        let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write("file.txt", "changed upstream\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Upstream"]);
+        let error = pop_stash_checked(&repository.path, "stash@{0}", &selected).unwrap_err();
+        assert_eq!(error.kind, "gitFailure");
+        assert!(error.hint.unwrap().contains("stash was kept"));
+        assert_eq!(reference_tip(&repository.path, "refs/stash"), Some(selected));
+        assert!(!run_git(&repository.path, &["ls-files", "-u"]).unwrap().stdout.is_empty());
+        assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn selected_stash_actions_use_the_captured_object_when_a_merge_driver_renumbers_the_stack() {
+        for pop in [false, true] {
+            let repository = TestRepository::new();
+            repository.write(".gitattributes", "file.txt merge=owned\n");
+            repository.write("file.txt", "base\n");
+            repository.git(&["add", "."]);
+            repository.git(&["commit", "-m", "Root"]);
+            repository.write("file.txt", "selected\n");
+            stash(&repository.path).unwrap();
+            let selected = reference_tip(&repository.path, "refs/stash").unwrap();
+            repository.write("file.txt", "other saved contents\n");
+            stash(&repository.path).unwrap();
+            let newer = reference_tip(&repository.path, "refs/stash").unwrap();
+            repository.git(&["stash", "drop", "stash@{0}"]);
+            repository.write("file.txt", "upstream\n");
+            repository.git(&["add", "."]);
+            repository.git(&["commit", "-m", "Upstream"]);
+            repository.git(&["config", "merge.owned.driver", &format!(
+                "git stash store -m 'Concurrent owned stash' {newer} && cat '%B' > '%A'"
+            )]);
+            let result = if pop {
+                pop_stash_checked(&repository.path, "stash@{0}", &selected)
+            } else {
+                apply_stash_checked(&repository.path, "stash@{0}", &selected)
+            };
+            if pop {
+                assert_eq!(result.unwrap_err().kind, "stashAppliedButRetained");
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+            let stashes = read_stashes(&repository.path).unwrap();
+            assert_eq!(stashes.len(), 2);
+            assert_eq!(stashes[0].oid, newer);
+            assert_eq!(stashes[1].oid, selected);
+            assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn deleting_long_external_stash_labels_preserves_the_complete_recovery_object() {
+        let repository = TestRepository::new();
+        repository.write("story.txt", "base\n");
+        repository.git(&["add", "story.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("story.txt", "complete saved contents\n");
+        let message = "élève😀".repeat(1000);
+        repository.git(&["stash", "push", "-m", &message]);
+        let oid = reference_tip(&repository.path, "refs/stash").unwrap();
+        let original = run_git(&repository.path, &["cat-file", "commit", &oid]).unwrap().stdout;
+        repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
+        drop_stash(&repository.path, "stash@{0}").unwrap();
+        assert!(read_stashes(&repository.path).unwrap().is_empty());
+        let capture = operation_recoveries(&repository.path).unwrap().into_iter()
+            .find(|entry| entry.snapshot_oid.as_deref() == Some(oid.as_str())).unwrap();
+        assert!(capture.label.starts_with("Delete stash: "));
+        assert!(capture.label.ends_with('…'));
+        assert!(capture.label.len() < 4096);
+        assert!(!capture.label.chars().any(char::is_control));
+        assert_eq!(run_git(&repository.path, &["cat-file", "commit", &oid]).unwrap().stdout, original);
+        restore_operation_branch(&repository.path, &capture.id, "restored-stash").unwrap();
+        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "complete saved contents\n");
+    }
+
+    #[test]
+    fn stash_record_decoder_preserves_duplicate_objects_but_rejects_malformed_frames() {
+        let oid = "a".repeat(40);
+        let record = |reference: &str, object: &str| {
+            format!("{reference}\0{object}\0Message\u{1e}record\u{1f}field\0\n").into_bytes()
+        };
+        let first = record("stash@{0}", &oid);
+        let second = record("stash@{1}", &oid);
+        let entries = parse_stash_records(&[first.as_slice(), second.as_slice()].concat()).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].oid, entries[1].oid);
+        assert_ne!(entries[0].reference, entries[1].reference);
+        for end in 1..first.len() {
+            assert!(parse_stash_records(&first[..end]).is_err(), "Accepted truncated stash prefix {end}");
+        }
+        assert!(parse_stash_records(&[first.as_slice(), first.as_slice()].concat()).is_err());
+        assert!(parse_stash_records(&record("stash@{999}", &oid)).is_err());
+        assert!(parse_stash_records(&record("HEAD", &oid)).is_err());
+        assert!(parse_stash_records(&record("stash@{0}", "invalid")).is_err());
+        assert_eq!(parse_stash_records(&record("stash@{0}", &"b".repeat(64))).unwrap()[0].oid.len(), 64);
+        assert!(parse_stash_records(b"").unwrap().is_empty());
+    }
+
+    #[test]
+    fn stash_listing_preserves_control_characters_without_forged_entries() {
+        let repository = TestRepository::new();
+        repository.write("story.txt", "base\n");
+        repository.git(&["add", "story.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        let forged = "f".repeat(40);
+        let messages = [
+            format!("Older élève\u{1f}field\u{1e}stash@{{999}}\u{1f}{forged}\u{1f}Forged stash\u{1e}After"),
+            "Newer élève\u{1e}record\u{1f}field".to_owned(),
+        ];
+        let mut oids = Vec::new();
+        for (index, message) in messages.iter().enumerate() {
+            repository.write("story.txt", &format!("saved {index}\n"));
+            stash_with_message(&repository.path, Some(message)).unwrap();
+            let output = run_git(&repository.path, &["rev-parse", "refs/stash"]).unwrap();
+            oids.push(String::from_utf8(output.stdout).unwrap().trim().to_owned());
+        }
+        let expected = oids.iter().rev().enumerate().map(|(index, oid)| {
+            let reference = format!("stash@{{{index}}}");
+            let output = run_git(&repository.path, &[
+                "log", "-g", "-1", "--encoding=UTF-8", "--format=%gs", &reference,
+            ]).unwrap();
+            ensure_success("read owned stash label independently", &output).unwrap();
+            StashEntry {
+                reference,
+                oid: oid.clone(),
+                message: String::from_utf8(output.stdout).unwrap().strip_suffix('\n').unwrap().to_owned(),
+            }
+        }).collect::<Vec<_>>();
+        for encoding in ["UTF-8", "UTF-16"] {
+            repository.git(&["config", "i18n.logOutputEncoding", encoding]);
+            repository.git(&["config", "log.date", "iso-strict"]);
+            let actual = read_stashes(&repository.path).unwrap();
+            assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(&expected).unwrap());
+        }
+        repository.git(&["stash", "store", "-m", "Duplicate owned stash", &oids[0]]);
+        let duplicate = read_stashes(&repository.path).unwrap();
+        assert_eq!(duplicate.iter().map(|entry| &entry.oid).collect::<Vec<_>>(), vec![&oids[0], &oids[1], &oids[0]]);
+        drop_stash(&repository.path, "stash@{0}").unwrap();
+        let renamed = "Renamed élève\u{1f}field\u{1e}record";
+        rename_stash(&repository.path, "stash@{1}", &oids[0], renamed).unwrap();
+        assert_eq!(read_stashes(&repository.path).unwrap()[1].message, renamed);
+        apply_stash(&repository.path, "stash@{1}").unwrap();
+        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "saved 0\n");
+        repository.git(&["restore", "--", "story.txt"]);
+        drop_stash(&repository.path, "stash@{0}").unwrap();
+        let remaining = read_stashes(&repository.path).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].oid, oids[0]);
+        pop_stash_entry(&repository.path, "stash@{0}").unwrap();
+        assert!(read_stashes(&repository.path).unwrap().is_empty());
+        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "saved 0\n");
+    }
+
+    #[test]
     fn stashes_applies_and_pops_working_tree_changes() {
         let repository = TestRepository::new();
         repository.write("tracked.txt", "base\n");
@@ -11555,6 +13089,84 @@ mod tests {
         assert!(!details.annotated);
         assert_eq!(details.oid, oid);
         assert!(details.message.is_none());
+    }
+
+    #[test]
+    fn tag_names_remain_exact_when_a_branch_has_the_same_name() {
+        let repository = TestRepository::new();
+        repository.write("release.txt", "shared name\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Release").unwrap();
+        let oid = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        create_tag(&repository.path, "main", &oid, Some("Main release")).unwrap();
+
+        for ambiguous in ["true", "false"] {
+            repository.git(&["config", "core.warnAmbiguousRefs", ambiguous]);
+            let tags = read_tags(&repository.path).unwrap();
+            assert_eq!(tags.len(), 1);
+            assert_eq!(tags[0].full_name, "refs/tags/main");
+            assert_eq!(tags[0].name, "main");
+            assert_eq!(tags[0].oid, oid);
+            assert_eq!(
+                tag_details(&repository.path, &tags[0].name).unwrap().oid,
+                oid
+            );
+        }
+
+        let tag = read_tags(&repository.path).unwrap().remove(0);
+        delete_local_tag(&repository.path, &tag.name, &tag.oid).unwrap();
+        assert!(read_tags(&repository.path).unwrap().is_empty());
+        let after = snapshot(&repository.path).unwrap();
+        assert_eq!(after.head_oid.as_deref(), Some(oid.as_str()));
+        assert_eq!(
+            run_git(&repository.path, &["symbolic-ref", "--short", "HEAD"])
+                .unwrap()
+                .stdout,
+            b"main\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("release.txt")).unwrap(),
+            b"shared name\n"
+        );
+    }
+
+    #[test]
+    fn branch_names_and_upstreams_remain_exact_when_tags_share_their_names() {
+        let repository = TestRepository::new();
+        repository.write("release.txt", "shared names\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Release").unwrap();
+        let oid = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        repository.git(&["remote", "add", "origin", "."]);
+        repository.git(&["update-ref", "refs/remotes/origin/main", &oid]);
+        repository.git(&[
+            "branch",
+            "--set-upstream-to=refs/remotes/origin/main",
+            "main",
+        ]);
+        for name in ["main", "origin/main"] {
+            create_tag(&repository.path, name, &oid, None).unwrap();
+        }
+        for ambiguous in ["true", "false"] {
+            repository.git(&["config", "core.warnAmbiguousRefs", ambiguous]);
+            let status = snapshot(&repository.path).unwrap().status;
+            for tracking in [true, false] {
+                let branches = read_branches(&repository.path, &status, tracking).unwrap();
+                let local = branches
+                    .iter()
+                    .find(|b| b.full_name == "refs/heads/main")
+                    .unwrap();
+                assert_eq!(local.name, "main");
+                assert!(local.current && !local.remote);
+                assert_eq!(local.upstream.as_deref(), Some("origin/main"));
+                let remote = branches
+                    .iter()
+                    .find(|b| b.full_name == "refs/remotes/origin/main")
+                    .unwrap();
+                assert_eq!(remote.name, "origin/main");
+                assert!(remote.remote && !remote.current);
+            }
+        }
     }
 
     #[test]

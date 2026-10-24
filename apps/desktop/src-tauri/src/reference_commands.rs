@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceTransport {
     remote: String,
@@ -11,6 +11,7 @@ pub struct ReferenceTransport {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn configure_remote(
     repo_id: String,
     name: String,
@@ -38,6 +39,7 @@ pub async fn configure_remote(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn manage_reference(
     repo_id: String,
     action: String,
@@ -77,6 +79,7 @@ pub async fn manage_reference(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn transport_reference(
     repo_id: String,
     request: ReferenceTransport,
@@ -103,6 +106,7 @@ pub async fn transport_reference(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn preview_remote_tag(
     repo_id: String,
     remote: String,

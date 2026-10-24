@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, effect, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { PatchReview, PatchTarget } from '@git-khronos/contracts';
-import { GitKhronosService } from './git-khronos.service';
+import { GitKhronosService, type ActivityReporter } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { BundleExchangePanelComponent } from './bundle-exchange-panel.component';
 import { MailPatchPanelComponent } from './mail-patch-panel.component';
@@ -151,7 +151,7 @@ export class PatchExchangePanelComponent {
       && generation === this.generation;
   }
 
-  private async run(label: string, action: (repositoryId: string, generation: number) => Promise<void>): Promise<void> {
+  private async run(label: string, action: (repositoryId: string, generation: number, report: ActivityReporter) => Promise<void>): Promise<void> {
     if (this.disabled() || this.pending() || !this.git.requireRecoveryRepository(this.repositoryId())) return;
     const repositoryId = this.repositoryId();
     const generation = this.generation;
@@ -159,7 +159,7 @@ export class PatchExchangePanelComponent {
     this.error.set('');
     this.notice.set('');
     try {
-      const result = await this.git.run(label, () => action(repositoryId, generation), repositoryId);
+      const result = await this.git.run(label, report => action(repositoryId, generation, report), repositoryId);
       if (result !== 'success' && this.current(repositoryId, generation)) {
         this.error.set(this.git.error() ?? 'Patch exchange did not complete. Review the repository before retrying.');
         setTimeout(() => this.panel()?.nativeElement.querySelector<HTMLElement>('[role=alert]')?.focus());
@@ -171,13 +171,13 @@ export class PatchExchangePanelComponent {
     const staged = this.staged();
     const paths = this.allFiles() ? [] : [...this.selected()];
     if (!this.allFiles() && !paths.length) return;
-    await this.run('Exporting complete diff patch…', async (repositoryId, generation) => {
+    await this.run('Exporting complete diff patch…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new diff patch outside the repository',
         filters: [{ name: 'Diff patch', extensions: ['patch', 'diff'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing the patch destination. No export started.');
-      if (!destination) { this.notice.set('Export cancelled. No file was written.'); this.git.activity.set('Patch export cancelled'); return; }
-      const bytes = await invoke<number>('export_diff_patch', { repoId: repositoryId, staged, paths, destination });
-      this.git.activity.set('Complete diff patch exported');
+      if (!destination) { this.notice.set('Export cancelled. No file was written.'); report('Patch export cancelled'); return; }
+      const bytes = await ipc.export_diff_patch({ repoId: repositoryId, staged, paths, destination });
+      report('Complete diff patch exported');
       if (this.current(repositoryId, generation)) this.notice.set(`Saved ${bytes} bytes to ${destination}. Repository files and references unchanged.`);
     });
   }
@@ -185,14 +185,14 @@ export class PatchExchangePanelComponent {
   async reviewPatch(): Promise<void> {
     const target = this.target();
     this.review.set(null);
-    await this.run('Checking complete diff patch…', async (repositoryId, generation) => {
+    await this.run('Checking complete diff patch…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a diff patch to check', directory: false, multiple: false,
         filters: [{ name: 'Diff patch', extensions: ['patch', 'diff'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing the patch file. No review started.');
-      if (!file) { this.notice.set('Import selection cancelled. No changes made.'); this.git.activity.set('Patch selection cancelled'); return; }
+      if (!file) { this.notice.set('Import selection cancelled. No changes made.'); report('Patch selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('The file chooser returned multiple paths. Choose one patch; no review started.');
-      const review = await invoke<PatchReview>('review_diff_patch', { repoId: repositoryId, file, target });
-      this.git.activity.set('Patch checked; no changes applied');
+      const review = await ipc.review_diff_patch({ repoId: repositoryId, file, target });
+      report('Patch checked; no changes applied');
       if (this.current(repositoryId, generation)) {
         this.review.set(review);
         setTimeout(() => { if (this.current(repositoryId, generation)) this.reviewRegion()?.nativeElement.focus(); });

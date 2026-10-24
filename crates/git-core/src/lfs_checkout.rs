@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LfsCheckoutPreview {
     pub file: String,
@@ -9,7 +9,7 @@ pub struct LfsCheckoutPreview {
     pub state: String,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq, Eq, specta::Type)]
 struct HydrationIdentity {
     head: Vec<u8>,
     branch: Vec<u8>,

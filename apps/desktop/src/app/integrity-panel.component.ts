@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import type { AppError, IntegrityReport } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
 import { GitKhronosService } from './git-khronos.service';
@@ -90,9 +90,9 @@ export class IntegrityPanelComponent {
     this.error.set('');
     this.result.set(null);
     try {
-      const outcome = await this.git.run('Inspecting integrity…', async () => {
-        const report = await invoke<IntegrityReport>('inspect_repository_integrity', { repoId: repositoryId, operationId });
-        this.git.activity.set(report.truncated ? 'Integrity report incomplete' :
+      const outcome = await this.git.run('Inspecting integrity…', async reportActivity => {
+        const report = await ipc.inspect_repository_integrity({ repoId: repositoryId, operationId });
+        reportActivity(report.truncated ? 'Integrity report incomplete' :
           report.passed ? 'Integrity check finished' : 'Integrity check reported findings or failure');
         if (this.repositoryId() === repositoryId) this.result.set(report);
       }, repositoryId, operationId);
@@ -111,7 +111,7 @@ export class IntegrityPanelComponent {
     const repositoryId = this.repositoryId();
     this.cancelling.set(true);
     try {
-      const acknowledged = await invoke<boolean>('cancel_git_operation', { operationId });
+      const acknowledged = await ipc.cancel_git_operation({ operationId });
       if (this.operationId !== operationId || this.repositoryId() !== repositoryId) return;
       this.error.set(acknowledged ? 'Cancellation requested; waiting for Git to stop.' : 'The inspection may have finished before cancellation was received.');
       if (!acknowledged) this.cancelling.set(false);

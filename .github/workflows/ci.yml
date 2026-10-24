@@ -1,0 +1,115 @@
+name: Desktop CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      native-suite:
+        description: Packaged native suite
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - performance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NX_DAEMON: "false"
+  NX_ISOLATE_PLUGINS: "false"
+
+jobs:
+  checks:
+    name: Checks and renderer acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux build and renderer prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl
+      - run: pnpm install --frozen-lockfile
+      - name: Verify generated IPC, TypeScript, Rust, and harness tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/git-khronos-tests"
+          pnpm nx run-many -t check -p contracts desktop --output-style=static
+          TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test --output-style=static
+          TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
+          TMPDIR=/tmp pnpm nx run desktop:test-signing --output-style=static
+          pnpm nx run desktop:native-harness-test --output-style=static
+      - name: Run renderer acceptance
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm nx run desktop:e2e --output-style=static
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: renderer-failure-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  packaged-native:
+    name: Packaged native acceptance
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NATIVE_SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs['native-suite'] || 'full') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: go-task/setup-task@v1
+      - name: Install Linux package and WebDriver prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client fakeroot
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned Tauri WebDriver bridge
+        run: cargo install tauri-driver --locked --version 2.0.6
+      - name: Run packaging regressions
+        run: pnpm nx run desktop:package-test --output-style=static
+      - name: Build and verify Debian package
+        run: pnpm nx run desktop:package-deb --output-style=static
+      - name: Run packaged WebKitGTK acceptance
+        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
+          path: |
+            target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb
+            test-results/native/
+          if-no-files-found: error
+          retention-days: 14

@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, effect, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { BundleReview, BundleTip } from '@git-khronos/contracts';
-import { GitKhronosService } from './git-khronos.service';
+import { GitKhronosService, type ActivityReporter } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
 @Component({
@@ -119,12 +119,12 @@ export class BundleExchangePanelComponent {
   private current(repositoryId: string, generation: number): boolean {
     return generation === this.generation && repositoryId === this.repositoryId() && repositoryId === this.git.activeRepositoryId();
   }
-  private async run(label: string, action: (repositoryId: string, generation: number) => Promise<void>): Promise<void> {
+  private async run(label: string, action: (repositoryId: string, generation: number, report: ActivityReporter) => Promise<void>): Promise<void> {
     if (this.pending() || this.disabled() || !this.git.requireRecoveryRepository(this.repositoryId())) return;
     const repositoryId = this.repositoryId(), generation = this.generation;
     this.pending.set(true); this.error.set(''); this.notice.set('');
     try {
-      const result = await this.git.run(label, () => action(repositoryId, generation), repositoryId);
+      const result = await this.git.run(label, report => action(repositoryId, generation, report), repositoryId);
       if (result !== 'success' && this.current(repositoryId, generation)) {
         this.error.set(this.git.error() ?? 'Bundle exchange failed. Inspect the repository before retrying.');
         setTimeout(() => { if (this.current(repositoryId, generation)) this.panel()?.nativeElement.querySelector<HTMLElement>('[role=alert]')?.focus(); });
@@ -138,26 +138,26 @@ export class BundleExchangePanelComponent {
   async exportBundle(): Promise<void> {
     const branch = this.localBranches().find(branch => branch.name === this.branch());
     if (!branch) return;
-    await this.run('Exporting offline branch bundle…', async (repositoryId, generation) => {
+    await this.run('Exporting offline branch bundle…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new branch bundle outside the repository',
         filters: [{ name: 'Git bundle', extensions: ['bundle'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a bundle destination. No export started.');
-      if (!destination) { this.notice.set('Bundle export cancelled. No file written.'); this.git.activity.set('Bundle export cancelled'); return; }
-      const bytes = await invoke<number>('export_git_bundle', { repoId: repositoryId, branch: branch.name, expectedOid: branch.oid, destination });
-      this.git.activity.set('Self-contained branch bundle exported');
+      if (!destination) { this.notice.set('Bundle export cancelled. No file written.'); report('Bundle export cancelled'); return; }
+      const bytes = await ipc.export_git_bundle({ repoId: repositoryId, branch: branch.name, expectedOid: branch.oid, destination });
+      report('Self-contained branch bundle exported');
       if (this.current(repositoryId, generation)) this.notice.set(`Saved ${bytes} bytes to ${destination}. Existing repository state is unchanged.`);
     });
   }
   async verify(): Promise<void> {
     this.review.set(null); this.selected.set('');
-    await this.run('Verifying complete offline bundle…', async (repositoryId, generation) => {
+    await this.run('Verifying complete offline bundle…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a Git bundle to verify', directory: false, multiple: false,
         filters: [{ name: 'Git bundle', extensions: ['bundle'] }] });
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a bundle. No verification started.');
-      if (!file) { this.notice.set('Bundle selection cancelled. No objects imported.'); this.git.activity.set('Bundle selection cancelled'); return; }
+      if (!file) { this.notice.set('Bundle selection cancelled. No objects imported.'); report('Bundle selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('Select one bundle file. No verification started.');
-      const review = await invoke<BundleReview>('review_git_bundle', { repoId: repositoryId, file });
-      this.git.activity.set('Bundle verified; no objects imported');
+      const review = await ipc.review_git_bundle({ repoId: repositoryId, file });
+      report('Bundle verified; no objects imported');
       if (this.current(repositoryId, generation)) {
         this.review.set(review);
         setTimeout(() => { if (this.current(repositoryId, generation)) this.reviewRegion()?.nativeElement.focus(); });
@@ -170,10 +170,10 @@ export class BundleExchangePanelComponent {
     const repositoryId = this.repositoryId(), generation = this.generation;
     let imported = false;
     this.review.set(null); this.selected.set('');
-    await this.run('Importing reviewed bundle into recovery…', async (repositoryId, generation) => {
-      const reference = await invoke<string>('import_git_bundle', { repoId: repositoryId, request: review.request, tip });
+    await this.run('Importing reviewed bundle into recovery…', async (repositoryId, generation, report) => {
+      const reference = await ipc.import_git_bundle({ repoId: repositoryId, request: review.request, tip });
       imported = true;
-      this.git.activity.set('Bundle imported into a new recovery reference');
+      report('Bundle imported into a new recovery reference');
       if (this.current(repositoryId, generation)) this.notice.set(`Imported ${tip.oid} into ${reference}. No existing branch or working file moved.`);
     });
     if (imported && !await this.git.refreshRepositoryInBackground(repositoryId) && this.current(repositoryId, generation)) {

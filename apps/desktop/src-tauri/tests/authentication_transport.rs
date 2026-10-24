@@ -17,7 +17,7 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 fn shipped_binary() -> PathBuf {
     std::env::var_os("GIT_KHRONOS_PACKAGED_BINARY")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos-desktop")))
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_git-khronos")))
 }
 
 fn git(path: &Path, args: &[&str]) {
@@ -41,6 +41,7 @@ struct Fixture {
     directory: PathBuf,
     repository: PathBuf,
     reject: Arc<AtomicBool>,
+    connections: Arc<AtomicU64>,
     stopped: Arc<AtomicBool>,
     server: Option<thread::JoinHandle<()>>,
     helper: PathBuf,
@@ -93,11 +94,16 @@ impl Fixture {
         let reject = Arc::new(AtomicBool::new(false));
         let stop = stopped.clone();
         let rejection = reject.clone();
+        let connections = Arc::new(AtomicU64::new(0));
+        let accepted_connections = connections.clone();
         let root = directory.clone();
         let server = thread::spawn(move || {
             while !stop.load(Ordering::Acquire) {
                 match listener.accept() {
-                    Ok((stream, _)) => serve(stream, &root, rejection.load(Ordering::Acquire)),
+                    Ok((stream, _)) => {
+                        accepted_connections.fetch_add(1, Ordering::Relaxed);
+                        serve(stream, &root, rejection.load(Ordering::Acquire));
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(5));
                     }
@@ -113,6 +119,7 @@ impl Fixture {
             directory,
             repository,
             reject,
+            connections,
             stopped,
             server: Some(server),
             helper,
@@ -126,6 +133,22 @@ impl Fixture {
         let cancellation = CancellationToken::default();
         with_authentication(&self.helper, &cancellation, handler, || {
             fetch_cancellable(&self.repository, &cancellation)
+        })
+    }
+
+    fn lfs_endpoint(&self) -> String {
+        let remote = Command::new("git")
+            .arg("-C").arg(&self.repository)
+            .args(["config", "--get", "remote.origin.url"])
+            .output().unwrap();
+        assert!(remote.status.success());
+        format!("{}/info/lfs", String::from_utf8(remote.stdout).unwrap().trim())
+    }
+
+    fn locks(&self, path: &Path, interactive: bool) -> Result<git_khronos_git_core::LfsLocks, git_khronos_git_core::AppError> {
+        let cancellation = CancellationToken::default();
+        with_authentication(&self.helper, &cancellation, interactive.then(credentials), || {
+            git_khronos_git_core::lfs_locks(path)
         })
     }
 }
@@ -156,6 +179,21 @@ fn serve(mut stream: TcpStream, root: &Path, reject: bool) {
         }
     }
     let request = String::from_utf8_lossy(&request);
+    let body_length = request
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    if body_length > 32 * 1024 {
+        return;
+    }
+    if stream.read_exact(&mut vec![0; body_length]).is_err() {
+        return;
+    }
     // user:fixture-secret (test-only, never a real credential).
     let authorized = !reject
         && request
@@ -179,9 +217,17 @@ fn serve(mut stream: TcpStream, root: &Path, reject: bool) {
         if path.contains("..") {
             return;
         }
-        match fs::read(root.join(path)) {
-            Ok(body) => ("200 OK", "Content-Type: application/octet-stream\r\n", body),
-            Err(_) => ("404 Not Found", "", Vec::new()),
+        if path == "repo.git/info/lfs/locks/verify" {
+            (
+                "200 OK",
+                "Content-Type: application/vnd.git-lfs+json\r\n",
+                br#"{"ours":[{"id":"fixture-lock","path":"locked.psd","owner":{"name":"Fixture"},"locked_at":"2026-10-24T10:00:00Z"}],"theirs":[]}"#.to_vec(),
+            )
+        } else {
+            match fs::read(root.join(path)) {
+                Ok(body) => ("200 OK", "Content-Type: application/octet-stream\r\n", body),
+                Err(_) => ("404 Not Found", "", Vec::new()),
+            }
         }
     };
     let response = format!(
@@ -272,6 +318,225 @@ fn background_failure_is_quiet_and_explicit_retry_succeeds() {
     assert_eq!(failure.kind, "authenticationRequired");
     assert!(failure.hint.unwrap().contains("explicit Fetch"));
     fixture.fetch(Some(credentials())).unwrap();
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_lock_listing_uses_authenticated_json() {
+    let fixture = Fixture::new();
+    let cancellation = CancellationToken::default();
+    let locks = with_authentication(
+        &fixture.helper,
+        &cancellation,
+        Some(credentials()),
+        || git_khronos_git_core::lfs_locks(&fixture.repository),
+    )
+    .unwrap();
+    assert_eq!(
+        locks.locks.len(),
+        1,
+        "A successful authenticated probe must not turn an earlier unauthenticated failure into an empty lock list"
+    );
+    assert_eq!(locks.locks[0].id, "fixture-lock");
+    assert_eq!(locks.locks[0].path, "locked.psd");
+    assert!(locks.locks[0].ours);
+
+    let cancellation = CancellationToken::default();
+    let error = with_authentication(&fixture.helper, &cancellation, None, || {
+        git_khronos_git_core::lfs_locks(&fixture.repository)
+    })
+    .unwrap_err();
+    assert_eq!(error.kind, "authenticationRequired");
+    assert!(!error.message.contains("fixture-secret"));
+
+    let cancellation = CancellationToken::default();
+    let secret_attempts = AtomicU64::new(0);
+    let corrected = with_authentication(
+        &fixture.helper,
+        &cancellation,
+        Some(Arc::new(move |kind| {
+            Some(match kind {
+                PromptKind::Username => "user".into(),
+                PromptKind::Secret if secret_attempts.fetch_add(1, Ordering::Relaxed) == 0 => {
+                    "wrong-fixture-secret".into()
+                }
+                PromptKind::Secret => "fixture-secret".into(),
+            })
+        })),
+        || git_khronos_git_core::lfs_locks(&fixture.repository),
+    );
+    match corrected {
+        Ok(listed) => assert_eq!(listed.locks, locks.locks),
+        Err(error) => assert_eq!(error.kind, "authenticationRequired"),
+    }
+
+    let cancellation = CancellationToken::default();
+    let prompt_cancellation = cancellation.clone();
+    let error = with_authentication(
+        &fixture.helper,
+        &cancellation,
+        Some(Arc::new(move |_| {
+            prompt_cancellation.cancel();
+            None
+        })),
+        || git_khronos_git_core::lfs_locks(&fixture.repository),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind, "operationCancelled");
+
+    let cancellation = CancellationToken::default();
+    let retry = with_authentication(
+        &fixture.helper,
+        &cancellation,
+        Some(credentials()),
+        || git_khronos_git_core::lfs_locks(&fixture.repository),
+    )
+    .unwrap();
+    assert_eq!(retry.locks, locks.locks);
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_urls_refuse_embedded_credentials_before_transport() {
+    for key in ["lfs.url", "lfs.pushurl", "remote.origin.lfsurl", "remote.origin.lfspushurl"] {
+        for prefix in ["http://user:fixture-secret@", "http://user@", "ssh://user:fixture-secret@"] {
+            let fixture = Fixture::new();
+            let endpoint = fixture.lfs_endpoint().replacen("http://", prefix, 1);
+            git(&fixture.repository, &["config", key, &endpoint]);
+            let error = fixture.locks(&fixture.repository, false)
+                .expect_err("Embedded endpoint credentials must not authenticate a lock request");
+            assert_safe_failure(&error, "credentialsInUrl");
+            assert_eq!(fixture.connections.load(Ordering::Relaxed), 0);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_file_sources_refuse_credentials_before_transport() {
+    for source in ["worktree", "index", "head", "bare"] {
+        for prefix in ["http://user:fixture-secret@", "ssh://user:fixture-secret@"] {
+            let fixture = Fixture::new();
+            let endpoint = fixture.lfs_endpoint().replacen("http://", prefix, 1);
+            git(&fixture.repository, &["config", "user.name", "Fixture"]);
+            git(&fixture.repository, &["config", "user.email", "fixture@example.test"]);
+            git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &endpoint]);
+            let mut path = fixture.repository.clone();
+            if source != "worktree" {
+                git(&path, &["add", ".lfsconfig"]);
+                if source != "index" {
+                    git(&path, &["-c", "commit.gpgsign=false", "commit", "-m", "Owned LFS configuration"]);
+                    git(&path, &["update-index", "--force-remove", "--", ".lfsconfig"]);
+                }
+                fs::remove_file(path.join(".lfsconfig")).unwrap();
+                if source == "bare" {
+                    let bare = fixture.directory.join("bare-client.git");
+                    git(&fixture.directory, &["clone", "--bare", path.to_str().unwrap(), bare.to_str().unwrap()]);
+                    path = git_khronos_git_core::resolve_repository(&bare).unwrap();
+                }
+            }
+            let error = fixture.locks(&path, false).expect_err("A file-sourced credential URL must be refused");
+            assert_safe_failure(&error, "credentialsInUrl");
+            assert_eq!(fixture.connections.load(Ordering::Relaxed), 0, "{source}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_overrides_preserve_safe_effective_configuration() {
+    let fixture = Fixture::new();
+    let safe = fixture.lfs_endpoint();
+    let unsafe_url = safe.replacen("http://", "http://user:fixture-secret@", 1);
+    git(&fixture.repository, &["config", "user.name", "Fixture"]);
+    git(&fixture.repository, &["config", "user.email", "fixture@example.test"]);
+    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url]);
+    git(&fixture.repository, &["add", ".lfsconfig"]);
+    git(&fixture.repository, &["-c", "commit.gpgsign=false", "commit", "-m", "Owned LFS configuration"]);
+    // Working configuration overrides the index/HEAD copy.
+    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &safe]);
+    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    // An index copy overrides HEAD when the working file is absent.
+    git(&fixture.repository, &["add", ".lfsconfig"]);
+    fs::remove_file(fixture.repository.join(".lfsconfig")).unwrap();
+    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    // Ordinary config overrides the selected file; its last value wins too.
+    git(&fixture.repository, &["config", "--add", "lfs.url", &unsafe_url]);
+    git(&fixture.repository, &["config", "--add", "lfs.url", &safe]);
+    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url]);
+    let index = fs::read(fixture.repository.join(".git/index")).unwrap();
+    let config = fs::read(fixture.repository.join(".git/config")).unwrap();
+    let file = fs::read(fixture.repository.join(".lfsconfig")).unwrap();
+    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    assert_eq!(fs::read(fixture.repository.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(fixture.repository.join(".git/config")).unwrap(), config);
+    assert_eq!(fs::read(fixture.repository.join(".lfsconfig")).unwrap(), file);
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_review_preserves_literal_repository_path_bytes() {
+    use std::os::unix::ffi::OsStringExt;
+    for suffix in [b"space newline\n tab\t unicode-\xce\xbb".to_vec(), b"non-utf8-\xff".to_vec()] {
+        let mut fixture = Fixture::new();
+        let renamed = fixture.directory.join(std::ffi::OsString::from_vec(suffix));
+        fs::rename(&fixture.repository, &renamed).unwrap();
+        fixture.repository = renamed;
+        let endpoint = fixture.lfs_endpoint().replacen("http://", "http://user:fixture-secret@", 1);
+        git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &endpoint]);
+        let error = fixture.locks(&fixture.repository, false).unwrap_err();
+        assert_safe_failure(&error, "credentialsInUrl");
+        assert_eq!(fixture.connections.load(Ordering::Relaxed), 0);
+    }
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_invalid_or_oversized_file_is_not_a_safe_configuration() {
+    for oversized in [false, true] {
+        let fixture = Fixture::new();
+        let contents = if oversized {
+            format!("[lfs]\nurl = {}/{}\n", fixture.lfs_endpoint(), "a".repeat(600 * 1024))
+        } else {
+            "[lfs\nurl = invalid-fixture-config\n".into()
+        };
+        fs::write(fixture.repository.join(".lfsconfig"), contents).unwrap();
+        let error = fixture.locks(&fixture.repository, false).unwrap_err();
+        assert_safe_failure(&error, "remoteConfigurationUnavailable");
+        assert_eq!(fixture.connections.load(Ordering::Relaxed), 0);
+    }
+}
+
+#[test]
+#[ignore = "requires Git LFS with locks --json; run with --ignored"]
+fn lfs_endpoint_ordinary_configuration_capture_stays_bounded_before_transport() {
+    let fixture = Fixture::new();
+    let endpoint = fixture.lfs_endpoint();
+    git(&fixture.repository, &["config", "lfs.url", &endpoint]);
+    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    let connections = fixture.connections.load(Ordering::Relaxed);
+    let config_path = fixture.repository.join(".git/config");
+    let mut contents = fs::read(&config_path).unwrap();
+    let record = format!("\n[lfs]\nurl = {endpoint}\n");
+    while contents.len() < 600 * 1024 {
+        contents.extend_from_slice(record.as_bytes());
+    }
+    // Every repeated value is safe and identical: this exercises the size of
+    // Git's complete configuration output, not a huge URL or an unsafe server.
+    fs::write(&config_path, &contents).unwrap();
+    let index_path = fixture.repository.join(".git/index");
+    let index = index_path.try_exists().unwrap().then(|| fs::read(&index_path).unwrap());
+    let error = fixture.locks(&fixture.repository, true)
+        .expect_err("Oversized ordinary configuration must be refused before opening transport");
+    assert_safe_failure(&error, "remoteConfigurationUnavailable");
+    assert_eq!(fixture.connections.load(Ordering::Relaxed), connections);
+    assert_eq!(fs::read(&config_path).unwrap(), contents);
+    if let Some(index) = index {
+        assert_eq!(fs::read(&index_path).unwrap(), index);
+    } else {
+        assert!(!index_path.try_exists().unwrap());
+    }
 }
 
 #[test]
@@ -433,18 +698,70 @@ fn assert_safe_failure(error: &git_khronos_git_core::AppError, kind: &str) {
 }
 
 #[test]
+fn missing_local_remotes_with_tls_words_are_not_certificate_failures() {
+    let fixture = Fixture::new();
+    for name in ["certificate-assets.git", "ssl-assets.git", "SSL certificate problem.git"] {
+        let missing = fixture.directory.join(name);
+        assert!(!missing.exists());
+        git(&fixture.repository, &["remote", "set-url", "origin", missing.to_str().unwrap()]);
+        let failure = fixture.fetch(Some(Arc::new(|_| {
+            panic!("A missing local repository must not request credentials")
+        }))).unwrap_err();
+        assert_safe_failure(&failure, "gitTransportFailure");
+        assert!(failure.message.contains("transport failed"));
+        assert!(!missing.exists());
+        assert!(!fixture.repository.join(".git/refs/remotes/origin/main").exists());
+    }
+}
+
+#[test]
+fn quoted_targets_in_missing_local_remotes_do_not_impersonate_transport_failures() {
+    let fixture = Fixture::new();
+    for name in [
+        "authentication failed.git",
+        "Host key verification failed.git",
+        "[rejected].git",
+        "authentication failed' quoted.git",
+    ] {
+        let missing = fixture.directory.join(name);
+        assert!(!missing.exists());
+        git(&fixture.repository, &["remote", "set-url", "origin", missing.to_str().unwrap()]);
+        let failure = fixture.fetch(Some(Arc::new(|_| {
+            panic!("A missing local repository must not request credentials")
+        }))).unwrap_err();
+        assert_safe_failure(&failure, "gitTransportFailure");
+        assert!(!missing.exists());
+        assert!(!fixture.repository.join(".git/refs/remotes/origin/main").exists());
+    }
+}
+
+#[test]
 fn real_https_smart_git_authentication_rejection_retry_cancel_and_background() {
     let fixture = HttpsFixture::new();
     git(
         &fixture.fixture.repository,
         &["config", "--unset", "http.sslCAInfo"],
     );
+    let tls_probe = Command::new("git")
+        .arg("-C")
+        .arg(&fixture.fixture.repository)
+        .args(["ls-remote", "origin"])
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
+        .env("SSH_ASKPASS", "")
+        .env("LC_ALL", "C")
+        .output()
+        .unwrap();
+    assert!(!tls_probe.status.success(), "The untrusted TLS fixture unexpectedly succeeded");
     let failure = fixture
         .fixture
         .fetch(Some(Arc::new(|_| {
             panic!("TLS verification must fail before asking for a credential")
         })))
         .unwrap_err();
+    assert_eq!(failure.kind, "tlsVerificationFailed", "Owned TLS fixture diagnostic: {}", String::from_utf8_lossy(&tls_probe.stderr));
     assert_safe_failure(&failure, "tlsVerificationFailed");
     git(
         &fixture.fixture.repository,

@@ -3,16 +3,9 @@ import {
   computed, inject, signal, viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { ipc, events, type GitAuthenticationPrompt as AuthenticationPrompt } from '@git-khronos/contracts';
+import { type UnlistenFn } from '@tauri-apps/api/event';
 import { GitKhronosService } from './git-khronos.service';
-
-interface AuthenticationPrompt {
-  requestId: string;
-  operationId: string;
-  repositoryId: string | null;
-  secret: boolean;
-}
 
 @Component({
   selector: 'gc-authentication',
@@ -83,6 +76,8 @@ export class AuthenticationComponent implements OnDestroy {
   private unlisteners: UnlistenFn[] = [];
   private readonly dismissed = new Set<string>();
   private destroyed = false;
+  private connecting = false;
+  private answeringRequestId: string | null = null;
 
   constructor() {
     afterRenderEffect(() => {
@@ -92,9 +87,13 @@ export class AuthenticationComponent implements OnDestroy {
       if (!prompt) {
         this.value.set('');
         this.activeRequestId = null;
+        this.answeringRequestId = null;
+        this.sending.set(false);
+        this.error.set(null);
         if (dialog.open) dialog.close();
       } else if (prompt.requestId !== this.activeRequestId) {
         this.activeRequestId = prompt.requestId;
+        this.answeringRequestId = null;
         this.value.set('');
         this.error.set(null);
         this.sending.set(false);
@@ -112,38 +111,81 @@ export class AuthenticationComponent implements OnDestroy {
   }
 
   dismiss(requestId: string): void {
+    if (this.destroyed) return;
     this.dismissed.add(requestId);
     if (this.dismissed.size > 256) this.dismissed.delete(this.dismissed.values().next().value!);
     this.requests.update((requests) => requests.filter((request) => request.requestId !== requestId));
   }
 
   private async connect(): Promise<void> {
+    if (this.destroyed || this.connecting || this.unlisteners.length) return;
+    this.connecting = true;
     try {
-      const promptListener = await listen<AuthenticationPrompt>('git-authentication-prompt',
-        (event) => this.receive(event.payload));
-      const dismissedListener = await listen<string>('git-authentication-dismissed',
-        (event) => this.dismiss(event.payload));
-      if (this.destroyed) { promptListener(); dismissedListener(); return; }
-      this.unlisteners.push(promptListener, dismissedListener);
-      for (const prompt of await invoke<AuthenticationPrompt[]>('pending_authentication')) this.receive(prompt);
-    } catch {
-      // Native requests time out and cancel safely if event delivery is unavailable.
+      try {
+        if (!await this.ownListener(events.gitAuthenticationPrompt.listen(
+          (event) => this.receive(event.payload)))) return;
+        if (!await this.ownListener(events.gitAuthenticationDismissed.listen(
+          (event) => this.dismiss(event.payload)))) return;
+      } catch {
+        this.releaseListeners();
+        return;
+      }
+      try {
+        for (const prompt of await ipc.pending_authentication()) this.receive(prompt);
+      } catch {
+        // A failed initial snapshot must not disable working event listeners.
+        // Native requests still time out safely if delivery is unavailable.
+      }
+    } finally {
+      this.connecting = false;
     }
+  }
+
+  private async ownListener(listener: Promise<UnlistenFn>): Promise<boolean> {
+    const unlisten = await listener;
+    if (this.destroyed) {
+      this.stopListening(unlisten);
+      return false;
+    }
+    this.unlisteners.push(unlisten);
+    return true;
+  }
+
+  private stopListening(unlisten: UnlistenFn): void {
+    try { void Promise.resolve(unlisten()).catch(() => undefined); } catch {
+      // One teardown failure must not prevent releasing the other listeners.
+    }
+  }
+
+  private releaseListeners(): void {
+    for (const unlisten of this.unlisteners.splice(0)) this.stopListening(unlisten);
   }
 
   async answer(answer: string | null): Promise<void> {
     const prompt = this.prompt();
-    if (!prompt || this.sending()) return;
+    if (this.destroyed || !prompt || this.sending()) return;
+    this.answeringRequestId = prompt.requestId;
     this.sending.set(true);
     this.error.set(null);
     this.value.set('');
     try {
-      await invoke('answer_authentication', { requestId: prompt.requestId, answer });
-      this.dismiss(prompt.requestId);
+      await ipc.answer_authentication({ requestId: prompt.requestId, answer });
+      if (!this.destroyed) this.dismiss(prompt.requestId);
     } catch {
-      this.error.set('The request expired or could not be answered. Cancel and retry the Git operation.');
+      if (!this.destroyed && this.answeringRequestId === prompt.requestId
+        && this.prompt()?.requestId === prompt.requestId) {
+        if (answer === null) {
+          this.dismiss(prompt.requestId);
+          this.git.error.set('Git Khronos could not confirm cancellation of the authentication request. The Git operation may still be running; check its status before retrying.');
+        } else {
+          this.error.set('The request expired or could not be answered. Cancel and retry the Git operation.');
+        }
+      }
     } finally {
-      this.sending.set(false);
+      if (this.answeringRequestId === prompt.requestId) {
+        this.answeringRequestId = null;
+        this.sending.set(false);
+      }
     }
   }
 
@@ -155,7 +197,10 @@ export class AuthenticationComponent implements OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.value.set('');
-    this.unlisteners.forEach((unlisten) => unlisten());
+    this.error.set(null);
+    this.sending.set(false);
+    this.answeringRequestId = null;
+    this.releaseListeners();
     this.requests.set([]);
   }
 }

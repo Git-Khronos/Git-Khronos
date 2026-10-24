@@ -2,7 +2,7 @@ use super::*;
 
 const LIMIT: usize = 1024 * 1024;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrityReport {
     pub passed: bool,

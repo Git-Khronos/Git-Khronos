@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 const MAX_PLAN_BYTES: u64 = 128 * 1024;
 const MAX_COMMITS: usize = 500;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Plan {
     head_oid: String,
@@ -15,7 +15,7 @@ struct Plan {
     phase: Phase,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 enum Phase {
     Applying,
@@ -23,18 +23,7 @@ enum Phase {
 }
 
 fn storage(path: &Path) -> Result<PathBuf, AppError> {
-    let output = run_git(
-        path,
-        &[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "git-khronos-no-commit.json",
-        ],
-    )?;
-    ensure_success("locate no-commit replay state", &output)?;
-    let value = std::str::from_utf8(&output.stdout).map_err(|_| invalid_state())?;
-    Ok(PathBuf::from(value.strip_suffix('\n').unwrap_or(value)))
+    operation_storage::git_entry(path, "git-khronos-no-commit.json")
 }
 
 fn invalid_state() -> AppError {
@@ -58,11 +47,13 @@ fn io_error(error: std::io::Error) -> AppError {
 }
 
 fn read(file: &Path) -> Result<Option<Plan>, AppError> {
-    let input = match fs::File::open(file) {
-        Ok(input) => input,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(io_error(error)),
+    let Some(metadata) = operation_storage::file(file)? else {
+        return Ok(None);
     };
+    if metadata.len() > MAX_PLAN_BYTES {
+        return Err(invalid_state());
+    }
+    let input = fs::File::open(file).map_err(io_error)?;
     let mut bytes = Vec::new();
     input
         .take(MAX_PLAN_BYTES + 1)
@@ -94,6 +85,7 @@ pub(super) fn active(file: &Path) -> Result<bool, AppError> {
 }
 
 fn write(file: &Path, plan: &Plan) -> Result<(), AppError> {
+    operation_storage::file(file)?;
     let bytes = serde_json::to_vec(plan).map_err(|_| invalid_state())?;
     if bytes.len() as u64 > MAX_PLAN_BYTES {
         return Err(invalid_state());
@@ -221,6 +213,7 @@ fn apply_remaining(path: &Path, file: &Path, plan: &mut Plan) -> Result<(), AppE
 }
 
 fn remove(file: &Path) -> Result<(), AppError> {
+    operation_storage::file(file)?;
     fs::remove_file(file).map_err(io_error)?;
     #[cfg(unix)]
     fs::File::open(file.parent().ok_or_else(invalid_state)?)

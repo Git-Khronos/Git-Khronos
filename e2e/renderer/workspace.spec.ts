@@ -41,7 +41,7 @@ async function cssContrastRatio(page: Page, foreground: string, background: stri
 }
 
 test('uses the Git Khronos identity throughout the application chrome', async ({ page }) => {
-  await expect(page).toHaveTitle('Git Khronos');
+  await expect(page).toHaveTitle(/ — Git Khronos$/);
   await expect(page.locator('.app-menu .brand-mark')).toHaveText('GC');
   await page.getByRole('button', { name: 'Main menu' }).click();
   await expect(page.getByRole('menu', { name: 'Git Khronos menu' })).toContainText('Git Khronos');
@@ -396,8 +396,9 @@ test('jumps between shortcut categories in compact windows', async ({ page }) =>
   const tabsAndView = dialog.locator('#shortcut-section-tabs-view');
   const close = dialog.getByRole('button', { name: 'Close keyboard shortcuts' });
   await expect(dialog.locator('header > span gc-icon svg rect')).toHaveAttribute('width', '18');
-  await expect(dialog.getByRole('navigation', { name: 'Shortcut categories' })).toBeVisible();
-  await expect(close).toBeFocused();
+  await expect(dialog.getByRole('navigation', { name: 'Shortcut sections' })).toBeVisible();
+  const search = dialog.getByRole('searchbox', { name: 'Search keyboard shortcuts' });
+  await expect(search).toBeFocused();
   await expect(dialog.locator(':scope > footer')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Repository' })).toHaveCSS('font-size', '13px');
   await expect(dialog.getByText('Undo repository action', { exact: true })).toHaveCSS('font-size', '13px');
@@ -410,11 +411,14 @@ test('jumps between shortcut categories in compact windows', async ({ page }) =>
   expect(dialogMetrics.bottom).toBeLessThanOrEqual(720);
   expect(dialogMetrics.scrollHeight).toBeLessThanOrEqual(dialogMetrics.clientHeight + 1);
 
+  await close.focus();
   await close.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Tabs and view' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Tabs and view' }).press('Tab');
   await expect(close).toBeFocused();
   await close.press('Tab');
+  await expect(search).toBeFocused();
+  await search.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Repository' })).toBeFocused();
 
   await dialog.getByRole('button', { name: 'Tabs and view' }).click();
@@ -647,6 +651,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   expect(secondRefBox!.x).toBeGreaterThanOrEqual(firstRefBox!.x + firstRefBox!.width + 1);
   expect(Math.abs(firstRefBox!.y - secondRefBox!.y)).toBeLessThanOrEqual(1);
   await page.mouse.move(0, 0);
+  await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
   await sharedTipTrigger.focus();
   await expect(sharedTipTrigger).toBeFocused();
   await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -706,7 +711,10 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   const headMessage = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .commit-main');
   expect(await headMessage.locator('.subject').evaluate((subject) => subject.scrollWidth <= subject.clientWidth)).toBe(true);
-  expect(await headMessage.locator('.commit-description').evaluate((description) => description.clientWidth)).toBeGreaterThan(48);
+  expect(await headMessage.locator('.commit-description').evaluate((description) => {
+    const copy = description.parentElement!;
+    return description.clientWidth >= Math.floor(copy.clientWidth * .18 - parseFloat(getComputedStyle(copy).columnGap));
+  })).toBe(true);
   await expect(headMessage.locator('.subject')).toHaveCSS('font-size', '13px');
   await expect(headMessage.locator('.commit-description')).toHaveCSS('font-size', '12px');
   await expect(page.locator('.branch-item').filter({ hasText: 'feature/partial-staging' }).first()).toHaveCSS('font-size', '13px');
@@ -715,9 +723,11 @@ test('presents the sample repository as a complete Git workspace', async ({ page
     'title',
     'Refine graph lane rendering\nKeep first-parent histories straight through commit nodes.',
   );
-  const mayaGraphColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node').evaluate((node) => getComputedStyle(node).backgroundColor);
-  expect(mayaGraphColor).toBe('rgb(140, 115, 50)');
-  await expect(page.locator('.identity-chip > span')).toHaveCSS('background-color', mayaGraphColor);
+  const mayaGraphColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node')
+    .evaluate((node) => getComputedStyle(node).getPropertyValue('--author-color').trim());
+  const mayaIdentityColor = await resolvedCssColor(page, mayaGraphColor);
+  expect(mayaIdentityColor).toBe('rgb(140, 115, 50)');
+  await expect(page.locator('.identity-chip > span')).toHaveCSS('background-color', mayaIdentityColor);
 
   const signCommit = page.getByLabel('Sign this commit');
   await expect(page.getByLabel('Push after committing')).toBeVisible();
@@ -837,12 +847,14 @@ test('keeps compact repository actions available on touch-first desktops', async
   await expect(branchMenu).toBeHidden();
   await expect(branchActions).toBeFocused();
 
+  await page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true }).focus();
+  await page.keyboard.press('Home');
   const longReference = page.locator('.commit-row .ref-pill.local')
     .filter({ hasText: 'feature/partial-staging' }).first();
   expect(await longReference.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await longReference.tap();
   await expect(longReference).toBeFocused();
-  await expect(longReference).toHaveCSS('position', 'absolute');
+  await expect(longReference).toHaveCSS('position', 'relative');
   expect(await longReference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await context.close();
 });
@@ -1360,9 +1372,56 @@ test('keeps expanded aligned references clear of the compact inspector', async (
   )).toBe(true);
 });
 
+const referenceHoverCases = ['local', 'remote', 'tag'].flatMap(kind =>
+  [72, 180, 300].map(width => ({ kind, width })),
+);
+for (const { kind, width } of referenceHoverCases) {
+  test(`keeps a single ${kind} reference anchored on hover and focus at ${width}px`, async ({ page }) => {
+    const stack = page.locator('.commit-row .commit-ref-stack.single-ref').first();
+    await stack.evaluate((element, width) => { element.style.width = `${width}px`; }, width);
+    for (const label of ['tip', 'torvalds/master', 'a-reference-name-long-enough-to-overflow-the-branch-column']) {
+      await page.mouse.move(0, 0);
+      await stack.evaluate((element, { kind, label }) => {
+        // Retain the real row's Angular-scoped attributes and icon styles.
+        const button = element.querySelector('button')!;
+        const icon = button.querySelector('gc-icon')!.cloneNode(true);
+        button.className = `ref-pill ${kind} with-icon interactive-${kind}-ref`;
+        const text = document.createElement('span');
+        text.textContent = label;
+        button.replaceChildren(icon, text);
+      }, { kind, label });
+      const reference = stack.locator('.ref-pill');
+      const before = await reference.boundingBox();
+      expect(before).not.toBeNull();
+      const pointer = { x: before!.x + before!.width / 2, y: before!.y + before!.height / 2 };
+      await page.mouse.move(pointer.x, pointer.y);
+      // Compare against the resting position, not just subsequent hover frames:
+      // a one-time jump is as disruptive as the original repeated oscillation.
+      const positions = await reference.evaluate(element => new Promise<number[]>(resolve => {
+        const samples: number[] = [];
+        const sample = () => {
+          samples.push(element.getBoundingClientRect().x);
+          if (samples.length < 30) requestAnimationFrame(sample);
+          else resolve(samples);
+        };
+        requestAnimationFrame(sample);
+      }));
+      expect(positions.every(x => Math.abs(x - before!.x) <= 1)).toBe(true);
+      expect(await reference.locator('span').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.mouse.move(0, 0);
+      await expect(reference).toHaveCSS('position', 'static');
+      await reference.focus();
+      expect(Math.abs((await reference.boundingBox())!.x - before!.x)).toBeLessThanOrEqual(1);
+      await reference.blur();
+    }
+  });
+}
+
 test('reveals a clipped single branch name without shifting the compact graph', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/');
+  await page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true }).focus();
+  await page.keyboard.press('Home');
 
   const row = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
   const reference = row.locator('.ref-pill.local');
@@ -1373,7 +1432,7 @@ test('reveals a clipped single branch name without shifting the compact graph', 
   const graphColumnBefore = await graphColumn.boundingBox();
   await reference.hover();
   expect(await reference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await expect(reference).toHaveCSS('position', 'absolute');
+  await expect(reference).toHaveCSS('position', 'relative');
 
   const [referenceBox, branchColumnBox, graphColumnBox] = await Promise.all([
     reference.boundingBox(),
@@ -1439,11 +1498,25 @@ test('joins a converging branch at the parent avatar right-middle edge', async (
   expect(graphBox).not.toBeNull();
   expect(Math.abs(nodeBox!.x + nodeBox!.width - (graphBox!.x + parentOffset + 12))).toBeLessThanOrEqual(0.5);
 
-  const paths = await parentCommit.locator('.graph-edges path').evaluateAll((elements) =>
-    elements.map((element) => element.getAttribute('d') ?? ''));
-  expect(paths).toContain(
-    `M ${branchOffset} 0 V 8 A 12 12 0 0 1 ${branchOffset - 12} 20 H ${parentOffset + 12}`,
-  );
+  const connection = await parentCommit.locator('.graph-edges path').evaluateAll((elements, targetX) => {
+    for (const element of elements) {
+      const path = element as SVGPathElement;
+      const length = path.getTotalLength();
+      const end = path.getPointAtLength(length);
+      if (Math.abs(end.x - targetX) > .01 || Math.abs(end.y - 20) > .01) continue;
+      const start = path.getPointAtLength(0), beforeEnd = path.getPointAtLength(length - .1);
+      const screen = new DOMPoint(end.x, end.y).matrixTransform(path.getScreenCTM()!);
+      return { startX: start.x, startY: start.y, x: screen.x, y: screen.y,
+        tangentY: Math.abs(end.y - beforeEnd.y) };
+    }
+    return null;
+  }, parentOffset + 12);
+  expect(connection).not.toBeNull();
+  expect(connection!.startX).toBe((branchOffset + parentOffset) / 2);
+  expect(connection!.startY).toBe(0);
+  expect(connection!.tangentY).toBeLessThan(.01);
+  expect(Math.abs(connection!.x - (nodeBox!.x + nodeBox!.width))).toBeLessThan(.1);
+  expect(Math.abs(connection!.y - (nodeBox!.y + nodeBox!.height / 2))).toBeLessThan(.1);
 });
 
 test('starts each worktree lane at its own WIP node', async ({ page }) => {
@@ -1635,7 +1708,7 @@ test('navigates aligned references as one keyboard menu', async ({ page }) => {
 });
 
 test('keeps ordinary commit selection reachable beside the compact inspector', async ({ page }) => {
-  for (const width of [820, 700]) {
+  for (const width of [820, 780]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
     const row = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
@@ -1653,8 +1726,9 @@ test('keeps ordinary commit selection reachable beside the compact inspector', a
   }
 });
 
-test('reopens commit details after compact users dismiss the inspector to browse', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 720 });
+for (const width of [700, 360]) {
+test(`reopens commit details after compact users dismiss the inspector to browse at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 720 });
   await page.goto('/');
 
   const inspector = page.locator('.commit-panel');
@@ -1669,13 +1743,14 @@ test('reopens commit details after compact users dismiss the inspector to browse
   expect(rowBox!.x).toBeGreaterThanOrEqual(0);
   // Rows may be wider than a compact window; the commit list clips and scrolls them.
   const listBox = await page.locator('.commit-list').boundingBox();
-  expect(listBox!.x + listBox!.width).toBeLessThanOrEqual(360);
+  expect(listBox!.x + listBox!.width).toBeLessThanOrEqual(width);
 
   await row.click();
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Polish repository activity drawer');
   await expect(page.getByRole('button', { name: 'Close commit panel' })).toBeVisible();
 });
+}
 
 test('keeps commit descriptions visible when the message column becomes compact', async ({ page }) => {
   await page.setViewportSize({ width: 780, height: 560 });
@@ -2370,7 +2445,11 @@ test('prioritizes commit subjects when the message column becomes narrow', async
 
   await page.setViewportSize({ width: 780, height: 640 });
   await expect(page.locator('.commit-panel')).toBeVisible();
-  await expect(selectedRow.locator('.commit-description')).toBeHidden();
+  await expect(selectedRow.locator('.commit-description')).toBeVisible();
+  const [subjectBox, descriptionBox] = await Promise.all([
+    selectedRow.locator('.subject').boundingBox(), selectedRow.locator('.commit-description').boundingBox(),
+  ]);
+  expect(descriptionBox!.y).toBeGreaterThanOrEqual(subjectBox!.y + subjectBox!.height - 1);
   expect(await selectedRow.locator('.subject').evaluate((element) =>
     element.scrollWidth <= element.clientWidth,
   )).toBe(true);
@@ -2396,9 +2475,12 @@ test('keeps fetch primary before moving secondary repository actions into overfl
   await expect(overflowFetchActions.first()).toBeHidden();
   await expect(overflowFetchActions.last()).toBeHidden();
   const stash = menu.getByRole('menuitem', { name: /Stash changes/ });
+  const stashOptions = menu.getByRole('menuitem', { name: /Stash with options/ });
   const pop = menu.getByRole('menuitem', { name: /Pop latest stash/ });
   await expect(stash).toBeFocused();
   await expect(pop).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(stashOptions).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(pop).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -3981,6 +4063,7 @@ test('reopens the most recently closed repository tab', async ({ page }) => {
   const tabs = page.locator('.repo-tab');
   await expect(tabs).toHaveCount(2);
 
+  await tabs.nth(1).hover();
   await tabs.nth(1).getByRole('button', { name: /Close/ }).click();
   await expect(tabs).toHaveCount(1);
 
@@ -4463,7 +4546,7 @@ test('resizes the commit message column independently of unused graph space', as
     await expect.poll(async () => {
       const header = (await page.locator('.graph-columns').boundingBox())!;
       const button = (await settingsButton.boundingBox())!;
-      return Math.abs(header.x + header.width - button.x - button.width - 14);
+      return Math.abs(header.x + header.width - button.x - button.width - 22);
     }).toBeLessThanOrEqual(1);
   };
   await expectSettingsPinnedRight();
@@ -5041,7 +5124,7 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   expect(headerBoxAfterScroll).not.toBeNull();
   expect(settingsBoxAfterScroll).not.toBeNull();
   expect(Math.abs(settingsBoxAfterScroll!.x + settingsBoxAfterScroll!.width -
-    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 14))).toBeLessThanOrEqual(1);
+    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 22))).toBeLessThanOrEqual(1);
   // The leading column scrolls with the history instead of staying pinned over the columns after it.
   await expect.poll(() => leadingHeader.evaluate((element) => element.getBoundingClientRect().x)).toBeLessThan(shellX);
   await expect.poll(async () => Math.abs(
@@ -5070,8 +5153,8 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   await expect(settingsButton).toBeFocused();
 });
 
-test('keeps compact history controls clear of the commit inspector', async ({ page }) => {
-  for (const width of [760, 661]) {
+test('keeps compact history controls clear of the side-by-side commit inspector', async ({ page }) => {
+  for (const width of [820, 780]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
 
@@ -5089,7 +5172,7 @@ test('keeps compact history controls clear of the commit inspector', async ({ pa
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x);
     expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 4);
     expect(Math.abs(settingsBox!.x + settingsBox!.width -
-      (historyBox!.x + historyBox!.width - 14))).toBeLessThanOrEqual(1);
+      (historyBox!.x + historyBox!.width - 22))).toBeLessThanOrEqual(1);
 
     await settingsButton.click();
     await expect(page.getByRole('dialog', { name: 'Graph settings' })).toBeVisible();
@@ -5097,7 +5180,7 @@ test('keeps compact history controls clear of the commit inspector', async ({ pa
 });
 
 test('uses a full-width inspector drawer in compact windows', async ({ page }) => {
-  for (const width of [760, 700, 550, 420]) {
+  for (const width of [760, 700, 661, 550, 420]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
 
@@ -5371,14 +5454,13 @@ test('keeps command palette focus inside the compact modal', async ({ page }) =>
   await expect(search).toHaveAttribute('aria-activedescendant', selectedId!);
 
   await search.press('Shift+Tab');
-  const lastEnabledOption = palette.locator('[role="option"]:not(:disabled)').last();
-  await expect(lastEnabledOption).toBeFocused();
-  await lastEnabledOption.press('Tab');
+  await expect(close).toBeFocused();
+  await close.press('Tab');
   await expect(search).toBeFocused();
   await search.press('Tab');
   await expect(close).toBeFocused();
   await close.press('Tab');
-  await expect(palette.locator('[role="option"]:not(:disabled)').first()).toBeFocused();
+  await expect(search).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
@@ -6014,6 +6096,8 @@ test('clamps fitting graph paths at the right-hand limit without moving the left
 test('searches and applies the graph author filter', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await page.locator('.column-settings').getByRole('checkbox', { name: 'Author', exact: true }).check();
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  await expect(page.locator('.column-settings')).toBeHidden();
 
   const filterButton = page.getByRole('button', { name: 'Filter commits by author' });
   const filterTarget = await filterButton.boundingBox();
@@ -6325,7 +6409,19 @@ test('navigates branch-drop actions as a fitted desktop menu', async ({ page }) 
   const source = page.getByRole('button', { name: 'Local branch feature/partial-staging' });
   const target = page.getByRole('button', { name: /Local branch main, current/ });
 
-  await source.dragTo(target);
+  // Exercise a real drag, including the second target move needed for dragover
+  // across browser implementations; hover also checks that the source is hit-testable.
+  await source.hover();
+  const sourceBox = await source.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  await page.mouse.down();
+  // Start dragging before the target's auto-scroll can move the source away
+  // from the pressed pointer in the short, scrollable references drawer.
+  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2 + 8, sourceBox!.y + sourceBox!.height / 2, { steps: 4 });
+  await expect(source).toHaveClass(/branch-dragging/);
+  await target.hover();
+  await target.hover();
+  await page.mouse.up();
   const menu = page.getByRole('menu', { name: 'Branch drop actions' });
   const fastForward = menu.getByRole('menuitem', { name: /Fast-forward main/ });
   const merge = menu.getByRole('menuitem', { name: /Merge feature\/partial-staging into main/ });
@@ -6397,6 +6493,9 @@ test('positions reference actions at the invocation point and keeps them inside 
     clientY: 400,
   })));
   const menu = page.locator('.context-menu[role="menu"]').filter({ hasText: 'v0.1.0' });
+  const bottomBoundary = await page.evaluate(() => innerHeight - 8 - (
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--statusbar-height')) || 0
+  ));
   await expect(menu).toBeVisible();
   await expect.poll(async () => {
     const bounds = await menu.boundingBox();
@@ -6412,7 +6511,7 @@ test('positions reference actions at the invocation point and keeps them inside 
   })));
   await expect.poll(async () => {
     const bounds = await menu.boundingBox();
-    return bounds ? Math.round(bounds.y - Math.min(700, 992 - bounds.height)) : null;
+    return bounds ? Math.round(bounds.y - Math.min(700, bottomBoundary - bounds.height)) : null;
   }).toBe(0);
 
   await tag.evaluate((element) => element.dispatchEvent(new MouseEvent('contextmenu', {
@@ -6428,7 +6527,7 @@ test('positions reference actions at the invocation point and keeps them inside 
       right: Math.round(bounds.x + bounds.width),
       bottom: Math.round(bounds.y + bounds.height),
     } : null;
-  }).toEqual({ right: 992, bottom: 992 });
+  }).toEqual({ right: 992, bottom: bottomBoundary });
 });
 
 test('previews annotated tags without loading their messages into the graph', async ({ page }) => {
@@ -6519,11 +6618,12 @@ test('jumps from tags and stashes to their graph entries', async ({ page }) => {
   expect(popBox!.x).toBeGreaterThan(applyBox!.x);
 
   await page.setViewportSize({ width: 780, height: 720 });
-  [applyBox, popBox] = await Promise.all([applyStash.boundingBox(), popStash.boundingBox()]);
-  expect(applyBox).not.toBeNull();
-  expect(popBox).not.toBeNull();
-  expect(Math.round(applyBox!.x)).toBe(Math.round(popBox!.x));
-  expect(popBox!.y).toBeGreaterThan(applyBox!.y);
+  // Read both rectangles in one frame: the compact inspector animates in,
+  // so separate protocol reads can compare different transform positions.
+  await expect.poll(() => stashPanel.locator('.selected-stash-actions').evaluate(element => {
+    const [apply, pop] = Array.from(element.querySelectorAll('button'), button => button.getBoundingClientRect());
+    return Math.round(apply.x) === Math.round(pop.x) && pop.y > apply.y;
+  })).toBe(true);
   expect(await stashPanel.locator('.selected-stash-actions').evaluate((element) => element.scrollWidth)).toBe(
     await stashPanel.locator('.selected-stash-actions').evaluate((element) => element.clientWidth),
   );
@@ -6945,7 +7045,7 @@ test('switches complete repository tab sets with persistent workspaces', async (
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   const paletteSearch = palette.getByRole('combobox', { name: 'Search commands' });
   await paletteSearch.fill('Switch to Default');
-  await expect(palette.locator('.palette-group-heading').filter({ hasText: 'Workspace' })).toBeVisible();
+  await expect(palette.getByRole('option', { name: /Switch to Default/ }).locator('.palette-inline-group')).toHaveText('Workspace');
   await expect(palette.getByRole('option', { name: /Switch to Default/ })).toContainText('1 repository');
   await paletteSearch.press('Enter');
   await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -7115,7 +7215,7 @@ test('finds history and blame for any tracked file from the keyboard', async ({ 
   const search = page.getByRole('combobox', { name: 'Search tracked files' });
   await expect(search).toBeFocused();
   await expect(palette.getByText('Files', { exact: true })).toBeVisible();
-  await expect(palette.getByRole('listbox', { name: 'Tracked file actions' })).toBeVisible();
+  await expect(palette.getByRole('region', { name: 'Command search status' })).toBeVisible();
   await expect(palette.locator('.palette-result-count')).toHaveText('0 results');
   await expect(page.locator('.palette-empty')).toContainText('Type at least two characters');
 
@@ -7134,8 +7234,9 @@ test('finds history and blame for any tracked file from the keyboard', async ({ 
   const viewer = page.getByLabel('Diff viewer');
   await expect(viewer).toBeVisible();
   await expect(viewer).toContainText('apps/desktop/src/app/app.component.ts');
-  await expect(page.getByLabel('File history')).toBeVisible();
-  await expect(page.getByLabel('File history').getByRole('alert')).toContainText('requires the native desktop app');
+  const historyPanel = page.getByRole('region', { name: 'File history', exact: true });
+  await expect(historyPanel).toBeVisible();
+  await expect(historyPanel.getByRole('alert')).toContainText('requires the native desktop app');
 });
 
 test('jumps from sidebar references to branch tips without checking them out', async ({ page }) => {
@@ -8717,13 +8818,15 @@ test('includes the active split diff in F6 workspace navigation', async ({ page 
   await page.goto('/?compare-commits&diff-viewer=split');
 
   const references = page.getByRole('complementary', { name: 'Repository references' });
-  const splitDiff = page.getByRole('region', { name: 'Before and after file changes' });
+  const splitDiff = page.getByRole('region', { name: 'Before and after source lines', exact: true });
   await references.focus();
   await expect(references).toBeFocused();
 
   await page.keyboard.press('F6');
   await expect(splitDiff).toBeFocused();
   await expect(splitDiff).toHaveClass(/workspace-focus-region/);
+  await expect(splitDiff).toHaveCSS('outline-style', 'solid');
+  await expect(splitDiff).toHaveCSS('outline-width', '2px');
 });
 
 test('navigates diff layouts as a roving segmented control', async ({ page }) => {
@@ -8774,11 +8877,11 @@ test('navigates diff changes with familiar review shortcuts', async ({ page }) =
 
   await expect(previous).toHaveAttribute('aria-keyshortcuts', 'Shift+F7');
   await expect(next).toHaveAttribute('aria-keyshortcuts', 'F7');
-  await expect(navigation).toContainText('1 of 3 files');
+  await expect(navigation).toContainText('1 / 3');
   await page.keyboard.press('F7');
-  await expect(navigation).toContainText('2 of 3 files');
+  await expect(navigation).toContainText('2 / 3');
   await page.keyboard.press('Shift+F7');
-  await expect(navigation).toContainText('1 of 3 files');
+  await expect(navigation).toContainText('1 / 3');
 
   await page.keyboard.press('Control+/');
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard Shortcuts' });

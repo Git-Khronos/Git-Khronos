@@ -1,0 +1,167 @@
+import { expect, test } from '@playwright/test';
+
+for (const compact of [false, true]) {
+  test(`keeps a shared-parent bypass clear while the real parent link leaves the side (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    await page.evaluate(compact => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = app.git.repository();
+      const template = repo.commits[0];
+      // Neutral form of Git-Khronos's dev/recovery/checkpoint/shared-parent graph.
+      const topology = [
+        ['tip', ['shared']], ['checkpoint', ['shared']],
+        ['checkpoint-a', ['main']], ['checkpoint-b', ['main']],
+        ['recovery', ['parent']], ['shared', ['parent']],
+        ['parent', ['older']], ['older', ['main']], ['main', []],
+      ] as const;
+      const commits = topology.map(([oid, parents]) => ({ ...template, oid, parents: [...parents],
+        subject: oid, decorations: [] }));
+      app.hiddenBranches.set([]);
+      app.soloBranches.set([]);
+      app.smartBranchVisibility.set(false);
+      app.pinnedBranch.set(null);
+      app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id ? {
+        ...item, commits, worktrees: [], stashes: [], branches: [],
+      } : item));
+      app.setCompactGraphColumn(compact);
+      app.graphColumnWidth.set(140);
+    }, compact);
+    const row = page.locator('[data-commit-oid="shared"]');
+    await expect(row).toBeVisible();
+    const nonOrthogonalPaths = await page.locator('.graph-edges path').evaluateAll(paths =>
+      paths.map(path => path.getAttribute('d') ?? '')
+        .filter(path => /[CQLST]/i.test(path) || !/^M [-\d.]+ [-\d.]+(?: [HVA] [-\d. ]+)+$/.test(path)));
+    expect(nonOrthogonalPaths).toEqual([]);
+    const routing = await page.evaluate(() => ({
+      rounded: [...document.querySelectorAll('.graph-edges path')]
+        .filter(path => (path.getAttribute('d') ?? '').includes(' A ')).length,
+      lanes: [...new Set([...document.querySelectorAll<HTMLElement>('.author-node')]
+        .map(node => Number(node.dataset['laneOffset'])))].sort((a, b) => a - b),
+    }));
+    expect(routing.rounded).toBeGreaterThan(0);
+    expect(routing.lanes.length).toBeGreaterThan(1);
+    for (let index = 1; index < routing.lanes.length; index++) {
+      expect(routing.lanes[index] - routing.lanes[index - 1]).toBe(compact ? 32 : 40);
+    }
+    const geometry = await row.evaluate(element => {
+      const avatar = element.querySelector('.author-node')!;
+      const node = avatar.getBoundingClientRect();
+      const offset = Number((avatar as HTMLElement).dataset['laneOffset']);
+      let departure: { x: number; y: number } | undefined;
+      let clearance = Infinity;
+      for (const path of element.querySelectorAll<SVGPathElement>('.graph-edges path')) {
+        if (/[CQLST]/i.test(path.getAttribute('d') ?? '')) {
+          throw new Error(`Non-orthogonal graph edge: ${path.getAttribute('d')}`);
+        }
+        const length = path.getTotalLength();
+        const start = path.getPointAtLength(0), end = path.getPointAtLength(length);
+        const matrix = path.getScreenCTM()!;
+        if (Math.abs(start.y - 20) < .01 && end.y > 20) {
+          const point = new DOMPoint(start.x, start.y).matrixTransform(matrix);
+          departure = { x: point.x, y: point.y };
+        }
+        if (start.y === 0 && end.y === 40 && start.x !== end.x) {
+          for (let step = 0; step <= 100; step++) {
+            const point = path.getPointAtLength(length * step / 100);
+            const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+            clearance = Math.min(clearance, Math.hypot(screen.x - (node.x + node.width / 2),
+              screen.y - (node.y + node.height / 2)) - node.width / 2);
+          }
+        }
+      }
+      return { departure, clearance, offset, right: node.right, centerY: node.y + node.height / 2 };
+    });
+    expect(geometry.clearance, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0.5);
+    expect(geometry.departure).toBeDefined();
+    expect(Math.abs(geometry.departure!.x - geometry.right), JSON.stringify(geometry)).toBeLessThan(0.1);
+    expect(Math.abs(geometry.departure!.y - geometry.centerY), JSON.stringify(geometry)).toBeLessThan(0.1);
+    await test.info().attach('Shared-parent side routing', {
+      body: await page.locator('.virtual-commit-rows').screenshot({
+        path: test.info().outputPath('orthogonal-shared-parent.png'),
+      }), contentType: 'image/png',
+    });
+  });
+
+  test(`aligns every avatar side connection with its horizontal middle (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/?unmerged-branch-preview');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    await page.evaluate(compact => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      app.setCompactGraphColumn(compact);
+    }, compact);
+    const attachments = await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      return app.graphRows().flatMap((row: any) => {
+        const element = document.querySelector(`[data-commit-oid="${row.commit.oid}"]`);
+        const node = element?.querySelector('.author-node')?.getBoundingClientRect();
+        if (!element || !node) return [];
+        const paths = element.querySelectorAll('.graph-edges path');
+        const edges = row.segments.flatMap((segment: any, index: number) => {
+          if (segment.x1 === segment.x2 || (!segment.sourceNodeRadius && !segment.parentNodeRadius && !segment.nodeConnection)) return [];
+          const path = paths[index] as SVGPathElement;
+          const source = segment.sourceNodeRadius || segment.nodeConnection?.part === 'source';
+          const length = source ? 0 : path.getTotalLength();
+          const point = path.getPointAtLength(length);
+          const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!);
+          const right = source ? segment.x2 > segment.x1 : segment.x1 > segment.x2;
+          return [{ oid: row.commit.oid, x: screen.x, y: screen.y,
+            expectedX: right ? node.right : node.left, expectedY: node.y + node.height / 2 }];
+        });
+        const connector = element.querySelector('.ref-connector')?.getBoundingClientRect();
+        return connector ? [...edges, { oid: row.commit.oid, x: node.left,
+          expectedX: node.left, y: connector.y + connector.height / 2,
+          expectedY: node.y + node.height / 2 }] : edges;
+      });
+    });
+    expect(attachments.length).toBeGreaterThan(0);
+    for (const attachment of attachments) {
+      expect(Math.abs(attachment.x - attachment.expectedX), JSON.stringify(attachment)).toBeLessThan(0.1);
+      expect(Math.abs(attachment.y - attachment.expectedY), JSON.stringify(attachment)).toBeLessThan(0.1);
+    }
+  });
+
+  test(`joins a lane relocated by a pinned branch at the avatar side (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    const oid = 'c'.repeat(40);
+    await page.evaluate(({ compact, oid }) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = app.git.repository();
+      const [merge, other, base] = ['a', 'b', 'd'].map(letter => letter.repeat(40));
+      const template = repo.commits[0];
+      const commits = [
+        { ...template, oid: merge, parents: [other, oid], decorations: [], subject: 'Merge' },
+        { ...template, oid: other, parents: [base], decorations: [], subject: 'Other lane' },
+        { ...template, oid, parents: [base], decorations: ['main'], subject: 'Pinned lane' },
+        { ...template, oid: base, parents: [], decorations: [], subject: 'Base' },
+      ];
+      app.hiddenBranches.set([]);
+      app.soloBranches.set([]);
+      app.smartBranchVisibility.set(false);
+      app.pinnedBranch.set('main');
+      app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id ? {
+        ...item, commits, headOid: oid, worktrees: [], stashes: [],
+        branches: [{ ...repo.branches[0], name: 'main', fullName: 'refs/heads/main', oid, current: true, remote: false }],
+        status: { ...repo.status, branch: 'main', staged: 0, unstaged: 0, entries: [] },
+      } : item));
+      app.setCompactGraphColumn(compact);
+    }, { compact, oid });
+    const row = page.locator(`[data-commit-oid="${oid}"]`);
+    await expect(row).toBeVisible();
+    const attachment = await row.evaluate(element => {
+      const node = element.querySelector('.author-node')!.getBoundingClientRect();
+      const path = element.querySelector('.graph-edges path') as SVGPathElement;
+      const point = path.getPointAtLength(path.getTotalLength());
+      const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!);
+      return { d: path.getAttribute('d'), x: screen.x, y: screen.y,
+        expectedX: node.right, expectedY: node.y + node.height / 2 };
+    });
+    expect(attachment.d).toMatch(/ A 6 6 0 0 [01] /);
+    expect(Math.abs(attachment.x - attachment.expectedX), JSON.stringify(attachment)).toBeLessThan(0.1);
+    expect(Math.abs(attachment.y - attachment.expectedY), JSON.stringify(attachment)).toBeLessThan(0.1);
+    await test.info().attach('Pinned branch side attachment', {
+      body: await page.locator('.virtual-commit-rows').screenshot(), contentType: 'image/png',
+    });
+  });
+}

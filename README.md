@@ -70,8 +70,8 @@ task install:system
 
 The command builds the optimized application, verifies that the generated
 package belongs to Git Khronos, and then asks for administrator access through
-`sudo`. The package installs `git-khronos-desktop` in `/usr/bin`, registers Git
-Chronos in the desktop application menu, and installs its icons and license
+`sudo`. The package installs `git-khronos` in `/usr/bin`, registers Git
+Khronos in the desktop application menu, and installs its icons and license
 notices in the standard system locations. Git 2.39 or newer is a required
 package dependency; OpenSSH client and Git LFS are recommended dependencies.
 
@@ -85,11 +85,13 @@ task package:deb:path
 task uninstall:system
 ```
 
-The generated package is written to `target/release/bundle/deb/`. The generic
+The generated package is written to `target/release/bundle/deb/`. Unchanged
+builds reuse it only after validating its metadata and required payload; a
+missing or invalid package triggers a rebuild. The generic
 `task bundle` command continues to build every installer format supported by the
 current platform, while `task install` remains the development-dependency setup
 command. After installation, launch **Git Khronos** from the desktop application
-menu or run `git-khronos-desktop` from any terminal. A locally built package
+menu or run `git-khronos` from any terminal. A locally built package
 targets the current CPU architecture and native-library baseline; build public
 release packages on the oldest Debian/Ubuntu baseline the release supports.
 
@@ -115,6 +117,11 @@ cancelable command cannot receive its operation identifier.
 `e2e/renderer/accessibility-audit.spec.ts` runs a dependency-free structural
 accessibility audit across sample-data preview states and open overlays. It
 does not replace review with real assistive technology.
+
+Run `pnpm nx run desktop:audit` to check runtime and development dependencies
+against the registry's current vulnerability advisories. This target is never
+cached and fails on any reported severity. A clean audit is not a substitute
+for build, behavioral, native-package, or accessibility validation.
 
 **Preferences → Git Features → Git command reference…** opens a searchable
 learning reference for implemented workflows. Each topic explains the underlying
@@ -602,6 +609,9 @@ cannot open fall back to the Git CLI. Staging, unstaging, and discarding update
 the change lists immediately, run Git away from the window event loop, and then
 reconcile with a status-only refresh instead of reloading history and
 references. These safeguards keep very large repositories responsive.
+Closing a repository invalidates pending history pages and their errors; reopening
+the same path cannot receive results from the closed session. Switching tabs
+keeps an open repository's pending page valid.
 New text files support selected-line staging without staging their remaining
 contents or changing the working file, including before the first commit.
 Selected index edits use the displayed diff as a native expected-state check;

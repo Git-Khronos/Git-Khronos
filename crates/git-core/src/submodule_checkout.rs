@@ -1,7 +1,7 @@
 use super::submodule_review::unavailable;
 use super::*;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmoduleRecordedCheckout {
     pub path: String,
@@ -11,7 +11,7 @@ pub struct SubmoduleRecordedCheckout {
     pub recursive: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleRecordedCheckoutResult {
     pub path: String,
@@ -22,7 +22,7 @@ pub struct SubmoduleRecordedCheckoutResult {
     pub nested: Vec<SubmoduleNestedCheckout>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleNestedCheckout {
     pub path: String,

@@ -19,7 +19,11 @@ import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { type UnlistenFn } from '@tauri-apps/api/event';
+import { events } from '@git-khronos/contracts';
+import { StashDeleteDialogComponent, type StashDeleteRequest } from './stash-delete-dialog.component';
+import { FileBlameComponent } from './file-blame.component';
+import { FileHistoryComponent } from './file-history.component';
 import type {
   Branch,
   CommitFile,
@@ -87,6 +91,8 @@ import {
   normalizeGraphColumnWidth,
   advanceRequiredGraphLaneCount,
   type RequiredGraphLaneProgress,
+  type GraphNodeConnection,
+  type GraphSegmentGeometry,
 } from './graph-layout';
 import { graphScrollMarkerPosition, sampleGraphMarkers } from './graph-scroll-markers';
 import {
@@ -119,14 +125,8 @@ interface ActiveGraphLane {
   color: number;
 }
 
-interface GraphSegment {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+interface GraphSegment extends GraphSegmentGeometry {
   color: number;
-  parentNodeRadius?: number;
-  sourceNodeRadius?: number;
 }
 
 export interface GraphRow {
@@ -221,6 +221,16 @@ interface SplitDiffRow {
   hunkIndex: number | null;
 }
 
+interface DiffViewportPosition {
+  top: number;
+  left: number;
+  anchor: {
+    attribute: 'data-diff-old-line' | 'data-diff-new-line';
+    line: string;
+    offset: number;
+  } | null;
+}
+
 interface DiffLineSelection {
   hunkIndex: number;
   lineIndices: number[];
@@ -309,10 +319,6 @@ interface RemoteGroupMenuState {
   y: number;
 }
 
-interface RepositoryChangedEvent {
-  repositoryId: string;
-}
-
 export interface CommandAction {
   id: string;
   group: string;
@@ -321,6 +327,7 @@ export interface CommandAction {
   shortcut?: string;
   enabled: boolean;
   icon: IconName;
+  stashTarget?: { repositoryId: string; stash: StashEntry };
 }
 
 interface PendingBisectStart {
@@ -397,6 +404,7 @@ interface StashContextMenuState {
   x: number;
   y: number;
   stash: StashEntry;
+  repositoryId: string;
 }
 
 interface PendingFileAction {
@@ -409,6 +417,7 @@ interface PendingFileAction {
   staged?: boolean;
   hunkIndex?: number;
   lineIndices?: number[];
+  expectedPatch?: string;
   preview?: DiscardPreview;
   repositoryId?: string;
   recovery?: DiscardRecovery;
@@ -599,12 +608,14 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+  imports: [StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+    DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent implements OnInit, OnDestroy {
+  protected readonly authenticationLoadErrorDismissed = signal(false);
   private readonly appMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('appMenuToggle');
   private readonly workspaceToggle = viewChild<ElementRef<HTMLButtonElement>>('workspaceToggle');
   private readonly workspaceNameInput = viewChild<ElementRef<HTMLInputElement>>('workspaceNameInput');
@@ -935,12 +946,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly savedDiscardsRepositoryId = signal<string | null>(null);
   protected readonly referenceAction = signal<ReferenceActionRequest | null>(null);
   protected readonly signNewTag = signal(false);
-  protected readonly pendingStashDelete = signal<StashEntry | null>(null);
+  protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
   protected readonly stashRenameTarget = signal<StashEntry | null>(null);
+  private stashRenameRepositoryId: string | null = null;
   protected readonly stashRenameMessage = signal('');
   protected readonly conflictOutput = signal('');
   protected readonly fetchRequest = signal<FetchDialogRequest | null>(null);
   private conflictReturnFocus: HTMLElement | null = null;
+  private conflictActionRequest = 0;
   protected readonly forceBranchDelete = signal(false);
   protected readonly resetMode = signal<'soft' | 'mixed' | 'hard'>('mixed');
   protected readonly resetPreview = signal<ResetPreview | null>(null);
@@ -1398,6 +1411,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private keyboardShortcutsOpener: HTMLElement | null = null;
   private preferencesOpener: HTMLElement | null = null;
   private diffViewerOpener: HTMLElement | null = null;
+  private diffViewerGeneration = 0;
+  private diffScrollRequest = 0;
+  private stopDiffViewportTracking: (() => void) | null = null;
   private repositoryDialogOpener: HTMLElement | null = null;
   private workspaceDialogOpener: HTMLElement | null = null;
   private worktreeDialogOpener: HTMLElement | null = null;
@@ -1474,13 +1490,21 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
+      this.git.activeRepositoryId();
+      this.activeDiff();
+      this.diffViewerOpen();
+      this.diffInsightMode();
+      this.diffWordWrap();
+      this.stopDiffViewportTracking?.();
+    });
+    effect(() => {
       const title = this.repositoryWindowTitle(this.git.repository());
       const systemInfo = this.git.systemInfo();
       const browserPreview = this.git.browserPreview();
       if (document.title !== title) document.title = title;
       if (!systemInfo || browserPreview || this.nativeWindowTitle === title) return;
       this.nativeWindowTitle = title;
-      void getCurrentWindow().setTitle(title).catch(() => {
+      void Promise.resolve().then(() => getCurrentWindow().setTitle(title)).catch(() => {
         if (this.nativeWindowTitle === title) this.nativeWindowTitle = '';
       });
     });
@@ -1652,6 +1676,11 @@ export class AppComponent implements OnInit, OnDestroy {
     ? this.git.workingTreeFileDiff()
     : this.git.comparisonFileDiff() ?? this.git.commitFileDiff());
 
+  private readonly fileActionView = computed(() => [
+    this.git.activeRepositoryId(), this.git.commitDetails(), this.git.commitComparison(),
+    this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
+  ]);
+
   protected readonly activeWorkingTreeDiff = computed(() => this.changesOpen()
     ? this.git.workingTreeFileDiff()
     : null);
@@ -1673,23 +1702,17 @@ export class AppComponent implements OnInit, OnDestroy {
     return selected.subject || '(no commit message)';
   });
 
-  protected readonly activeDiffRevision = computed(() => this.git.commitComparison()?.targetOid
-    ?? this.git.commitDetails()?.oid
-    ?? this.git.repository()?.headOid
-    ?? null);
+  protected readonly activeDiffRevision = computed(() => {
+    const diff = this.activeDiff();
+    return diff && 'oid' in diff ? diff.oid : this.git.repository()?.headOid ?? null;
+  });
 
   protected readonly canInspectActiveFile = computed(() => {
     const diff = this.activeDiff();
     return !!diff && !!this.activeDiffRevision() && !(this.changesOpen() && this.isUntrackedPath(diff.path));
   });
 
-  protected readonly blameRows = computed(() => {
-    const path = this.activeDiff()?.path ?? '';
-    return (this.git.fileBlame() ?? []).map((line) => ({
-      ...line,
-      tokens: syntaxTokens({ text: line.text, changed: false }, path),
-    }));
-  });
+  protected readonly blameSyntaxTokens = (text: string, path: string) => syntaxTokens({ text, changed: false }, path);
 
   protected readonly diffLines = computed<DiffLine[]>(() => {
     const diff = this.activeDiff();
@@ -2318,7 +2341,9 @@ export class AppComponent implements OnInit, OnDestroy {
     // but rebind changed commit metadata so recycled rows do not display stale references.
     const rows = canExtend ? cache.rows.map((row, index) =>
       row.commit === commits[index] ? row : { ...row, commit: commits[index] }) : [];
-    const pendingParentConnections = new Map<string, { fromOffset: number; color: number }[]>();
+    const pendingParentConnections = new Map<string, {
+      fromOffset: number; color: number; nodeConnection?: GraphNodeConnection;
+    }[]>();
 
     for (let commitIndex = rows.length; commitIndex < commits.length; commitIndex += 1) {
       const commit = commits[commitIndex];
@@ -2369,6 +2394,8 @@ export class AppComponent implements OnInit, OnDestroy {
           x2: laneOffset(nodeLane),
           y2: continuesStraight ? 40 : 20,
           color: current.color,
+          // Pinning can relocate an incoming lane; join the circle's side too.
+          parentNodeRadius: lane !== nodeLane ? (compact ? 10 : 12) : undefined,
         }] : [];
       const parentConnections = pendingParentConnections.get(commit.oid) ?? [];
       pendingParentConnections.delete(commit.oid);
@@ -2380,6 +2407,7 @@ export class AppComponent implements OnInit, OnDestroy {
           y2: 20,
           color: connection.color,
           parentNodeRadius: compact ? 10 : 12,
+          nodeConnection: connection.nodeConnection,
         });
       });
       before.forEach((candidate, beforeIndex) => {
@@ -2392,6 +2420,7 @@ export class AppComponent implements OnInit, OnDestroy {
             x2: laneOffset(afterIndex),
             y2: 40,
             color: candidate.color,
+            bypassNode: { offset: laneOffset(nodeLane), radius: compact ? 10 : 12 },
           });
         }
       });
@@ -2402,15 +2431,22 @@ export class AppComponent implements OnInit, OnDestroy {
         const color = parentIndex === 0 ? current.color : after[target].color;
         if (target !== nodeLane && commits[commitIndex + 1]?.oid === parent) {
           const fromOffset = laneOffset(nodeLane);
+          const parentOffset = laneOffset(pinnedHistory.has(parent) ? 0 : target);
+          const connection = fromOffset !== parentOffset ? {
+            sourceOffset: fromOffset, parentOffset, nodeRadius: compact ? 10 : 12,
+          } : undefined;
+          const boundaryOffset = connection ? (fromOffset + parentOffset) / 2 : fromOffset;
           segments.push({
             x1: fromOffset,
             y1: 20,
-            x2: fromOffset,
+            x2: boundaryOffset,
             y2: 40,
             color,
+            nodeConnection: connection ? { ...connection, part: 'source' } : undefined,
           });
           const connections = pendingParentConnections.get(parent) ?? [];
-          connections.push({ fromOffset, color });
+          connections.push({ fromOffset: boundaryOffset, color,
+            nodeConnection: connection ? { ...connection, part: 'parent' } : undefined });
           pendingParentConnections.set(parent, connections);
           return;
         }
@@ -3009,8 +3045,8 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'stage-all', group: 'Working Tree', label: 'Stage All Changes', detail: 'Add every current working-tree change to the index', enabled: !!this.unstagedEntries().length && !busy, icon: 'check' },
       { id: 'unstage-all', group: 'Working Tree', label: 'Unstage All Changes', detail: 'Move every staged change back to the working tree', enabled: !!this.stagedEntries().length && !busy, icon: 'reset' },
       { id: 'stash', group: 'Working Tree', label: 'Stash Changes', detail: 'Stash tracked and untracked changes', enabled: !!repository?.status.entryCount && !busy, icon: 'archive' },
-      { id: 'apply-stash', group: 'Working Tree', label: 'Apply Latest Stash', detail: 'Apply the newest stash without removing it', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore' },
-      { id: 'pop', group: 'Working Tree', label: 'Pop Latest Stash', detail: 'Apply and remove the newest stash', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore' },
+      { id: 'apply-stash', group: 'Working Tree', label: 'Apply Latest Stash', detail: 'Apply the newest stash without removing it', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore', stashTarget: repository?.stashes[0] ? { repositoryId: repository.id, stash: repository.stashes[0] } : undefined },
+      { id: 'pop', group: 'Working Tree', label: 'Pop Latest Stash', detail: 'Apply and remove the newest stash', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore', stashTarget: repository?.stashes[0] ? { repositoryId: repository.id, stash: repository.stashes[0] } : undefined },
       { id: 'working-tree', group: 'Working Tree', label: 'View Working Directory Changes', detail: 'Return to staging and commit preparation', enabled: !!repository, icon: 'file' },
       { id: 'terminal', group: 'View', label: 'Open Terminal', detail: 'Open a shell in this repository', shortcut: `${this.alternateShortcutKey} T / ${this.primaryShortcutKey} \``, enabled: !!repository, icon: 'terminal' },
       { id: 'file-manager', group: 'View', label: 'Open Repository Folder', detail: 'Show the working tree in the system file manager', shortcut: `${this.alternateShortcutKey} O`, enabled: !!repository, icon: 'folder-git' },
@@ -3161,6 +3197,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const encodedReference = encodeURIComponent(stash.reference);
       append({
         id: `stash-apply:${encodedReference}`,
+        stashTarget: { repositoryId: repository.id, stash },
         group: 'Stash',
         label: `Apply ${stash.reference}`,
         detail: `${stash.message} · Keep this stash`,
@@ -3169,6 +3206,7 @@ export class AppComponent implements OnInit, OnDestroy {
       });
       append({
         id: `stash-pop:${encodedReference}`,
+        stashTarget: { repositoryId: repository.id, stash },
         group: 'Stash',
         label: `Pop ${stash.reference}`,
         detail: `${stash.message} · Remove after applying`,
@@ -3299,10 +3337,11 @@ export class AppComponent implements OnInit, OnDestroy {
   });
 
   async ngOnInit(): Promise<void> {
+    document.addEventListener('pointerdown', this.dismissWorkspace, true);
     await this.git.initialize();
     if (!this.git.browserPreview()) {
       try {
-        this.repositoryChangeUnlisten = await listen<RepositoryChangedEvent>('repository-changed', ({ payload }) => {
+        this.repositoryChangeUnlisten = await events.repositoryChanged.listen(({ payload }) => {
           this.scheduleRepositoryRefresh(payload.repositoryId);
         });
       } catch {
@@ -3311,6 +3350,10 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     this.restoreCommitDraft();
     this.loadGraphPreferences();
+    if (!GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES) {
+      void this.applyZoom(this.zoomPercent());
+      return;
+    }
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('unpublished-branch')) {
       this.git.repositories.update((repositories) => repositories.map((repository) => {
         if (repository.id !== this.git.activeRepositoryId()) return repository;
@@ -3532,9 +3575,9 @@ export class AppComponent implements OnInit, OnDestroy {
       } else if (fileInsight === 'blame') {
         this.diffInsightMode.set('blame');
         this.git.fileBlame.set([
-          { lineNumber: 1, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: 'export class AppComponent {' },
-          { lineNumber: 2, oid: 'f19b263a8af31408d5f665caf7a5508e108c0fd1', authorName: 'Leo Martin', authorEmail: 'leo@example.test', authoredAt: 1791019200, summary: 'Support commit comparison', text: '  readonly selectedCommits = signal<string[]>([]);' },
-          { lineNumber: 3, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: '}' },
+          { path: null, lineNumber: 1, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: 'export class AppComponent {' },
+          { path: null, lineNumber: 2, oid: 'f19b263a8af31408d5f665caf7a5508e108c0fd1', authorName: 'Leo Martin', authorEmail: 'leo@example.test', authoredAt: 1791019200, summary: 'Support commit comparison', text: '  readonly selectedCommits = signal<string[]>([]);' },
+          { path: null, lineNumber: 3, oid: '14adfbb0c1685f62cba66f031306e1e77d5c2', authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: 1791016920, summary: 'Initialize Git Khronos desktop', text: '}' },
         ]);
       }
       if (parameters.has('commit-file-menu')) {
@@ -3560,6 +3603,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopDiffViewportTracking?.();
+    document.removeEventListener('pointerdown', this.dismissWorkspace, true);
     this.commitListResizeObserver?.disconnect();
     this.detachGraphWheel();
     if (this.graphScrollFrame !== null) cancelAnimationFrame(this.graphScrollFrame);
@@ -3602,6 +3647,12 @@ export class AppComponent implements OnInit, OnDestroy {
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
     if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview()) return;
+    // Disabling a focused item can move focus out of the menu. Its local
+    // keydown handler may then never receive Tab, but dismissal must still work.
+    if (event.key === 'Tab' && this.workspaceMenuOpen()) {
+      this.dismissWorkspaceMenuForTab();
+      return;
+    }
     if (event.key === 'Escape' && this.pendingFileAction()) {
       event.preventDefault();
       this.dismissFileConfirmation(true);
@@ -3618,11 +3669,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeDiffViewer();
       return;
     }
-    if (event.key === 'Escape' && this.pendingStashDelete()) {
-      event.preventDefault();
-      this.pendingStashDelete.set(null);
-      return;
-    }
+    if (this.pendingStashDelete()) return;
     if (event.key === 'Escape' && this.stashRenameTarget()) {
       event.preventDefault();
       this.stashRenameTarget.set(null);
@@ -3870,6 +3917,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     const editing = !!target?.closest('input, textarea, [contenteditable="true"]');
+    const inFileWorkspace = !!target?.closest('.diff-workspace');
     const terminalEditing = !!target?.closest('gc-terminal-panel');
     const terminalShortcut = (event.altKey && key === 't') || (command && event.key === '`');
     if (event.key === 'F6' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -3905,6 +3953,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!command) {
+      if (event.altKey) return;
       if (!editing && this.interactiveRebase() && ['p', 's', 'r', 'e', 'f', 'd'].includes(event.key.toLocaleLowerCase())) {
         event.preventDefault();
         const action = ({ p: 'pick', s: 'squash', r: 'reword', e: 'edit', f: 'fixup', d: 'drop' } as const)[event.key.toLocaleLowerCase() as 'p' | 's' | 'r' | 'e' | 'f' | 'd'];
@@ -3924,7 +3973,7 @@ export class AppComponent implements OnInit, OnDestroy {
           void this.git.unstagePath(path);
         }
       }
-      if (!editing && !this.interactiveRebase()) {
+      if (!editing && !inFileWorkspace && !this.interactiveRebase()) {
         const navigationKey = event.key.toLocaleLowerCase();
         if (['j', 'arrowdown', 'k', 'arrowup'].includes(navigationKey)) {
           event.preventDefault();
@@ -4064,12 +4113,12 @@ export class AppComponent implements OnInit, OnDestroy {
       void this.git.unstageAll();
       return;
     }
-    if (event.key === 'Home' || (this.primaryShortcutKey === '⌘' && event.key === 'ArrowUp')) {
+    if (!editing && !inFileWorkspace && (event.key === 'Home' || (this.primaryShortcutKey === '⌘' && event.key === 'ArrowUp'))) {
       event.preventDefault();
       this.selectGraphBoundary(false);
       return;
     }
-    if (event.key === 'End' || (this.primaryShortcutKey === '⌘' && event.key === 'ArrowDown')) {
+    if (!editing && !inFileWorkspace && (event.key === 'End' || (this.primaryShortcutKey === '⌘' && event.key === 'ArrowDown'))) {
       event.preventDefault();
       this.selectGraphBoundary(true);
       return;
@@ -4111,13 +4160,15 @@ export class AppComponent implements OnInit, OnDestroy {
   private focusWorkspaceRegion(direction: -1 | 1): void {
     if (!this.git.repository()) return;
     const selector = this.diffViewerOpen()
-      ? '.diff-primary-view'
+      ? this.diffInsightMode() === 'history' ? 'gc-file-history .history-list'
+        : this.diffInsightMode() === 'blame' ? 'gc-file-blame .blame-lines' : '.split-diff-body, .focus-diff-view'
       : '.history-panel.workspace-focus-region';
+    const central = document.querySelector<HTMLElement>(this.diffViewerOpen() ? '.diff-workspace' : selector);
     const terminal = document.querySelector<HTMLElement>('gc-terminal-panel .terminal-panel:not(.inactive)');
     const regions = [
       { element: document.querySelector<HTMLElement>('.toolbar.workspace-focus-region') },
       { element: document.querySelector<HTMLElement>('#repository-reference-panel:not(.panel-hidden)') },
-      { element: document.querySelector<HTMLElement>(selector) },
+      { element: central, focus: () => (central?.querySelector<HTMLElement>(selector) ?? central)?.focus({ preventScroll: true }) },
       { element: document.querySelector<HTMLElement>('#repository-commit-panel:not(.panel-hidden)') },
       { element: terminal, focus: () => (terminal?.querySelector<HTMLElement>('.terminal-host.active textarea') ?? terminal)?.focus({ preventScroll: true }) },
     ].filter((region): region is { element: HTMLElement; focus?: () => void } => !!region.element
@@ -4164,36 +4215,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.closeToolbarMenus();
   }
 
+  private readonly dismissWorkspace = (event: PointerEvent): void => {
+    // Capture outside presses before controls can stop event propagation.
+    if (!(event.target instanceof Element && event.target.closest('.workspace-control'))) {
+      this.workspaceMenuOpen.set(false);
+    }
+  };
+
   @HostListener('window:blur')
   protected closeContextMenuOnBlur(): void {
-    this.contextMenu.set(null);
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
-    this.stashContextMenu.set(null);
-    this.contextMenuReturnFocus = null;
-    this.appMenuOpen.set(false);
-    this.workspaceMenuOpen.set(false);
-    this.repositoryTabsOpen.set(false);
-    this.toolbarRemoteMenuOpen.set(false);
-    this.toolbarCheckoutMenuOpen.set(false);
-    this.repositoryTabMenu.set(null);
-    this.repositoryTabMenuReturnFocus = null;
-    this.remoteGroupMenu.set(null);
-    this.preferencesOpen.set(false);
-    this.identityPopoverOpen.set(false);
-    this.authorFilterOpen.set(false);
-    this.workingTreeOptionsOpen.set(false);
-    this.diffFileMenuOpen.set(false);
+    this.closeContextMenu();
     this.commandPaletteOpen.set(false);
     this.commandPaletteOpener = null;
-    this.graphSettingsOpen.set(false);
-    this.graphSettingsPosition.set(null);
-    this.dismissBranchDropMenu();
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
-    this.referencePaneMenu.set(null);
-    this.coAuthorPickerOpen.set(false);
-    this.closeToolbarMenus();
   }
 
   @HostListener('document:pointermove', ['$event'])
@@ -7012,11 +7045,15 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async jumpToCommit(oid: string): Promise<void> {
     let repository = this.git.repository();
     if (!repository) return;
-    if (!repository.commits.some((commit) => commit.oid === oid) && repository.historyTruncated) {
+    const repositoryId = repository.id;
+    if (!repository.commits.some((commit) => commit.oid === oid)
+      && !repository.stashes.some((stash) => stash.oid === oid) && repository.historyTruncated) {
       await this.git.loadMoreHistory();
       repository = this.git.repository();
     }
-    if (!repository?.commits.some((commit) => commit.oid === oid)) return;
+    if (!repository || repository.id !== repositoryId
+      || (!repository.commits.some((commit) => commit.oid === oid)
+        && !repository.stashes.some((stash) => stash.oid === oid))) return;
     this.updateCommitSearch('');
     this.authorFilter.set(null);
     this.authorFilterOpen.set(false);
@@ -7370,6 +7407,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async openConflictTool(path: string): Promise<void> {
     if (this.git.busy()) return;
+    const request = ++this.conflictActionRequest;
     if (!this.git.conflictDetails()) {
       this.conflictReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
@@ -7377,6 +7415,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (details) {
       this.conflictOutput.set(details.output ?? details.current ?? details.incoming ?? '');
       afterNextRender(() => {
+        if (request !== this.conflictActionRequest || this.git.conflictDetails() !== details) return;
         document.querySelector<HTMLElement>('[aria-label="Close conflict editor"]')?.focus();
       }, { injector: this.injector });
     }
@@ -7391,23 +7430,29 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async resolveOpenConflict(resolution: 'current' | 'incoming' | 'output'): Promise<void> {
     const details = this.git.conflictDetails();
     if (!details || this.git.busy()) return;
-    await this.git.resolveConflict(
+    const request = ++this.conflictActionRequest;
+    const repositoryId = this.git.activeRepositoryId();
+    const succeeded = await this.git.resolveConflict(
       details.path,
       resolution,
       resolution === 'output' ? this.conflictOutput() : undefined,
     );
-    if (!this.git.error()) this.closeConflictTool();
-    else afterNextRender(() => {
+    if (request !== this.conflictActionRequest || repositoryId !== this.git.activeRepositoryId()
+      || (this.git.conflictDetails() && this.git.conflictDetails() !== details)) return;
+    if (succeeded) this.closeConflictTool();
+    else if (this.git.conflictDetails() === details) afterNextRender(() => {
+      if (request !== this.conflictActionRequest || this.git.conflictDetails() !== details) return;
       document.querySelector<HTMLElement>('.merge-tool [role="alert"]')?.focus();
     }, { injector: this.injector });
   }
 
   protected closeConflictTool(): void {
+    const request = ++this.conflictActionRequest;
     this.git.closeConflict();
     const opener = this.conflictReturnFocus;
     this.conflictReturnFocus = null;
     afterNextRender(() => {
-      if (opener?.isConnected) opener.focus();
+      if (request === this.conflictActionRequest && opener?.isConnected) opener.focus();
     }, { injector: this.injector });
   }
 
@@ -7812,7 +7857,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.changesOpen.set(false);
     this.setPanelVisibility('commit-panel', true);
     const stash = this.stashForOid(oid);
-    if (stash) void this.git.inspectStash(stash.reference);
+    if (stash) void this.git.inspectStash(stash);
     else void this.git.inspectCommit(oid);
   }
 
@@ -7951,7 +7996,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.setPanelVisibility('commit-panel', true);
     if (selection.length === 1) {
       const stash = this.stashForOid(primaryOid);
-      if (stash) void this.git.inspectStash(stash.reference);
+      if (stash) void this.git.inspectStash(stash);
       else void this.git.inspectCommit(primaryOid);
       return;
     }
@@ -8039,14 +8084,124 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected setDiffViewMode(mode: DiffViewMode): void {
-    this.diffInsightMode.set('diff');
-    this.diffViewMode.set(mode);
     try {
       localStorage.setItem('git-khronos.diff.view-mode', mode);
     } catch {
       // The selected diff layout remains active for this session.
     }
-    queueMicrotask(() => this.scrollToDiffHunk(this.activeDiffHunk()));
+    if (this.diffInsightMode() === 'diff' && this.diffViewMode() === mode) return;
+    const position = this.captureDiffViewport();
+    this.diffInsightMode.set('diff');
+    this.diffViewMode.set(mode);
+    this.afterDiffRender(() => {
+      if (position) this.restoreDiffViewport(position);
+      else this.scrollToDiffHunk(this.activeDiffHunk(), 'auto');
+    });
+  }
+
+  private afterDiffRender(callback: () => void): void {
+    this.stopDiffViewportTracking?.();
+    const diff = this.activeDiff();
+    const repoId = this.git.activeRepositoryId();
+    const generation = this.diffViewerGeneration;
+    const mode = this.diffViewMode();
+    const request = ++this.diffScrollRequest;
+    afterNextRender(() => {
+      if (request !== this.diffScrollRequest || generation !== this.diffViewerGeneration || this.git.activeRepositoryId() !== repoId || this.activeDiff() !== diff || !this.diffViewerOpen() || this.diffInsightMode() !== 'diff' || this.diffViewMode() !== mode) return;
+      callback();
+    }, { injector: this.injector });
+  }
+
+  private captureDiffViewport(): DiffViewportPosition | null {
+    const primary = this.focusedDiff()?.nativeElement;
+    const scroller = primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary;
+    if (!scroller?.getClientRects().length) return null;
+    const bounds = scroller.getBoundingClientRect();
+    const top = bounds.top + scroller.clientTop;
+    let anchor: DiffViewportPosition['anchor'] = null;
+    // Hit-test only the visible viewport. Measuring every line forces skipped
+    // content-visibility rows to lay out and can move the very anchor we save.
+    for (let y = 1; y < scroller.clientHeight && !anchor; y += 4) {
+      for (const fraction of [0.75, 0.25]) {
+        const x = bounds.left + scroller.clientLeft + scroller.clientWidth * fraction;
+        const line = document.elementFromPoint(x, top + y)?.closest<HTMLElement>('[data-diff-old-line], [data-diff-new-line]');
+        if (!line || !scroller.contains(line)) continue;
+        const attribute = line.hasAttribute('data-diff-new-line') ? 'data-diff-new-line' : 'data-diff-old-line';
+        anchor = { attribute, line: line.getAttribute(attribute)!, offset: line.getBoundingClientRect().top - top };
+        break;
+      }
+    }
+    return { top: scroller.scrollTop, left: scroller.scrollLeft, anchor };
+  }
+
+  private restoreDiffViewport(position: DiffViewportPosition): void {
+    const primary = this.focusedDiff()?.nativeElement;
+    const scroller = primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary;
+    if (!scroller) return;
+    let top = position.top;
+    const anchor = position.anchor;
+    const line = anchor ? scroller.querySelector<HTMLElement>(`[${anchor.attribute}="${anchor.line}"]`) : null;
+    if (line && anchor) {
+      // Reveal the anchor before measuring it, so content-visibility has laid
+      // out the target instead of returning an offscreen estimated position.
+      line.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+      const rect = line.getBoundingClientRect();
+      // A wrapped source line may become shorter in the new layout. Keep at
+      // least its last pixel visible rather than scrolling past that line.
+      const offset = Math.max(anchor.offset, 1 - rect.height);
+      top = scroller.scrollTop + rect.top - scroller.getBoundingClientRect().top - scroller.clientTop - offset;
+    }
+    // Layout continuity is immediate; explicit change navigation can animate.
+    scroller.scrollTo({ top, left: position.left, behavior: 'auto' });
+    if (line && anchor && this.diffWordWrap()) this.trackDiffViewport(scroller, line, anchor.offset, position.left);
+  }
+
+  private trackDiffViewport(scroller: HTMLElement, line: HTMLElement, offset: number, left: number): void {
+    this.stopDiffViewportTracking?.();
+    const content = scroller.querySelector('.diff-lines');
+    if (!content || typeof ResizeObserver === 'undefined') return;
+    const request = this.diffScrollRequest;
+    const generation = this.diffViewerGeneration;
+    const diff = this.activeDiff();
+    const repoId = this.git.activeRepositoryId();
+    let frame: number | null = null;
+    let expectedTop = scroller.scrollTop;
+    const current = () => request === this.diffScrollRequest && generation === this.diffViewerGeneration && this.git.activeRepositoryId() === repoId && this.activeDiff() === diff && this.diffViewerOpen() && this.diffInsightMode() === 'diff' && scroller.isConnected && line.isConnected;
+    const stop = () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      for (const type of ['wheel', 'pointerdown', 'touchstart', 'keydown']) scroller.removeEventListener(type, stop);
+      scroller.removeEventListener('scroll', manualScroll);
+      if (this.stopDiffViewportTracking === stop) this.stopDiffViewportTracking = null;
+    };
+    const manualScroll = () => {
+      if (Math.abs(scroller.scrollTop - expectedTop) > 1) stop();
+    };
+    const observer = new ResizeObserver(() => {
+      if (!current()) { stop(); return; }
+      const rect = line.getBoundingClientRect();
+      const desired = Math.max(offset, 1 - rect.height);
+      const delta = rect.top - scroller.getBoundingClientRect().top - scroller.clientTop - desired;
+      if (Math.abs(delta) < 1) return;
+      const top = Math.max(0, Math.min(scroller.scrollTop + delta, scroller.scrollHeight - scroller.clientHeight));
+      // At the beginning/end of a file, centering can be impossible. Do not
+      // schedule resize corrections forever against a clamped scroll boundary.
+      if (Math.abs(top - scroller.scrollTop) < 1) return;
+      // Wrapped rows are measured as content-visibility reveals them. Realign
+      // only the owned anchor; disconnect during writes to avoid resize loops.
+      observer.disconnect();
+      scroller.scrollTo({ top, left, behavior: 'auto' });
+      expectedTop = scroller.scrollTop;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (current()) observer.observe(content);
+        else stop();
+      });
+    });
+    this.stopDiffViewportTracking = stop;
+    for (const type of ['wheel', 'pointerdown', 'touchstart', 'keydown']) scroller.addEventListener(type, stop, { passive: true });
+    scroller.addEventListener('scroll', manualScroll, { passive: true });
+    observer.observe(content);
   }
 
   protected handleDiffModeKeydown(event: KeyboardEvent): void {
@@ -8072,7 +8227,21 @@ export class AppComponent implements OnInit, OnDestroy {
   protected navigateDiffHunk(direction: -1 | 1): void {
     const count = this.diffHunks().length;
     if (!count) return;
-    this.jumpToDiffHunk(Math.max(0, Math.min(this.activeDiffHunk() + direction, count - 1)));
+    const index = Math.max(0, Math.min(this.activeDiffHunk() + direction, count - 1));
+    if (this.diffInsightMode() === 'diff') {
+      this.jumpToDiffHunk(index);
+      return;
+    }
+    const previousFocus = document.activeElement;
+    this.activeDiffHunk.set(index);
+    this.showFileDiff();
+    this.afterDiffRender(() => {
+      this.scrollToDiffHunk(this.activeDiffHunk());
+      if (document.activeElement === previousFocus || document.activeElement === document.body) {
+        const primary = this.focusedDiff()?.nativeElement;
+        (primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary)?.focus({ preventScroll: true });
+      }
+    });
   }
 
   protected async navigateDiffFile(direction: -1 | 1): Promise<void> {
@@ -8173,10 +8342,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected jumpToDiffHunk(index: number): void {
     this.activeDiffHunk.set(index);
-    queueMicrotask(() => this.scrollToDiffHunk(index));
+    this.afterDiffRender(() => this.scrollToDiffHunk(index));
   }
 
   private openDiffViewer(): void {
+    const generation = ++this.diffViewerGeneration;
+    const repoId = this.git.activeRepositoryId();
+    const diff = this.activeDiff();
     const revealCommitContext = !!(this.git.commitFileDiff() || this.git.comparisonFileDiff());
     if (!this.diffViewerOpen()) {
       this.diffViewerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -8186,11 +8358,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.diffInsightMode.set('diff');
     this.diffViewerOpen.set(true);
     if (revealCommitContext) {
-      requestAnimationFrame(() => this.commitPanel()?.nativeElement.scrollTo({ top: 0, behavior: 'auto' }));
+      requestAnimationFrame(() => {
+        if (generation === this.diffViewerGeneration && this.diffViewerOpen() && this.git.activeRepositoryId() === repoId && this.activeDiff() === diff) {
+          this.commitPanel()?.nativeElement.scrollTo({ top: 0, behavior: 'auto' });
+        }
+      });
     }
   }
 
   protected closeDiffViewer(): void {
+    const generation = ++this.diffViewerGeneration;
+    const repoId = this.git.activeRepositoryId();
+    const previousFocus = document.activeElement;
     const returnFocus = document.querySelector<HTMLElement>(
       '.commit-panel .commit-file.selected, .commit-panel .file-row.selected .file-name-button',
     ) ?? this.diffViewerOpener;
@@ -8198,7 +8377,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.diffFileMenuOpen.set(false);
     this.diffViewerOpener = null;
     this.selectedDiffLineGroups.set([]);
-    setTimeout(() => returnFocus?.isConnected && returnFocus.focus());
+    setTimeout(() => {
+      if (generation !== this.diffViewerGeneration || this.diffViewerOpen() || this.git.activeRepositoryId() !== repoId) return;
+      if (document.activeElement !== previousFocus && document.activeElement !== document.body) return;
+      if (returnFocus?.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
+    });
   }
 
   protected showFileDiff(): void {
@@ -8211,7 +8394,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const revision = this.activeDiffRevision();
     if (!diff || !revision || !this.canInspectActiveFile()) return;
     this.diffInsightMode.set('history');
-    await this.historySearch.openFile(revision, diff.path);
+    await this.historySearch.resumeFile(revision, diff.path);
   }
 
   protected async showFileBlame(): Promise<void> {
@@ -8220,7 +8403,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const revision = this.activeDiffRevision();
     if (!diff || !revision || !this.canInspectActiveFile()) return;
     this.diffInsightMode.set('blame');
-    await this.git.inspectFileBlame(diff.path, revision);
+    await this.git.resumeFileBlame(diff.path, revision);
   }
 
   private async openTrackedFileInsight(path: string, mode: 'history' | 'blame'): Promise<void> {
@@ -8246,10 +8429,16 @@ export class AppComponent implements OnInit, OnDestroy {
     else await this.git.inspectFileBlame(path, revision);
   }
 
-  private scrollToDiffHunk(index: number): void {
-    this.focusedDiff()?.nativeElement
-      .querySelector<HTMLElement>(`[data-diff-hunk="${index}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  private scrollToDiffHunk(index: number, behavior?: ScrollBehavior): void {
+    const primary = this.focusedDiff()?.nativeElement;
+    const line = primary?.querySelector<HTMLElement>(`[data-diff-hunk="${index}"]`);
+    if (!primary || !line) return;
+    const wrapped = this.diffWordWrap();
+    line.scrollIntoView({ behavior: wrapped ? 'auto' : behavior ?? (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'), block: 'center' });
+    if (wrapped) {
+      const scroller = primary.querySelector<HTMLElement>('.split-diff-body') ?? primary;
+      this.trackDiffViewport(scroller, line, Math.max(0, (scroller.clientHeight - line.getBoundingClientRect().height) / 2), scroller.scrollLeft);
+    }
   }
 
   protected showHistoryComparison(): void {
@@ -8628,6 +8817,10 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeAppMenu(true);
       return;
     } else if (event.key === 'Tab') {
+      // Angular removes the menu after this event; exclude its items now so
+      // native Tab navigation can continue from the opener without losing focus.
+      menu.inert = true;
+      this.appMenuToggle()?.nativeElement.focus({ preventScroll: true });
       this.appMenuOpen.set(false);
       return;
     }
@@ -8671,7 +8864,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeWorkspaceMenu(true);
       return;
     } else if (event.key === 'Tab') {
-      this.workspaceMenuOpen.set(false);
+      this.dismissWorkspaceMenuForTab();
       return;
     }
     if (next === null) return;
@@ -8682,6 +8875,19 @@ export class AppComponent implements OnInit, OnDestroy {
   private closeWorkspaceMenu(restoreFocus = false): void {
     this.workspaceMenuOpen.set(false);
     if (restoreFocus) queueMicrotask(() => this.workspaceToggle()?.nativeElement.focus());
+  }
+
+  private dismissWorkspaceMenuForTab(): void {
+    const menu = document.querySelector<HTMLElement>('.workspace-menu');
+    const opener = this.workspaceToggle()?.nativeElement;
+    const active = document.activeElement;
+    if (menu) menu.inert = true;
+    // Do not pull focus back from a separate outside control. When disabling
+    // items left focus on the document, resume native Tab order from the opener.
+    if (active === document.body || active === opener || (active && menu?.contains(active))) {
+      opener?.focus({ preventScroll: true });
+    }
+    this.workspaceMenuOpen.set(false);
   }
 
   protected async selectWorkspace(workspaceId: string): Promise<void> {
@@ -9202,11 +9408,11 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (action.id.startsWith('stash-apply:')) {
-      await this.git.applyStash(decodeURIComponent(action.id.slice('stash-apply:'.length)));
+      if (action.stashTarget) await this.runSelectedStash(false, action.stashTarget.stash, action.stashTarget.repositoryId);
       return;
     }
     if (action.id.startsWith('stash-pop:')) {
-      await this.git.popStashEntry(decodeURIComponent(action.id.slice('stash-pop:'.length)));
+      if (action.stashTarget) await this.runSelectedStash(true, action.stashTarget.stash, action.stashTarget.repositoryId);
       return;
     }
     if (action.id.startsWith('file-conflict:')) {
@@ -9258,11 +9464,12 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'unstage-all': await this.git.unstageAll(); break;
       case 'stash': await this.stashCurrentChanges(); break;
       case 'apply-stash': {
-        const stash = this.git.repository()?.stashes[0];
-        if (stash) await this.git.applyStash(stash.reference);
+        if (action.stashTarget) await this.runSelectedStash(false, action.stashTarget.stash, action.stashTarget.repositoryId);
         break;
       }
-      case 'pop': await this.git.popStash(); break;
+      case 'pop':
+        if (action.stashTarget) await this.runSelectedStash(true, action.stashTarget.stash, action.stashTarget.repositoryId);
+        break;
       case 'working-tree': this.selectWip(); break;
       case 'terminal': this.toggleTerminal(); break;
       case 'file-manager': await this.git.openRepositoryInFileManager(); break;
@@ -10117,6 +10324,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openStashMenu(event: MouseEvent, stash: StashEntry, focusMenu = true): void {
     event.preventDefault();
     event.stopPropagation();
+    const repositoryId = this.git.activeRepositoryId();
+    if (!repositoryId) return;
     this.contextMenu.set(null);
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
     this.fileContextMenu.set(null);
@@ -10134,6 +10343,7 @@ export class AppComponent implements OnInit, OnDestroy {
     };
     this.stashContextMenu.set({
       stash,
+      repositoryId,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(
         preferredPosition.x,
         window.innerWidth - GRAPH_ACTION_MENU_WIDTH - VIEWPORT_MENU_GUTTER,
@@ -10146,6 +10356,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openStashOptions(action: StashDialogRequest['action'], stash?: StashEntry, explicitReturnFocus?: HTMLElement | null): void {
     const repository = this.git.repository();
     if (!repository || this.git.busy()) return;
+    if (stash && !this.git.requireRecoveryRepository(this.stashActionRepositoryId(stash) ?? '')) return;
     const menu = this.contextMenu();
     const branch = action === 'switch' ? repository.branches.find(candidate =>
       !candidate.remote && candidate.name === menu?.label && !candidate.current) : undefined;
@@ -10171,6 +10382,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected beginStashRename(stash?: StashEntry): void {
     const target = stash ?? this.stashContextMenu()?.stash ?? this.selectedStash();
     if (!target) return;
+    const repositoryId = this.stashActionRepositoryId(target);
+    if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
+    this.stashRenameRepositoryId = repositoryId;
     this.stashContextMenu.set(null);
     this.stashRenameMessage.set(target.message.replace(/^(?:On|WIP on) [^:]+:\s*/, ''));
     this.stashRenameTarget.set(target);
@@ -10179,33 +10393,55 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async confirmStashRename(): Promise<void> {
     const stash = this.stashRenameTarget();
     const message = this.stashRenameMessage().trim();
-    if (!stash || !message || this.git.busy()) return;
-    await this.git.renameStash(stash.reference, stash.oid, message);
-    if (!this.git.error()) this.stashRenameTarget.set(null);
+    const repositoryId = this.stashRenameRepositoryId;
+    if (!stash || !message || !repositoryId || this.git.busy()) return;
+    const renamed = await this.git.renameStash(stash.reference, stash.oid, message, repositoryId);
+    if (renamed && this.stashRenameTarget() === stash && this.stashRenameRepositoryId === repositoryId) this.stashRenameTarget.set(null);
   }
 
   protected async applyStashFromMenu(pop: boolean): Promise<void> {
-    const stash = this.stashContextMenu()?.stash ?? this.selectedStash();
-    if (!stash) return;
+    const menu = this.stashContextMenu();
+    const stash = menu?.stash ?? this.selectedStash();
+    const repositoryId = menu?.repositoryId ?? this.git.activeRepositoryId();
+    if (!stash || !repositoryId) return;
     this.stashContextMenu.set(null);
-    if (pop) await this.git.popStashEntry(stash.reference);
-    else await this.git.applyStash(stash.reference);
-    if (!this.git.error()) this.selectWip();
+    await this.runSelectedStash(pop, stash, repositoryId);
+  }
+
+  private async runSelectedStash(pop: boolean, stash: StashEntry, repositoryId: string): Promise<void> {
+    if (this.git.busy()) return;
+    const inspection = this.selectedCommit();
+    const succeeded = pop
+      ? await this.git.popStashEntry(stash.reference, stash.oid, repositoryId)
+      : await this.git.applyStash(stash.reference, stash.oid, repositoryId);
+    if (succeeded && this.git.activeRepositoryId() === repositoryId && this.selectedCommit() === inspection) this.selectWip();
   }
 
   protected requestStashDelete(stash?: StashEntry): void {
     const target = stash ?? this.stashContextMenu()?.stash ?? this.selectedStash();
-    if (!target) return;
+    const repositoryId = target ? this.stashActionRepositoryId(target) : null;
+    if (!target || !repositoryId || this.pendingStashDelete() || !this.git.requireRecoveryRepository(repositoryId)) return;
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.stashContextMenu.set(null);
-    this.pendingStashDelete.set(target);
+    this.pendingStashDelete.set({ repositoryId, stash: target, returnFocus });
   }
 
-  protected async confirmStashDelete(): Promise<void> {
-    const stash = this.pendingStashDelete();
-    if (!stash) return;
+  private stashActionRepositoryId(stash: StashEntry): string | null {
+    const menu = this.stashContextMenu();
+    return menu?.stash === stash ? menu.repositoryId : this.git.activeRepositoryId();
+  }
+
+  protected closeStashDelete(result: { request: StashDeleteRequest; deleted: boolean }): void {
+    if (this.pendingStashDelete() !== result.request) return;
     this.pendingStashDelete.set(null);
-    await this.git.dropStash(stash.reference);
-    if (!this.git.error()) this.selectWip();
+    if (this.git.activeRepositoryId() !== result.request.repositoryId) return;
+    if (result.deleted) this.selectWip();
+    afterNextRender(() => {
+      if (this.pendingStashDelete() || this.git.activeRepositoryId() !== result.request.repositoryId) return;
+      const opener = result.request.returnFocus;
+      if (opener?.isConnected) opener.focus();
+      else document.querySelector<HTMLButtonElement>('.stash-item:not([disabled]), .wip-nav:not([disabled])')?.focus();
+    }, { injector: this.injector });
   }
 
   protected toggleStashVisibility(stash: StashEntry): void {
@@ -10494,8 +10730,15 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async applyHunk(path: string, staged: boolean, hunkIndex: number): Promise<void> {
     const diff = this.activeWorkingTreeDiff();
     if (!diff || diff.path !== path || diff.staged !== staged || diff.truncated || this.git.busy()) return;
-    await this.git.applyWorkingTreeHunk(path, staged, hunkIndex, staged ? 'unstage' : 'stage', diff.patch);
-    if (!this.git.error()) this.selectedDiffLineGroups.set([]);
+    await this.applyDiffChange(() => this.git.applyWorkingTreeHunk(path, staged, hunkIndex, staged ? 'unstage' : 'stage', diff.patch));
+  }
+
+  private async applyDiffChange(change: () => Promise<boolean>): Promise<void> {
+    const groups = this.selectedDiffLineGroups();
+    const repositoryId = this.git.activeRepositoryId();
+    if (await change() && repositoryId === this.git.activeRepositoryId() && groups === this.selectedDiffLineGroups()) {
+      this.selectedDiffLineGroups.set([]);
+    }
   }
 
   protected diffLineSelectionKey(line: DiffLine): string {
@@ -10519,15 +10762,14 @@ export class AppComponent implements OnInit, OnDestroy {
     const diff = this.activeWorkingTreeDiff();
     const selection = this.selectedDiffLines();
     if (!diff || !selection || diff.truncated || this.git.busy()) return;
-    await this.git.applyWorkingTreeLines(
+    await this.applyDiffChange(() => this.git.applyWorkingTreeLines(
       diff.path,
       diff.staged,
       selection.hunkIndex,
       selection.lineIndices,
       diff.staged ? 'unstage' : 'stage',
       diff.patch,
-    );
-    if (!this.git.error()) this.selectedDiffLineGroups.set([]);
+    ));
   }
 
   protected async reloadWorkingTreeDiff(): Promise<void> {
@@ -10540,7 +10782,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected requestDiscardSelectedDiffLines(): void {
     const diff = this.activeWorkingTreeDiff();
     const selection = this.selectedDiffLines();
-    if (!diff || diff.staged || !selection || this.isUntrackedPath(diff.path)) return;
+    if (!diff || diff.staged || diff.truncated || !selection || this.isUntrackedPath(diff.path)) return;
     this.openFileConfirmation({
       kind: 'discard-lines',
       path: diff.path,
@@ -10548,17 +10790,20 @@ export class AppComponent implements OnInit, OnDestroy {
       staged: false,
       hunkIndex: selection.hunkIndex,
       lineIndices: selection.lineIndices,
+      expectedPatch: diff.patch,
     });
   }
 
   protected requestDiscardHunk(path: string, hunkIndex: number): void {
-    if (this.isUntrackedPath(path)) return;
+    const diff = this.activeWorkingTreeDiff();
+    if (!diff || diff.path !== path || diff.staged || diff.truncated || this.isUntrackedPath(path)) return;
     this.openFileConfirmation({
       kind: 'discard-hunk',
       path,
       untracked: false,
       staged: false,
       hunkIndex,
+      expectedPatch: diff.patch,
     });
   }
 
@@ -10583,29 +10828,27 @@ export class AppComponent implements OnInit, OnDestroy {
     const action = this.pendingFileAction();
     if (!action) return;
     this.dismissFileConfirmation(false);
-    if (action.kind === 'discard-bulk' && action.preview && action.repositoryId) {
-      await this.git.discardPrepared(action.preview, action.repositoryId);
-      if (!this.git.error()) {
+    if (!action.repositoryId || !this.git.requireRecoveryRepository(action.repositoryId)) return;
+    if (action.kind === 'discard-bulk' && action.preview) {
+      const selection = this.selectedDiscardPaths();
+      const succeeded = await this.git.discardPrepared(action.preview, action.repositoryId);
+      if (succeeded && action.repositoryId === this.git.activeRepositoryId() && selection === this.selectedDiscardPaths()) {
         this.selectedDiscardPaths.set([]);
         this.discardSelectionMode.set(false);
       }
     } else if ((action.kind === 'recover-discard' || action.kind === 'forget-discard') && action.recovery) {
-      if (action.repositoryId !== this.git.activeRepositoryId()) {
-        this.git.error.set('The active repository changed. Reopen discarded-change recovery.');
-        return;
-      }
       if (action.kind === 'forget-discard') await this.git.forgetSavedDiscard(action.recovery.id);
       else await this.git.applySavedDiscard(action.recovery.id, action.recovery.restored);
     } else if (action.kind === 'discard') {
       await this.git.discardPath(action.path, action.untracked);
     } else if (action.kind === 'discard-hunk' && action.hunkIndex !== undefined) {
-      await this.git.applyWorkingTreeHunk(action.path, false, action.hunkIndex, 'discard');
+      await this.applyDiffChange(() => this.git.applyWorkingTreeHunk(action.path, false, action.hunkIndex!, 'discard', action.expectedPatch));
     } else if (action.kind === 'discard-lines' && action.hunkIndex !== undefined && action.lineIndices?.length) {
-      await this.git.applyWorkingTreeLines(action.path, false, action.hunkIndex, action.lineIndices, 'discard');
-      if (!this.git.error()) this.selectedDiffLineGroups.set([]);
+      await this.applyDiffChange(() => this.git.applyWorkingTreeLines(action.path, false, action.hunkIndex!, action.lineIndices!, 'discard', action.expectedPatch));
     } else if (action.kind === 'restore-commit' && action.oid) {
-      await this.git.restoreFilesFromCommit(action.oid, action.paths?.length ? action.paths : [action.path]);
-      if (!this.git.error()) this.selectWip();
+      const view = this.fileActionView();
+      const succeeded = await this.git.restoreFilesFromCommit(action.oid, action.paths?.length ? action.paths : [action.path]);
+      if (succeeded && view === this.fileActionView()) this.selectWip();
     } else if (action.patternKind) {
       await this.git.ignorePath(action.path, action.patternKind, true);
     }
@@ -11035,6 +11278,7 @@ export class AppComponent implements OnInit, OnDestroy {
     action: PendingFileAction,
     returnFocus: HTMLElement | null = null,
   ): void {
+    action.repositoryId ??= this.git.activeRepositoryId() ?? undefined;
     const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;

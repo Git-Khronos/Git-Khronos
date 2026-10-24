@@ -6,7 +6,7 @@ const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 const MAX_SUBMODULES: usize = 500;
 const GITLINK: &str = "160000";
 
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleConflict {
     pub base: Option<String>,
@@ -15,7 +15,7 @@ pub struct SubmoduleConflict {
     pub mixed_types: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleState {
     pub path: String,
@@ -37,7 +37,7 @@ pub struct SubmoduleState {
     pub missing_gitlink: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmoduleStateReview {
     pub gitmodules_present: bool,

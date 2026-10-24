@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsLock {
     pub id: String,
@@ -10,19 +10,19 @@ pub struct LfsLock {
     pub ours: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsLocks {
     pub locks: Vec<LfsLock>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 struct RawOwner {
     #[serde(default)]
     name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 struct RawLock {
     id: String,
     path: String,
@@ -32,7 +32,7 @@ struct RawLock {
     locked_at: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 struct RawVerified {
     #[serde(default)]
     ours: Vec<RawLock>,
@@ -40,7 +40,7 @@ struct RawVerified {
     theirs: Vec<RawLock>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 struct RawUnlock {
     #[serde(default)]
     unlocked: bool,
@@ -60,7 +60,6 @@ pub fn lfs_locks(path: &Path) -> Result<LfsLocks, AppError> {
         2 * 1024 * 1024,
     )
     .map_err(locks_unavailable)?;
-    ensure_success("list Git LFS locks", &output).map_err(locks_unavailable)?;
     if truncated {
         return Err(AppError::new(
             "lfsLocksTooLarge",
@@ -68,6 +67,7 @@ pub fn lfs_locks(path: &Path) -> Result<LfsLocks, AppError> {
             Some("Inspect locks with local git lfs locks. No partial list was presented."),
         ));
     }
+    ensure_success("list Git LFS locks", &output).map_err(locks_unavailable)?;
     let probe =
         run_git(path, &["lfs", "locks", "--verify", "--limit=1"]).map_err(locks_unavailable)?;
     ensure_success("verify Git LFS locks", &probe).map_err(locks_unavailable)?;
@@ -272,7 +272,9 @@ fn lock_failure(mut error: AppError) -> AppError {
 }
 
 fn locks_unavailable(mut error: AppError) -> AppError {
-    if error.kind == "authenticationRequired" || error.kind == "operationCancelled" {
+    if matches!(error.kind.as_str(),
+        "authenticationRequired" | "operationCancelled" | "credentialsInUrl"
+        | "remoteConfigurationUnavailable" | "tlsVerificationFailed" | "sshHostTrustRequired") {
         return error;
     }
     error.kind = "lfsLocksUnavailable".into();
@@ -292,6 +294,17 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     type Locks = Arc<Mutex<Vec<(String, String, String)>>>;
+
+    #[test]
+    fn lock_listing_preserves_actionable_transport_refusals() {
+        for kind in ["authenticationRequired", "operationCancelled", "credentialsInUrl",
+            "remoteConfigurationUnavailable", "tlsVerificationFailed", "sshHostTrustRequired"] {
+            let error = locks_unavailable(AppError::new(kind, "Specific refusal", Some("Specific recovery")));
+            assert_eq!(error.kind, kind);
+            assert_eq!(error.message, "Specific refusal");
+            assert_eq!(error.hint.as_deref(), Some("Specific recovery"));
+        }
+    }
 
     /// Minimal fixture for the documented Git LFS locking endpoints. Locks owned
     /// by "Tester" are reported as ours; `supported = false` answers 404.

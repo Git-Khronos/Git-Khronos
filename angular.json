@@ -21,6 +21,7 @@
           },
           "configurations": {
             "production": {
+              "define": { "GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES": "false" },
               "budgets": [
                 { "type": "initial", "maximumWarning": "900kB", "maximumError": "1.4MB" },
                 { "type": "anyComponentStyle", "maximumWarning": "76kB", "maximumError": "80kB" }
@@ -28,6 +29,8 @@
               "outputHashing": "all"
             },
             "development": {
+              "outputPath": "dist/development/desktop",
+              "define": { "GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES": "true" },
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true

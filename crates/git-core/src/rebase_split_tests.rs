@@ -82,6 +82,107 @@ impl Drop for Repository {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn rebase_start_refuses_linked_support_before_replacing_files_or_creating_recovery_refs() {
+    use std::os::unix::fs::symlink;
+    let repository = Repository::new();
+    fs::write(repository.0.join("existing"), b"next\n").unwrap();
+    stage_all(&repository.0).unwrap();
+    commit(&repository.0, "Next").unwrap();
+    let tip = repository.head();
+    let outside = Repository::new();
+    let protected = outside.0.join("protected");
+    fs::create_dir(&protected).unwrap();
+    fs::write(protected.join("sentinel"), b"retain outside data\n").unwrap();
+    let support = repository.0.join(".git/git-khronos-rebase");
+    symlink(&protected, &support).unwrap();
+    let references = repository.text(&["for-each-ref", "--format=%(refname) %(objectname)"]);
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let selection = [tip.clone()];
+    let steps = [InteractiveRebaseStep {
+        oid: tip.clone(),
+        action: "edit".into(),
+        message: None,
+    }];
+    assert!(
+        execute_interactive_rebase_with_selection(
+            &repository.0,
+            "main",
+            "main",
+            &steps,
+            Some(&selection)
+        )
+        .is_err()
+    );
+    assert_eq!(repository.head(), tip);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        repository.text(&["for-each-ref", "--format=%(refname) %(objectname)"]),
+        references
+    );
+    assert_eq!(
+        fs::read(protected.join("sentinel")).unwrap(),
+        b"retain outside data\n"
+    );
+    assert_eq!(fs::read_dir(&protected).unwrap().count(), 1);
+    assert!(fs::symlink_metadata(&support).unwrap().is_symlink());
+    assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
+}
+
+#[cfg(unix)]
+#[test]
+fn rebase_abort_never_recursively_deletes_a_linked_support_directory_target() {
+    use std::os::unix::fs::symlink;
+    let repository = Repository::new();
+    let (_, _, tip) = repository.pause(true);
+    let outside = Repository::new();
+    let protected = outside.0.join("protected");
+    fs::create_dir(&protected).unwrap();
+    fs::write(protected.join("sentinel"), b"retain outside data\n").unwrap();
+    let support = rebase_support_dir(&repository.0).unwrap();
+    fs::rename(&support, repository.0.join(".git/parked-support")).unwrap();
+    symlink(&protected, &support).unwrap();
+    abort_rebase(&repository.0).unwrap();
+    assert_eq!(repository.head(), tip);
+    assert_eq!(
+        fs::read(protected.join("sentinel")).unwrap(),
+        b"retain outside data\n"
+    );
+    assert_eq!(fs::read_dir(&protected).unwrap().count(), 1);
+    assert!(fs::symlink_metadata(&support).unwrap().is_symlink());
+    assert!(!read_status(&repository.0).unwrap().rebase_in_progress);
+}
+
+#[cfg(unix)]
+#[test]
+fn guided_split_refuses_linked_support_ancestors_without_resetting_or_losing_metadata() {
+    use std::os::unix::fs::symlink;
+    let repository = Repository::new();
+    let (_, _, tip) = repository.pause(true);
+    let stopped = repository.head();
+    begin_rebase_split(&repository.0, &stopped).unwrap();
+    let outside = Repository::new();
+    let protected = outside.0.join("protected");
+    let support = rebase_support_dir(&repository.0).unwrap();
+    fs::rename(&support, &protected).unwrap();
+    symlink(&protected, &support).unwrap();
+    let bytes = fs::read(protected.join("split.json")).unwrap();
+    let head = repository.head();
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    assert!(read_status(&repository.0).is_err());
+    assert!(begin_rebase_split(&repository.0, &head).is_err());
+    assert!(continue_rebase(&repository.0).is_err());
+    assert_eq!(repository.head(), head);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(protected.join("split.json")).unwrap(), bytes);
+    // Native Abort remains available when application-owned metadata is refused.
+    stage_all(&repository.0).unwrap();
+    abort_rebase(&repository.0).unwrap();
+    assert_eq!(repository.head(), tip);
+    assert_eq!(fs::read(protected.join("split.json")).unwrap(), bytes);
+}
+
 #[test]
 fn guided_split_retains_all_files_unstaged_requires_two_parts_and_resumes_exact_suffix() {
     let repository = Repository::new();

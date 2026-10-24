@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { invoke } from '@tauri-apps/api/core';
+import { ipc } from '@git-khronos/contracts';
+import { invokeCommand, type CommandArgs } from '@git-khronos/contracts';
 import type { LfsCheckoutPreview, LfsLock, LfsLocks, LfsFetchPreview, LfsFileAttributes, LfsObjects, LfsTrackingPattern, LfsTrackingRules } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
@@ -429,9 +430,9 @@ export class LfsTrackingDialogComponent {
     this.loading.set(true);
     let locks: LfsLocks | null = null;
     try {
-      await this.git.run('Loading LFS file locks…', async () => {
-        locks = await invoke<LfsLocks>('lfs_locks', { repoId: target.repositoryId });
-        this.git.activity.set('LFS file locks loaded');
+      await this.git.run('Loading LFS file locks…', async report => {
+        locks = await ipc.lfs_locks({ repoId: target.repositoryId });
+        report('LFS file locks loaded');
       }, target.repositoryId);
     } finally { this.loading.set(false); }
     if (this.request() !== target) return;
@@ -461,16 +462,16 @@ export class LfsTrackingDialogComponent {
     }
   }
 
-  private async changeLock(label: string, command: string, args: Record<string, unknown>): Promise<boolean> {
+  private async changeLock<K extends 'lfs_lock_file' | 'lfs_unlock_file'>(label: string, command: K, args: Omit<CommandArgs<K>, 'repoId'>): Promise<boolean> {
     const target = this.request();
     if (!target || this.unavailable()) return false;
     this.notice.set('');
     this.loading.set(true);
     let outcome: 'success' | 'error' | 'cancelled' = 'error';
     try {
-      outcome = await this.git.run(label, async () => {
-        await invoke(command, { repoId: target.repositoryId, ...args });
-        this.git.activity.set(label.replace('…', ' finished'));
+      outcome = await this.git.run(label, async report => {
+        await invokeCommand(command, { repoId: target.repositoryId, ...args } as CommandArgs<K>);
+        report(label.replace('…', ' finished'));
       }, target.repositoryId);
     } finally { this.loading.set(false); }
     if (this.request() !== target) return false;
@@ -481,7 +482,7 @@ export class LfsTrackingDialogComponent {
   }
 
   workingStateLabel(state: LfsObjects['files'][number]['workingState']): string {
-    const labels: Record<typeof state, string> = {
+    const labels: Record<string, string> = {
       missing: 'missing (may be deleted or sparse-excluded)',
       symlink: 'symlink path; target was not inspected',
       nonFile: 'not an ordinary file',
@@ -490,7 +491,7 @@ export class LfsTrackingDialogComponent {
       contentSizeMatches: 'content size matches; bytes are not verified',
       sizeMismatch: 'content size differs from the object',
     };
-    return labels[state];
+    return labels[state ?? ''] ?? state ?? 'unknown';
   }
 
   async confirm(): Promise<void> {

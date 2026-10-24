@@ -1,5 +1,14 @@
 <div class="app-shell" [class.is-busy]="git.busy()">
-  <gc-authentication />
+  @defer (on immediate) {
+    <gc-authentication />
+  } @error {
+    @if (!authenticationLoadErrorDismissed()) {
+      <div class="authentication-load-error" role="alert">
+        <p>Authentication interface could not load. Preserve drafts and restart Git Khronos before retrying authentication-required operations.</p>
+        <button type="button" aria-label="Dismiss authentication loading error" (click)="authenticationLoadErrorDismissed.set(true)">Dismiss</button>
+      </div>
+    }
+  }
   @if (referenceAction() || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
     @defer (on immediate) {
       <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" />
@@ -427,7 +436,7 @@
             </div>
           }
         </div>
-        <button class="tool-button toolbar-secondary-direct" type="button" title="Pop the latest stash" (click)="git.popStash()" [disabled]="!repo.stashes.length || git.busy()"><span><gc-icon name="archive-restore" /></span><small>Pop</small></button>
+        <button class="tool-button toolbar-secondary-direct" type="button" title="Pop the latest stash" (click)="git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><span><gc-icon name="archive-restore" /></span><small>Pop</small></button>
         @if (repo.lfs.enabled) {
           <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
             <button class="tool-button split-main" type="button" title="Pull Git LFS objects" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gc-icon name="server" /></span><small>LFS</small></button>
@@ -495,7 +504,7 @@
               <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Working directory">Working directory</div>
               <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
               <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose modes, untracked files, or specific paths</small></span></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); git.popStash()" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
               @if (repo.lfs.enabled) {
                 <div class="menu-separator toolbar-secondary-overflow"></div>
                 <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
@@ -1272,7 +1281,7 @@
             <span class="commit-action-heading"><gc-icon name="git-commit" [size]="12" /><strong>Commit</strong></span>
             <span class="commit-action-spacer"></span>
             <button type="button" title="Stash all changes" aria-label="Stash all changes" [disabled]="!repo.status.entryCount || git.busy()" (click)="stashCurrentChanges()"><gc-icon name="archive" [size]="13" /><span>Stash</span></button>
-            <button type="button" title="Pop latest stash" aria-label="Pop latest stash" [disabled]="!repo.stashes.length || git.busy()" (click)="git.popStash()"><gc-icon name="archive-restore" [size]="13" /><span>Pop</span></button>
+            <button type="button" title="Pop latest stash" aria-label="Pop latest stash" [disabled]="!repo.stashes.length || git.busy()" (click)="git.popStash(repo.stashes[0], repo.id)"><gc-icon name="archive-restore" [size]="13" /><span>Pop</span></button>
           </div>
           <form class="commit-form" (submit)="$event.preventDefault(); commit()">
             <div class="commit-form-body">
@@ -1652,6 +1661,7 @@
     @if (diffViewerOpen() && activeDiff(); as diff) {
       <section
         class="diff-workspace"
+        tabindex="-1"
         [class.sidebar-collapsed]="!sidebarVisible()"
         [class.word-wrap]="diffWordWrap()"
         [style.--diff-font-size]="diffFontSize() + 'px'"
@@ -1730,70 +1740,43 @@
           <button class="diff-close" type="button" aria-label="Close diff" title="Close diff (Esc)" (click)="closeDiffViewer()"><gc-icon name="x" [size]="13" /></button>
         </header>
         <div class="diff-content-shell" [class.insight-open]="diffInsightMode() !== 'diff'">
-          @if (diffInsightMode() === 'history') {
-            <section class="file-insight-panel history-insight" aria-label="File history">
-              <header><div><strong>File History</strong><small>{{ diff.path }} · renamed paths followed</small></div><b>{{ historySearch.files().length }} commits{{ historySearch.fileComplete() ? ' · complete' : ' · incomplete' }}</b></header>
-              @if (historySearch.fileBusy()) {
-                <div class="file-insight-loading"><span></span><span></span><span></span><small>Reading file history…</small></div>
-                <button type="button" (click)="historySearch.cancelFile()">Cancel file history</button>
-              }
-              @if (historySearch.fileError()) { <p role="alert">{{ historySearch.fileError() }}</p> }
-                <div class="history-list">
-                  @for (entry of historySearch.files(); track entry.oid) {
-                    <article class="history-entry">
-                      <span class="history-avatar" [style.--author-color]="authorColor(entry.authorName, entry.authorEmail)">{{ initials(entry.authorName) }}</span>
-                      <div><button type="button" (click)="openHistoricalFile(entry.oid, entry.path, entry.previousPath)">{{ entry.subject }}</button><small>{{ entry.path }} · {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
-                      <code>{{ shortOid(entry.oid) }}</code>
-                    </article>
-                  } @empty {
-                    @if (historySearch.fileComplete()) { <div class="file-insight-empty">No history was found for this file at the selected revision.</div> }
-                  }
-                </div>
-              @if (!historySearch.fileComplete() && !historySearch.fileBusy()) {
-                <button type="button" (click)="historySearch.nextFile()">{{ historySearch.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
-              }
-            </section>
-          } @else if (diffInsightMode() === 'blame') {
-            <section class="file-insight-panel blame-insight" aria-label="File blame">
-              <header><div><strong>Blame</strong><small>{{ diff.path }} · line-by-line ownership</small></div><b>{{ blameRows().length }} lines</b></header>
-              @if (git.fileInsightBusy()) {
-                <div class="file-insight-loading"><span></span><span></span><span></span><small>Reading blame information…</small></div>
-              } @else {
-                <div class="blame-lines">
-                  @for (line of blameRows(); track line.lineNumber) {
-                    <div class="blame-line" title="{{ line.summary }} · {{ line.authorEmail }}">
-                      <span>{{ line.lineNumber }}</span><button type="button" class="blame-sha" (click)="navigateBlame(line.oid, line.path || diff.path, false)" title="Open blamed commit">{{ shortOid(line.oid) }}</button><button type="button" (click)="navigateBlame(line.oid, line.path || diff.path, true)" title="Open first parent of blamed commit">Parent</button><span class="blame-author">{{ line.authorName }}</span><time>{{ (line.authoredAt * 1000) | date: 'MMM d, y' }}</time>
-                      <code class="blame-source">@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}">{{ token.text }}</span>}</code>
-                    </div>
-                  } @empty { <div class="file-insight-empty">No blame information was found for this file.</div> }
-                </div>
-              }
-            </section>
-          }
+          <div [style.display]="diffInsightMode() === 'history' ? 'contents' : 'none'">
+            @defer (when diffInsightMode() === 'history') {
+              <gc-file-history [path]="diff.path" [revision]="activeDiffRevision()!" [authorColor]="rebaseAuthorColor" [initials]="initials" (navigate)="openHistoricalFile($event.oid, $event.path, $event.previousPath)" />
+            }
+          </div>
+          <div [style.display]="diffInsightMode() === 'blame' ? 'contents' : 'none'">
+            @defer (when diffInsightMode() === 'blame') {
+              <gc-file-blame [path]="diff.path" [tokenize]="blameSyntaxTokens" (navigate)="navigateBlame($event.oid, $event.path, $event.parent)" />
+            }
+          </div>
           @if (diffViewMode() === 'split') {
             <div #focusedDiff class="split-diff diff-primary-view workspace-focus-region" role="region" aria-label="Before and after file changes" tabindex="-1">
               <div class="split-diff-head"><span>Before</span><span>After</span><span class="split-diff-stacked-head">Stacked comparison · before then after</span></div>
-              <div class="split-diff-body">
+              <div class="split-diff-body workspace-focus-region" tabindex="0" role="region" aria-label="Before and after source lines">
+                <div class="diff-lines">
                 @for (row of splitDiffRows(); track $index) {
                   @if (row.kind === 'header' || row.kind === 'hunk') {
                     <div class="split-marker {{ row.kind }}" [class.active-hunk]="row.hunkIndex === activeDiffHunk()" [attr.data-diff-hunk]="row.hunkIndex">{{ row.label }}</div>
                   } @else {
                     <div class="split-row">
-                      <div class="split-side" data-side="Before" [class.deletion]="row.left?.kind === 'deletion'" [class.empty]="!row.left">
+                      <div class="split-side" data-side="Before" [attr.data-diff-old-line]="row.left && row.left.hunkIndex !== null ? row.left.oldLine : null" [class.deletion]="row.left?.kind === 'deletion'" [class.empty]="!row.left">
                         <span>{{ row.left?.oldLine }}</span><code>@if (row.left; as left) {@for (token of left.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}}</code>
                       </div>
-                      <div class="split-side" data-side="After" [class.addition]="row.right?.kind === 'addition'" [class.empty]="!row.right">
+                      <div class="split-side" data-side="After" [attr.data-diff-new-line]="row.right && row.right.hunkIndex !== null ? row.right.newLine : null" [class.addition]="row.right?.kind === 'addition'" [class.empty]="!row.right">
                         <span>{{ row.right?.newLine }}</span><code>@if (row.right; as right) {@for (token of right.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}}</code>
                       </div>
                     </div>
                   }
                 }
+                </div>
               </div>
             </div>
           } @else {
             <div #focusedDiff class="focus-diff-view diff-primary-view {{ diffViewMode() }}" role="region" aria-label="File changes" tabindex="-1">
+              <div class="diff-lines">
               @for (line of diffLines(); track $index) {
-                <div class="focus-diff-line {{ line.kind }}" [class.active-hunk]="line.kind === 'hunk' && line.hunkIndex === activeDiffHunk()" [class.line-selected]="isDiffLineSelected(line)" [attr.data-diff-hunk]="line.kind === 'hunk' ? line.hunkIndex : null">
+                <div class="focus-diff-line {{ line.kind }}" [attr.data-diff-old-line]="line.hunkIndex !== null ? line.oldLine : null" [attr.data-diff-new-line]="line.hunkIndex !== null ? line.newLine : null" [class.active-hunk]="line.kind === 'hunk' && line.hunkIndex === activeDiffHunk()" [class.line-selected]="isDiffLineSelected(line)" [attr.data-diff-hunk]="line.kind === 'hunk' ? line.hunkIndex : null">
                   <span>@if (line.kind === 'addition' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
                   <span>@if (line.kind === 'deletion' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.newLine }} }</span>
                   <div class="focus-diff-code"><code>@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}</code>
@@ -1806,6 +1789,7 @@
                   </div>
                 </div>
               }
+              </div>
             </div>
           }
           <aside class="diff-minimap" aria-label="File change mini-map">
@@ -1819,7 +1803,7 @@
           @if (diffInsightMode() === 'history') {
             <span>{{ historySearch.files().length }} commits in file history{{ historySearch.fileComplete() ? ' · complete' : ' · more history may remain' }}</span>
           } @else if (diffInsightMode() === 'blame') {
-            <span>{{ blameRows().length }} blamed lines</span>
+            <span>{{ git.fileBlame()?.length ?? 0 }} blame lines loaded</span>
           } @else {
             <span>{{ diffLines().length }} lines</span>
             <span class="diff-additions">+{{ diffStats().additions }}</span>
@@ -2540,18 +2524,14 @@
       </form>
     </div>
   }
-  @if (pendingStashDelete(); as stash) {
-    <div class="confirmation-backdrop" (click)="pendingStashDelete.set(null)">
-      <section class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-label="Delete stash" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Delete stash</span>
-          <h2>{{ stash.message }}</h2>
-          <p>Remove {{ stash.reference }} from the stash list. Its staged, unstaged and untracked contents are saved in <strong>Recovery History</strong> first, so you can restore them on a new branch until you remove that capture.</p>
-        </div>
-        <footer><button type="button" (click)="pendingStashDelete.set(null)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmStashDelete()">Delete Stash</button></footer>
-      </section>
-    </div>
+  @if (pendingStashDelete(); as request) {
+    @defer (on immediate) {
+      <gc-stash-delete-dialog [request]="request" (closed)="closeStashDelete($event)" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="status">Loading stash confirmation…<button type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="alert">Stash confirmation could not load. No deletion was started.<button type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
+    }
   }
   @if (stashRenameTarget(); as stash) {
     <div class="confirmation-backdrop" (click)="stashRenameTarget.set(null)">

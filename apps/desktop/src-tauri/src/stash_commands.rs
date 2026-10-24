@@ -2,6 +2,7 @@ use super::*;
 use git_khronos_git_core::StashOptions;
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn stash_selected(
     repo_id: String,
     options: StashOptions,
@@ -18,6 +19,7 @@ pub async fn stash_selected(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn apply_stash_options(
     repo_id: String,
     reference: String,
@@ -41,6 +43,7 @@ pub async fn apply_stash_options(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn branch_from_stash(
     repo_id: String,
     reference: String,
@@ -59,6 +62,7 @@ pub async fn branch_from_stash(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn stash_checkout(
     repo_id: String,
     name: String,

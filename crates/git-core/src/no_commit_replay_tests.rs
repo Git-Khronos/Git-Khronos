@@ -112,6 +112,67 @@ fn fixture(conflicting: bool) -> (Repository, Vec<String>, String, String) {
     (repository, oids, source, original)
 }
 
+#[cfg(unix)]
+#[test]
+fn no_commit_replay_refuses_linked_journals_before_reading_or_controlling_external_state() {
+    use std::os::unix::fs::symlink;
+    let (repository, oids, _, original) = fixture(true);
+    let outside = Repository::new();
+    let path = &repository.0;
+    assert!(cherry_pick_commits_with_options(path, &oids, None, true).is_err());
+    assert!(read_status(path).unwrap().history_no_commit);
+    let external = outside.0.join("protected-journal.json");
+    let state = repository.state_file();
+    fs::rename(&state, &external).unwrap();
+    symlink(&external, &state).unwrap();
+    let bytes = fs::read(&external).unwrap();
+    let index = fs::read(path.join(".git/index")).unwrap();
+    let working = fs::read(path.join("file")).unwrap();
+    assert!(read_status(path).is_err());
+    for action in ["continue", "abort", "quit"] {
+        assert!(no_commit_replay::control(path, action).is_err());
+        assert_eq!(fs::read(&external).unwrap(), bytes);
+        assert!(fs::symlink_metadata(&state).unwrap().is_symlink());
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(path.join("file")).unwrap(), working);
+        assert_eq!(repository.oid(), original);
+        assert!(!external.with_extension("json.lock").exists());
+    }
+    fs::remove_file(&state).unwrap();
+    fs::rename(&external, &state).unwrap();
+    control_history_operation(path, "cherry-pick", "abort").unwrap();
+    assert_eq!(repository.oid(), original);
+    assert!(!repository.state_file().exists());
+    assert_eq!(fs::read(path.join("file")).unwrap(), b"destination\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn no_commit_replay_refuses_a_dangling_journal_link_before_any_replay_or_capture() {
+    use std::os::unix::fs::symlink;
+    let (repository, oids, _, original) = fixture(false);
+    let outside = Repository::new();
+    let target = outside.0.join("must-not-be-created.json");
+    symlink(&target, repository.state_file()).unwrap();
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let references = repository.recovery_tip();
+    assert!(cherry_pick_commits_with_options(&repository.0, &oids, None, true).is_err());
+    assert!(read_status(&repository.0).is_err());
+    assert!(!target.exists());
+    assert!(!target.with_extension("json.lock").exists());
+    assert_eq!(repository.oid(), original);
+    assert_eq!(repository.recovery_tip(), references);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"base\n");
+    assert!(!repository.0.join("first").exists());
+    assert!(!repository.0.join("last").exists());
+    assert!(
+        fs::symlink_metadata(repository.state_file())
+            .unwrap()
+            .is_symlink()
+    );
+}
+
 #[test]
 fn no_commit_replay_combines_reviewed_order_in_index_without_commits_and_explicit_commit_has_current_identity()
  {
