@@ -79,6 +79,37 @@ fork was created, retain the provider outcome and offer a fresh local preview.
 No implicit fetch, push, clone, remote deletion or remote repository deletion
 is included in attachment.
 
+The independent attachment core binds a selected source remote to its public
+provider repository, then freshly verifies the selected fork's account, owner
+and network. The plan includes the local repository path, source remote, proposed
+name, transport, URL, fetch refspec and existing remote names. Raw local and
+effective configuration are private comparison state; credentials and unrelated
+configuration values are excluded from serialization and debug output.
+
+Publishing acquires Git's `config.lock` before its final comparison and replaces
+only the common repository configuration. The original bytes remain a prefix;
+Git independently parses the candidate and must report exactly the previous
+local entries plus the new URL/refspec pair. Existing locks, name collisions,
+changed includes, changed provider identities, cancellation and expired reviews
+refuse publication. The confirmed result is separate from provider creation.
+Empty, bare and linked-worktree cases require independent behavioral evidence.
+
+This core has no desktop/native adapter yet. In its dedicated Cargo output
+directory, all 13 attachment cases and the complete core suite pass: 673 Rust
+tests, with 37 ignored. Clippy passes for all core targets with warnings denied.
+Earlier shared-target runs reused an older test executable without the new
+module and are excluded from this qualification. The first isolated run exposed
+nine preparation failures: Git refused `remote get-url` for a command-scoped
+candidate that had not been persisted. Read-only `remote -v` now verifies the
+candidate fetch/push destinations without changing configuration; the corrected
+isolated cases and full core suite pass.
+Provider-bound attachment currently refuses Git URL rewrites that redirect the
+reviewed destination. A complete explicit review of redirected transport targets
+remains open; the existing manual remote configuration workflow remains separate.
+Application-process restart and cross-platform durability also remain acceptance
+gaps. None of these notes qualifies the earlier clone or new fork package for
+remote attachment.
+
 ## Behavioral acceptance
 
 Use owned API fixtures, temporary Git repositories and independent Git output.

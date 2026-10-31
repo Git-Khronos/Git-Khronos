@@ -1,5 +1,14 @@
 # Informational sources
 
+## Reviewed local fork remote configuration
+
+- [Git remote manual](https://git-scm.com/docs/git-remote)
+- [Git configuration manual](https://git-scm.com/docs/git-config)
+
+Used for remote URL/fetch-refspec behavior, configuration scopes and includes.
+The locking/comparison/publication implementation and behavioral fixtures are
+original project code. No external source or vendor implementation was copied.
+
 ## Generated frontend notices and dialog-plugin terms
 
 Sources: the actual production `dist/apps/desktop/3rdpartylicenses.txt`, installed

@@ -45,6 +45,11 @@ pub use hosted_clone::{
 mod hosted_repositories;
 mod hosted_forks;
 mod hosted_fork_request;
+mod hosted_fork_remote;
+pub use hosted_fork_remote::{
+    HostedForkRemoteRequest, HostedForkRemotePlan, HostedForkRemoteReceipt,
+    prepare_hosted_fork_remote, execute_hosted_fork_remote,
+};
 pub use hosted_fork_request::{
     HostedForkRequest, HostedForkPlan, HostedForkIntent, HostedForkOwner,
     HostedForkOwnerKind, HostedForkPhase, HostedForkStatus, HostedForkRepository,

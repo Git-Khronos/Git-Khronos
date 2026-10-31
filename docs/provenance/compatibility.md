@@ -1,5 +1,15 @@
 # Compatibility notes
 
+## Reviewed fork remote attachment
+
+The public Git configuration and remote manuals define URL/refspec entries and
+configuration scopes. Fork identity comes from the existing independently
+implemented public GitHub reads. The configuration comparison, original-byte
+preservation, lock ownership checks and publication logic are project designs.
+Owned temporary repositories and Git CLI output supply behavioral oracles.
+No external source, proprietary internals or assets were used. Desktop/native,
+redirected transport and cross-platform acceptance remain open.
+
 ## Mail-patch series exchange
 
 Export accepts 1-500 consecutive ordinary first-parent commits ending at HEAD,

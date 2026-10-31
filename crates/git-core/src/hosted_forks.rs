@@ -139,7 +139,7 @@ fn page_with(
     })
 }
 
-fn inspect_fork_with(
+pub(crate) fn inspect_fork_with(
     transport: &mut impl Transport,
     selection: &HostedForkSelection,
 ) -> Result<HostedForkInspection, AppError> {
