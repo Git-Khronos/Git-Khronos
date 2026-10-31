@@ -2112,3 +2112,18 @@ This source checkpoint does not expose discovery through native IPC or a desktop
 screen. Clone handoff, fork creation/readiness reconciliation, local attachment,
 enterprise and other-provider behavior remain separate requirements. No vendor
 implementation, interface composition or proprietary package contents were used.
+
+## Read-only fork candidates and fresh inspection
+
+An original adapter consumes the documented GitHub fork-list and repository
+metadata endpoints. A candidate page is bounded and account/source bound. A
+separate inspection checks the owner and repository IDs and confirms ancestry
+through the reported fork-network root. Repository names alone never establish
+a fork relationship; missing ancestry and failed reads remain explicit errors.
+
+Owned fixtures cover direct forks, forks sharing a network root, ownership and
+account replacement, precision-safe IDs, malformed pages, continuation and
+cancellation. They submit no provider writes. This source implementation does
+not establish native, renderer, creation/readiness, local attachment or
+other-provider acceptance. No vendor implementation, package internals, assets,
+external source code or copied documentation prose was used.

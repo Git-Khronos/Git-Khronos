@@ -120,3 +120,27 @@ writes. The final full source run passes 658 Rust and 166 frontend tests, with
 also pass. No discovery IPC, desktop catalogue, account-bound clone handoff, fork
 creation/reconciliation or local remote-attachment workflow is qualified by this
 source checkpoint. Enterprise and other providers remain open.
+
+## Read-only fork discovery core checkpoint (2026-10-31)
+
+`crates/git-core/src/hosted_forks.rs` implements bounded GitHub fork pages and a
+separate fresh inspection of a selected candidate. Each request binds the source
+repository ID and canonical name to the acting account ID. Pages contain at most
+fifty candidates; a full page indicates possible continuation. An empty page
+does not prove that another page or owner has no fork. Provider errors remain
+errors, and no read failure is interpreted as permission to create a fork.
+
+Listing alone does not verify a fork for attachment. Fresh inspection requires
+the selected owner and repository IDs, canonical names, reported fork status,
+parent metadata and the same confirmed network root as the source. A fork of
+another fork is supported when the public metadata identifies the common root.
+Unknown ancestry, a same-name unrelated repository, a changed account or source,
+disabled access and inconsistent URLs are refused. IDs remain decimal strings;
+raw responses and temporary clone tokens do not leave the core API.
+
+Seven owned response fixtures exercise these transitions without provider writes
+or local repository changes. The full source gate passes 665 Rust tests and 166
+frontend tests, with 45 Rust cases ignored. Angular compilation, Cargo workspace
+checks and Clippy with warnings denied also pass. This module does not yet expose native IPC or a
+desktop fork screen, create a fork, establish object readiness, reconcile an
+uncertain write or attach a local remote. Those workflows remain required.

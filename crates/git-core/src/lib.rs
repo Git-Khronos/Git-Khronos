@@ -38,6 +38,11 @@ pub use branch_workflow::{
     resume_branch_workflow_finish, abort_branch_workflow_finish, acknowledge_branch_workflow_finish,
 };
 mod hosted_repositories;
+mod hosted_forks;
+pub use hosted_forks::{
+    HostedForkQuery, HostedForkPage, HostedForkSelection, HostedForkInspection,
+    load_hosted_fork_page, inspect_hosted_fork,
+};
 pub use hosted_repositories::{
     HostedAccount, HostedRepositoryIdentity, HostedRepository, HostedRepositoryVisibility,
     HostedRepositoryAffiliation, HostedRepositorySort, HostedRepositoryDirection,
