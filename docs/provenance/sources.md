@@ -1402,6 +1402,7 @@ Sources:
 - [Git checkout](https://git-scm.com/docs/git-checkout)
 - [Git ref validation](https://git-scm.com/docs/git-check-ref-format)
 - [Git conditional ref transactions](https://git-scm.com/docs/git-update-ref)
+- [Git reference-transaction hooks](https://git-scm.com/docs/githooks#_reference_transaction)
 - [Git merge](https://git-scm.com/docs/git-merge)
 - [Git annotated and signed tags](https://git-scm.com/docs/git-tag)
 - [Git worktree occupancy](https://git-scm.com/docs/git-worktree)
@@ -1409,7 +1410,8 @@ Sources:
 
 Used for a neutral capability specification and an original Rust workflow engine.
 Owned Git repositories verify configuration scope, literal names, conditional
-refs, integration ancestry, partial completion and durable recovery. Standard
+refs, integration ancestry, partial completion, cancellation before/after a transaction
+commits, and durable recovery. Standard
 library file locks serialize linked-worktree actions. No vendor implementation,
 package contents, assets, interface composition or external source code was used.
 Desktop/native acceptance remains a separate open requirement in the specification.

@@ -531,6 +531,17 @@ pub(crate) fn preserve_commits(
     head_oid: &str,
     snapshot_oid: Option<&str>,
 ) -> Result<OperationRecovery, AppError> {
+    preserve_commits_inner(path, label, head_oid, snapshot_oid, None)
+}
+
+pub(crate) fn preserve_commits_cancellable(path: &Path, label: &str, head_oid: &str,
+    cancellation: &CancellationToken) -> Result<OperationRecovery, AppError> {
+    preserve_commits_inner(path, label, head_oid, None, Some(cancellation))
+}
+
+fn preserve_commits_inner(path: &Path, label: &str, head_oid: &str,
+    snapshot_oid: Option<&str>, cancellation: Option<&CancellationToken>) -> Result<OperationRecovery, AppError> {
+    if cancellation.is_some_and(CancellationToken::is_cancelled) { return Err(operation_cancelled()); }
     if label.is_empty() || label.len() > 4096 || label.contains('\0') {
         return Err(AppError::new(
             "invalidRecoveryLabel",
@@ -559,12 +570,25 @@ pub(crate) fn preserve_commits(
         transaction.push_str(&format!("create {reference} {oid}\n"));
     }
     transaction.push_str("prepare\ncommit\n");
-    run_git_with_input(
-        path,
-        &["update-ref", "--no-deref", "--stdin"],
-        transaction.as_bytes(),
+    let result = git_cancellation::with(cancellation, || run_git_with_input(
+        path, &["update-ref", "--no-deref", "--stdin"], transaction.as_bytes(),
         "protect operation recovery",
-    )?;
+    ));
+    if let Err(error) = &result {
+        // A reference-transaction hook can fail or be canceled after commit.
+        // Reconcile outside the canceled scope and persist a discoverable
+        // recovery record whenever the exact protected refs were applied.
+        let tip = run_git(path, &["show-ref", "--verify", "--hash", &head_reference])?;
+        if !tip.status.success() || String::from_utf8_lossy(&tip.stdout).trim() != head_oid {
+            return Err(error.clone());
+        }
+        if let (Some(reference), Some(oid)) = (&snapshot_reference, snapshot_oid) {
+            let tip = run_git(path, &["show-ref", "--verify", "--hash", reference])?;
+            if !tip.status.success() || String::from_utf8_lossy(&tip.stdout).trim() != oid {
+                return Err(error.clone());
+            }
+        }
+    }
     let record = OperationRecovery {
         id,
         label: label.into(),
@@ -587,6 +611,11 @@ pub(crate) fn preserve_commits(
             )),
         )
     })?;
+    if let Err(error) = result {
+        return Err(AppError::new("recoveryCaptureStopped",
+            format!("Recovery refs were verified and their record was saved, but Git stopped: {}", error.message),
+            Some(&format!("The operation was not started. Inspect the saved capture at {} before retrying.", record.head_reference))));
+    }
     Ok(record)
 }
 
@@ -749,6 +778,19 @@ fn verify_record(path: &Path, record: &OperationRecovery) -> Result<(), AppError
         }
     }
     Ok(())
+}
+
+pub(crate) fn verify_commit_capture(path: &Path, capture: &OperationRecovery, expected: &str) -> Result<(), AppError> {
+    let saved = read_record(path, &capture.id)?;
+    if saved.head_oid != expected || capture.head_oid != expected
+        || saved.head_reference != capture.head_reference
+        || saved.snapshot_oid.is_some() || capture.snapshot_oid.is_some()
+        || saved.snapshot_reference.is_some() || capture.snapshot_reference.is_some()
+    {
+        return Err(AppError::new("recoveryReferenceChanged",
+            "The workflow recovery capture no longer matches its reviewed history.", None));
+    }
+    verify_record(path, &saved)
 }
 
 pub fn operation_recoveries(path: &Path) -> Result<Vec<OperationRecovery>, AppError> {

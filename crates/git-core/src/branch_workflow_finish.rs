@@ -106,6 +106,24 @@ pub struct BranchWorkflowFinishStatus {
     pub notice: Option<String>,
 }
 
+pub fn prepare_branch_workflow_finish_cancellable(
+    path: &Path,
+    branch: &str,
+    options: BranchWorkflowFinishOptions,
+    cancellation: &CancellationToken,
+) -> Result<BranchWorkflowFinishPlan, AppError> {
+    cancellable_read(cancellation, || {
+        prepare_branch_workflow_finish(path, branch, options)
+    })
+}
+
+pub fn load_branch_workflow_finish_cancellable(
+    path: &Path,
+    cancellation: &CancellationToken,
+) -> Result<Option<BranchWorkflowFinishStatus>, AppError> {
+    cancellable_read(cancellation, || load_branch_workflow_finish(path))
+}
+
 fn text_valid(text: &str) -> bool {
     !text.trim().is_empty() && text.len() <= TEXT_LIMIT && !text.contains('\0')
 }
@@ -567,6 +585,16 @@ fn bindings_match(path: &Path, status: &BranchWorkflowFinishStatus) -> Result<()
     {
         return Err(stale());
     }
+    if status.recovery.len() != status.plan.targets.len() + 1 {
+        return Err(stale());
+    }
+    for (capture, expected) in status.recovery.iter().zip(
+        std::iter::once(&status.plan.source_oid)
+            .chain(status.plan.targets.iter().map(|target| &target.oid)),
+    ) {
+        operation_recovery::verify_commit_capture(path, capture, expected).map_err(|error|
+            refused(format!("Workflow recovery is unavailable: {} Previously applied stages are retained; further stages were refused.", error.message)))?;
+    }
     let source = direct_tip(path, &status.plan.branch)?;
     let source_removed = status.plan.delete_topic
         && matches!(
@@ -781,7 +809,9 @@ fn record_integration(
     journal: &mut Journal,
     result: &Result<Output, AppError>,
 ) -> Result<bool, AppError> {
-    match inspect_integration(path, &journal.status) {
+    match git_cancellation::inspect(Duration::from_secs(8), || {
+        inspect_integration(path, &journal.status)
+    }) {
         Ok(Integration::Complete(oid)) => {
             journal.status.completed_targets.push(oid);
             journal.status.phase = BranchWorkflowFinishPhase::Ready;
@@ -860,7 +890,7 @@ fn merge_target(
     cancellation: &CancellationToken,
     continuing: bool,
 ) -> Result<bool, AppError> {
-    bindings_match(path, &journal.status)?;
+    cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -990,7 +1020,7 @@ fn create_tag(
     journal: &mut Journal,
     cancellation: &CancellationToken,
 ) -> Result<bool, AppError> {
-    bindings_match(path, &journal.status)?;
+    cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -1053,7 +1083,7 @@ fn cleanup(
     journal: &mut Journal,
     cancellation: &CancellationToken,
 ) -> Result<bool, AppError> {
-    bindings_match(path, &journal.status)?;
+    cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
     if !journal.status.plan.delete_topic || direct_tip(path, &journal.status.plan.branch)?.is_none()
     {
         journal.status.phase = BranchWorkflowFinishPhase::Complete;
@@ -1118,7 +1148,7 @@ fn advance(
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
     loop {
-        bindings_match(path, &journal.status)?;
+        cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
         if cancellation.is_cancelled() {
             return Err(operation_cancelled());
         }
@@ -1188,7 +1218,7 @@ pub fn finish_branch_workflow(
     plan: &BranchWorkflowFinishPlan,
     cancellation: &CancellationToken,
 ) -> Result<BranchWorkflowFinishStatus, AppError> {
-    let _guard = action_guard(path)?;
+    let _guard = cancellable_read(cancellation, || action_guard(path))?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -1201,7 +1231,8 @@ pub fn finish_branch_workflow(
         }),
         delete_topic: plan.delete_topic,
     };
-    let mut fresh = prepare_branch_workflow_finish(path, &plan.branch, options)?;
+    let mut fresh =
+        prepare_branch_workflow_finish_cancellable(path, &plan.branch, options, cancellation)?;
     // User-authored messages are part of the immutable reviewed plan, while its
     // branch/configuration bindings must be freshly derived.
     if fresh.targets.len() != plan.targets.len() {
@@ -1213,7 +1244,7 @@ pub fn finish_branch_workflow(
     if &fresh != plan {
         return Err(stale());
     }
-    validate_shape(path, plan)?;
+    cancellable_read(cancellation, || validate_shape(path, plan))?;
     let mut recovery = Vec::new();
     for (label, oid) in std::iter::once((
         format!("Workflow {}: source", plan.branch),
@@ -1228,8 +1259,11 @@ pub fn finish_branch_workflow(
         if cancellation.is_cancelled() {
             return Err(operation_cancelled());
         }
-        recovery.push(operation_recovery::preserve_commits(
-            path, &label, oid, None,
+        recovery.push(operation_recovery::preserve_commits_cancellable(
+            path,
+            &label,
+            oid,
+            cancellation,
         )?);
     }
     if cancellation.is_cancelled() {
@@ -1252,8 +1286,8 @@ pub fn finish_branch_workflow(
         },
         persisted: Vec::new(),
     };
-    bindings_match(path, &journal.status)?;
-    let (head, reference) = clean_checkout(path)?;
+    cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
+    let (head, reference) = cancellable_read(cancellation, || clean_checkout(path))?;
     if (BranchWorkflowHead {
         oid: head,
         reference,
@@ -1303,7 +1337,7 @@ pub fn resume_branch_workflow_finish(
     retry: bool,
     cancellation: &CancellationToken,
 ) -> Result<BranchWorkflowFinishStatus, AppError> {
-    let _guard = action_guard(path)?;
+    let _guard = cancellable_read(cancellation, || action_guard(path))?;
     let mut journal = selected_journal(path, id, revision)?;
     if matches!(
         journal.status.phase,
@@ -1311,7 +1345,7 @@ pub fn resume_branch_workflow_finish(
     ) {
         return Ok(journal.status);
     }
-    bindings_match(path, &journal.status)?;
+    cancellable_read(cancellation, || bindings_match(path, &journal.status))?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -1338,7 +1372,8 @@ pub fn resume_branch_workflow_finish(
                 save_journal(path, &mut journal, false)?;
             }
             BranchWorkflowFinishPhase::Merging | BranchWorkflowFinishPhase::Conflicted => {
-                match inspect_integration(path, &journal.status)? {
+                match cancellable_read(cancellation, || inspect_integration(path, &journal.status))?
+                {
                     Integration::Complete(oid) => {
                         journal.status.completed_targets.push(oid);
                         journal.status.phase = BranchWorkflowFinishPhase::Ready;
@@ -1442,7 +1477,7 @@ pub fn abort_branch_workflow_finish(
     revision: u32,
     cancellation: &CancellationToken,
 ) -> Result<BranchWorkflowFinishStatus, AppError> {
-    let _guard = action_guard(path)?;
+    let _guard = cancellable_read(cancellation, || action_guard(path))?;
     let mut journal = selected_journal(path, id, revision)?;
     if journal.status.phase == BranchWorkflowFinishPhase::Complete {
         return Err(refused(
@@ -1455,7 +1490,7 @@ pub fn abort_branch_workflow_finish(
     consume_revision(path, &mut journal)?;
     let status = read_status(path)?;
     if status.merge_in_progress {
-        match inspect_integration(path, &journal.status)? {
+        match cancellable_read(cancellation, || inspect_integration(path, &journal.status))? {
             Integration::AppliedWithMetadata => {
                 if !settle_applied_merge(path, &mut journal, cancellation)? {
                     return Ok(journal.status);
@@ -2444,6 +2479,152 @@ wait
                 let state = stat.rsplit_once(") ").unwrap().1.chars().next().unwrap();
                 assert_eq!(state, 'Z', "owned hook descendant is still running");
             }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_a_prepared_backup_transaction_does_not_start_finish() {
+        use super::super::tests::{blocking_hook, cancel_at_owned_hook};
+        let fixture = Fixture::new();
+        fixture.setup();
+        topic(&fixture, "feature/backup-prepared", "feature\n");
+        let plan = prepare_branch_workflow_finish(
+            &fixture.repo,
+            "feature/backup-prepared",
+            Default::default(),
+        )
+        .unwrap();
+        blocking_hook(&fixture, "reference-transaction", Some("prepared"));
+        let refs = fixture.refs();
+        let index = fixture.index();
+        let repo = fixture.repo.clone();
+        let error = cancel_at_owned_hook(&fixture, move |token| {
+            finish_branch_workflow(&repo, &plan, &token)
+        })
+        .unwrap_err();
+        assert_eq!(error.kind, "operationCancelled");
+        assert_eq!(fixture.refs(), refs);
+        assert_eq!(fixture.index(), index);
+        assert!(
+            operation_recovery::operation_recoveries(&fixture.repo)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(!finish_pending(&fixture.repo).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_a_committed_backup_keeps_a_discoverable_recovery_record_without_starting_finish()
+    {
+        use super::super::tests::{blocking_hook, cancel_at_owned_hook};
+        let fixture = Fixture::new();
+        fixture.setup();
+        let source = topic(&fixture, "feature/backup-committed", "feature\n");
+        let plan = prepare_branch_workflow_finish(
+            &fixture.repo,
+            "feature/backup-committed",
+            Default::default(),
+        )
+        .unwrap();
+        let heads = fixture.git(&[
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/heads/",
+        ]);
+        let index = fixture.index();
+        blocking_hook(&fixture, "reference-transaction", Some("committed"));
+        let repo = fixture.repo.clone();
+        let error = cancel_at_owned_hook(&fixture, move |token| {
+            finish_branch_workflow(&repo, &plan, &token)
+        })
+        .unwrap_err();
+        assert_eq!(error.kind, "recoveryCaptureStopped");
+        assert_eq!(
+            fixture.git(&[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/heads/"
+            ]),
+            heads
+        );
+        assert_eq!(fixture.index(), index);
+        assert!(!finish_pending(&fixture.repo).unwrap());
+        let records = operation_recovery::operation_recoveries(&fixture.repo).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].head_oid, source);
+        assert_eq!(
+            fixture.git(&["rev-parse", &records[0].head_reference]),
+            source
+        );
+        assert!(error.hint.unwrap().contains(&records[0].head_reference));
+    }
+
+    #[test]
+    fn missing_changed_or_symbolic_recovery_refs_and_missing_records_refuse_further_stages() {
+        for damage in ["missing", "changed", "symbolic", "record"] {
+            let fixture = Fixture::new();
+            fixture.setup();
+            topic(&fixture, "feature/recovery-binding", "feature\n");
+            let plan = prepare_branch_workflow_finish(
+                &fixture.repo,
+                "feature/recovery-binding",
+                Default::default(),
+            )
+            .unwrap();
+            let journal = pending(&fixture, plan, BranchWorkflowFinishPhase::Ready);
+            let capture = &journal.status.recovery[0];
+            match damage {
+                "missing" => {
+                    fixture.git(&["update-ref", "-d", &capture.head_reference]);
+                }
+                "changed" => {
+                    let other = fixture.git(&["rev-parse", "main"]);
+                    fixture.git(&["update-ref", &capture.head_reference, &other]);
+                }
+                "symbolic" => {
+                    fixture.git(&[
+                        "symbolic-ref",
+                        &capture.head_reference,
+                        "refs/heads/feature/recovery-binding",
+                    ]);
+                }
+                "record" => {
+                    let path = discard::recovery_directory(&fixture.repo)
+                        .unwrap()
+                        .join(format!("{}.json", capture.id));
+                    fs::remove_file(path).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            let refs = fixture.refs();
+            let index = fixture.index();
+            let record = fs::read(common_journal(&fixture.repo).unwrap()).unwrap();
+            let error = resume_branch_workflow_finish(
+                &fixture.repo,
+                &journal.status.id,
+                0,
+                true,
+                &CancellationToken::default(),
+            )
+            .unwrap_err();
+            assert!(
+                error.message.contains("recovery"),
+                "{damage}: {}",
+                error.message
+            );
+            assert_eq!(fixture.refs(), refs, "{damage}");
+            assert_eq!(fixture.index(), index, "{damage}");
+            assert_eq!(
+                fs::read(common_journal(&fixture.repo).unwrap()).unwrap(),
+                record,
+                "{damage}"
+            );
+            assert_eq!(
+                fixture.git(&["symbolic-ref", "HEAD"]),
+                "refs/heads/feature/recovery-binding"
+            );
         }
     }
 }

@@ -22,11 +22,15 @@ mod rebase_split;
 pub use rebase_split::{RebaseSplitStatus, begin_rebase_split};
 mod hosting;
 mod branch_workflow;
+mod git_cancellation;
 pub use branch_workflow::{
     BranchWorkflowSettings, BranchWorkflowKind, BranchWorkflowBinding,
     BranchWorkflowSetup, BranchWorkflowStart, BranchWorkflowTopic, BranchWorkflowState,
     prepare_branch_workflow_setup, apply_branch_workflow_setup, branch_workflow_state,
     prepare_branch_workflow_start, start_branch_workflow,
+    prepare_branch_workflow_setup_cancellable, apply_branch_workflow_setup_cancellable,
+    prepare_branch_workflow_start_cancellable, branch_workflow_state_cancellable,
+    prepare_branch_workflow_finish_cancellable, load_branch_workflow_finish_cancellable,
     BranchWorkflowMergePolicy, BranchWorkflowTagRequest, BranchWorkflowFinishOptions,
     BranchWorkflowFinishTarget, BranchWorkflowFinishTag, BranchWorkflowHead,
     BranchWorkflowFinishPlan, BranchWorkflowFinishPhase, BranchWorkflowFinishStatus,
@@ -7994,20 +7998,21 @@ fn run_git_with_environment(
     args: &[&str],
     environment: &[(&str, &str)],
 ) -> Result<Output, AppError> {
-    git_in(path)
-        .args(args)
+    let mut command = git_in(path);
+    command.args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
-        .envs(environment.iter().copied())
-        .output()
-        .map_err(|error| {
-            AppError::new(
-                "gitUnavailable",
-                format!("Could not start Git: {error}"),
-                Some("Install Git and ensure it is available on PATH."),
-            )
-        })
+        .envs(environment.iter().copied());
+    if let Some(cancellation) = git_cancellation::current() {
+        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        configure_process_tree(&mut command);
+        return run_cancellable_command(command, &cancellation);
+    }
+    command.output().map_err(|error| {
+        AppError::new("gitUnavailable", format!("Could not start Git: {error}"),
+            Some("Install Git and ensure it is available on PATH."))
+    })
 }
 
 fn run_git_with_cancellation(
@@ -8133,8 +8138,15 @@ fn capture_cancellable_command(
     stdout_limit: Option<usize>,
     stderr_capture: StderrCapture,
 ) -> Result<CapturedCommand, AppError> {
-    if cancellation.is_cancelled() {
-        return Err(operation_cancelled());
+    let scoped = git_cancellation::current();
+    let deadline = git_cancellation::deadline();
+    let timed_out = || deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline);
+    let cancelled = || cancellation.is_cancelled() || scoped.as_ref().is_some_and(CancellationToken::is_cancelled) || timed_out();
+    let cancellation_error = || if timed_out() {
+        AppError::new("gitInspectionTimeout", "Git state inspection exceeded its time limit.", Some("The action may already have applied. Inspect current state before retrying."))
+    } else { operation_cancelled() };
+    if cancelled() {
+        return Err(cancellation_error());
     }
     let mut child = command.spawn().map_err(|error| {
         AppError::new(
@@ -8228,13 +8240,13 @@ fn capture_cancellable_command(
                 }
             }
         }
-        if cancellation.is_cancelled() {
+        if cancelled() {
             stop_readers.store(true, Ordering::Release);
             terminate_process_tree(&mut child);
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
-            return Err(operation_cancelled());
+            return Err(cancellation_error());
         }
         // A descendant may still own a pipe after Git exits. Keep cancellation
         // active until both readers finish instead of blocking in their joins.
@@ -8365,6 +8377,12 @@ fn run_git_with_input_environment(
     input: &[u8],
     environment: &[(&str, &std::ffi::OsStr)],
 ) -> Result<Output, AppError> {
+    if let Some(cancellation) = git_cancellation::current() {
+        let mut command = git_in(path);
+        command.args(args).env("GIT_TERMINAL_PROMPT", "0").env("LC_ALL", "C")
+            .envs(environment.iter().copied());
+        return git_cancellation::run_input(command, input, &cancellation);
+    }
     let mut child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")

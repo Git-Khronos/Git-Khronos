@@ -183,11 +183,8 @@ of cryptographic trust or signer identity.
 
 Remaining requirements before desktop acceptance:
 
-- Native commands and repository-bound, one-use previews; renderer controls,
-  keyboard behavior and packaged acceptance are not yet implemented.
-- Setup/ref-backup transactions and some preparation reads still use the existing
-  noncancellable Git helpers. Cancellation of dispatched finish commands is
-  tested; this does not qualify cancellation at every preflight/backup boundary.
+- Renderer controls, keyboard behavior and packaged acceptance remain open;
+  the native command and cancellation checkpoint below does not complete them.
 - Topic discovery does not yet expose tracking state. Conditional local ref
   deletion retains branch-specific configuration; safely handling later topic
   name reuse and concurrent external worktree registration needs qualification.
@@ -198,3 +195,45 @@ Remaining requirements before desktop acceptance:
 
 This checkpoint introduces no dependency, proprietary code, asset or copied UI.
 It does not qualify the current packaged executable or complete G24.
+
+
+## Native command and cancellation checkpoint (2026-10-31)
+
+The native registry exposes `load_branch_workflow`, `prepare_branch_workflow`,
+`execute_branch_workflow`, `discard_branch_workflow_plan` and
+`control_branch_workflow_finish`. Setup/start/finish previews are stored in the
+native process, bound to a repository session, and expire after fifteen minutes.
+Execution consumes a preview once before dispatch and accepts only its token.
+The cache is bounded; a busy checkout is refused without an uninterruptible
+mutex wait. Continue/abort/acknowledge identify the durable workflow and its
+current action revision. Rust-derived TypeScript contracts preserve these types.
+
+Owned source tests exercise repository binding, expiry, reuse refusal, strict
+nested request decoding and TypeScript rejection of forged execution plans or
+missing revisions. This is source-level command evidence, not native WebDriver
+or packaged acceptance.
+
+Workflow preview reads and setup use synchronous thread-bound cancellation
+scopes. Scoped Git stdin is a private file, so a command that does not consume
+input cannot block a pipe writer ahead of the cancellable runner. Scopes restore
+the previous context when nested or unwound and do not propagate to another
+thread or across asynchronous suspension.
+
+Owned hooks verify cancellation on both sides of reference-transaction commit.
+Before commit, setup and backup cancellation preserve original refs. After
+commit, setup retains initialized refs and reports a partial outcome; a verified
+backup ref receives a discoverable recovery record even if its Git process was
+canceled. Neither outcome silently starts later stages. A configuration lock
+failure retains initialized refs and preserves the existing lock file.
+
+Post-command merge inspection uses a separate eight-second deadline, so an
+already-canceled action can still establish applied effects. If inspection cannot
+finish, the durable stage remains unconfirmed and requires another explicit
+inspection or continuation. This limit never causes a merge replay or a reset.
+Successful continuation checks use the new action's cancellation token.
+
+Before further finish stages, the engine verifies each saved recovery record and
+its direct protected ref against the reviewed original commit. Missing or moved
+refs, symbolic substitutions and removed records refuse continuation while
+retaining the existing workflow journal, refs and index. The source test covers
+all four cases independently.

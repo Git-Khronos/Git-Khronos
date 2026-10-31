@@ -7,7 +7,9 @@ pub use finish::{
     BranchWorkflowFinishStatus, BranchWorkflowFinishTag, BranchWorkflowFinishTarget,
     BranchWorkflowHead, BranchWorkflowMergePolicy, BranchWorkflowTagRequest,
     abort_branch_workflow_finish, acknowledge_branch_workflow_finish, finish_branch_workflow,
-    load_branch_workflow_finish, prepare_branch_workflow_finish, resume_branch_workflow_finish,
+    load_branch_workflow_finish, load_branch_workflow_finish_cancellable,
+    prepare_branch_workflow_finish, prepare_branch_workflow_finish_cancellable,
+    resume_branch_workflow_finish,
 };
 
 const SETTINGS_KEY: &str = "gitkhronos.branchWorkflow";
@@ -130,6 +132,49 @@ pub struct BranchWorkflowState {
     pub development_oid: Option<String>,
     pub topics: Vec<BranchWorkflowTopic>,
     pub finish_pending: bool,
+}
+
+fn cancellable_read<T>(
+    cancellation: &CancellationToken,
+    action: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    if cancellation.is_cancelled() {
+        return Err(operation_cancelled());
+    }
+    let result = git_cancellation::with(Some(cancellation), action);
+    if cancellation.is_cancelled() {
+        return Err(operation_cancelled());
+    }
+    result
+}
+
+pub fn prepare_branch_workflow_setup_cancellable(
+    path: &Path,
+    settings: BranchWorkflowSettings,
+    initial_oid: &str,
+    cancellation: &CancellationToken,
+) -> Result<BranchWorkflowSetup, AppError> {
+    cancellable_read(cancellation, || {
+        prepare_branch_workflow_setup(path, settings, initial_oid)
+    })
+}
+
+pub fn prepare_branch_workflow_start_cancellable(
+    path: &Path,
+    kind: BranchWorkflowKind,
+    suffix: &str,
+    cancellation: &CancellationToken,
+) -> Result<BranchWorkflowStart, AppError> {
+    cancellable_read(cancellation, || {
+        prepare_branch_workflow_start(path, kind, suffix)
+    })
+}
+
+pub fn branch_workflow_state_cancellable(
+    path: &Path,
+    cancellation: &CancellationToken,
+) -> Result<BranchWorkflowState, AppError> {
+    cancellable_read(cancellation, || branch_workflow_state(path))
 }
 
 fn refused(message: impl Into<String>) -> AppError {
@@ -449,8 +494,22 @@ pub fn apply_branch_workflow_setup(
     path: &Path,
     plan: &BranchWorkflowSetup,
 ) -> Result<(), AppError> {
-    let _guard = action_guard(path)?;
-    if prepare_branch_workflow_setup(path, plan.settings.clone(), &plan.initial_oid)? != *plan {
+    apply_branch_workflow_setup_cancellable(path, plan, &CancellationToken::default())
+}
+
+pub fn apply_branch_workflow_setup_cancellable(
+    path: &Path,
+    plan: &BranchWorkflowSetup,
+    cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    let _guard = cancellable_read(cancellation, || action_guard(path))?;
+    if prepare_branch_workflow_setup_cancellable(
+        path,
+        plan.settings.clone(),
+        &plan.initial_oid,
+        cancellation,
+    )? != *plan
+    {
         return Err(stale());
     }
     let mut transaction = String::from("start\n");
@@ -467,14 +526,8 @@ pub fn apply_branch_workflow_setup(
         }
     }
     transaction.push_str("prepare\ncommit\n");
-    run_git_with_input(
-        path,
-        &["update-ref", "--stdin"],
-        transaction.as_bytes(),
-        "initialize the reviewed workflow branches",
-    )?;
-    // Ref creation and Git configuration are separate stores. Never roll back
-    // created branches when configuration changes or fails after the ref transaction.
+    // Ref creation and configuration are separate stores. After dispatch,
+    // cancellation or a hook failure may follow an applied ref transaction.
     let partial = |message: String| {
         AppError::new(
             "branchWorkflowSetupPartial",
@@ -484,14 +537,27 @@ pub fn apply_branch_workflow_setup(
             ),
         )
     };
+    git_cancellation::with(Some(cancellation), || {
+        run_git_with_input(
+            path,
+            &["update-ref", "--stdin"],
+            transaction.as_bytes(),
+            "initialize the reviewed workflow branches",
+        )
+    })
+    .map_err(|e| partial(e.message))?;
+    if cancellation.is_cancelled() {
+        return Err(partial(operation_cancelled().message));
+    }
     if read_settings(path).map_err(|e| partial(e.message))? != plan.previous {
         return Err(partial("Workflow settings changed after branch initialization; the new settings were not overwritten.".into()));
     }
     let value = serde_json::to_string(&plan.settings)
         .map_err(|_| partial("Could not encode workflow settings.".into()))?;
-    let output = run_git(
+    let output = run_git_with_cancellation(
         path,
         &["config", "--local", "--replace-all", SETTINGS_KEY, &value],
+        Some(cancellation),
     )
     .map_err(|e| partial(e.message))?;
     ensure_success("save repository-local workflow settings", &output)
@@ -610,11 +676,13 @@ pub fn start_branch_workflow(
     plan: &BranchWorkflowStart,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
-    let _guard = action_guard(path)?;
+    let _guard = cancellable_read(cancellation, || action_guard(path))?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
-    if prepare_branch_workflow_start(path, plan.kind, &plan.suffix)? != *plan {
+    if prepare_branch_workflow_start_cancellable(path, plan.kind, &plan.suffix, cancellation)?
+        != *plan
+    {
         return Err(stale());
     }
     if cancellation.is_cancelled() {
@@ -648,7 +716,7 @@ pub fn start_branch_workflow(
             ),
         ));
     }
-    let (head, reference) = clean_checkout(path)?;
+    let (head, reference) = cancellable_read(cancellation, || clean_checkout(path))?;
     if head != plan.base_oid
         || reference != Some(format!("refs/heads/{}", plan.branch))
         || direct_tip(path, &plan.branch)? != Some(plan.base_oid.clone())
@@ -1152,5 +1220,172 @@ mod tests {
             fs::read(fixture.repo.join(".git/owned-hook-count")).unwrap(),
             b"called"
         );
+    }
+
+    #[test]
+    fn canceled_previews_and_setup_do_not_mutate_repository_state() {
+        let fixture = Fixture::new();
+        let oid = fixture.git(&["rev-parse", "HEAD"]);
+        let plan = prepare_branch_workflow_setup(&fixture.repo, Default::default(), &oid).unwrap();
+        let refs = fixture.refs();
+        let token = CancellationToken::default();
+        token.cancel();
+        assert_eq!(
+            prepare_branch_workflow_setup_cancellable(
+                &fixture.repo,
+                Default::default(),
+                &oid,
+                &token
+            )
+            .unwrap_err()
+            .kind,
+            "operationCancelled"
+        );
+        assert_eq!(
+            apply_branch_workflow_setup_cancellable(&fixture.repo, &plan, &token)
+                .unwrap_err()
+                .kind,
+            "operationCancelled"
+        );
+        assert_eq!(
+            branch_workflow_state_cancellable(&fixture.repo, &token)
+                .unwrap_err()
+                .kind,
+            "operationCancelled"
+        );
+        assert_eq!(fixture.refs(), refs);
+        assert!(read_settings(&fixture.repo).unwrap().is_none());
+    }
+
+    #[test]
+    fn config_write_failure_retains_initialized_refs_and_the_existing_lock_file() {
+        let fixture = Fixture::new();
+        let oid = fixture.git(&["rev-parse", "HEAD"]);
+        let plan = prepare_branch_workflow_setup(&fixture.repo, Default::default(), &oid).unwrap();
+        let lock = fixture.repo.join(".git/config.lock");
+        fs::write(&lock, b"owned lock contents").unwrap();
+        let error = apply_branch_workflow_setup_cancellable(
+            &fixture.repo,
+            &plan,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "branchWorkflowSetupPartial");
+        assert_eq!(
+            direct_tip(&fixture.repo, "main").unwrap(),
+            Some(oid.clone())
+        );
+        assert_eq!(direct_tip(&fixture.repo, "develop").unwrap(), Some(oid));
+        assert!(read_settings(&fixture.repo).unwrap().is_none());
+        assert_eq!(fs::read(lock).unwrap(), b"owned lock contents");
+    }
+
+    #[cfg(unix)]
+    pub(super) fn blocking_hook(
+        fixture: &Fixture,
+        hook_name: &str,
+        stage: Option<&str>,
+    ) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = fixture.root.join("hooks").join(hook_name);
+        let gate = stage
+            .map(|stage| format!("[ \"$1\" = \"{stage}\" ] || exit 0\ncat >/dev/null\n"))
+            .unwrap_or_default();
+        let script = format!(
+            "#!/bin/sh\n{gate}git_dir=$(git rev-parse --absolute-git-dir)\nsleep 30 &\nprintf '%s' \"$!\" > \"$git_dir/owned-hook-child\"\nwait\n"
+        );
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    pub(super) fn cancel_at_owned_hook<T: Send + 'static>(
+        fixture: &Fixture,
+        action: impl FnOnce(CancellationToken) -> T + Send + 'static,
+    ) -> T {
+        use std::time::{Duration, Instant};
+        let token = CancellationToken::default();
+        let worker_token = token.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _ = sender.send(action(worker_token));
+        });
+        let marker = fixture.repo.join(".git/owned-hook-child");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !marker.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let reached = marker.exists();
+        token.cancel();
+        let result = receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("owned Git command must settle on cancellation");
+        worker.join().unwrap();
+        assert!(reached, "owned blocking hook was never reached");
+        result
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancellation_before_setup_ref_commit_leaves_original_branches_and_settings() {
+        let fixture = Fixture::new();
+        let oid = fixture.git(&["rev-parse", "HEAD"]);
+        let plan = prepare_branch_workflow_setup(&fixture.repo, Default::default(), &oid).unwrap();
+        blocking_hook(&fixture, "reference-transaction", Some("prepared"));
+        let refs = fixture.refs();
+        let repo = fixture.repo.clone();
+        let error = cancel_at_owned_hook(&fixture, move |token| {
+            apply_branch_workflow_setup_cancellable(&repo, &plan, &token)
+        })
+        .unwrap_err();
+        assert_eq!(error.kind, "branchWorkflowSetupPartial");
+        assert_eq!(fixture.refs(), refs);
+        assert!(read_settings(&fixture.repo).unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancellation_after_setup_ref_commit_preserves_applied_refs_without_saving_settings() {
+        let fixture = Fixture::new();
+        let oid = fixture.git(&["rev-parse", "HEAD"]);
+        let plan = prepare_branch_workflow_setup(&fixture.repo, Default::default(), &oid).unwrap();
+        blocking_hook(&fixture, "reference-transaction", Some("committed"));
+        let repo = fixture.repo.clone();
+        let error = cancel_at_owned_hook(&fixture, move |token| {
+            apply_branch_workflow_setup_cancellable(&repo, &plan, &token)
+        })
+        .unwrap_err();
+        assert_eq!(error.kind, "branchWorkflowSetupPartial");
+        assert_eq!(
+            direct_tip(&fixture.repo, "main").unwrap(),
+            Some(oid.clone())
+        );
+        assert_eq!(direct_tip(&fixture.repo, "develop").unwrap(), Some(oid));
+        assert!(read_settings(&fixture.repo).unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_blocking_filesystem_monitor_cannot_hold_a_workflow_preview_after_cancel() {
+        let fixture = Fixture::new();
+        fixture.setup();
+        let monitor = blocking_hook(&fixture, "owned-fsmonitor", None);
+        fixture.git(&["config", "core.fsmonitor", monitor.to_str().unwrap()]);
+        let refs = fixture.refs();
+        let repo = fixture.repo.clone();
+        let error = cancel_at_owned_hook(&fixture, move |token| {
+            prepare_branch_workflow_start_cancellable(
+                &repo,
+                BranchWorkflowKind::Feature,
+                "owned-monitor",
+                &token,
+            )
+        })
+        .unwrap_err();
+        fixture.git(&["config", "core.fsmonitor", "false"]);
+        assert_eq!(error.kind, "operationCancelled");
+        assert_eq!(fixture.refs(), refs);
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
     }
 }

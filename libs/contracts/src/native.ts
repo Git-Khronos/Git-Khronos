@@ -33,6 +33,26 @@ export type AgentProgram = "codex" | "claude" | "gemini" | "opencode"
 export type AppError = { kind: string; message: string; hint: string | null }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
+export type BranchWorkflowBinding = { branch: string; expectedOid: string | null; createAt: string | null }
+export type BranchWorkflowControl = { action: "continue"; retry: boolean } | { action: "abort" } | { action: "acknowledge" }
+export type BranchWorkflowFinishOptions = { mergePolicy: BranchWorkflowMergePolicy; mergeMessage: string | null; tag: BranchWorkflowTagRequest | null; deleteTopic: boolean }
+export type BranchWorkflowFinishPhase = "ready" | "checkingOut" | "merging" | "conflicted" | "tagging" | "cleaning" | "complete" | "aborted"
+export type BranchWorkflowFinishPlan = { settings: BranchWorkflowSettings; kind: BranchWorkflowKind; branch: string; sourceOid: string; targets: BranchWorkflowFinishTarget[]; tag: BranchWorkflowFinishTag | null; deleteTopic: boolean; mergePolicy: BranchWorkflowMergePolicy; previousHead: BranchWorkflowHead; executionConfiguration: string }
+export type BranchWorkflowFinishStatus = { version: number; id: string; revision: number; ownerWorktree: string; plan: BranchWorkflowFinishPlan; phase: BranchWorkflowFinishPhase; completedTargets: string[]; tagOid: string | null; recovery: OperationRecovery[]; checkoutBefore: BranchWorkflowHead | null; retryRequired: boolean; notice: string | null }
+export type BranchWorkflowFinishTag = { name: string; message: string; sign: boolean }
+export type BranchWorkflowFinishTarget = { branch: string; oid: string; message: string }
+export type BranchWorkflowHead = { oid: string; reference: string | null }
+export type BranchWorkflowKind = "feature" | "release" | "hotfix"
+export type BranchWorkflowMergePolicy = "mergeCommit" | "fastForwardAllowed"
+export type BranchWorkflowPlan = { action: "setup"; plan: BranchWorkflowSetup } | { action: "start"; plan: BranchWorkflowStart } | { action: "finish"; plan: BranchWorkflowFinishPlan }
+export type BranchWorkflowRequest = { action: "setup"; settings: BranchWorkflowSettings; initialOid: string } | { action: "start"; kind: BranchWorkflowKind; suffix: string } | { action: "finish"; branch: string; options: BranchWorkflowFinishOptions }
+export type BranchWorkflowSettings = { version: number; production: string; development: string; featurePrefix: string; releasePrefix: string; hotfixPrefix: string; tagPrefix: string }
+export type BranchWorkflowSetup = { previous: BranchWorkflowSettings | null; settings: BranchWorkflowSettings; initialOid: string; branches: BranchWorkflowBinding[] }
+export type BranchWorkflowStart = { settings: BranchWorkflowSettings; kind: BranchWorkflowKind; suffix: string; branch: string; baseBranch: string; baseOid: string; previousHeadOid: string; previousHeadReference: string | null }
+export type BranchWorkflowState = { settings: BranchWorkflowSettings | null; productionOid: string | null; developmentOid: string | null; topics: BranchWorkflowTopic[]; finishPending: boolean }
+export type BranchWorkflowTagRequest = { message: string; sign: boolean | null }
+export type BranchWorkflowTopic = { kind: BranchWorkflowKind; branch: string; suffix: string; oid: string; worktree: string | null }
+export type BranchWorkflowView = { state: BranchWorkflowState; finish: BranchWorkflowFinishStatus | null }
 export type BundleRequest = { file: string; fingerprint: string; bytes: number; tips: BundleTip[] }
 export type BundleReview = { request: BundleRequest; verification: string }
 export type BundleTip = { reference: string; oid: string }
@@ -140,6 +160,7 @@ export type PatchFile = { path: string; added: number | null; deleted: number | 
 export type PatchRequest = { file: string; target: PatchTarget; patch: number[]; headOid: string; headRef: string; indexState: number[] }
 export type PatchReview = { request: PatchRequest; files: PatchFile[]; summary: string }
 export type PatchTarget = "worktree" | "index" | "both"
+export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
@@ -330,6 +351,11 @@ export function begin_rebase_split(args: { repoId: string; expectedHead: string 
 export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
 export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
 export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
+export function load_branch_workflow(args: { repoId: string; operationId: string }): Promise<BranchWorkflowView> { return TAURI_INVOKE("load_branch_workflow", args); }
+export function prepare_branch_workflow(args: { repoId: string; request: BranchWorkflowRequest; operationId: string }): Promise<PreparedBranchWorkflow> { return TAURI_INVOKE("prepare_branch_workflow", args); }
+export function execute_branch_workflow(args: { repoId: string; token: string; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("execute_branch_workflow", args); }
+export function discard_branch_workflow_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_branch_workflow_plan", args); }
+export function control_branch_workflow_finish(args: { repoId: string; id: string; revision: number; control: BranchWorkflowControl; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("control_branch_workflow_finish", args); }
 export function prepare_hosted_write(args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }): Promise<PreparedHostedWrite> { return TAURI_INVOKE("prepare_hosted_write", args); }
 export function execute_hosted_write(args: { repoId: string; token: string; operationId: string }): Promise<HostedWriteReceipt> { return TAURI_INVOKE("execute_hosted_write", args); }
 export function discard_hosted_write_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_write_plan", args); }
@@ -508,6 +534,11 @@ export type CommandMap = {
   preview_merge: typeof preview_merge;
   load_hosting_page: typeof load_hosting_page;
   load_hosted_review: typeof load_hosted_review;
+  load_branch_workflow: typeof load_branch_workflow;
+  prepare_branch_workflow: typeof prepare_branch_workflow;
+  execute_branch_workflow: typeof execute_branch_workflow;
+  discard_branch_workflow_plan: typeof discard_branch_workflow_plan;
+  control_branch_workflow_finish: typeof control_branch_workflow_finish;
   prepare_hosted_write: typeof prepare_hosted_write;
   execute_hosted_write: typeof execute_hosted_write;
   discard_hosted_write_plan: typeof discard_hosted_write_plan;

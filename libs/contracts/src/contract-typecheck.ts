@@ -1,7 +1,7 @@
-import { ipc, invokeCommand, type GitAuthenticationPrompt } from './index';
+import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSettings } from './index';
 
 // Compiled, never executed. Widened bindings make expect-error directives fail.
-function typeAssertions(prompt: GitAuthenticationPrompt): void {
+function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
   void ipc.open_repository({ path: '/owned/fixture' });
   void ipc.inspect_stash({ repoId: 'fixture', oid: 'a'.repeat(40) });
   void ipc.inspect_stash_file({ repoId: 'fixture', oid: 'a'.repeat(40), path: 'fixture.txt' });
@@ -22,6 +22,21 @@ function typeAssertions(prompt: GitAuthenticationPrompt): void {
   // @ts-expect-error deletion must identify the selected object, not only its mutable ordinal
   void ipc.drop_stash({ repoId: 'fixture', reference: 'stash@{0}' });
   void invokeCommand('refresh_repository', { repoId: 'fixture' });
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview',
+    request: { action: 'setup', settings, initialOid: 'a'.repeat(40) } });
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview',
+    request: { action: 'start', kind: 'feature', suffix: 'owned-topic' } });
+  void ipc.execute_branch_workflow({ repoId: 'fixture', operationId: 'owned-execute', token: 'owned-token' });
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue',
+    id: 'owned-finish', revision: 1, control: { action: 'continue', retry: false } });
+  // @ts-expect-error execution accepts only the server's one-use preview token
+  void ipc.execute_branch_workflow({ repoId: 'fixture', operationId: 'owned-execute', plan: {} });
+  // @ts-expect-error the setup commit field must match the native camelCase schema
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview', request: { action: 'setup', settings, initial_oid: 'a'.repeat(40) } });
+  // @ts-expect-error a continuation must identify the saved action revision
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue', id: 'owned-finish', control: { action: 'continue', retry: false } });
+  // @ts-expect-error only Continue can request a retry
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-abort', id: 'owned-finish', revision: 1, control: { action: 'abort', retry: true } });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive
