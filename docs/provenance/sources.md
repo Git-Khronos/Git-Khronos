@@ -1480,3 +1480,19 @@ contexts as independently implementable requirements. The neutral specification
 is in `docs/specifications/non-text-diffs.md`. No product implementation, assets,
 screenshots, distinctive interface composition or substantial text was reused.
 Implementation will use public Git plumbing and file-format specifications.
+
+
+## Read-only selected file content
+
+Sources:
+
+- https://git-scm.com/docs/git (literal pathspecs, optional locks and no-lazy-fetch)
+- https://git-scm.com/docs/git-ls-tree
+- https://git-scm.com/docs/git-ls-files
+- https://git-scm.com/docs/git-cat-file
+
+Used for: an independent selected-file reader that distinguishes Git tree/index
+identities from working bytes and performs no implicit object fetch. Existing
+project process cancellation and Unix file-descriptor conventions are reused.
+The new fixture bytes, local upload-helper control and reader are project-created;
+no third-party source code, asset or new dependency was added.

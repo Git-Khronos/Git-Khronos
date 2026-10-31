@@ -81,6 +81,37 @@ acceptance must use real native commands and actual image decoding.
 
 ## Current state
 
-The current diff DTOs carry patch text and truncation only. A code audit found no
-dedicated image preview or binary metadata path. This document is a functional
-specification; implementation, format coverage and runtime acceptance remain open.
+The existing diff DTOs still carry patch text and truncation only. The original
+`file_content` core now reads a selected immutable revision/tree, index entry or
+Unix working file without modifying repository data. It distinguishes absent,
+regular, symbolic-link, submodule and unmerged sides. Blob identity/type/size and
+the selected index entry are checked; oversized payloads expose their exact known
+length without returning partial bytes. Working reads use directory-relative
+handles, refuse symlink ancestors and special files, and check the selected path
+again after reading. Link content is read without opening its target. Literal
+UTF-8 names include wildcard characters, spaces, tabs and newlines.
+Payloads are bounded to 8 MiB per side, Git entry metadata to 64 KiB, and input
+paths to 16 KiB. File bytes are excluded from the type's debug output and are not
+added to the general repository snapshot or serialized automatically.
+
+Every Git inspection uses `--no-lazy-fetch`. Unsupported Git versions fail closed
+rather than fall back to fetching; compatibility with older Git remains open.
+The partial-clone fixture proves that an ordinary Git read would call its owned
+local upload helper, while this reader leaves both the missing object and index
+unchanged. No provider or external network is involved. No new dependency or
+asset is introduced.
+
+All eleven focused cases and the complete core suite pass: 684 tests, with 37
+intentionally ignored. All-target core Clippy passes with warnings denied. The
+first Clippy attempt found one needless borrow in a test; after correction the
+focused cases and Clippy pass again. The production reader did not change after
+the complete core suite passed. A follow-up root guard refuses Git metadata
+directories as working-file roots while preserving historical blob reads from a
+bare repository; its focused cases, full core suite and Clippy pass.
+
+This is a core source checkpoint. Native commands, comparison-side selection,
+image type/dimension detection and decoding, LFS/SVG handling, original desktop
+controls and packaged acceptance remain open. The working-file reader currently
+requires Unix directory handles; a contained reader and runtime acceptance for
+other platforms remain required. This code does not establish an image preview
+or completion of any non-text parity requirement by itself.
