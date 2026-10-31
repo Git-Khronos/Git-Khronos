@@ -126,9 +126,69 @@ all 695 core tests (37 intentionally ignored). All-target core Clippy passes wit
 warnings denied. Earlier Clippy failures were a collapsible conditional and were
 corrected before this final run; failed attempts remain in validation artifacts.
 
-This is a core source checkpoint. Native commands, image type/dimension detection
-and decoding, LFS/SVG handling, original desktop controls and packaged acceptance
-remain open. The working-file reader currently
-requires Unix directory handles; a contained reader and runtime acceptance for
-other platforms remain required. This code does not establish an image preview
-or completion of any non-text parity requirement by itself.
+### Media source implementation (qualification in progress)
+
+The next independent slice adds `inspect_file_media`, bound to a registered
+repository session, a typed comparison request and a cancellable operation ID.
+It reads on the native background executor and returns explicit side states.
+Staged rename sources are discovered from Git's bounded rename output, including
+when the desktop row has no original-path field; stale original-path hints are
+refused. File and LFS byte lengths use decimal strings in media responses so the
+JavaScript boundary cannot round large values.
+
+The reviewed MIT `imagesize` 0.15.0 dependency probes dimensions for PNG, JPEG,
+GIF, WebP, BMP and ICO, with only those features enabled. The already locked
+MIT/Apache-2.0 `base64` 0.22.1 dependency encodes original selected raster bytes.
+No image is transcoded, and EXIF metadata is retained. The Rust notice collector
+successfully includes their complete published license notices. The fixture
+images and their reproducible pixel-generation script are project-created.
+
+A raster response requires complete bounded bytes and valid, nonzero header
+dimensions. The current preview limits are 8 MiB per side, 16,384 pixels per edge
+and 40 million header pixels. Header inspection does not establish complete
+image validity or a hard allocator limit inside an operating-system decoder.
+The renderer reports actual decoding errors and also checks natural decoded
+dimensions before accepting the display. Missing, absent, binary, text, over-limit,
+symlink, gitlink, unmerged, unavailable and LFS pointer sides remain distinct.
+SVG remains text. The preview neither fetches nor materializes LFS objects;
+validated previews from existing local LFS objects remain open work.
+
+The original Content view sits alongside Diff, History and Blame. It provides
+before/after metadata, both-side and single-side views, fit/actual size, bounded
+zoom, scrolling, keyboard-operable controls, cancellation and retry. Changing or
+closing the selection cancels the owned request and rejects late replies. Only
+bounded raster data URIs from a closed MIME allowlist reach image elements;
+external URLs, HTML and SVG preview URIs are refused without requesting them.
+
+The initial 14 Chromium cases pass, covering all six actual decoders, EXIF
+orientation, zoom/side controls, malformed bodies, missing sides, cancellation,
+late replies and compact layouts. Visual review found clipped file-view controls
+at 360px; their sizing and stronger viewport-bound assertions are being qualified
+in the expanded 18-case run, which also covers 320px layouts and disallowed URI schemes/formats. The compact toolbar now uses three rows to keep both file views and diff layouts reachable.
+An initial generator mismatch exposed missing explicit camelCase field renames;
+it was corrected in Rust and bindings regenerated. A separate initial fixture
+loader failed under the CommonJS test configuration before running any cases;
+the project-relative loader replaces it. Those failed attempts are retained.
+
+The full workspace source gate passes 746 Rust tests and 166 frontend cases,
+including exact decimal LFS lengths and stale staged-rename refusal, with 45 Rust
+cases intentionally ignored. Generated contracts and all-target Clippy pass.
+A separate overlapping core run failed because its owned blocking-hook fixture
+was never reached; the same case passes in the full workspace gate and a later
+isolated run without a production change. That failed attempt is retained and
+is not counted as passing evidence; its cause is not established.
+
+The final expanded Chromium run passes all 18 cases, including every visible
+toolbar button's bounds and non-overlap at 320, 360, 700 and 1440px. Its compact
+screenshots were inspected. The complete source gate preceded the final compact
+stylesheet corrections; the final focused run compiles and exercises those
+corrections without a subsequent Rust/TypeScript runtime change. Exact-package
+native acceptance and the complete renderer suite remain pending. The native harness includes original scenarios for six real
+WebKit decoders, byte oracles and malformed-body failure, but no packaged result
+is claimed until they execute successfully. The working-file reader currently
+requires Unix directory handles; containment and runtime acceptance on other
+platforms, older Git compatibility, SVG previews and local LFS object previews
+remain open. The Content view currently follows selected patch retrieval; a
+standalone content entry and recovery when the preceding patch cannot load
+(including missing/promised objects) remain open. Fetch-free guarantees here
+cover the new Content reader, not all existing text-patch retrieval paths. This slice does not complete the broader parity inventory.

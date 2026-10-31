@@ -1510,3 +1510,14 @@ stash layers without treating shallow boundaries or missing objects as absent
 files. Owned repositories cover SHA-1/SHA-256, literal rename paths, root and
 merge commits, stash layers, missing objects, cancellation and unchanged Git
 state. No external implementation, assets or new dependency were introduced.
+
+
+## Selected raster metadata and Git LFS pointer identification
+
+- https://docs.rs/imagesize/0.15.0/imagesize/ (public licensed library API)
+- https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md (public pointer format)
+
+Used for independent content-based presentation and canonical pointer recognition.
+The original pointer parser never invokes an LFS filter, fetches an object or
+materializes a working file. SVG remains text. Dependency review and fixture
+provenance are recorded in third-party-code.md and assets.md.

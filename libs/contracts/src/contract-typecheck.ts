@@ -4,6 +4,18 @@ import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSe
 function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
   const privateAttachmentFieldsAbsent: Extract<keyof HostedForkRemotePlan, 'snapshot' | 'request' | 'created'> extends never ? true : never = true;
   void privateAttachmentFieldsAbsent;
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: {
+    context: { kind: 'revisions', baseOid: 'a'.repeat(40), targetOid: 'b'.repeat(40) }, path: 'image', previousPath: null,
+  } });
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-stash-media', request: {
+    context: { kind: 'stash', oid: 'a'.repeat(40), layer: 'untracked' }, path: 'image', previousPath: null,
+  } });
+  // @ts-expect-error media selection requires a registered repository session
+  void ipc.inspect_file_media({ operationId: 'owned-media', request: { context: { kind: 'commit', oid: 'a'.repeat(40) }, path: 'image', previousPath: null } });
+  // @ts-expect-error comparison fields follow native camelCase and do not accept Git expressions as an alternate field
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: { context: { kind: 'commit', revision: 'HEAD~1' }, path: 'image', previousPath: null } });
+  // @ts-expect-error a comparison has no arbitrary filesystem root
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: { context: { kind: 'workingTree', staged: false }, path: 'image', previousPath: null }, root: '/outside' });
   void ipc.open_repository({ path: '/owned/fixture' });
   void ipc.inspect_stash({ repoId: 'fixture', oid: 'a'.repeat(40) });
   void ipc.inspect_stash_file({ repoId: 'fixture', oid: 'a'.repeat(40), path: 'fixture.txt' });

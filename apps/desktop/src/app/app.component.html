@@ -1732,6 +1732,7 @@
           <div class="diff-workspace-actions">
             <div class="diff-insight-toggle" role="group" aria-label="File view">
               <button type="button" [class.active]="diffInsightMode() === 'diff'" [attr.aria-pressed]="diffInsightMode() === 'diff'" (click)="showFileDiff()">Diff</button>
+              <button type="button" [class.active]="diffInsightMode() === 'content'" [attr.aria-pressed]="diffInsightMode() === 'content'" [disabled]="!activeMediaSelection()" (click)="diffInsightMode.set('content')">Content</button>
               <button type="button" [class.active]="diffInsightMode() === 'history'" [attr.aria-pressed]="diffInsightMode() === 'history'" [disabled]="!canInspectActiveFile()" (click)="showFileHistory()">History</button>
               <button type="button" [class.active]="diffInsightMode() === 'blame'" [attr.aria-pressed]="diffInsightMode() === 'blame'" [disabled]="!canInspectActiveFile()" (click)="showFileBlame()">Blame</button>
             </div>
@@ -1758,6 +1759,9 @@
           <button class="diff-close" type="button" aria-label="Close diff" title="Close diff (Esc)" (click)="closeDiffViewer()"><gc-icon name="x" [size]="13" /></button>
         </header>
         <div class="diff-content-shell" [class.insight-open]="diffInsightMode() !== 'diff'">
+          @if (diffInsightMode() === 'content') {
+            <gc-file-media [selection]="activeMediaSelection()" />
+          }
           <div [style.display]="diffInsightMode() === 'history' ? 'contents' : 'none'">
             @defer (when diffInsightMode() === 'history') {
               <gc-file-history [path]="diff.path" [revision]="activeDiffRevision()!" [authorColor]="rebaseAuthorColor" [initials]="initials" (navigate)="openHistoricalFile($event.oid, $event.path, $event.previousPath)" />
@@ -1818,7 +1822,9 @@
           </aside>
         </div>
         <footer class="diff-workspace-footer">
-          @if (diffInsightMode() === 'history') {
+          @if (diffInsightMode() === 'content') {
+            <span>Selected file content · no implicit fetch</span>
+          } @else if (diffInsightMode() === 'history') {
             <span>{{ historySearch.files().length }} commits in file history{{ historySearch.fileComplete() ? ' · complete' : ' · more history may remain' }}</span>
           } @else if (diffInsightMode() === 'blame') {
             <span>{{ git.fileBlame()?.length ?? 0 }} blame lines loaded</span>

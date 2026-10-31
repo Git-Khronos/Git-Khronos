@@ -718,13 +718,27 @@ code, kbd { font-family: var(--font-mono); }
   .split-marker { min-width: 100%; padding-left: 100px; }
   .diff-workspace.word-wrap .split-side code { overflow: hidden; }
 }
-@container (max-width: 500px) { .diff-workspace-toolbar { gap-inline: 5px; }.diff-file-identity { gap: 6px; }.diff-file-identity > .diff-file-status { display: none; }.diff-workspace-actions { gap: 2px; }.diff-insight-toggle button { padding-inline: 4px; font-size: 12px; }.diff-mode-toggle button { min-width: 50px; padding-inline: 6px; }.diff-workspace-footer span:last-child { display: none; } }
+@container (max-width: 500px) { .diff-workspace-toolbar { gap-inline: 5px; }.diff-file-identity { gap: 6px; }.diff-file-identity > .diff-file-status { display: none; }.diff-workspace-actions { gap: 2px; }.diff-insight-toggle button { min-width: 24px; padding-inline: 3px; font-size: 12px; }.diff-mode-toggle button { min-width: 50px; padding-inline: 6px; }.diff-workspace-footer span:last-child { display: none; } }
 @container (max-width: 430px) { .diff-back { width: 29px; justify-content: center; padding: 0; }.diff-back span { display: none; } }
 @media (min-width: 1051px) and (max-width: 1100px) { .app-shell:has(.sidebar:not(.panel-hidden)):has(.detail-panel:not(.panel-hidden)) .diff-workspace { left: 205px !important; right: 310px !important; } }
 @media (max-width: 1050px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: var(--responsive-detail-width) !important; }.diff-workspace { left: 0 !important; }.diff-workspace.sidebar-collapsed .diff-workspace-toolbar { padding-left: 62px; } }
 @media (max-width: 550px) { .diff-workspace { right: 0 !important; } }
 @media (max-width: 760px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: 0 !important; }.diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; }.diff-mode-toggle { order: initial; grid-column: 2; justify-self: start; }.diff-workspace { grid-template-rows: 78px minmax(0, 1fr) 27px; }.diff-wrap-toggle, .diff-hunk-nav { display: none; }.diff-content-shell { grid-template-columns: minmax(0, 1fr) 36px; }.diff-insight-toggle button { padding-inline: 5px; }.diff-file-identity .diff-file-directory { max-width: 32%; flex: 0 1 auto; }.diff-file-identity .diff-source-context { display: block; flex: 1 1 auto; color: var(--toolbar-control-text); }.diff-file-identity .diff-source-separator { display: inline; }.blame-line { grid-template-columns: 38px 70px 95px minmax(380px, 1fr); }.blame-line > time { display: none; } }
 @media (max-width: 700px) { .diff-workspace.sidebar-collapsed .diff-workspace-toolbar { padding-left: 39px; } }
+@media (max-width: 550px) {
+  .diff-workspace { grid-template-rows: 108px minmax(0, 1fr) 27px; }
+  .diff-workspace-toolbar { grid-template-columns: 29px minmax(0, 1fr) auto 29px; grid-template-rows: 36px 30px 30px; gap: 0 5px; }
+  .diff-file-identity { grid-column: 2 / 4; grid-row: 1; }
+  .diff-close { grid-column: 4; grid-row: 1; }
+  .diff-file-picker { grid-column: 1 / 3; grid-row: 2; justify-self: start; min-width: 0; width: 100%; max-width: 120px; }
+  .diff-file-navigation { max-width: 100%; }
+  .diff-file-navigation > button:not(.diff-file-position) { flex: none; }
+  .diff-file-navigation .diff-file-position { min-width: 0; flex: 1 1 0; grid-template-columns: minmax(0, 1fr) 10px; overflow: hidden; }
+  .diff-file-position span { overflow: hidden; text-overflow: ellipsis; }
+  .diff-workspace-actions { grid-column: 3 / 5; grid-row: 2; }
+  .diff-mode-toggle { display: flex; visibility: visible; position: static; grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+  .diff-insight-toggle button { min-width: 0; padding-inline: 2px; }
+}
 
 /* Repository chrome and toolbar are global so the feature-rich shell stays below Angular's component-style budget. */
 .chrome { height: 92px; background: var(--chrome); border-bottom: 1px solid var(--chrome-edge); }

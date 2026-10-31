@@ -458,3 +458,22 @@ This integration introduces no additional bundled code or dependency notice
 payload. Any future bundling or adaptation requires a separate license and
 redistribution review; this external-process integration is not permission to
 copy tool implementations. The Khronos repository license remains GPL-3.0.
+
+
+## Image metadata and bounded raster transport
+
+- `imagesize` 0.15.0: https://github.com/Roughsketch/imagesize
+  (published VCS revision `7dba0c7ae38ee1b90024f82cbb8fab12d6b1b4eb`).
+  License: MIT, Copyright (c) 2017 Maiddog. Its published `LICENSE` and manifest
+  were reviewed. Only BMP/GIF/ICO/JPEG/PNG/WebP metadata features are enabled;
+  it has no runtime dependencies. Cargo.lock pins the registry checksum.
+- `base64` 0.22.1: https://github.com/marshallpierce/rust-base64.
+  License: MIT OR Apache-2.0. This was already a locked transitive dependency;
+  it is now a pinned direct dependency for selected raster response encoding.
+
+Both are compatible with the repository's GPL-3.0-only license. The existing
+Rust notice collector must retain their published license files in distributable
+notices. Neither implementation was copied into project source. The project
+independently implements comparison selection, classification policy and UI.
+Header dimensions are metadata, not proof that a complete image decodes. Actual
+browser decode outcomes and dimensions remain separate acceptance checks.

@@ -1,3 +1,4 @@
+import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
 import {
@@ -246,7 +247,7 @@ interface CommitReadiness {
 }
 
 type DiffViewMode = 'hunk' | 'inline' | 'split';
-type DiffInsightMode = 'diff' | 'history' | 'blame';
+type DiffInsightMode = 'diff' | 'history' | 'blame' | 'content';
 export type CommandPaletteScope = 'all' | 'files' | 'branches';
 type GraphDateFormat = 'compact' | 'relative' | 'iso';
 type RemoteLocationIcon = 'remote' | 'server' | 'globe' | 'link';
@@ -615,7 +616,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -1743,6 +1744,31 @@ export class AppComponent implements OnInit, OnDestroy {
     this.git.activeRepositoryId(), this.git.commitDetails(), this.git.commitComparison(),
     this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
   ]);
+
+  protected readonly activeMediaSelection = computed<FileMediaSelection | null>(() => {
+    const repoId = this.git.activeRepositoryId();
+    const diff = this.activeDiff();
+    if (!repoId || !diff) return null;
+    if (this.changesOpen()) {
+      const working = this.git.workingTreeFileDiff();
+      if (!working) return null;
+      return { repoId, request: { context: { kind: 'workingTree', staged: working.staged }, path: working.path, previousPath: null } };
+    }
+    const comparison = this.git.commitComparison();
+    if (comparison) {
+      const entry = comparison.files.find(entry => entry.path === diff.path);
+      return { repoId, request: { context: comparison.workingTree
+        ? { kind: 'revisionWorktree', baseOid: comparison.baseOid }
+        : { kind: 'revisions', baseOid: comparison.baseOid, targetOid: comparison.targetOid },
+        path: diff.path, previousPath: entry?.previousPath ?? null } };
+    }
+    const details = this.git.commitDetails();
+    if (!details) return null;
+    const entry = details.files.find(entry => entry.path === diff.path);
+    return { repoId, request: { context: this.git.inspectedStashReference()
+      ? { kind: 'stash', oid: details.oid, layer: 'combined' }
+      : { kind: 'commit', oid: details.oid }, path: diff.path, previousPath: entry?.previousPath ?? null } };
+  });
 
   protected readonly activeWorkingTreeDiff = computed(() => this.changesOpen()
     ? this.git.workingTreeFileDiff()

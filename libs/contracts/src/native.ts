@@ -75,9 +75,27 @@ export type FetchHistory = { mode: "deepen"; commits: number } | { mode: "comple
 export type FetchOptions = { remote: string | null; prune: boolean; history?: FetchHistory | null }
 export type FileBlameLine = { lineNumber: number; oid: string; authorName: string; authorEmail: string; authoredAt: number; summary: string; text: string; path: string | null }
 export type FileBlamePage = { lines: FileBlameLine[]; nextLine: number | null }
+export type FileComparisonContext = { kind: "commit"; oid: string } | { kind: "revisions"; baseOid: string; targetOid: string } | { kind: "revisionWorktree"; baseOid: string } | { kind: "workingTree"; staged: boolean } | { kind: "stash"; oid: string; layer?: StashContentLayer }
+export type FileComparisonRequest = { context: FileComparisonContext; path: string;
+/**
+ * Original path from the selected native changed-file row when renamed.
+ */
+previousPath: string | null }
 export type FileHistoryCursor = { revision: string; requestedRevision?: string; path: string; historicalPath: string; offset: number }
 export type FileHistoryEntry = { oid: string; authorName: string; authorEmail: string; authoredAt: string; subject: string }
 export type FileHistoryPage = { entries: HistoricalFileEntry[]; cursor: FileHistoryCursor | null; complete: boolean }
+export type FileLfsPointer = { sha256: string; size: string }
+export type FileMediaComparison = { before: FileMediaSide; after: FileMediaSide }
+export type FileMediaSide = { label: string; path: string; state: FileMediaState; oid: string | null;
+/**
+ * Decimal text preserves large declared lengths across the JavaScript boundary.
+ */
+size: string | null; raster: RasterMetadata | null;
+/**
+ * A closed MIME allowlist and bounded bytes produce this URI. No SVG/HTML.
+ */
+dataUrl: string | null; lfs: FileLfsPointer | null; message: string | null }
+export type FileMediaState = "absent" | "text" | "binary" | "raster" | "invalidRaster" | "overLimit" | "symbolicLink" | "submodule" | "unmerged" | "unavailable" | "lfsPointer"
 export type GitAuthenticationDismissed = string
 export type GitAuthenticationPrompt = { requestId: string; operationId: string; repositoryId: string | null; secret: boolean }
 export type GitIdentity = { name: string | null; email: string | null }
@@ -196,6 +214,11 @@ export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedForkRemote = { token: string; plan: HostedForkRemotePlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
+export type RasterMetadata = { mime: string;
+/**
+ * Encoded dimensions; the browser may apply EXIF orientation when displaying.
+ */
+width: number; height: number }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
 export type ReferenceTransport = { remote: string; name: string; kind: string; delete: boolean; expectedOid: string | null }
 export type ReflogEntry = { oid: string; selector: string; subject: string; authorName: string; authorEmail: string }
@@ -212,6 +235,7 @@ export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }
 export type SigningDiagnostic = { available: boolean; program: string; format: string; keyConfigured: boolean; message: string }
 export type SigningInfo = { enabled: boolean; format: string; key: string | null }
 export type SparseCheckoutInfo = { enabled: boolean; coneMode: boolean; sparseIndex: boolean; paths: string[] }
+export type StashContentLayer = "combined" | "index" | "workingTree" | "untracked"
 export type StashEntry = { reference: string; oid: string; message: string }
 export type StashOptions = { mode: string; includeUntracked: boolean; paths: string[] | null; message: string }
 export type Submodule = { name: string; path: string; absolutePath: string; url: string; oid: string | null; headOid: string | null; initialized: boolean; outOfSync: boolean }
@@ -480,6 +504,7 @@ export function move_head(args: { repoId: string; expectedOid: string; targetOid
 export function inspect_commit(args: { repoId: string; oid: string }): Promise<CommitDetails> { return TAURI_INVOKE("inspect_commit", args); }
 export function inspect_tag(args: { repoId: string; name: string }): Promise<TagDetails> { return TAURI_INVOKE("inspect_tag", args); }
 export function inspect_commit_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_commit_file", args); }
+export function inspect_file_media(args: { repoId: string; request: FileComparisonRequest; operationId: string }): Promise<FileMediaComparison> { return TAURI_INVOKE("inspect_file_media", args); }
 export function inspect_stash(args: { repoId: string; oid: string }): Promise<CommitDetails> { return TAURI_INVOKE("inspect_stash", args); }
 export function inspect_stash_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_stash_file", args); }
 export function compare_commits(args: { repoId: string; baseOid: string; targetOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commits", args); }
@@ -681,6 +706,7 @@ export type CommandMap = {
   inspect_commit: typeof inspect_commit;
   inspect_tag: typeof inspect_tag;
   inspect_commit_file: typeof inspect_commit_file;
+  inspect_file_media: typeof inspect_file_media;
   inspect_stash: typeof inspect_stash;
   inspect_stash_file: typeof inspect_stash_file;
   compare_commits: typeof compare_commits;

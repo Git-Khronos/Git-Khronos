@@ -17,6 +17,10 @@ mod ignore_rules;
 mod file_statistics;
 mod file_content;
 mod file_comparison;
+mod file_media;
+pub use file_media::{FileMediaComparison, FileMediaSide, FileMediaState,
+    RasterMetadata, FileLfsPointer, MAX_PREVIEW_DIMENSION, MAX_PREVIEW_PIXELS,
+    read_file_media};
 pub use file_comparison::{
     FileComparisonContext, FileComparisonRequest, FileComparisonSide,
     FileComparisonContent, FileComparisonValue, FileComparisonUnavailable,

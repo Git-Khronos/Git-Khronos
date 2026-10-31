@@ -14,6 +14,7 @@ import uuid
 import zlib
 from native_acceptance import open_ui, run
 from native_fork_remote_scenarios import hosted_fork_remote_attachment
+from native_media_scenarios import file_media_comparisons
 
 
 def shallow_history_pagination(driver, fixtures, report):
@@ -2884,6 +2885,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 
 
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    file_media_comparisons(driver, fixtures, repository, report)
     hosted_fork_remote_attachment(driver, fixtures, repository, report)
     hosted_fork_requests(driver, fixtures, repository, report)
     hosted_repository_discovery_and_clone(driver, fixtures, repository, report)

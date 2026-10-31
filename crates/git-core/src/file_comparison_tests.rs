@@ -465,3 +465,52 @@ fn a_missing_target_blob_is_explicitly_unavailable_without_hiding_the_readable_b
     ));
     assert_eq!(fs::read(repo.0.join("image")).unwrap(), b"after\0");
 }
+
+#[test]
+fn staged_rename_discovers_its_native_original_path_without_a_client_hint() {
+    let repo = Repository::new("sha1");
+    repo.write("original *.img", b"original\0pixels");
+    repo.commit("Original");
+    repo.git(&["mv", "original *.img", ":(glob)destination"]);
+    let pair = repo.compare(
+        FileComparisonContext::WorkingTree { staged: true },
+        ":(glob)destination",
+        None,
+    );
+    assert_eq!(pair.before.path, "original *.img");
+    assert_eq!(pair.after.path, ":(glob)destination");
+    assert_eq!(bytes(&pair.before), b"original\0pixels");
+    assert_eq!(bytes(&pair.after), bytes(&pair.before));
+    assert!(
+        read_file_comparison(
+            &repo.0,
+            &repo.request(
+                FileComparisonContext::WorkingTree { staged: true },
+                ":(glob)destination",
+                Some("wrong-original")
+            ),
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn a_completed_staged_rename_refuses_a_stale_original_path_hint() {
+    let repo = Repository::new("sha1");
+    repo.write("original", b"old\0image");
+    repo.commit("Original");
+    repo.git(&["mv", "original", "renamed"]);
+    repo.git(&["commit", "-qm", "Complete rename"]);
+    let request = repo.request(
+        FileComparisonContext::WorkingTree { staged: true },
+        "renamed",
+        Some("original"),
+    );
+    assert_eq!(
+        read_file_comparison(&repo.0, &request, &CancellationToken::default())
+            .unwrap_err()
+            .kind,
+        "fileComparisonRefused"
+    );
+}

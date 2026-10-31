@@ -2274,6 +2274,22 @@ async fn inspect_tag(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn inspect_file_media(
+    repo_id: String,
+    request: git_khronos_git_core::FileComparisonRequest,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::FileMediaComparison, AppError> {
+    let (cancellation, operation) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |repository| {
+        let _operation = operation;
+        git_khronos_git_core::read_file_media(repository, &request, &cancellation)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn inspect_commit_file(
     repo_id: String,
     oid: String,
@@ -3535,6 +3551,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             inspect_commit,
             inspect_tag,
             inspect_commit_file,
+            inspect_file_media,
             inspect_stash,
             inspect_stash_file,
             compare_commits,

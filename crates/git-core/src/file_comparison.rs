@@ -23,10 +23,13 @@ pub enum FileComparisonContext {
         oid: String,
     },
     Revisions {
+        #[serde(rename = "baseOid")]
         base_oid: String,
+        #[serde(rename = "targetOid")]
         target_oid: String,
     },
     RevisionWorktree {
+        #[serde(rename = "baseOid")]
         base_oid: String,
     },
     WorkingTree {
@@ -207,6 +210,49 @@ fn tree_contains(path: &Path, oid: &str, file: &str) -> Result<bool, AppError> {
     }
     Ok(true)
 }
+fn staged_original_path(path: &Path, file: &str) -> Result<Option<String>, AppError> {
+    // Read the complete bounded rename set: filtering to the destination before
+    // rename detection would discard its source and turn a rename into an add.
+    let data = metadata_git(
+        path,
+        &[
+            "diff",
+            "--cached",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--",
+        ],
+    )?;
+    if !data.is_empty() && !data.ends_with(&[0]) {
+        return Err(refused("Git returned incomplete staged rename metadata."));
+    }
+    let mut fields = data.split(|b| *b == 0);
+    while let Some(status) = fields.next() {
+        if status.is_empty() {
+            break;
+        }
+        let source = fields
+            .next()
+            .ok_or_else(|| refused("Git returned invalid staged path metadata."))?;
+        let kind = status[0];
+        if kind == b'R' || kind == b'C' {
+            let target = fields
+                .next()
+                .ok_or_else(|| refused("Git returned incomplete staged rename metadata."))?;
+            if kind == b'R' && target == file.as_bytes() {
+                let source = std::str::from_utf8(source)
+                    .map_err(|_| refused("The original staged path is not UTF-8."))?;
+                validate_file(source)?;
+                return Ok(Some(source.into()));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn resolve(path: &Path, request: &FileComparisonRequest) -> Result<Sides, AppError> {
     let after = request.path.as_str();
     let before = request.previous_path.as_deref().unwrap_or(after);
@@ -248,8 +294,17 @@ fn resolve(path: &Path, request: &FileComparisonRequest) -> Result<Sides, AppErr
         FileComparisonContext::WorkingTree { staged } => {
             worktree_root(path)?;
             if *staged {
+                let head = head(path)?;
+                let original = staged_original_path(path, after)?;
+                if let Some(requested) = &request.previous_path
+                    && original.as_deref() != Some(requested.as_str())
+                {
+                    return Err(refused(
+                        "The staged rename source changed. Reload the comparison.",
+                    ));
+                }
                 (
-                    revision("HEAD", head(path)?, before),
+                    revision("HEAD", head, original.as_deref().unwrap_or(before)),
                     current("Index", FileContentLocation::Index, after),
                 )
             } else {
