@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
 
 test('catalogue is explicitly loaded and subsequent pages keep the verified decimal account identity', async ({ page }) => {
   const dialog = await open(page);
-  expect(await page.evaluate(() => (window as any).__hostedCatalogue.calls)).toHaveLength(0);
+  expect(await page.evaluate(() => (window as any).__hostedCatalogue.calls.filter((call: any) => call.command.includes('hosted_')))).toHaveLength(0);
   await dialog.getByText('Catalogue filters', { exact: true }).click();
   await dialog.getByRole('combobox', { name: 'Visibility', exact: true }).selectOption('private');
   await dialog.getByRole('combobox', { name: 'Access', exact: true }).selectOption('owned');

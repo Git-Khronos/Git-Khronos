@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, afterRenderEffect, computed, effect, input, output, signal, viewChild } from '@angular/core';
+import { HostedForkRemoteComponent } from './hosted-fork-remote.component';
 import { ipc, type HostedForkInspection, type HostedForkPage, type HostedForkStatus, type HostedRepository, type HostedRepositoryInspection, type PreparedForkAcknowledgement, type PreparedHostedFork } from '@git-khronos/contracts';
 
 @Component({
   selector: 'gc-hosted-forks',
+  imports: [HostedForkRemoteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-label="Forks and saved requests">
@@ -66,11 +68,13 @@ import { ipc, type HostedForkInspection, type HostedForkPage, type HostedForkSta
         <section #forkInspection class="inspection" aria-label="Verified fork for cloning" tabindex="-1"><h3>{{ checked.repository.fullName }}</h3><p>Owner and network {{ checked.network.fullName }} verified for {{ checked.account.login }}. Cloning requires a separate destination and transport review.</p>
           <button type="button" [disabled]="unavailable()" (click)="chooseChecked()">Use this fork for cloning</button>
         </section>
+        <button #remoteToggle type="button" [disabled]="disabled() || busy()" (click)="toggleRemote()">{{ showRemote() ? 'Hide local remote controls' : 'Attach fork to local repository' }}</button>
       }
+      @for (generation of remoteViews(); track generation) { <gc-hosted-fork-remote [fork]="checked()" [disabled]="disabled() || busy()" (busyChange)="remoteActivity($event)" (closed)="closeRemote(true)" /> }
     </section>
   `,
   styles: [`
-    :host{display:block;min-width:0;border-top:1px solid var(--inspector-divider);margin:16px 0}section,fieldset{min-width:0}h3{font-size:14px;margin:14px 0 8px}p,label,li,dt,dd,small{font-size:13px;line-height:1.5;overflow-wrap:anywhere}p{margin:8px 0}fieldset,.review,.outcome,.inspection{border:1px solid var(--inspector-divider);padding:12px;margin:14px 0}.review{border-color:var(--accent)}label{display:block;margin:10px 0}input:not([type=checkbox]){display:block;width:100%;min-width:0;box-sizing:border-box;margin-top:5px}button,input{font:inherit;font-size:13px;color:var(--text);background:var(--inspector-row);border:1px solid var(--inspector-divider);padding:8px 10px;min-height:34px}button{cursor:pointer;white-space:normal;overflow-wrap:anywhere}button:disabled{opacity:.5;cursor:default}.actions,nav{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}.check{display:flex;gap:8px;align-items:flex-start}.check input{min-height:0;margin-top:4px}ul{list-style:none;padding:0;max-height:260px;overflow:auto}li{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--inspector-divider);padding:10px 0}li>span{min-width:0}small{display:block}dd{margin:4px 0 10px}[role=alert]{color:var(--danger)}button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:560px){li{align-items:flex-start;flex-direction:column}}
+    :host{display:block;min-width:0;border-top:1px solid var(--inspector-divider);margin:16px 0}section,fieldset{min-width:0}h3{font-size:14px;margin:14px 0 8px}p,label,li,dt,dd,small{font-size:13px;line-height:1.5;overflow-wrap:anywhere}p{margin:8px 0}fieldset,.review,.outcome,.inspection{border:1px solid var(--inspector-divider);padding:12px;margin:14px 0}.review{border-color:var(--accent)}label{display:block;margin:10px 0}input:not([type=checkbox]){display:block;width:100%;min-width:0;box-sizing:border-box;margin-top:5px}button,input{font:inherit;font-size:13px;color:var(--text);background:var(--inspector-row);border:1px solid var(--inspector-divider);padding:8px 10px;min-height:34px}button{cursor:pointer;white-space:normal;overflow-wrap:anywhere}button:disabled{opacity:.5;cursor:default}.actions,nav{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}.check{display:flex;gap:8px;align-items:flex-start}.check input{width:16px;height:16px;min-height:0;flex:0 0 16px;padding:0;margin:4px 0 0;accent-color:var(--accent)}ul{list-style:none;padding:0;max-height:260px;overflow:auto}li{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--inspector-divider);padding:10px 0}li>span{min-width:0}small{display:block}dd{margin:4px 0 10px}[role=alert]{color:var(--danger)}button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:560px){li{align-items:flex-start;flex-direction:column}}
   `],
 })
 export class HostedForksComponent implements OnDestroy {
@@ -78,6 +82,7 @@ export class HostedForksComponent implements OnDestroy {
   readonly disabled = input(false);
   readonly busyChange = output<boolean>();
   readonly cloneRequested = output<HostedRepositoryInspection>();
+  readonly attachmentOpened = output<void>();
   readonly organization = signal(false);
   readonly owner = signal('');
   readonly name = signal('');
@@ -95,7 +100,15 @@ export class HostedForksComponent implements OnDestroy {
   readonly progress = signal('');
   readonly error = signal('');
   readonly notice = signal('');
-  readonly unavailable = computed(() => this.disabled() || this.busy());
+  readonly remoteBusy = signal(false);
+  readonly showRemote = signal(false);
+  private readonly remoteGeneration = signal(0);
+  readonly remoteViews = computed(() => this.showRemote() && this.checked() ? [this.remoteGeneration()] : []);
+  private readonly remote = viewChild(HostedForkRemoteComponent);
+  private readonly remoteToggle = viewChild<ElementRef<HTMLButtonElement>>('remoteToggle');
+  private readonly focusRemoteToggle = signal(false);
+  private readonly remoteToggleFocus = afterRenderEffect(() => { if (this.focusRemoteToggle() && this.remoteToggle()) { this.remoteToggle()!.nativeElement.focus(); this.focusRemoteToggle.set(false); } });
+  readonly unavailable = computed(() => this.disabled() || this.busy() || this.remoteBusy());
   readonly ready = computed(() => !!this.source() && this.source()?.repository.forkingAllowed !== false && !!this.name().trim() && (!this.organization() || !!this.owner().trim()));
   private readonly binding = computed(() => JSON.stringify([this.source(), this.organization(), this.owner(), this.name(), this.defaultBranchOnly()]));
   private readonly contextId = crypto.randomUUID();
@@ -129,7 +142,20 @@ export class HostedForksComponent implements OnDestroy {
   phase(record: HostedForkStatus): string {
     return ({ awaitingConfirmation: 'Awaiting provider confirmation', acceptedPending: 'Accepted; verification pending', metadataAvailable: 'Repository metadata verified; Git objects pending', ready: 'Fork verified and ready for use', conflict: 'Fork identity or access conflict' })[record.phase];
   }
+  toggleRemote(): void {
+    if (this.disabled() || this.busy()) return;
+    if (this.showRemote()) { this.closeRemote(true); return; }
+    this.invalidate(); this.focusRemoteToggle.set(false); this.remoteGeneration.update(generation => generation + 1); this.showRemote.set(true); this.attachmentOpened.emit();
+  }
+  closeRemote(focus = false): void {
+    const pending = this.remote()?.mutationInFlight(); this.remote()?.dismiss(); this.showRemote.set(false);
+    if (pending) this.notice.set('Check the local remotes for the attachment outcome before another review.');
+    if (focus) this.focusRemoteToggle.set(true);
+  }
+  remoteActivity(busy: boolean): void { this.remoteBusy.set(busy); if (!this.destroyed) this.busyChange.emit(this.busy() || busy); }
+  attachmentInFlight(): boolean { return this.remote()?.mutationInFlight() ?? false; }
   invalidate(): void {
+    this.closeRemote();
     const tokens = [this.preview()?.token, this.acknowledgement()?.token]; this.preview.set(null); this.acknowledgement.set(null); this.understood.set(false);
     for (const token of tokens) if (token) void ipc.discard_hosted_fork_review({ contextId: this.contextId, token }).catch(() => undefined);
   }

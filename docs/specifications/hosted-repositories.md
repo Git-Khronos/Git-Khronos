@@ -375,3 +375,32 @@ compilation and Clippy with warnings denied also pass. Exact new-package routing
 persistent storage, provider fixture dispatch and native cancellation are not yet
 qualified. The earlier b026c6b4040a artifact qualifies discovery/clone only.
 Reviewed local remote attachment remains required before full fork acceptance.
+
+
+### Independent local attachment desktop controls
+
+A freshly inspected fork can be attached to an already open local repository
+through a separate review. The form selects an existing source remote to
+preserve, a new non-colliding remote name, and HTTPS or SSH. The review displays
+the native server-held plan, including repository path, provider account, source,
+fork network, URL and fetch mapping. Execution sends only the repository/session,
+dialog token and operation identity. It never submits an editable plan.
+
+Changing inputs, closing the controls, or switching/closing the local repository
+discards a prior review against its original session. Late preparation replies
+are discarded. A confirmed native mutation remains a confirmed result after a
+cancellation request, with refresh failures reported separately. Opening the
+attachment controls retires a clone review while preserving its draft inputs.
+No automatic clone, provider creation, fetch, push or branch tracking change is
+part of this action.
+
+The initial 43 focused renderer cases pass using owned IPC fixtures, including
+wrong account, stale local configuration, token-only execution, cancellation,
+late replies, rapid reopen, compact layouts and keyboard containment. Initial
+failures exposed a dynamic source-select display mismatch; explicit option
+selection now keeps the displayed remote consistent with the reviewed value.
+Both closed-repository cases pass in the final 45-case focused run. The final
+Angular/Cargo compilation and Clippy gate also passes. Compact screenshots in
+both project palettes were visually checked.
+Exact packaged native acceptance of attachment remains open. Existing fork
+creation/clone artifacts do not contain these attachment controls or commands.
