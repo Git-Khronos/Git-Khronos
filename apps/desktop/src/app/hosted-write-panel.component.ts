@@ -93,7 +93,12 @@ export class HostedWritePanelComponent implements OnDestroy {
   readonly remotes = computed(() => (this.git.repository()?.remotes ?? []).filter(remote => /^(https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/.test(remote.fetchUrl)));
   private readonly context = computed(() => JSON.stringify([this.git.activeRepositoryId(), this.remote(), this.remotes().map(remote => [remote.name, remote.fetchUrl]), this.intent()]));
   readonly heading = computed(() => this.intent().kind === 'createPull' ? 'Create a pull request' : `${this.intent().kind === 'review' ? 'Review' : 'Merge'} pull request #${this.intent().number}`);
-  readonly valid = computed(() => Array.from(this.body()).length <= 65536 && Array.from(this.title()).length <= 256 && (this.intent().kind === 'createPull' ? !!this.headRemote() && !!this.headBranch().trim() && !!this.baseBranch().trim() && !!this.title().trim() : this.intent().kind === 'merge' || this.event() === 'approve' || !!this.body().trim()));
+  readonly valid = computed(() => {
+    const request = this.request();
+    if (Array.from(request.body).length > 65536 || ('title' in request && Array.from(request.title).length > 256)) return false;
+    if (request.kind === 'createPull') return !!request.headRemote && !!request.headBranch.trim() && !!request.baseBranch.trim() && !!request.title.trim();
+    return request.kind === 'merge' || request.event === 'approve' || !!request.body.trim();
+  });
   readonly previewTitle = computed(() => { const request = this.prepared()?.plan.request; return request && 'title' in request ? request.title : ''; });
   readonly previewBody = computed(() => this.prepared()?.plan.request.body ?? '');
   readonly submissionLabel = computed(() => {
@@ -126,13 +131,13 @@ export class HostedWritePanelComponent implements OnDestroy {
   async prepare(): Promise<void> {
     if (!this.valid() || this.busy() || this.git.busy() || this.uncertain() || this.prepared() || this.receipt() || this.git.browserPreview()) return;
     const request = this.request(), remote = this.remote(), key = this.context();
-    await this.run(false, async (repoId, id) => {
+    await this.run(false, async (repoId, id, report) => {
       const preview = await ipc.prepare_hosted_write({ repoId, remote, request, operationId: id });
       if (this.destroyed || this.operation?.cancelled || this.context() !== key) {
         void ipc.discard_hosted_write_plan({ repoId, token: preview.token }).catch(() => undefined);
         throw { kind: 'operationCancelled', message: 'Submission preparation cancelled.', hint: null };
       }
-      this.previewRepository = repoId; this.prepared.set(preview); this.focus('[data-write-preview]', key);
+      this.previewRepository = repoId; this.prepared.set(preview); report('GitHub submission preview ready. Review before submitting.'); this.focus('[data-write-preview]', key);
     });
   }
   async submit(): Promise<void> {

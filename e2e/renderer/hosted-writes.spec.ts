@@ -212,3 +212,38 @@ test('compact submission fields and the reviewed action remain keyboard accessib
   await page.keyboard.press('Enter');
   await expect(form).toContainText('Provider confirmed');
 });
+
+test('preparation reports a ready preview in activity history without submitting', async ({ page }) => {
+  const { dialog, form } = await create(page);
+  await form.getByRole('button', { name: 'Prepare submission preview', exact: true }).click();
+  await expect(form.locator('[data-write-preview]')).toBeFocused();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return git.activityLogs().some((entry: any) => entry.status === 'success' && entry.description === 'GitHub submission preview ready. Review before submitting.');
+  })).toBe(true);
+  expect(await page.evaluate(() => (window as any).__writes.applied)).toBe(0);
+});
+
+for (const [field, length] of [['Optional commit title', 257], ['Description', 65537]] as const) {
+  test(`rebase ignores an overlength hidden ${field} while retaining the editable draft`, async ({ page }) => {
+    const dialog = await inspect(page);
+    await dialog.getByRole('button', { name: 'Merge pull request', exact: true }).click();
+    const form = dialog.getByRole('region', { name: 'Hosted submission', exact: true });
+    const draft = 'x'.repeat(length);
+    await form.getByLabel(field, { exact: true }).fill(draft);
+    const prepare = form.getByRole('button', { name: 'Prepare submission preview', exact: true });
+    await expect(prepare).toBeDisabled();
+    const method = form.getByRole('combobox', { name: 'Merge method', exact: true });
+    await method.selectOption('rebase');
+    await expect(prepare).toBeEnabled();
+    await method.selectOption('merge');
+    await expect(form.getByLabel(field, { exact: true })).toHaveValue(draft);
+    await expect(prepare).toBeDisabled();
+    await method.selectOption('rebase');
+    await prepare.click();
+    const request = await page.evaluate(() => (window as any).__writes.calls.find((call: any) => call.command === 'prepare_hosted_write').args.request);
+    expect(request).toEqual({ kind: 'merge', method: 'rebase', number: 12, expectedHeadOid: 'a'.repeat(40), title: '', body: '' });
+    expect(await page.evaluate(() => (window as any).__writes.applied)).toBe(0);
+  });
+}
