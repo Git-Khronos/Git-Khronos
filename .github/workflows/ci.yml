@@ -58,6 +58,11 @@ jobs:
           TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
           TMPDIR=/tmp pnpm nx run desktop:test-signing --output-style=static
           pnpm nx run desktop:native-harness-test --output-style=static
+      - name: Release checked desktop build artifacts before renderer acceptance
+        run: |
+          df -h . "$RUNNER_TEMP"
+          cargo clean --profile dev --package git-khronos-desktop
+          df -h . "$RUNNER_TEMP"
       - name: Run renderer acceptance
         run: |
           pnpm exec playwright install --with-deps chromium
