@@ -20,12 +20,47 @@ def discovery_repository(config):
             "temp_clone_token": "owned-private-field-not-for-renderer"}
 
 
-def response(endpoint, config):
-    if endpoint == "user" and (config.get("allowWrites") or config.get("allowDiscovery")):
+def fork_repository(config):
+    owner = config.get("forkOwner", config.get("actor", "owned-author"))
+    name = config.get("forkName", "owned-fork")
+    repository = discovery_repository(config | {"repository": owner + "/" + name,
+                                                "repositoryId": config.get("forkId", 9007199254740995)})
+    repository.update(fork=True, owner={"id": config.get("forkOwnerId", 501), "login": owner},
+                      parent={"id": config.get("repositoryId", 9007199254740993), "full_name": config["repository"]},
+                      source={"id": config.get("repositoryId", 9007199254740993), "full_name": config["repository"]})
+    return repository
+
+
+def response(endpoint, config, state=None):
+    if endpoint == "user" and (config.get("allowWrites") or config.get("allowDiscovery") or config.get("allowForks")):
         return {"login": acting_account(config), "id": acting_account_id(config)}
     parsed = urlsplit(endpoint)
     prefix = "repos/" + config["repository"]
     source_prefix = "repos/" + config.get("sourceRepository", config["repository"])
+    if config.get("allowForks"):
+        if parsed.path == "users/" + config.get("forkOwner", config.get("actor", "owned-author")):
+            return {"login": parsed.path.removeprefix("users/"), "id": config.get("forkOwnerId", 501),
+                    "type": config.get("forkOwnerType", "User")}
+        if parsed.path == prefix:
+            return discovery_repository(config) | {"allow_forking": True}
+        if parsed.path == prefix + "/forks":
+            query = parse_qs(parsed.query)
+            if query.get("per_page") != ["50"] or int(query.get("page", ["0"])[0]) < 1:
+                raise ValueError("Unbounded owned fork page")
+            return [fork_repository(config)] if query["page"] == ["1"] else []
+        fork_prefix = "repos/" + fork_repository(config)["full_name"]
+        if parsed.path == fork_prefix:
+            if not (state or {}).get("forks") or config.get("forkPending"):
+                raise PermissionError("Owned fork is pending")
+            return fork_repository(config)
+        if parsed.path == fork_prefix + "/git/ref/heads/main":
+            if not (state or {}).get("forks") or config.get("forkObjectsPending"):
+                raise PermissionError("Owned fork objects are pending")
+            return {"ref": "refs/heads/main", "object": {"type": "commit", "sha": config["oid"]}}
+        if parsed.path == fork_prefix + "/git/commits/" + config["oid"]:
+            if not (state or {}).get("forks") or config.get("forkObjectsPending"):
+                raise PermissionError("Owned fork objects are pending")
+            return {"sha": config["oid"], "tree": {"sha": config.get("treeOid", "b" * 40)}}
     if config.get("allowDiscovery"):
         if parsed.path == "user/repos":
             query = parse_qs(parsed.query)
@@ -92,6 +127,15 @@ def pull_record(config, number):
 
 
 def write_response(method, endpoint, payload, config, state):
+    if config.get("allowForks") and method == "POST" and endpoint == "repos/" + config["repository"] + "/forks":
+        expected = {"name": config.get("forkName", "owned-fork"),
+                    "default_branch_only": config.get("forkDefaultBranchOnly", True)}
+        if config.get("forkOwnerType") == "Organization":
+            expected["organization"] = config["forkOwner"]
+        if payload != expected:
+            raise ValueError("Unexpected owned fork request")
+        state.setdefault("forks", []).append(payload)
+        return fork_repository(config)
     if not config.get("allowWrites"):
         raise ValueError("Writes are disabled for this owned fixture")
     if config.get("denyBeforeWrite"):
@@ -126,14 +170,14 @@ def main(argv):
     gate = Path(os.environ["KHRONOS_NATIVE_HOSTING_GATE"])
     config = json.loads((gate / "config.json").read_text())
     if argv == ["auth", "token", "--hostname", "github.com"]:
-        if not (config.get("allowWrites") or config.get("allowDiscovery")):
+        if not (config.get("allowWrites") or config.get("allowDiscovery") or config.get("allowForks")):
             raise ValueError("Fixture authentication is disabled")
         print("owned-token-" + config.get("actor", "owned-author"))
         return
     if len(argv) not in (8, 10) or argv[:4] != ["api", "--hostname", "github.com", "--method"] or argv[5:7] != ["-H", "Accept: application/vnd.github+json"]:
         raise ValueError("Only an explicit owned API request is allowed")
     method, endpoint = argv[4], argv[7]
-    writing = method in ("POST", "PUT") and len(argv) == 10 and argv[8:] == ["--input", "-"] and config.get("allowWrites")
+    writing = method in ("POST", "PUT") and len(argv) == 10 and argv[8:] == ["--input", "-"] and (config.get("allowWrites") or config.get("allowForks"))
     if not writing and (method != "GET" or len(argv) != 8):
         raise ValueError("Unowned write request")
     payload = None
@@ -158,7 +202,9 @@ def main(argv):
         if config.get("uncertainAfterWrite"):
             raise OSError("Owned private diagnostic after applied write")
     else:
-        result = response(endpoint, config)
+        state_path = gate / "write-state.json"
+        state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        result = response(endpoint, config, state)
         if config.get("flipActorAfterBaseRead") and endpoint.endswith("/branches/" + config.get("baseBranch", "main")):
             config["actor"] = "owned-other-account"
             config.pop("flipActorAfterBaseRead")

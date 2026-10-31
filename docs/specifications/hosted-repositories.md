@@ -325,7 +325,87 @@ Separate failing lifecycle probes are retained alongside the passing regressions
 
 These renderer cases use owned IPC fixtures. Integrated source and contract gates
 pass: 692 Rust and 166 frontend tests, with 45 Rust cases ignored. Angular/Cargo
-compilation and Clippy with warnings denied also pass. Exact new-package routing,
-persistent storage, provider fixture dispatch and native cancellation are not yet
-qualified. The earlier b026c6b4040a artifact qualifies discovery/clone only.
+compilation and Clippy with warnings denied also pass. The first new package
+passes the four new fork route/storage/recovery/cancellation scenarios; complete
+native acceptance is still open. The earlier b026c6b4040a artifact qualifies discovery/clone only.
 Reviewed local remote attachment remains required before full fork acceptance.
+
+The fork controls and their integration with the qualified clone workflow are
+checkpointed in `c1d35a72a4e49563168803f140bceb17cc012def`. Its new runtime is
+undergoing separate package and full 1296-case renderer qualification, including
+the checkbox correction described below. Running gates are not successful
+qualification evidence.
+
+The owned offline provider fixture now has an explicit fork capability, separate
+from its existing review-request write capability. It rejects unowned endpoints
+and unexpected creation payloads. Pending metadata and pending Git objects are
+independent controls. The harness gate passes 31 tests, including opt-in,
+precision-safe identity, unknown outcome and endpoint-isolation checks.
+The new native scenarios exercise server-held creation reviews, context/purpose
+binding, token consumption, private durable storage, uncertain replies,
+deduplication, read-only readiness checks, stale archive refusal, retained archive
+records, explicit organization/all-branches UI creation and separate clone
+handoff. They also hold an owned provider process at dispatch to check
+cancellation and a retained unconfirmed result. The initial four fork scenarios
+pass on artifact `1d6a83566244`; later additions for checkbox geometry and an
+exact, separately reviewed fork clone require the corrected artifact.
+Renderer/session recreation is tested;
+application-process restart acceptance remains a separate open case.
+
+The first fork package attempt compiled and bundled successfully but its task
+failed: the final naming script ignored `CARGO_TARGET_DIR` and looked in the
+checkout's default target directory. The script and task output declarations now
+honor absolute or working-directory-relative Cargo target paths. Fifty-seven
+packaging tests pass, including real Debian artifact naming with spaces and
+incremental cache separation across output directories. The corrected package
+task passed and produced package
+`1d6a835662442e483def147b517677d8c0e0a2162a3decf88bf9a3d7459d6e97`.
+Its full native run completed 31 scenarios, including all four new fork cases,
+then failed an older read-only paging assertion that included earlier fork POSTs
+from the same fixture log. The assertion now examines only its own request
+segment while retaining the complete log.
+
+Native screenshots of that artifact also exposed oversized checkboxes in the
+fork and clone forms. Explicit control dimensions and flex sizing correct the
+layout, and all 32 focused renderer cases pass with non-vacuous geometry checks.
+A test-only misplaced count assertion failed before being corrected; that log is
+retained. The original full renderer runner was deliberately stopped before
+editing runtime source, and its artifacts are retained. A fresh full renderer
+run and package build use the corrected, frozen source. The failed/interrupted
+gates remain excluded from successful complete acceptance.
+
+The corrected package is
+`2b61c4b380d7d55182bc27b3c234c8e1d3c2f0cd62be34b301afb303b5b65677`,
+with executable
+`d5f29d8a4cc0a8094204dd0b777ce61ea74dbfcea01ae7719386a4bbed8ab0ad`.
+Its first full native run completes 111 scenarios, including all five fork
+scenarios and the independently reviewed clone of the exact owned history.
+Native checkbox geometry assertions pass, and the corrected screenshots were
+visually inspected. That run then fails an older terminal startup fixture: a PTY
+child may be reaped before its shell wrapper logs a PID. The test now requires
+the real one-time native completion event and absence from the terminal registry,
+checks every PID that became observable, and starts and reaps the retry. The
+31-case harness gate passes. The same package bytes now pass all 171 normal
+native scenarios and all 172 inherited-environment scenarios (343 executions).
+Both reports verify the exact package and executable hashes above. This
+test-only post-build change does not alter the packaged application.
+
+The complete renderer run finishes with 1,293 passes and three failures out of
+1,296 cases. Two wrapped diff-layout cases exhaust the overall test deadline;
+a workspace-overview case stops responding during its final cached-state
+assertion. Their traces and logs are retained. These failures remain open while
+isolated reproduction runs; the package is not claimed fully qualified.
+
+The previous dev checkpoint's remote CI fails before native packaging because
+the hosted runner configures a needrestart invocation hook. Private dpkg fixture
+transactions deliberately refuse host hooks. The workflow now temporarily moves
+that specific hook aside for the packaging regression step and restores it on
+both success and failure. Other configured hooks remain subject to the original
+refusal. Shell syntax and restoration/exit-status behavior pass owned local
+fixtures; the changed workflow still needs remote execution.
+
+
+The isolated 23-case diff/workspace reproduction passes without changing
+application code, assertions or test deadlines. A complete serial renderer run
+is now in progress. The earlier three failures remain recorded and do not count
+as passing results.

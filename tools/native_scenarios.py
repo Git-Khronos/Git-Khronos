@@ -1890,6 +1890,8 @@ def workspace_center_workflows(driver, fixtures, original_repository, report):
 
 def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
     repository = fixtures.repository("hosted-paging", commits=1)
+    request_log = fixtures.hosting_gate / "requests.jsonl"
+    request_start = len(request_log.read_text().splitlines()) if request_log.exists() else 0
     fixtures.git(repository, "remote", "add", "origin", "https://github.com/owned-fixture/native-repo.git")
     oid = fixtures.git(repository, "rev-parse", "HEAD")
     config = fixtures.hosting_gate / "config.json"
@@ -1960,7 +1962,7 @@ def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
         driver.click_text('gc-workspace-center header button', 'Close')
         assert fixtures.git(repository, "show-ref") == before_refs
         assert (repository / ".git/index").read_bytes() == before_index
-        requests = [json.loads(line) for line in (fixtures.hosting_gate / "requests.jsonl").read_text().splitlines()]
+        requests = [json.loads(line) for line in request_log.read_text().splitlines()[request_start:]]
         assert requests and all(item["method"] == "GET" and item["cwd"] != str(repository) for item in requests)
         report["scenarios"].append("native-hosted-dialog-paging-and-partial-status-preserve-git-state")
     finally:
@@ -2664,7 +2666,224 @@ def hosted_repository_discovery_and_clone(driver, fixtures, original_repository,
         open_ui(driver, original_repository)
 
 
+def hosted_fork_requests(driver, fixtures, original_repository, report):
+    """Real native reviews and private journal; provider writes stay offline."""
+    source = fixtures.repository('hosted-fork-git-source', commits=3)
+    head = fixtures.git(source, 'rev-parse', 'HEAD')
+    source_refs = fixtures.git(source, 'show-ref')
+    source_index = (source / '.git/index').read_bytes()
+    source_bytes = (source / 'fixture.txt').read_bytes()
+    git_config = Path(fixtures.env['GIT_CONFIG_GLOBAL'])
+    original_git_config = git_config.read_bytes()
+    gate = fixtures.hosting_gate
+    config_path, state_path = gate / 'config.json', gate / 'write-state.json'
+    original_config = config_path.read_bytes()
+    original_state = state_path.read_bytes() if state_path.exists() else None
+    config = dict(repository='owned-fixture/native-repo', oid=head,
+                  treeOid=fixtures.git(source, 'rev-parse', 'HEAD^{tree}'),
+                  allowForks=True, allowDiscovery=True, forkPending=True,
+                  actor='owned-author', forkName='owned-fork', uncertainAfterWrite=True)
+    context = 'owned-native-fork'
+    request = dict(sourceFullName=config['repository'], sourceRepositoryId='9007199254740993',
+                   accountId='501', destinationOwner='owned-author', name='owned-fork', defaultBranchOnly=True)
+    def invoke(command, **args):
+        return driver.invoke(command, operationId=str(uuid.uuid4()), **args)
+    def refuses(command, kind, **args):
+        try:
+            invoke(command, **args)
+        except RuntimeError as error:
+            assert kind in str(error), error
+        else:
+            raise AssertionError('Owned fork precondition unexpectedly succeeded')
+    def submissions():
+        return json.loads(state_path.read_text()).get('forks', []) if state_path.exists() else []
+    def save_config():
+        config_path.write_text(json.dumps(config))
+    def archive_preview(record):
+        return invoke('prepare_hosted_fork_acknowledgement', contextId=context, id=record['id'])
+    def archive(review):
+        return invoke('execute_hosted_fork_acknowledgement', contextId=context, token=review['token'])
+    try:
+        git_config.write_bytes(original_git_config + (
+            '[protocol "https"]\nallow = never\n[protocol "ssh"]\nallow = never\n'
+            f'[url "{source.as_uri()}"]\ninsteadOf = https://github.com/owned-organization/organization-fork.git\n'
+            'insteadOf = git@github.com:owned-organization/organization-fork.git\n').encode())
+        state_path.unlink(missing_ok=True)
+        save_config()
+        before = invoke('list_hosted_fork_requests')
+        preview = invoke('prepare_hosted_fork', contextId=context, request=request)
+        assert not submissions()
+        refuses('execute_hosted_fork', 'staleHostedForkReview', contextId='other-owned-context', token=preview['token'])
+        refuses('execute_hosted_fork_acknowledgement', 'staleHostedForkReview', contextId=context, token=preview['token'])
+        preview['plan']['intent']['name'] = 'client-altered-fork'
+        record = invoke('execute_hosted_fork', contextId=context, token=preview['token'])
+        assert record['phase'] == 'awaitingConfirmation' and record['serverReplyReceived'] is False
+        assert record['intent']['name'] == 'owned-fork'
+        assert submissions() == [dict(name='owned-fork', default_branch_only=True)]
+        refuses('execute_hosted_fork', 'staleHostedForkReview', contextId=context, token=preview['token'])
+        journals = list(Path(fixtures.env['XDG_DATA_HOME']).glob('*/hosted-fork-requests/' + record['id'] + '.json'))
+        assert len(journals) == 1, journals
+        journal = journals[0]
+        assert journal.stat().st_mode & 0o777 == 0o600
+        assert journal.parent.stat().st_mode & 0o777 == 0o700
+        assert 'owned-token-' not in journal.read_text()
+        report['scenarios'].append('native-fork-server-plan-context-purpose-single-use-and-private-durable-uncertain-outcome')
+
+        # Recreate the renderer/session and read the native on-disk record.
+        # This is renderer recovery, not an application-process restart claim.
+        open_ui(driver, original_repository)
+        saved = invoke('list_hosted_fork_requests')
+        assert {row['id'] for row in saved} == {row['id'] for row in before} | {record['id']}
+        assert invoke('load_hosted_fork_request', id=record['id']) == record
+        duplicate = invoke('prepare_hosted_fork', contextId=context, request=request)
+        assert invoke('execute_hosted_fork', contextId=context, token=duplicate['token'])['id'] == record['id']
+        assert len(submissions()) == 1
+        assert invoke('reconcile_hosted_fork', id=record['id'])['phase'] == 'awaitingConfirmation'
+        stale_archive = archive_preview(record)
+        assert stale_archive['unresolved'] is True
+        config.update(forkPending=False, forkObjectsPending=True)
+        save_config()
+        metadata = invoke('reconcile_hosted_fork', id=record['id'])
+        assert metadata['phase'] == 'metadataAvailable' and metadata['repository']['id'] == '9007199254740995'
+        refuses('execute_hosted_fork_acknowledgement', 'hostingForkRequest', contextId=context, token=stale_archive['token'])
+        config['forkObjectsPending'] = False
+        save_config()
+        ready = invoke('reconcile_hosted_fork', id=record['id'])
+        assert ready['phase'] == 'ready' and ready['headOid'] == head
+        page = invoke('load_hosted_forks', query=dict(sourceFullName=request['sourceFullName'],
+                      sourceRepositoryId=request['sourceRepositoryId'], accountId='501', page=1))
+        assert page['entries'][0]['id'] == '9007199254740995'
+        checked = invoke('inspect_hosted_fork', selection=dict(sourceFullName=request['sourceFullName'],
+                         sourceRepositoryId=request['sourceRepositoryId'], accountId='501',
+                         forkFullName='owned-author/owned-fork', forkRepositoryId='9007199254740995', forkOwnerId='501'))
+        assert checked['repository']['fullName'] == 'owned-author/owned-fork'
+        assert len(submissions()) == 1
+        review = archive_preview(ready)
+        assert review['unresolved'] is False
+        assert archive(review) == ready
+        assert invoke('list_hosted_fork_requests') == before
+        assert invoke('load_hosted_fork_request', id=record['id']) == ready
+        assert not journal.exists() and (journal.parent / 'archive' / journal.name).exists()
+        assert len(submissions()) == 1
+        report['scenarios'].append('native-fork-renderer-recovery-no-post-replay-readiness-fresh-inspection-stale-archive-and-retained-outcome')
+
+        config.update(forkOwner='owned-organization', forkOwnerId=702, forkOwnerType='Organization',
+                      forkName='organization-fork', forkDefaultBranchOnly=False, uncertainAfterWrite=False)
+        save_config()
+        def button(text, selector='gc-hosted-forks button'):
+            driver.wait(f"return [...document.querySelectorAll({json.dumps(selector)})].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
+            driver.click_text(selector, text)
+        def fill(selector, value):
+            driver.script("const input=document.querySelector(arguments[0]); input.value=arguments[1]; input.dispatchEvent(new Event('input',{bubbles:true}));", selector, value)
+        def checkbox_layout(selector):
+            boxes = driver.script("""return [...document.querySelectorAll(arguments[0])].map(input => {
+              const box=input.getBoundingClientRect(), label=input.parentElement.getBoundingClientRect();
+              return {width:box.width,height:box.height,offset:Math.abs(box.left-label.left)};
+            })""", selector)
+            assert boxes and all(12 <= box['width'] <= 20 and 12 <= box['height'] <= 20 and box['offset'] <= 2 for box in boxes), boxes
+        driver.click('[aria-label="New repository tab"]')
+        driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
+        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+        button('Browse repositories on GitHub', 'gc-repository-dialog button')
+        button('Load repositories', 'gc-hosted-repository-browser button')
+        button('Select owned-fixture/native-repo', 'gc-hosted-repository-browser button')
+        button('Manage forks and saved requests', 'gc-hosted-repository-browser button')
+        driver.wait("return !!document.querySelector('#fork-name')")
+        checkbox_layout('gc-hosted-forks .check input[type=checkbox]')
+        driver.script("const input=document.querySelector('gc-hosted-forks input[type=checkbox]'); input.checked=true; input.dispatchEvent(new Event('change',{bubbles:true}));")
+        driver.wait("return !!document.querySelector('#fork-owner')")
+        fill('#fork-owner', 'owned-organization')
+        fill('#fork-name', 'organization-fork')
+        driver.script("const inputs=document.querySelectorAll('gc-hosted-forks fieldset input[type=checkbox]'); const input=inputs[inputs.length-1]; input.checked=false; input.dispatchEvent(new Event('change',{bubbles:true}));")
+        button('Review fork creation')
+        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Review fork creation\"]')?.textContent.includes('All branches')")
+        assert len(submissions()) == 1
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-organization-fork-review.png')
+        button('Submit reviewed fork request')
+        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Accepted; verification pending')")
+        assert submissions()[-1] == dict(name='organization-fork', default_branch_only=False, organization='owned-organization')
+        button('Check fork status')
+        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Fork verified and ready for use')")
+        button('Inspect fork for cloning')
+        driver.wait("return !!document.querySelector('gc-hosted-forks [aria-label=\"Verified fork for cloning\"]')")
+        button('Use this fork for cloning')
+        driver.wait("return document.querySelector('gc-hosted-repository-browser .selection h3')?.textContent.trim() === 'owned-organization/organization-fork'")
+        assert driver.script("return document.querySelector('#hosted-folder').value") == 'organization-fork'
+        checkbox_layout('gc-hosted-repository-browser .check input[type=checkbox]')
+        assert not (fixtures.root / 'organization-fork').exists()
+        assert len(submissions()) == 2
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-fork-clone-handoff.png')
+        report['scenarios'].append('native-ui-reviewed-organization-all-branches-fork-readiness-and-separate-clone-handoff')
+        fill('#hosted-parent', str(fixtures.root))
+        button('Review hosted clone', 'gc-hosted-repository-browser button')
+        driver.wait("return !!document.querySelector('gc-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
+        assert not (fixtures.root / 'organization-fork').exists()
+        button('Clone reviewed repository', 'gc-hosted-repository-browser button')
+        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        checkout = fixtures.root / 'organization-fork'
+        assert fixtures.git(checkout, 'rev-parse', 'HEAD') == head
+        assert fixtures.git(checkout, 'rev-list', '--count', 'HEAD') == '3'
+        assert fixtures.git(checkout, 'status', '--porcelain') == ''
+        assert (checkout / 'fixture.txt').read_bytes() == source_bytes
+        assert fixtures.git(checkout, 'config', '--get', 'remote.origin.url') == 'https://github.com/owned-organization/organization-fork.git'
+        fixtures.git(checkout, 'remote', 'set-url', 'origin', source.as_uri())
+        assert fixtures.git(source, 'show-ref') == source_refs
+        assert (source / '.git/index').read_bytes() == source_index
+        assert (source / 'fixture.txt').read_bytes() == source_bytes
+        assert len(submissions()) == 2
+        report['scenarios'].append('native-ui-ready-fork-separate-reviewed-clone-preserves-exact-owned-history-and-source-state')
+
+        config.update(forkName='cancelled-submission', holdWritesOnly=True)
+        save_config()
+        cancel_request = request | dict(destinationOwner='owned-organization', name='cancelled-submission', defaultBranchOnly=False)
+        preview = invoke('prepare_hosted_fork', contextId=context, request=cancel_request)
+        operation = str(uuid.uuid4())
+        (gate / 'hold').touch()
+        driver.script("""
+          window.__ownedForkSubmission={done:false};
+          window.__TAURI_INTERNALS__.invoke('execute_hosted_fork',arguments[0]).then(
+            value => {window.__ownedForkSubmission={done:true,value}},
+            error => {window.__ownedForkSubmission={done:true,error}});
+        """, dict(contextId=context, token=preview['token'], operationId=operation))
+        deadline = time.monotonic() + 15
+        child = None
+        while time.monotonic() < deadline:
+            rows = [json.loads(line) for line in (gate / 'requests.jsonl').read_text().splitlines()]
+            matching = [row for row in rows if row['method'] == 'POST' and row['payload'] ==
+                        dict(name='cancelled-submission', default_branch_only=False, organization='owned-organization')]
+            if matching:
+                child = matching[-1]['pid']
+                break
+            time.sleep(.02)
+        assert child is not None, 'Owned fork submission did not reach the held dispatch boundary'
+        assert driver.invoke('cancel_git_operation', operationId=operation)
+        driver.wait('return window.__ownedForkSubmission.done', 10)
+        cancelled = driver.script('return window.__ownedForkSubmission')
+        assert cancelled.get('value', {}).get('phase') == 'awaitingConfirmation', cancelled
+        assert cancelled['value']['serverReplyReceived'] is False
+        assert invoke('load_hosted_fork_request', id=cancelled['value']['id']) == cancelled['value']
+        stat = Path('/proc') / str(child) / 'stat'
+        assert not stat.exists() or stat.read_text().rsplit(') ', 1)[1].startswith('Z')
+        assert len(submissions()) == 2
+        (gate / 'hold').unlink()
+        report['scenarios'].append('native-fork-cancelled-dispatch-reaps-owned-cli-and-retains-unconfirmed-outcome-without-retry')
+    except Exception:
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-fork-failure.png')
+        raise
+    finally:
+        (gate / 'hold').unlink(missing_ok=True)
+        driver.script('delete window.__ownedForkSubmission')
+        git_config.write_bytes(original_git_config)
+        config_path.write_bytes(original_config)
+        if original_state is None:
+            state_path.unlink(missing_ok=True)
+        else:
+            state_path.write_bytes(original_state)
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    hosted_fork_requests(driver, fixtures, repository, report)
     hosted_repository_discovery_and_clone(driver, fixtures, repository, report)
     branch_workflow_native_boundary(driver, fixtures, repository, report)
     branch_workflow_desktop(driver, fixtures, repository, report)
@@ -3010,9 +3229,11 @@ def authentication_prompt_recovery(driver, repo_id, report):
 def terminal_renderer_startup_failure(driver, fixtures, report):
     before = fixtures.terminal_pids.read_text().splitlines()
     sessions = []
+    callback = driver.script("return window.__TAURI_INTERNALS__.transformCallback(event => window.__terminalStartupFailure?.exitIds.push(event.payload.sessionId))")
+    listener = driver.invoke("plugin:event|listen", event="terminal-exit", target={"kind": "Any"}, handler=callback)
     driver.script("""
       const originalAppend = Element.prototype.appendChild;
-      const state = window.__terminalStartupFailure = {id: null, mountFailed: false};
+      const state = window.__terminalStartupFailure = {id: null, mountFailed: false, exitIds: []};
       state.restore = () => {
         Element.prototype.appendChild = originalAppend;
       };
@@ -3030,12 +3251,18 @@ def terminal_renderer_startup_failure(driver, fixtures, report):
         driver.click('[title^="Open repository terminal"]')
         driver.wait("return document.querySelector('.terminal-error')?.textContent.includes('Native acceptance terminal mount failure')", 10)
         pids = fixtures.terminal_pids.read_text().splitlines()
-        assert len(pids) == len(before) + 1, "Owned shell did not record its PID before cleanup"
-        process = Path(f"/proc/{int(pids[-1])}/stat")
-        assert not process.exists(), "Renderer startup failure left its owned shell running"
+        added = pids[len(before):]
+        # Closing a newly spawned PTY may reap its child before the wrapper
+        # executes its PID logger. Require native completion in both cases;
+        # every PID that became observable must independently be gone.
+        assert len(added) <= 1, "One failed startup unexpectedly created multiple owned shells"
+        for pid in added:
+            assert not Path(f"/proc/{int(pid)}/stat").exists(), "Renderer startup failure left its owned shell running"
         state = driver.script("return {id: window.__terminalStartupFailure.id, mountFailed: window.__terminalStartupFailure.mountFailed}")
         assert state["mountFailed"] and state["id"]
         sessions.append(state["id"])
+        driver.wait("return window.__terminalStartupFailure.exitIds.includes(" + json.dumps(state["id"]) + ")", 10)
+        assert driver.script("return window.__terminalStartupFailure.exitIds.filter(id => id === arguments[0]).length", state["id"]) == 1
         try:
             driver.invoke("write_terminal", sessionId=state["id"], data=[])
         except RuntimeError as error:
@@ -3047,12 +3274,24 @@ def terminal_renderer_startup_failure(driver, fixtures, report):
         driver.wait("return !!document.querySelector('gc-terminal-panel .xterm-screen')", 10)
         sessions.append(driver.script("return document.querySelector('gc-terminal-panel .terminal-host').dataset.terminalId"))
         assert sessions[0] != sessions[1]
+        deadline = time.monotonic() + 5
+        retry_pids = fixtures.terminal_pids.read_text().splitlines()
+        while len(retry_pids) < len(pids) + 1 and time.monotonic() < deadline:
+            time.sleep(.02)
+            retry_pids = fixtures.terminal_pids.read_text().splitlines()
+        assert len(retry_pids) == len(pids) + 1, "The retried owned shell never started"
+        retry_pid = int(retry_pids[-1])
         driver.click('.terminal-tab-close')
         driver.wait("return !document.querySelector('gc-terminal-panel')", 10)
+        driver.wait("return window.__terminalStartupFailure.exitIds.includes(" + json.dumps(sessions[1]) + ")", 10)
+        assert not Path(f"/proc/{retry_pid}/stat").exists(), "Retry cleanup left its observed shell running"
     finally:
         failed_id = driver.script("window.__terminalStartupFailure.restore(); return window.__terminalStartupFailure.id")
         for session in set(sessions + ([failed_id] if failed_id else [])):
             driver.invoke("close_terminal", sessionId=session)
+        driver.script("window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener('terminal-exit', arguments[0])", listener)
+        driver.invoke("plugin:event|unlisten", event="terminal-exit", eventId=listener)
+        driver.script("window.__TAURI_INTERNALS__.unregisterCallback(arguments[0])", callback)
     report["scenarios"].append("native-terminal-renderer-startup-failure-reaps-shell-and-retries")
 
 
