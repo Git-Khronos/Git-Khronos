@@ -484,3 +484,35 @@ Angular/Cargo compilation and Clippy gate also passes. Compact screenshots in
 both project palettes were visually checked.
 Exact packaged native acceptance of attachment remains open. Existing fork
 creation/clone artifacts do not contain these attachment controls or commands.
+
+
+### Integrated Linux attachment package checkpoint
+
+The locally integrated runtime in `afc0d21f2b9e8f78ea2405696769c2d351cbdf5f`
+builds and verifies in an isolated Cargo output directory. The preserved package
+SHA-256 is
+`15d19f2c70686e94336f780f4e47a92e5672e17087f1cdd7e5d06c6c90a1ecd5`;
+its executable SHA-256 is
+`80349c74a772cd6f220caab3ec093d9ba65fcd49eff24110a625b262119de1ae`.
+All 648 recorded source inputs match the build snapshot. Integrated source tests
+pass 711 Rust and 166 frontend cases, with 45 Rust cases intentionally ignored.
+The native harness gate passes 31 cases.
+
+That exact package passes all 175 normal native scenarios. Four new attachment
+cases use real registered native commands, an owned offline provider CLI and
+independent Git assertions. They verify immutable server-held plans, repository
+and context binding, one-use execution, exclusion of private configuration,
+exact preservation of source remotes, branch tracking, refs, index and dirty
+bytes, stale-config/account refusal, retention of a foreign config lock, and
+cancellation that reaps the owned provider process without publishing config.
+The actual desktop form selects the displayed source remote, requires a separate
+review, adds the confirmed URL/refspec to real local configuration, and performs
+provider GETs only. Both native review and confirmation screenshots were visually
+inspected. Renderer IPC was not replaced or stubbed in these native cases.
+
+Inherited-environment native acceptance and the complete 1,309-case integrated
+renderer gate are still running. The earlier failed full renderer run and the
+superseded partial serial rerun remain excluded from full passing qualification.
+No new integration commit has reached dev or been pushed. This is Linux offline
+fixture evidence; live provider writes, application-process restart, other
+platforms, redirected transport review and the full parity inventory remain open.
