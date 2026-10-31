@@ -2716,6 +2716,7 @@ export class GitKhronosService {
     action: (report: ActivityReporter) => Promise<void>,
     repositoryId: string | null = null,
     operationId: string | null = null,
+    refreshOnCancel = true,
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
@@ -2752,7 +2753,7 @@ export class GitKhronosService {
       this.lastFailureKind = this.errorKind(error);
       const cancelled = this.isOperationCancelled(error);
       let detail = this.formatError(error);
-      if (cancelled && repositoryId) {
+      if (cancelled && repositoryId && refreshOnCancel) {
         try {
           await this.refreshMutationSnapshot(repositoryId, inspectionRequest);
           this.activity.set('Operation canceled; repository state refreshed');
@@ -2763,7 +2764,7 @@ export class GitKhronosService {
         }
       } else {
         this.error.set(detail);
-        this.activity.set('Operation failed');
+        this.activity.set(cancelled ? 'Operation canceled' : 'Operation failed');
       }
       const status = cancelled ? 'cancelled' : 'error';
       this.finishActivity(id, status, label.replace(/…$/, ''), startedAt, detail);

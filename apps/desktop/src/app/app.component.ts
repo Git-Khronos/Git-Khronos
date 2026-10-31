@@ -1,3 +1,4 @@
+import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
 import {
   ChangeDetectionStrategy,
@@ -614,7 +615,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -641,6 +642,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly historyLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyLoaderClose');
   private readonly workspaceCenterLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceCenterLoaderClose');
   private readonly workspaceCenterLoaderFocus = afterRenderEffect(() => this.workspaceCenterLoaderClose()?.nativeElement.focus());
+  private readonly branchWorkflowLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('branchWorkflowLoaderClose');
+  private readonly branchWorkflowLoaderFocus = afterRenderEffect(() => this.branchWorkflowLoaderClose()?.nativeElement.focus());
   private readonly mergePreviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('mergePreviewLoaderClose');
   private readonly mergePreviewLoaderFocus = afterRenderEffect(() => this.mergePreviewLoaderClose()?.nativeElement.focus());
   private readonly rebaseLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('rebaseLoaderClose');
@@ -816,6 +819,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly appMenuOpen = signal(false);
   protected readonly zoomControlsWidth = signal(208);
   protected readonly workspaceMenuOpen = signal(false);
+  protected readonly branchWorkflowRequest = signal<BranchWorkflowDialogRequest | null>(null);
   protected readonly workspaceCenterRequest = signal<WorkspaceCenterRequest | null>(null);
   protected readonly workspaceDialogMode = signal<'create' | 'rename' | null>(null);
   protected readonly workspaceName = signal('');
@@ -1577,6 +1581,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.interactiveRebase.set(null);
         this.mergeRebaseReview.set(null);
         this.mergePreviewRequest.set(null);
+        this.branchWorkflowRequest.set(null);
         this.selectedRebaseOid.set(null);
         this.pendingHistoryAction.set(null);
       });
@@ -3158,6 +3163,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'close-tab', group: 'Repository', label: 'Close Repository Tab', detail: 'Close the current repository workspace', shortcut: `${this.primaryShortcutKey} W`, enabled: !!repository && !busy, icon: 'x' },
       { id: 'reopen-tab', group: 'Repository', label: 'Reopen Closed Repository', detail: this.git.recentlyClosedRepositoryPath() ?? 'No repository tab has been closed this session', shortcut: `${this.primaryShortcutKey} Shift T`, enabled: !!this.git.recentlyClosedRepositoryPath() && !busy, icon: 'redo' },
       { id: 'refresh', group: 'Repository', label: 'Refresh Repository', detail: 'Reload status, references, and history', enabled: !!repository && !busy, icon: 'refresh' },
+      { id: 'branch-workflows', group: 'Branch', label: 'Branch workflows', detail: 'Configure, start and finish features, releases and hotfixes', enabled: !!repository && !repository.bare && !busy, icon: 'merge' },
       { id: 'merge-preview', group: 'Branch', label: 'Preview merge conflicts', detail: 'Inspect committed branch tips without starting a merge', enabled: !!repository?.headOid && !busy, icon: 'merge' },
       { id: 'maintenance', group: 'Repository', label: 'Perform Repository Maintenance', detail: 'Check integrity, pack refs/commit graph; no pruning', enabled: !!repository && !busy, icon: 'settings' },
       { id: 'undo', group: 'Edit', label: this.git.undoLabel() ?? 'Undo', detail: this.git.undoLabel() ? 'Reverse the latest supported repository action' : 'No supported repository action to undo', shortcut: this.undoShortcut, enabled: !!this.git.undoLabel() && !busy, icon: 'undo' },
@@ -3813,7 +3819,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
-    if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview() || this.mergePreviewRequest() || this.workspaceCenterRequest()) return;
+    if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview() || this.mergePreviewRequest() || this.workspaceCenterRequest() || this.branchWorkflowRequest()) return;
     // Disabling a focused item can move focus out of the menu. Its local
     // keydown handler may then never receive Tab, but dismissal must still work.
     if (event.key === 'Tab' && this.workspaceMenuOpen()) {
@@ -9182,6 +9188,27 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workspaceMenuOpen.set(false);
   }
 
+  protected openBranchWorkflows(returnFocus: HTMLElement | null = null): void {
+    const repository = this.git.repository();
+    if (!repository || repository.bare || this.git.busy()) return;
+    const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    this.workspaceMenuOpen.set(false);
+    this.contextMenu.set(null);
+    this.branchWorkflowRequest.set({ repositoryId: repository.id, path: repository.path,
+      returnFocus: opener?.getAttribute('role') === 'menuitem' ? this.workspaceToggle()?.nativeElement ?? null : opener });
+  }
+
+  protected closeBranchWorkflowLoader(): void {
+    const opener = this.branchWorkflowRequest()?.returnFocus;
+    this.branchWorkflowRequest.set(null);
+    setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else this.workspaceToggle()?.nativeElement.focus(); });
+  }
+
+  protected handleBranchWorkflowLoaderKey(event: KeyboardEvent): void {
+    if (event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); this.branchWorkflowLoaderClose()?.nativeElement.focus(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeBranchWorkflowLoader(); }
+  }
+
   protected closeWorkspaceCenterLoader(): void {
     const opener = this.workspaceCenterRequest()?.returnFocus;
     this.workspaceCenterRequest.set(null);
@@ -9752,6 +9779,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     switch (action.id) {
+      case 'branch-workflows': this.openBranchWorkflows(paletteReturnFocus); break;
       case 'hosting-center': this.openWorkspaceCenter('hosting', paletteReturnFocus); break;
       case 'workspace-overview': this.openWorkspaceCenter('overview', paletteReturnFocus); break;
       case 'identity-profiles': this.openWorkspaceCenter('identities', paletteReturnFocus); break;

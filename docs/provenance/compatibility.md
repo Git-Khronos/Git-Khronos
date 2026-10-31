@@ -2074,3 +2074,20 @@ fixtures additionally model account switches, one-use tokens and writes applied
 before a lost reply; their current artifact results are recorded separately.
 No live provider write, proprietary package inspection or copied implementation
 is part of this qualification.
+
+
+## Reviewed branch workflow desktop controls
+
+Original desktop controls expose the independent branch workflow engine through
+repository-bound, one-use native previews. The review shows source/target object
+IDs, merge policy, messages, tag signing and conditional topic deletion before
+execution. Saved stages support inspected continuation, explicit retry, reviewed
+stop and acknowledgement while retaining recovery captures.
+
+The layout uses existing project components, palettes and icons. Renderer
+fixtures model cancellation, stale references, repository switches, recovery and
+keyboard access. Owned native fixtures check actual Git refs, parent lists,
+annotated tags, cleanup and second-target conflict recovery. Current package
+qualification is recorded separately; these fixtures do not establish every
+workflow case, real signing or all-platform acceptance. No proprietary code,
+assets, wording collections or distinctive visual composition were used.

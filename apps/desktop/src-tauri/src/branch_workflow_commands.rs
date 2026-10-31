@@ -88,6 +88,37 @@ fn take_plan(
         .plan)
 }
 
+fn workflow_lock<'a>(
+    operation: &'a Mutex<()>,
+    cancellation: &CancellationToken,
+    timeout: Duration,
+) -> Result<std::sync::MutexGuard<'a, ()>, AppError> {
+    let started = Instant::now();
+    loop {
+        if cancellation.is_cancelled() {
+            return Err(AppError {
+                kind: "operationCancelled".into(),
+                message: "The branch workflow request was canceled.".into(),
+                hint: None,
+            });
+        }
+        match operation.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(error)) => return Err(state_error(error)),
+            Err(std::sync::TryLockError::WouldBlock) if started.elapsed() >= timeout => {
+                return Err(AppError {
+                    kind: "repositoryBusy".into(),
+                    message: "Another Git operation is still using this repository.".into(),
+                    hint: Some("Wait for it to finish, then review the workflow again.".into()),
+                });
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
+        }
+    }
+}
+
 async fn workflow_task<T, F>(
     repo_id: String,
     app: AppHandle,
@@ -101,19 +132,9 @@ where
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        // Refuse a busy session promptly; a queued mutex wait must not prevent
-        // cancellation while an unrelated long Git operation owns the checkout.
-        let _guard = match session.operation.try_lock() {
-            Ok(guard) => guard,
-            Err(std::sync::TryLockError::Poisoned(error)) => return Err(state_error(error)),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                return Err(AppError {
-                    kind: "repositoryBusy".into(),
-                    message: "Another Git operation is using this repository.".into(),
-                    hint: Some("Wait for it to finish, then review the workflow again.".into()),
-                });
-            }
-        };
+        // Cooperate with short snapshot refreshes without an uninterruptible
+        // mutex wait. The reviewed core plan is revalidated after acquisition.
+        let _guard = workflow_lock(&session.operation, &cancellation, Duration::from_secs(10))?;
         if cancellation.is_cancelled() {
             return Err(AppError {
                 kind: "operationCancelled".into(),
@@ -349,5 +370,60 @@ mod tests {
         assert!(
             matches!(request, BranchWorkflowRequest::Setup { initial_oid, .. } if initial_oid == "a".repeat(40))
         );
+    }
+    #[test]
+    fn a_short_repository_refresh_can_finish_before_the_workflow_acquires_its_lock() {
+        let operation = Arc::new(Mutex::new(()));
+        let held = operation.lock().unwrap();
+        let worker_operation = operation.clone();
+        let (started_sender, started_receiver) = std::sync::mpsc::channel();
+        let (finished_sender, finished_receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            started_sender.send(()).unwrap();
+            let guard = workflow_lock(
+                &worker_operation,
+                &CancellationToken::default(),
+                Duration::from_secs(5),
+            );
+            finished_sender.send(guard.is_ok()).unwrap();
+        });
+        started_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert!(finished_receiver.try_recv().is_err());
+        drop(held);
+        assert!(
+            finished_receiver
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn queued_workflow_lock_waits_are_cancellable_and_bounded() {
+        let operation = Arc::new(Mutex::new(()));
+        let _held = operation.lock().unwrap();
+        assert_eq!(
+            workflow_lock(&operation, &CancellationToken::default(), Duration::ZERO)
+                .unwrap_err()
+                .kind,
+            "repositoryBusy"
+        );
+        let cancellation = CancellationToken::default();
+        let worker_token = cancellation.clone();
+        let worker_operation = operation.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let error = workflow_lock(&worker_operation, &worker_token, Duration::from_secs(30))
+                .unwrap_err();
+            sender.send(error.kind).unwrap();
+        });
+        cancellation.cancel();
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)).unwrap(),
+            "operationCancelled"
+        );
+        worker.join().unwrap();
     }
 }

@@ -1,7 +1,7 @@
 # Feature, release and hotfix workflows
 
-Status: independent functional specification for G24, with a tested core-engine
-checkpoint described below. The dedicated desktop workflow is not yet available.
+Status: independent functional specification for G24, with core-engine, native
+command and desktop checkpoints described below. Full G24 acceptance remains open.
 Ordinary branch commands do not satisfy this capability.
 
 ## Public capability reference
@@ -181,17 +181,17 @@ working files prevent automatic metadata cleanup. Signature
 presence is checked when reconciling a requested signed tag; this is not a claim
 of cryptographic trust or signer identity.
 
-Remaining requirements before desktop acceptance:
+Remaining requirements after the core-engine checkpoint:
 
-- Renderer controls, keyboard behavior and packaged acceptance remain open;
-  the native command and cancellation checkpoint below does not complete them.
-- Topic discovery does not yet expose tracking state. Conditional local ref
-  deletion retains branch-specific configuration; safely handling later topic
+- Desktop controls and packaged evidence are recorded in the later checkpoint;
+  the core-engine and native command tests alone do not establish them.
+- The desktop supplements topic discovery with snapshot tracking state.
+  Conditional local ref deletion retains branch-specific configuration; safely handling later topic
   name reuse and concurrent external worktree registration needs qualification.
 - Optional feature rebase needs an explicit connection to the existing reviewed
   rebase workflow. Unborn setup and moved owning worktrees remain unsupported.
 - Successful real signing, further storage failures, all supported platforms and
-  native IPC rejection cases still require their own acceptance evidence.
+  additional native IPC rejection cases still require their own acceptance evidence.
 
 This checkpoint introduces no dependency, proprietary code, asset or copied UI.
 It does not qualify the current packaged executable or complete G24.
@@ -204,9 +204,10 @@ The native registry exposes `load_branch_workflow`, `prepare_branch_workflow`,
 `control_branch_workflow_finish`. Setup/start/finish previews are stored in the
 native process, bound to a repository session, and expire after fifteen minutes.
 Execution consumes a preview once before dispatch and accepts only its token.
-The cache is bounded; a busy checkout is refused without an uninterruptible
-mutex wait. Continue/abort/acknowledge identify the durable workflow and its
-current action revision. Rust-derived TypeScript contracts preserve these types.
+The cache is bounded. Requests wait up to ten seconds for the repository operation
+lock, checking cancellation every ten milliseconds; a still-busy checkout is
+refused. The core plan is revalidated after lock acquisition. Continue, abort and
+acknowledge identify the durable workflow and its current action revision. Rust-derived TypeScript contracts preserve these types.
 
 Owned source tests exercise repository binding, expiry, reuse refusal, strict
 nested request decoding and TypeScript rejection of forged execution plans or
@@ -237,3 +238,57 @@ its direct protected ref against the reviewed original commit. Missing or moved
 refs, symbolic substitutions and removed records refuse continuation while
 retaining the existing workflow journal, refs and index. The source test covers
 all four cases independently.
+
+
+## Desktop checkpoint (2026-10-31)
+
+The workspace menu and command palette open an original lazy-loaded Branch
+workflows dialog. Configuration, topic creation and finishing each require a
+server-held preview before Apply. Editing a form, changing repository references
+or switching repositories invalidates the preview. Existing commit drafts are
+retained. Topic rows show the upstream from the repository snapshot.
+
+Feature/release topics start from development; hotfixes start from production.
+Finish review displays the original source commit, ordered target commits,
+merge policy, messages, annotated tag and local cleanup choice. Signed, unsigned
+and repository-default tag choices are explicit. Saved outcomes show completed
+stages, protected recovery captures and the owning checkout. Conflict recovery
+uses Inspect and continue, a separate explicit retry review, or reviewed Stop.
+Acknowledgement removes the workflow record while retaining its captures.
+
+The UI remains disabled through apply, graph refresh and workflow reload. An
+already-running graph refresh is reported as pending rather than as a failed
+workflow. Cancellation of a workflow request does not start an uncancellable
+snapshot refresh. Closing an active request requests cancellation and waits for
+its result. Late previews are discarded. Keyboard focus is contained and restored;
+compact layouts use the existing Chronos and Midnight palettes.
+
+Local qualification uses Linux package SHA-256
+`81b51505a83ac60066aa27946b3131e8879f1234419bd00eae3b4e6314627ff0`.
+Its 630 captured source inputs match the reviewed commit index except for the
+three documentation updates. Subsequent discovery-core and CI-workflow changes
+are outside that package capture.
+
+- Angular build, Cargo check, Clippy with warnings denied, generated IPC checks
+  and 30 native-harness tests pass. Source tests pass 651 Rust and 166 frontend
+  cases; 45 Rust cases remain ignored.
+- All 15 focused workflow renderer cases pass. The full renderer run passed
+  1,263 cases and failed three existing cases in fixture startup, workspace
+  refresh interaction and graph resizing. All three passed an explicit serial
+  rerun on unchanged renderer source after other validation jobs ended. The
+  original failures and traces are retained; this is not a clean full-suite pass.
+- The exact preserved package passes 161 normal and 162 inherited-environment
+  native scenario executions. Both reports identify the same package and
+  executable hashes. These include real UI setup, feature/release/hotfix finish,
+  exact parents and tags, retained captures, cancellation, native preview binding,
+  and continued/stopped second-target conflicts after session recreation.
+
+The previously pushed commit's CI renderer job separately failed with an
+inspector assertion and an ENOSPC error while recording evidence. A subsequent
+CI-only cleanup change needs its own remote validation. Local package acceptance
+does not establish that CI result.
+
+Full G24 acceptance remains open:
+branch-configuration cleanup/name reuse, external worktree races, the optional
+feature-rebase connection, unborn setup, moved owning worktrees, successful real
+signing and broader failure/platform coverage still require work.

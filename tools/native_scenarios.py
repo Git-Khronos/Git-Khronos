@@ -2169,7 +2169,358 @@ def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
+
+
+
+def _workflow_repository(fixtures, name):
+    repository = fixtures.repository(name, 1)
+    hooks = repository / '.git/owned-workflow-hooks'
+    hooks.mkdir()
+    empty = repository / '.git/owned-workflow-empty'
+    empty.write_bytes(b'')
+    for key, value in {
+        'user.name': 'Owned Native Workflow', 'user.email': 'owned-workflow@example.test',
+        'commit.gpgsign': 'false', 'tag.gpgsign': 'false', 'tag.forceSignAnnotated': 'false',
+        'core.fsmonitor': 'false', 'core.autocrlf': 'false', 'core.hooksPath': str(hooks),
+        'core.attributesFile': str(empty), 'core.excludesFile': str(empty),
+    }.items():
+        fixtures.git(repository, 'config', '--local', key, value)
+    return repository
+
+def branch_workflow_native_boundary(driver, fixtures, original_repository, report):
+    repository = _workflow_repository(fixtures, 'branch-workflow-boundary')
+    initial = fixtures.git(repository, 'rev-parse', 'HEAD')
+    repo_id = driver.invoke('open_repository', path=str(repository))['id']
+    original_id = driver.invoke('open_repository', path=str(original_repository))['id']
+    settings = dict(version=1, production='main', development='develop', featurePrefix='feature/',
+                    releasePrefix='release/', hotfixPrefix='hotfix/', tagPrefix='')
+    prepared = driver.invoke('prepare_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()),
+                             request=dict(action='setup', settings=settings, initialOid=initial))
+    before = fixtures.git(repository, 'show-ref')
+    try:
+        driver.invoke('execute_branch_workflow', repoId=original_id, token=prepared['token'], operationId=str(uuid.uuid4()))
+        raise AssertionError('A preview dispatched against another repository')
+    except RuntimeError as error:
+        assert 'staleBranchWorkflowPlan' in str(error), error
+    assert fixtures.git(repository, 'show-ref') == before
+    prepared['plan']['plan']['settings']['production'] = 'client-altered-name'
+    driver.invoke('execute_branch_workflow', repoId=repo_id, token=prepared['token'], operationId=str(uuid.uuid4()))
+    assert fixtures.git(repository, 'rev-parse', 'develop') == initial
+    assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/heads/client-altered-name')
+    try:
+        driver.invoke('execute_branch_workflow', repoId=repo_id, token=prepared['token'], operationId=str(uuid.uuid4()))
+        raise AssertionError('A consumed native preview was replayed')
+    except RuntimeError as error:
+        assert 'staleBranchWorkflowPlan' in str(error), error
+    before = fixtures.git(repository, 'show-ref')
+    try:
+        driver.invoke('control_branch_workflow_finish', repoId=repo_id, id='a' * 32, revision=0,
+                      control=dict(action='abort', retry=True), operationId=str(uuid.uuid4()))
+        raise AssertionError('Unexpected control fields reached the workflow engine')
+    except RuntimeError as error:
+        assert 'unknown field' in str(error), error
+    assert fixtures.git(repository, 'show-ref') == before
+    report['scenarios'].append('native-workflow-preview-repository-binding-server-immutability-single-use-and-strict-control-decoding')
+
+    monitor = fixtures.root / 'owned-workflow-monitor'
+    monitor.write_text('#!/bin/sh\ngit_dir=$(git rev-parse --absolute-git-dir)\nsleep 30 &\nprintf "%s" "$!" > "$git_dir/owned-monitor-child"\nwait\n')
+    monitor.chmod(0o700)
+    fixtures.git(repository, 'config', 'core.fsmonitor', str(monitor))
+    index = (repository / '.git/index').read_bytes()
+    operation_id = str(uuid.uuid4())
+    try:
+        driver.script("""
+          window.__ownedWorkflowRequest = { settled: false };
+          window.__TAURI_INTERNALS__.invoke('prepare_branch_workflow', arguments[0])
+            .then(value => { window.__ownedWorkflowRequest = { settled: true, value }; },
+                  error => { window.__ownedWorkflowRequest = { settled: true, error }; });
+        """, dict(repoId=repo_id, operationId=operation_id,
+                  request=dict(action='start', kind='feature', suffix='cancel-owned')))
+        marker = repository / '.git/owned-monitor-child'
+        deadline = time.monotonic() + 30
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert marker.exists(), 'Owned cancellable preflight never reached its monitor'
+        assert driver.invoke('cancel_git_operation', operationId=operation_id)
+        driver.wait('return window.__ownedWorkflowRequest?.settled', 10)
+        result = driver.script('return window.__ownedWorkflowRequest')
+        assert result.get('error', {}).get('kind') == 'operationCancelled', result
+        assert fixtures.git(repository, 'show-ref') == before
+        assert (repository / '.git/index').read_bytes() == index
+        assert not (repository / '.git/git-khronos-branch-workflow/active.json').exists()
+        child = marker.read_text()
+        stat = Path('/proc') / child / 'stat'
+        if stat.exists():
+            assert stat.read_text().rsplit(') ', 1)[1].startswith('Z'), 'Canceled owned monitor is still running'
+        report['scenarios'].append('native-workflow-cancellation-interrupts-running-preflight-helper-without-branch-or-index-mutation')
+    finally:
+        fixtures.git(repository, 'config', 'core.fsmonitor', 'false')
+        driver.script('delete window.__ownedWorkflowRequest')
+
+
+def _workflow_button(driver, text):
+    driver.wait(f"return [...document.querySelectorAll('gc-branch-workflow-dialog button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
+    driver.click_text('gc-branch-workflow-dialog button', text)
+
+def branch_workflow_desktop(driver, fixtures, original_repository, report):
+    """Packaged UI actions with exact Git refs, parents, tags and recovery oracles."""
+    repository = _workflow_repository(fixtures, 'branch-workflow-ui')
+    initial = fixtures.git(repository, "rev-parse", "HEAD")
+    initial_refs = fixtures.git(repository, "show-ref")
+    initial_index = (repository / ".git/index").read_bytes()
+    initial_bytes = (repository / "fixture.txt").read_bytes()
+    selector = 'gc-branch-workflow-dialog'
+
+    def ready():
+        driver.wait("""return (() => {
+          const dialog = document.querySelector('gc-branch-workflow-dialog');
+          return dialog && !dialog.querySelector('.progress') &&
+            [...dialog.querySelectorAll('button')].some(button =>
+              button.textContent.trim() === 'Reload workflow state' && !button.disabled);
+        })()""")
+
+    def enter():
+        driver.click('.workspace-toggle')
+        driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+        driver.wait("return !!document.querySelector('gc-branch-workflow-dialog [role=dialog]')")
+        ready()
+
+    def fill(selector, value, event="input"):
+        driver.wait(f"return !!document.querySelector({json.dumps(selector)}) && !document.querySelector({json.dumps(selector)}).matches(':disabled')")
+        driver.script("""
+          const element = document.querySelector(arguments[0]);
+          if (!element) throw Error('Missing owned workflow control: ' + arguments[0]);
+          element.value = arguments[1];
+          element.dispatchEvent(new Event(arguments[2], {bubbles: true}));
+        """, selector, value, event)
+
+    def button(text):
+        _workflow_button(driver, text)
+
+    def apply():
+        driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .review')")
+        button('Apply reviewed workflow')
+        ready()
+        error = driver.script("return document.querySelector('gc-branch-workflow-dialog [role=alert]')?.textContent")
+        assert not error, error
+
+    def acknowledge():
+        button('Review acknowledgement')
+        button('Acknowledge outcome')
+        ready()
+
+    def start(kind, suffix):
+        button('Topics')
+        fill('#workflow-kind', kind, 'change')
+        fill('#workflow-suffix', suffix)
+        before = fixtures.git(repository, 'show-ref')
+        button('Review topic creation')
+        ready()
+        assert fixtures.git(repository, 'show-ref') == before
+        apply()
+        assert fixtures.git(repository, 'symbolic-ref', '--short', 'HEAD') == f'{kind}/{suffix}'
+
+    def commit_file(path, content, message):
+        (repository / path).write_text(content)
+        fixtures.git(repository, 'add', '--', path)
+        fixtures.git(repository, 'commit', '-qm', message)
+        return fixtures.git(repository, 'rev-parse', 'HEAD')
+
+    try:
+        repo_id = open_ui(driver, repository)
+        enter()
+        fill('#workflow-tagPrefix', 'v')
+        button('Review configuration')
+        ready()
+        assert fixtures.git(repository, 'show-ref') == initial_refs
+        assert (repository / '.git/index').read_bytes() == initial_index
+        assert (repository / 'fixture.txt').read_bytes() == initial_bytes
+        apply()
+        settings = json.loads(fixtures.git(repository, 'config', '--local', 'gitkhronos.branchWorkflow'))
+        assert settings['production'] == 'main' and settings['development'] == 'develop'
+        assert settings['tagPrefix'] == 'v'
+        assert fixtures.git(repository, 'rev-parse', 'main') == initial
+        assert fixtures.git(repository, 'rev-parse', 'develop') == initial
+        assert fixtures.git(repository, 'symbolic-ref', '--short', 'HEAD') == 'main'
+        report['scenarios'].append('native-ui-workflow-setup-reviewed-ref-creation-preserves-checkout-index-files')
+
+        start('feature', 'owned-ui')
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == initial
+        button('Close')
+        source = commit_file('fixture.txt', 'owned feature\n', 'Owned UI feature')
+        repo_id = open_ui(driver, repository)
+        enter()
+        button('Finish feature/owned-ui')
+        before = fixtures.git(repository, 'show-ref')
+        button('Review finish')
+        ready()
+        assert fixtures.git(repository, 'show-ref') == before
+        apply()
+        status = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+        assert status['phase'] == 'complete', status
+        development = fixtures.git(repository, 'rev-parse', 'develop')
+        assert fixtures.git(repository, 'rev-list', '--parents', '--max-count=1', 'develop').split() == [development, initial, source]
+        assert fixtures.git(repository, 'rev-parse', 'main') == initial
+        assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/heads/feature/owned-ui')
+        assert (repository / 'fixture.txt').read_text() == 'owned feature\n'
+        assert fixtures.git(repository, 'status', '--porcelain') == ''
+        assert len(status['recovery']) == 2
+        for capture in status['recovery']:
+            assert fixtures.git(repository, 'rev-parse', capture['headReference']) == capture['headOid']
+        driver.screenshot(Path(report['artifactsDirectory']) / 'branch-workflow-feature-finished.png')
+        acknowledge()
+        assert driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish'] is None
+        for capture in status['recovery']:
+            assert fixtures.git(repository, 'rev-parse', capture['headReference']) == capture['headOid']
+        report['scenarios'].append('native-ui-feature-start-reviewed-finish-exact-parents-conditional-cleanup-and-retained-recovery')
+
+        start('release', '1.0')
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == development
+        button('Close')
+        release_source = commit_file('release.txt', 'owned release\n', 'Owned UI release')
+        fixtures.git(repository, 'checkout', '-q', 'main')
+        production_before = commit_file('production-only.txt', 'production content\n', 'Owned production divergence')
+        repo_id = open_ui(driver, repository)
+        enter()
+        button('Finish release/1.0')
+        fill('#workflow-tag-message', 'Owned native release\nRelease notes')
+        fill('#workflow-signing', 'unsigned', 'change')
+        driver.script("""
+          const checkbox = [...document.querySelectorAll('gc-branch-workflow-dialog input[type=checkbox]')][0];
+          checkbox.checked = true; checkbox.dispatchEvent(new Event('change', {bubbles:true}));
+        """)
+        button('Review finish')
+        ready()
+        driver.screenshot(Path(report['artifactsDirectory']) / 'branch-workflow-release-review.png')
+        apply()
+        status = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+        assert status['phase'] == 'complete', status
+        production = fixtures.git(repository, 'rev-parse', 'main')
+        release_development = fixtures.git(repository, 'rev-parse', 'develop')
+        assert fixtures.git(repository, 'rev-list', '--parents', '--max-count=1', 'main').split() == [production, production_before, release_source]
+        assert fixtures.git(repository, 'rev-list', '--parents', '--max-count=1', 'develop').split() == [release_development, development, release_source]
+        assert fixtures.git(repository, 'rev-parse', 'v1.0^{commit}') == production
+        assert fixtures.git(repository, 'cat-file', '-t', 'v1.0') == 'tag'
+        assert fixtures.git(repository, 'cat-file', '-p', 'v1.0').endswith('Owned native release\nRelease notes')
+        assert not (repository / 'production-only.txt').exists(), 'Production-only changes were unexpectedly copied into development'
+        assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/heads/release/1.0')
+        acknowledge()
+        report['scenarios'].append('native-ui-release-finish-integrates-original-source-into-both-targets-and-tags-production')
+
+        start('hotfix', '1.1')
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == production
+        button('Close')
+        hotfix_source = commit_file('hotfix.txt', 'owned hotfix\n', 'Owned UI hotfix')
+        repo_id = open_ui(driver, repository)
+        enter()
+        button('Finish hotfix/1.1')
+        button('Review finish')
+        ready()
+        apply()
+        status = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+        assert status['phase'] == 'complete', status
+        fixtures.git(repository, 'merge-base', '--is-ancestor', hotfix_source, 'main')
+        fixtures.git(repository, 'merge-base', '--is-ancestor', hotfix_source, 'develop')
+        assert fixtures.git(repository, 'rev-parse', 'hotfix/1.1') == hotfix_source
+        assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/tags/v1.1')
+        assert fixtures.git(repository, 'status', '--porcelain') == ''
+        acknowledge()
+        button('Close')
+        report['scenarios'].append('native-ui-hotfix-starts-at-production-finishes-both-targets-and-retains-topic-without-implicit-tag')
+    except Exception:
+        driver.screenshot(Path(report['artifactsDirectory']) / 'branch-workflow-ui-failure.png')
+        state = driver.script("""return {
+          dialog: document.querySelector('gc-branch-workflow-dialog')?.textContent,
+          controls: [...document.querySelectorAll('gc-branch-workflow-dialog button')].map(button => ({text: button.textContent, disabled: button.disabled})),
+          mainStatus: document.querySelector('[role=status]')?.textContent
+        }""")
+        (Path(report['artifactsDirectory']) / 'branch-workflow-ui-failure.json').write_text(json.dumps(state, indent=2))
+        raise
+    finally:
+        open_ui(driver, original_repository)
+
+
+def branch_workflow_restart_and_abort(driver, fixtures, original_repository, report):
+    for action in ('continue', 'abort'):
+        repository = _workflow_repository(fixtures, 'branch-workflow-' + action)
+        initial = fixtures.git(repository, 'rev-parse', 'HEAD')
+        try:
+            repo_id = open_ui(driver, repository)
+            settings = dict(version=1, production='main', development='develop', featurePrefix='feature/',
+                            releasePrefix='release/', hotfixPrefix='hotfix/', tagPrefix='v')
+            prepared = driver.invoke('prepare_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()),
+                                     request=dict(action='setup', settings=settings, initialOid=initial))
+            driver.invoke('execute_branch_workflow', repoId=repo_id, token=prepared['token'], operationId=str(uuid.uuid4()))
+            # Ordinary manually named topics are supported. Divergent fixture
+            # contents force a conflict only at the second integration target.
+            fixtures.git(repository, 'checkout', '-q', 'develop')
+            (repository / 'fixture.txt').write_text('development target\n')
+            fixtures.git(repository, 'add', 'fixture.txt')
+            fixtures.git(repository, 'commit', '-qm', 'Owned development target')
+            development_before = fixtures.git(repository, 'rev-parse', 'HEAD')
+            fixtures.git(repository, 'checkout', '-q', '-b', 'release/recovery', 'main')
+            (repository / 'fixture.txt').write_text('release source\n')
+            fixtures.git(repository, 'add', 'fixture.txt')
+            fixtures.git(repository, 'commit', '-qm', 'Owned release source')
+            source = fixtures.git(repository, 'rev-parse', 'HEAD')
+            repo_id = open_ui(driver, repository)
+            driver.click('.workspace-toggle')
+            driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+            driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .topics')")
+            _workflow_button(driver, 'Finish release/recovery')
+            _workflow_button(driver, 'Review finish')
+            driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .review')")
+            _workflow_button(driver, 'Apply reviewed workflow')
+            driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')", 60)
+            status = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+            assert status['phase'] == 'conflicted' and len(status['completedTargets']) == 1, status
+            first_integration = fixtures.git(repository, 'rev-parse', 'main')
+            assert first_integration == status['completedTargets'][0]
+            assert fixtures.git(repository, 'rev-parse', 'develop') == development_before
+            assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/tags/vrecovery')
+            _workflow_button(driver, 'Close')
+            # Recreate the renderer and repository session, retaining only Git's
+            # durable operation/journal state, then use the actual recovery UI.
+            repo_id = open_ui(driver, repository)
+            if action == 'continue':
+                (repository / 'fixture.txt').write_text('resolved after restart\n')
+                fixtures.git(repository, 'add', 'fixture.txt')
+            driver.click('.workspace-toggle')
+            driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+            driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')")
+            if action == 'continue':
+                _workflow_button(driver, 'Inspect and continue')
+                driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow complete')", 60)
+                final = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+                assert final['phase'] == 'complete' and len(final['completedTargets']) == 2, final
+                assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
+                assert fixtures.git(repository, 'rev-parse', 'vrecovery^{commit}') == first_integration
+                assert (repository / 'fixture.txt').read_text() == 'resolved after restart\n'
+                assert fixtures.git(repository, 'status', '--porcelain') == ''
+                report['scenarios'].append('native-ui-workflow-restart-continues-second-target-conflict-without-replaying-first-merge')
+            else:
+                _workflow_button(driver, 'Review stop')
+                _workflow_button(driver, 'Stop workflow')
+                driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow stopped')", 60)
+                final = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
+                assert final['phase'] == 'aborted', final
+                assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
+                assert fixtures.git(repository, 'rev-parse', 'develop') == development_before
+                assert (repository / 'fixture.txt').read_text() == 'development target\n'
+                assert not (repository / '.git/MERGE_HEAD').exists()
+                report['scenarios'].append('native-ui-workflow-stop-aborts-only-current-merge-and-retains-first-integration')
+            assert fixtures.git(repository, 'rev-parse', 'release/recovery') == source
+            for capture in final['recovery']:
+                assert fixtures.git(repository, 'rev-parse', capture['headReference']) == capture['headOid']
+            driver.screenshot(Path(report['artifactsDirectory']) / ('branch-workflow-recovery-' + action + '.png'))
+            _workflow_button(driver, 'Close')
+        finally:
+            open_ui(driver, original_repository)
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    branch_workflow_native_boundary(driver, fixtures, repository, report)
+    branch_workflow_desktop(driver, fixtures, repository, report)
+    branch_workflow_restart_and_abort(driver, fixtures, repository, report)
     rebase_row_keyboard_preview(driver, fixtures, repository, report)
     hosted_paging_and_decisions(driver, fixtures, repository, report)
     hosted_reviewed_writes(driver, fixtures, repository, report)

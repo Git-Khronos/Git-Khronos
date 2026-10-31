@@ -1920,6 +1920,7 @@
             <button class="danger" type="button" role="menuitem" [disabled]="git.busy() || git.workspaces().length <= 1" (click)="requestWorkspaceDelete()"><gc-icon name="trash" [size]="12" />Delete current</button>
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('overview')"><gc-icon name="repo" [size]="12" />Repository overview</button>
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('identities')"><gc-icon name="edit" [size]="12" />Identity profiles</button>
+            <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository() || git.repository()?.bare" (click)="openBranchWorkflows()"><gc-icon name="merge" [size]="12" />Branch workflows</button>
             <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()" (click)="openWorkspaceCenter('hosting')"><gc-icon name="repo" [size]="12" />Reviews and checks</button>
           </div>
         </div>
@@ -2072,7 +2073,7 @@
       </section>
     </div>
   }
-  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !workspaceCenterRequest() && git.error(); as error) {
+  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {
     @defer (on immediate) { <gc-error-toast [error]="error" (logRequested)="openErrorActivityLog()" /> }
   }
   @if (commandPaletteOpen()) {
@@ -2767,5 +2768,15 @@
     <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading workspace center" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="status">Loading workspace center…</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
   } @error {
     <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Workspace center unavailable" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="alert">Could not load workspace center. Close and reopen to retry.</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
+  }
+}
+
+@if (branchWorkflowRequest(); as request) {
+  @defer (on immediate) {
+    <gc-branch-workflow-dialog [request]="request" (closed)="branchWorkflowRequest.set(null)" />
+  } @placeholder {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading branch workflows" (keydown)="handleBranchWorkflowLoaderKey($event)"><p role="status">Loading branch workflows…</p><button #branchWorkflowLoaderClose type="button" (click)="closeBranchWorkflowLoader()">Close</button></section></div>
+  } @error {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Branch workflows unavailable" (keydown)="handleBranchWorkflowLoaderKey($event)"><p role="alert">Could not load branch workflows. Close and reopen to retry.</p><button #branchWorkflowLoaderClose type="button" (click)="closeBranchWorkflowLoader()">Close</button></section></div>
   }
 }
