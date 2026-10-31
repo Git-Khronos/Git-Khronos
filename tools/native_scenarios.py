@@ -13,6 +13,7 @@ import time
 import uuid
 import zlib
 from native_acceptance import open_ui, run
+from native_fork_remote_scenarios import hosted_fork_remote_attachment
 
 
 def shallow_history_pagination(driver, fixtures, report):
@@ -2883,6 +2884,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 
 
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    hosted_fork_remote_attachment(driver, fixtures, repository, report)
     hosted_fork_requests(driver, fixtures, repository, report)
     hosted_repository_discovery_and_clone(driver, fixtures, repository, report)
     branch_workflow_native_boundary(driver, fixtures, repository, report)
