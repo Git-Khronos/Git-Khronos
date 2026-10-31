@@ -1,7 +1,8 @@
 # Hosted repository discovery and forks
 
 Status: independent requirements for H02, with a source-only GitHub discovery
-checkpoint below. This specification does not claim desktop acceptance. Provider
+checkpoint and a desktop discovery/clone flow qualified for the recorded Linux artifact.
+This specification does not claim full H02 acceptance. Provider
 coverage remains part of the full parity
 objective; implementing one adapter does not qualify another host or account type.
 
@@ -120,3 +121,63 @@ writes. The final full source run passes 658 Rust and 166 frontend tests, with
 also pass. No discovery IPC, desktop catalogue, account-bound clone handoff, fork
 creation/reconciliation or local remote-attachment workflow is qualified by this
 source checkpoint. Enterprise and other providers remain open.
+
+
+## Reviewed desktop discovery and clone checkpoint (2026-10-31)
+
+The existing Clone dialog offers an original hosted repository browser. Loading
+is explicit and displays the actual catalogue account. Visibility, affiliation,
+sort and direction have bounded page requests; local text filtering is explicitly
+limited to the displayed page. Later page requests retain the original account
+ID. A failed page retains its previous result and a visible error; it does not
+mix accounts or present the failed page as empty. Repository selection requests
+fresh provider metadata with the selected account and repository IDs.
+
+Clone review identifies the acting catalogue account, canonical repository,
+SSH/HTTPS transport, canonical local destination, branch/depth and recursive
+submodule choice. Git credentials and the SSH agent remain managed by the existing
+Git authentication flow; catalogue selection does not silently replace them.
+Existing manual clone and commit drafts are preserved. Editing the clone form
+invalidates its preview. The server stores the immutable plan in a bounded,
+fifteen-minute cache and consumes a context-bound token once before dispatch.
+Execution rechecks account, repository identity/name/URL, read availability and
+the absent destination before using the existing Git clone implementation.
+No provider token is stored in a plan or clone URL.
+
+Close, Escape, leaving the hosted view and component destruction cancel a
+pending read/preview. Late read replies cannot reopen it; canceled previews are
+discarded. A confirmed successful clone that races a cancellation is reported as
+completed instead of being hidden. Clone failures retain actionable information
+about any partial destination, following the existing clone recovery behavior.
+
+Current source validation passes 665 Rust and 166 frontend tests, with 45 Rust
+cases ignored. Compile/lint and generated contracts pass. Thirteen focused hosted renderer
+cases and two existing manual-clone cases pass, including both palettes at a
+compact size, direct path entry, preserved drafts and focus transfer to review.
+The exact package passes 166 normal scenarios and 167 inherited-environment
+scenarios, and the full renderer suite passes all 1279 cases. Owned native scenarios use an offline API
+fixture and real Git clones from an owned repository; external Git protocols are
+blocked. The UI case uses the normal editable destination field; the OS
+directory-chooser widget is not qualified by this case.
+No live provider write is part of this qualification.
+
+The first full run of package
+`b026c6b4040ad2077aa5117fd84e19e4b958185687408c4745b49ed72e510c98`
+completed all five new hosted cases, then failed in an existing rebase fixture
+which looked up its menu item immediately after clicking the opener. The fixture
+now waits for that item and captures failure evidence before restoring the
+original repository. The same package bytes pass all 166 normal native scenarios
+on rerun, with this test-only post-build change recorded separately. The initial
+failure remains recorded. The same bytes also pass 167 inherited-environment
+scenarios, giving 333 native scenario executions. The packaged executable SHA-256 is
+`5e47f93f872036f616ee42c99cc13b2baada4018bf5ae14de5790901daf8b392`.
+
+An interrupted full renderer run recorded browser crashes during a concurrent
+isolated source run's temporary-storage quota failure. Its artifacts are retained.
+The source fixtures and browser temporary directory now use disk-backed storage;
+the unchanged renderer source passes all 1279 cases on rerun. The interrupted
+partial run is retained separately and is not counted as a successful gate.
+
+Fork discovery/creation, asynchronous readiness and uncertain-write reconciliation,
+reviewed local remote attachment, explicit provider/account management, enterprise
+and other-provider coverage remain required for the full objective.

@@ -91,6 +91,7 @@ use tauri_specta::Event;
 mod authentication;
 mod recovery_commands;
 mod hosting_commands;
+mod hosted_repository_commands;
 mod branch_workflow_commands;
 
 #[derive(Default)]
@@ -101,6 +102,7 @@ struct AppState {
     discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
     hosted_write_plans: Mutex<HashMap<String, hosting_commands::CachedPlan>>,
+    hosted_clone_plans: Mutex<HashMap<String, hosted_repository_commands::CachedClone>>,
     branch_workflow_plans: Mutex<HashMap<String, branch_workflow_commands::CachedPlan>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     terminals: Mutex<HashMap<String, TerminalSession>>,
@@ -3437,6 +3439,11 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             branch_workflow_commands::execute_branch_workflow,
             branch_workflow_commands::discard_branch_workflow_plan,
             branch_workflow_commands::control_branch_workflow_finish,
+            hosted_repository_commands::load_hosted_repositories,
+            hosted_repository_commands::inspect_hosted_repository,
+            hosted_repository_commands::prepare_hosted_clone,
+            hosted_repository_commands::execute_hosted_clone,
+            hosted_repository_commands::discard_hosted_clone_plan,
             hosting_commands::prepare_hosted_write,
             hosting_commands::execute_hosted_write,
             hosting_commands::discard_hosted_write_plan,

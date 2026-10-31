@@ -25,7 +25,7 @@ async function openCloneForm(page: import('@playwright/test').Page) {
   await dialog.getByRole('tab', { name: 'Clone' }).click();
   await expect(dialog.getByRole('heading', { name: 'Clone a Repository' })).toBeVisible();
   await dialog.getByLabel('Repository URL').fill('https://example.test/team/vendor-app.git');
-  await dialog.getByRole('button', { name: 'Browse' }).click();
+  await dialog.getByRole('button', { name: 'Browse', exact: true }).click();
   await expect(dialog.locator('input[name="cloneParent"]')).toHaveValue('/work');
   await expect(dialog.getByLabel('Folder name')).toHaveValue('vendor-app');
   await expect(dialog.getByText('Destination', { exact: true })).toBeVisible();

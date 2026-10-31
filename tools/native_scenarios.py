@@ -2142,6 +2142,7 @@ def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
         open_ui(driver, repository)
         driver.script("document.querySelector(arguments[0]).focus()", '[aria-label="Local branch main, current"]')
         driver.click_visible('[aria-label="Branch actions for main"]')
+        driver.wait("return [...document.querySelectorAll('.context-menu [role=\"menuitem\"]')].some(element => element.getClientRects().length && element.textContent.trim() === 'Edit entire history, including root…')")
         driver.click_text('.context-menu [role="menuitem"]', 'Edit entire history, including root…')
         driver.wait("return document.querySelectorAll('.interactive-rebase [data-rebase-oid]').length === 4")
         selector = f'.interactive-rebase [data-rebase-oid="{original_order[-1]}"]'
@@ -2165,6 +2166,9 @@ def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
         assert fixtures.git(repository, "rev-list", "--reverse", "HEAD").splitlines() == original_order
         assert not (repository / ".git/rebase-merge").exists()
         report["scenarios"].append("native-ui-rebase-rapid-keyboard-moves-compose-and-cancel-without-git-mutation")
+    except Exception:
+        driver.screenshot(Path(report["artifactsDirectory"]) / "rebase-row-keyboard-failure.png")
+        raise
     finally:
         open_ui(driver, original_repository)
 
@@ -2517,7 +2521,151 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
         finally:
             open_ui(driver, original_repository)
 
+def hosted_repository_discovery_and_clone(driver, fixtures, original_repository, report):
+    source = fixtures.repository('hosted-discovery-source', commits=3)
+    fixtures.git(source, 'branch', 'topic/reviewed')
+    head = fixtures.git(source, 'rev-parse', 'HEAD')
+    before_refs = fixtures.git(source, 'show-ref')
+    before_index = (source / '.git/index').read_bytes()
+    before_bytes = (source / 'fixture.txt').read_bytes()
+    gate = fixtures.hosting_gate
+    config_path = gate / 'config.json'
+    original_config = config_path.read_bytes()
+    config = {'repository': 'owned-fixture/native-repo', 'oid': head, 'actor': 'owned-author', 'allowDiscovery': True}
+    config_path.write_text(json.dumps(config))
+    git_config = Path(fixtures.env['GIT_CONFIG_GLOBAL'])
+    original_git_config = git_config.read_bytes()
+    # Git's real clone implementation uses a fixture-owned rewrite. Disallow the
+    # external protocols as well: a missed rewrite must fail, never use a host.
+    git_config.write_bytes(original_git_config + (
+        '[protocol "https"]\nallow = never\n[protocol "ssh"]\nallow = never\n'
+        f'[url "{source.as_uri()}"]\ninsteadOf = https://github.com/owned-fixture/native-repo.git\n'
+        'insteadOf = git@github.com:owned-fixture/native-repo.git\n').encode())
+    query = dict(page=1, expectedAccountId=None, visibility='all', affiliation='accessible', sort='fullName', direction='ascending')
+    context = 'owned-native-hosted-clone'
+    def hosted_button(text):
+        driver.wait(f"return [...document.querySelectorAll('gc-hosted-repository-browser button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
+        driver.click_text('gc-hosted-repository-browser button', text)
+    def prepare(folder, transport='https', depth=None, branch=None):
+        return driver.invoke('prepare_hosted_clone', contextId=context, operationId=str(uuid.uuid4()), request={
+            'fullName': config['repository'], 'repositoryId': '9007199254740993', 'accountId': '501',
+            'transport': transport, 'parentPath': str(fixtures.root), 'folder': folder, 'branch': branch,
+            'depth': depth, 'recurseSubmodules': False})
+    def execute(preview, selected_context=context):
+        return driver.invoke('execute_hosted_clone', contextId=selected_context, token=preview['token'], operationId=str(uuid.uuid4()))
+    def refuses(preview, kind, selected_context=context):
+        try:
+            execute(preview, selected_context)
+        except RuntimeError as error:
+            assert kind in str(error), error
+        else:
+            raise AssertionError('Owned hosted clone unexpectedly succeeded')
+    try:
+        page = driver.invoke('load_hosted_repositories', query=query, operationId=str(uuid.uuid4()))
+        assert page['account']['id'] == '501' and page['entries'][0]['id'] == '9007199254740993'
+        assert page['entries'][0]['canPush'] is False
+        assert 'temp_clone_token' not in json.dumps(page) and 'owned-private-field' not in json.dumps(page)
+        query.update(page=2, expectedAccountId='501')
+        assert driver.invoke('load_hosted_repositories', query=query, operationId=str(uuid.uuid4()))['entries'] == []
+        report['scenarios'].append('native-hosted-catalogue-precision-safe-identities-account-bound-pages-and-private-field-exclusion')
+
+        preview = prepare('hosted-clone-account-refusal')
+        config['actor'] = 'owned-other-account'; config_path.write_text(json.dumps(config))
+        refuses(preview, 'hostingDiscoveryRequest')
+        assert not (fixtures.root / 'hosted-clone-account-refusal').exists()
+        refuses(preview, 'staleHostedClonePlan')
+        config['actor'] = 'owned-author'; config_path.write_text(json.dumps(config))
+        preview = prepare('hosted-clone-existing')
+        destination = fixtures.root / 'hosted-clone-existing'; destination.mkdir()
+        (destination / 'retain').write_text('existing owned bytes')
+        refuses(preview, 'hostedCloneRefused')
+        assert (destination / 'retain').read_text() == 'existing owned bytes'
+        report['scenarios'].append('native-hosted-clone-revalidates-account-consumes-refused-preview-and-preserves-existing-destination')
+
+        preview = prepare('hosted-clone-ssh', 'ssh', 1, 'topic/reviewed')
+        preview['plan']['url'] = 'https://unowned.example.test/altered.git'
+        refuses(preview, 'staleHostedClonePlan', 'other-owned-context')
+        assert not (fixtures.root / 'hosted-clone-ssh').exists()
+        cloned = execute(preview)
+        checkout = Path(cloned['path'])
+        assert fixtures.git(checkout, 'rev-parse', 'HEAD') == head
+        assert fixtures.git(checkout, 'symbolic-ref', '--short', 'HEAD') == 'topic/reviewed'
+        assert (checkout / '.git/shallow').exists()
+        assert fixtures.git(checkout, 'config', '--get', 'remote.origin.url') == 'git@github.com:owned-fixture/native-repo.git'
+        assert (checkout / 'fixture.txt').read_bytes() == before_bytes
+        refuses(preview, 'staleHostedClonePlan')
+        fixtures.git(checkout, 'remote', 'set-url', 'origin', source.as_uri())
+        report['scenarios'].append('native-hosted-clone-server-plan-context-binding-ssh-shallow-branch-and-single-use-with-real-git')
+
+        open_ui(driver, original_repository)
+        driver.click('[aria-label="New repository tab"]')
+        driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
+        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+        driver.wait("return [...document.querySelectorAll('gc-repository-dialog button')].some(button => button.textContent.trim() === 'Browse repositories on GitHub')")
+        driver.click_text('gc-repository-dialog button', 'Browse repositories on GitHub')
+        hosted_button('Load repositories')
+        driver.wait("return document.querySelector('[data-hosted-account]')?.textContent.includes('owned-author')")
+        hosted_button('Select owned-fixture/native-repo')
+        driver.wait("return !!document.querySelector('#hosted-parent')")
+        # Enter the destination through its normal editable field. All hosted
+        # commands, registration and Git cloning use the packaged backend.
+        driver.script("const input=document.querySelector('#hosted-parent'); input.value=arguments[0]; input.dispatchEvent(new Event('input',{bubbles:true}));", str(fixtures.root))
+        driver.wait(f"return document.querySelector('#hosted-parent')?.value === {json.dumps(str(fixtures.root))}")
+        driver.script("const input=document.querySelector('#hosted-folder'); input.value='hosted-clone-ui'; input.dispatchEvent(new Event('input',{bubbles:true}));")
+        hosted_button('Review hosted clone')
+        driver.wait("return !!document.querySelector('gc-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
+        assert not (fixtures.root / 'hosted-clone-ui').exists()
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-clone-ui-review.png')
+        hosted_button('Clone reviewed repository')
+        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        checkout = fixtures.root / 'hosted-clone-ui'
+        assert fixtures.git(checkout, 'rev-parse', 'HEAD') == head
+        assert fixtures.git(checkout, 'config', '--get', 'remote.origin.url') == 'https://github.com/owned-fixture/native-repo.git'
+        assert fixtures.git(checkout, 'status', '--porcelain') == ''
+        assert (checkout / 'fixture.txt').read_bytes() == before_bytes
+        assert not (checkout / '.git/shallow').exists()
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-clone-ui-completed.png')
+        fixtures.git(checkout, 'remote', 'set-url', 'origin', source.as_uri())
+        report['scenarios'].append('native-ui-hosted-catalogue-reviewed-https-clone-opens-exact-owned-history-and-files')
+
+        open_ui(driver, original_repository)
+        hold, started = gate / 'hold', gate / 'started'
+        started.unlink(missing_ok=True); hold.touch()
+        operation = str(uuid.uuid4())
+        try:
+            driver.script("""
+              window.__ownedCatalogueRead={done:false};
+              window.__TAURI_INTERNALS__.invoke('load_hosted_repositories',arguments[0]).then(
+                value => {window.__ownedCatalogueRead={done:true,value}},
+                error => {window.__ownedCatalogueRead={done:true,error}});
+            """, dict(query=dict(query, page=1), operationId=operation))
+            deadline = time.monotonic() + 10
+            while not started.exists() and time.monotonic() < deadline:
+                time.sleep(.02)
+            assert started.exists(), 'Owned hosted catalogue did not reach its read gate'
+            pid = int(started.read_text())
+            assert driver.invoke('cancel_git_operation', operationId=operation)
+            driver.wait('return window.__ownedCatalogueRead.done', 10)
+            assert driver.script('return window.__ownedCatalogueRead.error.kind') == 'operationCancelled'
+            stat = Path('/proc') / str(pid) / 'stat'
+            assert not stat.exists() or stat.read_text().rsplit(') ', 1)[1].startswith('Z')
+        finally:
+            hold.unlink(missing_ok=True)
+        report['scenarios'].append('native-hosted-catalogue-cancellation-reaps-owned-cli-read-without-cloning')
+        assert fixtures.git(source, 'show-ref') == before_refs
+        assert (source / '.git/index').read_bytes() == before_index
+        assert (source / 'fixture.txt').read_bytes() == before_bytes
+    except Exception:
+        driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-discovery-failure.png')
+        raise
+    finally:
+        git_config.write_bytes(original_git_config)
+        config_path.write_bytes(original_config)
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    hosted_repository_discovery_and_clone(driver, fixtures, repository, report)
     branch_workflow_native_boundary(driver, fixtures, repository, report)
     branch_workflow_desktop(driver, fixtures, repository, report)
     branch_workflow_restart_and_abort(driver, fixtures, repository, report)

@@ -366,7 +366,7 @@ fn page_with(
         next_page,
     })
 }
-fn inspect_with(
+pub(crate) fn inspect_with(
     transport: &mut impl Transport,
     full_name: &str,
     expected_id: &str,

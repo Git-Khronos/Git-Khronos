@@ -37,6 +37,13 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue', id: 'owned-finish', control: { action: 'continue', retry: false } });
   // @ts-expect-error only Continue can request a retry
   void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-abort', id: 'owned-finish', revision: 1, control: { action: 'abort', retry: true } });
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error execution cannot accept a client-replaced URL or plan
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', plan: { url: 'https://elsewhere.test/owned.git' }, operationId: 'owned-clone' });
+  // @ts-expect-error a clone execution must remain bound to its review context
+  void ipc.execute_hosted_clone({ token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error repository IDs must not cross the JavaScript precision boundary as numbers
+  void ipc.inspect_hosted_repository({ fullName: 'team/owned', repositoryId: 9007199254740993, accountId: '7', operationId: 'owned-inspection' });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

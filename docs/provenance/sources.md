@@ -1432,3 +1432,13 @@ is a capability reference only. These sources inform neutral requirements in
 public REST fields and independently written owned fixtures. No example code,
 proprietary package contents, assets or documentation prose were copied. No
 third-party dependency was introduced.
+
+### Reviewed desktop catalogue and clone
+
+The same official repository API and Git clone manual define the independent
+desktop handoff: bounded account-visible pages, fresh repository metadata, a
+selected SSH/HTTPS URL, explicit local destination and branch/history/submodule
+options. Native review tokens, cancellation handling and the original interface
+are project designs. No external implementation or assets were reused, and no
+dependency was added. Behavioral evidence uses owned API responses and local
+Git repositories; live provider writes are outside this checkpoint.

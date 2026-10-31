@@ -37,6 +37,11 @@ pub use branch_workflow::{
     prepare_branch_workflow_finish, finish_branch_workflow, load_branch_workflow_finish,
     resume_branch_workflow_finish, abort_branch_workflow_finish, acknowledge_branch_workflow_finish,
 };
+mod hosted_clone;
+pub use hosted_clone::{
+    HostedCloneTransport, HostedCloneRequest, HostedClonePlan,
+    prepare_hosted_clone, execute_hosted_clone,
+};
 mod hosted_repositories;
 pub use hosted_repositories::{
     HostedAccount, HostedRepositoryIdentity, HostedRepository, HostedRepositoryVisibility,

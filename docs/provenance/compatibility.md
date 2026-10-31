@@ -2112,3 +2112,27 @@ This source checkpoint does not expose discovery through native IPC or a desktop
 screen. Clone handoff, fork creation/readiness reconciliation, local attachment,
 enterprise and other-provider behavior remain separate requirements. No vendor
 implementation, interface composition or proprietary package contents were used.
+
+## Reviewed hosted repository clone handoff
+
+The desktop catalogue independently exposes the documented GitHub repository
+reads and existing Git clone capability. Selection is freshly inspected. A
+native-owned plan binds account/repository identities, canonical URL, local
+destination, transport and options; execution accepts a context and single-use
+token, then revalidates these bindings. Provider tokens are excluded from the
+preview and clone URL. Existing Git credential helpers and the SSH agent supply
+transport authentication independently of the catalogue account.
+
+Behavioral fixtures cover account changes, paging, canceled reads, immutable
+reviews, altered destinations, manual-draft retention, keyboard focus and compact
+layouts. Five new packaged cases exercise the real native commands and normal
+desktop controls, including real HTTPS/SSH clones redirected to an owned local
+source with external Git protocols blocked. Git independently verifies clone
+history, branch, shallow state and file contents. No provider write is dispatched.
+
+The exact package passes 166 normal and 167 inherited-environment scenarios; the
+full renderer suite passes all 1279 cases. This qualifies the recorded Linux
+discovery/clone checkpoint. Full H02 acceptance still requires fork creation,
+readiness/uncertain-outcome reconciliation, reviewed remote attachment and further
+provider/account coverage remain required. No proprietary code, package contents,
+assets or visual composition were used.
