@@ -85,6 +85,7 @@ class Driver:
         self.address = address
         self.native_address = native_address
         self.session = None
+        self.executable = None
 
     def request(self, method, path, payload=None):
         # Tauri translates session creation capabilities. Once created, use the
@@ -136,6 +137,7 @@ class Driver:
                     raise
                 time.sleep(0.2)
         self.session = value["sessionId"]
+        self.executable = Path(executable).resolve()
         self.request("POST", self.path("timeouts"), {"script": 60000, "pageLoad": 60000, "implicit": 0})
 
     def path(self, suffix):
@@ -230,6 +232,53 @@ class Driver:
     def close(self):
         if self.session:
             self.request("DELETE", f"/session/{self.session}")
+            self.session = None
+
+    def restart_application(self):
+        """Close and relaunch only this fixture's exact packaged executable."""
+        if not self.session or self.executable is None or not Path('/proc').is_dir():
+            raise RuntimeError("Application restart requires an active owned Linux session")
+        executable = self.executable
+
+        def application_pid():
+            found = []
+            for link in Path('/proc').glob('[0-9]*/exe'):
+                try:
+                    if link.readlink() == executable:
+                        found.append(int(link.parent.name))
+                except (FileNotFoundError, ProcessLookupError, PermissionError):
+                    continue
+            if len(found) > 1:
+                raise RuntimeError("Multiple processes match the owned application executable")
+            return found[0] if found else None
+
+        old_pid = application_pid()
+        if old_pid is None:
+            raise RuntimeError("The owned application process could not be identified")
+        self.close()
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                running = Path(f'/proc/{old_pid}/stat').read_text().rsplit(')', 1)[1].split()[0] not in ('Z', 'X')
+            except (FileNotFoundError, ProcessLookupError):
+                running = False
+            if not running:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Session closure did not stop the owned application process")
+            time.sleep(.02)
+        self.start(executable)
+        deadline = time.monotonic() + 10
+        while True:
+            new_pid = application_pid()
+            if new_pid is not None:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("The restarted owned application process did not appear")
+            time.sleep(.02)
+        if new_pid == old_pid:
+            raise RuntimeError("Application restart did not create a different process")
+        return {"oldPid": old_pid, "newPid": new_pid}
 
 
 class Fixtures:
