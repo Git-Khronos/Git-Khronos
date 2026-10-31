@@ -17,6 +17,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import traceback
@@ -250,6 +251,21 @@ class Fixtures:
             location = self.root / key.lower()
             location.mkdir(mode=0o700)
             self.env[key] = str(location)
+
+    def hosting_environment(self, inherited_path=None):
+        directory = self.root / "hosting-bin"
+        directory.mkdir(mode=0o700)
+        self.hosting_gate = self.root / "hosting-gate"
+        self.hosting_gate.mkdir(mode=0o700)
+        (self.hosting_gate / "config.json").write_text(json.dumps({
+            "repository": "owned-fixture/native-repo", "oid": "a" * 40,
+        }))
+        wrapper = directory / "gh"
+        wrapper.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " "
+                           + shlex.quote(str(ROOT / "tools/native_hosting_fixture.py")) + ' "$@"\n')
+        wrapper.chmod(0o700)
+        return {"PATH": str(directory) + os.pathsep + (inherited_path or self.env.get("PATH", os.defpath)),
+                "KHRONOS_NATIVE_HOSTING_GATE": str(self.hosting_gate)}
 
     def terminal_environment(self):
         self.terminal_pids = self.root / "terminal-pids"
@@ -508,6 +524,7 @@ def main():
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
+                application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
             if outside is not None:
                 application_env.update({
                     "GIT_DIR": str(outside / ".git"),

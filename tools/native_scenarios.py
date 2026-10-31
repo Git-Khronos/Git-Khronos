@@ -1888,7 +1888,89 @@ def workspace_center_workflows(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
+def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
+    repository = fixtures.repository("hosted-paging", commits=1)
+    fixtures.git(repository, "remote", "add", "origin", "https://github.com/owned-fixture/native-repo.git")
+    oid = fixtures.git(repository, "rev-parse", "HEAD")
+    config = fixtures.hosting_gate / "config.json"
+    config.write_text(json.dumps({"repository": "owned-fixture/native-repo", "oid": oid}))
+    before_refs = fixtures.git(repository, "show-ref")
+    before_index = (repository / ".git/index").read_bytes()
+    try:
+        repo_id = open_ui(driver, repository)
+        page = driver.invoke("load_hosting_page", repoId=repo_id, remote="origin", section="pullRequests",
+                             query={"page": 2, "state": "closed"}, operationId=str(uuid.uuid4()))
+        assert page["page"] == 2 and page["entries"][0]["number"] == "2"
+        assert page["entries"][0]["state"] == "closed"
+        query = {"filesPage": 2, "reviewsPage": 1, "checksPage": 1, "statusesPage": 1}
+        review = driver.invoke("load_hosted_review", repoId=repo_id, remote="origin", pullNumber=1,
+                               expectedHeadOid=oid, query=query, operationId=str(uuid.uuid4()))
+        assert review["files"][0]["path"] == "second.txt" and not review["filesMayHaveMore"]
+        assert review["currentReviews"][0]["commitOid"] == oid
+        assert review["currentReviews"][0]["state"] == "APPROVED"
+        assert review["legacyState"] == "failure" and review["legacyStatuses"][0]["name"] == "owned-legacy-ci"
+        assert all(review["sections"].values()) and not review["warnings"]
+        report["scenarios"].append("native-hosted-page-state-head-scoped-review-and-legacy-status")
+        hold, started = fixtures.hosting_gate / "hold", fixtures.hosting_gate / "started"
+        started.unlink(missing_ok=True)
+        hold.touch()
+        operation = str(uuid.uuid4())
+        try:
+            driver.script("""
+              window.__ownedHostedCancel = {done: false};
+              window.__TAURI_INTERNALS__.invoke('load_hosting_page', arguments[0]).then(
+                value => { window.__ownedHostedCancel = {done: true, value}; },
+                error => { window.__ownedHostedCancel = {done: true, error}; });
+            """, dict(repoId=repo_id, remote="origin", section="issues",
+                      query={"page": 3, "state": "all"}, operationId=operation))
+            deadline = time.monotonic() + 3
+            while not started.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert started.exists(), "Owned hosted CLI did not reach its gate"
+            pid = int(started.read_text())
+            assert b"native_hosting_fixture.py" in Path(f"/proc/{pid}/cmdline").read_bytes()
+            before = time.monotonic()
+            assert driver.invoke("cancel_git_operation", operationId=operation) is True
+            driver.wait("return window.__ownedHostedCancel?.done", 3)
+            assert driver.script("return window.__ownedHostedCancel.error.kind") == "operationCancelled"
+            assert not Path(f"/proc/{pid}").exists(), "Cancelled hosted CLI was not reaped"
+            report["hostedPageCancelMs"] = (time.monotonic() - before) * 1000
+            assert report["hostedPageCancelMs"] < 2000
+            report["scenarios"].append("native-hosted-page-cancellation-reaps-owned-cli")
+        finally:
+            hold.unlink(missing_ok=True)
+        config.write_text(json.dumps({"repository": "owned-fixture/native-repo", "oid": oid, "partial": True}))
+        partial = driver.invoke("load_hosted_review", repoId=repo_id, remote="origin", pullNumber=1,
+                                expectedHeadOid=oid, operationId=str(uuid.uuid4()))
+        assert not partial["sections"]["checks"] and partial["sections"]["statuses"]
+        assert partial["files"] and partial["currentReviews"] and partial["warnings"]
+        assert "private diagnostic" not in json.dumps(partial)
+        report["scenarios"].append("native-hosted-partial-permissions-retain-accessible-sections")
+        driver.click('.workspace-toggle')
+        driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
+        driver.wait("return !!document.querySelector('gc-hosting-panel #hosting-state')")
+        driver.click_text('gc-hosting-panel button', 'Load from GitHub')
+        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('Owned hosted page 1')")
+        driver.click_text('gc-hosting-panel button', 'Inspect #1')
+        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('owned-legacy-ci')")
+        assert driver.script("return document.querySelector('gc-hosting-panel').textContent.includes('Check runs could not be loaded')")
+        assert driver.script("return document.querySelector('gc-hosting-panel').textContent.includes('APPROVED')")
+        driver.click_text('gc-hosting-panel button', 'Next changed files page')
+        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('second.txt')")
+        driver.click_text('gc-workspace-center header button', 'Close')
+        assert fixtures.git(repository, "show-ref") == before_refs
+        assert (repository / ".git/index").read_bytes() == before_index
+        requests = [json.loads(line) for line in (fixtures.hosting_gate / "requests.jsonl").read_text().splitlines()]
+        assert requests and all(item["method"] == "GET" and item["cwd"] != str(repository) for item in requests)
+        report["scenarios"].append("native-hosted-dialog-paging-and-partial-status-preserve-git-state")
+    finally:
+        driver.script("document.querySelector('gc-workspace-center header button')?.click()")
+        fixtures.git(repository, "remote", "remove", "origin")
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    hosted_paging_and_decisions(driver, fixtures, repository, report)
     workspace_center_workflows(driver, fixtures, repository, report)
     committed_merge_preview(driver, fixtures, repository, report)
     shared_parent_avatar_attachments(driver, fixtures, repository, report)

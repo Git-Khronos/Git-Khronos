@@ -5,6 +5,10 @@ parity with any product. Requirements come from public Git/provider manuals and
 high-level published workflows. Proprietary packages, executable internals,
 source maps, UI assets and internal identifiers are excluded.
 
+The active full-parity requirements and completion audit are tracked in
+[git-feature-parity.md](git-feature-parity.md). The rows below are implementation
+pointers and must not be interpreted as a reduced definition of the objective.
+
 ## Main capability map
 
 | Capability | Khronos implementation | Acceptance / remaining scope |
@@ -20,16 +24,16 @@ source maps, UI assets and internal identifiers are excluded.
 | Offline exchange | Binary/text patches, mail patch series and Git bundles | Existing exchange suites |
 | Repository overview | Workspace center summarizes open repositories, dirty/conflicted state, active operations and tracking divergence; explicit local refresh with per-repository failures | New workspace-center renderer coverage; no implicit network fetch; closed/unopened workspace repositories excluded |
 | Saved commit identities | Named local identity templates; create/edit/delete; explicit per-repository application preview | New profile parser and renderer tests; authentication accounts, signing keys and global Git config are separate |
-| Hosted collaboration | GitHub PR/issue/workflow lists, PR descriptions, file patches, review decisions and head-commit checks through documented REST APIs and installed `gh` | New offline API fixture and renderer tests; explicit loads, first 50 records, cancellation, stale head checks; no live account qualification yet |
+| Hosted collaboration | GitHub PR/issue/workflow lists, PR descriptions, file patches, review decisions and head-commit checks through documented REST APIs and installed `gh` | New offline API fixture and renderer tests; explicit loads, paging/state filters, current review decisions, legacy statuses, cancellation and stale head checks; no live account qualification yet |
 | Hosted write operations | Existing browser links to provider workflows | In-app PR creation, review submission, issue editing and merge decisions remain future work |
 | Agent tools | Explicit installed Codex/Claude/Gemini/OpenCode CLI launch in the selected checkout, independent PTY tabs and process lifecycle | Fixed program enum, no shell command interpolation or permission bypass flags; existing worktrees provide isolation; no AI task-state inference |
 | Original UX | Khronos components, theme tokens, original wording, keyboard controls and existing icon system | Focus/compact-window regression coverage; no proprietary assets introduced |
 
 ## Remaining capability work
 
-1. Add pagination and richer filtering to hosted lists; distinguish current
-   reviewer decisions from historical review events, add legacy commit statuses
-   alongside check runs, and qualify real account/rate-limit failure behavior.
+1. Finish qualifying hosted pagination, state filters, per-reviewer decisions and
+   legacy commit statuses. Add provider search and richer filters; qualify real
+   account/rate-limit behavior.
 2. Add explicit, reviewable provider writes (PR creation, review submission and
    merge), with head-commit preconditions and permissions errors.
 3. Add equivalent hosted adapters for GitLab, Bitbucket, Azure DevOps and
@@ -41,9 +45,9 @@ source maps, UI assets and internal identifiers are excluded.
 6. Add optional documented agent status integration, session restoration and
    prompt/task management. Running/exited describes a process, not whether an
    agent needs approval or has completed a task.
-7. Evaluate issue-tracker integrations, Gitflow conveniences and deep links as
-   separate independently specified workflows. Existing Git operations provide
-   the underlying branch operations; these dedicated workflows are not claimed.
+7. Implement issue-tracker integrations, Gitflow workflows and independent deep
+   links from neutral specifications. Existing underlying Git operations do not
+   establish parity for these dedicated workflows.
 8. Qualify final packaged artifacts and each supported operating system after
    source and renderer gates. Previous package qualification does not transfer
    to a package containing these additions.

@@ -2016,3 +2016,30 @@ cancellation, and byte-preserving operation on a dirty repository.
 
 UI composition, storage design and code are original Khronos implementations.
 See `docs/clean-room-capabilities.md` for precise limits and unfinished scope.
+
+## Hosted read pagination and decision snapshots
+
+Public GitHub REST documentation defines page/state selection, chronological
+review events, check-run selection and combined commit-status semantics.
+Khronos independently exposes explicit list and detail paging. Issue pages use
+the original response count to detect a possible following page before filtering
+out pull-request records. A page filter applies only to the loaded records.
+
+Review inspection reads every review-event page to derive the latest submitted
+approval, change request or dismissal for each reviewer. Comments and pending
+reviews do not replace those decisions. Each decision retains its commit ID;
+a decision on another commit is disclosed. This is a decision history snapshot,
+not an independent determination of whether provider branch rules permit merge.
+Checks and legacy status contexts are requested for the captured head commit.
+The pull-request head and selected repository remote are checked again before
+returning a result.
+
+Files, review history, checks and legacy statuses have independent availability
+flags. A failed section retains a warning while accessible sections remain
+readable; absent or unavailable CI data is never presented as passing. Cancelled
+requests propagate cancellation and their late renderer results are discarded.
+
+Original owned CLI response fixtures exercise the native command boundary
+without forwarding requests to a provider. They do not establish live account,
+enterprise-provider or network acceptance. No provider implementation or
+proprietary package contents were used.

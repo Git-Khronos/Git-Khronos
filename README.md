@@ -1040,9 +1040,10 @@ Open the workspace menu (or command palette) and choose **Repository overview**,
 - Reviews and checks loads GitHub data through an independently installed,
   authenticated `gh` CLI using its current account. Choose a fetch remote and
   load explicitly. Pull request inspection shows descriptions, provider patches,
-  review events and check runs for the captured head commit. Lists show the
-  first API page (up to 50 records); provider patch and pagination limits are
-  visible. Submit comments/reviews and merge through GitHub's browser workflow.
+  review events, latest submitted decisions, check runs and legacy commit-status
+  contexts for the captured head commit. Lists and detail sections have explicit
+  page controls (50 records per page), with open/closed/all list filters. Missing
+  permissions are reported independently for each inspection section. Submit comments/reviews and merge through GitHub's browser workflow.
 
 In a repository terminal, choose **Agent**, select an installed CLI, then
 **Start agent**. The process starts directly in that checkout with the CLI's

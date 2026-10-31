@@ -1307,13 +1307,22 @@ async fn load_hosted_review(
     remote: String,
     pull_number: u32,
     expected_head_oid: String,
+    query: Option<git_khronos_git_core::HostedReviewQuery>,
     operation_id: String,
     app: AppHandle,
 ) -> Result<git_khronos_git_core::HostedReview, AppError> {
     let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
     with_repository_background_read(repo_id, app, move |path| {
-        git_khronos_git_core::load_hosted_review(path, &remote, pull_number, &expected_head_oid, &cancellation)
-    }).await
+        git_khronos_git_core::load_hosted_review(
+            path,
+            &remote,
+            pull_number,
+            &expected_head_oid,
+            &query.unwrap_or_default(),
+            &cancellation,
+        )
+    })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1322,13 +1331,21 @@ async fn load_hosting_page(
     repo_id: String,
     remote: String,
     section: git_khronos_git_core::HostingSection,
+    query: Option<git_khronos_git_core::HostingQuery>,
     operation_id: String,
     app: AppHandle,
 ) -> Result<git_khronos_git_core::HostingPage, AppError> {
     let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
     with_repository_background_read(repo_id, app, move |path| {
-        git_khronos_git_core::load_hosting_page(path, &remote, section, &cancellation)
-    }).await
+        git_khronos_git_core::load_hosting_page(
+            path,
+            &remote,
+            section,
+            &query.unwrap_or_default(),
+            &cancellation,
+        )
+    })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]

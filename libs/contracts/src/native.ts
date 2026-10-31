@@ -70,15 +70,20 @@ export type HistoryQuery = { message?: string; author?: string; oid?: string; si
 scope?: string }
 export type HistorySearchPage = { entries: FileHistoryEntry[]; cursor: HistoryCursor | null; complete: boolean; scanned: number }
 export type HostedEntry = { number: string; title: string; state: string; author: string; url: string; branch: string; commitOid: string; body: string }
-export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean }
+export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean; statusesMayHaveMore: boolean; legacyState: string | null; legacyStatuses: HostedReviewStatus[]; currentReviews: HostedReviewDecision[]; query: HostedReviewQuery; sections: HostedReviewSections; warnings: string[] }
+export type HostedReviewDecision = { name: string; state: string; commitOid: string; submittedAt: string }
 export type HostedReviewFile = { path: string; state: string; additions: number; deletions: number; patch: string | null }
+export type HostedReviewQuery = { filesPage: number; reviewsPage: number; checksPage: number; statusesPage: number }
+export type HostedReviewSections = { files: boolean; reviews: boolean; checks: boolean; statuses: boolean }
 export type HostedReviewStatus = { name: string; state: string; body: string }
 export type HostingPage = { repository: string; entries: HostedEntry[];
 /**
- * The first API page was full; additional records may exist.
+ * This API page was full; additional records may exist.
  */
-mayHaveMore: boolean }
+mayHaveMore: boolean; page: number; nextPage: number | null }
+export type HostingQuery = { page: number; state: HostingState }
 export type HostingSection = "pullRequests" | "issues" | "workflows"
+export type HostingState = "open" | "closed" | "all"
 export type IntegrityReport = { passed: boolean; exitCode: number; stdout: string; stderr: string; truncated: boolean }
 export type InteractiveRebaseCommit = { oid: string; authorName: string; authorEmail: string; subject: string; message: string }
 export type InteractiveRebasePlan = { source: string; target: string; base: string; commits: InteractiveRebaseCommit[]; remoteReachableOids: string[] }
@@ -317,8 +322,8 @@ export function execute_interactive_rebase(args: { repoId: string; source: strin
 export function continue_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_rebase", args); }
 export function begin_rebase_split(args: { repoId: string; expectedHead: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("begin_rebase_split", args); }
 export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
-export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
-export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
+export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
+export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
 export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
 export function execute_merge_rebase(args: { repoId: string; request: MergeRebaseRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_merge_rebase", args); }
 export function export_diff_patch(args: { repoId: string; staged: boolean; paths: string[]; destination: string }): Promise<number> { return TAURI_INVOKE("export_diff_patch", args); }

@@ -1307,3 +1307,49 @@ program invocation. No external source code, screenshots, UI strings or assets
 were copied. No proprietary package contents were inspected. No new dependency
 was added; optional external CLIs are installed and authenticated separately by
 the user, and are not redistributed with Khronos.
+
+## Hosted pagination, decisions and status contexts
+
+- https://docs.github.com/en/rest/pulls/reviews (chronological paginated review
+  events and their state/commit fields)
+- https://docs.github.com/en/rest/commits/statuses (combined provider state and
+  latest commit-status contexts)
+- https://docs.github.com/en/rest/checks/runs (latest check runs and pagination)
+- https://docs.github.com/en/rest/pulls/pulls (PR state filters and file pages)
+- https://docs.github.com/en/rest/issues/issues (state filters; PR records remain
+  distinct from issues when paging)
+
+Requirements and original behavioral fixtures derive from public response
+semantics. No provider source code or proprietary implementation was used.
+
+## Additional public capability discovery
+
+- https://help.gitkraken.com/gitkraken-desktop/linking/
+- https://help.gitkraken.com/gitkraken-desktop/pull-requests-filter-syntax/
+- https://help.gitkraken.com/gitkraken-desktop/gkd-gitkraken-ai/
+
+Used only to expand neutral, currently unfinished requirements: Git object links
+with local-copy selection and clone fallback; provider-specific review search;
+configurable assistance for messages, explanations, conflicts and commit grouping.
+No implementation, visual design, assets, examples or documentation prose copied.
+
+Further public guides used for the unfinished inventory:
+
+- https://help.gitkraken.com/gitkraken-desktop/profiles/ (separate identities,
+  integrations, preferences and tabs; optional explicit Git identity sync)
+- https://help.gitkraken.com/gitkraken-desktop/fork/ (existing/new forks and
+  reviewed remote attachment)
+- https://help.gitkraken.com/gitkraken-desktop/workspaces/ (local/shared groups,
+  conversion and multi-repository actions)
+
+These are capability references only, not implementation or visual references.
+
+- https://help.gitkraken.com/gitkraken-desktop/diff/ (comparison modes, change
+  navigation, combined selections, history/blame and external tools)
+- https://help.gitkraken.com/gitkraken-desktop/editing-files/ (working-file edits,
+  distinct save/stage choices, Markdown preview and encoding behavior)
+- https://help.gitkraken.com/gitkraken-desktop/tags/ (tag movement, commit
+  navigation, branch creation and local/remote transfer)
+
+Used to refine remaining behavioral acceptance cases. Public Git manuals remain
+the implementation authority for Git effects. No example code was copied.

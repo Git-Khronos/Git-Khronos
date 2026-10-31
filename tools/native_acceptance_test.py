@@ -19,6 +19,26 @@ from native_acceptance import Driver, Fixtures, main, run, stop_owned_process_gr
 
 
 class FixtureTests(unittest.TestCase):
+    def test_owned_hosting_cli_is_read_only_and_preserves_the_inherited_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            original_path = fixtures.env.get("PATH")
+            additions = fixtures.hosting_environment("/owned/inherited/bin")
+            self.assertEqual(fixtures.env.get("PATH"), original_path)
+            self.assertTrue(additions["PATH"].endswith(os.pathsep + "/owned/inherited/bin"))
+            command = [str(Path(directory) / "hosting-bin/gh"), "api", "--hostname", "github.com", "--method", "GET", "-H", "Accept: application/vnd.github+json"]
+            environment = fixtures.env | additions
+            output = subprocess.run(command + ["repos/owned-fixture/native-repo/pulls?state=closed&page=2"], env=environment, capture_output=True, check=True)
+            data = json.loads(output.stdout)
+            self.assertEqual((data[0]["number"], data[0]["state"]), (2, "closed"))
+            for endpoint in ("repos/foreign/repository/pulls", "https://api.github.com/repos/foreign/repository/pulls"):
+                refused = subprocess.run(command + [endpoint], env=environment, capture_output=True)
+                self.assertNotEqual(refused.returncode, 0)
+            command[5] = "POST"
+            refused = subprocess.run(command + ["repos/owned-fixture/native-repo/pulls"], env=environment, capture_output=True)
+            self.assertNotEqual(refused.returncode, 0)
+
+
     @unittest.skipUnless(hasattr(os, "getpgrp"), "requires Unix process groups")
     def test_group_shutdown_never_signals_the_test_runners_group(self):
         with patch("native_acceptance.os.killpg") as sent:
