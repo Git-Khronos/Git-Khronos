@@ -115,7 +115,7 @@ implemented in-app capability.
 | U04 | Persist preferences/drafts/view state and restore context across restarts without replaying mutations | Audit local state and multiple sessions/workspaces |
 | U05 | Provide native Linux, Windows and macOS behavior plus documented Windows/WSL interoperability | Linux is qualified for prior exact artifacts; Windows/macOS/WSL remain unqualified |
 | U06 | Package/install/update/uninstall with accurate licenses, notices and dependency provenance | Audit current package bytes, supported formats and platforms |
-| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: the Linux discovery/clone checkpoint passed all 1279 renderer cases; package `b026c6b4040a` passed 166 normal and 167 inherited-environment native scenarios. Earlier interrupted/failing attempts are retained separately in its specification. Exact-commit remote CI and other platforms remain unverified |
+| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: the Linux fork/remote attachment checkpoint passed all 1309 renderer cases; package `15d19f2c7068` passed 176 normal and 177 inherited-environment native scenarios, including saved fork recovery across an application-process restart. Earlier interrupted/failing attempts are retained separately in its specification. Exact-commit remote CI and other platforms remain unverified |
 | U08 | Handle cancellation, stale state, partial results and uncertain remote writes without reporting false success | Audit every new operation; extend failure fixtures with each implementation |
 
 ## Public discovery references
