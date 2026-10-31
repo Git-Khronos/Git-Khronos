@@ -104,7 +104,23 @@ jobs:
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6
       - name: Run packaging regressions
-        run: pnpm nx run desktop:package-test --output-style=static
+        run: |
+          # Private dpkg databases still read host invocation hooks. Keep the
+          # runner's needrestart hook out of fixture transactions and restore it
+          # before building or installing the application package.
+          hook=/etc/dpkg/dpkg.cfg.d/needrestart
+          backup=$(mktemp -d)
+          restore_hook() {
+            status=$?
+            if [ -e "$backup/needrestart" ]; then
+              sudo mv -- "$backup/needrestart" "$hook" || status=1
+            fi
+            rmdir -- "$backup" || status=1
+            exit "$status"
+          }
+          trap restore_hook EXIT
+          if [ -e "$hook" ]; then sudo mv -- "$hook" "$backup/needrestart"; fi
+          pnpm nx run desktop:package-test --output-style=static
       - name: Build and verify Debian package
         run: pnpm nx run desktop:package-deb --output-style=static
       - name: Run packaged WebKitGTK acceptance

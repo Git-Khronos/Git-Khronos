@@ -6,7 +6,13 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly script_dir
 repository_root="$(cd -- "${script_dir}/.." && pwd)"
 readonly repository_root
-readonly package_directory="${repository_root}/target/release/bundle/deb"
+case "${CARGO_TARGET_DIR:-}" in
+  '') cargo_target_directory="${repository_root}/target" ;;
+  /*) cargo_target_directory="$CARGO_TARGET_DIR" ;;
+  *) cargo_target_directory="${PWD}/${CARGO_TARGET_DIR}" ;;
+esac
+readonly cargo_target_directory
+readonly package_directory="${cargo_target_directory}/release/bundle/deb"
 
 fail() {
   printf 'Git Khronos: %s\n' "$1" >&2

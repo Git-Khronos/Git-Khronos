@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   TAURI_CONFIG: apps/desktop/src-tauri/tauri.conf.json
+  CARGO_OUTPUT: '{{.CARGO_TARGET_DIR | default "target"}}'
   RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-khronos.exe{{else}}./target/release/git-khronos{{end}}'
 
 tasks:
@@ -102,8 +103,8 @@ tasks:
       - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
     generates:
-      - target/release/git-khronos
-      - target/release/bundle/deb/*.deb
+      - '{{.CARGO_OUTPUT}}/release/git-khronos'
+      - '{{.CARGO_OUTPUT}}/release/bundle/deb/*.deb'
       - target/package-assets/changelog.gz
       - target/package-assets/git-khronos.1.gz
       - target/package-assets/rust-dependency-notices.json.gz

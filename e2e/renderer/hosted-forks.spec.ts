@@ -240,7 +240,12 @@ for (const theme of ['chronos', 'midnight']) test(`${theme} fork review wraps in
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   const { dialog, forks } = await reviewed(page);
+  await expect(dialog.locator('.check input[type=checkbox]')).toHaveCount(4);
   await expect(forks.getByRole('region', { name: 'Review fork creation', exact: true })).toContainText('owned-user/owned');
+  expect(await dialog.locator('.check input[type=checkbox]').evaluateAll(inputs => inputs.every(input => {
+    const box = input.getBoundingClientRect(); const label = input.parentElement!.getBoundingClientRect();
+    return box.width >= 12 && box.width <= 20 && box.height >= 12 && box.height <= 20 && Math.abs(box.left - label.left) <= 2;
+  }))).toBe(true);
   expect(await dialog.evaluate(element => { const box = element.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth && element.scrollWidth <= element.clientWidth; })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath(`fork-review-${theme}.png`) });
   await dialog.locator('button:enabled, input:enabled, select:enabled').last().focus(); await page.keyboard.press('Tab');
