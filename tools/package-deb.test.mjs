@@ -65,8 +65,10 @@ if (process.argv[2] === '--version') {
   appendFileSync('calls', 'build\\n');
   if (process.env.FAIL_BUILD) process.exit(1);
   for (const path of ${JSON.stringify(outputs)}) {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, 'built');
+    const output = process.env.CARGO_TARGET_DIR && path.startsWith('target/release/')
+      ? process.env.CARGO_TARGET_DIR + path.slice('target'.length) : path;
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, 'built');
   }
   mkdirSync('apps/desktop/src-tauri/gen/schemas', { recursive: true });
   writeFileSync('apps/desktop/src-tauri/gen/schemas/capabilities.json', Date.now().toString());
@@ -75,7 +77,7 @@ if (process.argv[2] === '--version') {
   await put('bin/rustc', '#!/bin/sh\nprintf "rustc fixture\\n"\n');
   await put('tools/manage-linux-package.sh', `#!/bin/sh
 [ "$1" = name ] && exit 0
-[ "$1" = print-package ] && { grep -qx built target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb; exit $?; }
+[ "$1" = print-package ] && { grep -qx built "\${CARGO_TARGET_DIR:-target}/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb"; exit $?; }
 printf '%s\\n' "$1" >> calls
 test -z "$FAIL_VERIFY"
 `);
@@ -85,7 +87,7 @@ test -z "$FAIL_VERIFY"
   const run = (args = ['package:deb'], extraEnv = {}) => spawnSync('task', args, {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, ...extraEnv, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
+    env: { ...process.env, CARGO_TARGET_DIR: '', ...extraEnv, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
   });
   const ok = (args, env) => {
     const result = run(args, env);
@@ -198,6 +200,19 @@ test('packaging uses workspace temporary storage by default and honors explicit 
   assert.equal(await readFile(join(f.root, 'build-tmpdir'), 'utf8'), explicit);
 });
 
+test('packaging honors absolute and relative Cargo outputs without reusing another target cache', async (t) => {
+  const f = await fixture(t);
+  f.ok();
+  for (const target of [join(f.root, 'absolute Cargo output'), 'relative Cargo output']) {
+    const env = { CARGO_TARGET_DIR: target };
+    f.ok(undefined, env);
+    f.ok(undefined, env);
+    const directory = target.startsWith('/') ? target : join(f.root, target);
+    assert.equal(await readFile(join(directory, 'release/git-khronos'), 'utf8'), 'built');
+  }
+  assert.equal(await f.builds(), 3);
+});
+
 test('system installation uses the same incremental packaging path', async (t) => {
   const f = await fixture(t);
   f.ok(['install:system']);
@@ -230,12 +245,42 @@ test('names the real Debian artifact without spaces and keeps naming idempotent'
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const env = { ...process.env };
     delete env.TMPDIR;
+    delete env.CARGO_TARGET_DIR;
     const result = spawnSync('bash', [script, 'name'], { encoding: 'utf8', env });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), expected);
     assert.ok((await stat(expected)).isFile());
     await assert.rejects(stat(original), { code: 'ENOENT' });
     assert.ok((await stat(join(root, 'target/package-tmp'))).isDirectory());
+  }
+});
+
+test('real artifact naming honors absolute and relative CARGO_TARGET_DIR with spaces', async (t) => {
+  for (const relative of [false, true]) {
+    const root = await mkdtemp(join(tmpdir(), 'git-khronos-cargo-target-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, 'tools'));
+    const script = join(root, 'tools/manage-linux-package.sh');
+    await copyFile(join(repositoryRoot, 'tools/manage-linux-package.sh'), script);
+    const payload = join(root, 'payload');
+    await mkdir(join(payload, 'DEBIAN'), { recursive: true });
+    await writeFile(join(payload, 'DEBIAN/control'), [
+      'Package: git-khronos', 'Version: 0.1.0', 'Architecture: amd64',
+      'Maintainer: Fixture <fixture@example.test>', 'Description: Cargo target fixture', '',
+    ].join('\n'));
+    const target = relative ? 'relative output' : join(root, 'absolute output');
+    const directory = join(relative ? root : '', target, 'release/bundle/deb');
+    await mkdir(directory, { recursive: true });
+    const original = join(directory, 'Git Khronos_0.1.0_amd64.deb');
+    const built = spawnSync('dpkg-deb', ['--build', payload, original], { encoding: 'utf8' });
+    assert.equal(built.status, 0, built.stderr);
+    const result = spawnSync('bash', [script, 'name'], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, CARGO_TARGET_DIR: target },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), join(directory, 'Git-Khronos_0.1.0_amd64.deb'));
+    await assert.rejects(stat(original), { code: 'ENOENT' });
+    await assert.rejects(stat(join(root, 'target/release/bundle/deb')), { code: 'ENOENT' });
   }
 });
 
@@ -287,10 +332,10 @@ async function packagePayloadFixture(t) {
     assert.equal(result.status, 0, result.stderr);
   };
   const verify = (extraEnv = {}) => spawnSync('bash', [script, 'verify'], {
-    encoding: 'utf8', env: { ...process.env, TMPDIR: root, ...extraEnv },
+    encoding: 'utf8', env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: root, ...extraEnv },
   });
   const print = () => spawnSync('bash', [script, 'print-package'], {
-    encoding: 'utf8', env: { ...process.env, TMPDIR: root },
+    encoding: 'utf8', env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: root },
   });
   return { root, script, payload, artifact, put, build, verify, print };
 }
