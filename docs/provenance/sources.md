@@ -1257,3 +1257,53 @@ It defines Tauri's patchable bundle-type marker. Independent byte comparison
 found only the expected `UNK` to `DEB` marker substitution in this candidate;
 packaged and unbundled executable hashes are therefore recorded separately.
 No upstream implementation was copied or modified for that inspection.
+
+## Isolated committed merge preview
+
+Source: [Git merge-tree manual](https://git-scm.com/docs/git-merge-tree), consulted
+2026-10-31. Used for default merge behavior, NUL-delimited conflict paths,
+exit-status interpretation, rename handling, unrelated-history refusal, and the
+fact that merge-tree writes merge objects while leaving index/working files alone.
+The implementation uses an isolated bare object database and reads the selected
+repository through Git alternates. No upstream implementation was copied.
+
+The preceding feature comparison consulted public GitKraken documentation for
+[conflict prevention](https://help.gitkraken.com/gitkraken-desktop/conflict-prevention/).
+It supplied only the abstract capability of detecting conflicts before a merge.
+No proprietary package contents, code, assets, wording, layout or internal
+implementation details were used.
+
+Committed attribute lookup uses Git's documented
+[`--attr-source`](https://git-scm.com/docs/git/2.43.0)
+option. This feature requires Git 2.43+ explicitly rather than allowing an older
+Git to silently ignore attributes through an unrecognized environment variable.
+
+## Workspace, identity, hosted collaboration and agent capabilities
+
+Public workflow references (capability discovery only):
+
+- https://help.gitkraken.com/gitkraken-desktop/gitkraken-launchpad/
+- https://help.gitkraken.com/gitkraken-desktop/profiles/
+- https://help.gitkraken.com/gitkraken-desktop/pull-requests/
+
+Implementation behavior references:
+
+- https://git-scm.com/docs/git-status (local status and tracking state)
+- https://git-scm.com/docs/git-config (repository commit identity)
+- https://cli.github.com/manual/gh_api (authenticated explicit GET requests)
+- https://docs.github.com/en/rest/pulls/pulls (pull metadata and changed files)
+- https://docs.github.com/en/rest/pulls/reviews (review decisions)
+- https://docs.github.com/en/rest/checks/runs (commit-scoped check runs)
+- https://docs.github.com/en/rest/issues/issues (issues include pull requests;
+  the adapter filters those records from its issue list)
+- https://docs.github.com/en/rest/actions/workflow-runs (workflow state)
+- https://learn.chatgpt.com/docs/codex/cli (interactive `codex` launch)
+- https://code.claude.com/docs/en/cli-reference (interactive `claude` launch)
+- https://geminicli.com/docs/ (interactive Gemini CLI)
+- https://opencode.ai/docs/cli/ (interactive `opencode` launch)
+
+Used for neutral requirements, request/response field semantics and documented
+program invocation. No external source code, screenshots, UI strings or assets
+were copied. No proprietary package contents were inspected. No new dependency
+was added; optional external CLIs are installed and authenticated separately by
+the user, and are not redistributed with Khronos.

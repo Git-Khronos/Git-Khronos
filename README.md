@@ -12,8 +12,7 @@ Angular, Nx, Rust, and Tauri.
 > prune actions, repository-scoped sparse checkout, interactive rebase,
 > conflict resolution, searchable reflog recovery with safe branch creation,
 > explicitly signed commits with effective repository-signing diagnostics,
-> worktree-backed Agent
-> Sessions, native submodule management, and a repository-scoped terminal with
+> worktree-backed agent workflows, native submodule management, and a repository-scoped terminal with
 > multiple independent tabs.
 
 ## Prerequisites
@@ -664,6 +663,26 @@ filesystem failures: an error can leave partial effects, and retained captures
 are recovery data rather than a promise of automatic rollback. These checkpoints
 currently cover reset; broader destructive-operation capture is still in progress.
 
+**Preview merge conflicts** is available from a local branch's context menu and
+from the Command Palette. Choose the source branch and the target it would merge
+into, then request the preview explicitly. The branch context menu defaults to
+merging the selected branch into the current checkout, matching the merge action.
+The command palette defaults to the current branch as source. The result lists the exact commit IDs
+and conflicted paths; Git can also report conflicts without individual path
+records. Changed or deleted references invalidate the visible result.
+HEAD, index, references, working files and the repository's object database stay
+unchanged: merge objects are generated in a private temporary bare repository
+and removed afterward. Cancellation or closing the dialog discards pending
+results. Switching repositories closes and cancels the preview.
+
+This feature requires Git 2.43 or newer for explicit committed-attribute lookup.
+It compares committed local or remote-tracking tips, without fetching. It
+excludes uncommitted edits and uses default Git merge settings with committed
+attributes, without copying repository-specific merge options or external
+attributes. Shallow/partial clones, configured custom merge drivers and
+replacement references are refused. A clean preview is an observation for the
+displayed commits, not a promise that a later merge or custom strategy succeeds.
+
 The conflict editor identifies Current/Incoming index stages and explains their
 rebase meanings. Accepting a deleted side is distinct from saving an empty file.
 Resolution checks the reviewed branch, index-stage objects and working contents;
@@ -1005,6 +1024,35 @@ a filesystem transaction.
 repository. These tests cover interface behavior but do not replace native
 Tauri integration tests for Git, filesystem, terminal, or operating-system
 dialogs.
+
+### Workspace overview, identity profiles and hosted reviews
+
+Open the workspace menu (or command palette) and choose **Repository overview**,
+**Identity profiles**, or **Reviews and checks**.
+
+- The overview summarizes open repositories in the current workspace. **Refresh
+  local state** reads Git status and metadata without fetching. Ahead/behind
+  counts use existing tracking refs. Failed reads retain visibly cached state.
+- Identity profiles save reusable commit names/emails on this device. **Use…**
+  displays the repository path and requires **Apply to this repository** before
+  updating local Git settings, which are shared by linked worktrees. Selecting
+  a workspace never changes Git identity.
+- Reviews and checks loads GitHub data through an independently installed,
+  authenticated `gh` CLI using its current account. Choose a fetch remote and
+  load explicitly. Pull request inspection shows descriptions, provider patches,
+  review events and check runs for the captured head commit. Lists show the
+  first API page (up to 50 records); provider patch and pagination limits are
+  visible. Submit comments/reviews and merge through GitHub's browser workflow.
+
+In a repository terminal, choose **Agent**, select an installed CLI, then
+**Start agent**. The process starts directly in that checkout with the CLI's
+normal configuration and permission prompts. For isolation, create/open a
+worktree first. Agent tabs use the existing terminal input/output and close
+lifecycle; running/exited reports process state. No tool is installed or
+configured automatically.
+
+See [the capability inventory](docs/clean-room-capabilities.md) for remaining
+provider, account-context, collaboration and agent workflow scope.
 
 ## Architecture
 

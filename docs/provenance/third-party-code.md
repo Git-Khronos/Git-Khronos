@@ -435,3 +435,26 @@ Required notices:
   Unicode-3.0 license texts of these crates; MPL-2.0 additionally requires
   informing recipients where the `uluru` source is available
   (<https://github.com/servo/uluru>).
+
+## Optional external command-line tools (no code bundled)
+
+The workspace collaboration and agent features can invoke separately installed
+programs. No source, binaries, libraries, icons or other assets from these tools
+are copied, linked or redistributed with Khronos. Their executable names are
+used for normal documented process invocation. Model/service access and
+provider accounts remain subject to the user's separate installation and terms.
+
+Upstream provenance checked on 2026-10-31:
+
+| Program | Canonical project / license reference | Upstream license or terms |
+| --- | --- | --- |
+| `gh` | https://github.com/cli/cli/blob/trunk/LICENSE | MIT |
+| `codex` | https://github.com/openai/codex/blob/main/LICENSE | Apache-2.0 |
+| `gemini` | https://github.com/google-gemini/gemini-cli/blob/main/LICENSE | Apache-2.0 |
+| `opencode` | https://github.com/anomalyco/opencode/blob/dev/LICENSE | MIT |
+| `claude` | https://github.com/anthropics/claude-code/blob/main/LICENSE.md | Proprietary; upstream refers to Anthropic Commercial Terms |
+
+This integration introduces no additional bundled code or dependency notice
+payload. Any future bundling or adaptation requires a separate license and
+redistribution review; this external-process integration is not permission to
+copy tool implementations. The Khronos repository license remains GPL-3.0.

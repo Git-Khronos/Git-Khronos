@@ -1918,6 +1918,9 @@
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceDialog('create')"><gc-icon name="plus" [size]="12" />New workspace</button>
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceDialog('rename')"><gc-icon name="edit" [size]="12" />Rename current</button>
             <button class="danger" type="button" role="menuitem" [disabled]="git.busy() || git.workspaces().length <= 1" (click)="requestWorkspaceDelete()"><gc-icon name="trash" [size]="12" />Delete current</button>
+            <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('overview')"><gc-icon name="repo" [size]="12" />Repository overview</button>
+            <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('identities')"><gc-icon name="edit" [size]="12" />Identity profiles</button>
+            <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()" (click)="openWorkspaceCenter('hosting')"><gc-icon name="repo" [size]="12" />Reviews and checks</button>
           </div>
         </div>
       }
@@ -2069,7 +2072,7 @@
       </section>
     </div>
   }
-  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && git.error(); as error) {
+  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !workspaceCenterRequest() && git.error(); as error) {
     @defer (on immediate) { <gc-error-toast [error]="error" (logRequested)="openErrorActivityLog()" /> }
   }
   @if (commandPaletteOpen()) {
@@ -2241,6 +2244,7 @@
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Move current branch</div>
         <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="requestHistoryAction('reset')"><span><gc-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
       } @else if (menu.kind === 'branch') {
+        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.headOid" (click)="previewContextMerge()"><span><gc-icon name="merge" [size]="13" /></span>Preview merge conflicts…</button>
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Tracking and worktrees</div>
         <button type="button" role="menuitem" [disabled]="!remoteUpstreamBranches().length" (click)="requestBranchUpstream()"><span><gc-icon name="remote" [size]="13" /></span>{{ contextBranchUpstream(menu.label) ? 'Change upstream…' : 'Set upstream…' }}</button>
@@ -2745,3 +2749,23 @@
   </div>
   @if (git.busy()) { <div class="progress-line" aria-label="Operation in progress"></div> }
 </div>
+
+@if (mergePreviewRequest(); as request) {
+  @defer (on immediate) {
+    <gc-merge-preview-dialog [request]="request" (closed)="mergePreviewRequest.set(null)" />
+  } @placeholder {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading merge preview" (keydown)="handleMergePreviewLoaderKey($event)"><p role="status">Loading merge preview…</p><footer><button #mergePreviewLoaderClose type="button" (click)="closeMergePreviewLoader()">Close</button></footer></section></div>
+  } @error {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Merge preview unavailable" (keydown)="handleMergePreviewLoaderKey($event)"><p role="alert">Could not load merge preview. Close and reopen to retry.</p><footer><button #mergePreviewLoaderClose type="button" (click)="closeMergePreviewLoader()">Close</button></footer></section></div>
+  }
+}
+
+@if (workspaceCenterRequest(); as request) {
+  @defer (on immediate) {
+    <gc-workspace-center [request]="request" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" />
+  } @placeholder {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading workspace center" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="status">Loading workspace center…</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
+  } @error {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Workspace center unavailable" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="alert">Could not load workspace center. Close and reopen to retry.</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
+  }
+}

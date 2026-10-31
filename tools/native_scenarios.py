@@ -1773,7 +1773,124 @@ def shared_parent_avatar_attachments(driver, fixtures, original_repository, repo
         open_ui(driver, original_repository)
 
 
+def committed_merge_preview(driver, fixtures, original_repository, report):
+    repository = fixtures.repository("committed-merge-preview", commits=1)
+    fixtures.git(repository, "checkout", "-q", "-b", "preview-source")
+    (repository / "fixture.txt").write_text("source version\n")
+    fixtures.git(repository, "commit", "-qam", "Source change")
+    source = fixtures.git(repository, "rev-parse", "HEAD")
+    fixtures.git(repository, "checkout", "-q", "main")
+    (repository / "fixture.txt").write_text("target version\n")
+    fixtures.git(repository, "commit", "-qam", "Target change")
+    target = fixtures.git(repository, "rev-parse", "HEAD")
+    (repository / "fixture.txt").write_text("unstaged local work\n")
+    (repository / "untracked.txt").write_text("preserved untracked work\n")
+    before_refs = fixtures.git(repository, "show-ref")
+    before_index = (repository / ".git/index").read_bytes()
+    try:
+        repo_id = open_ui(driver, repository)
+        request = {"source": "refs/heads/preview-source", "target": "refs/heads/main",
+                   "sourceOid": source, "targetOid": target}
+        result = driver.invoke("preview_merge", repoId=repo_id, request=request, operationId=str(uuid.uuid4()))
+        assert not result["clean"] and result["conflictedPaths"] == ["fixture.txt"], result
+        assert result["request"] == request
+        report["scenarios"].append("native-committed-merge-preview-exact-refs-and-conflict-paths")
+        driver.click('[aria-label="Main menu"]')
+        driver.click_text('.app-menu-popover strong', 'Command Palette')
+        driver.wait("return !!document.querySelector('gc-command-palette input')")
+        driver.script("""
+          const input = document.querySelector('gc-command-palette input');
+          input.value = 'Preview merge conflicts';
+          input.dispatchEvent(new Event('input', {bubbles: true}));
+        """)
+        driver.wait("return [...document.querySelectorAll('gc-command-palette [role=option]')].filter(x => !x.disabled).length === 1")
+        driver.click('gc-command-palette [role=option]:not(:disabled)')
+        driver.wait("return !!document.querySelector('gc-merge-preview-dialog #preview-target')")
+        driver.script("""
+          const select = document.querySelector('gc-merge-preview-dialog #preview-target');
+          select.value = 'refs/heads/preview-source';
+          select.dispatchEvent(new Event('change', {bubbles: true}));
+        """)
+        assert driver.script("return document.querySelector('gc-merge-preview-dialog #preview-source').value") == "refs/heads/main"
+        assert driver.script("return document.querySelector('gc-merge-preview-dialog #preview-target').value") == "refs/heads/preview-source"
+        driver.click_text('gc-merge-preview-dialog button', 'Preview conflicts')
+        driver.wait("return document.querySelector('gc-merge-preview-dialog')?.textContent.includes('Git reports merge conflicts')")
+        assert driver.script("return [...document.querySelectorAll('gc-merge-preview-dialog li')].map(x => x.textContent)") == ["fixture.txt"]
+        driver.click_text('gc-merge-preview-dialog button', 'Close')
+        assert fixtures.git(repository, "show-ref") == before_refs
+        assert (repository / ".git/index").read_bytes() == before_index
+        assert (repository / "fixture.txt").read_text() == "unstaged local work\n"
+        assert (repository / "untracked.txt").read_text() == "preserved untracked work\n"
+        report["scenarios"].append("native-merge-preview-dialog-default-direction-and-dirty-state-preservation")
+    finally:
+        open_ui(driver, original_repository)
+
+
+def workspace_center_workflows(driver, fixtures, original_repository, report):
+    repository = fixtures.repository("workspace-center", commits=1)
+    (repository / "fixture.txt").write_text("kept local edits\n")
+    before_refs = fixtures.git(repository, "show-ref")
+    before_index = (repository / ".git/index").read_bytes()
+    before_name = fixtures.git(repository, "config", "user.name")
+    storage_key = "git-khronos.identity-profiles.v1"
+    previous = driver.script("return localStorage.getItem(arguments[0])", storage_key)
+    label = "Owned native identity"
+    try:
+        repo_id = open_ui(driver, repository)
+        driver.click('.workspace-toggle')
+        driver.click_text('.workspace-menu-actions button', 'Repository overview')
+        driver.wait("return !!document.querySelector('gc-workspace-center [role=dialog]')")
+        driver.click_text('gc-workspace-center button', 'Refresh local state')
+        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Read locally at')")
+        assert driver.script("return document.querySelector('gc-workspace-center').textContent").find(str(repository)) >= 0
+        assert fixtures.git(repository, "config", "user.name") == before_name
+        report["scenarios"].append("native-workspace-overview-explicit-local-refresh")
+        driver.click_text('gc-workspace-center nav button', 'Identity profiles')
+        driver.script("""
+          const values = {'Profile label': arguments[0], 'Commit author name': 'Owned Native Author',
+            'Commit author email': 'native-owned@example.test'};
+          for (const [text,value] of Object.entries(values)) {
+            const label = [...document.querySelectorAll('gc-workspace-center form label')].find(label => label.textContent.trim() === text);
+            const input = label.querySelector('input'); input.value = value;
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+          }
+        """, label)
+        driver.click_text('gc-workspace-center button', 'Save profile')
+        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Saved Owned native identity')")
+        assert fixtures.git(repository, "config", "user.name") == before_name
+        driver.click_text('gc-workspace-center button', 'Use ' + label + '…')
+        assert str(repository) in driver.script("return document.querySelector('gc-workspace-center aside').textContent")
+        driver.click_text('gc-workspace-center button', 'Apply to this repository')
+        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Applied Owned native identity')")
+        assert fixtures.git(repository, "config", "--local", "user.name") == "Owned Native Author"
+        assert fixtures.git(repository, "config", "--local", "user.email") == "native-owned@example.test"
+        assert fixtures.git(repository, "show-ref") == before_refs
+        assert (repository / ".git/index").read_bytes() == before_index
+        assert (repository / "fixture.txt").read_text() == "kept local edits\n"
+        report["scenarios"].append("native-identity-profile-explicit-local-application-preserves-git-state")
+        driver.click_text('gc-workspace-center button', 'Close')
+        for command, args in [
+            ("load_hosting_page", {"remote": "missing", "section": "pullRequests"}),
+            ("load_hosted_review", {"remote": "missing", "pullNumber": 1, "expectedHeadOid": "not-an-oid"}),
+        ]:
+            try:
+                driver.invoke(command, repoId=repo_id, operationId=str(uuid.uuid4()), **args)
+                raise AssertionError("Unsupported hosted request unexpectedly succeeded")
+            except RuntimeError as error:
+                assert "hostingUnsupported" in str(error) or "hostingRequest" in str(error), str(error)
+        report["scenarios"].append("native-hosted-read-boundary-rejects-invalid-requests-without-network")
+    finally:
+        driver.script("""
+          if (arguments[1] === null) localStorage.removeItem(arguments[0]);
+          else localStorage.setItem(arguments[0], arguments[1]);
+          document.querySelector('gc-workspace-center header button')?.click();
+        """, storage_key, previous)
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    workspace_center_workflows(driver, fixtures, repository, report)
+    committed_merge_preview(driver, fixtures, repository, report)
     shared_parent_avatar_attachments(driver, fixtures, repository, report)
     avatar_side_attachments(driver, fixtures, repository, report)
     reference_hover_stability(driver, fixtures, repository, report)

@@ -20,6 +20,10 @@ mod operation_recovery;
 mod operation_storage;
 mod rebase_split;
 pub use rebase_split::{RebaseSplitStatus, begin_rebase_split};
+mod hosting;
+pub use hosting::{HostedEntry, HostedReview, HostedReviewFile, HostedReviewStatus, HostingPage, HostingSection, load_hosting_page, load_hosted_review};
+mod merge_preview;
+pub use merge_preview::{MergePreview, MergePreviewRequest, preview_merge};
 mod merge_rebase;
 pub use merge_rebase::{
     MergeRebasePlan, MergeRebaseRequest, execute_merge_rebase, prepare_merge_rebase,

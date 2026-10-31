@@ -1975,3 +1975,44 @@ Independent implementation:
 - Attribute inspection refuses sparse-excluded ancestor attribute files on Git older than 2.43.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.
+
+## Committed merge-conflict preview
+
+Requirement: explicitly compare two reviewed branch tips, report Git's conflict
+verdict and path list, and preserve the selected repository's HEAD, references,
+index, objects and working files. Direction is source into target; results carry
+both full reference names and exact commit IDs. Changed or deleted tips invalidate
+the result; late replies after cancellation or repository switching are discarded.
+
+Implementation specification: Git's public merge-tree manual, not proprietary
+implementation material. The native command runs default merge semantics in a
+private bare repository with read-only object alternates. It uses NUL-delimited
+path output and exit status, including status 1 with no individual path records.
+Temporary merge objects are removed on success, failure and cancellation.
+No merge or automatic follow-up mutation is offered by the preview dialog.
+
+Scope: Git 2.43+ with explicit target-commit attribute lookup; committed tips only,
+no fetch, no custom merge drivers, partial/shallow
+history or replacement refs. Repository-specific merge options and external
+attributes are not copied. A clean preview does not guarantee a subsequent merge
+with other settings or dirty working contents. Behavioral fixtures cover text,
+binary, rename and modify/delete conflicts, SHA-256, stale references,
+cancellation, and byte-preserving operation on a dirty repository.
+
+## Independent workspace and collaboration workflows
+
+- Workspace center derives a local overview from Khronos repository snapshots;
+  explicit refresh preserves selected repository and commit drafts and reports
+  unavailable repositories independently.
+- Saved identities are bounded local label/name/email templates, with explicit
+  application to local repository Git configuration. They are not accounts.
+- The GitHub adapter uses documented REST endpoints through `gh api`, fixes the
+  hostname and GET method, validates repository coordinates, builds safe links,
+  binds PR checks to a captured head and refuses changed-head review results.
+  It does not expose credentials to the renderer or copy provider implementation.
+- Agent sessions launch one explicitly selected installed CLI directly through
+  the existing native PTY lifecycle. No shell command text or bypass flags are
+  generated; tool-specific internal protocols are not inspected or emulated.
+
+UI composition, storage design and code are original Khronos implementations.
+See `docs/clean-room-capabilities.md` for precise limits and unfinished scope.

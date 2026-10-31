@@ -510,6 +510,36 @@ export class GitKhronosService {
     }, repo.id);
   }
 
+  async refreshWorkspaceOverview(): Promise<Record<string, { at: number | null; error: string | null }>> {
+    const results: Record<string, { at: number | null; error: string | null }> = {};
+    if (this.busy() || this.browserPreview()) return results;
+    const workspaceId = this.activeWorkspaceId();
+    const repositories = [...this.repositories()];
+    await this.run('Refreshing workspace overview…', async report => {
+      for (const repository of repositories) {
+        if (this.activeWorkspaceId() !== workspaceId) break;
+        if (!this.repositories().some(item => item.id === repository.id && item.path === repository.path)) continue;
+        const generation = this.statusGeneration(repository.id);
+        try {
+          const snapshot = await ipc.refresh_repository({ repoId: repository.id });
+          const status = await ipc.refresh_repository_status({ repoId: repository.id });
+          if (this.activeWorkspaceId() !== workspaceId || generation !== this.statusGeneration(repository.id)) continue;
+          if (snapshot.id !== repository.id || snapshot.path !== repository.path || snapshot.status.branch !== status.branch) {
+            results[repository.id] = { at: null, error: 'Repository context changed during refresh; retry to read a consistent checkout' };
+            continue;
+          }
+          this.storeSnapshot({ ...snapshot, status });
+          results[repository.id] = { at: Date.now(), error: null };
+        } catch (error: unknown) {
+          results[repository.id] = { at: null, error: this.formatError(error) };
+        }
+      }
+      const failed = Object.values(results).filter(result => result.error).length;
+      report(failed ? `Workspace refreshed with ${failed} unavailable repositories` : 'Workspace overview refreshed');
+    });
+    return results;
+  }
+
   async refreshRepositoryInBackground(repositoryId: string): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
     if (!repository

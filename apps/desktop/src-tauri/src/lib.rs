@@ -1302,6 +1302,51 @@ fn begin_rebase_split(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn load_hosted_review(
+    repo_id: String,
+    remote: String,
+    pull_number: u32,
+    expected_head_oid: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::HostedReview, AppError> {
+    let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |path| {
+        git_khronos_git_core::load_hosted_review(path, &remote, pull_number, &expected_head_oid, &cancellation)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn load_hosting_page(
+    repo_id: String,
+    remote: String,
+    section: git_khronos_git_core::HostingSection,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::HostingPage, AppError> {
+    let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |path| {
+        git_khronos_git_core::load_hosting_page(path, &remote, section, &cancellation)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn preview_merge(
+    repo_id: String,
+    request: git_khronos_git_core::MergePreviewRequest,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::MergePreview, AppError> {
+    let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
+    with_repository_background(repo_id, app, move |path| {
+        git_khronos_git_core::preview_merge(path, &request, &cancellation)
+    }).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn prepare_merge_rebase(
     repo_id: String,
     source: String,
@@ -2962,12 +3007,56 @@ fn stop_terminal_child(child: &mut (dyn Child + Send + Sync)) -> Result<(), AppE
     Ok(())
 }
 
+#[derive(Clone, Copy, serde::Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+enum AgentProgram {
+    Codex,
+    Claude,
+    Gemini,
+    Opencode,
+}
+
+impl AgentProgram {
+    fn executable(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+            Self::Opencode => "opencode",
+        }
+    }
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+fn open_agent_terminal(
+    repo_id: String,
+    program: AgentProgram,
+    rows: u16,
+    cols: u16,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<TerminalInfo, AppError> {
+    open_terminal_program(repo_id, rows, cols, Some(program), app, state)
+}
+
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
 fn open_terminal(
     repo_id: String,
     rows: u16,
     cols: u16,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<TerminalInfo, AppError> {
+    open_terminal_program(repo_id, rows, cols, None, app, state)
+}
+
+fn open_terminal_program(
+    repo_id: String,
+    rows: u16,
+    cols: u16,
+    program: Option<AgentProgram>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<TerminalInfo, AppError> {
@@ -2982,7 +3071,7 @@ fn open_terminal(
             message: "This repository session has expired.".into(),
             hint: Some("Open the repository again.".into()),
         })?;
-    let shell = default_shell();
+    let shell = program.map(|agent| agent.executable().to_owned()).unwrap_or_else(default_shell);
     let label = Path::new(&shell)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -3005,7 +3094,7 @@ fn open_terminal(
     let child = pair
         .slave
         .spawn_command(command)
-        .map_err(|error| terminal_error("start the default shell", error))?;
+        .map_err(|error| terminal_error(&format!("start {label}; install and authenticate this program separately if needed"), error))?;
     drop(pair.slave);
     let id = format!(
         "terminal-{}",
@@ -3319,6 +3408,9 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             execute_interactive_rebase,
             continue_rebase,
             begin_rebase_split,
+            preview_merge,
+            load_hosting_page,
+            load_hosted_review,
             prepare_merge_rebase,
             execute_merge_rebase,
             export_diff_patch,
@@ -3413,6 +3505,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             undo_discard,
             redo_discard,
             open_terminal,
+            open_agent_terminal,
             write_terminal,
             resize_terminal,
             close_terminal,

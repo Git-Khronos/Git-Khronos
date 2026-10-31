@@ -7098,7 +7098,7 @@ test('finds repositories, references, and changed files from the command palette
   await expect(search).toHaveAttribute('placeholder', 'Search commands, repos, refs, and files');
   await expect(palette.locator('.palette-group-heading').first()).toHaveText('Quick Actions');
   await expect(palette.getByRole('option').filter({ hasText: 'Fetch All' })).toHaveCount(1);
-  await expect(palette.getByRole('option').filter({ hasText: 'Pull' })).toHaveCount(1);
+  await expect(palette.getByRole('option', { name: /^Pull(?:\s|$)/ })).toHaveCount(1);
   await expect(palette.locator('.palette-result-count')).toContainText('commands');
   await expect(palette.locator('.palette-search-hint')).toHaveText('Commands · repos · refs · files');
   await expect(palette.locator('.palette-group-heading').filter({ hasText: 'Repository' })).toHaveCount(1);

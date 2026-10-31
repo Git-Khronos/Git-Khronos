@@ -29,6 +29,7 @@ terminalOutput: "terminal-output"
 
 /** user-defined types **/
 
+export type AgentProgram = "codex" | "claude" | "gemini" | "opencode"
 export type AppError = { kind: string; message: string; hint: string | null }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
@@ -68,6 +69,16 @@ export type HistoryQuery = { message?: string; author?: string; oid?: string; si
  */
 scope?: string }
 export type HistorySearchPage = { entries: FileHistoryEntry[]; cursor: HistoryCursor | null; complete: boolean; scanned: number }
+export type HostedEntry = { number: string; title: string; state: string; author: string; url: string; branch: string; commitOid: string; body: string }
+export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean }
+export type HostedReviewFile = { path: string; state: string; additions: number; deletions: number; patch: string | null }
+export type HostedReviewStatus = { name: string; state: string; body: string }
+export type HostingPage = { repository: string; entries: HostedEntry[];
+/**
+ * The first API page was full; additional records may exist.
+ */
+mayHaveMore: boolean }
+export type HostingSection = "pullRequests" | "issues" | "workflows"
 export type IntegrityReport = { passed: boolean; exitCode: number; stdout: string; stderr: string; truncated: boolean }
 export type InteractiveRebaseCommit = { oid: string; authorName: string; authorEmail: string; subject: string; message: string }
 export type InteractiveRebasePlan = { source: string; target: string; base: string; commits: InteractiveRebaseCommit[]; remoteReachableOids: string[] }
@@ -109,6 +120,8 @@ export type MailPatchImportReview = { request: MailPatchImportRequest; patches: 
 export type MailPatchProgress = { stopped: boolean; current: number | null; total: number | null; message: string; recoveryRef: string | null }
 export type MailPatchRequest = { oids: string[]; bytes: number; fingerprint: string }
 export type MailPatchReview = { request: MailPatchRequest; commits: MailPatchCommit[] }
+export type MergePreview = { request: MergePreviewRequest; clean: boolean; conflictedPaths: string[] }
+export type MergePreviewRequest = { source: string; target: string; sourceOid: string; targetOid: string }
 export type MergeRebaseCommit = ({ oid: string; authorName: string; authorEmail: string; subject: string; message: string }) & { parents: string[] }
 export type MergeRebasePlan = { request: MergeRebaseRequest; commits: MergeRebaseCommit[]; remoteReachableOids: string[] }
 export type MergeRebaseRequest = { source: string; target: string; sourceOid: string; targetOid: string; base: string }
@@ -303,6 +316,9 @@ export function prepare_interactive_rebase(args: { repoId: string; source: strin
 export function execute_interactive_rebase(args: { repoId: string; source: string; target: string; steps: InteractiveRebaseStep[]; selectionOids?: string[] | null; root?: boolean | null; ontoOid?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_interactive_rebase", args); }
 export function continue_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_rebase", args); }
 export function begin_rebase_split(args: { repoId: string; expectedHead: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("begin_rebase_split", args); }
+export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
+export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
+export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
 export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
 export function execute_merge_rebase(args: { repoId: string; request: MergeRebaseRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_merge_rebase", args); }
 export function export_diff_patch(args: { repoId: string; staged: boolean; paths: string[]; destination: string }): Promise<number> { return TAURI_INVOKE("export_diff_patch", args); }
@@ -397,6 +413,7 @@ export function apply_working_tree_lines(args: { repoId: string; path: string; s
 export function undo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("undo_discard", args); }
 export function redo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("redo_discard", args); }
 export function open_terminal(args: { repoId: string; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_terminal", args); }
+export function open_agent_terminal(args: { repoId: string; program: AgentProgram; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_agent_terminal", args); }
 export function write_terminal(args: { sessionId: string; data: number[] }): Promise<null> { return TAURI_INVOKE("write_terminal", args); }
 export function resize_terminal(args: { sessionId: string; rows: number; cols: number }): Promise<null> { return TAURI_INVOKE("resize_terminal", args); }
 export function close_terminal(args: { sessionId: string }): Promise<null> { return TAURI_INVOKE("close_terminal", args); }
@@ -474,6 +491,9 @@ export type CommandMap = {
   execute_interactive_rebase: typeof execute_interactive_rebase;
   continue_rebase: typeof continue_rebase;
   begin_rebase_split: typeof begin_rebase_split;
+  preview_merge: typeof preview_merge;
+  load_hosting_page: typeof load_hosting_page;
+  load_hosted_review: typeof load_hosted_review;
   prepare_merge_rebase: typeof prepare_merge_rebase;
   execute_merge_rebase: typeof execute_merge_rebase;
   export_diff_patch: typeof export_diff_patch;
@@ -568,6 +588,7 @@ export type CommandMap = {
   undo_discard: typeof undo_discard;
   redo_discard: typeof redo_discard;
   open_terminal: typeof open_terminal;
+  open_agent_terminal: typeof open_agent_terminal;
   write_terminal: typeof write_terminal;
   resize_terminal: typeof resize_terminal;
   close_terminal: typeof close_terminal;
