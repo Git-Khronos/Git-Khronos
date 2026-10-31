@@ -1,0 +1,24 @@
+gc-root {
+
+.working-tree-file-list .file-row, .working-tree-file-list .file-tree-directory { height: 31px; }
+// Virtualization bounds these rows; their visible content must not be skipped.
+.working-tree-file-list .file-row { content-visibility: visible; }
+.working-tree-file-list:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.reference-list-row { box-sizing: border-box; height: 30px; min-height: 30px; }
+.reference-list-spacer { pointer-events: none; }
+.reference-virtual-list .reference-list-row > .branch-item { height: 30px; padding-top: 0; padding-bottom: 0; }
+.remote-group-listitem { overflow: hidden; }
+.remote-group-listitem.remote-group-divider { box-shadow: inset 0 1px var(--nav-divider); }
+.remote-location-heading { height: 100%; }
+.remote-branch-row.reference-list-row { overflow: hidden; }
+.remote-branch-row.reference-hidden .remote-branch-item { opacity: .5; }
+.branch-list-row > .branch-item, .remote-branch-item { height: 30px; padding-top: 0; padding-bottom: 0; }
+
+.tool-button .lfs-pointer-count { padding: 1px 4px; border-radius: 3px; background: var(--orange); color: var(--bg); font-size: inherit; line-height: inherit; font-variant-numeric: tabular-nums; }
+
+.reference-content[role="list"] .branch-list-row, .reference-content[role="list"] .reference-list-row { box-sizing: border-box; height: 30px; min-height: 30px; }
+.reference-content[role="list"] .tag-item, .reference-content[role="list"] .stash-item { height: 30px; padding-top: 0; padding-bottom: 0; }
+
+.remote-locations[role="list"] > .remote-location + .remote-location { border-top: 0; }
+}

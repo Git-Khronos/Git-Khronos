@@ -688,7 +688,9 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   const featureReferenceRow = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
   await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('background-color', 'rgb(124, 110, 246)');
-  await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('width', '44px');
+  // The second expanded lane is 16 + 40px from the graph origin. Preserve
+  // the wider avatar spacing required by the rounded orthogonal routes.
+  await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('width', '56px');
   const firstWorkingTreePath = page.locator('.file-name-button.path-display').first();
   await expect(firstWorkingTreePath.locator('.file-path-prefix')).toHaveText('apps/desktop/src/app/');
   await expect(firstWorkingTreePath.locator('.file-path-name')).toHaveText('app.component.html');
@@ -5250,7 +5252,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
   await page.getByLabel('Compact Graph Column').check();
 
   await expect(page.locator('.commit-list')).toHaveClass(/compact-graph/);
-  await expect(graphHeading).toHaveCSS('width', '70px');
+  await expect(graphHeading).toHaveCSS('width', '92px');
   await expect(laneNodes.first()).toHaveCSS('font-size', '10px');
   expect(await laneNodes.evaluateAll((nodes) => nodes.every((node) => node.scrollWidth <= node.clientWidth))).toBe(true);
   const compactOffsets = await laneNodes.evaluateAll((nodes) =>
@@ -5262,7 +5264,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
   expect(await titleClearanceViolations()).toEqual([]);
 
   await page.reload();
-  await expect(graphHeading).toHaveCSS('width', '70px');
+  await expect(graphHeading).toHaveCSS('width', '92px');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await expect(page.getByLabel('Compact Graph Column')).toBeChecked();
 });

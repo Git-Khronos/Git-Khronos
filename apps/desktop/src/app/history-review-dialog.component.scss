@@ -3,7 +3,7 @@
 .confirmation-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #314f49; color: var(--accent); font-size: 18px; font-weight: 800; }
 .confirmation-icon.danger { background: #603140; color: #ff9ab2; }
 .confirmation-copy { min-width: 0; }
-.confirmation-copy > span { color: #77768b; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.confirmation-copy > span { color: #8d8c9e; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .confirmation-copy h2 { margin: 4px 0 8px; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .confirmation-copy p { margin: 0; color: #a09fb1; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .commit-option { min-height: 24px; display: flex; align-items: center; gap: 6px; color: var(--inspector-muted); font-size: 12px; }

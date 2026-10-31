@@ -16,7 +16,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { TextValueDirective } from './text-value.directive';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { type UnlistenFn } from '@tauri-apps/api/event';
@@ -49,6 +49,9 @@ import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
 import { GraphViewportComponent } from './graph-viewport.component';
+import { ViewportSizeDirective } from './viewport-size.directive';
+import { WorkingTreeViewportComponent } from './working-tree-viewport.component';
+import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
 import { ReferenceActionDialogComponent, type ReferenceActionRequest } from './reference-action-dialog.component';
 import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
 import { HistorySearchComponent } from './history-search.component';
@@ -100,7 +103,7 @@ import {
   repositoryTabOverflowState,
   repositoryTabScrollPosition,
 } from './repository-tabs';
-import { shouldDecorateDiff } from './diff-rendering';
+import { shouldDecorateDiff, tokenizeDiffLine, type DiffSyntaxToken, type DiffTextSegment } from './diff-rendering';
 import {
   APP_THEME_OPTIONS,
   appThemeNavigationValue,
@@ -145,14 +148,14 @@ interface GraphLayoutCache {
   nextColor: number;
 }
 
-interface WorktreeWipRow {
+export interface WorktreeWipRow {
   worktree: Worktree;
   nodeOffset: number;
   color: number;
   segments: WorktreeWipSegment[];
 }
 
-interface WorktreeWipSegment {
+export interface WorktreeWipSegment {
   offset: number;
   color: number;
   startY: number;
@@ -204,15 +207,6 @@ interface DiffLine {
   tokens: DiffSyntaxToken[];
 }
 
-interface DiffTextSegment {
-  text: string;
-  changed: boolean;
-}
-
-interface DiffSyntaxToken extends DiffTextSegment {
-  kind: 'plain' | 'keyword' | 'string' | 'number' | 'comment' | 'type' | 'literal' | 'punctuation';
-}
-
 interface SplitDiffRow {
   kind: 'pair' | 'header' | 'hunk';
   left: DiffLine | null;
@@ -259,6 +253,12 @@ interface RemoteBranchGroup extends Remote {
   branches: Branch[];
   branchCount: number;
 }
+
+type VirtualReferenceList = 'local' | 'remote' | 'tags' | 'stashes';
+
+type VirtualRemoteBranchRow =
+  | { key: string; kind: 'group'; group: RemoteBranchGroup }
+  | { key: string; kind: 'branch'; group: RemoteBranchGroup; branch: Branch };
 
 interface RemoteBranchLocationGroup {
   key: string;
@@ -543,9 +543,13 @@ const PANEL_WIDTH_LIMITS: Record<ResizablePanel, { minimum: number; maximum: num
 const REFERENCE_SECTION_MIN_HEIGHT = 70;
 const REFERENCE_SECTION_MAX_HEIGHT = 420;
 const REFERENCE_SECTION_FALLBACK_HEIGHT = 120;
+const REFERENCE_LIST_ROW_HEIGHT = 30;
+const REFERENCE_LIST_OVERSCAN_ROWS = 5;
 const WORKING_TREE_FILE_LIST_MIN_HEIGHT = 80;
 const WORKING_TREE_FILE_LIST_MAX_HEIGHT = 420;
 const WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT = 165;
+const WORKING_TREE_FILE_ROW_HEIGHT = 31;
+const WORKING_TREE_FILE_OVERSCAN_ROWS = 6;
 // Ghost branch hints are optional decoration. Keep their graph walk bounded so
 // selecting a commit cannot monopolize the WebView on enormous histories.
 const GHOST_BRANCH_VISIT_LIMIT = 4_096;
@@ -609,7 +613,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 @Component({
   selector: 'gc-root',
   imports: [StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
-    DatePipe, FormsModule, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -667,6 +671,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
   private readonly workingTreeOptionsMenu = viewChild<ElementRef<HTMLElement>>('workingTreeOptionsMenu');
   private readonly workingTreeOptionsToggle = viewChild<ElementRef<HTMLButtonElement>>('workingTreeOptionsToggle');
+  private readonly unstagedFilesList = viewChild<ElementRef<HTMLElement>>('unstagedFilesList');
+  private readonly stagedFilesList = viewChild<ElementRef<HTMLElement>>('stagedFilesList');
+  private readonly unstagedFilesViewport = viewChild<WorkingTreeViewportComponent>('unstagedFilesViewport');
+  private readonly stagedFilesViewport = viewChild<WorkingTreeViewportComponent>('stagedFilesViewport');
   private readonly terminalToggle = viewChild<ElementRef<HTMLButtonElement>>('terminalToggle');
   private readonly commitList = viewChild<ElementRef<HTMLElement>>('commitList');
   private readonly commitListAttachEffect = effect(() => {
@@ -981,6 +989,12 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly diffTabSize = signal(this.readDiffNumber('tab-size', 4, [2, 4, 8]));
   protected readonly activeDiffHunk = signal(0);
   protected readonly selectedDiffLineGroups = signal<string[]>([]);
+  private readonly selectedDiffLineGroupSet = computed(() => new Set(this.selectedDiffLineGroups()));
+  private readonly untrackedPaths = computed(() => new Set(
+    (this.git.repository()?.status.entries ?? [])
+      .filter((entry) => entry.indexStatus === '?')
+      .map((entry) => entry.path),
+  ));
   protected readonly diffInsightMode = signal<DiffInsightMode>('diff');
   protected readonly commandQuery = signal('');
   protected readonly commandPaletteScope = signal<CommandPaletteScope>('all');
@@ -993,6 +1007,19 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly fileFilter = signal('');
   protected readonly commitOidCopyFeedback = signal<{ oid: string; status: 'copied' | 'failed' } | null>(null);
   private readonly commitFilesScrollTop = signal(0);
+  private readonly workingTreeFilesScrollTop = { unstaged: signal(0), staged: signal(0) };
+  private readonly referenceListScrollTop = {
+    local: signal(0),
+    remote: signal(0),
+    tags: signal(0),
+    stashes: signal(0),
+  };
+  private readonly referenceListViewportHeight = {
+    local: signal(REFERENCE_SECTION_MAX_HEIGHT),
+    remote: signal(REFERENCE_SECTION_MAX_HEIGHT),
+    tags: signal(REFERENCE_SECTION_MAX_HEIGHT),
+    stashes: signal(REFERENCE_SECTION_MAX_HEIGHT),
+  };
   protected readonly fileFilterQuery = computed(() => this.fileFilter().trim().toLocaleLowerCase());
   protected readonly workingTreeSortAscending = signal(this.readUiPreference('working-tree-sort-ascending', true));
   protected readonly collapsedWorkingTreeDirectories = signal<string[]>([]);
@@ -1132,6 +1159,19 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly hoveredCommitOid = signal<string | null>(null);
   protected readonly hiddenBranches = signal<string[]>([]);
   protected readonly soloBranches = signal<string[]>([]);
+  private readonly hiddenBranchSet = computed(() => new Set(this.hiddenBranches()));
+  private readonly soloBranchSet = computed(() => new Set(this.soloBranches()));
+  private readonly remoteBranchNamesByLocation = computed(() => {
+    const groups = new Map<string, string[]>();
+    for (const branch of this.git.repository()?.branches ?? []) {
+      if (!branch.remote) continue;
+      const location = this.remoteLocationName(branch.name);
+      const names = groups.get(location);
+      if (names) names.push(branch.name);
+      else groups.set(location, [branch.name]);
+    }
+    return groups;
+  });
   protected readonly smartBranchVisibility = signal(false);
   protected readonly hiddenStashOids = signal<string[]>([]);
   protected readonly pinnedBranch = signal<string | null>(null);
@@ -1490,6 +1530,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
+      const unstaged = this.unstagedFilesList()?.nativeElement;
+      const staged = this.stagedFilesList()?.nativeElement;
+      untracked(() => {
+        this.workingTreeFilesScrollTop.unstaged.set(unstaged?.scrollTop ?? 0);
+        this.workingTreeFilesScrollTop.staged.set(staged?.scrollTop ?? 0);
+      });
+    });
+    effect(() => {
       this.git.activeRepositoryId();
       this.activeDiff();
       this.diffViewerOpen();
@@ -1712,7 +1760,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return !!diff && !!this.activeDiffRevision() && !(this.changesOpen() && this.isUntrackedPath(diff.path));
   });
 
-  protected readonly blameSyntaxTokens = (text: string, path: string) => syntaxTokens({ text, changed: false }, path);
+  protected readonly blameSyntaxTokens = (text: string, path: string) => tokenizeDiffLine([{ text, changed: false }], path);
 
   protected readonly diffLines = computed<DiffLine[]>(() => {
     const diff = this.activeDiff();
@@ -1774,7 +1822,7 @@ export class AppComponent implements OnInit, OnDestroy {
     for (const line of lines) {
       if (!line.segments.length) line.segments = [{ text: line.text, changed: false }];
       line.tokens = decorate
-        ? line.segments.flatMap((segment) => syntaxTokens(segment, diff.path))
+        ? tokenizeDiffLine(line.segments, diff.path)
         : [{ text: line.text, kind: 'plain', changed: false }];
     }
     return lines;
@@ -1910,6 +1958,7 @@ export class AppComponent implements OnInit, OnDestroy {
         || this.remoteLocationsForLocalBranch(branch).some((remote) => remote.name.toLocaleLowerCase().includes(query))),
     ));
   });
+  protected readonly virtualBranches = computed(() => this.virtualReferenceWindow('local', this.visibleBranches()));
 
   protected remoteLocationsForLocalBranch(branch: Branch): Branch[] {
     return this.remoteBranchesByLocalName().get(branch.name) ?? [];
@@ -2095,6 +2144,8 @@ export class AppComponent implements OnInit, OnDestroy {
       || stash.message.toLocaleLowerCase().includes(query),
     );
   });
+  protected readonly virtualTags = computed(() => this.virtualReferenceWindow('tags', this.visibleTags()));
+  protected readonly virtualStashes = computed(() => this.virtualReferenceWindow('stashes', this.visibleStashes()));
 
   protected readonly remoteBranchGroups = computed<RemoteBranchGroup[]>(() => {
     const repository = this.git.repository();
@@ -2140,12 +2191,42 @@ export class AppComponent implements OnInit, OnDestroy {
       })
       .filter((group) => !filtering || group.branches.length > 0);
   });
+  protected readonly remoteSidebarRows = computed(() => {
+    const rows: VirtualRemoteBranchRow[] = [];
+    for (const group of this.remoteBranchGroups()) {
+      rows.push({ key: `remote:${group.name}`, kind: 'group', group });
+      if (this.isRemoteCollapsed(group.name)) continue;
+      for (const branch of group.branches) {
+        rows.push({ key: `branch:${branch.fullName}`, kind: 'branch', group, branch });
+      }
+    }
+    return rows;
+  });
+  protected readonly virtualRemoteRows = computed(() =>
+    this.virtualReferenceWindow('remote', this.remoteSidebarRows()),
+  );
+  protected readonly virtualRemoteSections = computed(() => {
+    const window = this.virtualRemoteRows();
+    const sections: Array<{
+      group: RemoteBranchGroup;
+      rows: Array<{ row: VirtualRemoteBranchRow; index: number }>;
+    }> = [];
+    window.items.forEach((row, index) => {
+      let section = sections[sections.length - 1];
+      if (!section || section.group.name !== row.group.name) {
+        section = { group: row.group, rows: [] };
+        sections.push(section);
+      }
+      section.rows.push({ row, index: window.start + index });
+    });
+    return sections;
+  });
 
   protected readonly graphVisibleCommits = computed(() => {
     const commits = this.graphCommits();
     if (!commits.length) return [];
-    const hidden = new Set(this.hiddenBranches());
-    const solo = new Set(this.soloBranches());
+    const hidden = this.hiddenBranchSet();
+    const solo = this.soloBranchSet();
     const hiddenStashes = new Set(this.hiddenStashOids());
     const candidates = hiddenStashes.size ? commits.filter((commit) => !hiddenStashes.has(commit.oid)) : commits;
     if (!hidden.size && !solo.size && !this.smartBranchVisibility()) return candidates;
@@ -2616,6 +2697,7 @@ export class AppComponent implements OnInit, OnDestroy {
     allowBranchDrop: this.allowBranchDrop.bind(this),
     authorMarkerStyle: this.authorMarkerStyle.bind(this),
     beginColumnResize: this.beginColumnResize.bind(this),
+    authorColor: this.authorColor.bind(this),
     handleGraphRowResizerClick: this.handleGraphRowResizerClick.bind(this),
     branchDropTarget: this.branchDropTarget.bind(this),
     branchForDecoration: this.branchForDecoration.bind(this),
@@ -2649,6 +2731,8 @@ export class AppComponent implements OnInit, OnDestroy {
     graphCommitDates: this.graphCommitDates.bind(this),
     graphSegmentPath: this.graphSegmentPath.bind(this),
     handleCommitRowKeydown: this.handleCommitRowKeydown.bind(this),
+    handleWorktreeGraphRowKeydown: this.handleWorktreeGraphRowKeydown.bind(this),
+    handleWipRowResizerClick: this.handleWipRowResizerClick.bind(this),
     handleReferenceActionKeydown: this.handleReferenceActionKeydown.bind(this),
     handleReferenceStackMenuKeydown: this.handleReferenceStackMenuKeydown.bind(this),
     handleReferenceStackTriggerKeydown: this.handleReferenceStackTriggerKeydown.bind(this),
@@ -2664,6 +2748,8 @@ export class AppComponent implements OnInit, OnDestroy {
     openReferenceStackFromTrigger: this.openReferenceStackFromTrigger.bind(this),
     openRemoteMenu: this.openRemoteMenu.bind(this),
     openTagMenu: this.openTagMenu.bind(this),
+    openWorktree: this.openWorktree.bind(this),
+    primaryShortcutKey: this.primaryShortcutKey,
     previewCommit: this.previewCommit.bind(this),
     referenceGroupHeading: this.referenceGroupHeading.bind(this),
     referenceGroups: this.referenceGroups.bind(this),
@@ -2674,7 +2760,11 @@ export class AppComponent implements OnInit, OnDestroy {
     selectCommitWithModifiers: this.selectCommitWithModifiers.bind(this),
     selectedCommit: this.selectedCommit.bind(this),
     selectedCommits: this.selectedCommits.bind(this),
+    selectedWorktreePath: this.selectedWorktreePath.bind(this),
+    selectWorktreeGraphRow: this.selectWorktreeGraphRow.bind(this),
     shortOid: this.shortOid.bind(this),
+    stashCurrentChanges: this.stashCurrentChanges.bind(this),
+    stashMessage: this.stashMessage,
     showAuthorColumn: this.showAuthorColumn.bind(this),
     showBranchColumn: this.showBranchColumn.bind(this),
     showDateColumn: this.showDateColumn.bind(this),
@@ -2890,6 +2980,39 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workingTreeSortAscending(),
     new Set(this.collapsedWorkingTreeDirectories()),
   ));
+
+  protected readonly virtualUnstagedEntries = computed(() => calculateVirtualWindow(
+    this.sortedUnstagedEntries(),
+    this.workingTreeFilesScrollTop.unstaged(),
+    this.workingTreeFileListHeight('unstaged'),
+    WORKING_TREE_FILE_ROW_HEIGHT,
+    0,
+    WORKING_TREE_FILE_OVERSCAN_ROWS,
+  ), { equal: sameVirtualWindow });
+  protected readonly virtualStagedEntries = computed(() => calculateVirtualWindow(
+    this.sortedStagedEntries(),
+    this.workingTreeFilesScrollTop.staged(),
+    this.workingTreeFileListHeight('staged'),
+    WORKING_TREE_FILE_ROW_HEIGHT,
+    0,
+    WORKING_TREE_FILE_OVERSCAN_ROWS,
+  ), { equal: sameVirtualWindow });
+  protected readonly virtualUnstagedTreeRows = computed(() => calculateVirtualWindow(
+    this.unstagedTreeRows(),
+    this.workingTreeFilesScrollTop.unstaged(),
+    this.workingTreeFileListHeight('unstaged'),
+    WORKING_TREE_FILE_ROW_HEIGHT,
+    0,
+    WORKING_TREE_FILE_OVERSCAN_ROWS,
+  ), { equal: sameVirtualWindow });
+  protected readonly virtualStagedTreeRows = computed(() => calculateVirtualWindow(
+    this.stagedTreeRows(),
+    this.workingTreeFilesScrollTop.staged(),
+    this.workingTreeFileListHeight('staged'),
+    WORKING_TREE_FILE_ROW_HEIGHT,
+    0,
+    WORKING_TREE_FILE_OVERSCAN_ROWS,
+  ), { equal: sameVirtualWindow });
 
   protected readonly visibleWorkingTreeFileCount = computed(() =>
     this.conflictedEntries().length + this.sortedUnstagedEntries().length + this.sortedStagedEntries().length,
@@ -3354,6 +3477,9 @@ export class AppComponent implements OnInit, OnDestroy {
       void this.applyZoom(this.zoomPercent());
       return;
     }
+    // Repository-change effects clear old dialogs. Apply preview fixtures only
+    // after that initial render so they cannot erase a newly opened fixture view.
+    await new Promise<void>(resolve => afterNextRender(() => resolve(), { injector: this.injector }));
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('unpublished-branch')) {
       this.git.repositories.update((repositories) => repositories.map((repository) => {
         if (repository.id !== this.git.activeRepositoryId()) return repository;
@@ -5507,6 +5633,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleWorktreeGraphRowKeydown(event: KeyboardEvent, worktree: Worktree): void {
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       this.selectWorktreeGraphRow(worktree);
@@ -5891,7 +6018,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private focusFirstEditableControl(dialog?: ElementRef<HTMLElement>): void {
     dialog?.nativeElement
-      .querySelector<HTMLElement>('input:not([readonly]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
+      ?.querySelector<HTMLElement>('input:not([readonly]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
       ?.focus();
   }
 
@@ -6044,6 +6171,29 @@ export class AppComponent implements OnInit, OnDestroy {
     if (responsive === this.responsiveSidebarMode) return;
     this.responsiveSidebarMode = responsive;
     this.sidebarVisible.set(responsive ? false : this.wideViewportSidebarVisible);
+  }
+
+  /** Focuses an element from a deferred view, waiting a few frames for its chunk to render. */
+  private focusWhenRendered(
+    resolve: () => HTMLElement | undefined,
+    frames = 30,
+    shouldContinue: () => boolean = () => true,
+  ): void {
+    this.runWhenElementRendered(resolve, (element) => element.focus(), frames, shouldContinue);
+  }
+
+  private runWhenElementRendered<T extends HTMLElement>(
+    resolve: () => T | undefined,
+    onRendered: (element: T) => void,
+    frames = 30,
+    shouldContinue: () => boolean = () => true,
+  ): void {
+    if (!shouldContinue()) return;
+    const element = resolve();
+    if (element) onRendered(element);
+    else if (frames > 0) {
+      requestAnimationFrame(() => this.runWhenElementRendered(resolve, onRendered, frames - 1, shouldContinue));
+    }
   }
 
   protected closeResponsiveSidebar(): void {
@@ -6666,14 +6816,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private remoteGroupBranchNames(remote: string): string[] {
-    return (this.git.repository()?.branches ?? [])
-      .filter((branch) => branch.remote && this.remoteLocationName(branch.name) === remote)
-      .map((branch) => branch.name);
+    return this.remoteBranchNamesByLocation().get(remote) ?? [];
   }
 
   protected isRemoteHidden(remote: string): boolean {
     const names = this.remoteGroupBranchNames(remote);
-    const hidden = new Set(this.hiddenBranches());
+    const hidden = this.hiddenBranchSet();
     return !!names.length && names.every((name) => hidden.has(name));
   }
 
@@ -6692,7 +6840,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected isRemoteSoloed(remote: string): boolean {
     const names = this.remoteGroupBranchNames(remote);
-    const solo = new Set(this.soloBranches());
+    const solo = this.soloBranchSet();
     return !!names.length && names.every((name) => solo.has(name));
   }
 
@@ -6843,11 +6991,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected isBranchHidden(name: string): boolean {
-    return this.hiddenBranches().includes(name);
+    return this.hiddenBranchSet().has(name);
   }
 
   protected isBranchSoloed(name: string): boolean {
-    return this.soloBranches().includes(name);
+    return this.soloBranchSet().has(name);
   }
 
   protected isBranchGraphVisible(name: string): boolean {
@@ -6924,6 +7072,97 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected updateCommitFilesViewport(event: Event): void {
     this.commitFilesScrollTop.set((event.currentTarget as HTMLElement).scrollTop);
+  }
+
+  protected updateWorkingTreeFilesViewport(section: WorkingTreeFileListSection, event: Event): void {
+    const scrollTop = (event.currentTarget as HTMLElement).scrollTop;
+    if (scrollTop === this.workingTreeFilesScrollTop[section]()) return;
+    this.workingTreeFilesScrollTop[section].set(scrollTop);
+    const viewport = section === 'unstaged' ? this.unstagedFilesViewport() : this.stagedFilesViewport();
+    // Refresh only this viewport before the browser paints the new scroll position.
+    viewport?.render();
+  }
+
+  private virtualReferenceWindow<T>(list: VirtualReferenceList, items: readonly T[]): VirtualWindow<T> {
+    return calculateVirtualWindow(
+      items,
+      this.referenceListScrollTop[list](),
+      this.referenceListViewportHeight[list](),
+      REFERENCE_LIST_ROW_HEIGHT,
+      0,
+      REFERENCE_LIST_OVERSCAN_ROWS,
+    );
+  }
+
+  protected updateReferenceListHeight(list: VirtualReferenceList, height: number): void {
+    this.referenceListViewportHeight[list].set(Math.max(REFERENCE_LIST_ROW_HEIGHT, height));
+  }
+
+  protected updateReferenceListViewport(list: VirtualReferenceList, event: Event): void {
+    const element = event.currentTarget as HTMLElement;
+    if (element.scrollTop !== this.referenceListScrollTop[list]()) {
+      this.referenceListScrollTop[list].set(element.scrollTop);
+    }
+    const viewportHeight = Math.max(REFERENCE_LIST_ROW_HEIGHT, element.clientHeight);
+    if (viewportHeight !== this.referenceListViewportHeight[list]()) {
+      this.referenceListViewportHeight[list].set(viewportHeight);
+    }
+  }
+
+  protected handleReferenceListKeydown(list: VirtualReferenceList, event: KeyboardEvent): void {
+    if (event.key !== 'Tab' || !(event.target instanceof HTMLElement)) return;
+    const row = event.target.closest<HTMLElement>('[data-reference-index]');
+    if (!row) return;
+    const rowIndex = Number(row.dataset['referenceIndex']);
+    if (!Number.isInteger(rowIndex)) return;
+
+    const controls = [...row.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )];
+    const focusedControl = controls.findIndex((control) => control === document.activeElement);
+    if (focusedControl < 0) return;
+
+    const nextIndex = event.shiftKey
+      ? focusedControl === 0 ? rowIndex - 1 : -1
+      : focusedControl === controls.length - 1 ? rowIndex + 1 : -1;
+    if (nextIndex < 0 || nextIndex >= this.referenceListLength(list)) return;
+
+    event.preventDefault();
+    const viewport = event.currentTarget as HTMLElement;
+    const top = nextIndex * REFERENCE_LIST_ROW_HEIGHT;
+    viewport.scrollTop = top;
+    this.referenceListScrollTop[list].set(top);
+    this.referenceListViewportHeight[list].set(
+      Math.max(REFERENCE_LIST_ROW_HEIGHT, viewport.clientHeight),
+    );
+    requestAnimationFrame(() => {
+      const nextRow = viewport.querySelector<HTMLElement>(
+        `[data-reference-index="${nextIndex}"]`,
+      );
+      const nextControls = nextRow?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      );
+      nextControls?.item(event.shiftKey ? nextControls.length - 1 : 0)?.focus();
+    });
+  }
+
+  private referenceListLength(list: VirtualReferenceList): number {
+    switch (list) {
+      case 'local': return this.visibleBranches().length;
+      case 'remote': return this.remoteSidebarRows().length;
+      case 'tags': return this.visibleTags().length;
+      case 'stashes': return this.visibleStashes().length;
+    }
+  }
+
+  protected handleWorkingTreeFileListNavigation(section: WorkingTreeFileListSection, event: KeyboardEvent): void {
+    if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key !== 'Home' && event.key !== 'End') return;
+    const list = event.currentTarget as HTMLElement;
+    event.preventDefault();
+    event.stopPropagation();
+    list.scrollTo({ top: event.key === 'Home' ? 0 : list.scrollHeight - list.clientHeight, behavior: 'instant' });
+    this.updateWorkingTreeFilesViewport(section, event);
   }
 
   private prefetchOlderHistory(list: HTMLElement): void {
@@ -9124,9 +9363,13 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 390)),
     });
     if (focusMenu) {
-      queueMicrotask(() => requestAnimationFrame(() => this.repositoryTabMenuElement()?.nativeElement
-        .querySelector<HTMLElement>('[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])')
-        ?.focus()));
+      this.focusWhenRendered(
+        () => this.repositoryTabMenuElement()?.nativeElement.querySelector<HTMLElement>(
+          '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
+        ) ?? undefined,
+        30,
+        () => this.repositoryTabMenu()?.repoId === repoId,
+      );
     }
   }
 
@@ -10746,7 +10989,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected isDiffLineSelected(line: DiffLine): boolean {
-    return this.selectedDiffLineGroups().includes(this.diffLineSelectionKey(line));
+    return this.selectedDiffLineGroupSet().has(this.diffLineSelectionKey(line));
   }
 
   protected toggleDiffLineSelection(line: DiffLine): void {
@@ -10855,9 +11098,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected isUntrackedPath(path: string): boolean {
-    return this.git.repository()?.status.entries.some(
-      (entry) => entry.path === path && entry.indexStatus === '?',
-    ) ?? false;
+    return this.untrackedPaths().has(path);
   }
 
   protected fileHasExtension(path: string): boolean {
@@ -11463,30 +11704,39 @@ export class AppComponent implements OnInit, OnDestroy {
     key: string,
     preferred: { x: number; y: number },
   ): void {
-    queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.sidebarContextMenuElement()?.nativeElement;
+    const isCurrent = () => {
       const reference = this.referencePaneMenu();
       const remote = this.remoteGroupMenu();
       const activeKey = target === 'reference' ? reference && 'reference' : remote?.remote;
-      if (!element || activeKey !== key) return;
+      return activeKey === key;
+    };
+    queueMicrotask(() => requestAnimationFrame(() => this.runWhenElementRendered(
+      () => isCurrent() ? this.sidebarContextMenuElement()?.nativeElement : undefined,
+      (element) => {
+        const reference = this.referencePaneMenu();
+        const remote = this.remoteGroupMenu();
+        if (!isCurrent()) return;
 
-      const x = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
-      );
-      const y = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
-      );
-      if (target === 'reference' && reference && (reference.x !== x || reference.y !== y)) {
-        this.referencePaneMenu.set({ ...reference, x, y });
-      } else if (target === 'remote' && remote && (remote.x !== x || remote.y !== y)) {
-        this.remoteGroupMenu.set({ ...remote, x, y });
-      }
-      element.querySelector<HTMLElement>(
-        '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
-      )?.focus();
-    }));
+        const x = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
+        );
+        const y = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
+        );
+        if (target === 'reference' && reference && (reference.x !== x || reference.y !== y)) {
+          this.referencePaneMenu.set({ ...reference, x, y });
+        } else if (target === 'remote' && remote && (remote.x !== x || remote.y !== y)) {
+          this.remoteGroupMenu.set({ ...remote, x, y });
+        }
+        element.querySelector<HTMLElement>(
+          '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
+        )?.focus();
+      },
+      30,
+      isCurrent,
+    )));
   }
 
   private settleFileActionMenuPosition(
@@ -11495,32 +11745,41 @@ export class AppComponent implements OnInit, OnDestroy {
     preferred: { x: number; y: number },
     focusMenu: boolean,
   ): void {
-    queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.fileActionMenuElement()?.nativeElement;
+    const isCurrent = () => {
       const working = this.fileContextMenu();
       const commit = this.commitFileContextMenu();
       const activeKey = target === 'working'
         ? working && `${working.path}:${working.staged}`
         : commit && `${commit.source}:${commit.oid}:${commit.file.path}`;
-      if (!element || activeKey !== key) return;
+      return activeKey === key;
+    };
+    queueMicrotask(() => requestAnimationFrame(() => this.runWhenElementRendered(
+      () => isCurrent() ? this.fileActionMenuElement()?.nativeElement : undefined,
+      (element) => {
+        const working = this.fileContextMenu();
+        const commit = this.commitFileContextMenu();
+        if (!isCurrent()) return;
 
-      const x = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
-      );
-      const y = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
-      );
-      if (target === 'working' && working && (working.x !== x || working.y !== y)) {
-        this.fileContextMenu.set({ ...working, x, y });
-      } else if (target === 'commit' && commit && (commit.x !== x || commit.y !== y)) {
-        this.commitFileContextMenu.set({ ...commit, x, y });
-      }
-      if (focusMenu) {
-        element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
-      }
-    }));
+        const x = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
+        );
+        const y = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
+        );
+        if (target === 'working' && working && (working.x !== x || working.y !== y)) {
+          this.fileContextMenu.set({ ...working, x, y });
+        } else if (target === 'commit' && commit && (commit.x !== x || commit.y !== y)) {
+          this.commitFileContextMenu.set({ ...commit, x, y });
+        }
+        if (focusMenu) {
+          element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+        }
+      },
+      30,
+      isCurrent,
+    )));
   }
 
   private settleGraphActionMenuPosition(
@@ -11574,24 +11833,32 @@ export class AppComponent implements OnInit, OnDestroy {
     target: string,
     preferred: { x: number; y: number },
   ): void {
-    queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.branchDropMenuElement()?.nativeElement;
+    const isCurrent = () => {
       const operation = this.branchDropMenu();
-      if (!element || operation?.source !== source || operation.target !== target) return;
+      return operation?.source === source && operation.target === target;
+    };
+    queueMicrotask(() => requestAnimationFrame(() => this.runWhenElementRendered(
+      () => isCurrent() ? this.branchDropMenuElement()?.nativeElement : undefined,
+      (element) => {
+        const operation = this.branchDropMenu();
+        if (!isCurrent() || !operation) return;
 
-      const x = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
-      );
-      const y = Math.max(
-        VIEWPORT_MENU_GUTTER,
-        Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
-      );
-      if (operation.x !== x || operation.y !== y) {
-        this.branchDropMenu.set({ ...operation, x, y });
-      }
-      element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
-    }));
+        const x = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
+        );
+        const y = Math.max(
+          VIEWPORT_MENU_GUTTER,
+          Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
+        );
+        if (operation.x !== x || operation.y !== y) {
+          this.branchDropMenu.set({ ...operation, x, y });
+        }
+        element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+      },
+      30,
+      isCurrent,
+    )));
   }
 
   private dismissGraphActionMenu(restoreFocus = false): void {
@@ -12448,42 +12715,6 @@ function shortLabel(oid: string): string {
 
 function isRemoteLocationIcon(value: unknown): value is RemoteLocationIcon {
   return REMOTE_LOCATION_ICONS.some((option) => option.value === value);
-}
-
-const DIFF_KEYWORDS = new Set([
-  'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'crate', 'def', 'default',
-  'do', 'else', 'enum', 'export', 'extends', 'extern', 'fn', 'for', 'from', 'function', 'if', 'impl', 'import',
-  'in', 'interface', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'new', 'of', 'override', 'package', 'private',
-  'protected', 'pub', 'readonly', 'return', 'self', 'static', 'struct', 'super', 'switch', 'this', 'throw', 'trait',
-  'try', 'type', 'typeof', 'use', 'var', 'where', 'while', 'with', 'yield',
-]);
-
-const DIFF_LITERALS = new Set(['false', 'null', 'None', 'true', 'undefined']);
-const SYNTAX_TOKEN_PATTERN = /(\/\/.*$|#(?!\[).*?$|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b|[{}()[\].,:;<>!=+*/|&?-])/gm;
-
-function syntaxTokens(segment: DiffTextSegment, path: string): DiffSyntaxToken[] {
-  const tokens: DiffSyntaxToken[] = [];
-  let offset = 0;
-  for (const match of segment.text.matchAll(SYNTAX_TOKEN_PATTERN)) {
-    const index = match.index ?? 0;
-    if (index > offset) tokens.push({ text: segment.text.slice(offset, index), kind: 'plain', changed: segment.changed });
-    const text = match[0];
-    tokens.push({ text, kind: syntaxTokenKind(text, path), changed: segment.changed });
-    offset = index + text.length;
-  }
-  if (offset < segment.text.length) tokens.push({ text: segment.text.slice(offset), kind: 'plain', changed: segment.changed });
-  return tokens;
-}
-
-function syntaxTokenKind(text: string, path: string): DiffSyntaxToken['kind'] {
-  if (text.startsWith('//') || (text.startsWith('#') && !path.endsWith('.css') && !path.endsWith('.scss'))) return 'comment';
-  if (/^["'`]/.test(text)) return 'string';
-  if (/^\d/.test(text)) return 'number';
-  if (DIFF_KEYWORDS.has(text)) return 'keyword';
-  if (DIFF_LITERALS.has(text)) return 'literal';
-  if (/^[A-Z][\w$]*$/.test(text)) return 'type';
-  if (/^[{}()[\].,:;<>!=+*/|&?-]$/.test(text)) return 'punctuation';
-  return 'plain';
 }
 
 function wordDiffSegments(left: string, right: string): [DiffTextSegment[], DiffTextSegment[]] {

@@ -76,7 +76,11 @@ export type LfsAttribute = { name: string; working: string; index: string }
 export type LfsCheckoutPreview = { file: string; oid: string; size: number; state: string }
 export type LfsFetchPreview = { file: string; remote: string; head: string; oid: string; size: number; settings: string }
 export type LfsFileAttributes = { path: string; attributes: LfsAttribute[] }
-export type LfsInfo = { enabled: boolean; available: boolean; version: string | null; trackedFiles: number | null }
+export type LfsInfo = { enabled: boolean; available: boolean; version: string | null; trackedFiles: number | null;
+/**
+ * Tracked files currently checked out as LFS pointers.
+ */
+pointerFiles: number | null }
 export type LfsLock = { id: string; path: string; owner: string; lockedAt: string; ours: boolean }
 export type LfsLocks = { locks: LfsLock[] }
 export type LfsObjectFile = { name: string; size: number; checkout: boolean; downloaded: boolean; oidType: string; oid: string; version: string; workingState?: string }

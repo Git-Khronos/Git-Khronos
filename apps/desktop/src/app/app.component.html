@@ -230,11 +230,11 @@
             <section class="identity-popover" role="dialog" aria-labelledby="repository-identity-title">
               <header><span [style.--author-color]="authorColor(repo.identity.name || repo.commits[0]?.authorName || 'Git User', repo.identity.email || repo.commits[0]?.authorEmail || '')">{{ initials(repo.identity.name || repo.commits[0]?.authorName || 'Git User') }}</span><div><strong>{{ repo.identity.name || 'Identity not configured' }}</strong><small>{{ repo.identity.email || 'Set user.email in Git config' }}</small></div></header>
               @if (identityEditing()) {
-                <form class="identity-form" (submit)="$event.preventDefault(); saveRepositoryIdentity()">
+                <form novalidate class="identity-form" (submit)="$event.preventDefault(); saveRepositoryIdentity()">
                   <strong id="repository-identity-title">Edit repository identity</strong>
                   <small>New commits in this repository will use these local Git settings.</small>
-                  <label>Name<input name="identityName" autocomplete="name" [ngModel]="identityName()" (ngModelChange)="identityName.set($event)" /></label>
-                  <label>Email<input name="identityEmail" type="email" autocomplete="email" [ngModel]="identityEmail()" (ngModelChange)="identityEmail.set($event)" /></label>
+                  <label>Name<input name="identityName" autocomplete="name" [gcTextValue]="identityName()" (gcTextValueChange)="identityName.set($event)" /></label>
+                  <label>Email<input name="identityEmail" type="email" autocomplete="email" [gcTextValue]="identityEmail()" (gcTextValueChange)="identityEmail.set($event)" /></label>
                   <div><button type="button" (click)="cancelRepositoryIdentityEdit()">Cancel</button><button class="primary" type="submit" [disabled]="!identityName().trim() || !identityEmail().trim() || git.busy()">Save identity</button></div>
                 </form>
               } @else {
@@ -293,7 +293,7 @@
               <div class="toolbar-nav-menu branch-nav-menu" role="dialog" aria-label="Switch branch" (keydown)="handleToolbarBranchMenuKeydown($event)">
                 <label class="toolbar-nav-search">
                   <gc-icon name="search" [size]="12" />
-                  <input #toolbarBranchSearch type="search" aria-label="Filter branches" aria-describedby="branch-picker-result-count" placeholder="Search local and remote branches" [ngModel]="toolbarBranchQuery()" (ngModelChange)="toolbarBranchQuery.set($event)" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchSearchKeydown($event)" />
+                  <input #toolbarBranchSearch type="search" aria-label="Filter branches" aria-describedby="branch-picker-result-count" placeholder="Search local and remote branches" [gcTextValue]="toolbarBranchQuery()" (gcTextValueChange)="toolbarBranchQuery.set($event)" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchSearchKeydown($event)" />
                   @if (toolbarBranchQuery()) { <button type="button" title="Clear branch search" aria-label="Clear branch search" (click)="clearToolbarBranchSearch($event)"><gc-icon name="x" [size]="9" /></button> }
                 </label>
                 @if (toolbarBranchMatches(); as matches) {
@@ -439,11 +439,11 @@
         <button class="tool-button toolbar-secondary-direct" type="button" title="Pop the latest stash" (click)="git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><span><gc-icon name="archive-restore" /></span><small>Pop</small></button>
         @if (repo.lfs.enabled) {
           <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
-            <button class="tool-button split-main" type="button" title="Pull Git LFS objects" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gc-icon name="server" /></span><small>LFS</small></button>
+            <button class="tool-button split-main" type="button" title="Pull Git LFS objects" [class.lfs-pointers]="!!repo.lfs.pointerFiles" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gc-icon name="server" /></span><small>LFS@if (repo.lfs.pointerFiles) { <span class="lfs-pointer-count">{{ repo.lfs.pointerFiles }}</span> }</small></button>
             <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" [attr.aria-controls]="lfsMenuOpen() ? 'lfs-options-menu' : null" (click)="toggleLfsMenu($event)" [attr.aria-expanded]="lfsMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
             @if (lfsMenuOpen()) {
               <div id="lfs-options-menu" class="toolbar-menu lfs-menu" role="menu" aria-label="Git LFS options" (keydown)="handleToolbarActionMenuKeydown($event)">
-                <div class="lfs-menu-status"><gc-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ repo.lfs.available ? (repo.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} }</small></span></div>
+                <div class="lfs-menu-status"><gc-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ repo.lfs.available ? (repo.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} }@if (repo.lfs.pointerFiles) { · {{ repo.lfs.pointerFiles }} still {{ repo.lfs.pointerFiles === 1 ? 'a pointer' : 'pointers' }} }</small></span></div>
                 <div class="menu-separator"></div>
                 <button type="button" role="menuitem" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects needed by the current checkout</small></span></button>
                 <button class="danger-item" type="button" role="menuitem" (click)="requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage</strong><small>Review and remove unreferenced local objects</small></span></button>
@@ -533,8 +533,8 @@
             aria-label="Search loaded commits by message, SHA, or author"
             title="Search loaded commits by message, SHA, or author"
             placeholder="Search commits"
-            [ngModel]="commitFilter()"
-            (ngModelChange)="updateCommitSearch($event)"
+            [gcTextValue]="commitFilter()"
+            (gcTextValueChange)="updateCommitSearch($event)"
             (focus)="commitSearchExpanded.set(true)"
             (keydown)="handleCommitSearchKeydown($event)"
           />
@@ -603,8 +603,8 @@
             type="search"
             placeholder="Filter references"
             aria-label="Filter references"
-            [ngModel]="branchFilter()"
-            (ngModelChange)="branchFilter.set($event)"
+            [gcTextValue]="branchFilter()"
+            (gcTextValueChange)="branchFilter.set($event)"
             (keydown.escape)="clearReferenceFilter($event)"
           />
           @if (branchFilter()) { <button type="button" title="Clear reference filter" aria-label="Clear reference filter" (click)="clearReferenceFilter($event)"><gc-icon name="x" [size]="10" /></button> }
@@ -666,11 +666,12 @@
             <button type="button" title="New branch" aria-label="New branch" (click)="openBranchCreator()"><gc-icon name="plus" [size]="13" /></button>
           </div>
           @if (localBranchesOpen()) {
-            <div class="reference-content branch-list">
-              @for (branch of visibleBranches(); track branch.fullName) {
+            <div role="list" aria-label="Local branches" gcViewportSize (gcViewportSize)="updateReferenceListHeight('local', $event)" (scroll)="updateReferenceListViewport('local', $event)" (keydown)="handleReferenceListKeydown('local', $event)" class="reference-content branch-list">
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualBranches().topPadding"></div>
+              @for (branch of virtualBranches().items; track branch.fullName; let index = $index) {
                 @let remoteLocations = remoteLocationsForLocalBranch(branch);
                 <div
-                  class="branch-list-row"
+                  class="branch-list-row" role="listitem" [attr.data-reference-index]="virtualBranches().start + index" [attr.aria-posinset]="virtualBranches().start + index + 1" [attr.aria-setsize]="visibleBranches().length"
                   [class.has-aligned-locations]="remoteLocations.length"
                   [style.--aligned-location-count]="remoteLocations.length"
                   [class.reference-hidden]="isBranchHidden(branch.name)"
@@ -758,15 +759,16 @@
                   </button>
                 </div>
               }
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualBranches().bottomPadding"></div>
               @if (branchCreatorOpen()) {
-                <form class="inline-form branch-create-form" aria-labelledby="branch-create-title" (submit)="$event.preventDefault(); createBranch()">
+                <form novalidate class="inline-form branch-create-form" aria-labelledby="branch-create-title" (submit)="$event.preventDefault(); createBranch()">
                   <header>
                     <span><strong id="branch-create-title">Create branch</strong><small>From <code>{{ git.repository()?.status?.branch || 'detached commit' }}</code> at HEAD</small></span>
                     <button class="branch-create-cancel" type="button" aria-label="Cancel branch creation" title="Cancel branch creation" (click)="closeBranchCreator()"><gc-icon name="x" [size]="11" /></button>
                   </header>
                   <label class="sr-only" for="new-branch-name">New branch name</label>
                   <div class="branch-create-controls">
-                    <input id="new-branch-name" [ngModel]="branchName()" (ngModelChange)="branchName.set($event)" name="branch" autocomplete="off" spellcheck="false" autofocus />
+                    <input id="new-branch-name" [gcTextValue]="branchName()" (gcTextValueChange)="branchName.set($event)" name="branch" autocomplete="off" spellcheck="false" autofocus />
                     <button class="branch-create-submit" type="submit" [disabled]="!branchName().trim() || git.busy()">Create</button>
                   </div>
                 </form>
@@ -782,20 +784,50 @@
             <button type="button" title="Add remote" aria-label="Add remote" (click)="openAddRemoteDialog()"><gc-icon name="plus" [size]="13" /></button>
           </div>
           @if (remoteBranchesOpen()) {
-            <div class="reference-content remote-locations">
-              @for (group of remoteBranchGroups(); track group.name) {
-                <section class="remote-location" [class.collapsed]="isRemoteCollapsed(group.name)" [class.reference-hidden]="isRemoteHidden(group.name)" [class.reference-soloed]="isRemoteSoloed(group.name)" [attr.aria-label]="'Remote ' + group.name" [title]="group.fetchUrl">
-                  <header class="remote-location-heading" (contextmenu)="openRemoteGroupMenu($event, group.name)">
-                    <button class="remote-collapse" type="button" [attr.aria-label]="(isRemoteCollapsed(group.name) ? 'Expand remote ' : 'Collapse remote ') + group.name" [attr.aria-expanded]="!isRemoteCollapsed(group.name)" (click)="toggleRemoteCollapsed($event, group.name)"><gc-icon [name]="isRemoteCollapsed(group.name) ? 'chevron-right' : 'chevron-down'" [size]="10" /></button>
-                    <span class="remote-glyph"><gc-icon [name]="remoteIcon(group.name)" [size]="13" /></span>
-                    <strong>{{ group.name }}</strong><b>{{ group.branchCount }}</b>
-                    <button class="remote-visibility" type="button" [title]="soloBranches().length ? (isRemoteSoloed(group.name) ? 'Remove remote from Solo Mode' : 'Add remote to Solo Mode') : (isRemoteHidden(group.name) ? 'Show remote in graph' : 'Hide remote from graph')" [attr.aria-label]="soloBranches().length ? (isRemoteSoloed(group.name) ? 'Remove remote ' + group.name + ' from Solo Mode' : 'Add remote ' + group.name + ' to Solo Mode') : (isRemoteHidden(group.name) ? 'Show remote ' + group.name + ' in graph' : 'Hide remote ' + group.name + ' from graph')" (click)="toggleRemoteVisibility($event, group.name)"><gc-icon [name]="isRemoteHidden(group.name) ? 'eye-off' : 'eye'" [size]="11" /></button>
-                    <button class="remote-edit" type="button" title="Edit {{ group.name }} remote" [attr.aria-label]="'Edit remote ' + group.name" (click)="openEditRemoteDialog(group)"><gc-icon name="more" [size]="12" /></button>
-                  </header>
-                  @if (!isRemoteCollapsed(group.name)) {
-                    @for (branch of group.branches; track branch.fullName) {
+            <div
+              class="reference-content remote-locations"
+              role="list"
+              aria-label="Remote branches"
+              gcViewportSize (gcViewportSize)="updateReferenceListHeight('remote', $event)" (scroll)="updateReferenceListViewport('remote', $event)"
+              (keydown)="handleReferenceListKeydown('remote', $event)"
+            >
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualRemoteRows().topPadding"></div>
+              @for (section of virtualRemoteSections(); track section.group.name) {
+                <section
+                  class="remote-location"
+                  [class.collapsed]="isRemoteCollapsed(section.group.name)"
+                  [class.reference-hidden]="isRemoteHidden(section.group.name)"
+                  [class.reference-soloed]="isRemoteSoloed(section.group.name)"
+                  [attr.aria-label]="'Remote ' + section.group.name"
+                  [title]="section.group.fetchUrl"
+                >
+                  @for (entry of section.rows; track entry.row.key) {
+                    @let row = entry.row;
+                    @let group = row.group;
+                    @if (row.kind === 'group') {
+                      <div
+                        class="remote-group-listitem reference-list-row"
+                        role="listitem"
+                        [attr.data-reference-index]="entry.index" [attr.aria-posinset]="entry.index + 1" [attr.aria-setsize]="remoteSidebarRows().length"
+                        [class.remote-group-divider]="entry.index > 0"
+                      >
+                        <header class="remote-location-heading" (contextmenu)="openRemoteGroupMenu($event, group.name)">
+                          <button class="remote-collapse" type="button" [attr.aria-label]="(isRemoteCollapsed(group.name) ? 'Expand remote ' : 'Collapse remote ') + group.name" [attr.aria-expanded]="!isRemoteCollapsed(group.name)" (click)="toggleRemoteCollapsed($event, group.name)"><gc-icon [name]="isRemoteCollapsed(group.name) ? 'chevron-right' : 'chevron-down'" [size]="10" /></button>
+                          <span class="remote-glyph"><gc-icon [name]="remoteIcon(group.name)" [size]="13" /></span>
+                          <strong>{{ group.name }}</strong><b>{{ group.branchCount }}</b>
+                          <button class="remote-visibility" type="button" [title]="soloBranches().length ? (isRemoteSoloed(group.name) ? 'Remove remote from Solo Mode' : 'Add remote to Solo Mode') : (isRemoteHidden(group.name) ? 'Show remote in graph' : 'Hide remote in graph')" [attr.aria-label]="soloBranches().length ? (isRemoteSoloed(group.name) ? 'Remove remote ' + group.name + ' from Solo Mode' : 'Add remote ' + group.name + ' to Solo Mode') : (isRemoteHidden(group.name) ? 'Show remote ' + group.name + ' in graph' : 'Hide remote ' + group.name + ' in graph')" (click)="toggleRemoteVisibility($event, group.name)"><gc-icon [name]="isRemoteHidden(group.name) ? 'eye-off' : 'eye'" [size]="11" /></button>
+                          <button class="remote-edit" type="button" title="Edit {{ group.name }} remote" [attr.aria-label]="'Edit remote ' + group.name" (click)="openEditRemoteDialog(group)"><gc-icon name="more" [size]="12" /></button>
+                        </header>
+                      </div>
+                    } @else {
+                      @let branch = row.branch;
                       @let remoteLocations = remoteOnlyBranchLocations(branch);
-                      <div class="remote-branch-row" [class.has-aligned-locations]="remoteLocations.length">
+                      <div
+                        class="remote-branch-row reference-list-row"
+                        role="listitem"
+                        [attr.data-reference-index]="entry.index" [attr.aria-posinset]="entry.index + 1" [attr.aria-setsize]="remoteSidebarRows().length"
+                        [class.has-aligned-locations]="remoteLocations.length"
+                      >
                         <button class="readonly-ref remote-branch-item actionable-remote" type="button" [attr.aria-label]="'Remote branch ' + branch.name" aria-haspopup="menu" [title]="'Remote branch ' + branch.name + ' · Click to view branch tip · Double-click or press Enter to create and checkout a local tracking branch · Right-click for actions'" [class.highlighting]="hoveredReferenceOid() === branch.oid" [class.tip-selected]="!changesOpen() && selectedCommit() === branch.oid" (mouseenter)="previewReference(branch.oid)" (mouseleave)="previewReference(null)" (click)="jumpToReference($event, branch.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', branch.name, branch.oid)" (keydown.enter)="checkoutRemoteBranch($event, branch.name)" (dblclick)="checkoutRemoteBranch($event, branch.name)" (contextmenu)="openRemoteMenu($event, branch.name, branch.oid)"><span class="remote-branch-guide"></span><span>{{ remoteBranchLabel(branch.name) }}</span></button>
                         @if (remoteLocations.length) {
                           <span class="aligned-remote-only-locations" aria-label="Remote branch locations">
@@ -824,6 +856,7 @@
               } @empty {
                 <div class="empty-ref">No remote branches</div>
               }
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualRemoteRows().bottomPadding"></div>
             </div>
             <div class="reference-section-resizer" role="separator" tabindex="0" aria-label="Resize Remote section" aria-controls="reference-section-remote" aria-orientation="horizontal" [attr.aria-valuemin]="70" [attr.aria-valuemax]="420" [attr.aria-valuenow]="referenceSectionAriaHeight('remote')" [attr.aria-valuetext]="referenceSectionAriaHeight('remote') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to restore automatic sizing" (focus)="prepareReferenceSectionResize('remote', $event)" (keydown)="handleReferenceSectionResizeKeydown('remote', $event)" (dblclick)="resetReferenceSectionHeight('remote', $event)" (pointerdown)="beginReferenceSectionResize('remote', $event)"></div>
           }
@@ -854,15 +887,17 @@
             <span><i><gc-icon [name]="tagsOpen() ? 'chevron-down' : 'chevron-right'" [size]="11" /></i> Tags</span><b>{{ visibleTags().length }}</b>
           </button>
           @if (tagsOpen()) {
-            <div class="reference-content">
-              @for (tag of visibleTags(); track tag.fullName) {
-                <div class="reference-list-row tag-list-row">
+            <div role="list" aria-label="Tags" gcViewportSize (gcViewportSize)="updateReferenceListHeight('tags', $event)" (scroll)="updateReferenceListViewport('tags', $event)" (keydown)="handleReferenceListKeydown('tags', $event)" class="reference-content">
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualTags().topPadding"></div>
+              @for (tag of virtualTags().items; track tag.fullName; let index = $index) {
+                <div class="reference-list-row tag-list-row" role="listitem" [attr.data-reference-index]="virtualTags().start + index" [attr.aria-posinset]="virtualTags().start + index + 1" [attr.aria-setsize]="visibleTags().length">
                   <button class="branch-item tag-item" type="button" [class.current]="!changesOpen() && selectedCommit() === tag.oid" [attr.aria-label]="'Tag ' + tag.name" [attr.aria-describedby]="tagPreview()?.name === tag.name ? 'tag-reference-preview' : null" aria-haspopup="menu" [title]="'Tag ' + tag.name + ' · Click to view in the graph · Use the actions button for more'" (mouseenter)="scheduleTagPreview($event, tag.name, tag.oid)" (mouseleave)="closeTagPreview()" (focus)="scheduleTagPreview($event, tag.name, tag.oid, true)" (blur)="closeTagPreview()" (click)="jumpToReference($event, tag.oid)" (keydown)="handleReferenceActionKeydown($event, 'tag', tag.name, tag.oid)" (contextmenu)="openTagMenu($event, tag.name, tag.oid)">
                     <span class="tag-glyph"><gc-icon name="tag" [size]="11" /></span><span>{{ tag.name }}</span>
                   </button>
                   <button class="reference-overflow-action" [class.menu-open]="contextMenu()?.kind === 'tag' && contextMenu()?.oid === tag.oid && contextMenu()?.label === tag.name" type="button" [disabled]="git.busy()" [attr.aria-label]="'Tag actions for ' + tag.name" aria-haspopup="menu" [attr.aria-expanded]="contextMenu()?.kind === 'tag' && contextMenu()?.oid === tag.oid && contextMenu()?.label === tag.name" [title]="'Tag actions for ' + tag.name" (click)="openTagMenu($event, tag.name, tag.oid)"><gc-icon name="more" [size]="13" /></button>
                 </div>
               } @empty { <div class="empty-ref">No tags</div> }
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualTags().bottomPadding"></div>
             </div>
             <div class="reference-section-resizer" role="separator" tabindex="0" aria-label="Resize Tags section" aria-controls="reference-section-tags" aria-orientation="horizontal" [attr.aria-valuemin]="70" [attr.aria-valuemax]="420" [attr.aria-valuenow]="referenceSectionAriaHeight('tags')" [attr.aria-valuetext]="referenceSectionAriaHeight('tags') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to restore automatic sizing" (focus)="prepareReferenceSectionResize('tags', $event)" (keydown)="handleReferenceSectionResizeKeydown('tags', $event)" (dblclick)="resetReferenceSectionHeight('tags', $event)" (pointerdown)="beginReferenceSectionResize('tags', $event)"></div>
           }
@@ -872,15 +907,17 @@
             <span><i><gc-icon [name]="stashesOpen() ? 'chevron-down' : 'chevron-right'" [size]="11" /></i> Stashes</span><b>{{ visibleStashes().length }}</b>
           </button>
           @if (stashesOpen()) {
-            <div class="reference-content">
-              @for (stash of visibleStashes(); track stash.reference) {
-                <div class="reference-list-row stash-list-row">
+            <div role="list" aria-label="Stashes" gcViewportSize (gcViewportSize)="updateReferenceListHeight('stashes', $event)" (scroll)="updateReferenceListViewport('stashes', $event)" (keydown)="handleReferenceListKeydown('stashes', $event)" class="reference-content">
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualStashes().topPadding"></div>
+              @for (stash of virtualStashes().items; track stash.reference; let index = $index) {
+                <div class="reference-list-row stash-list-row" role="listitem" [attr.data-reference-index]="virtualStashes().start + index" [attr.aria-posinset]="virtualStashes().start + index + 1" [attr.aria-setsize]="visibleStashes().length">
                   <button class="branch-item stash-item" type="button" [class.current]="selectedStash()?.oid === stash.oid" [class.graph-hidden]="isStashHidden(stash.oid)" [attr.aria-label]="'Stash ' + stash.reference + ', ' + stash.message" aria-haspopup="menu" [title]="'Stash ' + stash.reference + ': ' + stash.message + ' · Click to view in the graph · Use the actions button for more'" (click)="selectStash(stash)" (keydown)="handleStashActionKeydown($event, stash)" (contextmenu)="openStashMenu($event, stash)" [disabled]="git.busy()">
                     <span class="stash-glyph"><gc-icon name="archive" [size]="11" /></span><span>{{ stash.message }}</span><code>{{ stash.reference }}</code>
                   </button>
                   <button class="reference-overflow-action" [class.menu-open]="stashContextMenu()?.stash?.oid === stash.oid" type="button" [disabled]="git.busy()" [attr.aria-label]="'Stash actions for ' + stash.reference" aria-haspopup="menu" [attr.aria-expanded]="stashContextMenu()?.stash?.oid === stash.oid" [title]="'Stash actions for ' + stash.reference" (click)="openStashMenu($event, stash)"><gc-icon name="more" [size]="13" /></button>
                 </div>
               } @empty { <div class="empty-ref">No stashes</div> }
+              <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualStashes().bottomPadding"></div>
             </div>
             <div class="reference-section-resizer" role="separator" tabindex="0" aria-label="Resize Stashes section" aria-controls="reference-section-stashes" aria-orientation="horizontal" [attr.aria-valuemin]="70" [attr.aria-valuemax]="420" [attr.aria-valuenow]="referenceSectionAriaHeight('stashes')" [attr.aria-valuetext]="referenceSectionAriaHeight('stashes') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to restore automatic sizing" (focus)="prepareReferenceSectionResize('stashes', $event)" (keydown)="handleReferenceSectionResizeKeydown('stashes', $event)" (dblclick)="resetReferenceSectionHeight('stashes', $event)" (pointerdown)="beginReferenceSectionResize('stashes', $event)"></div>
           }
@@ -1005,7 +1042,7 @@
             <div class="author-filter-menu" role="dialog" [style.left.px]="authorFilterPosition().x" [style.top.px]="authorFilterPosition().y" aria-label="Author filter" (click)="$event.stopPropagation()">
               <label class="author-filter-search">
                 <gc-icon name="search" [size]="11" />
-                <input #authorFilterSearch type="search" aria-label="Search authors" placeholder="Search name or email" autocomplete="off" [ngModel]="authorFilterQuery()" (ngModelChange)="authorFilterQuery.set($event)" (keydown)="handleAuthorFilterKeydown($event)" />
+                <input #authorFilterSearch type="search" aria-label="Search authors" placeholder="Search name or email" autocomplete="off" [gcTextValue]="authorFilterQuery()" (gcTextValueChange)="authorFilterQuery.set($event)" (keydown)="handleAuthorFilterKeydown($event)" />
               </label>
               <button type="button" [class.active]="!authorFilter()" (click)="selectAuthorFilter(null)"><span class="avatar">All</span><span><strong>All authors</strong><small>{{ graphRows().length }} commits</small></span></button>
               @for (author of filteredGraphAuthors(); track author.email) {
@@ -1028,17 +1065,17 @@
             <div class="column-settings-scroll">
               <strong>Layout</strong>
               <button class="fit-graph-column" type="button" (click)="fitGraphColumnToBranches($event)"><gc-icon name="maximize" [size]="12" /><span>Fit all {{ graphRequiredLaneCount() }} branch {{ graphRequiredLaneCount() === 1 ? 'path' : 'paths' }}<small>{{ graphMaximumWidth() }} px</small></span></button>
-              <label><input type="checkbox" [ngModel]="compactGraphColumn()" (ngModelChange)="setCompactGraphColumn($event)" /> Compact Graph Column</label>
-              <label><input type="checkbox" [ngModel]="showGraphScrollMarkers()" (ngModelChange)="setGraphScrollMarkers($event)" /> Scroll Markers</label>
-              <label title="When off, widening a column narrows the others so the history always fits the panel"><input type="checkbox" [ngModel]="graphHorizontalScroll()" (ngModelChange)="setGraphHorizontalScroll($event)" /> Horizontal Scrolling</label>
+              <label><input type="checkbox" [checked]="compactGraphColumn()" (change)="setCompactGraphColumn($any($event.target).checked)" /> Compact Graph Column</label>
+              <label><input type="checkbox" [checked]="showGraphScrollMarkers()" (change)="setGraphScrollMarkers($any($event.target).checked)" /> Scroll Markers</label>
+              <label title="When off, widening a column narrows the others so the history always fits the panel"><input type="checkbox" [checked]="graphHorizontalScroll()" (change)="setGraphHorizontalScroll($any($event.target).checked)" /> Horizontal Scrolling</label>
               <i class="settings-divider"></i>
               <strong>Branch visibility</strong>
-              <label><input type="checkbox" [ngModel]="smartBranchVisibility()" (ngModelChange)="setSmartBranchVisibility($event)" /> Smart Branch Visibility</label>
+              <label><input type="checkbox" [checked]="smartBranchVisibility()" (change)="setSmartBranchVisibility($any($event.target).checked)" /> Smart Branch Visibility</label>
               <i class="settings-divider"></i>
               <strong>Columns</strong>
               @for (column of graphColumnOrder(); track column) {
                 <div class="column-setting-row">
-                  <label><input type="checkbox" [ngModel]="graphColumnVisible(column)" (ngModelChange)="setGraphColumn(column, $event)" /> {{ graphColumnLabels[column] }}</label>
+                  <label><input type="checkbox" [checked]="graphColumnVisible(column)" (change)="setGraphColumn(column, $any($event.target).checked)" /> {{ graphColumnLabels[column] }}</label>
                   <span class="column-reorder-actions" role="group" [attr.aria-label]="'Reorder ' + graphColumnLabels[column] + ' column'">
                     <button type="button" [disabled]="graphColumnOrderIndex(column) === 0" [attr.aria-label]="'Move ' + graphColumnLabels[column] + ' column left'" [title]="'Move ' + graphColumnLabels[column] + ' column left'" (click)="moveGraphColumn(column, -1)"><gc-icon name="chevron-left" [size]="11" /></button>
                     <button type="button" [disabled]="graphColumnOrderIndex(column) === graphColumnOrder().length - 1" [attr.aria-label]="'Move ' + graphColumnLabels[column] + ' column right'" [title]="'Move ' + graphColumnLabels[column] + ' column right'" (click)="moveGraphColumn(column, 1)"><gc-icon name="chevron-right" [size]="11" /></button>
@@ -1068,41 +1105,7 @@
         <div class="commit-list-shell" [style.--graph-scrollbar-gutter]="graphScrollbarGutter() + 'px'" [class.can-scroll-left]="graphCanScrollLeft()" [class.can-scroll-right]="graphCanScrollRight()">
         <div #commitList class="commit-list" [class.compact-graph]="compactGraphColumn()" (scroll)="loadMoreHistoryOnScroll($event)" (focusin)="rememberFocusedGraphRow($event)">
           @for (wip of worktreeWipRows(); track wip.worktree.path) {
-            <div class="commit-row wip-row" data-graph-row [class.linked-worktree]="!wip.worktree.current" [style.grid-template-columns]="commitRowGridColumns()" [style.width.px]="commitRowWidth()" [class.selected]="wip.worktree.current ? changesOpen() || !!git.commitComparison()?.workingTree : selectedWorktreePath() === wip.worktree.path" [class.range-selected]="wip.worktree.current && !!git.commitComparison()?.workingTree" role="button" aria-controls="repository-commit-panel" [attr.aria-label]="(wip.worktree.current ? 'Working directory' : 'Linked worktree ' + git.pathLabel(wip.worktree.path)) + ', ' + (wip.worktree.branch ? 'branch ' + wip.worktree.branch : 'detached HEAD') + ', ' + wip.worktree.changes + ' changed ' + (wip.worktree.changes === 1 ? 'file' : 'files')" [attr.aria-pressed]="wip.worktree.current ? changesOpen() || !!git.commitComparison()?.workingTree : selectedWorktreePath() === wip.worktree.path" [attr.tabindex]="wip.worktree.current ? (changesOpen() ? 0 : -1) : (selectedWorktreePath() === wip.worktree.path ? 0 : -1)" (click)="selectWorktreeGraphRow(wip.worktree, $event)" (keydown)="handleWorktreeGraphRowKeydown($event, wip.worktree)" title="{{ wip.worktree.current ? 'Open working directory changes · ' + primaryShortcutKey + '-click with a commit selected to compare' : 'Select worktree changes' }}">
-              @if (showBranchColumn()) { <span class="branch-column" [class.leading-branch-column]="graphColumnPosition('branch') === 0" [style.order]="graphColumnPosition('branch')" [class.trailing-cell]="trailingGraphColumn() === 'branch'"><span class="head-label wip-worktree-label" [class.linked]="!wip.worktree.current" [attr.title]="(wip.worktree.current ? 'Current worktree' : 'Linked worktree ' + git.pathLabel(wip.worktree.path)) + ' · ' + (wip.worktree.branch ? 'Branch ' + wip.worktree.branch : 'Detached HEAD')"><gc-icon name="folder-git" [size]="9" aria-hidden="true" /><span>{{ wip.worktree.branch ?? 'HEAD' }}</span></span></span> }
-              @if (showGraphColumn()) { <span class="graph-cell multi-lane" [style.order]="graphColumnPosition('graph')" [class.trailing-cell]="trailingGraphColumn() === 'graph'" aria-hidden="true">
-                <svg class="graph-edges wip-edges" [attr.viewBox]="'0 0 ' + graphColumnWidth() + ' 44'" preserveAspectRatio="none">
-                  @for (segment of wip.segments; track segment.offset) {
-                    <path class="color-{{ segment.color }}" [attr.data-lane-offset]="segment.offset" [attr.d]="'M ' + segment.offset + ' ' + segment.startY + ' L ' + segment.offset + ' ' + segment.endY" />
-                  }
-                </svg>
-                <span class="ref-connector wip-ref-connector color-{{ wip.color }}" [style.width.px]="wip.nodeOffset"></span>
-                <span class="node wip-node color-{{ wip.color }}" [attr.data-lane-offset]="wip.nodeOffset" [style.left.px]="wip.nodeOffset - 11">W</span>
-                <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="beginColumnResize('graph', $event)" (click)="handleWipRowResizerClick($event)" (dblclick)="fitGraphColumnToBranches($event)"></i>
-              </span> }
-              @if (showMessageColumn()) {
-                <span class="commit-main wip-commit-main" [style.order]="graphColumnPosition('message')" [class.trailing-cell]="trailingGraphColumn() === 'message'" title="{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} in {{ wip.worktree.path }}">
-                  <span class="commit-copy">
-                    @if (wip.worktree.current) {
-                      <span class="wip-message-field"><b>//</b><input aria-label="Stash message" maxlength="500" placeholder="WIP" [ngModel]="stashMessage()" (ngModelChange)="stashMessage.set($event)" (click)="$event.stopPropagation()" (keydown.enter)="$event.preventDefault(); stashCurrentChanges()" (keydown)="$event.stopPropagation()" /></span>
-                    } @else {
-                      <span class="subject wip-subject"><b>//</b> WIP</span>
-                    }
-                    <span class="commit-description">{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} · {{ git.pathLabel(wip.worktree.path) }}</span>
-                  </span>
-                </span>
-              }
-              @if (showAuthorColumn()) {
-                <span class="row-author" [class.compact]="compactAuthorColumn()" [style.order]="graphColumnPosition('author')" [class.trailing-cell]="trailingGraphColumn() === 'author'" title="Current Git identity">
-                  @if (compactAuthorColumn()) { <span class="compact-author-avatar" [class.color-marker]="authorMarkerStyle() === 'color'" [style.--author-color]="authorColor(repo.identity.name || 'You', repo.identity.email || '')">@if (authorMarkerStyle() === 'initials') { {{ initials(repo.identity.name || 'You') }} }</span> }
-                  @else { You }
-                </span>
-              }
-              @if (showDateColumn()) { <span class="row-date" [style.order]="graphColumnPosition('date')" [class.trailing-cell]="trailingGraphColumn() === 'date'" title="Working directory">Now</span> }
-              @if (showShaColumn()) { <code [style.order]="graphColumnPosition('sha')" [class.trailing-cell]="trailingGraphColumn() === 'sha'">—</code> }
-              <span class="row-menu">@if (!wip.worktree.current) { <gc-icon name="folder-git" [size]="11" /> }</span>
-              @if (!wip.worktree.current) { <button class="wip-open-action" type="button" (click)="$event.stopPropagation(); openWorktree(wip.worktree.path)"><gc-icon name="folder-git" [size]="11" />Open Worktree</button> }
-            </div>
+            <gc-worktree-graph-row [presenter]="graphRowView()" [worktreeRow]="wip" />
           }
           <gc-graph-viewport [windowSource]="virtualGraphWindow" [slotsSource]="graphRowSlots"
             [widthSource]="commitRowWidth" [presenter]="graphRowView()" />
@@ -1171,7 +1174,7 @@
           <div class="working-tree-scroll">
           <div class="working-tree-view-toolbar">
             <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
-            <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [ngModel]="fileFilter()" (ngModelChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ visibleWorkingTreeFileCount() }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
+            <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ visibleWorkingTreeFileCount() }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
             <div class="file-view-switch" role="group" aria-label="File list layout" (keydown)="handleFileViewModeKeydown($event)">
               <button type="button" data-file-view-mode="path" [class.active]="workingTreeViewMode() === 'path'" [attr.aria-pressed]="workingTreeViewMode() === 'path'" [attr.tabindex]="workingTreeViewMode() === 'path' ? 0 : -1" (click)="setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button>
               <button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button>
@@ -1203,9 +1206,13 @@
                 <button type="button" (click)="discardSelectionMode.set(false); selectedDiscardPaths.set([])">Cancel selection</button>
               </div>
             }
-            @if (unstagedFilesOpen()) { <div id="unstaged-files-list" class="file-list unstaged-file-list" [style.max-height.px]="workingTreeFileListHeight('unstaged')">
+<p id="working-tree-file-navigation-help" class="sr-only">Focus a file list and use Home or End to reach the first or last files. Use Tab to move through visible file actions.</p>
+            @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('unstaged')" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
+              <gc-working-tree-viewport #unstagedFilesViewport [content]="unstagedRows" />
+              <ng-template #unstagedRows>
               @if (workingTreeViewMode() === 'path') {
-                @for (entry of sortedUnstagedEntries(); track entry.path) {
+                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedEntries().topPadding" aria-hidden="true"></div>
+                @for (entry of virtualUnstagedEntries().items; track entry.path) {
                   <div class="file-row" [class.conflict]="entry.conflicted" [class.directory-summary]="isUntrackedDirectory(entry)" [class.selected]="git.selectedWorkingTreeFile() === 'unstaged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, false)" (contextmenu)="openFileMenu($event, entry, false)">
                     @if (discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
                     <button class="stage-box" type="button" title="Stage {{ entry.path }}" aria-label="Stage {{ entry.path }}" (click)="git.stagePath(entry.path)"><gc-icon name="plus" [size]="12" /></button>
@@ -1214,8 +1221,10 @@
                     @if (!isUntrackedDirectory(entry)) { <button class="row-discard" type="button" title="Discard changes in {{ entry.path }}" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gc-icon name="trash" [size]="12" /></button> }
                   </div>
                 } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching unstaged files' : 'No unstaged files' }}</div> }
+                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedEntries().bottomPadding" aria-hidden="true"></div>
               } @else {
-                @for (row of unstagedTreeRows(); track row.key) {
+                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedTreeRows().topPadding" aria-hidden="true"></div>
+                @for (row of virtualUnstagedTreeRows().items; track row.key) {
                   @if (row.kind === 'directory') {
                     <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
                   } @else if (row.entry; as entry) {
@@ -1228,7 +1237,9 @@
                     </div>
                   }
                 } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching unstaged files' : 'No unstaged files' }}</div> }
+                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedTreeRows().bottomPadding" aria-hidden="true"></div>
               }
+              </ng-template>
             </div> }
             @if (unstagedFilesOpen()) {
               <div class="unstaged-files-resizer" role="separator" tabindex="0" aria-label="Resize Unstaged Files section" aria-controls="unstaged-files-list" aria-orientation="horizontal" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('unstaged')" [attr.aria-valuetext]="workingTreeFileListHeight('unstaged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('unstaged', $event)" (dblclick)="resetWorkingTreeFileListHeight('unstaged', $event)" (pointerdown)="beginWorkingTreeFileListResize('unstaged', $event)"></div>
@@ -1236,28 +1247,35 @@
           </section>
           <section class="file-section staged-section">
             <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gc-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><button type="button" (click)="git.unstageAll()" [disabled]="!stagedEntries().length || git.busy()">Unstage all</button></div>
-            @if (stagedFilesOpen()) { <div id="staged-files-list" class="file-list" [style.max-height.px]="workingTreeFileListHeight('staged')">
-              @if (workingTreeViewMode() === 'path') {
-                @for (entry of sortedStagedEntries(); track entry.path) {
-                  <div class="file-row" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
-                    <button class="stage-box unstage" type="button" title="Unstage {{ entry.path }}" aria-label="Unstage {{ entry.path }}" (click)="git.unstagePath(entry.path)"><gc-icon name="minus" [size]="12" /></button>
-                    <span class="file-status" [title]="statusDescription(entry, true)" [attr.aria-label]="statusDescription(entry, true)" role="img">{{ entry.indexStatus }}</span>
-                    <button class="file-name-button path-display" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)"><span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
-                  </div>
-                } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
-              } @else {
-                @for (row of stagedTreeRows(); track row.key) {
-                  @if (row.kind === 'directory') {
-                    <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
-                  } @else if (row.entry; as entry) {
-                    <div class="file-row tree-file" [style.padding-left.px]="10 + row.depth * 12" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
+            @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
+              <gc-working-tree-viewport #stagedFilesViewport [content]="stagedRows" />
+              <ng-template #stagedRows>
+                @if (workingTreeViewMode() === 'path') {
+                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedEntries().topPadding" aria-hidden="true"></div>
+                  @for (entry of virtualStagedEntries().items; track entry.path) {
+                    <div class="file-row" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
                       <button class="stage-box unstage" type="button" title="Unstage {{ entry.path }}" aria-label="Unstage {{ entry.path }}" (click)="git.unstagePath(entry.path)"><gc-icon name="minus" [size]="12" /></button>
                       <span class="file-status" [title]="statusDescription(entry, true)" [attr.aria-label]="statusDescription(entry, true)" role="img">{{ entry.indexStatus }}</span>
-                      <button class="file-name-button" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)">{{ row.label }}</button>
+                      <button class="file-name-button path-display" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)"><span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
                     </div>
-                  }
-                } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
-              }
+                  } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
+                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedEntries().bottomPadding" aria-hidden="true"></div>
+                } @else {
+                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedTreeRows().topPadding" aria-hidden="true"></div>
+                  @for (row of virtualStagedTreeRows().items; track row.key) {
+                    @if (row.kind === 'directory') {
+                      <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
+                    } @else if (row.entry; as entry) {
+                      <div class="file-row tree-file" [style.padding-left.px]="10 + row.depth * 12" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
+                        <button class="stage-box unstage" type="button" title="Unstage {{ entry.path }}" aria-label="Unstage {{ entry.path }}" (click)="git.unstagePath(entry.path)"><gc-icon name="minus" [size]="12" /></button>
+                        <span class="file-status" [title]="statusDescription(entry, true)" [attr.aria-label]="statusDescription(entry, true)" role="img">{{ entry.indexStatus }}</span>
+                        <button class="file-name-button" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)">{{ row.label }}</button>
+                      </div>
+                    }
+                  } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
+                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedTreeRows().bottomPadding" aria-hidden="true"></div>
+                }
+              </ng-template>
             </div> }
             @if (stagedFilesOpen()) {
               <div class="unstaged-files-resizer" role="separator" aria-label="Resize Staged Files section" aria-controls="staged-files-list" aria-orientation="horizontal" tabindex="0" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('staged')" [attr.aria-valuetext]="workingTreeFileListHeight('staged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('staged', $event)" (dblclick)="resetWorkingTreeFileListHeight('staged', $event)" (pointerdown)="beginWorkingTreeFileListResize('staged', $event)"></div>
@@ -1283,7 +1301,7 @@
             <button type="button" title="Stash all changes" aria-label="Stash all changes" [disabled]="!repo.status.entryCount || git.busy()" (click)="stashCurrentChanges()"><gc-icon name="archive" [size]="13" /><span>Stash</span></button>
             <button type="button" title="Pop latest stash" aria-label="Pop latest stash" [disabled]="!repo.stashes.length || git.busy()" (click)="git.popStash(repo.stashes[0], repo.id)"><gc-icon name="archive-restore" [size]="13" /><span>Pop</span></button>
           </div>
-          <form class="commit-form" (submit)="$event.preventDefault(); commit()">
+          <form novalidate class="commit-form" (submit)="$event.preventDefault(); commit()">
             <div class="commit-form-body">
             <label class="commit-field">
               <span>Summary</span>
@@ -1292,13 +1310,13 @@
                 id="commit-summary"
                 name="summary"
                 aria-label="Commit summary"
-                [ngModel]="commitMessage()"
-                (ngModelChange)="commitMessage.set($event)"
+                [gcTextValue]="commitMessage()"
+                (gcTextValueChange)="commitMessage.set($event)"
               />
             </label>
             <label class="commit-field commit-description-field">
               <span>Description</span>
-              <textarea id="commit-description" name="description" aria-label="Commit description" rows="3" [ngModel]="commitDescription()" (ngModelChange)="commitDescription.set($event)"></textarea>
+              <textarea id="commit-description" name="description" aria-label="Commit description" rows="3" [gcTextValue]="commitDescription()" (gcTextValueChange)="commitDescription.set($event)"></textarea>
             </label>
             @if (repo.commitTemplate !== null || repo.commitTemplateError) {
               @defer {
@@ -1347,11 +1365,11 @@
                     <small>Other contributor</small>
                     <label class="manual-coauthor-field">
                       <span>Name</span>
-                      <input name="coAuthorName" autocomplete="name" [ngModel]="coAuthorName()" (ngModelChange)="coAuthorName.set($event)" />
+                      <input name="coAuthorName" autocomplete="name" [gcTextValue]="coAuthorName()" (gcTextValueChange)="coAuthorName.set($event)" />
                     </label>
                     <label class="manual-coauthor-field">
                       <span>Email</span>
-                      <input type="email" name="coAuthorEmail" autocomplete="email" inputmode="email" spellcheck="false" placeholder="email@example.com" [ngModel]="coAuthorEmail()" (ngModelChange)="coAuthorEmail.set($event)" />
+                      <input type="email" name="coAuthorEmail" autocomplete="email" inputmode="email" spellcheck="false" placeholder="email@example.com" [gcTextValue]="coAuthorEmail()" (gcTextValueChange)="coAuthorEmail.set($event)" />
                     </label>
                     <button type="button" [disabled]="!canAddManualCoAuthor()" (click)="addManualCoAuthor()">Add co-author</button>
                   </div>
@@ -1359,17 +1377,17 @@
               }
             </div>
             <div class="commit-options">
-              <label class="commit-option"><input type="checkbox" name="pushAfter" aria-label="Push after committing" [ngModel]="pushAfterCommit()" (ngModelChange)="pushAfterCommit.set($event)" /> Push after commit</label>
-              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [ngModel]="!repo.status.rebaseSplit && amendPrevious()" (ngModelChange)="toggleAmend($event)" [disabled]="!repo.headOid || !!repo.status.rebaseSplit" /> Amend previous</label>
-              <label class="commit-option" title="Override signing for this commit using Git's configured key and format"><input type="checkbox" name="signCommit" aria-label="Sign this commit" [ngModel]="signCommit()" (ngModelChange)="signCommit.set($event)" /> Sign commit</label>
-              <label class="commit-option"><input type="checkbox" name="skipHooks" aria-label="Skip verification hooks" [ngModel]="skipGitHooks()" (ngModelChange)="skipGitHooks.set($event)" /> Skip checks</label>
+              <label class="commit-option"><input type="checkbox" name="pushAfter" aria-label="Push after committing" [checked]="pushAfterCommit()" (change)="pushAfterCommit.set($any($event.target).checked)" /> Push after commit</label>
+              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [checked]="!repo.status.rebaseSplit && amendPrevious()" (change)="toggleAmend($any($event.target).checked)" [disabled]="!repo.headOid || !!repo.status.rebaseSplit" /> Amend previous</label>
+              <label class="commit-option" title="Override signing for this commit using Git's configured key and format"><input type="checkbox" name="signCommit" aria-label="Sign this commit" [checked]="signCommit()" (change)="signCommit.set($any($event.target).checked)" /> Sign commit</label>
+              <label class="commit-option"><input type="checkbox" name="skipHooks" aria-label="Skip verification hooks" [checked]="skipGitHooks()" (change)="skipGitHooks.set($any($event.target).checked)" /> Skip checks</label>
             </div>
             </div>
             @let commitReadiness = commitActionReadiness(repo);
             <p id="commit-readiness" class="commit-readiness" [class.ready]="commitReadiness.ready" aria-live="polite" aria-atomic="true"><gc-icon [name]="commitReadiness.icon" [size]="12" />{{ commitReadiness.message }}</p>
             <button class="primary" type="submit" aria-describedby="commit-readiness" [title]="commitReadiness.message" [disabled]="!commitReadiness.ready">
               <gc-icon name="git-commit" [size]="13" />
-              {{ !repo.status.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') }}{{ pushAfterCommit() ? ' and push' : '' }}
+              {{ !repo.status.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : repo.status.staged ? 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') : 'Stage files to commit' }}{{ (repo.status.staged || amendPrevious() || commitPolicy().allowEmpty) && pushAfterCommit() ? ' and push' : '' }}
             </button>
           </form>
           </div>
@@ -1409,7 +1427,7 @@
               <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ comparison.files.length }})</button><span class="file-change-summary" aria-label="{{ comparisonFileStats().additions }} additions and {{ comparisonFileStats().deletions }} deletions"><span>+{{ comparisonFileStats().additions }}</span><i>−{{ comparisonFileStats().deletions }}</i>@if (comparisonFileStats().binaryFiles) { <em>{{ comparisonFileStats().binaryFiles }} binary</em> }</span></div>
               @if (changedFilesOpen()) { <div class="working-tree-view-toolbar commit-file-view-toolbar">
                 <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
-                <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [ngModel]="fileFilter()" (ngModelChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedComparisonFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
+                <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedComparisonFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
                 <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="workingTreeViewMode() === 'path'" [attr.aria-pressed]="workingTreeViewMode() === 'path'" [attr.tabindex]="workingTreeViewMode() === 'path' ? 0 : -1" (click)="setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button></div>
               </div>
               <div class="commit-file-list" (scroll)="updateCommitFilesViewport($event)">
@@ -1563,9 +1581,9 @@
           }
           <section class="commit-overview" aria-label="Commit summary">
           @if (commitMessageEditing()) {
-            <form class="commit-message-editor" (submit)="$event.preventDefault(); submitCommitMessageEdit()">
-              <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [ngModel]="editedCommitSummary()" (ngModelChange)="editedCommitSummary.set($event)" /></label>
-              <label>Description<textarea name="editedCommitDescription" rows="5" [ngModel]="editedCommitDescription()" (ngModelChange)="editedCommitDescription.set($event)"></textarea></label>
+            <form novalidate class="commit-message-editor" (submit)="$event.preventDefault(); submitCommitMessageEdit()">
+              <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [gcTextValue]="editedCommitSummary()" (gcTextValueChange)="editedCommitSummary.set($event)" /></label>
+              <label>Description<textarea name="editedCommitDescription" rows="5" [gcTextValue]="editedCommitDescription()" (gcTextValueChange)="editedCommitDescription.set($event)"></textarea></label>
               @if (editedCommitCoAuthors().length) {
                 <div class="coauthor-chips edit-coauthor-chips" aria-label="Commit co-authors">
                   @for (author of editedCommitCoAuthors(); track author.email) {
@@ -1627,7 +1645,7 @@
               <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ details.files.length }}{{ details.filesTruncated ? '+' : '' }})</button><span class="file-change-summary" aria-label="{{ selectedCommitFileStats().additions }} additions and {{ selectedCommitFileStats().deletions }} deletions"><span>+{{ selectedCommitFileStats().additions }}</span><i>−{{ selectedCommitFileStats().deletions }}</i>@if (selectedCommitFileStats().binaryFiles) { <em>{{ selectedCommitFileStats().binaryFiles }} binary</em> }</span></div>
               @if (changedFilesOpen()) { <div class="working-tree-view-toolbar commit-file-view-toolbar">
                 <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
-                <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [ngModel]="fileFilter()" (ngModelChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedCommitFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
+                <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedCommitFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
                 <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="workingTreeViewMode() === 'path'" [attr.aria-pressed]="workingTreeViewMode() === 'path'" [attr.tabindex]="workingTreeViewMode() === 'path' ? 0 : -1" (click)="setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button></div>
               </div>
               @if (details.filesTruncated) { <div class="commit-files-limit">Showing the first {{ details.files.length }} changed files to keep this commit responsive.</div> }
@@ -1846,6 +1864,7 @@
       @if (!git.browserPreview() && autoFetchIntervalMinutes()) {
         <button class="auto-fetch-status" type="button" [class.syncing]="git.backgroundFetchBusy()" [class.failed]="!!git.backgroundFetchErrors()[repo.id]" [disabled]="git.busy() || git.backgroundFetchBusy()" title="{{ autoFetchStatusTitle() }}" (click)="runAutoFetchNow()"><gc-icon name="refresh" [size]="10" /><span>{{ autoFetchStatusLabel() }}</span></button>
       }
+      <span class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-git-operation-status>Git status: {{ git.activeActivity()?.description ?? git.activity() }}</span>
       <button
         class="activity-status"
         type="button"
@@ -1853,7 +1872,6 @@
         [class.active]="activityLogOpen()"
         [class.running]="!!git.activeActivity()"
         [attr.aria-label]="git.activeActivity() ? 'Operation in progress: ' + git.activeActivity()!.description : 'Open Activity Logs: ' + git.activity()"
-        [attr.aria-live]="git.activeActivity() ? 'polite' : null"
         (click)="toggleActivityNotifications($event)"
       >
         <gc-icon [name]="git.activeActivity() ? 'refresh' : 'activity'" [size]="11" />
@@ -1927,8 +1945,8 @@
           <div><strong id="workspace-dialog-title">{{ mode === 'create' ? 'New Workspace' : 'Rename Workspace' }}</strong><small>{{ mode === 'create' ? 'Start with a separate set of repository tabs' : 'Give this repository set a clear name' }}</small></div>
           <button type="button" aria-label="Close workspace dialog" (click)="closeWorkspaceDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form class="repository-form workspace-form" (submit)="$event.preventDefault(); submitWorkspace()">
-          <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="workspaceNameConflict()" [ngModel]="workspaceName()" (ngModelChange)="workspaceName.set($event)" />@if (workspaceNameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
+        <form novalidate class="repository-form workspace-form" (submit)="$event.preventDefault(); submitWorkspace()">
+          <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="workspaceNameConflict()" [gcTextValue]="workspaceName()" (gcTextValueChange)="workspaceName.set($event)" />@if (workspaceNameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
           <p>Each workspace remembers its own open repository tabs and active repository.</p>
           <footer><button type="button" (click)="closeWorkspaceDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!workspaceName().trim() || workspaceNameConflict() || git.busy()">{{ mode === 'create' ? 'Create Workspace' : 'Save Name' }}</button></footer>
         </form>
@@ -1956,25 +1974,25 @@
           <div><strong id="worktree-dialog-title">Create Worktree</strong><small>Check out a branch in another working directory</small></div>
           <button type="button" aria-label="Close worktree setup" (click)="closeWorktreeDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form class="repository-form" (submit)="$event.preventDefault(); submitWorktree()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitWorktree()">
           <div class="form-intro"><span><gc-icon name="folder-git" [size]="21" /></span><div><h2>Worktree options</h2><p>{{ worktreeCreationSource() ? 'Create a working directory for ' + worktreeCreationSource() + '.' : 'Choose a new branch, starting point, and worktree location.' }}</p></div></div>
           @if (worktreeCreationSource()) {
-            <label>Branch<input name="worktreeBranch" readonly [ngModel]="worktreeBranch()" /></label>
+            <label>Branch<input name="worktreeBranch" readonly [gcTextValue]="worktreeBranch()" /></label>
           } @else {
             <div class="worktree-dialog-fields">
-              <label>Branch name<input name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [ngModel]="worktreeBranch()" (ngModelChange)="worktreeBranch.set($event)" /></label>
-              <label>Base branch<select name="worktreeBase" [ngModel]="worktreeBase()" (ngModelChange)="worktreeBase.set($event)">
-                @if (!git.repository()?.status?.branch) { <option value="HEAD">HEAD</option> }
-                @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name">{{ branch.name }}</option> } }
+              <label>Branch name<input name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="worktreeBranch()" (gcTextValueChange)="worktreeBranch.set($event)" /></label>
+              <label>Base branch<select name="worktreeBase" [value]="worktreeBase()" (change)="worktreeBase.set($any($event.target).value)">
+                @if (!git.repository()?.status?.branch) { <option value="HEAD" [selected]="worktreeBase() === 'HEAD'">HEAD</option> }
+                @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name" [selected]="worktreeBase() === branch.name">{{ branch.name }}</option> } }
               </select></label>
             </div>
-            <label>After creating<select name="worktreeHandoff" [ngModel]="worktreeHandoff()" (ngModelChange)="worktreeHandoff.set($event)">
+            <label>After creating<select name="worktreeHandoff" [value]="worktreeHandoff()" (change)="worktreeHandoff.set($any($event.target).value)">
               <option value="none">Open the worktree</option>
               <option value="terminal">Open the worktree and a terminal</option>
             </select><small class="worktree-field-note">The terminal starts in the new worktree.</small></label>
           }
-          <label>Worktree location<div class="path-picker"><input name="worktreeParent" readonly [ngModel]="worktreeParent()" /><button type="button" (click)="chooseWorktreeParent()">Browse</button></div></label>
-          <label>Folder name<input name="worktreeFolder" autocomplete="off" [ngModel]="worktreeFolder()" (ngModelChange)="worktreeFolder.set($event)" /></label>
+          <label>Worktree location<div class="path-picker"><input name="worktreeParent" readonly [gcTextValue]="worktreeParent()" /><button type="button" (click)="chooseWorktreeParent()">Browse</button></div></label>
+          <label>Folder name<input name="worktreeFolder" autocomplete="off" [gcTextValue]="worktreeFolder()" (gcTextValueChange)="worktreeFolder.set($event)" /></label>
           <footer><button type="button" (click)="closeWorktreeDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!worktreeBranch().trim() || (!worktreeCreationSource() && !worktreeBase()) || !worktreeParent() || !worktreeFolder().trim() || git.busy()">Create worktree</button></footer>
         </form>
       </section>
@@ -1988,10 +2006,10 @@
           <div><strong id="submodule-dialog-title">Add Submodule</strong><small>Reference another repository at a fixed commit</small></div>
           <button type="button" aria-label="Close add submodule dialog" (click)="closeSubmoduleDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form class="repository-form" (submit)="$event.preventDefault(); submitSubmodule()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitSubmodule()">
           <div class="form-intro"><span><gc-icon name="repo" [size]="21" /></span><div><h2>Submodule details</h2><p>Paste an HTTPS, SSH, or local repository URL and choose its path inside this repository.</p></div></div>
-          <label>Remote URL<input name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="submoduleUrl()" (ngModelChange)="submoduleUrl.set($event)" /></label>
-          <label>Name / Path<input name="submodulePath" autocomplete="off" placeholder="vendor/library" [ngModel]="submodulePath()" (ngModelChange)="submodulePath.set($event)" /></label>
+          <label>Remote URL<input name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [gcTextValue]="submoduleUrl()" (gcTextValueChange)="submoduleUrl.set($event)" /></label>
+          <label>Name / Path<input name="submodulePath" autocomplete="off" placeholder="vendor/library" [gcTextValue]="submodulePath()" (gcTextValueChange)="submodulePath.set($event)" /></label>
           <footer><button type="button" (click)="closeSubmoduleDialog()">Cancel</button><button class="primary add-submodule" type="submit" [disabled]="!submoduleUrl().trim() || !submodulePath().trim() || git.busy()">Add Submodule</button></footer>
         </form>
       </section>
@@ -2005,12 +2023,12 @@
           <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another tracked repository' : 'Update where ' + remoteName() + ' fetches from' }}</small></div>
           <button type="button" aria-label="Close remote dialog" (click)="closeRemoteDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form class="repository-form" (submit)="$event.preventDefault(); submitRemote()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitRemote()">
           <div class="form-intro"><span><gc-icon name="remote" [size]="21" /></span><div><h2>Remote details</h2><p>Use an HTTPS, SSH, or local Git repository URL. Fetching remains a separate action.</p></div></div>
-          <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [ngModel]="remoteName()" (ngModelChange)="remoteName.set($event)" /></label>
-          <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="remoteUrl()" (ngModelChange)="remoteUrl.set($event)" /></label>
-          <details><summary>Advanced: separate push destination</summary><label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" [ngModel]="remotePushUrl()" (ngModelChange)="remotePushUrl.set($event)" /></label><p>Leave empty to use the fetch URL. A separate push URL changes where branches and tags are sent, not where they are fetched.</p></details>
-          <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [ngModel]="remoteDialogIcon()" (ngModelChange)="remoteDialogIcon.set($event)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value">{{ option.label }}</option> }</select></label>
+          <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
+          <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteUrl.set($event)" /></label>
+          <details><summary>Advanced: separate push destination</summary><label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" [gcTextValue]="remotePushUrl()" (gcTextValueChange)="remotePushUrl.set($event)" /></label><p>Leave empty to use the fetch URL. A separate push URL changes where branches and tags are sent, not where they are fetched.</p></details>
+          <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [value]="remoteDialogIcon()" (change)="remoteDialogIcon.set($any($event.target).value)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value" [selected]="remoteDialogIcon() === option.value">{{ option.label }}</option> }</select></label>
           @if (mode === 'edit') { <small class="remote-push-note">Push currently uses {{ editedRemotePushUrl() }}.</small> }
           <footer>
             @if (mode === 'edit') { <button class="remote-remove" type="button" (click)="requestRemoteRemoval()">Remove Remote</button> }
@@ -2044,7 +2062,7 @@
           <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
           <p>{{ action.deleteBranch ? 'Remove this working directory and delete its branch. The branch tip is saved in Recovery History first.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
           @if (action.changes) {
-            <label class="force-delete-option"><input type="checkbox" [ngModel]="forceWorktreeRemoval()" (ngModelChange)="forceWorktreeRemoval.set($event)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
+            <label class="force-delete-option"><input type="checkbox" [checked]="forceWorktreeRemoval()" (change)="forceWorktreeRemoval.set($any($event.target).checked)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
           }
         </div>
         <footer><button type="button" (click)="closeWorktreeRemoval()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="action.changes > 0 && !forceWorktreeRemoval()" (click)="confirmWorktreeRemoval()">{{ action.deleteBranch ? 'Remove and delete branch' : 'Remove worktree' }}</button></footer>
@@ -2251,9 +2269,9 @@
         }
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Manage branch</div>
-        <form class="context-branch-form" (submit)="$event.preventDefault(); renameContextBranch()">
+        <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); renameContextBranch()">
           <label for="context-rename-name">Rename branch</label>
-          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [ngModel]="contextRenameName()" (ngModelChange)="contextRenameName.set($event)" /><button type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === menu.label || git.busy()">Rename</button></div>
+          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gcTextValue]="contextRenameName()" (gcTextValueChange)="contextRenameName.set($event)" /><button type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === menu.label || git.busy()">Rename</button></div>
         </form>
         <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === git.repository()?.status?.branch" (click)="requestBranchAction('delete')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch…</button>
       }
@@ -2264,7 +2282,7 @@
         <div class="context-section-label" aria-hidden="true">Create reference at branch tip</div>
       }
       @if (contextBranchCreatorOpen()) {
-        <form class="context-branch-form context-create-branch-form" aria-label="Create branch here" (submit)="$event.preventDefault(); createContextBranch()" (keydown)="handleContextBranchCreatorKeydown($event)">
+        <form novalidate class="context-branch-form context-create-branch-form" aria-label="Create branch here" (submit)="$event.preventDefault(); createContextBranch()" (keydown)="handleContextBranchCreatorKeydown($event)">
           <label for="context-branch-name">Create branch here</label>
           <div>
             <input
@@ -2272,8 +2290,8 @@
               name="contextBranchName"
               placeholder="Branch name"
               autocomplete="off"
-              [ngModel]="contextBranchName()"
-              (ngModelChange)="contextBranchName.set($event)"
+              [gcTextValue]="contextBranchName()"
+              (gcTextValueChange)="contextBranchName.set($event)"
             />
             <button type="submit" [disabled]="!contextBranchName().trim() || git.busy()">Create</button>
             <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="closeContextBranchCreator($event)"><gc-icon name="x" [size]="10" /></button>
@@ -2310,9 +2328,9 @@
       <div #repositoryTabMenuElement class="tab-context-menu" [attr.role]="repositoryAliasEditing() ? 'dialog' : 'menu'" [attr.aria-label]="(repositoryAliasEditing() ? 'Edit display name for ' : 'Repository actions for ') + git.repositoryLabel(tabRepository)" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleRepositoryTabMenuKeydown($event)">
         <header class="tab-context-heading"><span><gc-icon name="repo" [size]="15" /></span><div><strong>{{ git.repositoryLabel(tabRepository) }}</strong><small>{{ tabRepository.path }}</small></div></header>
         @if (repositoryAliasEditing()) {
-          <form class="tab-alias-editor" (submit)="$event.preventDefault(); saveRepositoryAlias()">
+          <form novalidate class="tab-alias-editor" (submit)="$event.preventDefault(); saveRepositoryAlias()">
             <label for="repository-alias">Repository display name</label>
-            <input #repositoryAliasInput id="repository-alias" name="repositoryAlias" aria-describedby="repository-alias-help" placeholder="Use folder name" autocomplete="off" [ngModel]="repositoryAlias()" (ngModelChange)="repositoryAlias.set($event)" />
+            <input #repositoryAliasInput id="repository-alias" name="repositoryAlias" aria-describedby="repository-alias-help" placeholder="Use folder name" autocomplete="off" [gcTextValue]="repositoryAlias()" (gcTextValueChange)="repositoryAlias.set($event)" />
             <small id="repository-alias-help">Leave blank to restore the folder name.</small>
             <footer><button class="secondary" type="button" (click)="cancelRepositoryAliasEdit()">Cancel</button><button type="submit">Save</button></footer>
           </form>
@@ -2401,7 +2419,7 @@
           </div>
           <section class="merge-output">
             <header><span>OUTPUT</span><small>Edit the final file</small></header>
-            <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [ngModel]="conflictOutput()" (ngModelChange)="conflictOutput.set($event)"></textarea>
+            <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [gcTextValue]="conflictOutput()" (gcTextValueChange)="conflictOutput.set($event)"></textarea>
           </section>
           @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }
           @if (!conflict.editable && !conflict.truncated) { <div class="merge-warning">This file type cannot be saved as text. Choose a complete side, or resolve it with Git.</div> }
@@ -2504,20 +2522,20 @@
   }
   @if (pendingTagTarget(); as target) {
     <div class="confirmation-backdrop" (click)="pendingTagTarget.set(null)">
-      <form class="confirmation-dialog tag-creation-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-creation-title" (submit)="$event.preventDefault(); submitTagCreation()" (click)="$event.stopPropagation()">
+      <form novalidate class="confirmation-dialog tag-creation-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-creation-title" (submit)="$event.preventDefault(); submitTagCreation()" (click)="$event.stopPropagation()">
         <div class="confirmation-icon"><gc-icon name="tag" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Create tag</span>
           <h2 id="tag-creation-title">Create tag at {{ target.label }}</h2>
           <p>Place a tag at commit <code>{{ shortOid(target.oid) }}</code>.</p>
-          <label class="tag-name-field">Tag name<input name="tagName" autocomplete="off" autofocus placeholder="v1.0.0" [ngModel]="contextTagName()" (ngModelChange)="contextTagName.set($event)" /></label>
+          <label class="tag-name-field">Tag name<input name="tagName" autocomplete="off" autofocus placeholder="v1.0.0" [gcTextValue]="contextTagName()" (gcTextValueChange)="contextTagName.set($event)" /></label>
           <div class="tag-kind-options" role="radiogroup" aria-label="Tag type">
-            <label [class.selected]="tagCreationKind() === 'lightweight'"><input type="radio" name="tagKind" value="lightweight" [ngModel]="tagCreationKind()" (ngModelChange)="tagCreationKind.set($event)" /><span><strong>Lightweight</strong><small>A simple name pointing to this commit</small></span></label>
-            <label [class.selected]="tagCreationKind() === 'annotated'"><input type="radio" name="tagKind" value="annotated" [ngModel]="tagCreationKind()" (ngModelChange)="tagCreationKind.set($event)" /><span><strong>Annotated</strong><small>Store tagger information and a release message</small></span></label>
+            <label [class.selected]="tagCreationKind() === 'lightweight'"><input type="radio" name="tagKind" value="lightweight" [checked]="tagCreationKind() === 'lightweight'" (change)="tagCreationKind.set('lightweight')" /><span><strong>Lightweight</strong><small>A simple name pointing to this commit</small></span></label>
+            <label [class.selected]="tagCreationKind() === 'annotated'"><input type="radio" name="tagKind" value="annotated" [checked]="tagCreationKind() === 'annotated'" (change)="tagCreationKind.set('annotated')" /><span><strong>Annotated</strong><small>Store tagger information and a release message</small></span></label>
           </div>
           @if (tagCreationKind() === 'annotated') {
-            <label class="tag-name-field">Tag message<textarea name="tagMessage" rows="3" placeholder="Release notes" [ngModel]="tagCreationMessage()" (ngModelChange)="tagCreationMessage.set($event)"></textarea></label>
-            <label><input type="checkbox" name="signTag" [ngModel]="signNewTag()" (ngModelChange)="signNewTag.set($event)" /> Sign this tag with the configured Git key</label>
+            <label class="tag-name-field">Tag message<textarea name="tagMessage" rows="3" placeholder="Release notes" [gcTextValue]="tagCreationMessage()" (gcTextValueChange)="tagCreationMessage.set($event)"></textarea></label>
+            <label><input type="checkbox" name="signTag" [checked]="signNewTag()" (change)="signNewTag.set($any($event.target).checked)" /> Sign this tag with the configured Git key</label>
           }
         </div>
         <footer><button type="button" (click)="pendingTagTarget.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextTagName().trim() || (tagCreationKind() === 'annotated' && !tagCreationMessage().trim()) || git.busy()">Create Tag</button></footer>
@@ -2535,13 +2553,13 @@
   }
   @if (stashRenameTarget(); as stash) {
     <div class="confirmation-backdrop" (click)="stashRenameTarget.set(null)">
-      <form class="confirmation-dialog stash-rename-dialog" (submit)="$event.preventDefault(); confirmStashRename()" (click)="$event.stopPropagation()">
+      <form novalidate class="confirmation-dialog stash-rename-dialog" (submit)="$event.preventDefault(); confirmStashRename()" (click)="$event.stopPropagation()">
         <div class="confirmation-icon"><gc-icon name="edit" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>{{ stash.reference }}</span>
           <h2>Edit stash message</h2>
           <p>Update the name shown in the Commit Graph and Stashes section.</p>
-          <input class="stash-rename-input" name="stashRenameMessage" aria-label="New stash message" maxlength="500" autocomplete="off" [ngModel]="stashRenameMessage()" (ngModelChange)="stashRenameMessage.set($event)" autofocus />
+          <input class="stash-rename-input" name="stashRenameMessage" aria-label="New stash message" maxlength="500" autocomplete="off" [gcTextValue]="stashRenameMessage()" (gcTextValueChange)="stashRenameMessage.set($event)" autofocus />
         </div>
         <footer><button type="button" (click)="stashRenameTarget.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!stashRenameMessage().trim() || git.busy()">Update Message</button></footer>
       </form>
@@ -2549,13 +2567,13 @@
   }
   @if (pendingBranchRename(); as branch) {
     <div class="confirmation-backdrop" (click)="pendingBranchRename.set(null)">
-      <form class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Rename branch {{ branch }}" (submit)="$event.preventDefault(); confirmPaletteBranchRename()" (click)="$event.stopPropagation()">
+      <form novalidate class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Rename branch {{ branch }}" (submit)="$event.preventDefault(); confirmPaletteBranchRename()" (click)="$event.stopPropagation()">
         <div class="confirmation-icon"><gc-icon name="edit" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Rename local branch</span>
           <h2>{{ branch }}</h2>
           <p>Enter the new branch name. Existing commits and working-tree changes remain unchanged.</p>
-          <input class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [ngModel]="contextRenameName()" (ngModelChange)="contextRenameName.set($event)" autofocus />
+          <input class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [gcTextValue]="contextRenameName()" (gcTextValueChange)="contextRenameName.set($event)" autofocus />
         </div>
         <footer><button type="button" (click)="pendingBranchRename.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === branch || git.busy()">Rename Branch</button></footer>
       </form>
@@ -2575,7 +2593,7 @@
             <p>Deleting it anyway leaves those commits on no branch. Git Khronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
           } @else {
             <p>Git refuses to delete an unmerged branch unless force deletion is enabled. The branch tip is saved in <strong>Recovery History</strong> first, so you can restore it later.</p>
-            <label class="force-delete-option"><input type="checkbox" [ngModel]="forceBranchDelete()" (ngModelChange)="forceBranchDelete.set($event)" /> Force delete even when the branch is not merged</label>
+            <label class="force-delete-option"><input type="checkbox" [checked]="forceBranchDelete()" (change)="forceBranchDelete.set($any($event.target).checked)" /> Force delete even when the branch is not merged</label>
           }
         </div>
         <footer><button type="button" data-branch-dialog-cancel (click)="dismissBranchConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind === 'delete'" type="button" (click)="confirmBranchAction()">{{ action.kind === 'delete' ? (action.unmerged ? 'Delete anyway' : 'Delete branch') : 'Rebase' }}</button></footer>
@@ -2584,14 +2602,14 @@
   }
   @if (pendingBranchUpstream(); as pending) {
     <div class="confirmation-backdrop" (click)="pendingBranchUpstream.set(null)">
-      <form class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Set upstream for {{ pending.branch }}" (submit)="$event.preventDefault(); confirmBranchUpstream()" (click)="$event.stopPropagation()">
+      <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Set upstream for {{ pending.branch }}" (submit)="$event.preventDefault(); confirmBranchUpstream()" (click)="$event.stopPropagation()">
         <div class="confirmation-icon"><gc-icon name="remote" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Branch tracking</span>
           <h2>{{ pending.branch }}</h2>
           <p>Choose the remote branch used by Pull, Push, and ahead/behind status.</p>
-          <label class="upstream-picker">Upstream branch<select name="branchUpstream" aria-label="Upstream branch" [ngModel]="branchUpstreamChoice()" (ngModelChange)="branchUpstreamChoice.set($event)">
-            @for (branch of remoteUpstreamBranches(); track branch.fullName) { <option [value]="branch.name">{{ branch.name }}</option> }
+          <label class="upstream-picker">Upstream branch<select name="branchUpstream" aria-label="Upstream branch" [value]="branchUpstreamChoice()" (change)="branchUpstreamChoice.set($any($event.target).value)">
+            @for (branch of remoteUpstreamBranches(); track branch.fullName) { <option [value]="branch.name" [selected]="branchUpstreamChoice() === branch.name">{{ branch.name }}</option> }
           </select></label>
         </div>
         <footer>
@@ -2603,15 +2621,15 @@
   }
   @if (pendingPublishBranch(); as pending) {
     <div class="confirmation-backdrop" (click)="pendingPublishBranch.set(null)">
-      <form class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ pending.branch }}" (submit)="$event.preventDefault(); confirmPublishBranch()" (click)="$event.stopPropagation()">
+      <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ pending.branch }}" (submit)="$event.preventDefault(); confirmPublishBranch()" (click)="$event.stopPropagation()">
         <div class="confirmation-icon"><gc-icon name="push" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Publish branch</span>
           <h2>{{ pending.branch }}</h2>
           <p>Push this branch and remember the selected remote as its upstream for future Pull and Push actions.</p>
           @if (git.repository()?.remotes?.length) {
-            <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [ngModel]="publishRemote()" (ngModelChange)="publishRemote.set($event)">
-              @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name">{{ remote.name }}</option> }
+            <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [value]="publishRemote()" (change)="publishRemote.set($any($event.target).value)">
+              @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name" [selected]="publishRemote() === remote.name">{{ remote.name }}</option> }
             </select></label>
           } @else {
             <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" (click)="pendingPublishBranch.set(null); openAddRemoteDialog()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
@@ -2644,7 +2662,7 @@
           <button type="button" aria-label="Close recovery history" title="Close recovery history" (click)="closeRecoveryHistory()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <div class="recovery-toolbar">
-          <label><gc-icon name="search" [size]="14" /><input type="search" aria-label="Search recovery history" placeholder="Search action, author, SHA, or reflog selector" [ngModel]="recoveryQuery()" (ngModelChange)="recoveryQuery.set($event)" autofocus /></label>
+          <label><gc-icon name="search" [size]="14" /><input type="search" aria-label="Search recovery history" placeholder="Search action, author, SHA, or reflog selector" [gcTextValue]="recoveryQuery()" (gcTextValueChange)="recoveryQuery.set($event)" autofocus /></label>
           <button type="button" title="Refresh recovery history" aria-label="Refresh recovery history" [disabled]="git.reflogBusy() || git.busy() || recoveryCaptureBusy()" (click)="refreshRecoveryHistory()"><gc-icon name="refresh" [size]="13" /></button>
         </div>
         <div class="recovery-guidance"><gc-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
@@ -2664,9 +2682,9 @@
                 </div>
                 @if (recoveryCaptureAction(); as action) {
                   @if (action.record.id === record.id) {
-                    <form class="recovery-capture-form" (submit)="$event.preventDefault(); confirmRecoveryCaptureAction()">
+                    <form novalidate class="recovery-capture-form" (submit)="$event.preventDefault(); confirmRecoveryCaptureAction()">
                       @if (action.kind === 'restore') {
-                        <label>Recovery branch name<input name="recoveryCaptureBranch" autocomplete="off" [disabled]="git.busy()" [ngModel]="recoveryCaptureBranch()" (ngModelChange)="recoveryCaptureBranch.set($event)" /></label>
+                        <label>Recovery branch name<input name="recoveryCaptureBranch" autocomplete="off" [disabled]="git.busy()" [gcTextValue]="recoveryCaptureBranch()" (gcTextValueChange)="recoveryCaptureBranch.set($event)" /></label>
                         <p>This switches to the new branch and restores the saved index and working contents. Your current repository must be clean.</p>
                         @if (git.repository()?.status?.entryCount) { <p>Save current changes before restoring this capture.</p> }
                       } @else {
@@ -2698,8 +2716,8 @@
                   <button class="primary" type="button" (click)="beginRecoveryBranch(entry)"><gc-icon name="branch" [size]="12" />Create branch</button>
                 </div>
                 @if (recoveryBranchEntry()?.selector === entry.selector && recoveryBranchEntry()?.oid === entry.oid) {
-                  <form class="recovery-branch-form" (submit)="$event.preventDefault(); createRecoveryBranch()">
-                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [ngModel]="recoveryBranchName()" (ngModelChange)="recoveryBranchName.set($event)" /></label>
+                  <form novalidate class="recovery-branch-form" (submit)="$event.preventDefault(); createRecoveryBranch()">
+                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [gcTextValue]="recoveryBranchName()" (gcTextValueChange)="recoveryBranchName.set($event)" /></label>
                     <button type="button" (click)="recoveryBranchEntry.set(null); recoveryBranchName.set('')">Cancel</button>
                     <button class="primary" type="submit" [disabled]="!recoveryBranchName().trim() || git.busy()">Create at {{ shortOid(entry.oid) }}</button>
                   </form>
@@ -2717,10 +2735,10 @@
   <div class="zoom-control" role="group" aria-label="Interface zoom controls">
     <span class="zoom-label" aria-hidden="true">Zoom</span>
     <button type="button" title="Decrease zoom ({{ primaryShortcutKey }}+-)" aria-label="Decrease zoom" aria-keyshortcuts="Control+- Meta+-" [disabled]="zoomPercent() <= 75" (click)="stepZoom(-1)">−</button>
-    <select class="zoom-select" aria-label="Interface zoom" title="Interface zoom" [ngModel]="zoomPercent()" (ngModelChange)="setZoom($event)">
-      <option [ngValue]="75">75%</option><option [ngValue]="80">80%</option><option [ngValue]="90">90%</option>
-      <option [ngValue]="100">100%</option><option [ngValue]="110">110%</option><option [ngValue]="125">125%</option>
-      <option [ngValue]="140">140%</option><option [ngValue]="150">150%</option><option [ngValue]="175">175%</option><option [ngValue]="200">200%</option>
+    <select class="zoom-select" aria-label="Interface zoom" title="Interface zoom" [value]="zoomPercent()" (change)="setZoom(+$any($event.target).value)">
+      <option value="75">75%</option><option value="80">80%</option><option value="90">90%</option>
+      <option value="100">100%</option><option value="110">110%</option><option value="125">125%</option>
+      <option value="140">140%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option>
     </select>
     <button type="button" title="Increase zoom ({{ primaryShortcutKey }}++)" aria-label="Increase zoom" aria-keyshortcuts="Control++ Meta++" [disabled]="zoomPercent() >= 200" (click)="stepZoom(1)">+</button>
     <button class="zoom-reset" type="button" title="Reset zoom to 100% ({{ primaryShortcutKey }}+0)" aria-label="Reset zoom to 100 percent" aria-keyshortcuts="Control+0 Meta+0" [disabled]="zoomPercent() === 100" (click)="setZoom(100)"><gc-icon name="reset" [size]="10" /></button>

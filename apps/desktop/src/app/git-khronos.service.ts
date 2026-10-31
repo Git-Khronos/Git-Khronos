@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { isTauri } from '@tauri-apps/api/core';
 import { ipc } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -280,8 +281,12 @@ export class GitKhronosService {
   async initialize(): Promise<void> {
     try {
       this.systemInfo.set(await ipc.system_info());
-      await this.restoreRepositories();
-    } catch {
+    } catch (error: unknown) {
+      if (isTauri()) {
+        this.error.set(this.formatError(error));
+        this.activity.set('Desktop initialization failed');
+        return;
+      }
       this.systemInfo.set({
         appVersion: 'browser preview',
         gitVersion: null,
@@ -302,6 +307,7 @@ export class GitKhronosService {
             available: true,
             version: 'git-lfs/3.7.1',
             trackedFiles: 12,
+            pointerFiles: 2,
           };
         }
         if (previewOptions.has('sparse-preview')) {
@@ -408,6 +414,14 @@ export class GitKhronosService {
         this.activeRepositoryId.set(preview.id);
         this.activity.set('Repository preview');
       }
+      return;
+    }
+
+    try {
+      await this.restoreRepositories();
+    } catch (error: unknown) {
+      this.error.set(this.formatError(error));
+      this.activity.set('Could not restore saved repositories');
     }
   }
 
@@ -2898,6 +2912,7 @@ export class GitKhronosService {
       ...paths.filter((path) => path === activePath),
       ...paths.filter((path) => path !== activePath),
     ];
+    const failedPaths: string[] = [];
     this.updateRunningOperations(1);
     this.activity.set('Restoring active repository…');
     let restoredPath: string | null = null;
@@ -2912,7 +2927,7 @@ export class GitKhronosService {
           restoredPath = path;
           break;
         } catch {
-          // Try the next saved tab if the preferred repository is unavailable.
+          failedPaths.push(path);
         }
       }
       this.activity.set('Ready');
@@ -2920,7 +2935,7 @@ export class GitKhronosService {
       this.updateRunningOperations(-1);
     }
     if (!restoredPath) {
-      this.persistOpenTabs();
+      if (failedPaths.length) this.reportRestoreFailures(failedPaths);
       return;
     }
     const activeRepositoryId = this.activeRepositoryId();
@@ -2947,6 +2962,7 @@ export class GitKhronosService {
   }
 
   private async restoreRepositoryTabs(paths: string[], originalOrder: string[], workspaceId: string): Promise<void> {
+    const failedPaths: string[] = [];
     for (const path of paths) {
       if (this.activeWorkspaceId() !== workspaceId) return;
       try {
@@ -2958,10 +2974,18 @@ export class GitKhronosService {
           (left, right) => originalOrder.indexOf(left.path) - originalOrder.indexOf(right.path),
         ));
       } catch {
-        // Missing, inaccessible, or unhealthy tabs do not block the active repository.
+        failedPaths.push(path);
       }
     }
-    this.persistOpenTabs();
+    if (failedPaths.length) this.reportRestoreFailures(failedPaths);
+    else this.persistOpenTabs();
+  }
+
+  private reportRestoreFailures(paths: readonly string[]): void {
+    const labels = paths.map((path) => this.pathLabel(path));
+    this.error.set(
+      `Could not restore ${paths.length} saved ${paths.length === 1 ? 'repository' : 'repositories'}: ${labels.join(', ')}. Check the folder or reopen it from Recent repositories.`,
+    );
   }
 
   private persistOpenTabs(): void {
@@ -3288,7 +3312,7 @@ function createRepositoryPreview(): RepositorySnapshot {
       { name: 'vendor/lane-engine', path: 'vendor/lane-engine', absolutePath: '/home/maya/projects/git-khronos/vendor/lane-engine', url: 'https://github.com/example/lane-engine.git', oid: commits[4].oid, headOid: commits[4].oid, initialized: true, outOfSync: false },
       { name: 'plugins/diff-driver', path: 'plugins/diff-driver', absolutePath: '/home/maya/projects/git-khronos/plugins/diff-driver', url: 'git@github.com:example/diff-driver.git', oid: commits[5].oid, headOid: null, initialized: false, outOfSync: false },
     ],
-    lfs: { enabled: false, available: false, version: null, trackedFiles: null },
+    lfs: { enabled: false, available: false, version: null, trackedFiles: null, pointerFiles: null },
     sparseCheckout: { enabled: false, coneMode: true, sparseIndex: false, paths: [] },
     commitTemplate: null,
     commitTemplateError: null,

@@ -189,6 +189,8 @@ pub struct LfsInfo {
     pub available: bool,
     pub version: Option<String>,
     pub tracked_files: Option<usize>,
+    /// Tracked files currently checked out as LFS pointers.
+    pub pointer_files: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -1146,42 +1148,90 @@ fn snapshot_with_status(
     include_tags: bool,
     status: RepositoryStatus,
 ) -> Result<RepositoryData, AppError> {
-    let remotes = read_remotes(path)?;
-    let branches = read_branches(path, &status, include_all_branch_tracking)?;
-    let stashes = read_stashes(path)?;
-    // Large, long-lived repositories can have thousands of annotated tags.
-    // Peeling every tag is expensive and is not required for the first usable
-    // frame; the desktop hydrates complete reference metadata in the
-    // background after the repository workspace is visible.
-    let tags = if include_tags {
-        read_tags(path)?
-    } else {
-        Vec::new()
-    };
     let bare = is_explicit_bare_repository(path);
-    let worktrees = read_worktrees(path, &status, include_linked_worktree_status)?;
-    let submodules = if bare {
-        Vec::new()
-    } else {
-        read_submodules(path)?
+    // Three read-only lanes overlap Git process startup without creating one
+    // thread per query. Fall back to serial reads if a worker cannot be started.
+    let read_references = || {
+        let remotes = read_remotes(path)?;
+        let branches = read_branches(path, &status, include_all_branch_tracking)?;
+        // Tag peeling is deferred for the first usable desktop frame.
+        let tags = if include_tags {
+            read_tags(path)?
+        } else {
+            Vec::new()
+        };
+        let worktrees = read_worktrees(path, &status, include_linked_worktree_status)?;
+        Ok::<_, AppError>((remotes, branches, tags, worktrees))
     };
-    let lfs = read_lfs_info(path);
-    let sparse_checkout = read_sparse_checkout_info(path);
-    let (commit_template, commit_template_error) = match commit_template::read(path) {
-        Ok(template) => (template, None),
-        Err(error) => (None, Some(error)),
+    let read_metadata = || {
+        let submodules = if bare {
+            Vec::new()
+        } else {
+            read_submodules(path)?
+        };
+        let lfs = read_lfs_info(path);
+        let sparse_checkout = read_sparse_checkout_info(path);
+        let (commit_template, commit_template_error) = match commit_template::read(path) {
+            Ok(template) => (template, None),
+            Err(error) => (None, Some(error)),
+        };
+        let (identity, signing) = read_identity_and_signing(path);
+        Ok::<_, AppError>((
+            submodules,
+            lfs,
+            sparse_checkout,
+            commit_template,
+            commit_template_error,
+            identity,
+            signing,
+        ))
     };
-    let (identity, signing) = read_identity_and_signing(path);
-    let history_read_limit = commit_limit
-        .saturating_add(stashes.len().saturating_mul(2))
-        .saturating_add(1);
-    let mut commits = normalize_stash_history(read_commits(path, history_read_limit)?, &stashes);
+    let (references, metadata, history) = thread::scope(|scope| {
+        let references = thread::Builder::new()
+            .name("snapshot-references".into())
+            .spawn_scoped(scope, read_references)
+            .ok();
+        let metadata = thread::Builder::new()
+            .name("snapshot-metadata".into())
+            .spawn_scoped(scope, read_metadata)
+            .ok();
+        let history = (|| {
+            let stashes = read_stashes(path)?;
+            let history_read_limit = commit_limit
+                .saturating_add(stashes.len().saturating_mul(2))
+                .saturating_add(1);
+            let commits =
+                normalize_stash_history(read_commits(path, history_read_limit)?, &stashes);
+            let head_oid = run_git(path, &["rev-parse", "--verify", "HEAD"])
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
+            Ok::<_, AppError>((stashes, commits, head_oid))
+        })();
+        fn join<T>(handle: thread::ScopedJoinHandle<'_, T>) -> T {
+            handle
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        }
+        (
+            references.map_or_else(read_references, join),
+            metadata.map_or_else(read_metadata, join),
+            history,
+        )
+    });
+    let (remotes, branches, tags, worktrees) = references?;
+    let (
+        submodules,
+        lfs,
+        sparse_checkout,
+        commit_template,
+        commit_template_error,
+        identity,
+        signing,
+    ) = metadata?;
+    let (stashes, mut commits, head_oid) = history?;
     let history_truncated = commits.len() > commit_limit;
     commits.truncate(commit_limit);
-    let head_oid = run_git(path, &["rev-parse", "--verify", "HEAD"])
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
 
     Ok(RepositoryData {
         name: path
@@ -7100,27 +7150,38 @@ fn read_lfs_info(path: &Path) -> LfsInfo {
             available,
             version,
             tracked_files: None,
+            pointer_files: None,
         };
     }
-    let tracked_files = available
+    let counts = available
         .then(|| {
-            run_git(path, &["lfs", "ls-files", "--name-only"])
+            run_git(path, &["lfs", "ls-files"])
                 .ok()
                 .filter(|output| output.status.success())
-                .map(|output| {
-                    String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .filter(|line| !line.trim().is_empty())
-                        .count()
-                })
+                .map(|output| count_lfs_files(&String::from_utf8_lossy(&output.stdout)))
         })
         .flatten();
+    let tracked_files = counts.map(|(tracked, _)| tracked);
+    let pointer_files = counts.map(|(_, pointers)| pointers);
     LfsInfo {
         enabled,
         available,
         version,
         tracked_files,
+        pointer_files,
     }
+}
+
+/// Counts `git lfs ls-files` lines (`<oid> <*|-> <path>`); `-` marks a file
+/// checked out as a pointer, whether or not its object is cached locally.
+fn count_lfs_files(output: &str) -> (usize, usize) {
+    output.lines().filter(|line| !line.trim().is_empty()).fold(
+        (0, 0),
+        |(tracked, pointers), line| {
+            let pointer = line.split_whitespace().nth(1) == Some("-");
+            (tracked + 1, pointers + usize::from(pointer))
+        },
+    )
 }
 
 fn read_sparse_checkout_info(path: &Path) -> SparseCheckoutInfo {
@@ -8444,6 +8505,16 @@ mod tests {
         fn write(&self, path: &str, content: &str) {
             fs::write(self.path.join(path), content).expect("write fixture file");
         }
+    }
+
+    #[test]
+    fn counts_lfs_pointer_files() {
+        let output = "4d7a2146 * assets/logo.png\n\
+                      9f86d081 - assets/video file.mp4\n\
+                      \n\
+                      2c26b46b - docs/manual.pdf\n";
+        assert_eq!(count_lfs_files(output), (3, 2));
+        assert_eq!(count_lfs_files(""), (0, 0));
     }
 
     #[test]

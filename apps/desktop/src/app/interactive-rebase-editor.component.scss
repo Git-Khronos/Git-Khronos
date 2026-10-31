@@ -17,7 +17,7 @@
 .interactive-rebase > header h2 { margin: 2px 0 3px; color: #f1f0f6; font-size: 16px; font-weight: 650; }
 .interactive-rebase > header h2 i { margin: 0 5px; color: var(--muted); font-size: 12px; font-style: normal; font-weight: 500; }
 .interactive-rebase > header p { margin: 0; color: var(--muted); font-size: 12px; }
-.interactive-rebase > header > button { align-self: start; background: transparent; color: #89879a; }
+.interactive-rebase > header > button { align-self: start; background: transparent; color: #8e8d9f; }
 .rebase-column-head { display: grid; grid-template-columns: 128px 1fr; padding: 7px 42px; border-bottom: 1px solid #343347; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
 .rebase-steps { min-height: 80px; overflow: auto; padding: 7px; }
 .rebase-step { display: grid; grid-template-columns: 18px 92px 28px minmax(0, 1fr) 28px; align-items: center; gap: 8px; min-height: 49px; margin-bottom: 3px; padding: 6px 9px; border: 1px solid transparent; border-radius: 4px; background: #272638; cursor: grab; }
