@@ -1466,3 +1466,17 @@ options. Native review tokens, cancellation handling and the original interface
 are project designs. No external implementation or assets were reused, and no
 dependency was added. Behavioral evidence uses owned API responses and local
 Git repositories; live provider writes are outside this checkpoint.
+
+
+## Non-text comparison requirements
+
+Sources:
+
+- https://help.gitkraken.com/gitkraken-desktop/current/ (public 12.1.2 extensionless-image correction)
+- https://help.gitkraken.com/gitkraken-desktop/diff/
+
+Used for: identifying content-based image detection and existing comparison
+contexts as independently implementable requirements. The neutral specification
+is in `docs/specifications/non-text-diffs.md`. No product implementation, assets,
+screenshots, distinctive interface composition or substantial text was reused.
+Implementation will use public Git plumbing and file-format specifications.
