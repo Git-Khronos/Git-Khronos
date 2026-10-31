@@ -1,8 +1,8 @@
 # Feature, release and hotfix workflows
 
-Status: independent functional specification for G24. This document does not
-claim an implementation or acceptance result. Ordinary branch commands already
-available in Khronos do not satisfy this dedicated workflow.
+Status: independent functional specification for G24, with a tested core-engine
+checkpoint described below. The dedicated desktop workflow is not yet available.
+Ordinary branch commands do not satisfy this capability.
 
 ## Public capability reference
 
@@ -156,3 +156,45 @@ bytes, checkout state, recovery records and per-stage outcomes as applicable.
 - [Git tags](https://git-scm.com/docs/git-tag): tag types, annotation and signing.
 
 No external source code or dependency is introduced by this specification.
+
+
+## Core-engine checkpoint (2026-10-31)
+
+Original Rust code in `crates/git-core/src/branch_workflow.rs` and
+`branch_workflow_finish.rs` implements local configuration and conditional setup,
+prefix discovery, reviewed starts, and journaled feature/release/hotfix finish.
+Finish preserves recovery refs, integrates the original topic into the reviewed
+targets in order, annotates the production result when requested, and conditionally
+deletes the reviewed topic ref. Shared repository locking serializes actions
+across linked worktrees; execution records remain bound to their owning checkout.
+
+Owned Git fixtures cover conflict continuation, abort after an earlier integration,
+restart reconciliation, explicit retry, stale bindings, checkout-hook failure,
+signing failure, cancellation during a running post-merge hook, malformed records,
+completed-ancestry validation and changed release tags. Initial records are
+published from a complete synced temporary file without replacing another record.
+A saved completed stage is rechecked before applying later stages. If an
+interrupted hook leaves merge metadata after the expected commit is created,
+explicit continue clears that metadata with Git’s quit action, without replaying
+the merge or its hooks. Abort in this state retains the completed commit; changed
+working files prevent automatic metadata cleanup. Signature
+presence is checked when reconciling a requested signed tag; this is not a claim
+of cryptographic trust or signer identity.
+
+Remaining requirements before desktop acceptance:
+
+- Native commands and repository-bound, one-use previews; renderer controls,
+  keyboard behavior and packaged acceptance are not yet implemented.
+- Setup/ref-backup transactions and some preparation reads still use the existing
+  noncancellable Git helpers. Cancellation of dispatched finish commands is
+  tested; this does not qualify cancellation at every preflight/backup boundary.
+- Topic discovery does not yet expose tracking state. Conditional local ref
+  deletion retains branch-specific configuration; safely handling later topic
+  name reuse and concurrent external worktree registration needs qualification.
+- Optional feature rebase needs an explicit connection to the existing reviewed
+  rebase workflow. Unborn setup and moved owning worktrees remain unsupported.
+- Successful real signing, further storage failures, all supported platforms and
+  native IPC rejection cases still require their own acceptance evidence.
+
+This checkpoint introduces no dependency, proprietary code, asset or copied UI.
+It does not qualify the current packaged executable or complete G24.

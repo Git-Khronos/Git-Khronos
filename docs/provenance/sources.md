@@ -1391,3 +1391,25 @@ partial-result reporting and recovery acceptance cases in
 `docs/specifications/branch-workflows.md`. This is a specification, not
 implementation or qualification evidence. No proprietary internals, source,
 assets or documentation prose were copied; no dependency was added.
+
+
+## Configurable branch workflows
+
+Sources:
+
+- [Public feature/release/hotfix capability guide](https://help.gitkraken.com/gitkraken-desktop/git-flow/)
+- [Git configuration](https://git-scm.com/docs/git-config)
+- [Git checkout](https://git-scm.com/docs/git-checkout)
+- [Git ref validation](https://git-scm.com/docs/git-check-ref-format)
+- [Git conditional ref transactions](https://git-scm.com/docs/git-update-ref)
+- [Git merge](https://git-scm.com/docs/git-merge)
+- [Git annotated and signed tags](https://git-scm.com/docs/git-tag)
+- [Git worktree occupancy](https://git-scm.com/docs/git-worktree)
+- [Rust standard file locking](https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock)
+
+Used for a neutral capability specification and an original Rust workflow engine.
+Owned Git repositories verify configuration scope, literal names, conditional
+refs, integration ancestry, partial completion and durable recovery. Standard
+library file locks serialize linked-worktree actions. No vendor implementation,
+package contents, assets, interface composition or external source code was used.
+Desktop/native acceptance remains a separate open requirement in the specification.
