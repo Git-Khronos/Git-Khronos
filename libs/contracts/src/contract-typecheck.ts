@@ -1,7 +1,9 @@
-import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSettings } from './index';
+import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSettings, type HostedForkRemotePlan } from './index';
 
 // Compiled, never executed. Widened bindings make expect-error directives fail.
 function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
+  const privateAttachmentFieldsAbsent: Extract<keyof HostedForkRemotePlan, 'snapshot' | 'request' | 'created'> extends never ? true : never = true;
+  void privateAttachmentFieldsAbsent;
   void ipc.open_repository({ path: '/owned/fixture' });
   void ipc.inspect_stash({ repoId: 'fixture', oid: 'a'.repeat(40) });
   void ipc.inspect_stash_file({ repoId: 'fixture', oid: 'a'.repeat(40), path: 'fixture.txt' });
@@ -38,6 +40,17 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   // @ts-expect-error only Continue can request a retry
   void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-abort', id: 'owned-finish', revision: 1, control: { action: 'abort', retry: true } });
   void ipc.execute_hosted_fork({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-fork' });
+  void ipc.prepare_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', operationId: 'owned-preview', request: { sourceRemote: 'origin', remoteName: 'fork', transport: 'https', selection: { sourceFullName: 'team/source', sourceRepositoryId: '101', accountId: '7', forkFullName: 'owned/fork', forkRepositoryId: '9007199254740993', forkOwnerId: '7' } } });
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment' });
+  void ipc.discard_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token' });
+  // @ts-expect-error attachment execution cannot accept a client-authored plan
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', plan: {}, operationId: 'owned-attachment' });
+  // @ts-expect-error attachment execution must identify its original repository session
+  void ipc.execute_hosted_fork_remote({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment' });
+  // @ts-expect-error clients cannot choose a configuration path
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment', configurationPath: '/elsewhere/config' });
+  // @ts-expect-error discard cannot address another dialog's review without its context
+  void ipc.discard_hosted_fork_remote({ repoId: 'owned-repository', token: 'owned-token' });
   void ipc.execute_hosted_fork_acknowledgement({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-acknowledgement' });
   // @ts-expect-error fork execution cannot accept a client-authored plan
   void ipc.execute_hosted_fork({ contextId: 'owned-dialog', plan: {}, operationId: 'owned-fork' });

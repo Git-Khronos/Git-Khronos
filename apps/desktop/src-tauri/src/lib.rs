@@ -92,6 +92,7 @@ mod authentication;
 mod recovery_commands;
 mod hosting_commands;
 mod fork_commands;
+mod fork_remote_commands;
 mod hosted_repository_commands;
 mod branch_workflow_commands;
 
@@ -104,6 +105,7 @@ struct AppState {
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
     hosted_write_plans: Mutex<HashMap<String, hosting_commands::CachedPlan>>,
     hosted_fork_reviews: Mutex<HashMap<String, fork_commands::CachedReview>>,
+    hosted_fork_remote_plans: Mutex<HashMap<String, fork_remote_commands::Cached<git_khronos_git_core::HostedForkRemotePlan>>>,
     hosted_clone_plans: Mutex<HashMap<String, hosted_repository_commands::CachedClone>>,
     branch_workflow_plans: Mutex<HashMap<String, branch_workflow_commands::CachedPlan>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
@@ -3457,6 +3459,9 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             fork_commands::prepare_hosted_fork_acknowledgement,
             fork_commands::execute_hosted_fork_acknowledgement,
             fork_commands::discard_hosted_fork_review,
+            fork_remote_commands::prepare_hosted_fork_remote,
+            fork_remote_commands::execute_hosted_fork_remote,
+            fork_remote_commands::discard_hosted_fork_remote,
             hosting_commands::execute_hosted_write,
             hosting_commands::discard_hosted_write_plan,
             prepare_merge_rebase,

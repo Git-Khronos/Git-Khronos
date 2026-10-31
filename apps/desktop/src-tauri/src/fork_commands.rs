@@ -50,7 +50,7 @@ fn error(kind: &str, message: &str, hint: Option<&str>) -> AppError {
         hint: hint.map(str::to_owned),
     }
 }
-fn context(id: &str) -> Result<(), AppError> {
+pub(super) fn context(id: &str) -> Result<(), AppError> {
     if id.is_empty()
         || id.len() > 128
         || !id

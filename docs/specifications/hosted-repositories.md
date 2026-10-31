@@ -94,8 +94,8 @@ changed includes, changed provider identities, cancellation and expired reviews
 refuse publication. The confirmed result is separate from provider creation.
 Empty, bare and linked-worktree cases require independent behavioral evidence.
 
-This core has no desktop/native adapter yet. In its dedicated Cargo output
-directory, all 13 attachment cases and the complete core suite pass: 673 Rust
+In its dedicated Cargo output directory, all 13 attachment cases and the
+complete core suite pass: 673 Rust
 tests, with 37 ignored. Clippy passes for all core targets with warnings denied.
 Earlier shared-target runs reused an older test executable without the new
 module and are excluded from this qualification. The first isolated run exposed
@@ -103,6 +103,21 @@ nine preparation failures: Git refused `remote get-url` for a command-scoped
 candidate that had not been persisted. Read-only `remote -v` now verifies the
 candidate fetch/push destinations without changing configuration; the corrected
 isolated cases and full core suite pass.
+
+The native adapter now has three registered prepare/execute/discard commands,
+with generated TypeScript contracts. Preparation resolves an open repository
+session; clients cannot supply a filesystem path. All thirty native library
+unit cases pass, including six attachment cases. Generated-contract freshness,
+TypeScript positive/negative assertions and all-target native Clippy with warnings
+denied also pass in the isolated build. Native memory holds at most sixteen
+attachment plans, each bound to its repository and dialog context for fifteen
+minutes. A fresh review retires that context's earlier plan. Execution consumes
+the original plan before repository lookup or lock waiting. Queued waits are
+bounded and cancellable; a confirmed configuration publication remains confirmed
+if cancellation arrives afterward. Private configuration snapshots are absent
+from generated frontend types. No desktop attachment form or exact packaged
+attachment-route acceptance is established by this source checkpoint.
+
 Provider-bound attachment currently refuses Git URL rewrites that redirect the
 reviewed destination. A complete explicit review of redirected transport targets
 remains open; the existing manual remote configuration workflow remains separate.

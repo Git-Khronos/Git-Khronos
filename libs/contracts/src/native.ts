@@ -102,6 +102,9 @@ export type HostedForkPage = { account: HostedAccount; source: HostedRepositoryI
 export type HostedForkPhase = "awaitingConfirmation" | "acceptedPending" | "metadataAvailable" | "ready" | "conflict"
 export type HostedForkPlan = { id: string; intent: HostedForkIntent }
 export type HostedForkQuery = { sourceFullName: string; sourceRepositoryId: string; accountId: string; page: number }
+export type HostedForkRemotePlan = { repositoryPath: string; account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; fork: HostedRepositoryIdentity; forkOwnerId: string; sourceRemote: string; remoteName: string; transport: HostedCloneTransport; url: string; fetchRefspec: string; existingRemoteNames: string[] }
+export type HostedForkRemoteReceipt = { remoteName: string; url: string; sourceRemote: string; fork: HostedRepositoryIdentity }
+export type HostedForkRemoteRequest = { sourceRemote: string; selection: HostedForkSelection; remoteName: string; transport: HostedCloneTransport }
 export type HostedForkRepository = { id: string; fullName: string; ownerId: string; cloneHttps: string | null; cloneSsh: string | null; defaultBranch: string | null }
 export type HostedForkRequest = { sourceFullName: string; sourceRepositoryId: string; accountId: string; destinationOwner: string; name: string; defaultBranchOnly: boolean }
 export type HostedForkSelection = { sourceFullName: string; sourceRepositoryId: string; accountId: string; forkFullName: string; forkRepositoryId: string; forkOwnerId: string }
@@ -190,6 +193,7 @@ export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untrac
 export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
 export type PreparedHostedClone = { token: string; plan: HostedClonePlan }
 export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
+export type PreparedHostedForkRemote = { token: string; plan: HostedForkRemotePlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
@@ -400,6 +404,9 @@ export function reconcile_hosted_fork(args: { id: string; operationId: string })
 export function prepare_hosted_fork_acknowledgement(args: { contextId: string; id: string; operationId: string }): Promise<PreparedForkAcknowledgement> { return TAURI_INVOKE("prepare_hosted_fork_acknowledgement", args); }
 export function execute_hosted_fork_acknowledgement(args: { contextId: string; token: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("execute_hosted_fork_acknowledgement", args); }
 export function discard_hosted_fork_review(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_fork_review", args); }
+export function prepare_hosted_fork_remote(args: { repoId: string; contextId: string; request: HostedForkRemoteRequest; operationId: string }): Promise<PreparedHostedForkRemote> { return TAURI_INVOKE("prepare_hosted_fork_remote", args); }
+export function execute_hosted_fork_remote(args: { repoId: string; contextId: string; token: string; operationId: string }): Promise<HostedForkRemoteReceipt> { return TAURI_INVOKE("execute_hosted_fork_remote", args); }
+export function discard_hosted_fork_remote(args: { repoId: string; contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_fork_remote", args); }
 export function execute_hosted_write(args: { repoId: string; token: string; operationId: string }): Promise<HostedWriteReceipt> { return TAURI_INVOKE("execute_hosted_write", args); }
 export function discard_hosted_write_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_write_plan", args); }
 export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
@@ -598,6 +605,9 @@ export type CommandMap = {
   prepare_hosted_fork_acknowledgement: typeof prepare_hosted_fork_acknowledgement;
   execute_hosted_fork_acknowledgement: typeof execute_hosted_fork_acknowledgement;
   discard_hosted_fork_review: typeof discard_hosted_fork_review;
+  prepare_hosted_fork_remote: typeof prepare_hosted_fork_remote;
+  execute_hosted_fork_remote: typeof execute_hosted_fork_remote;
+  discard_hosted_fork_remote: typeof discard_hosted_fork_remote;
   execute_hosted_write: typeof execute_hosted_write;
   discard_hosted_write_plan: typeof discard_hosted_write_plan;
   prepare_merge_rebase: typeof prepare_merge_rebase;
