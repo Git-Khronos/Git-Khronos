@@ -1447,3 +1447,13 @@ commit object inform the independent reconciliation checks. Durable private
 records, non-replay behavior, local serialization and archive recovery are
 project designs. All response fixtures and code are original. No vendor package
 internals, copied examples, external code, assets or dependencies were introduced.
+
+### Reviewed desktop catalogue and clone
+
+The same official repository API and Git clone manual define the independent
+desktop handoff: bounded account-visible pages, fresh repository metadata, a
+selected SSH/HTTPS URL, explicit local destination and branch/history/submodule
+options. Native review tokens, cancellation handling and the original interface
+are project designs. No external implementation or assets were reused, and no
+dependency was added. Behavioral evidence uses owned API responses and local
+Git repositories; live provider writes are outside this checkpoint.

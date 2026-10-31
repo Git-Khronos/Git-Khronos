@@ -90,6 +90,9 @@ export type HistoryQuery = { message?: string; author?: string; oid?: string; si
 scope?: string }
 export type HistorySearchPage = { entries: FileHistoryEntry[]; cursor: HistoryCursor | null; complete: boolean; scanned: number }
 export type HostedAccount = { host: string; id: string; login: string }
+export type HostedClonePlan = { account: HostedAccount; repository: HostedRepositoryIdentity; transport: HostedCloneTransport; url: string; parentPath: string; folder: string; destination: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
+export type HostedCloneRequest = { fullName: string; repositoryId: string; accountId: string; transport: HostedCloneTransport; parentPath: string; folder: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
+export type HostedCloneTransport = "https" | "ssh"
 export type HostedEntry = { number: string; title: string; state: string; author: string; url: string; branch: string; commitOid: string; body: string }
 export type HostedForkInspection = { account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; repository: HostedRepository }
 export type HostedForkIntent = { account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; destination: HostedForkOwner; name: string; defaultBranchOnly: boolean; forkingAllowed: boolean | null }
@@ -105,7 +108,14 @@ export type HostedForkSelection = { sourceFullName: string; sourceRepositoryId: 
 export type HostedForkStatus = { id: string; phase: HostedForkPhase; intent: HostedForkIntent; serverReplyReceived: boolean; observedRepositoryId: string | null; repository: HostedForkRepository | null; headOid: string | null; notice: string | null }
 export type HostedMergeMethod = "merge" | "squash" | "rebase"
 export type HostedRepository = { id: string; ownerId: string; owner: string; name: string; fullName: string; url: string; cloneHttps: string | null; cloneSsh: string | null; description: string | null; defaultBranch: string | null; private: boolean | null; archived: boolean | null; disabled: boolean | null; fork: boolean | null; parent: HostedRepositoryIdentity | null; source: HostedRepositoryIdentity | null; canPull: boolean | null; canPush: boolean | null; forkingAllowed: boolean | null }
+export type HostedRepositoryAffiliation = "accessible" | "owned" | "collaborating" | "organizationMember"
+export type HostedRepositoryDirection = "ascending" | "descending"
 export type HostedRepositoryIdentity = { id: string; fullName: string }
+export type HostedRepositoryInspection = { account: HostedAccount; repository: HostedRepository }
+export type HostedRepositoryPage = { account: HostedAccount; query: HostedRepositoryQuery; entries: HostedRepository[]; mayHaveMore: boolean; nextPage: number | null }
+export type HostedRepositoryQuery = { page: number; expectedAccountId: string | null; visibility: HostedRepositoryVisibility; affiliation: HostedRepositoryAffiliation; sort: HostedRepositorySort; direction: HostedRepositoryDirection }
+export type HostedRepositorySort = "fullName" | "updated" | "pushed" | "created"
+export type HostedRepositoryVisibility = "all" | "public" | "private"
 export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean; statusesMayHaveMore: boolean; legacyState: string | null; legacyStatuses: HostedReviewStatus[]; currentReviews: HostedReviewDecision[]; query: HostedReviewQuery; sections: HostedReviewSections; warnings: string[] }
 export type HostedReviewDecision = { name: string; state: string; commitOid: string; submittedAt: string }
 export type HostedReviewEvent = "approve" | "requestChanges" | "comment"
@@ -178,6 +188,7 @@ export type PatchTarget = "worktree" | "index" | "both"
 export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
 export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
+export type PreparedHostedClone = { token: string; plan: HostedClonePlan }
 export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
@@ -373,6 +384,11 @@ export function prepare_branch_workflow(args: { repoId: string; request: BranchW
 export function execute_branch_workflow(args: { repoId: string; token: string; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("execute_branch_workflow", args); }
 export function discard_branch_workflow_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_branch_workflow_plan", args); }
 export function control_branch_workflow_finish(args: { repoId: string; id: string; revision: number; control: BranchWorkflowControl; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("control_branch_workflow_finish", args); }
+export function load_hosted_repositories(args: { query: HostedRepositoryQuery; operationId: string }): Promise<HostedRepositoryPage> { return TAURI_INVOKE("load_hosted_repositories", args); }
+export function inspect_hosted_repository(args: { fullName: string; repositoryId: string; accountId: string; operationId: string }): Promise<HostedRepositoryInspection> { return TAURI_INVOKE("inspect_hosted_repository", args); }
+export function prepare_hosted_clone(args: { contextId: string; request: HostedCloneRequest; operationId: string }): Promise<PreparedHostedClone> { return TAURI_INVOKE("prepare_hosted_clone", args); }
+export function execute_hosted_clone(args: { contextId: string; token: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_hosted_clone", args); }
+export function discard_hosted_clone_plan(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_clone_plan", args); }
 export function prepare_hosted_write(args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }): Promise<PreparedHostedWrite> { return TAURI_INVOKE("prepare_hosted_write", args); }
 export function load_hosted_forks(args: { query: HostedForkQuery; operationId: string }): Promise<HostedForkPage> { return TAURI_INVOKE("load_hosted_forks", args); }
 export function inspect_hosted_fork(args: { selection: HostedForkSelection; operationId: string }): Promise<HostedForkInspection> { return TAURI_INVOKE("inspect_hosted_fork", args); }
@@ -566,6 +582,11 @@ export type CommandMap = {
   execute_branch_workflow: typeof execute_branch_workflow;
   discard_branch_workflow_plan: typeof discard_branch_workflow_plan;
   control_branch_workflow_finish: typeof control_branch_workflow_finish;
+  load_hosted_repositories: typeof load_hosted_repositories;
+  inspect_hosted_repository: typeof inspect_hosted_repository;
+  prepare_hosted_clone: typeof prepare_hosted_clone;
+  execute_hosted_clone: typeof execute_hosted_clone;
+  discard_hosted_clone_plan: typeof discard_hosted_clone_plan;
   prepare_hosted_write: typeof prepare_hosted_write;
   load_hosted_forks: typeof load_hosted_forks;
   inspect_hosted_fork: typeof inspect_hosted_fork;

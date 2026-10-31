@@ -1,3 +1,4 @@
+import { HostedRepositoryBrowserComponent } from './hosted-repository-browser.component';
 import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GitKhronosService } from './git-khronos.service';
@@ -24,19 +25,19 @@ class RepositoryFormDrafts {
 /** Loaded on demand so repository management stays out of the startup bundle. */
 @Component({
   selector: 'gc-repository-dialog',
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, HostedRepositoryBrowserComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-  <div class="repository-backdrop" (click)="closed.emit()">
+  <div class="repository-backdrop" (click)="close()">
     <section #dialog class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
       <header class="repository-dialog-header">
         <span class="brand-mark mini">GC</span><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
-        <button type="button" aria-label="Close repository management" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button>
+        <button type="button" aria-label="Close repository management" (click)="close()"><gc-icon name="x" [size]="14" /></button>
       </header>
       <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleTabKey($event)">
-        <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="mode.set('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button>
-        <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="mode.set('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
-        <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="mode.set('init')"><gc-icon name="repo" [size]="13" />Initialize</button>
+        <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button>
+        <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="setMode('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
+        <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="setMode('init')"><gc-icon name="repo" [size]="13" />Initialize</button>
       </nav>
       @if (mode() === 'manager') {
         <div id="repository-dialog-panel" class="repository-manager-body" role="tabpanel" aria-labelledby="repository-tab-manager">
@@ -66,6 +67,8 @@ class RepositoryFormDrafts {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-clone" (submit)="$event.preventDefault(); submitClone()">
           <div class="repository-form-body">
             <div class="form-intro"><span><gc-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
+            <button type="button" [disabled]="git.busy()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button>
+            @if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gc-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
             <label>Repository URL<input name="cloneRemote" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="form.cloneRemote()" (ngModelChange)="updateCloneRemote($event)" /></label>
             <label>Where to clone<div class="path-picker"><input name="cloneParent" readonly placeholder="Choose a destination folder" [ngModel]="form.cloneParentPath()" /><button type="button" (click)="chooseCloneParent()">Browse</button></div></label>
             <label>Folder name<input name="cloneFolder" autocomplete="off" placeholder="repository" [ngModel]="form.cloneFolder()" (ngModelChange)="form.cloneFolder.set($event)" /></label>
@@ -78,8 +81,11 @@ class RepositoryFormDrafts {
               @if (form.shallowClone()) { <div class="inline-options"><label>Branch<input name="cloneBranch" placeholder="Default branch" [ngModel]="form.cloneBranch()" (ngModelChange)="form.cloneBranch.set($event)" /></label><label>Depth<input type="number" name="cloneDepth" min="1" [ngModel]="form.cloneDepth()" (ngModelChange)="form.cloneDepth.set($event)" /></label></div> }
               <label class="option-row"><input type="checkbox" name="recurseSubmodules" [ngModel]="form.recurseSubmodules()" (ngModelChange)="form.recurseSubmodules.set($event)" /><span><strong>Include submodules</strong><small>Also clone every submodule, including nested ones, and keep submodules added later active{{ form.shallowClone() ? '. Submodule history is not shortened' : '' }}</small></span></label>
             </fieldset>
+            }
           </div>
-          <footer><small class="form-readiness" [class.ready]="cloneReady()">{{ cloneReadiness() }}</small><button type="button" (click)="closed.emit()">Cancel</button><button class="primary" type="submit" [disabled]="!cloneReady() || git.busy()">Clone repository</button></footer>
+          @if (!hostedMode()) {
+          <footer><small class="form-readiness" [class.ready]="cloneReady()">{{ cloneReadiness() }}</small><button type="button" (click)="close()">Cancel</button><button class="primary" type="submit" [disabled]="!cloneReady() || git.busy()">Clone repository</button></footer>
+          }
         </form>
       } @else {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-init" (submit)="$event.preventDefault(); submitInit()">
@@ -93,7 +99,7 @@ class RepositoryFormDrafts {
             <label>Initial branch<input name="initBranch" autocomplete="off" placeholder="main" [ngModel]="form.initBranch()" (ngModelChange)="form.initBranch.set($event)" /></label>
             <label class="option-row"><input type="checkbox" name="initReadme" [ngModel]="form.initReadme()" (ngModelChange)="form.initReadme.set($event)" /><span><strong>Add README.md</strong><small>Create a starter README in the working tree</small></span></label>
           </div>
-          <footer><small class="form-readiness" [class.ready]="initReady()">{{ initReadiness() }}</small><button type="button" (click)="closed.emit()">Cancel</button><button class="primary" type="submit" [disabled]="!initReady() || git.busy()">Create repository</button></footer>
+          <footer><small class="form-readiness" [class.ready]="initReady()">{{ initReadiness() }}</small><button type="button" (click)="close()">Cancel</button><button class="primary" type="submit" [disabled]="!initReady() || git.busy()">Create repository</button></footer>
         </form>
       }
     </section>
@@ -103,6 +109,9 @@ class RepositoryFormDrafts {
 export class RepositoryDialogComponent {
   protected readonly git = inject(GitKhronosService);
   protected readonly form = inject(RepositoryFormDrafts);
+  protected readonly hostedMode = signal(false);
+  private readonly hostedGeneration = signal(0);
+  protected readonly hostedViews = computed(() => this.hostedMode() ? [this.hostedGeneration()] : []);
   protected readonly repositoryQuery = signal('');
   protected readonly repositoryHistoryCount = computed(() => this.git.favoritePaths().length + this.git.unpinnedRecentPaths().length);
   protected readonly filteredFavoritePaths = computed(() => this.filterRepositoryPaths(this.git.favoritePaths()));
@@ -131,6 +140,7 @@ export class RepositoryDialogComponent {
   /** Emitted before a clone or initialization starts, then after it opens a repository. */
   readonly opening = output<void>();
   readonly opened = output<void>();
+  private readonly hostedBrowser = viewChild(HostedRepositoryBrowserComponent);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly managerRepositoryFilter = viewChild<ElementRef<HTMLInputElement>>('managerRepositoryFilter');
 
@@ -142,10 +152,22 @@ export class RepositoryDialogComponent {
     });
   }
 
+  protected close(): void { this.hostedBrowser()?.dismiss(); this.closed.emit(); }
+  protected toggleHostedMode(): void {
+    if (this.hostedMode()) this.hostedBrowser()?.dismiss();
+    else this.hostedGeneration.update(generation => generation + 1);
+    this.hostedMode.set(!this.hostedMode());
+  }
+  protected setMode(mode: RepositoryDialogMode): void {
+    if (mode !== 'clone') this.hostedBrowser()?.dismiss();
+    else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
+    this.mode.set(mode);
+  }
+
   private focusMode(mode: RepositoryDialogMode): void {
     const dialog = this.dialog()?.nativeElement;
     const target = mode === 'clone'
-      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"]')
+      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"], gc-hosted-repository-browser button:not(:disabled)')
       : mode === 'init'
         ? dialog?.querySelector<HTMLElement>('.path-picker button')
         : dialog?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -153,7 +175,7 @@ export class RepositoryDialogComponent {
   }
 
   protected openMode(mode: Exclude<RepositoryDialogMode, 'manager'>): void {
-    this.mode.set(mode);
+    this.setMode(mode);
     window.setTimeout(() => this.focusMode(mode));
   }
 
@@ -188,11 +210,12 @@ export class RepositoryDialogComponent {
     else if (event.key === 'ArrowRight') next = (current + 1) % modes.length;
     else next = (current - 1 + modes.length) % modes.length;
     event.preventDefault();
-    this.mode.set(modes[next]);
+    this.setMode(modes[next]);
     queueMicrotask(() => tabs[next]?.focus());
   }
 
   protected trapFocus(event: KeyboardEvent): void {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return; }
     if (event.key !== 'Tab') return;
     const dialog = event.currentTarget as HTMLElement;
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
@@ -228,6 +251,7 @@ export class RepositoryDialogComponent {
   }
 
   protected async submitClone(): Promise<void> {
+    if (this.hostedMode() || !this.cloneReady() || this.git.busy()) return;
     const form = this.form;
     this.opening.emit();
     const depth = form.shallowClone() ? Math.max(1, Math.floor(Number(form.cloneDepth()) || 1)) : undefined;

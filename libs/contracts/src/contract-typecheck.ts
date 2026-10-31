@@ -49,6 +49,13 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.list_hosted_fork_requests({ operationId: 'owned-read', directory: '/elsewhere' });
   // @ts-expect-error fork IDs must preserve decimal precision across JavaScript
   void ipc.inspect_hosted_fork({ operationId: 'owned-inspect', selection: { sourceFullName: 'team/source', sourceRepositoryId: '101', accountId: '7', forkFullName: 'owned/forked', forkRepositoryId: 9007199254740993, forkOwnerId: '7' } });
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error execution cannot accept a client-replaced URL or plan
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', plan: { url: 'https://elsewhere.test/owned.git' }, operationId: 'owned-clone' });
+  // @ts-expect-error a clone execution must remain bound to its review context
+  void ipc.execute_hosted_clone({ token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error repository IDs must not cross the JavaScript precision boundary as numbers
+  void ipc.inspect_hosted_repository({ fullName: 'team/owned', repositoryId: 9007199254740993, accountId: '7', operationId: 'owned-inspection' });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

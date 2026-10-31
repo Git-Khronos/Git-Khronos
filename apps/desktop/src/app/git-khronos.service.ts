@@ -482,6 +482,14 @@ export class GitKhronosService {
     return !this.error();
   }
 
+  async cloneHostedRepository(contextId: string, token: string, operationId: string): Promise<boolean> {
+    const outcome = await this.run('Cloning reviewed hosted repository…', async report => {
+      const snapshot = await ipc.execute_hosted_clone({ contextId, token, operationId });
+      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
+    }, null, operationId);
+    return outcome === 'success';
+  }
+
   async initializeRepository(
     parentPath: string,
     folder: string,

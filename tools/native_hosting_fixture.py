@@ -7,12 +7,33 @@ import time
 from urllib.parse import parse_qs, unquote, urlsplit
 
 
+def discovery_repository(config):
+    full_name = config["repository"]
+    owner, name = full_name.split("/")
+    return {"id": config.get("repositoryId", 9007199254740993), "full_name": full_name,
+            "name": name, "owner": {"id": 701, "login": owner},
+            "html_url": "https://github.com/" + full_name,
+            "clone_url": "https://github.com/" + full_name + ".git",
+            "ssh_url": "git@github.com:" + full_name + ".git", "description": "Owned discovery fixture",
+            "default_branch": "main", "private": True, "archived": False, "disabled": False,
+            "fork": False, "permissions": {"pull": True, "push": False},
+            "temp_clone_token": "owned-private-field-not-for-renderer"}
+
+
 def response(endpoint, config):
-    if endpoint == "user" and config.get("allowWrites"):
+    if endpoint == "user" and (config.get("allowWrites") or config.get("allowDiscovery")):
         return {"login": acting_account(config), "id": acting_account_id(config)}
     parsed = urlsplit(endpoint)
     prefix = "repos/" + config["repository"]
     source_prefix = "repos/" + config.get("sourceRepository", config["repository"])
+    if config.get("allowDiscovery"):
+        if parsed.path == "user/repos":
+            query = parse_qs(parsed.query)
+            if query.get("per_page") != ["50"] or int(query.get("page", ["0"])[0]) < 1:
+                raise ValueError("Unbounded or invalid owned catalogue page")
+            return [discovery_repository(config)] if query["page"] == ["1"] else []
+        if parsed.path == prefix:
+            return discovery_repository(config)
     if config.get("allowWrites") and parsed.path.startswith(prefix + "/branches/") and unquote(parsed.path[len(prefix + "/branches/"):]) == config.get("baseBranch", "main"):
         return {"name": config.get("baseBranch", "main"), "commit": {"sha": config.get("baseOid", config["oid"])}}
     if config.get("allowWrites") and parsed.path.startswith(source_prefix + "/branches/"):
@@ -105,7 +126,7 @@ def main(argv):
     gate = Path(os.environ["KHRONOS_NATIVE_HOSTING_GATE"])
     config = json.loads((gate / "config.json").read_text())
     if argv == ["auth", "token", "--hostname", "github.com"]:
-        if not config.get("allowWrites"):
+        if not (config.get("allowWrites") or config.get("allowDiscovery")):
             raise ValueError("Fixture authentication is disabled")
         print("owned-token-" + config.get("actor", "owned-author"))
         return

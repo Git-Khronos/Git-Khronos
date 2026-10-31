@@ -2162,3 +2162,45 @@ execution plans, replacement acknowledgement snapshots, arbitrary storage paths
 and numeric repository IDs at the TypeScript boundary. Source qualification does
 not establish the new API's packaged/native runtime behavior or a desktop fork
 workflow. No proprietary implementation or assets were used.
+
+## Reviewed hosted repository clone handoff
+
+The desktop catalogue independently exposes the documented GitHub repository
+reads and existing Git clone capability. Selection is freshly inspected. A
+native-owned plan binds account/repository identities, canonical URL, local
+destination, transport and options; execution accepts a context and single-use
+token, then revalidates these bindings. Provider tokens are excluded from the
+preview and clone URL. Existing Git credential helpers and the SSH agent supply
+transport authentication independently of the catalogue account.
+
+Behavioral fixtures cover account changes, paging, canceled reads, immutable
+reviews, altered destinations, manual-draft retention, keyboard focus and compact
+layouts. Five new packaged cases exercise the real native commands and normal
+desktop controls, including real HTTPS/SSH clones redirected to an owned local
+source with external Git protocols blocked. Git independently verifies clone
+history, branch, shallow state and file contents. No provider write is dispatched.
+
+The exact package passes 166 normal and 167 inherited-environment scenarios; the
+full renderer suite passes all 1279 cases. This qualifies the recorded Linux
+discovery/clone checkpoint. Full H02 acceptance still requires fork creation,
+readiness/uncertain-outcome reconciliation, reviewed remote attachment and further
+provider/account coverage remain required. No proprietary code, package contents,
+assets or visual composition were used.
+
+
+## Independent desktop fork controls and clone handoff
+
+An original panel separates bounded fork candidates, fresh owner/network
+inspection, provider creation review and saved-outcome reconciliation. Choosing
+a verified fork only fills the existing clone review; no clone, fetch, push or
+remote configuration change is implicit. Personal/organization scope and branch
+scope remain explicit, and unresolved outcome retirement uses a distinct server
+review and acknowledgement.
+
+Owned renderer fixtures verify token-only execution, delayed readiness, retained
+uncertainty, canceled/late replies, stale acknowledgement refusal, preserved clone
+behavior and keyboard/compact layouts. Keyed component instances prevent retired
+contexts from surviving coalesced close/reopen or tab transitions. Thirty-two
+focused cases pass; the new packaged/native workflow and local remote attachment
+remain under development. No proprietary code, screenshots as implementation
+specifications, assets, distinctive wording or interface composition were used.
