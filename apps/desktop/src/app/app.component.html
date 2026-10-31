@@ -2366,7 +2366,7 @@
         (closed)="interactiveRebase.set(null)" (selectedChanged)="selectRebaseStep($event)"
         (actionChanged)="setRebaseAction($event.oid, $event.action)" (messageChanged)="updateRebaseMessage($event.oid, $event.message)"
         (dragStarted)="startRebaseStepDrag($event.event, $event.oid)" (dropped)="dropRebaseStep($event.event, $event.oid)"
-        (dragEnded)="draggedRebaseOid.set(null)" (planChanged)="updateRebasePlan($event)"
+        (dragEnded)="draggedRebaseOid.set(null)" (planChanged)="updateRebasePlan($event)" (stepMoved)="moveRebaseStep($event.oid, $event.direction)"
         (destinationChanged)="setRebaseDestination($event)"
         (reset)="resetInteractiveRebase()" (execute)="executeInteractiveRebase()" />
       }

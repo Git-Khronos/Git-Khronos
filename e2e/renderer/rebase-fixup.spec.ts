@@ -310,7 +310,7 @@ test('keyboard row moves preserve selected shortcut target and send the exact re
   await last.press('Alt+ArrowUp');
   await last.press('Alt+ArrowUp');
   await expect(last).toBeFocused();
-  expect(await dialog.locator('.rebase-commit-copy strong').allTextContents()).toEqual(['Last commit', 'First retained', 'Fixup change']);
+  await expect(dialog.locator('.rebase-commit-copy strong')).toHaveText(['Last commit', 'First retained', 'Fixup change']);
   await last.press('e');
   await expect(dialog.getByLabel('Action for Last commit')).toHaveValue('edit');
   await dialog.getByRole('button', { name: 'Reset', exact: true }).click();
@@ -444,4 +444,17 @@ test('late preparation cannot reopen a plan after switching away and back', asyn
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__rebaseCalls
     .some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
+});
+
+
+test('rapid row moves compose against the current plan before a render completes', async ({ page }) => {
+  const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
+  const last = dialog.locator('[data-rebase-oid]').filter({ hasText: 'Last commit' });
+  await last.focus();
+  await last.evaluate(row => {
+    for (let i = 0; i < 3; i++) row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true, cancelable: true }));
+  });
+  await expect(dialog.locator('.rebase-commit-copy strong')).toHaveText(['Last commit', 'First retained', 'Fixup change']);
+  await expect(last).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__rebaseCalls.some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
 });

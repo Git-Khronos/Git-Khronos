@@ -7587,6 +7587,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.mergeRebaseReview.set(null);
   }
   protected readonly rebaseAuthorColor = (name: string, email: string): string => this.authorColor(name, email);
+  protected moveRebaseStep(oid: string, direction: -1 | 1): void {
+    const state = this.interactiveRebase();
+    if (!state || state.repositoryId !== this.git.activeRepositoryId() || this.git.busy()) return;
+    const index = state.steps.findIndex(step => step.oid === oid);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= state.steps.length) return;
+    const steps = [...state.steps];
+    [steps[index], steps[destination]] = [steps[destination], steps[index]];
+    this.interactiveRebase.set({ ...state, steps });
+    this.selectedRebaseOid.set(oid);
+  }
+
   protected updateRebasePlan(steps: RebaseStepView[]): void {
     const state = this.interactiveRebase();
     if (state) this.interactiveRebase.set({ ...state, steps });

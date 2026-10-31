@@ -111,11 +111,11 @@ implemented in-app capability.
 | --- | --- | --- |
 | U01 | Provide keyboard-driven command discovery, configurable shortcuts and equivalent Git actions from appropriate contexts | Audit current palette/context menus; shortcut configurability needs discovery |
 | U02 | Support documented drag/drop Git workflows with equivalent explicit previews and keyboard alternatives | Audit graph drag operations; enumerate any missing actions |
-| U03 | Preserve original identity while supporting themes, scaling, compact layouts, accessibility and large data | Audit all layouts/platform fonts; font regressions fixed in 053d6c0d and production CSS budget restored in af540abb; full remote verification pending |
+| U03 | Preserve original identity while supporting themes, scaling, compact layouts, accessibility and large data | Audit all layouts and platforms; fallback-font layout and rapid rebase input fixes passed 1251 local renderer cases and 306 native scenario executions on package `05c1a4c1cd85`; remote verification remains pending |
 | U04 | Persist preferences/drafts/view state and restore context across restarts without replaying mutations | Audit local state and multiple sessions/workspaces |
 | U05 | Provide native Linux, Windows and macOS behavior plus documented Windows/WSL interoperability | Linux is qualified for prior exact artifacts; Windows/macOS/WSL remain unqualified |
 | U06 | Package/install/update/uninstall with accurate licenses, notices and dependency provenance | Audit current package bytes, supported formats and platforms |
-| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: hosted-write commit `be1b7a76` passed 1247 local renderer cases and 305 native scenarios on Linux package `9a5a8c0badec`; remote CI and other platforms remain unverified |
+| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: Linux package `05c1a4c1cd85` passed all 1251 renderer cases, 152 normal native scenarios and 154 inherited-environment scenarios, including real rebase keyboard input; remote CI and other platforms remain unverified |
 | U08 | Handle cancellation, stale state, partial results and uncertain remote writes without reporting false success | Audit every new operation; extend failure fixtures with each implementation |
 
 ## Public discovery references

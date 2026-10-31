@@ -10,10 +10,15 @@ for (const family of ['Arial', 'DejaVu Sans', 'Liberation Sans']) {
       const zoom = page.getByLabel('Interface zoom controls', { exact: true });
       await expect.poll(async () => {
         const zoomBox = await zoom.boundingBox();
-        const version = page.locator('.status-version');
-        if (!await version.isVisible()) return true;
-        const box = await version.boundingBox();
-        return !!box && !!zoomBox && box.x + box.width <= zoomBox.x - 8;
+        if (!zoomBox) return false;
+        for (const selector of ['.status-branch', '.status-sync', '.status-changes', '.activity-status', '.status-version']) {
+          for (const item of await page.locator(selector).all()) {
+            if (!await item.isVisible()) continue;
+            const box = await item.boundingBox();
+            if (!box || box.x + box.width > zoomBox.x - 8) return false;
+          }
+        }
+        return true;
       }).toBe(true);
       if (width === 700) {
         const remote = page.locator('.remote-nav-button strong');
@@ -21,6 +26,8 @@ for (const family of ['Arial', 'DejaVu Sans', 'Liberation Sans']) {
       }
     }
     await page.setViewportSize({ width: 1440, height: 900 });
+    const subject = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .subject');
+    expect(await subject.evaluate(element => element.scrollWidth <= element.clientWidth), `${family}: sample subject must remain readable`).toBe(true);
     const description = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .commit-description');
     expect(await description.evaluate(element => {
       const copy = element.parentElement!;

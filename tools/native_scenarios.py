@@ -2130,7 +2130,47 @@ def hosted_reviewed_writes(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
+def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
+    """Real packaged plan, WebDriver keyboard input and independent Git oracle."""
+    repository = fixtures.repository("rebase-row-keyboard-preview", 4)
+    original_order = fixtures.git(repository, "rev-list", "--reverse", "HEAD").splitlines()
+    expected = [original_order[-1], *original_order[:-1]]
+    refs = fixtures.git(repository, "show-ref")
+    index = (repository / ".git/index").read_bytes()
+    contents = (repository / "fixture.txt").read_bytes()
+    try:
+        open_ui(driver, repository)
+        driver.script("document.querySelector(arguments[0]).focus()", '[aria-label="Local branch main, current"]')
+        driver.click_visible('[aria-label="Branch actions for main"]')
+        driver.click_text('.context-menu [role="menuitem"]', 'Edit entire history, including root…')
+        driver.wait("return document.querySelectorAll('.interactive-rebase [data-rebase-oid]').length === 4")
+        selector = f'.interactive-rebase [data-rebase-oid="{original_order[-1]}"]'
+        driver.script("document.querySelector(arguments[0]).focus()", selector)
+        driver.request("POST", driver.path("actions"), {"actions": [{
+            "type": "key", "id": "native-rebase-row-keyboard", "actions": [
+                {"type": "keyDown", "value": "\ue00a"},
+                *[{"type": action, "value": "\ue013"}
+                  for _ in range(3) for action in ("keyDown", "keyUp")],
+                {"type": "keyUp", "value": "\ue00a"},
+            ],
+        }]})
+        driver.wait(f"return JSON.stringify([...document.querySelectorAll('.interactive-rebase [data-rebase-oid]')].map(row => row.dataset.rebaseOid)) === JSON.stringify({json.dumps(expected)})")
+        assert driver.script("return document.activeElement === document.querySelector(arguments[0])", selector)
+        driver.screenshot(Path(report["artifactsDirectory"]) / "rebase-row-keyboard-preview.png")
+        driver.click('.interactive-rebase [data-rebase-close]')
+        driver.wait("return !document.querySelector('.interactive-rebase')")
+        assert fixtures.git(repository, "show-ref") == refs
+        assert (repository / ".git/index").read_bytes() == index
+        assert (repository / "fixture.txt").read_bytes() == contents
+        assert fixtures.git(repository, "rev-list", "--reverse", "HEAD").splitlines() == original_order
+        assert not (repository / ".git/rebase-merge").exists()
+        report["scenarios"].append("native-ui-rebase-rapid-keyboard-moves-compose-and-cancel-without-git-mutation")
+    finally:
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    rebase_row_keyboard_preview(driver, fixtures, repository, report)
     hosted_paging_and_decisions(driver, fixtures, repository, report)
     hosted_reviewed_writes(driver, fixtures, repository, report)
     workspace_center_workflows(driver, fixtures, repository, report)

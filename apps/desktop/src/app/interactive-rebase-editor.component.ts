@@ -49,30 +49,30 @@ export class InteractiveRebaseEditorComponent {
   readonly reset = output<void>();
   readonly execute = output<void>();
   readonly planChanged = output<RebaseStepView[]>();
+  readonly stepMoved = output<{ oid: string; direction: -1 | 1 }>();
   readonly destinationChanged = output<string>();
   protected readonly autosquashError = signal<string | null>(null);
   protected readonly autosquashNotice = signal<string | null>(null);
   protected readonly reorderNotice = signal<string | null>(null);
 
   protected moveStep(oid: string, direction: -1 | 1): void {
-    const steps = this.state().steps;
-    const index = steps.findIndex(step => step.oid === oid);
-    const destination = index + direction;
-    if (index < 0 || destination < 0 || destination >= steps.length) return;
-    const reordered = [...steps];
-    [reordered[index], reordered[destination]] = [reordered[destination], reordered[index]];
+    if (!this.state().steps.some(step => step.oid === oid)) return;
     this.selectedChanged.emit(oid);
-    this.planChanged.emit(reordered);
+    // The parent owns the current plan. Emitting an intent avoids losing rapid
+    // moves when this input still describes the preceding rendered frame.
+    this.stepMoved.emit({ oid, direction });
     afterNextRender(() => {
-      if (this.selected() === oid) {
-        const row = this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-rebase-oid="${oid}"]`);
-        row?.focus({ preventScroll: true });
-        row?.scrollIntoView({ block: 'nearest' });
-      }
+      if (this.selected() !== oid) return;
+      const steps = this.state().steps;
+      const index = steps.findIndex(step => step.oid === oid);
+      if (index < 0) return;
+      const row = this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-rebase-oid="${oid}"]`);
+      row?.focus({ preventScroll: true });
+      row?.scrollIntoView({ block: 'nearest' });
+      this.reorderNotice.set(`Moved ${steps[index].subject} to position ${index + 1} of ${steps.length}. Review the order before Start Rebase.`);
     }, { injector: this.injector });
     this.autosquashNotice.set(null);
     this.autosquashError.set(null);
-    this.reorderNotice.set(`Moved ${steps[index].subject} to position ${destination + 1} of ${steps.length}. Review the order before Start Rebase.`);
   }
 
   protected autosquash(): void {

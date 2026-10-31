@@ -1902,7 +1902,7 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
   .status-separator, .status-version { display: none; }
 }
 @media (max-width: 420px) {
-  .statusbar { gap: 4px; }
+  .statusbar { gap: 2px; }
   .status-spacer { display: none; }
   .status-changes em { display: none; }
   .zoom-label { display: none; }

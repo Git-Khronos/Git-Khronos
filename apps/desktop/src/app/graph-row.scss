@@ -74,7 +74,7 @@
 .subject { max-width: 82%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-body); font-weight: 650; }
 .subject:only-child { max-width: 100%; }
 .commit-description { min-width: 0; flex: 1 0 calc(18% - 7px); overflow: hidden; color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
-@container commit-message (max-width: 250px) {
+@container commit-message (max-width: 320px) {
   .commit-copy { height: 100%; display: grid; align-content: center; gap: 1px; }
   .subject { max-width: 100%; line-height: 1.08; }
   .wip-message-field { width: 100%; max-width: 100%; }
