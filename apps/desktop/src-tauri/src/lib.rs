@@ -90,6 +90,7 @@ use tauri_specta::Event;
 
 mod authentication;
 mod recovery_commands;
+mod hosting_commands;
 
 #[derive(Default)]
 struct AppState {
@@ -98,6 +99,7 @@ struct AppState {
     discard_recoveries: Mutex<HashMap<String, DiscardRecovery>>,
     discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
+    hosted_write_plans: Mutex<HashMap<String, hosting_commands::CachedPlan>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     terminals: Mutex<HashMap<String, TerminalSession>>,
     next_id: AtomicU64,
@@ -3428,6 +3430,9 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             preview_merge,
             load_hosting_page,
             load_hosted_review,
+            hosting_commands::prepare_hosted_write,
+            hosting_commands::execute_hosted_write,
+            hosting_commands::discard_hosted_write_plan,
             prepare_merge_rebase,
             execute_merge_rebase,
             export_diff_patch,

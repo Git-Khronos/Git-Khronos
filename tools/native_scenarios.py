@@ -1969,8 +1969,170 @@ def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
+def hosted_reviewed_writes(driver, fixtures, original_repository, report):
+    repository = fixtures.repository("hosted-reviewed-writes", commits=2)
+    fixtures.git(repository, "branch", "feature")
+    fixtures.git(repository, "remote", "add", "origin", "https://github.com/owned-fixture/native-repo.git")
+    fixtures.git(repository, "remote", "add", "fork", "git@github.com:owned-fixture/native-fork.git")
+    head = fixtures.git(repository, "rev-parse", "HEAD")
+    base = fixtures.git(repository, "rev-parse", "HEAD~1")
+    before_refs = fixtures.git(repository, "show-ref")
+    before_index = (repository / ".git/index").read_bytes()
+    before_files = (repository / "fixture.txt").read_bytes()
+    gate = fixtures.hosting_gate
+    config_path = gate / "config.json"
+    original_config = config_path.read_bytes()
+    config = {"repository": "owned-fixture/native-repo", "sourceRepository": "owned-fixture/native-fork",
+              "oid": head, "baseOid": base, "headBranch": "feature", "baseBranch": "main",
+              "actor": "owned-author", "allowWrites": True}
+    config_path.write_text(json.dumps(config))
+    state_path = gate / "write-state.json"
+    def prepare(request):
+        return driver.invoke("prepare_hosted_write", repoId=repo_id, remote="origin", request=request, operationId=str(uuid.uuid4()))
+    def execute(preview):
+        return driver.invoke("execute_hosted_write", repoId=repo_id, token=preview["token"], operationId=str(uuid.uuid4()))
+    def refuses(preview, kind):
+        try:
+            execute(preview)
+        except RuntimeError as error:
+            assert kind in str(error), error
+            assert "private diagnostic" not in str(error) and "owned-token-" not in str(error)
+        else:
+            raise AssertionError("Owned hosted submission unexpectedly succeeded")
+    request = {"kind": "createPull", "headRemote": "fork", "headBranch": "feature", "baseBranch": "main",
+               "title": "Owned native fork request", "body": "Original native body\nSecond line", "draft": True}
+    try:
+        repo_id = open_ui(driver, repository)
+        preview = prepare(request)
+        assert preview["plan"]["actor"] == "owned-author" and preview["plan"]["headOid"] == head
+        assert preview["plan"]["baseOid"] == base and preview["plan"]["sourceRepository"] == config["sourceRepository"]
+        config["flipActorAfterBaseRead"] = True
+        config_path.write_text(json.dumps(config))
+        receipt = execute(preview)
+        assert receipt["number"] == 100 and receipt["actor"] == "owned-author" and receipt["commitOid"] == head
+        assert json.loads(config_path.read_text())["actor"] == "owned-other-account"
+        assert json.loads(state_path.read_text())["created"][0]["user"]["login"] == "owned-author"
+        refuses(preview, "staleHostedWritePlan")
+        assert len(json.loads(state_path.read_text())["created"]) == 1
+        report["scenarios"].append("native-hosted-fork-creation-pins-account-and-consumes-preview-once")
+        config.pop("flipActorAfterBaseRead", None)
+        config["actor"] = "owned-author"
+        config_path.write_text(json.dumps(config))
+        preview = prepare(request)
+        config["actor"] = "owned-other-account"
+        config_path.write_text(json.dumps(config))
+        refuses(preview, "hostingWriteRefused")
+        assert len(json.loads(state_path.read_text())["created"]) == 1
+        report["scenarios"].append("native-hosted-account-change-refuses-submission")
+        config["actor"] = "owned-author"
+        config_path.write_text(json.dumps(config))
+        preview = prepare(request)
+        config["actorIds"] = {"owned-author": 777}
+        config_path.write_text(json.dumps(config))
+        refuses(preview, "hostingWriteRefused")
+        assert len(json.loads(state_path.read_text())["created"]) == 1
+        report["scenarios"].append("native-hosted-same-login-different-account-id-refuses-submission")
+        config.pop("actorIds")
+        config["actor"] = "owned-other-account"
+        config_path.write_text(json.dumps(config))
+        for event in ("approve", "requestChanges", "comment"):
+            preview = prepare({"kind": "review", "number": 1, "expectedHeadOid": head, "event": event, "body": "" if event == "approve" else "Original native review " + event})
+            receipt = execute(preview)
+            assert receipt["commitOid"] == head and receipt["actor"] == "owned-other-account"
+        assert [item["state"] for item in json.loads(state_path.read_text())["reviews"]] == ["APPROVED", "CHANGES_REQUESTED", "COMMENTED"]
+        report["scenarios"].append("native-hosted-all-submitted-review-events-target-captured-head")
+        preview = prepare({"kind": "review", "number": 1, "expectedHeadOid": head, "event": "comment", "body": "Applied with lost reply"})
+        config["uncertainAfterWrite"] = True
+        config_path.write_text(json.dumps(config))
+        refuses(preview, "hostingWriteUncertain")
+        refuses(preview, "staleHostedWritePlan")
+        assert len(json.loads(state_path.read_text())["reviews"]) == 4
+        report["scenarios"].append("native-hosted-applied-write-with-lost-reply-cannot-replay")
+        config.pop("uncertainAfterWrite")
+        config["denyBeforeWrite"] = True
+        config_path.write_text(json.dumps(config))
+        preview = prepare({"kind": "review", "number": 1, "expectedHeadOid": head, "event": "comment", "body": "Refused provider write"})
+        refuses(preview, "hostingWriteUncertain")
+        refuses(preview, "staleHostedWritePlan")
+        assert len(json.loads(state_path.read_text())["reviews"]) == 4
+        report["scenarios"].append("native-hosted-provider-write-refusal-never-reports-success-or-replays")
+        config.pop("denyBeforeWrite")
+        config["holdWritesOnly"] = True
+        config_path.write_text(json.dumps(config))
+        preview = prepare({"kind": "review", "number": 1, "expectedHeadOid": head, "event": "comment", "body": "Held native write"})
+        hold = gate / "hold"
+        hold.touch()
+        operation = str(uuid.uuid4())
+        try:
+            driver.script("""
+              window.__ownedHostedWriteWait = {done: false};
+              window.__TAURI_INTERNALS__.invoke('execute_hosted_write', arguments[0]).then(
+                value => { window.__ownedHostedWriteWait = {done:true,value}; },
+                error => { window.__ownedHostedWriteWait = {done:true,error}; });
+            """, dict(repoId=repo_id, token=preview["token"], operationId=operation))
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                last = json.loads((gate / "requests.jsonl").read_text().splitlines()[-1])
+                if last["method"] == "POST" and last.get("payload", {}).get("body") == "Held native write":
+                    break
+                time.sleep(0.01)
+            assert last["method"] == "POST" and last["payload"]["body"] == "Held native write"
+            pid = last["pid"]
+            assert b"native_hosting_fixture.py" in Path(f"/proc/{pid}/cmdline").read_bytes()
+            before = time.monotonic()
+            driver.invoke("refresh_repository_status", repoId=repo_id)
+            assert time.monotonic() - before < 2 and hold.exists(), "Hosted write blocked unrelated native status controls"
+            assert driver.invoke("cancel_git_operation", operationId=operation) is True
+            driver.wait("return window.__ownedHostedWriteWait?.done", 3)
+            assert driver.script("return window.__ownedHostedWriteWait.error.kind") == "hostingWriteUncertain"
+            assert not Path(f"/proc/{pid}").exists()
+            assert len(json.loads(state_path.read_text())["reviews"]) == 4
+        finally:
+            hold.unlink(missing_ok=True)
+        report["scenarios"].append("native-hosted-write-wait-cancellation-is-unknown-and-controls-stay-responsive")
+        config.pop("holdWritesOnly")
+        config_path.write_text(json.dumps(config))
+        driver.click('.workspace-toggle')
+        driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
+        driver.wait("return !!document.querySelector('gc-hosting-panel #hosting-remote')")
+        driver.click_text('gc-hosting-panel button', 'Create pull request')
+        driver.wait("return !!document.querySelector('#hosted-head-remote')")
+        for selector, value, event in [("#hosted-head-remote", "fork", "change"), ("#hosted-head-branch", "feature", "input"),
+                                       ("#hosted-base-branch", "main", "input"), ("#hosted-write-title", "Owned native UI request", "input"),
+                                       ("#hosted-write-body", "Original UI body", "input")]:
+            driver.script("const field=document.querySelector(arguments[0]); field.value=arguments[1]; field.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
+        driver.click_text('gc-hosted-write-panel button', 'Prepare submission preview')
+        driver.wait("return !!document.querySelector('gc-hosted-write-panel [data-write-preview]')")
+        assert driver.script("return document.querySelector('gc-hosted-write-panel').textContent.includes('owned-other-account')")
+        driver.screenshot(Path(report["artifactsDirectory"]) / "hosted-submission-preview.png")
+        driver.click_text('gc-hosted-write-panel button', 'Create draft pull request')
+        driver.wait("return !!document.querySelector('gc-hosted-write-panel [data-write-receipt]')")
+        created = json.loads(state_path.read_text())["created"]
+        assert len(created) == 2 and created[-1]["title"] == "Owned native UI request"
+        driver.click_text('gc-hosted-write-panel button', 'Close submission')
+        driver.click_text('gc-workspace-center header button', 'Close')
+        report["scenarios"].append("native-hosted-draft-creation-ui-previews-and-confirms-provider-receipt")
+        preview = prepare({"kind": "merge", "number": 1, "expectedHeadOid": head, "method": "squash", "title": "Owned merge", "body": "Original merge body"})
+        receipt = execute(preview)
+        assert receipt["commitOid"] == "c" * 40
+        assert json.loads(state_path.read_text())["merges"] == [{"sha": head, "merge_method": "squash", "commit_title": "Owned merge", "commit_message": "Original merge body"}]
+        assert fixtures.git(repository, "show-ref") == before_refs
+        assert (repository / ".git/index").read_bytes() == before_index
+        assert (repository / "fixture.txt").read_bytes() == before_files
+        assert "owned-token-" not in (gate / "requests.jsonl").read_text()
+        report["scenarios"].append("native-hosted-squash-merge-receipt-and-local-git-state-preserved")
+    finally:
+        (gate / "hold").unlink(missing_ok=True)
+        config_path.write_bytes(original_config)
+        driver.script("document.querySelector('gc-workspace-center header button')?.click()")
+        fixtures.git(repository, "remote", "remove", "origin")
+        fixtures.git(repository, "remote", "remove", "fork")
+        open_ui(driver, original_repository)
+
+
 def full_toolkit(driver, fixtures, repository, repo_id, report):
     hosted_paging_and_decisions(driver, fixtures, repository, report)
+    hosted_reviewed_writes(driver, fixtures, repository, report)
     workspace_center_workflows(driver, fixtures, repository, report)
     committed_merge_preview(driver, fixtures, repository, report)
     shared_parent_avatar_attachments(driver, fixtures, repository, report)

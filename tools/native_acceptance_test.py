@@ -39,6 +39,53 @@ class FixtureTests(unittest.TestCase):
             self.assertNotEqual(refused.returncode, 0)
 
 
+    def test_owned_hosting_writes_require_opt_in_and_never_forward_foreign_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            environment = fixtures.env | fixtures.hosting_environment()
+            config_path = fixtures.hosting_gate / "config.json"
+            config = json.loads(config_path.read_text()) | {"allowWrites": True, "actor": "owned-config-account"}
+            config_path.write_text(json.dumps(config))
+            executable = str(Path(directory) / "hosting-bin/gh")
+            environment["GH_TOKEN"] = "owned-token-pinned-account"
+            def request(method, endpoint, payload=None):
+                command = [executable, "api", "--hostname", "github.com", "--method", method,
+                           "-H", "Accept: application/vnd.github+json", endpoint]
+                if payload is not None:
+                    command += ["--input", "-"]
+                return subprocess.run(command, env=environment, input=None if payload is None else json.dumps(payload).encode(), capture_output=True)
+            user = request("GET", "user")
+            self.assertEqual(json.loads(user.stdout)["login"], "pinned-account")
+            payload = {"head": "owned-fixture:feature", "head_repo": "native-repo", "base": "main",
+                       "title": "Owned title", "body": "Owned body", "draft": True}
+            created = request("POST", "repos/owned-fixture/native-repo/pulls", payload)
+            self.assertEqual(created.returncode, 0, created.stderr)
+            self.assertEqual(json.loads(created.stdout)["user"]["login"], "pinned-account")
+            state_path = fixtures.hosting_gate / "write-state.json"
+            before = state_path.read_bytes()
+            for method, endpoint in [("POST", "repos/foreign/repository/pulls"),
+                                     ("POST", "https://api.github.com/repos/owned-fixture/native-repo/pulls"),
+                                     ("DELETE", "repos/owned-fixture/native-repo/pulls/1"),
+                                     ("PUT", "repos/owned-fixture/native-repo/issues/1")]:
+                refused = request(method, endpoint, payload)
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertEqual(state_path.read_bytes(), before)
+            config["uncertainAfterWrite"] = True
+            config_path.write_text(json.dumps(config))
+            unknown = request("POST", "repos/owned-fixture/native-repo/pulls/1/reviews",
+                              {"commit_id": config["oid"], "event": "COMMENT", "body": "Applied despite lost reply"})
+            self.assertNotEqual(unknown.returncode, 0)
+            self.assertEqual(len(json.loads(state_path.read_text())["reviews"]), 1)
+            config.pop("uncertainAfterWrite")
+            config["denyBeforeWrite"] = True
+            config_path.write_text(json.dumps(config))
+            before = state_path.read_bytes()
+            denied = request("POST", "repos/owned-fixture/native-repo/pulls/1/reviews",
+                             {"commit_id": config["oid"], "event": "COMMENT", "body": "Denied before application"})
+            self.assertNotEqual(denied.returncode, 0)
+            self.assertEqual(state_path.read_bytes(), before)
+            self.assertNotIn("owned-token-", (fixtures.hosting_gate / "requests.jsonl").read_text())
+
     @unittest.skipUnless(hasattr(os, "getpgrp"), "requires Unix process groups")
     def test_group_shutdown_never_signals_the_test_runners_group(self):
         with patch("native_acceptance.os.killpg") as sent:

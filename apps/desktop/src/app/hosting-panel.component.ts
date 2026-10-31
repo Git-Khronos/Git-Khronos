@@ -1,11 +1,12 @@
 import { HostedPagerComponent } from './hosted-pager.component';
+import { HostedWritePanelComponent, type HostedWriteIntent } from './hosted-write-panel.component';
 import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { ipc, type HostedEntry, type HostedReview, type HostingPage, type HostingSection, type HostingState, type HostedReviewQuery } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
   selector: 'gc-hosting-panel',
-  imports: [HostedPagerComponent],
+  imports: [HostedPagerComponent, HostedWritePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h3>Reviews, issues and workflows</h3>
@@ -15,9 +16,11 @@ import { GitKhronosService } from './git-khronos.service';
     </select></div><div class="field"><label for="hosting-section">Hosted section</label><select id="hosting-section" [value]="section()" [disabled]="busy()" (change)="section.set($any($event.target).value)"><option value="pullRequests">Pull requests</option><option value="issues">Issues</option><option value="workflows">Recent workflow runs</option></select></div>
       @if (section() !== 'workflows') { <div class="field"><label for="hosting-state">Record state</label><select id="hosting-state" [value]="state()" [disabled]="busy()" (change)="state.set($any($event.target).value)"><option value="open">Open</option><option value="closed">Closed</option><option value="all">All</option></select></div> }
       <button type="button" [disabled]="!remote() || busy() || git.busy() || git.browserPreview()" (click)="load()">Load from GitHub</button>
+      <button type="button" [disabled]="!remote() || busy() || git.busy() || git.browserPreview()" (click)="openWrite('createPull')">Create pull request</button>
       @if (busy()) { <button type="button" [disabled]="cancelling()" (click)="cancel()">Cancel hosted request</button> }
     </div>
     <p>Repository: {{ git.repository()?.path ?? 'No repository selected' }}</p>
+    @if (writeIntent(); as intent) { <gc-hosted-write-panel [remote]="remote()" [intent]="intent" (dismiss)="closeWrite()" (submitted)="invalidateHostedSnapshot()" (unconfirmed)="invalidateHostedSnapshot()" /> }
     @if (!remotes().length) { <p>Select a repository with a github.com fetch remote. Other hosting providers remain accessible through repository browser links.</p> }
     @if (error()) { <p role="alert">{{ error() }}</p> }
     @if (busy()) { <p role="status">Loading hosted data…</p> }
@@ -37,7 +40,8 @@ import { GitKhronosService } from './git-khronos.service';
     }
     @if (visibleReview(); as review) {
       <section aria-label="Pull request inspection" data-hosted-review-status tabindex="-1"><h3>Pull request #{{ reviewNumber() }}</h3><p>{{ review.headBranch }} → {{ review.baseBranch }}</p><code>Head commit: {{ review.headOid }}</code>
-        <p>This is a read-only inspection. Use GitHub to submit reviews, comments or merge decisions.</p>
+        <p>This inspection describes the captured head commit. Prepare a separate submission to review or merge it.</p>
+        <div class="tools"><button type="button" [disabled]="busy() || git.busy()" (click)="openWrite('review', review.headOid)">Review pull request</button><button type="button" [disabled]="busy() || git.busy()" (click)="openWrite('merge', review.headOid)">Merge pull request</button></div>
         @for (warning of review.warnings; track $index) { <p role="alert">{{ warning }}</p> }
         @if (review.sections.reviews) {
           <h4>Latest submitted decisions</h4><p>Latest approval, change request or dismissal per reviewer, after reading every review page. Comment-only reviews do not replace decisions. Provider branch rules still determine merge eligibility.</p>
@@ -93,6 +97,8 @@ export class HostingPanelComponent implements OnDestroy {
   readonly page = signal<{ key: string; value: HostingPage } | null>(null);
   readonly review = signal<{ key: string; value: HostedReview } | null>(null);
   readonly reviewNumber = signal('');
+  readonly writeIntent = signal<HostedWriteIntent | null>(null);
+  private writeOpener: HTMLElement | null = null;
   private operation: { id: string; cancelled: boolean } | null = null;
   private destroyed = false;
   readonly remotes = computed(() => (this.git.repository()?.remotes ?? []).filter(remote => /^(https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/.test(remote.fetchUrl)));
@@ -105,7 +111,7 @@ export class HostingPanelComponent implements OnDestroy {
   });
   constructor() {
     effect(() => { const remotes = this.remotes(); if (!remotes.some(remote => remote.name === this.remote())) this.remote.set(remotes.find(remote => remote.name === 'origin')?.name ?? remotes[0]?.name ?? ''); });
-    effect(() => { this.key(); this.error.set(''); if (this.operation) { this.operation.cancelled = true; void ipc.cancel_git_operation({ operationId: this.operation.id }).catch(() => undefined); } });
+    effect(() => { this.key(); this.error.set(''); this.writeIntent.set(null); if (this.operation) { this.operation.cancelled = true; void ipc.cancel_git_operation({ operationId: this.operation.id }).catch(() => undefined); } });
   }
   private async run(action: (repoId: string, id: string) => Promise<void>): Promise<void> {
     const repoId = this.git.activeRepositoryId();
@@ -145,6 +151,17 @@ export class HostingPanelComponent implements OnDestroy {
     const review = this.visibleReview(), entry = this.selectedReview;
     if (review && entry && !this.busy() && !this.git.busy()) void this.inspect(entry, { ...review.query, [field]: page });
   }
+  openWrite(kind: HostedWriteIntent['kind'], headOid = ''): void {
+    if (this.busy() || this.git.busy() || !this.remote()) return;
+    this.writeOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.writeIntent.set({ kind, number: kind === 'createPull' ? 0 : Number(this.reviewNumber()), headOid });
+  }
+  closeWrite(): void {
+    this.writeIntent.set(null);
+    const opener = this.writeOpener;
+    setTimeout(() => { if (!this.destroyed) { if (opener?.isConnected) opener.focus(); else this.host.nativeElement.querySelector<HTMLElement>('.tools button')?.focus(); } });
+  }
+  invalidateHostedSnapshot(): void { this.page.set(null); this.review.set(null); this.selectedReview = null; }
   private focusResult(selector: string, key: string): void {
     setTimeout(() => { if (!this.destroyed && this.key() === key) this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(); });
   }

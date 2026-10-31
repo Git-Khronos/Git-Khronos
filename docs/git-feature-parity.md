@@ -78,16 +78,16 @@ implemented in-app capability.
 | H01 | Authenticate/select provider accounts and enterprise endpoints without leaking credentials across contexts | Partial: Git transport helpers exist; hosted reads currently use the selected `gh` account |
 | H02 | Discover/list/clone repositories; detect or create a fork and attach its reviewed SSH/HTTPS remote using the selected provider/account | Partial: local clone exists; hosted discovery/fork workflows need implementation |
 | H03 | List/filter/search/sort/page open, closed, merged and draft review requests; support applicable text, people, branch, review, CI, metadata and date filters with combination/exclusion semantics | Partial: GitHub page/state controls implemented; full provider/search coverage remains |
-| H04 | Create PRs/MRs with pushed source/base refs, forks, descriptions/templates, draft state and reviewer metadata | Missing in-app creation and template workflow |
+| H04 | Create PRs/MRs with pushed source/base refs, forks, descriptions/templates, draft state and reviewer metadata | Partial: reviewed GitHub creation/forks/drafts implemented; templates, reviewer metadata and other providers remain |
 | H05 | Inspect descriptions, revisions, changed files/patches, binary limits and commits | Partial: GitHub paged text inspection exists; complete metadata/binary/commit and provider coverage remains |
 | H06 | Display current review decisions, review history, check runs and legacy commit statuses, tied to exact commits | Partial: GitHub decision/status coverage implemented; live account and other-provider qualification remain |
-| H07 | Add comments, inline review threads, approvals/change requests, resolve threads and apply/post code suggestions | Missing in-app write and suggestion workflows |
-| H08 | Merge/squash/rebase a PR/MR, respect branch protections and expected head; close/reopen/delete source branches explicitly | Missing in-app write operations with uncertain-result recovery |
+| H07 | Add comments, inline review threads, approvals/change requests, resolve threads and apply/post code suggestions | Partial: GitHub review-level comments/approvals/change requests implemented; inline threads, suggestions and other providers remain |
+| H08 | Merge/squash/rebase a PR/MR, respect branch protections and expected head; close/reopen/delete source branches explicitly | Partial: reviewed GitHub merge/squash/rebase and uncertain-outcome protection implemented; close/reopen, branch cleanup and other providers remain |
 | H09 | Work with stacked review requests and their branch/dependency relationships where supported | Discovery and implementation required; generic branch graphs are not proof |
 | H10 | Filter/list/inspect/create/edit/link provider issues, create branches from issues and preserve issue context | Partial: GitHub issue listing only; writes and branch linkage missing |
 | H11 | Integrate the documented Jira/Trello and provider issue-tracker workflows | Missing dedicated tracker adapters and account configuration |
 | H12 | Inspect CI/workflow status and actionable logs/artifacts for current review/repository context | Partial: GitHub run list and browser links exist; details/log/artifact workflow requires implementation |
-| H13 | Diagnose access, SSO, certificate, authentication, rate-limit and transient network failures | Partial: generic diagnostics exist; provider-specific recovery and live qualification remain |
+| H13 | Diagnose access, SSO, certificate, authentication, rate-limit and transient network failures | Partial: generic diagnostics and uncertain-write protection exist; provider-specific recovery and live qualification remain |
 
 ## Workspaces, identities and assisted workflows
 

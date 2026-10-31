@@ -1043,7 +1043,15 @@ Open the workspace menu (or command palette) and choose **Repository overview**,
   review events, latest submitted decisions, check runs and legacy commit-status
   contexts for the captured head commit. Lists and detail sections have explicit
   page controls (50 records per page), with open/closed/all list filters. Missing
-  permissions are reported independently for each inspection section. Submit comments/reviews and merge through GitHub's browser workflow.
+  permissions are reported independently for each inspection section.
+- Hosted submissions can create a pull request (including forks and drafts),
+  submit a review comment, approval or change request, and merge with merge,
+  squash or rebase. Prepare a preview first and review its account, repositories,
+  branches and commit IDs before submitting. The local source branch must already
+  match its published remote commit. Editing requires a new preview.
+  The provider enforces its permissions and branch rules. A lost reply remains
+  unconfirmed; inspect the result and reload current records before preparing
+  another request. Stopping the wait does not undo a remote write.
 
 In a repository terminal, choose **Agent**, select an installed CLI, then
 **Start agent**. The process starts directly in that checkout with the CLI's

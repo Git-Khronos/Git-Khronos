@@ -25,7 +25,7 @@ pointers and must not be interpreted as a reduced definition of the objective.
 | Repository overview | Workspace center summarizes open repositories, dirty/conflicted state, active operations and tracking divergence; explicit local refresh with per-repository failures | New workspace-center renderer coverage; no implicit network fetch; closed/unopened workspace repositories excluded |
 | Saved commit identities | Named local identity templates; create/edit/delete; explicit per-repository application preview | New profile parser and renderer tests; authentication accounts, signing keys and global Git config are separate |
 | Hosted collaboration | GitHub PR/issue/workflow lists, PR descriptions, file patches, review decisions and head-commit checks through documented REST APIs and installed `gh` | New offline API fixture and renderer tests; explicit loads, paging/state filters, current review decisions, legacy statuses, cancellation and stale head checks; no live account qualification yet |
-| Hosted write operations | Existing browser links to provider workflows | In-app PR creation, review submission, issue editing and merge decisions remain future work |
+| Hosted write operations | Reviewed GitHub PR creation, fork/draft support, review-level comments/approvals/change requests, merge/squash/rebase; account/commit-bound one-use previews and uncertain outcomes | Source checks, all 1247 renderer cases and 305 owned Linux native scenarios pass for package `9a5a8c0badec`; live-provider and other-platform qualification remain outstanding. Inline threads/suggestions, templates/reviewer metadata, issue writes, close/reopen and branch cleanup remain unfinished |
 | Agent tools | Explicit installed Codex/Claude/Gemini/OpenCode CLI launch in the selected checkout, independent PTY tabs and process lifecycle | Fixed program enum, no shell command interpolation or permission bypass flags; existing worktrees provide isolation; no AI task-state inference |
 | Original UX | Khronos components, theme tokens, original wording, keyboard controls and existing icon system | Focus/compact-window regression coverage; no proprietary assets introduced |
 
@@ -34,8 +34,9 @@ pointers and must not be interpreted as a reduced definition of the objective.
 1. Finish qualifying hosted pagination, state filters, per-reviewer decisions and
    legacy commit statuses. Add provider search and richer filters; qualify real
    account/rate-limit behavior.
-2. Add explicit, reviewable provider writes (PR creation, review submission and
-   merge), with head-commit preconditions and permissions errors.
+2. Qualify reviewed GitHub creation/review/merge actions, then extend templates,
+   reviewer metadata, inline review threads/suggestions, issue writes, close/reopen
+   and explicit branch cleanup. Improve provider-specific refusal diagnostics.
 3. Add equivalent hosted adapters for GitLab, Bitbucket, Azure DevOps and
    enterprise installations. Browser links currently cover common public hosts.
 4. Extend workspace overview to unopened repositories with bounded background

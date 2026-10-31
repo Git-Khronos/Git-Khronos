@@ -2043,3 +2043,34 @@ Original owned CLI response fixtures exercise the native command boundary
 without forwarding requests to a provider. They do not establish live account,
 enterprise-provider or network acceptance. No provider implementation or
 proprietary package contents were used.
+
+## Reviewed hosted submissions
+
+An independent GitHub write adapter prepares explicit pull-request creation,
+submitted review and merge requests from documented REST fields. The preview
+records the selected fetch remote's repository, authenticated account, source and
+destination commits and original user text. Creation verifies that the chosen
+local branch matches its published source branch, including a selected fork.
+A native registry retains the immutable plan; submission consumes its token once,
+and context changes or expiry require a new preview.
+
+Authentication is snapshotted separately for each preparation or execution and
+pinned for that operation's CLI requests. Preview identity checks use the durable
+provider account ID as well as its login name. Tokens remain in the backend and are
+never returned to the renderer or placed in command arguments. JSON request text
+uses private temporary storage as stdin, without shell interpolation. Provider
+writes leave local Git refs, index and working files unchanged.
+
+Execution repeats the account, remote and commit checks. Reviews specify their
+commit ID; merges send the expected head SHA. These do not create an atomic lock
+on remote branches: creation can race with source or destination movement, which
+is disclosed from the creation response. Provider permissions and branch rules
+remain authoritative. A failed, cancelled or unreadable dispatched write is
+unconfirmed and is never automatically replayed. Definite late confirmation is
+retained in activity history even if the submission panel closed.
+
+Original source and renderer fixtures cover these behaviors. Owned packaged
+fixtures additionally model account switches, one-use tokens and writes applied
+before a lost reply; their current artifact results are recorded separately.
+No live provider write, proprietary package inspection or copied implementation
+is part of this qualification.

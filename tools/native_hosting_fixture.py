@@ -4,12 +4,22 @@ import os
 from pathlib import Path
 import sys
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 
 def response(endpoint, config):
+    if endpoint == "user" and config.get("allowWrites"):
+        return {"login": acting_account(config), "id": acting_account_id(config)}
     parsed = urlsplit(endpoint)
     prefix = "repos/" + config["repository"]
+    source_prefix = "repos/" + config.get("sourceRepository", config["repository"])
+    if config.get("allowWrites") and parsed.path.startswith(prefix + "/branches/") and unquote(parsed.path[len(prefix + "/branches/"):]) == config.get("baseBranch", "main"):
+        return {"name": config.get("baseBranch", "main"), "commit": {"sha": config.get("baseOid", config["oid"])}}
+    if config.get("allowWrites") and parsed.path.startswith(source_prefix + "/branches/"):
+        branch = unquote(parsed.path[len(source_prefix + "/branches/"):])
+        if branch != config.get("headBranch", "feature"):
+            raise ValueError("Unowned source branch")
+        return {"name": branch, "commit": {"sha": config["oid"]}}
     if not parsed.path.startswith(prefix + "/"):
         raise ValueError("Unowned repository request")
     route = parsed.path[len(prefix):]
@@ -25,7 +35,7 @@ def response(endpoint, config):
     if route == "/actions/runs":
         return {"workflow_runs": [{"id": page, "display_title": "Owned workflow", "status": "completed", "conclusion": "failure", "head_sha": oid}]}
     if route == "/pulls/1":
-        return {"head": {"sha": oid, "ref": "feature"}, "base": {"ref": "main"}, "changed_files": 51}
+        return pull_record(config, 1)
     if route == "/pulls/1/files":
         return [{"filename": "owned.txt" if page == 1 else "second.txt", "status": "modified", "additions": 1, "deletions": 0, "patch": "@@ -1 +1 @@\n-old\n+owned"}]
     if route == "/pulls/1/reviews":
@@ -39,18 +49,100 @@ def response(endpoint, config):
     raise ValueError("Unsupported owned fixture endpoint")
 
 
+def acting_account(config):
+    # This is a dummy fixture token, never a real credential.
+    token = os.environ.get("GH_TOKEN", "")
+    return token.removeprefix("owned-token-") if token.startswith("owned-token-") else config.get("actor", "owned-author")
+
+
+def acting_account_id(config):
+    actor = acting_account(config)
+    return config.get("actorIds", {}).get(actor, 501 if actor == "owned-author" else 502)
+
+
+def pull_record(config, number):
+    author = {"login": config.get("pullAuthor", "owned-request-author"), "id": 503} if number == 1 else {"login": acting_account(config), "id": acting_account_id(config)}
+    return {"number": number, "state": "open", "merged": False, "draft": False,
+            "mergeable": True, "user": author,
+            "head": {"sha": config["oid"], "ref": config.get("headBranch", "feature"),
+                     "repo": {"full_name": config.get("sourceRepository", config["repository"])}},
+            "base": {"sha": config.get("baseOid", config["oid"]), "ref": config.get("baseBranch", "main"),
+                     "repo": {"full_name": config["repository"]}}, "changed_files": 51}
+
+
+def write_response(method, endpoint, payload, config, state):
+    if not config.get("allowWrites"):
+        raise ValueError("Writes are disabled for this owned fixture")
+    if config.get("denyBeforeWrite"):
+        raise PermissionError("Owned private provider refusal before write")
+    prefix = "repos/" + config["repository"] + "/pulls"
+    if method == "POST" and endpoint == prefix:
+        source_owner, source_name = config.get("sourceRepository", config["repository"]).split("/")
+        if payload.get("head") != source_owner + ":" + config.get("headBranch", "feature") or payload.get("head_repo") != source_name or payload.get("base") != config.get("baseBranch", "main"):
+            raise ValueError("Unexpected owned pull request branches")
+        result = pull_record(config, 100 + len(state.get("created", [])))
+        result.update(title=payload["title"], body=payload["body"], draft=payload["draft"])
+        state.setdefault("created", []).append(result)
+        return result
+    if method == "POST" and endpoint == prefix + "/1/reviews":
+        event = payload.get("event")
+        if payload.get("commit_id") != config["oid"] or event not in ("APPROVE", "REQUEST_CHANGES", "COMMENT"):
+            raise ValueError("Unexpected owned review head or action")
+        result = {"id": 200 + len(state.get("reviews", [])), "user": {"login": acting_account(config), "id": acting_account_id(config)},
+                  "commit_id": payload["commit_id"], "body": payload["body"],
+                  "state": {"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}[event]}
+        state.setdefault("reviews", []).append(result)
+        return result
+    if method == "PUT" and endpoint == prefix + "/1/merge":
+        if payload.get("sha") != config["oid"] or payload.get("merge_method") not in ("merge", "squash", "rebase"):
+            raise ValueError("Unexpected owned merge precondition")
+        state.setdefault("merges", []).append(payload)
+        return {"merged": True, "sha": config.get("mergeOid", "c" * 40)}
+    raise ValueError("Unowned write endpoint or method")
+
+
 def main(argv):
-    prefix = ["api", "--hostname", "github.com", "--method", "GET", "-H", "Accept: application/vnd.github+json"]
-    if len(argv) != 8 or argv[:7] != prefix:
-        raise ValueError("Only an explicit read request is allowed")
     gate = Path(os.environ["KHRONOS_NATIVE_HOSTING_GATE"])
     config = json.loads((gate / "config.json").read_text())
+    if argv == ["auth", "token", "--hostname", "github.com"]:
+        if not config.get("allowWrites"):
+            raise ValueError("Fixture authentication is disabled")
+        print("owned-token-" + config.get("actor", "owned-author"))
+        return
+    if len(argv) not in (8, 10) or argv[:4] != ["api", "--hostname", "github.com", "--method"] or argv[5:7] != ["-H", "Accept: application/vnd.github+json"]:
+        raise ValueError("Only an explicit owned API request is allowed")
+    method, endpoint = argv[4], argv[7]
+    writing = method in ("POST", "PUT") and len(argv) == 10 and argv[8:] == ["--input", "-"] and config.get("allowWrites")
+    if not writing and (method != "GET" or len(argv) != 8):
+        raise ValueError("Unowned write request")
+    payload = None
+    if writing:
+        raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ValueError("Owned fixture payload limit exceeded")
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("Owned fixture requires an object body")
     with (gate / "requests.jsonl").open("a") as output:
-        output.write(json.dumps({"endpoint": argv[7], "cwd": os.getcwd(), "method": "GET"}) + "\n")
+        output.write(json.dumps({"endpoint": endpoint, "cwd": os.getcwd(), "method": method,
+                                 "payload": payload, "actor": acting_account(config), "pid": os.getpid()}) + "\n")
     (gate / "started").write_text(str(os.getpid()))
-    while (gate / "hold").exists():
+    while (gate / "hold").exists() and (writing or not config.get("holdWritesOnly")):
         time.sleep(.02)
-    print(json.dumps(response(argv[7], config)))
+    if writing:
+        state_path = gate / "write-state.json"
+        state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        result = write_response(method, endpoint, payload, config, state)
+        state_path.write_text(json.dumps(state))
+        if config.get("uncertainAfterWrite"):
+            raise OSError("Owned private diagnostic after applied write")
+    else:
+        result = response(endpoint, config)
+        if config.get("flipActorAfterBaseRead") and endpoint.endswith("/branches/" + config.get("baseBranch", "main")):
+            config["actor"] = "owned-other-account"
+            config.pop("flipActorAfterBaseRead")
+            (gate / "config.json").write_text(json.dumps(config))
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

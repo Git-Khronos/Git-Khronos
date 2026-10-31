@@ -1353,3 +1353,22 @@ These are capability references only, not implementation or visual references.
 
 Used to refine remaining behavioral acceptance cases. Public Git manuals remain
 the implementation authority for Git effects. No example code was copied.
+
+## Reviewed hosted submissions
+
+Primary behavior and invocation references:
+
+- https://docs.github.com/en/rest/pulls/pulls (creation fields, fork head
+  coordinates, merge methods and expected-head SHA)
+- https://docs.github.com/en/rest/pulls/reviews (explicit submitted review events
+  and reviewed commit ID)
+- https://docs.github.com/en/rest/branches/branches (published branch commit IDs)
+- https://docs.github.com/en/rest/users/users (authenticated account identity)
+- https://cli.github.com/manual/gh_api (explicit methods and JSON stdin)
+- https://cli.github.com/manual/gh_auth_token (selected CLI account token)
+- https://cli.github.com/manual/gh_help_environment (per-process authentication
+  precedence and diagnostic controls)
+
+Used for original request/response handling and owned offline acceptance fixtures.
+No external implementation, example code, documentation prose or assets copied.
+No new dependency was added. The optional CLI is not redistributed.

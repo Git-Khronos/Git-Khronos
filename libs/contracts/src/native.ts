@@ -70,12 +70,17 @@ export type HistoryQuery = { message?: string; author?: string; oid?: string; si
 scope?: string }
 export type HistorySearchPage = { entries: FileHistoryEntry[]; cursor: HistoryCursor | null; complete: boolean; scanned: number }
 export type HostedEntry = { number: string; title: string; state: string; author: string; url: string; branch: string; commitOid: string; body: string }
+export type HostedMergeMethod = "merge" | "squash" | "rebase"
 export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean; statusesMayHaveMore: boolean; legacyState: string | null; legacyStatuses: HostedReviewStatus[]; currentReviews: HostedReviewDecision[]; query: HostedReviewQuery; sections: HostedReviewSections; warnings: string[] }
 export type HostedReviewDecision = { name: string; state: string; commitOid: string; submittedAt: string }
+export type HostedReviewEvent = "approve" | "requestChanges" | "comment"
 export type HostedReviewFile = { path: string; state: string; additions: number; deletions: number; patch: string | null }
 export type HostedReviewQuery = { filesPage: number; reviewsPage: number; checksPage: number; statusesPage: number }
 export type HostedReviewSections = { files: boolean; reviews: boolean; checks: boolean; statuses: boolean }
 export type HostedReviewStatus = { name: string; state: string; body: string }
+export type HostedWritePlan = { repository: string; actor: string; actorId: string; sourceRepository: string | null; headOid: string; baseOid: string; baseBranch: string; request: HostedWriteRequest }
+export type HostedWriteReceipt = { repository: string; number: number; url: string; actor: string; commitOid: string; notice: string | null }
+export type HostedWriteRequest = { kind: "createPull"; headRemote: string; headBranch: string; baseBranch: string; title: string; body: string; draft: boolean } | { kind: "review"; number: number; expectedHeadOid: string; event: HostedReviewEvent; body: string } | { kind: "merge"; number: number; expectedHeadOid: string; method: HostedMergeMethod; title: string; body: string }
 export type HostingPage = { repository: string; entries: HostedEntry[];
 /**
  * This API page was full; additional records may exist.
@@ -136,6 +141,7 @@ export type PatchRequest = { file: string; target: PatchTarget; patch: number[];
 export type PatchReview = { request: PatchRequest; files: PatchFile[]; summary: string }
 export type PatchTarget = "worktree" | "index" | "both"
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
+export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
 export type ReferenceTransport = { remote: string; name: string; kind: string; delete: boolean; expectedOid: string | null }
@@ -324,6 +330,9 @@ export function begin_rebase_split(args: { repoId: string; expectedHead: string 
 export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
 export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
 export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
+export function prepare_hosted_write(args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }): Promise<PreparedHostedWrite> { return TAURI_INVOKE("prepare_hosted_write", args); }
+export function execute_hosted_write(args: { repoId: string; token: string; operationId: string }): Promise<HostedWriteReceipt> { return TAURI_INVOKE("execute_hosted_write", args); }
+export function discard_hosted_write_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_write_plan", args); }
 export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
 export function execute_merge_rebase(args: { repoId: string; request: MergeRebaseRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_merge_rebase", args); }
 export function export_diff_patch(args: { repoId: string; staged: boolean; paths: string[]; destination: string }): Promise<number> { return TAURI_INVOKE("export_diff_patch", args); }
@@ -499,6 +508,9 @@ export type CommandMap = {
   preview_merge: typeof preview_merge;
   load_hosting_page: typeof load_hosting_page;
   load_hosted_review: typeof load_hosted_review;
+  prepare_hosted_write: typeof prepare_hosted_write;
+  execute_hosted_write: typeof execute_hosted_write;
+  discard_hosted_write_plan: typeof discard_hosted_write_plan;
   prepare_merge_rebase: typeof prepare_merge_rebase;
   execute_merge_rebase: typeof execute_merge_rebase;
   export_diff_patch: typeof export_diff_patch;

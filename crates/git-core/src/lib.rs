@@ -21,6 +21,11 @@ mod operation_storage;
 mod rebase_split;
 pub use rebase_split::{RebaseSplitStatus, begin_rebase_split};
 mod hosting;
+mod hosting_writes;
+pub use hosting_writes::{
+    HostedWriteRequest, HostedWritePlan, HostedWriteReceipt, HostedReviewEvent,
+    HostedMergeMethod, prepare_hosted_write, execute_hosted_write,
+};
 pub use hosting::{
     HostedEntry, HostedReview, HostedReviewDecision, HostedReviewFile, HostedReviewQuery,
     HostedReviewSections, HostedReviewStatus, HostingPage, HostingQuery, HostingSection,

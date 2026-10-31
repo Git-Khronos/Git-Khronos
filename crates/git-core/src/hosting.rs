@@ -127,7 +127,7 @@ pub struct HostedReview {
     pub sections: HostedReviewSections,
     pub warnings: Vec<String>,
 }
-fn repository_for_remote(path: &Path, remote: &str) -> Result<String, AppError> {
+pub(crate) fn repository_for_remote(path: &Path, remote: &str) -> Result<String, AppError> {
     let remotes = read_remotes(path)?;
     let selected = remotes
         .iter()
@@ -463,6 +463,9 @@ fn github_repository(url: &str) -> Option<String> {
     Some(path.to_owned())
 }
 fn api_command(endpoint: &str) -> Command {
+    api_command_for_method(endpoint, "GET")
+}
+pub(crate) fn api_command_for_method(endpoint: &str, method: &str) -> Command {
     let mut command = Command::new("gh");
     command
         .args([
@@ -470,7 +473,7 @@ fn api_command(endpoint: &str) -> Command {
             "--hostname",
             "github.com",
             "--method",
-            "GET",
+            method,
             "-H",
             "Accept: application/vnd.github+json",
             endpoint,
@@ -482,7 +485,7 @@ fn api_command(endpoint: &str) -> Command {
     for variable in GIT_CONTEXT_ENVIRONMENT_VARIABLES {
         command.env_remove(variable);
     }
-    for variable in ["GH_DEBUG", "GH_REPO", "GH_HOST", "GH_FORCE_TTY"] {
+    for variable in ["GH_DEBUG", "DEBUG", "GH_REPO", "GH_HOST", "GH_FORCE_TTY"] {
         command.env_remove(variable);
     }
     command
@@ -495,7 +498,10 @@ fn api_command(endpoint: &str) -> Command {
 fn request(endpoint: &str, cancellation: &CancellationToken) -> Result<Value, AppError> {
     request_command(api_command(endpoint), cancellation)
 }
-fn request_command(command: Command, cancellation: &CancellationToken) -> Result<Value, AppError> {
+pub(crate) fn request_command(
+    command: Command,
+    cancellation: &CancellationToken,
+) -> Result<Value, AppError> {
     let (output, truncated) = run_cancellable_command_with_stdout_limit(
         command,
         cancellation,
