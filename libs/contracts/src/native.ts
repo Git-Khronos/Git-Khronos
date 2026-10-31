@@ -89,8 +89,23 @@ export type HistoryQuery = { message?: string; author?: string; oid?: string; si
  */
 scope?: string }
 export type HistorySearchPage = { entries: FileHistoryEntry[]; cursor: HistoryCursor | null; complete: boolean; scanned: number }
+export type HostedAccount = { host: string; id: string; login: string }
 export type HostedEntry = { number: string; title: string; state: string; author: string; url: string; branch: string; commitOid: string; body: string }
+export type HostedForkInspection = { account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; repository: HostedRepository }
+export type HostedForkIntent = { account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; destination: HostedForkOwner; name: string; defaultBranchOnly: boolean; forkingAllowed: boolean | null }
+export type HostedForkOwner = { id: string; login: string; kind: HostedForkOwnerKind }
+export type HostedForkOwnerKind = "personal" | "organization"
+export type HostedForkPage = { account: HostedAccount; source: HostedRepositoryIdentity; network: HostedRepositoryIdentity; query: HostedForkQuery; entries: HostedRepository[]; mayHaveMore: boolean; nextPage: number | null }
+export type HostedForkPhase = "awaitingConfirmation" | "acceptedPending" | "metadataAvailable" | "ready" | "conflict"
+export type HostedForkPlan = { id: string; intent: HostedForkIntent }
+export type HostedForkQuery = { sourceFullName: string; sourceRepositoryId: string; accountId: string; page: number }
+export type HostedForkRepository = { id: string; fullName: string; ownerId: string; cloneHttps: string | null; cloneSsh: string | null; defaultBranch: string | null }
+export type HostedForkRequest = { sourceFullName: string; sourceRepositoryId: string; accountId: string; destinationOwner: string; name: string; defaultBranchOnly: boolean }
+export type HostedForkSelection = { sourceFullName: string; sourceRepositoryId: string; accountId: string; forkFullName: string; forkRepositoryId: string; forkOwnerId: string }
+export type HostedForkStatus = { id: string; phase: HostedForkPhase; intent: HostedForkIntent; serverReplyReceived: boolean; observedRepositoryId: string | null; repository: HostedForkRepository | null; headOid: string | null; notice: string | null }
 export type HostedMergeMethod = "merge" | "squash" | "rebase"
+export type HostedRepository = { id: string; ownerId: string; owner: string; name: string; fullName: string; url: string; cloneHttps: string | null; cloneSsh: string | null; description: string | null; defaultBranch: string | null; private: boolean | null; archived: boolean | null; disabled: boolean | null; fork: boolean | null; parent: HostedRepositoryIdentity | null; source: HostedRepositoryIdentity | null; canPull: boolean | null; canPush: boolean | null; forkingAllowed: boolean | null }
+export type HostedRepositoryIdentity = { id: string; fullName: string }
 export type HostedReview = { headOid: string; baseBranch: string; headBranch: string; files: HostedReviewFile[]; reviews: HostedReviewStatus[]; checks: HostedReviewStatus[]; filesMayHaveMore: boolean; reviewsMayHaveMore: boolean; checksMayHaveMore: boolean; statusesMayHaveMore: boolean; legacyState: string | null; legacyStatuses: HostedReviewStatus[]; currentReviews: HostedReviewDecision[]; query: HostedReviewQuery; sections: HostedReviewSections; warnings: string[] }
 export type HostedReviewDecision = { name: string; state: string; commitOid: string; submittedAt: string }
 export type HostedReviewEvent = "approve" | "requestChanges" | "comment"
@@ -162,6 +177,8 @@ export type PatchReview = { request: PatchRequest; files: PatchFile[]; summary: 
 export type PatchTarget = "worktree" | "index" | "both"
 export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
+export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
+export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
@@ -357,6 +374,16 @@ export function execute_branch_workflow(args: { repoId: string; token: string; o
 export function discard_branch_workflow_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_branch_workflow_plan", args); }
 export function control_branch_workflow_finish(args: { repoId: string; id: string; revision: number; control: BranchWorkflowControl; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("control_branch_workflow_finish", args); }
 export function prepare_hosted_write(args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }): Promise<PreparedHostedWrite> { return TAURI_INVOKE("prepare_hosted_write", args); }
+export function load_hosted_forks(args: { query: HostedForkQuery; operationId: string }): Promise<HostedForkPage> { return TAURI_INVOKE("load_hosted_forks", args); }
+export function inspect_hosted_fork(args: { selection: HostedForkSelection; operationId: string }): Promise<HostedForkInspection> { return TAURI_INVOKE("inspect_hosted_fork", args); }
+export function prepare_hosted_fork(args: { contextId: string; request: HostedForkRequest; operationId: string }): Promise<PreparedHostedFork> { return TAURI_INVOKE("prepare_hosted_fork", args); }
+export function execute_hosted_fork(args: { contextId: string; token: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("execute_hosted_fork", args); }
+export function list_hosted_fork_requests(args: { operationId: string }): Promise<HostedForkStatus[]> { return TAURI_INVOKE("list_hosted_fork_requests", args); }
+export function load_hosted_fork_request(args: { id: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("load_hosted_fork_request", args); }
+export function reconcile_hosted_fork(args: { id: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("reconcile_hosted_fork", args); }
+export function prepare_hosted_fork_acknowledgement(args: { contextId: string; id: string; operationId: string }): Promise<PreparedForkAcknowledgement> { return TAURI_INVOKE("prepare_hosted_fork_acknowledgement", args); }
+export function execute_hosted_fork_acknowledgement(args: { contextId: string; token: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("execute_hosted_fork_acknowledgement", args); }
+export function discard_hosted_fork_review(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_fork_review", args); }
 export function execute_hosted_write(args: { repoId: string; token: string; operationId: string }): Promise<HostedWriteReceipt> { return TAURI_INVOKE("execute_hosted_write", args); }
 export function discard_hosted_write_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_write_plan", args); }
 export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
@@ -540,6 +567,16 @@ export type CommandMap = {
   discard_branch_workflow_plan: typeof discard_branch_workflow_plan;
   control_branch_workflow_finish: typeof control_branch_workflow_finish;
   prepare_hosted_write: typeof prepare_hosted_write;
+  load_hosted_forks: typeof load_hosted_forks;
+  inspect_hosted_fork: typeof inspect_hosted_fork;
+  prepare_hosted_fork: typeof prepare_hosted_fork;
+  execute_hosted_fork: typeof execute_hosted_fork;
+  list_hosted_fork_requests: typeof list_hosted_fork_requests;
+  load_hosted_fork_request: typeof load_hosted_fork_request;
+  reconcile_hosted_fork: typeof reconcile_hosted_fork;
+  prepare_hosted_fork_acknowledgement: typeof prepare_hosted_fork_acknowledgement;
+  execute_hosted_fork_acknowledgement: typeof execute_hosted_fork_acknowledgement;
+  discard_hosted_fork_review: typeof discard_hosted_fork_review;
   execute_hosted_write: typeof execute_hosted_write;
   discard_hosted_write_plan: typeof discard_hosted_write_plan;
   prepare_merge_rebase: typeof prepare_merge_rebase;

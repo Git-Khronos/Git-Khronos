@@ -2146,3 +2146,19 @@ provider request, proves absence or submits a replacement write. Full source
 tests and compile/Clippy checks pass; native and renderer controls, server-held
 acknowledgement tokens and local remote attachment remain open. No proprietary implementation, package internals, assets, external
 code or copied documentation prose was used.
+
+## Native-owned fork execution and acknowledgement reviews
+
+Original native commands retain fork plans and acknowledgement snapshots in a
+bounded context/purpose/lifetime cache. Execution receives a single-use token,
+not a client-authored plan or status. Storage is chosen from the application's
+private data directory. Reads, dispatch and reconciliation reuse the existing
+operation cancellation mechanism; confirmed outcomes remain distinguishable from
+cancellation or unconfirmed writes.
+
+Owned source cases cover context/purpose binding, expiry, capacity, replacement,
+single use and strict nested control decoding. Generated contracts reject forged
+execution plans, replacement acknowledgement snapshots, arbitrary storage paths
+and numeric repository IDs at the TypeScript boundary. Source qualification does
+not establish the new API's packaged/native runtime behavior or a desktop fork
+workflow. No proprietary implementation or assets were used.

@@ -194,3 +194,34 @@ request's lock. Seventeen new owned cases pass within the full source gate:
 682 Rust tests and 166 frontend tests pass, with 45 Rust cases ignored. Angular
 compilation, Cargo workspace checks and Clippy with warnings denied also pass. The ignored cases
 and source-only fixtures do not establish real provider or desktop acceptance.
+
+## Native fork review boundary source checkpoint (2026-10-31)
+
+`apps/desktop/src-tauri/src/fork_commands.rs` exposes fork discovery/inspection,
+creation preview/execution, saved-request listing/loading/reconciliation and a
+separate acknowledgement preview/execution. Request records use the application's
+private data directory; clients cannot supply a storage path.
+
+Creation and acknowledgement accept only a context-bound server token at execution.
+The native cache retains the actual plan or exact saved-status snapshot. A token
+has one purpose, expires after fifteen minutes and is consumed before storage
+resolution or dispatch. Wrong-context and wrong-purpose calls cannot consume a
+valid review for another action. A new review replaces the previous review in
+its context; at most sixty-four reviews are retained, with expired entries pruned.
+Discarding a review never changes a durable request or a provider outcome.
+
+Provider reads/previews and writes use the existing registered-operation
+cancellation mechanism. A confirmed accepted or unconfirmed provider outcome is
+returned as its saved status; a successful local acknowledgement is not hidden
+when cancellation races it. Acknowledgement loads its snapshot on the server and
+checks that snapshot again when applying it. No client-supplied replacement status
+can retire a different request or a newer outcome.
+
+Three native cache/decoding cases pass within the full source gate: 685 Rust and
+166 frontend tests pass, with 45 Rust cases ignored. Generated-contract freshness,
+strict TypeScript input assertions and generator tests also pass. Angular/Cargo
+compilation, Clippy with warnings denied and contract checks pass after boxing
+the private cached action payloads; the final source recheck passes the same
+685 Rust and 166 frontend cases. Packaged native routing/storage/cancellation scenarios,
+original desktop fork controls and reviewed local remote attachment remain open;
+the older discovery/clone package does not qualify this new fork API.

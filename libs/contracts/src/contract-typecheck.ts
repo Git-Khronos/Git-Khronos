@@ -37,6 +37,18 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue', id: 'owned-finish', control: { action: 'continue', retry: false } });
   // @ts-expect-error only Continue can request a retry
   void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-abort', id: 'owned-finish', revision: 1, control: { action: 'abort', retry: true } });
+  void ipc.execute_hosted_fork({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-fork' });
+  void ipc.execute_hosted_fork_acknowledgement({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-acknowledgement' });
+  // @ts-expect-error fork execution cannot accept a client-authored plan
+  void ipc.execute_hosted_fork({ contextId: 'owned-dialog', plan: {}, operationId: 'owned-fork' });
+  // @ts-expect-error a fork review is bound to its original dialog context
+  void ipc.execute_hosted_fork({ token: 'owned-token', operationId: 'owned-fork' });
+  // @ts-expect-error acknowledgement uses a server-held snapshot, not a client replacement
+  void ipc.execute_hosted_fork_acknowledgement({ contextId: 'owned-dialog', status: {}, operationId: 'owned-acknowledgement' });
+  // @ts-expect-error clients cannot choose the request storage directory
+  void ipc.list_hosted_fork_requests({ operationId: 'owned-read', directory: '/elsewhere' });
+  // @ts-expect-error fork IDs must preserve decimal precision across JavaScript
+  void ipc.inspect_hosted_fork({ operationId: 'owned-inspect', selection: { sourceFullName: 'team/source', sourceRepositoryId: '101', accountId: '7', forkFullName: 'owned/forked', forkRepositoryId: 9007199254740993, forkOwnerId: '7' } });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

@@ -91,6 +91,7 @@ use tauri_specta::Event;
 mod authentication;
 mod recovery_commands;
 mod hosting_commands;
+mod fork_commands;
 mod branch_workflow_commands;
 
 #[derive(Default)]
@@ -101,6 +102,7 @@ struct AppState {
     discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
     hosted_write_plans: Mutex<HashMap<String, hosting_commands::CachedPlan>>,
+    hosted_fork_reviews: Mutex<HashMap<String, fork_commands::CachedReview>>,
     branch_workflow_plans: Mutex<HashMap<String, branch_workflow_commands::CachedPlan>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     terminals: Mutex<HashMap<String, TerminalSession>>,
@@ -3438,6 +3440,16 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             branch_workflow_commands::discard_branch_workflow_plan,
             branch_workflow_commands::control_branch_workflow_finish,
             hosting_commands::prepare_hosted_write,
+            fork_commands::load_hosted_forks,
+            fork_commands::inspect_hosted_fork,
+            fork_commands::prepare_hosted_fork,
+            fork_commands::execute_hosted_fork,
+            fork_commands::list_hosted_fork_requests,
+            fork_commands::load_hosted_fork_request,
+            fork_commands::reconcile_hosted_fork,
+            fork_commands::prepare_hosted_fork_acknowledgement,
+            fork_commands::execute_hosted_fork_acknowledgement,
+            fork_commands::discard_hosted_fork_review,
             hosting_commands::execute_hosted_write,
             hosting_commands::discard_hosted_write_plan,
             prepare_merge_rebase,
