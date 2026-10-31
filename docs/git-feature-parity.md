@@ -76,7 +76,7 @@ implemented in-app capability.
 | ID | Required behavior | Current assessment / evidence needed |
 | --- | --- | --- |
 | H01 | Authenticate/select provider accounts and enterprise endpoints without leaking credentials across contexts | Partial: Git transport helpers exist; hosted reads currently use the selected `gh` account |
-| H02 | Discover/list/clone repositories; detect or create a fork and attach its reviewed SSH/HTTPS remote using the selected provider/account | Partial: local clone exists; hosted discovery/fork workflows need implementation |
+| H02 | Discover/list/clone repositories; detect or create a fork and attach its reviewed SSH/HTTPS remote using the selected provider/account | Partial core: GitHub account-bound paged discovery and selected-repository inspection pass source checks; local clone exists. Desktop discovery, account-bound clone handoff, fork/reconciliation, remote attachment and other providers remain open. See the [independent specification](specifications/hosted-repositories.md) |
 | H03 | List/filter/search/sort/page open, closed, merged and draft review requests; support applicable text, people, branch, review, CI, metadata and date filters with combination/exclusion semantics | Partial: GitHub page/state controls implemented; full provider/search coverage remains |
 | H04 | Create PRs/MRs with pushed source/base refs, forks, descriptions/templates, draft state and reviewer metadata | Partial: reviewed GitHub creation/forks/drafts implemented; templates, reviewer metadata and other providers remain |
 | H05 | Inspect descriptions, revisions, changed files/patches, binary limits and commits | Partial: GitHub paged text inspection exists; complete metadata/binary/commit and provider coverage remains |

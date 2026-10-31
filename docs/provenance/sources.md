@@ -1415,3 +1415,20 @@ commits, and durable recovery. Standard
 library file locks serialize linked-worktree actions. No vendor implementation,
 package contents, assets, interface composition or external source code was used.
 Desktop/native acceptance remains a separate open requirement in the specification.
+
+
+## Hosted repository discovery and fork requirements
+
+Primary informational sources:
+
+- [GitHub authenticated repository listing and metadata](https://docs.github.com/en/rest/repos/repos)
+- [GitHub fork operations](https://docs.github.com/en/rest/repos/forks)
+- [Git clone](https://git-scm.com/docs/git-clone)
+- [Git remote configuration](https://git-scm.com/docs/git-remote)
+
+The [public fork capability guide](https://help.gitkraken.com/gitkraken-desktop/fork/)
+is a capability reference only. These sources inform neutral requirements in
+`docs/specifications/hosted-repositories.md`. The initial discovery adapter uses
+public REST fields and independently written owned fixtures. No example code,
+proprietary package contents, assets or documentation prose were copied. No
+third-party dependency was introduced.

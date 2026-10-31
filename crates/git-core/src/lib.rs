@@ -37,6 +37,13 @@ pub use branch_workflow::{
     prepare_branch_workflow_finish, finish_branch_workflow, load_branch_workflow_finish,
     resume_branch_workflow_finish, abort_branch_workflow_finish, acknowledge_branch_workflow_finish,
 };
+mod hosted_repositories;
+pub use hosted_repositories::{
+    HostedAccount, HostedRepositoryIdentity, HostedRepository, HostedRepositoryVisibility,
+    HostedRepositoryAffiliation, HostedRepositorySort, HostedRepositoryDirection,
+    HostedRepositoryQuery, HostedRepositoryPage, HostedRepositoryInspection,
+    load_hosted_repository_page, inspect_hosted_repository,
+};
 mod hosting_writes;
 pub use hosting_writes::{
     HostedWriteRequest, HostedWritePlan, HostedWriteReceipt, HostedReviewEvent,

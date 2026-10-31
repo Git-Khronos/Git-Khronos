@@ -196,7 +196,7 @@ fn encode_segment(value: &str) -> String {
     }
     encoded
 }
-trait Transport {
+pub(crate) trait Transport {
     fn get(&mut self, endpoint: &str) -> Result<Value, AppError>;
     fn write(
         &mut self,
@@ -208,12 +208,12 @@ trait Transport {
 
 // A token snapshot binds every request in one preparation/execution to the same
 // account even if the user switches gh's active account in another process.
-struct CliTransport<'a> {
+pub(crate) struct CliTransport<'a> {
     token: String,
     cancellation: &'a CancellationToken,
 }
 impl<'a> CliTransport<'a> {
-    fn new(cancellation: &'a CancellationToken) -> Result<Self, AppError> {
+    pub(crate) fn new(cancellation: &'a CancellationToken) -> Result<Self, AppError> {
         let mut command = Command::new("gh");
         command
             .args(["auth", "token", "--hostname", "github.com"])

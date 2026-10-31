@@ -2091,3 +2091,24 @@ annotated tags, cleanup and second-target conflict recovery. Current package
 qualification is recorded separately; these fixtures do not establish every
 workflow case, real signing or all-platform acceptance. No proprietary code,
 assets, wording collections or distinctive visual composition were used.
+
+
+## Account-bound hosted repository discovery core
+
+The original discovery adapter consumes GitHub's documented authenticated
+repository list and selected-repository endpoints. Each operation snapshots its
+CLI account token, reads the acting account and preserves its decimal identity.
+Subsequent pages require the original account identity. Repository selection
+checks the returned repository ID again before supplying metadata.
+
+Only bounded, allowlisted metadata leaves this core API. Canonical owner/name,
+web and clone URLs must agree; credentials and mismatched destinations are
+refused. Missing optional metadata remains unknown. Raw provider responses and
+temporary clone tokens are not serialized. Pure owned response fixtures cover
+pagination, account and repository replacement, large numeric IDs, malformed
+responses and clone destination validation without provider writes.
+
+This source checkpoint does not expose discovery through native IPC or a desktop
+screen. Clone handoff, fork creation/readiness reconciliation, local attachment,
+enterprise and other-provider behavior remain separate requirements. No vendor
+implementation, interface composition or proprietary package contents were used.
