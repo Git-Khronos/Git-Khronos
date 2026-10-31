@@ -1432,3 +1432,18 @@ is a capability reference only. These sources inform neutral requirements in
 public REST fields and independently written owned fixtures. No example code,
 proprietary package contents, assets or documentation prose were copied. No
 third-party dependency was introduced.
+
+### Reviewed fork requests and readiness
+
+Additional public authorities:
+
+- [GitHub user/owner metadata](https://docs.github.com/en/rest/users/users)
+- [GitHub Git reference reads](https://docs.github.com/en/rest/git/refs)
+- [GitHub Git commit-object reads](https://docs.github.com/en/rest/git/commits)
+
+The official fork API defines destination organization, requested name, branch
+scope and asynchronous creation. Owner identity, a branch reference and its
+commit object inform the independent reconciliation checks. Durable private
+records, non-replay behavior, local serialization and archive recovery are
+project designs. All response fixtures and code are original. No vendor package
+internals, copied examples, external code, assets or dependencies were introduced.

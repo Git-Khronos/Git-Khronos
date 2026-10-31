@@ -144,3 +144,53 @@ frontend tests, with 45 Rust cases ignored. Angular compilation, Cargo workspace
 checks and Clippy with warnings denied also pass. This module does not yet expose native IPC or a
 desktop fork screen, create a fork, establish object readiness, reconcile an
 uncertain write or attach a local remote. Those workflows remain required.
+
+## Reviewed fork request and reconciliation core checkpoint (2026-10-31)
+
+`hosted_fork_request.rs` implements the provider-write portion independently.
+A read-only preview records the acting account, source and network identities,
+destination owner identity, requested name and default-branch-only choice. A
+personal destination must be the acting account; an organization is explicit.
+Reported refusal of forking is respected, while missing policy metadata remains
+unknown. Execution rechecks the bindings and expires unused previews after
+fifteen minutes.
+
+Before dispatching a POST, the core writes and syncs a private request record.
+Records exclude credentials, raw API responses, temporary clone tokens and
+commit-message bodies. A repeated execution returns the saved outcome rather
+than sending the POST again. Another preview for the same account, destination,
+network and name returns the existing active record. A CLI failure or lost reply
+does not establish that the request was never applied.
+
+| State | Evidence and next action |
+| --- | --- |
+| Awaiting confirmation | Dispatch may have happened; reconcile with reads and never automatically repeat the write |
+| Accepted, pending | A successful provider reply was received; repository and Git-object availability remain unverified |
+| Metadata available | Fresh owner, repository and fork-network metadata match; read the exact default-branch reference and commit object |
+| Ready | The reference names the expected branch and its matching commit object is readable; clone/attachment still needs its own review |
+| Conflict | Returned owner, network, access or a previously observed repository ID does not match; retain the record for inspection |
+
+Reconciliation never dispatches a provider write. Read failures do not establish
+absence. The first verified fork ID remains bound across later failures and
+replacement; unavailable or malformed metadata clears current readiness. A
+changed source forking policy does not prevent read-only reconciliation of an
+already dispatched request.
+
+Completed records can be archived. The retained archive entry is synced before
+the active name is removed, and an interrupted archive can finish without
+reactivating the old review. An unresolved record requires explicit acknowledgement
+of its exact current snapshot before local retirement; a changed snapshot is
+refused. Retirement does not cancel the provider request or prove absence. Its
+original outcome remains readable, the old preview never dispatches again, and
+another submission requires a new preview and explicit execution.
+
+Native server-held preview/acknowledgement tokens, typed IPC, desktop controls and
+reviewed local remote attachment remain required. No live provider write is part of source
+qualification. Owned fixtures cover both successful and interrupted dispatch,
+asynchronous readiness, identity replacement, cancellation, locking and archive
+recovery. The store explicitly unlocks before closing its file handle, so an
+unrelated child retaining a duplicate descriptor cannot hold a completed
+request's lock. Seventeen new owned cases pass within the full source gate:
+682 Rust tests and 166 frontend tests pass, with 45 Rust cases ignored. Angular
+compilation, Cargo workspace checks and Clippy with warnings denied also pass. The ignored cases
+and source-only fixtures do not establish real provider or desktop acceptance.

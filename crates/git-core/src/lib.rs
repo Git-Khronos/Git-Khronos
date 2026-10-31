@@ -39,6 +39,14 @@ pub use branch_workflow::{
 };
 mod hosted_repositories;
 mod hosted_forks;
+mod hosted_fork_request;
+pub use hosted_fork_request::{
+    HostedForkRequest, HostedForkPlan, HostedForkIntent, HostedForkOwner,
+    HostedForkOwnerKind, HostedForkPhase, HostedForkStatus, HostedForkRepository,
+    prepare_hosted_fork, execute_hosted_fork, reconcile_hosted_fork,
+    list_hosted_fork_requests, archive_hosted_fork_request,
+    load_hosted_fork_request, acknowledge_hosted_fork_request,
+};
 pub use hosted_forks::{
     HostedForkQuery, HostedForkPage, HostedForkSelection, HostedForkInspection,
     load_hosted_fork_page, inspect_hosted_fork,

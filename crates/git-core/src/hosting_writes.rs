@@ -184,7 +184,7 @@ fn validate(path: &Path, request: &HostedWriteRequest) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn encode_segment(value: &str) -> String {
+pub(crate) fn encode_segment(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {

@@ -43,6 +43,7 @@ pub struct HostedRepository {
     pub source: Option<HostedRepositoryIdentity>,
     pub can_pull: Option<bool>,
     pub can_push: Option<bool>,
+    pub forking_allowed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -130,7 +131,7 @@ fn request_error(message: &str) -> AppError {
         Some("Review the selected account and repository."),
     )
 }
-fn component(text: &str) -> bool {
+pub(crate) fn component(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= 100
         && text != "."
@@ -154,7 +155,7 @@ fn positive_id(text: &str) -> Option<u64> {
     }
     text.parse::<u64>().ok().filter(|id| *id > 0)
 }
-fn id(value: &Value) -> Result<String, AppError> {
+pub(crate) fn id(value: &Value) -> Result<String, AppError> {
     // Preserve REST integer identity across the JavaScript precision boundary.
     value
         .as_u64()
@@ -285,6 +286,7 @@ pub(crate) fn repository(value: &Value) -> Result<HostedRepository, AppError> {
         source: optional_identity(value, "source")?,
         can_pull: optional_bool(permissions, "pull")?,
         can_push: optional_bool(permissions, "push")?,
+        forking_allowed: optional_bool(value, "allow_forking")?,
     })
 }
 fn account(transport: &mut impl Transport) -> Result<HostedAccount, AppError> {

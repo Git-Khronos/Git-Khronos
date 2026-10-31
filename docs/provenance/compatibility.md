@@ -2127,3 +2127,22 @@ cancellation. They submit no provider writes. This source implementation does
 not establish native, renderer, creation/readiness, local attachment or
 other-provider acceptance. No vendor implementation, package internals, assets,
 external source code or copied documentation prose was used.
+
+## Durable fork requests and read-only outcome reconciliation
+
+The new core independently uses documented GitHub owner metadata and fork
+creation fields. It persists nonsensitive intent before dispatch and separates
+an accepted response from verified fork metadata and readable Git objects.
+Repeated execution and another matching active preview do not dispatch again.
+Read-only reconciliation validates owner/network identities, pins the first
+verified fork ID and checks the exact default-branch reference and commit object.
+
+Owned fixtures inspect the durable record at the provider boundary and model a
+lost caller/reply, delayed readiness, replacement, inaccessible or malformed
+metadata, cancellation and archive interruption. These fixtures never contact a
+live provider. Explicit local acknowledgement of an unresolved outcome compares
+the reviewed snapshot and retains the original record; it never cancels a
+provider request, proves absence or submits a replacement write. Full source
+tests and compile/Clippy checks pass; native and renderer controls, server-held
+acknowledgement tokens and local remote attachment remain open. No proprietary implementation, package internals, assets, external
+code or copied documentation prose was used.

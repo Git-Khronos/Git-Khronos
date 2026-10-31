@@ -63,7 +63,7 @@ fn identity(repository: &HostedRepository) -> HostedRepositoryIdentity {
     }
 }
 
-fn network(source: &HostedRepository) -> Result<HostedRepositoryIdentity, AppError> {
+pub(crate) fn network(source: &HostedRepository) -> Result<HostedRepositoryIdentity, AppError> {
     match (source.fork, &source.source) {
         (Some(false), None) => Ok(identity(source)),
         (Some(true), Some(root)) if root.id != source.id => Ok(root.clone()),
