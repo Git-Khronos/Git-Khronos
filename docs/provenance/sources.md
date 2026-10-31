@@ -1372,3 +1372,22 @@ Primary behavior and invocation references:
 Used for original request/response handling and owned offline acceptance fixtures.
 No external implementation, example code, documentation prose or assets copied.
 No new dependency was added. The optional CLI is not redistributed.
+
+## Feature, release and hotfix workflow specification
+
+Capability reference:
+https://help.gitkraken.com/gitkraken-desktop/git-flow/
+
+Git behavior references:
+
+- https://git-scm.com/docs/git-merge
+- https://git-scm.com/docs/git-update-ref
+- https://git-scm.com/docs/git-check-ref-format
+- https://git-scm.com/docs/git-worktree
+- https://git-scm.com/docs/git-tag
+
+Used to define neutral branch transitions and independently designed previews,
+partial-result reporting and recovery acceptance cases in
+`docs/specifications/branch-workflows.md`. This is a specification, not
+implementation or qualification evidence. No proprietary internals, source,
+assets or documentation prose were copied; no dependency was added.

@@ -58,7 +58,7 @@ behavioral cases during the audit; grouping does not remove any listed action.
 | G21 | Add/init/update/sync/remove nested submodules and inspect their changes/history | Audit nested, dirty, missing, detached and conflicted submodules |
 | G22 | Initialize/use Git LFS, track/untrack, transfer/prune objects, and manage locks | Audit provider availability, actual object integrity and lock ownership |
 | G23 | Create/open/lock/move/repair/remove worktrees and branches safely | Audit occupancy, shared configuration, ignored/untracked collisions and recovery |
-| G24 | Configure and run feature/release/hotfix workflows, including finishing into the appropriate branches and tagging releases | Missing dedicated Gitflow workflow; basic branch operations alone do not complete this row |
+| G24 | Configure and run feature/release/hotfix workflows, including finishing into the appropriate branches and tagging releases | Missing dedicated Gitflow workflow; [independent specification](specifications/branch-workflows.md) defines required transitions and recovery; basic branch operations alone do not complete this row |
 | G25 | Respect Git hooks, expose hook errors/output and explicit hook-control options | Audit actual hook processes and refusal/recovery behavior |
 | G26 | Import/export patches, mail series and bundles; inspect and recover failed imports | Audit existing exchange implementations and format compatibility |
 | G27 | Maintain repository integrity and offer actionable diagnostics without silently losing data | Audit fsck/maintenance, cancellation and missing/corrupt repositories |
@@ -115,7 +115,7 @@ implemented in-app capability.
 | U04 | Persist preferences/drafts/view state and restore context across restarts without replaying mutations | Audit local state and multiple sessions/workspaces |
 | U05 | Provide native Linux, Windows and macOS behavior plus documented Windows/WSL interoperability | Linux is qualified for prior exact artifacts; Windows/macOS/WSL remain unqualified |
 | U06 | Package/install/update/uninstall with accurate licenses, notices and dependency provenance | Audit current package bytes, supported formats and platforms |
-| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: scoped gates passed for previous changes; latest full CI was failed and is being repaired |
+| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Partial: hosted-write commit `be1b7a76` passed 1247 local renderer cases and 305 native scenarios on Linux package `9a5a8c0badec`; remote CI and other platforms remain unverified |
 | U08 | Handle cancellation, stale state, partial results and uncertain remote writes without reporting false success | Audit every new operation; extend failure fixtures with each implementation |
 
 ## Public discovery references
