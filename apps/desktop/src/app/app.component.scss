@@ -752,20 +752,20 @@
   .toolbar-actions { grid-column: 2; justify-self: center; }
   .toolbar-utilities { grid-column: 3; justify-self: end; }
 }
+@media (min-width: 651px) and (max-width: 1350px) {
+  .toolbar-navigation .toolbar-nav-button > span { gap: 0; }
+  .toolbar-navigation .toolbar-nav-button small { display: none; }
+}
 @media (min-width: 861px) and (max-width: 1050px) {
   .toolbar-navigation { display: flex; }
   .toolbar-navigation > .toolbar-panel-button { display: none; }
   .toolbar-navigation .toolbar-nav-control, .toolbar-navigation .toolbar-nav-divider { display: block; }
   .toolbar-navigation .toolbar-nav-button { width: 108px; max-width: 108px; }
   .toolbar-navigation .branch-nav-control .toolbar-nav-button { width: 118px; max-width: 118px; }
-  .toolbar-navigation .toolbar-nav-button > span { gap: 0; }
-  .toolbar-navigation .toolbar-nav-button small { display: none; }
 }
 @media (min-width: 1051px) and (max-width: 1350px) {
   .toolbar-navigation .remote-nav-button { width: 118px; max-width: 118px; }
   .toolbar-navigation .branch-nav-button { width: 154px; max-width: 154px; }
-  .toolbar-navigation .toolbar-nav-button > span { gap: 0; }
-  .toolbar-navigation .toolbar-nav-button small { display: none; }
 }
 @media (min-width: 760px) and (max-width: 860px) {
   .toolbar-navigation { display: flex; gap: 1px; }
@@ -773,8 +773,6 @@
   .toolbar-navigation .toolbar-nav-control, .toolbar-navigation .toolbar-nav-divider { display: block; }
   .toolbar-navigation .toolbar-nav-button { width: 92px; max-width: 92px; padding-inline: 5px; }
   .toolbar-navigation .branch-nav-control .toolbar-nav-button { width: 88px; max-width: 88px; }
-  .toolbar-navigation .toolbar-nav-button > span { gap: 0; }
-  .toolbar-navigation .toolbar-nav-button small { display: none; }
 }
 @media (min-width: 651px) and (max-width: 759px) {
   .toolbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
@@ -784,8 +782,6 @@
   .toolbar-navigation .toolbar-nav-button { grid-template-columns: 12px minmax(0, 1fr) 9px; gap: 3px; padding-inline: 4px; }
   .toolbar-navigation .remote-nav-button { width: 82px; max-width: 82px; }
   .toolbar-navigation .branch-nav-button { width: 84px; max-width: 84px; }
-  .toolbar-navigation .toolbar-nav-button > span { gap: 0; }
-  .toolbar-navigation .toolbar-nav-button small { display: none; }
   .toolbar-actions { grid-column: 2; justify-self: center; }
   .toolbar-utilities { grid-column: 3; justify-self: end; }
   .graph-search { width: 30px; gap: 0; padding: 0 3px; }
