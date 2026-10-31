@@ -1496,3 +1496,17 @@ identities from working bytes and performs no implicit object fetch. Existing
 project process cancellation and Unix file-descriptor conventions are reused.
 The new fixture bytes, local upload-helper control and reader are project-created;
 no third-party source code, asset or new dependency was added.
+
+
+## Exact comparison sides
+
+Sources:
+
+- https://git-scm.com/docs/git-cat-file
+- https://git-scm.com/docs/git-stash (saved working tree and parent relationships)
+
+Used for: independently selecting commit parents, HEAD/index/working-copy and
+stash layers without treating shallow boundaries or missing objects as absent
+files. Owned repositories cover SHA-1/SHA-256, literal rename paths, root and
+merge commits, stash layers, missing objects, cancellation and unchanged Git
+state. No external implementation, assets or new dependency were introduced.

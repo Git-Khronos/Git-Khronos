@@ -17,6 +17,7 @@ Sources:
 - https://git-scm.com/docs/git-cat-file
 - https://git-scm.com/docs/git-ls-tree
 - https://git-scm.com/docs/git-ls-files
+- https://git-scm.com/docs/git-stash
 
 ## Observable behavior
 
@@ -109,9 +110,25 @@ the complete core suite passed. A follow-up root guard refuses Git metadata
 directories as working-file roots while preserving historical blob reads from a
 bare repository; its focused cases, full core suite and Clippy pass.
 
-This is a core source checkpoint. Native commands, comparison-side selection,
-image type/dimension detection and decoding, LFS/SVG handling, original desktop
-controls and packaged acceptance remain open. The working-file reader currently
+The independent comparison resolver now selects commit/first-parent, explicit
+revision pairs, revision/working-copy, HEAD/index and index/working-copy sides.
+It reads commit header parents rather than inferring a root from a shallow walk.
+Stash comparisons distinguish the saved base, index, working tree and optional
+untracked tree. Renames retain their selected original path. Missing objects are
+explicitly unavailable on the affected side while a readable counterpart remains
+available; they are never represented as an absent file or substituted with
+current working bytes. Mutable selections are checked again after bounded reads.
+Cancellation ends the whole request. Comparison metadata and file reads share
+the fetch-free Git runner and working-root guards.
+
+The comparison checkpoint passes 25 focused file-content/comparison cases and
+all 695 core tests (37 intentionally ignored). All-target core Clippy passes with
+warnings denied. Earlier Clippy failures were a collapsible conditional and were
+corrected before this final run; failed attempts remain in validation artifacts.
+
+This is a core source checkpoint. Native commands, image type/dimension detection
+and decoding, LFS/SVG handling, original desktop controls and packaged acceptance
+remain open. The working-file reader currently
 requires Unix directory handles; a contained reader and runtime acceptance for
 other platforms remain required. This code does not establish an image preview
 or completion of any non-text parity requirement by itself.

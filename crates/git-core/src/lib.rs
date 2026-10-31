@@ -16,6 +16,12 @@ mod process_pipe;
 mod ignore_rules;
 mod file_statistics;
 mod file_content;
+mod file_comparison;
+pub use file_comparison::{
+    FileComparisonContext, FileComparisonRequest, FileComparisonSide,
+    FileComparisonContent, FileComparisonValue, FileComparisonUnavailable,
+    StashContentLayer, read_file_comparison,
+};
 pub use file_content::{FileContentLocation, FileContentKind, FileContent, MAX_FILE_CONTENT_BYTES, read_file_content};
 mod no_commit_replay;
 mod operation_recovery;

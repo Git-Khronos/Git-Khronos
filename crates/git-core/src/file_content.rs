@@ -40,7 +40,7 @@ impl std::fmt::Debug for FileContent {
     }
 }
 impl FileContent {
-    fn empty(kind: FileContentKind) -> Self {
+    pub(super) fn empty(kind: FileContentKind) -> Self {
         Self {
             kind,
             oid: None,
@@ -60,7 +60,7 @@ fn refused(message: &str) -> AppError {
 fn io_error(_: impl std::fmt::Display) -> AppError {
     refused("The selected file could not be read as stable repository content.")
 }
-fn validate_file(file: &str) -> Result<(), AppError> {
+pub(super) fn validate_file(file: &str) -> Result<(), AppError> {
     let candidate = Path::new(file);
     if file.is_empty()
         || file.len() > 16_384
@@ -89,7 +89,11 @@ fn validate_file(file: &str) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn content_git(path: &Path, args: &[&str], limit: usize) -> Result<(Output, bool), AppError> {
+pub(super) fn content_git(
+    path: &Path,
+    args: &[&str],
+    limit: usize,
+) -> Result<(Output, bool), AppError> {
     // Fetch-free inspection must fail closed on Git versions without this flag.
     let mut guarded = Vec::with_capacity(args.len() + 1);
     guarded.push("--no-lazy-fetch");
@@ -97,7 +101,7 @@ fn content_git(path: &Path, args: &[&str], limit: usize) -> Result<(Output, bool
     run_git_with_stdout_limit(path, &guarded, limit)
 }
 
-fn metadata_git(path: &Path, args: &[&str]) -> Result<Vec<u8>, AppError> {
+pub(super) fn metadata_git(path: &Path, args: &[&str]) -> Result<Vec<u8>, AppError> {
     let (output, truncated) = content_git(path, args, MAX_ENTRY_BYTES)?;
     ensure_success("inspect selected file content identity", &output)?;
     if truncated {
@@ -269,6 +273,30 @@ pub fn read_file_content(
     })
 }
 
+pub(super) fn worktree_root(path: &Path) -> Result<PathBuf, AppError> {
+    if metadata_git(path, &["rev-parse", "--is-inside-git-dir"])? == b"true\n" {
+        return Err(refused(
+            "Git metadata directories are not working-file roots.",
+        ));
+    }
+    let top = metadata_git(
+        path,
+        &["rev-parse", "--path-format=absolute", "--show-toplevel"],
+    )?;
+    let top = top
+        .strip_suffix(b"\n")
+        .ok_or_else(|| refused("Git did not identify a worktree root."))?;
+    let root_path = Path::new(std::str::from_utf8(top).map_err(io_error)?)
+        .canonicalize()
+        .map_err(io_error)?;
+    if root_path != path.canonicalize().map_err(io_error)? {
+        return Err(refused(
+            "Working content must be selected relative to the worktree root.",
+        ));
+    }
+    Ok(root_path)
+}
+
 #[cfg(unix)]
 mod worktree {
     use super::*;
@@ -322,26 +350,7 @@ mod worktree {
         file: &str,
         cancellation: &CancellationToken,
     ) -> Result<FileContent, AppError> {
-        if metadata_git(path, &["rev-parse", "--is-inside-git-dir"])? == b"true\n" {
-            return Err(refused(
-                "Git metadata directories are not working-file roots.",
-            ));
-        }
-        let top = metadata_git(
-            path,
-            &["rev-parse", "--path-format=absolute", "--show-toplevel"],
-        )?;
-        let top = top
-            .strip_suffix(b"\n")
-            .ok_or_else(|| refused("Git did not identify a worktree root."))?;
-        let root_path = Path::new(std::str::from_utf8(top).map_err(io_error)?)
-            .canonicalize()
-            .map_err(io_error)?;
-        if root_path != path.canonicalize().map_err(io_error)? {
-            return Err(refused(
-                "Working content must be selected relative to the worktree root.",
-            ));
-        }
+        let root_path = worktree_root(path)?;
         let root = absolute(&root_path)?;
         let relative = Path::new(file);
         let parent = relative.parent().unwrap_or(Path::new(""));
