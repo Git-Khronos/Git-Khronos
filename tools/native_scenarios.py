@@ -2737,6 +2737,17 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
         saved = invoke('list_hosted_fork_requests')
         assert {row['id'] for row in saved} == {row['id'] for row in before} | {record['id']}
         assert invoke('load_hosted_fork_request', id=record['id']) == record
+        pending_before_restart = invoke('prepare_hosted_fork', contextId=context, request=request)
+        journal_before_restart = journal.read_bytes()
+        restarted = driver.restart_application()
+        report.setdefault('applicationRestarts', []).append(restarted | dict(forkRequest=record['id']))
+        open_ui(driver, original_repository)
+        assert journal.read_bytes() == journal_before_restart
+        assert invoke('load_hosted_fork_request', id=record['id']) == record
+        assert {row['id'] for row in invoke('list_hosted_fork_requests')} == {row['id'] for row in before} | {record['id']}
+        refuses('execute_hosted_fork', 'staleHostedForkReview', contextId=context, token=pending_before_restart['token'])
+        assert len(submissions()) == 1
+        report['scenarios'].append('native-fork-application-process-restart-preserves-journal-refuses-old-review-and-never-replays-post')
         duplicate = invoke('prepare_hosted_fork', contextId=context, request=request)
         assert invoke('execute_hosted_fork', contextId=context, token=duplicate['token'])['id'] == record['id']
         assert len(submissions()) == 1
@@ -2888,6 +2899,8 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     file_media_comparisons(driver, fixtures, repository, report)
     hosted_fork_remote_attachment(driver, fixtures, repository, report)
     hosted_fork_requests(driver, fixtures, repository, report)
+    # A real app restart discards native repository sessions as well as reviews.
+    repo_id = driver.invoke("open_repository", path=str(repository))["id"]
     hosted_repository_discovery_and_clone(driver, fixtures, repository, report)
     branch_workflow_native_boundary(driver, fixtures, repository, report)
     branch_workflow_desktop(driver, fixtures, repository, report)

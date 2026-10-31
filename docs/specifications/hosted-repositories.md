@@ -510,9 +510,41 @@ review, adds the confirmed URL/refspec to real local configuration, and performs
 provider GETs only. Both native review and confirmation screenshots were visually
 inspected. Renderer IPC was not replaced or stubbed in these native cases.
 
-Inherited-environment native acceptance and the complete 1,309-case integrated
-renderer gate are still running. The earlier failed full renderer run and the
-superseded partial serial rerun remain excluded from full passing qualification.
-No new integration commit has reached dev or been pushed. This is Linux offline
-fixture evidence; live provider writes, application-process restart, other
-platforms, redirected transport review and the full parity inventory remain open.
+The complete 1,309-case integrated renderer replacement passes on the unchanged
+application runtime. The earlier failed full renderer run, interrupted attempts
+and superseded partial serial rerun remain excluded from passing qualification.
+The strengthened native pair and process-restart evidence are recorded below.
+This is Linux offline fixture evidence; live provider writes, other platforms,
+redirected transport review and the full parity inventory remain open.
+
+
+### Saved fork recovery after an application-process restart
+
+The base inherited-environment run on the same package now passes all 176 cases,
+completing the original pair of 175 normal plus 176 environment scenarios.
+A subsequent test-only harness change closes the owned application session,
+requires its exact executable's old PID to stop, launches the same extracted
+binary through WebDriver once, and requires a different PID. It never substitutes
+renderer reload for process termination or retries an ambiguously created session.
+
+The full normal native run with that additional case passes 176 scenarios on
+package `15d19f2c7068`. The saved uncertain fork journal survives byte-for-byte;
+its request can be loaded and listed by the new process; an unused review from
+the previous process is refused; and the provider fixture still records exactly
+one creation POST. Repository sessions are explicitly rebound after restart,
+and the remaining native workflows pass on the new application process.
+The corresponding strengthened inherited-environment run also passes all 177
+cases on the same package and executable hashes. It verifies that inherited
+outside Git index/HEAD/files remain unchanged. The current qualified native pair
+is 176 normal plus 177 inherited-environment executions (353 total); repeated
+baseline runs are not added to that total. This qualifies saved fork recovery in
+these Linux fixtures. Other application/workspace persistence remains open.
+
+These are post-build harness changes only (`tools/native_acceptance.py` and
+`tools/native_scenarios.py`); the application/package bytes are unchanged. The
+31-case harness gate passes. The full integrated renderer gate was stopped by
+the interrupted turn and restarted with the same runtime and assertions; only
+the completed replacement qualifies it. That replacement finished successfully
+at 2026-10-31 23:04:46 UTC: 1,309 passed, no failures. Its runtime source stayed
+frozen throughout. The final post-build changes are test harness and documentation
+only; they do not change the qualified application/package bytes.
