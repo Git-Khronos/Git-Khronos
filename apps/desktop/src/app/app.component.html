@@ -1,4 +1,4 @@
-<div class="app-shell" [class.is-busy]="git.busy()">
+<div class="app-shell" [class.is-busy]="git.busy()" [style.--zoom-controls-width.px]="zoomControlsWidth()">
   @defer (on immediate) {
     <gc-authentication />
   } @error {
@@ -2736,7 +2736,7 @@
       </section>
     </div>
   }
-  <div class="zoom-control" role="group" aria-label="Interface zoom controls">
+  <div class="zoom-control" gcViewportWidth (gcViewportWidth)="zoomControlsWidth.set($event)" role="group" aria-label="Interface zoom controls">
     <span class="zoom-label" aria-hidden="true">Zoom</span>
     <button type="button" title="Decrease zoom ({{ primaryShortcutKey }}+-)" aria-label="Decrease zoom" aria-keyshortcuts="Control+- Meta+-" [disabled]="zoomPercent() <= 75" (click)="stepZoom(-1)">−</button>
     <select class="zoom-select" aria-label="Interface zoom" title="Interface zoom" [value]="zoomPercent()" (change)="setZoom(+$any($event.target).value)">

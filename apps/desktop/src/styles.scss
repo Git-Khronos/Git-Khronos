@@ -1837,7 +1837,7 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .activity-empty { height: 100%; display: grid; place-items: center; align-content: center; gap: 5px; color: var(--overlay-muted); }.activity-empty gc-icon { color: var(--overlay-muted-low); }.activity-empty strong { color: var(--overlay-text); font: var(--font-size-body) ui-sans-serif, system-ui, sans-serif; }.activity-empty small { font: var(--font-size-caption) ui-sans-serif, system-ui, sans-serif; }
 
 /* Persistent status-bar zoom controls */
-.statusbar { height: var(--statusbar-height); display: flex; align-items: center; gap: 16px; overflow: hidden; padding: 0 224px 0 10px; border-top: 1px solid var(--status-border); background: var(--status-surface); color: var(--status-text); font-size: 12px; white-space: nowrap; }
+.statusbar { height: var(--statusbar-height); display: flex; align-items: center; gap: 16px; overflow: hidden; padding: 0 calc(var(--zoom-controls-width, 208px) + 16px) 0 10px; border-top: 1px solid var(--status-border); background: var(--status-surface); color: var(--status-text); font-size: 12px; white-space: nowrap; }
 .status-repository { min-width: 0; max-width: 190px; display: inline-flex; align-items: center; gap: 5px; color: var(--status-text); }
 .status-repository gc-icon { flex: 0 0 auto; color: var(--muted); }
 .status-repository strong { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; }
@@ -1902,7 +1902,7 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
   .status-separator, .status-version { display: none; }
 }
 @media (max-width: 420px) {
-  .statusbar { gap: 4px; padding-right: 168px; }
+  .statusbar { gap: 4px; }
   .status-spacer { display: none; }
   .status-changes em { display: none; }
   .zoom-label { display: none; }

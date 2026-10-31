@@ -814,6 +814,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly panelFileSelectionSource = signal<'commit' | 'comparison' | null>(null);
   protected readonly panelFileSelectionAnchor = signal<string | null>(null);
   protected readonly appMenuOpen = signal(false);
+  protected readonly zoomControlsWidth = signal(208);
   protected readonly workspaceMenuOpen = signal(false);
   protected readonly workspaceCenterRequest = signal<WorkspaceCenterRequest | null>(null);
   protected readonly workspaceDialogMode = signal<'create' | 'rename' | null>(null);

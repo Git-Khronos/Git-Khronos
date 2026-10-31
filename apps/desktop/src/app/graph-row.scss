@@ -58,7 +58,7 @@
 .node { z-index: 1; width: 9px; height: 9px; border: 2px solid var(--graph-lane-color, #55c9a5); border-radius: 50%; background: var(--row-surface); }
 .multi-lane .node { position: absolute; top: 15px; background: var(--row-surface) !important; }
 /* Match the SVG's y=20 midpoint even when the row divider reduces its height. */
-.multi-lane .author-node { top: 50%; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: color-mix(in srgb, var(--author-color) 80%, var(--canvas)) !important; color: white; font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--row-surface); }
+.multi-lane .author-node { top: 50%; width: 24px; height: 24px; display: grid; place-items: center; overflow: hidden; border-width: 2px; background: color-mix(in srgb, var(--author-color) 80%, var(--canvas)) !important; color: white; font-family: var(--font-mono); font-size: 11px; font-weight: 850; line-height: 1; letter-spacing: -.06em; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--row-surface); }
 .commit-list.compact-graph .author-node { width: 20px; height: 20px; font-size: 10px; }
 .commit-row[data-commit-oid] .ref-connector { top: 50%; transform: translateY(-50%); }
 .multi-lane .author-node.head-node { box-shadow: 0 0 0 2px var(--row-surface), 0 0 0 4px var(--accent), 0 0 10px #54d6ad66; }
@@ -73,7 +73,7 @@
 .commit-copy { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
 .subject { max-width: 82%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-body); font-weight: 650; }
 .subject:only-child { max-width: 100%; }
-.commit-description { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.commit-description { min-width: 0; flex: 1 0 calc(18% - 7px); overflow: hidden; color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 @container commit-message (max-width: 250px) {
   .commit-copy { height: 100%; display: grid; align-content: center; gap: 1px; }
   .subject { max-width: 100%; line-height: 1.08; }
