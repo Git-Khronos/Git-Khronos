@@ -17,6 +17,24 @@ development-only application endpoint.
 Missing prerequisites are failures. The harness never reports a skipped native
 suite as a pass.
 
+Linux bundling also prepares `rust-dependency-notices.json.gz` from locked,
+offline Cargo metadata for Tauri's explicit target triple. It includes the
+conservative normal/build dependency closure, upstream notice text/hashes and
+versioned source locations, with separately marked project-authored source
+availability where explicitly reviewed. It is not an exact linked-artifact
+SBOM or a legal approval. Missing or changed license provenance fails bundling.
+The Debian verifier rejects a missing, corrupt or mismatched catalog; rebuild
+with `task package:deb` if the generated copy is absent or differs. Existing
+curated notices remain alongside it. `desktop:package-test` covers collection,
+generation and private Debian payload/cache regressions without installing.
+
+The package also carries `frontend-dependency-notices.txt.gz`: Angular's
+production-generated notice bytes, followed by the explicitly reviewed full
+dialog-plugin terms omitted from that package's SPDX-only published notice.
+The generator verifies the package/lock/source identities and retained hashes;
+the Debian verifier rejects missing, corrupt or mismatched frontend notices.
+The generated file alone is not an exact frontend SBOM or legal approval.
+
 The separate `desktop:test-ssh` target requires `/usr/sbin/sshd`, or an absolute
 `GIT_KHRONOS_SSHD` path to an already available OpenSSH server. A private extracted
 package prefix is supported: keep `usr/lib/openssh/sshd-session` and `sshd-auth`

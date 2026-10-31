@@ -13,6 +13,9 @@ const outputs = [
   'target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb',
   'target/package-assets/changelog.gz',
   'target/package-assets/git-khronos.1.gz',
+  'target/package-assets/rust-dependency-notices.json.gz',
+  'target/package-assets/frontend-dependency-notices.txt.gz',
+  'dist/apps/desktop/3rdpartylicenses.txt',
   'dist/apps/desktop/browser/index.html',
 ];
 
@@ -117,6 +120,11 @@ test('input edits, additions, renames and deletions invalidate the build', async
     'libs/contracts/src/index.ts',
     'packaging/debian/changelog',
     'tools/prepare-linux-package.mjs',
+    'tools/prepare-rust-notices.mjs',
+    'tools/prepare-frontend-notices.mjs',
+    'tools/collect-rust-notices.mjs',
+    'packaging/licenses/reviewed-rust-notices.json',
+    'packaging/licenses/fixture-LICENSE',
     'tools/check-production-renderer.mjs',
     'Cargo.lock',
     'pnpm-lock.yaml',
@@ -264,6 +272,13 @@ async function packagePayloadFixture(t) {
   }
   await put('usr/share/doc/git-khronos/changelog.gz', gzipSync('fixture'));
   await put('usr/share/man/man1/git-khronos.1.gz', gzipSync('fixture'));
+  const notices = gzipSync('{"scope":"Owned package fixture, not release metadata"}\n');
+  await put('usr/share/doc/git-khronos/rust-dependency-notices.json.gz', notices);
+  await mkdir(join(root, 'target/package-assets'), { recursive: true });
+  await writeFile(join(root, 'target/package-assets/rust-dependency-notices.json.gz'), notices);
+  const frontendNotices = gzipSync('Owned frontend notices fixture\n');
+  await put('usr/share/doc/git-khronos/frontend-dependency-notices.txt.gz', frontendNotices);
+  await writeFile(join(root, 'target/package-assets/frontend-dependency-notices.txt.gz'), frontendNotices);
   const directory = join(root, 'target/release/bundle/deb');
   await mkdir(directory, { recursive: true });
   const artifact = join(directory, 'fixture.deb');
@@ -305,6 +320,40 @@ exec /usr/bin/dpkg-deb "$@"
   assert.deepEqual(await readdir(temporaryRoot), ['unrelated'],
     'a rejected or damaged package must not leave its extracted files behind');
   assert.equal(await readFile(join(temporaryRoot, 'unrelated'), 'utf8'), 'preserve');
+});
+
+for (const [kind, filename] of [['Rust', 'rust-dependency-notices.json.gz'], ['frontend', 'frontend-dependency-notices.txt.gz']]) {
+test(`package verification rejects missing, corrupt or stale ${kind} notice payloads`, async (t) => {
+  const f = await packagePayloadFixture(t);
+  f.build();
+  assert.equal(f.verify().status, 0);
+  const path = `usr/share/doc/git-khronos/${filename}`;
+  await rm(join(f.payload, path));
+  f.build();
+  assert.match(f.verify().stderr, /payload is missing/);
+  await f.put(path, 'not gzip');
+  f.build();
+  assert.notEqual(f.verify().status, 0);
+  await f.put(path, gzipSync('different but valid gzip'));
+  f.build();
+  assert.match(f.verify().stderr, /notices differ/);
+  const expected = join(f.root, `target/package-assets/${filename}`);
+  await f.put(path, await readFile(expected));
+  await rm(expected);
+  f.build();
+  assert.ok(f.verify().stderr.includes(`generated ${kind} notices are missing`));
+});
+}
+
+test('both Linux bundle formats include the generated catalog from the preparation hook', async () => {
+  const config = JSON.parse(await readFile(join(repositoryRoot, 'apps/desktop/src-tauri/tauri.conf.json'), 'utf8'));
+  assert.equal(config.build.beforeBundleCommand, 'node tools/prepare-linux-package.mjs');
+  for (const format of ['deb', 'rpm']) {
+    assert.equal(config.bundle.linux[format].files['/usr/share/doc/git-khronos/rust-dependency-notices.json.gz'],
+      '../../../target/package-assets/rust-dependency-notices.json.gz');
+    assert.equal(config.bundle.linux[format].files['/usr/share/doc/git-khronos/frontend-dependency-notices.txt.gz'],
+      '../../../target/package-assets/frontend-dependency-notices.txt.gz');
+  }
 });
 
 test('package verification rejects the development-only IPC exporter', async (t) => {

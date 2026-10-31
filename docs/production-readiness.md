@@ -1,11 +1,60 @@
 # Production-readiness review
 
-Snapshot: 2026-10-24. This is an evidence-bounded work-in-progress
+Snapshot: 2026-10-31. This is an evidence-bounded work-in-progress
 review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
-## Latest rounded graph revision passed native full acceptance
+## Current qualification boundary
+
+The current source includes the streaming ignore-rule fix, reviewed Rust and
+frontend notices, and the selective performance/readiness branch integration.
+Source checks and the complete renderer suite pass (1,205 cases, zero failures
+or retries), alongside unit, LFS, packaging and native-harness tests.
+The final Debian artifact has SHA-256
+`efa425efbc83c2da9fdf5fe520c544845f37d6606f557e675a5c223cef00d14d`
+and passes verification and all 10 native smoke scenarios. Full/environment/
+performance acceptance of older artifacts below does not qualify this new
+artifact. Windows acceptance has not been run. No system package was changed.
+
+See [the branch integration audit](branch-integration-2026-10-30.md) for exact
+current artifact paths and validation evidence. The dated records below retain
+the earlier qualification history and its limits.
+
+## Latest packaged executable and frontend-notice qualification
+
+The `73475a44` candidate's exact packaged executable `6d597fd6` passed full
+acceptance (134 scenarios, 2026-10-24 22:43:29 UTC), environment acceptance
+(135, 22:47:06 UTC) and performance acceptance (11, 22:48:32 UTC). Reports are
+under `target/validation-runs/streaming-ignore-native-evidence/`, respectively
+`full-1792881620818385192/report.json`,
+`environment-1792881839632027383/report.json`, and
+`performance-1792882091599943012/report.json`. Each report confirms the preserved
+package and executable hashes. Rounded graph paths and avatar bypass clearances
+remain 23 per density and approximately 2.54/2.68 px. The 20,000/100,000-commit
+fixtures opened in about 897/1,196 ms, with maximum heartbeat gaps 192/160 ms
+and at most 57 rendered rows; both have 64 branches and 36 linked worktrees.
+These are headless fixture measurements, not universal hardware guarantees.
+
+The frontend audit found that Angular emits `3rdpartylicenses.txt` beside the
+embedded `browser` directory, so that generated file was absent from the actual
+Debian payload. The packaging hook and both Linux format mappings now include
+`frontend-dependency-notices.txt.gz`; the verifier rejects missing/corrupt/stale
+payloads and the Task cache tracks its producers and generated outputs.
+The original 30,907 bytes cover ten emitted package records. The dialog plugin's
+SPDX-only notice does not contain the full declared MIT/Apache terms; its exact
+reviewed upstream files are now appended with pinned manifest, registry/lock,
+published-SPDX and license-file identity checks, without inventing a template.
+The generated prefix remains byte-identical. The complete 42,882-byte payload
+has gzip SHA-256 `660567cf9b4427b5dfeb555aea0bb6d22e0de37e5b3f4b6b56fa7c26672c84e9`.
+All 55 package/generator/retained-policy tests passed on 2026-10-26 at 11:03:20
+UTC under `target/validation-runs/frontend-reviewed-license-package-gate/`.
+Real asset preparation passed at 11:03:17 UTC under
+`target/validation-runs/frontend-reviewed-license-real-assets/`. A new bundled
+artifact and actual payload verification remain required; the existing
+`73475a44` candidate is not represented as containing this newer frontend file.
+
+## Latest rounded graph revision passed extracted-package native suites
 
 The user subsequently requested rounded right-angle corners and more avatar
 spacing. Current source uses circular quarter turns, 40 px expanded / 32 px
@@ -82,9 +131,67 @@ Its report is
 It records 23 rounded orthogonal paths per density and minimum unrelated-avatar
 clearances of about 2.54 px expanded / 2.68 px compact. The 28 harness unit tests
 also passed at 20:42:23 UTC under
-`target/validation-runs/native-svg-precision-harness-test/`. The new candidate's
-inherited-environment/performance runs and clean complete renderer run remain
-release qualifications; this is not an overall production-readiness approval.
+`target/validation-runs/native-svg-precision-harness-test/`. A clean complete
+renderer run remains a release qualification;
+this is not an overall production-readiness approval.
+
+Post-commit inherited-environment acceptance passed all 135 scenarios at
+20:50:17 UTC under
+`target/validation-runs/committed-rounded-native-environment/`. Its report,
+`target/validation-runs/committed-rounded-native-evidence/environment-1792874783103231830/report.json`,
+records the same package and executable hashes, 23 rounded orthogonal paths
+per density, and the same approximately 2.54/2.68 px avatar-bypass clearances.
+This is extracted-package fixture evidence, not host desktop or real hosted
+service acceptance.
+
+Performance acceptance passed all 11 scenarios at 20:51:03 UTC under
+`target/validation-runs/committed-rounded-native-performance/`, with no competing
+repository compiler/browser suite. Its report,
+`target/validation-runs/committed-rounded-native-evidence/performance-1792875034476547351/report.json`,
+records the same package and executable hashes. The 20,000/100,000-commit
+fixtures opened in about 1,159/1,360 ms, with maximum heartbeat gaps of
+318/334 ms and at most 57 rendered rows. Both fixtures contain 64 branches
+and 36 linked worktrees. These headless measurements are not universal
+hardware guarantees. All 280 native scenarios now pass for the preserved
+`6d6a56f5` candidate.
+
+A new complete renderer run is active under
+`target/validation-runs/committed-rounded-renderer-full/`, using one worker,
+original deadlines, zero retries, a fresh server, and no competing repository
+compiler/native suite. Its 205-file before snapshot is
+`target/validation-runs/committed-rounded-renderer-qualification/before.json`,
+SHA-256 `1cddf8e60a11a35e5c10b74e1b40712cecd0e95f6ed8241593a4323fe4b5c7ab`.
+A successful terminal result, complete JSON case accounting and matching
+after-input snapshot are still required; starting this run is not a pass.
+The run has recorded a failure in SHA-column case 503. Its screenshot is blank;
+the retained trace reports `net::ERR_NETWORK_CHANGED` for both `main.js` and an
+Angular chunk after reload, before application startup. The missing-row check
+therefore did not measure a geometry violation. Keep this failed case in the
+report; the remaining run is still being observed, not relabeled successful.
+Evidence is under
+`renderer/graph-columns-keeps-SHA-al-cb9fa-ph-branch-with-scroll-false-chromium/`
+inside that run. A private user/network namespace probe succeeded, including
+private loopback setup and pnpm 12.14.0 readiness, with no host interface changes.
+It does not itself prove that isolation prevents this browser interruption;
+a controlled check and subsequent complete qualification remain necessary.
+
+Terminal follow-up: the run exited 1 at 22:09:17 UTC on 2026-10-24. JSON
+accounting contains all 1,185 cases: 1,182 expected, three unexpected, zero
+skipped/flaky and no top-level errors. The after snapshot at
+`target/validation-runs/committed-rounded-renderer-qualification/after.json`
+matches the original 205-file fingerprint. In addition to the bootstrap
+interruption, two workspace assertions still expected pre-rounded-layout
+dimensions: 44 px instead of the explicit second-lane offset 16 + 40 = 56 px,
+and compact width 70 px instead of the independently unit-tested 92 px layout
+specification. Those assertions were corrected after the run, without changing
+production geometry, deadlines or retries. Targeted revalidation and a new full
+qualification remain required; the failed complete run is retained unchanged.
+The separate three-case recheck passed at 22:13:48 UTC under
+`target/validation-runs/rounded-renderer-three-case-recheck/`, using a fresh
+server, one worker, original deadlines and zero retries. JSON accounting
+confirms exactly three expected, zero unexpected/skipped/flaky and no top-level
+errors. It includes the previously interrupted bootstrap case. This targeted
+success does not replace a new successful complete renderer qualification.
 
 The final staged whitespace check found trailing spaces in generated IPC type
 declarations. The adapter now normalizes exporter line endings, with a
@@ -97,6 +204,17 @@ and after produced identical runtime JavaScript. The resulting 205-file input
 fingerprint is `1cddf8e60a11a35e5c10b74e1b40712cecd0e95f6ed8241593a4323fe4b5c7ab`,
 not the earlier byte-for-byte `b468392e` snapshot. No rebuilt-package/runtime
 claim is inferred merely from this new fingerprint.
+
+Post-commit installed-launcher inspection confirmed that `/usr/bin/git-khronos`
+and `/usr/share/applications/Git Khronos.desktop` belong to the installed
+`git-khronos` 0.1.0 package; no legacy `git-khronos-desktop` package was found.
+`desktop-file-validate` accepted the entry, whose Exec, Icon and StartupWMClass
+are all `git-khronos`. This is metadata proof, not a desktop launch test.
+The installed executable SHA-256 is
+`def842d8a1563bfff77539f7ded37950a85d58c370dcf46231660d14de7caa6a`,
+different from the candidate's `2ed19c54` executable. The shared version number
+does not make them equivalent, and current graph/workflow fixes must not be
+reported as installed. No system package or personal application was changed.
 
 ## Previous square-corner revision and packaging checks
 
@@ -455,6 +573,197 @@ rewritten to green. Source success, if reached, still leaves new-package/native
 acceptance pending.
 
 ## Acceptance limits that remain explicit
+
+Post-commit notice-coverage audit: locked, offline Linux Cargo metadata exposes
+376 packages in the desktop normal-dependency closure, with no missing license
+declarations. Excluding proc-macro subtrees leaves 314 candidate packages and
+29 proc-macro boundaries. These are metadata inventories, not exact linked
+artifact SBOMs; default/workspace feature unification and linker elimination
+must not be confused with release payload proof. The latter inventory still
+includes MPL-declared `option-ext`, `selectors`, `cssparser`, `dtoa-short`, and
+`uluru`. The curated Rust notice names only `uluru`; the preserved Debian
+payload contains the curated notice and copyright file, not a resolved license
+inventory or source-availability catalog. Packaging verification currently
+checks notice presence/content equality, not completeness for linked dependencies.
+Before publication, qualify release dependency selection and generate/verify
+the required upstream notices and source-availability information. Do not infer
+redistribution compliance from declared identifiers, existing file presence,
+or the 280 successful native scenarios. Mozilla's primary MPL FAQ describes
+source-availability notice requirements for compiled third-party MPL code:
+<https://www.mozilla.org/en-US/MPL/2.0/FAQ/> (Q8).
+This audit does not establish that every metadata package is linked, that the
+current local build has been externally distributed, or an overall legal opinion.
+
+The standalone `tools/collect-rust-notices.mjs` collector now traverses a
+conservative normal/build closure, preserves upstream notice bytes and hashes,
+and records versioned crates.io source-archive locations. It rejects missing
+terms, unreviewed declarations/sources, escaping or linked files, invalid text
+and oversized inputs. Nine synthetic-fixture tests passed under
+`target/validation-runs/rust-notice-collector-unit/`. This is not yet connected to
+package preparation or its verifier. The first real-metadata attempt correctly
+stopped at `tauri-specta 2.0.0-rc.21`, whose published crate omits a notice file.
+Its canonical upstream license was then verified at the package's recorded VCS
+revision and preserved verbatim in
+`packaging/licenses/tauri-specta-2.0.0-rc.21-LICENSE`; its Git blob exactly
+matches `6d135f35f014e78278507b868d6617018e16b488`, SHA-256
+`79b0c7d284efc4c2dc8da73c01a6d10c19caf61e70fca813e642dc010049eee7`.
+An exact-version exception is now recorded in
+`packaging/licenses/reviewed-rust-notices.json` and enforced against registry,
+declared license/repository, published VCS revision/path, pinned upstream URL,
+SHA-256 and Git-blob identity. All 15 fixture tests passed under
+`target/validation-runs/rust-notice-reviewed-final-unit/`, including stale
+provenance, edited bytes and malformed-VCS error redaction. The real collector
+gets past that exception and next refuses `tauri-specta-macros`.
+
+The separate per-package diagnostic inventory at
+`target/validation-runs/rust-notice-gap-inventory.json` inspected 394 selected
+third-party packages across the conservative normal/build closure and records
+14 remaining missing-notice cases. It is explicitly not a generated successful
+catalog. Upstream exact-revision tree inspection located workspace notice files
+for several of them. A non-truncated recursive tree for `selectors`' recorded
+Stylo revision contains no MPL license document; the Apache/MIT files belonging
+to sibling crates must not be substituted for this MPL-declared package.
+Complete real-catalog qualification and packaging integration remain required.
+Follow-up: fourteen exact package exceptions now preserve the verified upstream
+workspace notices, including both files for dual-license workspaces. All 19
+fixture/policy tests passed at 21:43:50 UTC under
+`target/validation-runs/rust-notice-retained-policy-unit/`. The new diagnostic
+`target/validation-runs/rust-notice-gap-reviewed-inventory.json` checks the same
+394 selected packages and leaves only the selectors case unresolved. Its
+`passed` field remains false; neither that diagnostic nor the current collector
+is represented as a successful complete release catalog. The 14-issue original
+inventory and earlier failed attempts remain retained separately.
+No generic license-template fallback was added, and the preserved
+`6d6a56f5` package has not been replaced or relabeled notice-complete.
+
+The selectors case now uses a separately classified, project-authored MPL
+source-availability notice, not a fabricated upstream license file. Its policy
+binds the declared MPL-2.0 license, published VCS revision/path, exact `lib.rs`
+SHA-256/Git-blob identity and MPL header, versioned crate source archive and
+Mozilla license URL. Implementation text is inspected only as provenance
+evidence and is not copied into catalog output. The fixture suite now passes
+23 tests, including false upstream identity, edited source/header, missing
+retrieval information and changed hashes. The full locked offline Linux
+normal/build closure collected successfully at 22:00:07 UTC on 2026-10-24:
+394 third-party packages and 702 notice entries, with exactly one
+project-authored source-availability notice. The retained result is
+`target/validation-runs/rust-notice-complete-catalog-file-check/`.
+An earlier inline-command attempt failed because Nx shell forwarding removed
+JavaScript string quotes; that failed result is retained separately, and the
+successful check uses a file-based script. This collector check is not package
+integration, an exact binary SBOM or overall redistribution approval. The
+preserved Debian payload has not changed.
+
+Package integration now runs this collector from `beforeBundleCommand` using
+Tauri's explicit target triple and locked offline Cargo metadata. Debian/RPM
+file mappings include `rust-dependency-notices.json.gz`. The Debian verifier
+requires a valid gzip payload that matches the generated catalog byte-for-byte;
+Task inputs and generated outputs now cover the collector, generator, reviewed
+policy/notices and resulting catalog. The real preparation hook passed at
+22:03:05 UTC under `target/validation-runs/rust-notice-real-package-assets/`.
+The 46 collector/generator/private-package regression tests passed at 22:03:17
+UTC under `target/validation-runs/rust-notice-packaging-unit/`, including
+missing/corrupt/stale notice rejection and cache invalidation. A fresh bundled
+Debian artifact has not yet been built or accepted against these changes;
+earlier candidate acceptance remains tied to its original, unchanged payload.
+Neither the catalog nor fixture verification establishes JavaScript/native-OS
+dependency coverage, application-source distribution obligations or legal
+approval for publication.
+The normal `desktop:package-test` target now includes collector and generator
+tests as well as package fixtures. All 47 tests passed at 22:12:28 UTC under
+`target/validation-runs/rust-notice-standard-package-gate/`, including a check
+of both Linux format mappings and the preparation hook. The generated gzip
+catalog SHA-256 is
+`5fac5c2819ede1e738567139346fc6d7fb870b7841dc85af316bcf29fa3cf5a4`;
+the preserved candidate's SHA-256 remains `6d6a56f59da9c5b5b8a9cad3aefb3f0c6b8c03b1fb73fe57de2d85e84ca6ad7b`.
+
+The notice-enabled Debian build passed at 22:19:06 UTC on 2026-10-24 under
+`target/validation-runs/rust-notice-integrated-debian-build/`. Its separately
+preserved artifact is
+`target/verified-packages/rust-notices-candidate-370a012e/Git-Khronos_0.1.0_amd64.deb`,
+SHA-256 `370a012e6a2c5654e39bde16bc78a7998b6135117d409494f3c48f4a897721d2`.
+The real package verifier accepted it; independent extraction confirmed the
+catalog matches generated bytes, SHA-256 `5fac5c2819ede1e738567139346fc6d7fb870b7841dc85af316bcf29fa3cf5a4`.
+Its executable SHA-256 remains
+`2ed19c54e57160914a0ebcd5f7c822599138275dcd3f34ec213ebcec8fc22dd6`,
+the exact executable previously exercised by the 280 native scenarios. No
+system installation or publication occurred. The later streaming ignore-rule
+change described below is not included in this preserved package.
+
+Post-commit read-only review: `validate_worktree_path` rejects NUL, LF and CR
+before ignore-rule construction, so the suspected multi-line-filename rule
+injection is not reachable through `ignore_path`. Existing tests also cover
+literal wildcard names, foreign locks, byte/CRLF preservation, symlink refusal
+and preservation of staged content. No fix was made for that ruled-out concern.
+One resource-boundary candidate remains for a focused follow-up after the
+frozen renderer run: `ignore_rules::update` still reads the complete existing
+`.gitignore` with `fs::read`. Investigate large-rule-file memory behavior and
+streaming alternatives without weakening byte preservation, duplicate-rule
+detection, permissions, lock ownership or stop-tracking failure protections.
+This is an audit lead, not a measured allocation failure or a claimed fix.
+
+Follow-up resource probe confirmed one precise failure in the current helper:
+after reading a 64 MiB ordinary sparse `.gitignore`, growing its vector to
+append a rule requests 128 MiB. A child capped at 96 MiB address space aborted
+with `SIGABRT` and left its lock. Core dumps were disabled and no host memory
+limit was changed. This exercises the helper with fixture error/Git adapters,
+not the whole IPC/desktop path. The earlier 512 MiB/128 MiB experiment failed
+its initial read gracefully; its first adapter incorrectly used `unwrap()`.
+That fixture panic is not evidence of a product crash.
+
+The helper now scans with a 64 KiB buffer and constant-size line-match state,
+then streams a second pass only when an update is needed. Duplicate rules stay
+no-ops; existing bytes, CRLF/non-UTF8 content, permissions, hard-link isolation,
+foreign locks and stop-tracking staging protections remain covered. The same
+64 MiB/96 MiB probe passes at 22:25:30 UTC under
+`target/validation-runs/ignore-memory-growth-green/`, checking the original
+prefix SHA-256, exact appended bytes, successful exit and lock removal.
+The red result remains at `target/validation-runs/ignore-memory-growth-red/`.
+All 20 ignore-filtered core unit cases and three clone-policy cases passed at
+22:25:08 UTC under `target/validation-runs/ignore-streaming-core-regressions/`.
+Three new scanner tests cover bounded long lines, CRLF across chunk boundaries,
+interrupted reads, non-UTF8 matching and read-error propagation. Broader gates
+and a rebuilt application package remain required for this newer core change.
+A workspace-wide formatting check also found existing differences in unchanged
+files; only the edited ignore module was formatted, without rewriting unrelated
+sources or representing the overall formatting check as green.
+
+The broader `desktop:test`/`desktop:check` run passed at 22:28:43 UTC on
+2026-10-24 under `target/validation-runs/ignore-streaming-workspace-gates/`:
+157 frontend tests, 535 core tests, 11 desktop unit tests, eight ordinary
+authentication/transport tests, 12 clone-policy tests and one gix trust-policy
+test, plus strict graph-test types and eight owned-process tests. The development
+renderer build, workspace/all-target Cargo check and Clippy with warnings denied
+also passed. Explicitly ignored SSH/LFS/signing tests are not counted as covered
+by that ordinary gate; a separate dedicated run is required. The 55-file core
+source/test/manifest fingerprint is
+`867fcc08adaf408edf37a30682b1888499aeb67ad619e39010ae93af631a16b9`,
+captured at 22:31:06 UTC. That fingerprint does not cover all desktop or
+packaging inputs and is not interchangeable with an executable/package hash.
+The dedicated SSH/LFS/signing run passed at 22:31:37 UTC under
+`target/validation-runs/ignore-streaming-dedicated-transports/`, using the
+existing private SSH fixture server and local transport/signing fixtures,
+without changing a host SSH service or publishing remote changes.
+
+The subsequent Debian build passed at 22:39:05 UTC on 2026-10-24 under
+`target/validation-runs/ignore-streaming-notice-debian-build/`. The preserved
+artifact is
+`target/verified-packages/streaming-ignore-candidate-73475a44/Git-Khronos_0.1.0_amd64.deb`,
+SHA-256 `73475a44ad22d32aa2f15ed4e2c958ecc281f9a1f90f40ebac51bbf2c5f2a445`.
+The package verifier accepted it; independent extraction verified that the gzip
+notice catalog still matches the generated `5fac5c28` bytes. The packaged
+executable SHA-256 is
+`6d597fd605b9a281fcd07a2097a5dd7a0e41e43e6a5334a854409e74c658d9b9`.
+Do not substitute the build-directory executable's different `acc73d4e` hash.
+An independent full-byte comparison establishes that the only difference is
+the three-byte Tauri bundle marker `UNK` becoming `DEB` at the marker beginning
+at offset 1,653,967. The locked `tauri-utils 2.10.1` source explicitly defines
+that patchable marker. Both files are already stripped; stripping is not the
+explanation for this difference. All other executable bytes match.
+The `streaming-ignore-native-full` run is testing the preserved package, not
+the build-directory binary. Its terminal result and exact report hashes remain
+required; previous native acceptance of `2ed19c54` is not acceptance of this
+changed executable. No system installation or publication occurred.
 
 As documented in [Linux acceptance](linux-acceptance.md), headless tests of an
 extracted package do not establish system-installed desktop-entry integration,

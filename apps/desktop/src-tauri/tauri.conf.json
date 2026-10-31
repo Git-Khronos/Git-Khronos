@@ -62,6 +62,8 @@
         "files": {
           "/usr/share/doc/git-khronos/copyright": "../../../packaging/debian/copyright",
           "/usr/share/doc/git-khronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md",
+          "/usr/share/doc/git-khronos/rust-dependency-notices.json.gz": "../../../target/package-assets/rust-dependency-notices.json.gz",
+          "/usr/share/doc/git-khronos/frontend-dependency-notices.txt.gz": "../../../target/package-assets/frontend-dependency-notices.txt.gz",
           "/usr/share/doc/git-khronos/changelog.gz": "../../../target/package-assets/changelog.gz",
           "/usr/share/man/man1/git-khronos.1.gz": "../../../target/package-assets/git-khronos.1.gz"
         }
@@ -76,7 +78,9 @@
         ],
         "files": {
           "/usr/share/licenses/git-khronos/LICENSE": "../../../LICENSE",
-          "/usr/share/doc/git-khronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md"
+          "/usr/share/doc/git-khronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md",
+          "/usr/share/doc/git-khronos/rust-dependency-notices.json.gz": "../../../target/package-assets/rust-dependency-notices.json.gz",
+          "/usr/share/doc/git-khronos/frontend-dependency-notices.txt.gz": "../../../target/package-assets/frontend-dependency-notices.txt.gz"
         }
       }
     }

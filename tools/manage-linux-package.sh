@@ -122,6 +122,8 @@ verify_package() {
     "share/icons/hicolor/256x256@2/apps/git-khronos.png" \
     "share/doc/git-khronos/copyright" \
     "share/doc/git-khronos/THIRD_PARTY_NOTICES.md" \
+    "share/doc/git-khronos/rust-dependency-notices.json.gz" \
+    "share/doc/git-khronos/frontend-dependency-notices.txt.gz" \
     "share/doc/git-khronos/changelog.gz" \
     "share/man/man1/git-khronos.1.gz"; do
     [[ -s "${extracted}/${required_file}" ]] || fail "package payload is missing /usr/${required_file}."
@@ -135,6 +137,18 @@ verify_package() {
   require_desktop_field "$desktop_file" StartupWMClass "git-khronos"
   gzip --test "${extracted}/share/doc/git-khronos/changelog.gz"
   gzip --test "${extracted}/share/man/man1/git-khronos.1.gz"
+  local notice_payload="share/doc/git-khronos/rust-dependency-notices.json.gz"
+  local expected_notices="${repository_root}/target/package-assets/rust-dependency-notices.json.gz"
+  gzip --test "${extracted}/${notice_payload}"
+  [[ -s "$expected_notices" ]] || fail "generated Rust notices are missing; rebuild with 'task package:deb'."
+  cmp -s -- "$expected_notices" "${extracted}/${notice_payload}" \
+    || fail "packaged Rust notices differ from the generated catalog; rebuild with 'task package:deb'."
+  notice_payload="share/doc/git-khronos/frontend-dependency-notices.txt.gz"
+  expected_notices="${repository_root}/target/package-assets/frontend-dependency-notices.txt.gz"
+  gzip --test "${extracted}/${notice_payload}"
+  [[ -s "$expected_notices" ]] || fail "generated frontend notices are missing; rebuild with 'task package:deb'."
+  cmp -s -- "$expected_notices" "${extracted}/${notice_payload}" \
+    || fail "packaged frontend notices differ from the generated notices; rebuild with 'task package:deb'."
 
   trap - EXIT
   rm -rf -- "$temporary_directory"

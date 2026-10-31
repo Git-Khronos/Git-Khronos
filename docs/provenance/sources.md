@@ -1,5 +1,19 @@
 # Informational sources
 
+## Generated frontend notices and dialog-plugin terms
+
+Sources: the actual production `dist/apps/desktop/3rdpartylicenses.txt`, installed
+package metadata, `pnpm-lock.yaml`, the official
+[plugin-dialog 2.8.1 registry metadata](https://registry.npmjs.org/@tauri-apps/plugin-dialog/2.8.1),
+and the exact plugins-workspace revision
+`d4835d0e947179bac24a383212792d74be3ebe4f`.
+
+Used to identify the omitted generated notice payload and the dialog package's
+SPDX-only published notice. The pinned upstream manifest and MIT/Apache license
+blobs were verified by SHA-256 and Git-blob identity before retaining the terms.
+No upstream implementation was copied. Policy identities and license-file
+provenance are in `packaging/licenses/reviewed-frontend-notices.json`.
+
 ## Native Tauri acceptance and typed IPC
 
 Sources:
@@ -1211,3 +1225,35 @@ fixture helper retains inherited writers outside Git's process group. Normal
 EOF remains distinct from requested termination. No upstream implementation
 was copied, and no dependency was added. Linux regression proof does not
 qualify Windows or other reader implementations.
+
+## Distribution notice coverage audit
+
+Sources: locked offline `cargo metadata --filter-platform x86_64-unknown-linux-gnu`
+from this checkout, the actual preserved Debian payload, and Mozilla's
+[MPL 2.0 FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/) (particularly Q8).
+
+Used to distinguish declared dependency-license metadata, source-availability
+notices, and actual release-payload coverage. Workspace normal-dependency
+closures, even with proc-macro subtrees excluded, are not represented as exact
+linked-artifact SBOMs or a legal compliance approval. The current package
+verifier's notice-presence checks do not prove complete upstream attribution.
+No third-party implementation or additional asset was copied by this audit.
+
+The project-authored selectors source-availability notice also uses Mozilla's
+[MPL 2.0 terms](https://www.mozilla.org/en-US/MPL/2.0/) (sections 3.1–3.4),
+the published crate's recorded VCS metadata and MPL headers, and the exact
+[upstream source revision](https://github.com/servo/stylo/tree/572ecba2d1600e7c3d490586692a209faf703baa/selectors).
+These define the source retrieval information, not an overall legal opinion.
+No implementation was copied into the notice or collector output.
+
+Linux notice generation uses the target triple exposed by Tauri's
+[beforeBundleCommand hook](https://v2.tauri.app/reference/config/#beforebundlecommand),
+also confirmed in the installed CLI schema. No host-architecture inference or
+third-party implementation was used for the packaging hook.
+
+The packaged-versus-build-directory executable comparison also consulted the
+locked `tauri-utils 2.10.1` crate's `src/platform.rs` in the local Cargo registry.
+It defines Tauri's patchable bundle-type marker. Independent byte comparison
+found only the expected `UNK` to `DEB` marker substitution in this candidate;
+packaged and unbundled executable hashes are therefore recorded separately.
+No upstream implementation was copied or modified for that inspection.

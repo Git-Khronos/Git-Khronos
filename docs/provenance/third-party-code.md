@@ -1,5 +1,91 @@
 # Third-party code and development tools
 
+## Frontend dialog-plugin notice supplement
+
+The published `@tauri-apps/plugin-dialog 2.8.1` npm package declares
+`MIT OR Apache-2.0` but ships only `LICENSE.spdx`. Official versioned registry
+metadata identifies upstream revision
+`d4835d0e947179bac24a383212792d74be3ebe4f` in
+<https://github.com/tauri-apps/plugins-workspace>. Its archive integrity matches
+the exact `pnpm-lock.yaml` entry; the upstream dialog manifest also matches the
+installed manifest's SHA-256 and Git blob.
+
+The exact `LICENSE_MIT` and `LICENSE_APACHE-2.0` at that revision are retained
+under `packaging/licenses/plugin-dialog-2.8.1-LICENSE_*`. Both original files
+lack a final newline; their bytes, copyright notices and terms remain unchanged.
+Reviewed source URLs, registry integrity, manifest/SPDX identities and both
+notice hashes are in `packaging/licenses/reviewed-frontend-notices.json`.
+Only licensed notice text was copied, not implementation; no dependency was added.
+
+Frontend notice preparation preserves Angular's generated file as an unchanged
+prefix, then appends these labeled upstream terms. The exception fails closed
+for changed package identity, lock integrity, source hashes, unpinned URLs,
+newly published notice files or missing dual-license terms. It is not a generic
+template fallback or overall distribution approval.
+
+## Exact upstream notice for the published tauri-specta crate
+
+The `tauri-specta 2.0.0-rc.21` registry package declares MIT but does not ship
+a license/notice file. Its `.cargo_vcs_info.json` identifies upstream revision
+`5cd56fe8a8d681ba5b649dc7fd4e2e2b001e4e57` in the canonical manifest repository
+<https://github.com/oscartbeaumont/tauri-specta>.
+
+The upstream `LICENSE` at that revision is MIT, copyright 2022 Oscar Beaumont:
+<https://github.com/oscartbeaumont/tauri-specta/blob/5cd56fe8a8d681ba5b649dc7fd4e2e2b001e4e57/LICENSE>.
+Its Git blob is `6d135f35f014e78278507b868d6617018e16b488`.
+
+The complete unmodified license is retained as
+`packaging/licenses/tauri-specta-2.0.0-rc.21-LICENSE`. No implementation source
+was copied and no dependency was added. A notice collector must bind any
+exception to this exact package/version, license declaration and reviewed
+source/hash; missing terms must not silently receive a generic MIT template.
+
+## Additional retained upstream workspace notices
+
+`packaging/licenses/reviewed-rust-notices.json` is the authoritative index of
+reviewed package/version, registry, declared repository/license, published VCS
+revision/path, canonical upstream file URL and both file hashes. Fourteen
+package exceptions are now retained, including the tauri-specta exception above.
+The added verbatim notices cover Specta, dlopen2, defmt, alloc-stdlib, Inflector,
+tauri-plugin and libappindicator-sys. No dependency or implementation source was
+added. Copyright holders and all upstream terms remain unmodified.
+
+- MIT/Apache dual-license workspace files are both retained, not replaced with
+  a generic license template or an implicit newly selected option.
+- The Tauri workspace SPDX notice declares CC0-1.0 for that notice data and is
+  also preserved. It does not establish an SBOM for this application's binary.
+- The libappindicator registry metadata omits its repository. Read-only exact
+  commit search found one upstream match, `tauri-apps/libappindicator-rs` at
+  `eafd1e3682a1247f595410266091e9684021cb6f`; `sys/Cargo.toml` there confirms
+  `libappindicator-sys 0.9.0` and the declared dual license. The missing metadata
+  remains null in the exception; the reviewed upstream repository is explicit.
+- Old Inflector VCS metadata omits `path_in_vcs`. Absence can match only a
+  reviewed root path, not an inferred subdirectory.
+- Git-blob and SHA-256 checks verify the copied bytes, including two upstream
+  files without final newlines. The narrow `.gitattributes` rule preserves
+  retained `*LICENSE*` files; project source and policy JSON remain subject to
+  ordinary whitespace checks.
+
+Exact source URLs and hashes are in the reviewed index; unknown or changed
+provenance must still fail collection. These exceptions do not approve complete
+redistribution compliance.
+
+## Project-authored selectors source-availability notice
+
+The published `selectors 0.38.0` crate declares MPL-2.0 and carries its license
+headers in source files but omits a standalone license document. The recorded
+Stylo revision is `572ecba2d1600e7c3d490586692a209faf703baa`, path `selectors`.
+The reviewed `lib.rs` Git blob is
+`e60fe5be257f03091569b56a149e7c95ab186bfb`, also matching the published source.
+
+`packaging/licenses/selectors-0.38.0-SOURCE-NOTICE.txt` is original project text
+identifying the exact public source archive and Mozilla's license terms. It is
+not represented as an upstream license file or as copied third-party terms.
+The explicit `mpl-source-availability` policy verifies its hash, source/header
+evidence and retrieval locations. Source implementation text is not emitted in
+the catalog. This addresses notice generation only; packaging integration and
+the full distribution/source obligations remain separately subject to review.
+
 ## JavaScript security maintenance (2026-10-24)
 
 Angular framework packages are pinned to 22.2.3, Angular CLI/build tooling to

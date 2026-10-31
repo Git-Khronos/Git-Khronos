@@ -97,12 +97,18 @@ tasks:
       - tools/check-node.mjs
       - tools/check-production-renderer.mjs
       - tools/prepare-linux-package.mjs
+      - tools/prepare-rust-notices.mjs
+      - tools/prepare-frontend-notices.mjs
+      - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
     generates:
       - target/release/git-khronos
       - target/release/bundle/deb/*.deb
       - target/package-assets/changelog.gz
       - target/package-assets/git-khronos.1.gz
+      - target/package-assets/rust-dependency-notices.json.gz
+      - target/package-assets/frontend-dependency-notices.txt.gz
+      - dist/apps/desktop/3rdpartylicenses.txt
       - dist/apps/desktop/browser/index.html
     status:
       - tools/manage-linux-package.sh print-package >/dev/null 2>&1
