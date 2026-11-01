@@ -184,7 +184,7 @@ def direct_file_content(driver, fixtures, source, report):
     selector = '[aria-label="View changes in ' + path + '"]'
     preview(selector)
     decoded()
-    assert not driver.script("return !!document.querySelector('.diff-viewer')")
+    assert not driver.script("return !!document.querySelector('.diff-workspace')")
     driver.key('\ue00c')
     driver.wait("return !document.querySelector('gc-file-content-dialog')")
     report['scenarios'].append('native-ui-direct-unstaged-content-real-webkit-decode-and-escape')

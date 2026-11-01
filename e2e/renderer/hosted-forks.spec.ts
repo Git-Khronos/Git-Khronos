@@ -256,6 +256,9 @@ for (const theme of ['chronos', 'midnight']) test(`${theme} fork review wraps in
 
 test('rapid fork panel close and reopen retains a usable fresh review context', async ({ page }) => {
   const { dialog, forks } = await open(page);
+  // The fork panel is deferred: wait for its opener to render before exercising
+  // the two synchronous clicks that must share one Angular render turn.
+  await expect(dialog.getByRole('button', { name: 'Close fork controls', exact: true })).toBeVisible();
   await page.evaluate(() => {
     const button = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Close fork controls')!;
     button.click(); button.click();
