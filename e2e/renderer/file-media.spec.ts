@@ -115,7 +115,7 @@ test('destroys a content view on navigation and never applies a late old selecti
   expect(await page.evaluate(() => (window as any).__media.calls.filter((call: any) => call.command === 'cancel_git_operation').length)).toBe(1);
 });
 
-for (const width of [320, 360, 700, 1440]) {
+for (const width of [320, 360, 700, 780, 1051, 1440]) {
   test(`keeps content controls and side metadata usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await prepare(page);
@@ -128,14 +128,20 @@ for (const width of [320, 360, 700, 1440]) {
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
     }
+    const toolbar = await page.locator('.diff-workspace-toolbar').boundingBox();
+    expect(toolbar).not.toBeNull();
+    const back = await page.locator('.diff-back').boundingBox();
+    const identity = await page.locator('.diff-file-identity').boundingBox();
+    expect(back).not.toBeNull(); expect(identity).not.toBeNull();
+    expect(back!.x + back!.width).toBeLessThanOrEqual(identity!.x + 1);
     const toolbarBoxes = await page.locator('.diff-workspace-toolbar button:visible').evaluateAll(elements => elements.map(element => {
       const { x, y, width, height } = element.getBoundingClientRect();
       return { label: element.getAttribute('aria-label') ?? element.textContent, x, y, width, height };
     }));
     for (let index = 0; index < toolbarBoxes.length; index++) {
       const current = toolbarBoxes[index];
-      expect(current.x, current.label ?? '').toBeGreaterThanOrEqual(0);
-      expect(current.x + current.width, current.label ?? '').toBeLessThanOrEqual(width + 1);
+      expect(current.x, current.label ?? '').toBeGreaterThanOrEqual(toolbar!.x - 1);
+      expect(current.x + current.width, current.label ?? '').toBeLessThanOrEqual(toolbar!.x + toolbar!.width + 1);
       for (const other of toolbarBoxes.slice(index + 1)) {
         const overlapX = Math.min(current.x + current.width, other.x + other.width) - Math.max(current.x, other.x);
         const overlapY = Math.min(current.y + current.height, other.y + other.height) - Math.max(current.y, other.y);

@@ -216,5 +216,37 @@ The preceding media-only package, SHA-256
 `5bea9f4f60d4fb82e59052cd458dfffaed7e9669f87b920a4f64adc51ee0c1f5`,
 passes 185 normal and 186 inherited-environment native scenarios (371 executions),
 including six actual WebKit decoders and malformed-body feedback. Its full
-1,327-case renderer run is still active. These results belong to that artifact;
+1,327-case renderer run finished with 1,326 passes and one real narrowed-pane
+toolbar overlap; integration is held pending correction. These results belong to that artifact;
 they do not qualify the new direct-entry candidate or establish full parity.
+
+
+### Narrowed-pane correction and retained attempts
+
+The full media-only renderer run caught a real layout failure at a 780px window:
+the inspector reduced the center pane enough for the Diff control to cover Split.
+It passed 1,326 cases and failed that workflow. Its 371 passing native executions
+remain artifact-specific evidence, not a successful full UI qualification.
+
+The direct-entry package, SHA-256
+`f36908fe4b2a576b80b80ee65d62b56c9e427f71c309e532f2d639c56ec0849e`,
+passes 188 normal and 189 inherited-environment native scenarios (377 executions),
+including direct staged/unstaged entry and an unavailable promised base with a
+readable working image. A separate ordinary Git control activates the owned
+local fetch sentinel; direct preview does not. The same toolbar defect applies
+to this package. Its in-progress full renderer run was intentionally stopped
+with terminal status 143 after that shared defect was established. Neither old
+package qualifies the corrected final UI. Failed/interrupted results are retained.
+
+The correction selects three toolbar rows using the actual center-pane container
+width rather than the window width, lets the header determine its height, and
+reserves enough space for the Graph label beside the filename. Seven focused
+cases pass, including the originally failing workflow and strengthened control
+bounds, non-overlap and filename separation at 320, 360, 700, 780, 1051 and 1440px.
+A widened 22-case sweep now passes, including the original failing workflow,
+normal text-diff navigation and selected-line actions, actual button hit testing,
+pane bounds, non-overlap and filename spacing from 320px through 1920px. It also
+found and corrected two wider-pane overlaps at 1550px and 1600px: the two-row
+breakpoint now allows the full action group, action groups wrap, and selected-line
+controls receive enough header space. A new integrated artifact, its full renderer
+suite and both native environment runs remain required before push.
