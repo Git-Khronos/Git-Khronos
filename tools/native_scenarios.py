@@ -16,6 +16,7 @@ from native_acceptance import open_ui, run
 from native_fork_remote_scenarios import hosted_fork_remote_attachment
 from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
+from native_editor_scenarios import working_file_editor
 
 
 def shallow_history_pagination(driver, fixtures, report):
@@ -2897,6 +2898,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 
 
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    working_file_editor(driver, fixtures, repository, report)
     repository_links(driver, fixtures, repository, report)
     file_media_comparisons(driver, fixtures, repository, report)
     hosted_fork_remote_attachment(driver, fixtures, repository, report)

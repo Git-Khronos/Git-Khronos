@@ -1,37 +1,49 @@
-import { afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
+import { afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, input, output, type WritableSignal, viewChild } from '@angular/core';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
+import { WorkingFileEditorComponent } from './working-file-editor.component';
 
 export interface FileContentDialogRequest {
   selection: FileMediaSelection;
   returnFocus: HTMLElement | null;
+  editing: WritableSignal<boolean>;
 }
 
 @Component({
   selector: 'gc-file-content-dialog',
-  imports: [FileMediaComponent],
+  imports: [FileMediaComponent, WorkingFileEditorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="content-backdrop" (click)="closed.emit()">
-      <section role="dialog" aria-modal="true" aria-labelledby="standalone-content-title"
+    <div class="content-backdrop" (click)="requestClose()">
+      <section role="dialog" aria-modal="true" [attr.aria-labelledby]="editing() ? 'working-editor-title' : 'standalone-content-title'"
+        [class.editing]="editing()"
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+        @if (editing()) {
+          <gc-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path }"
+            (closed)="leaveEditor()" />
+        } @else {
         <header>
           <div><p>File content · {{ contextLabel() }}</p><h2 id="standalone-content-title" [title]="request().selection.request.path">{{ request().selection.request.path }}</h2></div>
-          <button #closeButton type="button" aria-label="Close file content" (click)="closed.emit()">Close</button>
+          <button type="button" (click)="editWorkingCopy()">Edit working copy</button>
+          <button #closeButton type="button" aria-label="Close file content" (click)="requestClose()">Close</button>
         </header>
         <gc-file-media [selection]="request().selection" />
+        }
       </section>
     </div>
   `,
   styles: `
     .content-backdrop{position:fixed;inset:0;z-index:170;display:grid;place-items:center;background:rgb(0 0 0 / .45)}
-    section{box-sizing:border-box;width:min(1080px,calc(100vw - 24px));height:min(820px,calc(100dvh - 24px));display:grid;grid-template-rows:auto minmax(0,1fr);background:var(--overlay-surface);color:var(--text);border:1px solid var(--overlay-border);border-radius:6px;overflow:hidden}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--inspector-divider)}header>div{min-width:0}p{margin:0 0 4px;font-size:12px;color:var(--muted)}h2{margin:0;font-size:14px;line-height:1.5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+    section{box-sizing:border-box;width:min(1080px,calc(100vw - 24px));height:min(820px,calc(100dvh - 24px));display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);background:var(--overlay-surface);color:var(--text);border:1px solid var(--overlay-border);border-radius:6px;overflow:hidden}
+    section.editing{grid-template-rows:minmax(0,1fr)}
+    header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 16px;border-bottom:1px solid var(--inspector-divider)}header>div{min-width:0;flex:1 1 140px}p{margin:0 0 4px;font-size:12px;color:var(--muted)}h2{margin:0;font-size:14px;line-height:1.5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
     button{flex:none;min-height:34px;padding:7px 12px;border:1px solid var(--inspector-divider);background:var(--inspector-row);color:var(--text);font:inherit;font-size:13px;cursor:pointer}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   `,
 })
 export class FileContentDialogComponent {
   readonly request = input.required<FileContentDialogRequest>();
   readonly closed = output<void>();
+  editing(): boolean { return this.request().editing(); }
+  private readonly editor = viewChild(WorkingFileEditorComponent);
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
   constructor() {
@@ -49,12 +61,22 @@ export class FileContentDialogComponent {
     }
   }
 
+  requestClose(): void {
+    const editor = this.editor();
+    if (editor) editor.requestClose(); else this.closed.emit();
+  }
+
+  editWorkingCopy(): void { this.request().editing.set(true); }
+  leaveEditor(): void { this.request().editing.set(false); }
+
   handleKey(event: KeyboardEvent): void {
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closed.emit(); return; }
+    const editing = this.editing();
+    if (editing) this.editor()?.handleKey(event);
+    if (event.key === 'Escape') { event.preventDefault(); if (!editing) this.requestClose(); return; }
     if (event.key !== 'Tab') return;
     const controls = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(
-      'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+      'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
     )].filter(element => element.getClientRects().length > 0);
     if (!controls.length) { event.preventDefault(); return; }
     const index = controls.indexOf(document.activeElement as HTMLElement);

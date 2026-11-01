@@ -96,6 +96,7 @@ mod fork_remote_commands;
 mod repository_link_commands;
 mod hosted_repository_commands;
 mod branch_workflow_commands;
+mod working_file_commands;
 
 #[derive(Default)]
 struct AppState {
@@ -3390,6 +3391,7 @@ pub fn run() {
     let bindings = ipc_registry();
     tauri::Builder::default()
         .manage(authentication::AuthenticationState::default())
+        .manage(working_file_commands::EditorState::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(bindings.invoke_handler())
@@ -3414,6 +3416,10 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
         .commands(tauri_specta::collect_commands![
             authentication::answer_authentication,
             authentication::pending_authentication,
+            working_file_commands::open_working_file_editor,
+            working_file_commands::save_working_file_editor,
+            working_file_commands::stage_saved_working_file_editor,
+            working_file_commands::close_working_file_editor,
             system_info,
             cancel_git_operation,
             open_repository,

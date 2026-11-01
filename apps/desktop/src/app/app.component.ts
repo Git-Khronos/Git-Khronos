@@ -1556,7 +1556,7 @@ export class AppComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const request = this.fileContentDialog();
-      if (request && request.selection.repoId !== this.git.activeRepositoryId()) {
+      if (request && !request.editing() && request.selection.repoId !== this.git.activeRepositoryId()) {
         untracked(() => this.fileContentDialog.set(null));
       }
     });
@@ -11072,7 +11072,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (selection.repoId !== this.git.activeRepositoryId()) { this.dismissFileActionMenu(); return; }
     const returnFocus = this.fileContextMenuReturnFocus;
     this.dismissFileActionMenu();
-    this.fileContentDialog.set({ selection, returnFocus });
+    this.fileContentDialog.set({ selection, returnFocus, editing: signal(false) });
   }
 
   protected handleFileContentLoaderKey(event: KeyboardEvent): void {

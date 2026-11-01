@@ -1270,6 +1270,7 @@ dependencies = [
 name = "git-khronos-desktop"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "git-khronos-git-core",
  "libc",
  "notify",
@@ -1290,6 +1291,7 @@ version = "0.1.0"
 dependencies = [
  "aho-corasick",
  "base64 0.22.1",
+ "encoding_rs",
  "getrandom 0.3.4",
  "gix",
  "imagesize",

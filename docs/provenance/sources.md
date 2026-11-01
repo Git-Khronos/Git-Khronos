@@ -1561,3 +1561,43 @@ No external implementation was copied.
 Used for independent explicit-user SCP address validation, preserving relative,
 absolute, home-relative and literal-percent paths without converting them into
 absolute SSH URLs. No parser implementation or vendor source was copied.
+
+## Independent working-file editor core
+
+- [Public file-editing capability guide](https://help.gitkraken.com/gitkraken-desktop/editing-files/)
+- [Rust string UTF-16 APIs](https://doc.rust-lang.org/std/string/struct.String.html#method.from_utf16)
+- [encoding_rs public codec API](https://docs.rs/crate/encoding_rs/0.8.42)
+- [rustix filesystem API](https://docs.rs/rustix/1.1.5/rustix/fs/)
+- [Atomic rename behavior](https://man7.org/linux/man-pages/man2/rename.2.html)
+- [Filesystem synchronization](https://man7.org/linux/man-pages/man2/fsync.2.html)
+
+Used for neutral capability requirements, public APIs, byte interpretation and
+filesystem commit/durability semantics. Private edit state, bounded preconditions,
+metadata handling and behavioral fixtures are original. No proprietary code,
+assets, text collection, visual layout or implementation material was inspected.
+
+### Editor repository context and native identifiers
+
+Sources inspected 2026-11-01:
+
+- https://git-scm.com/docs/git-rev-parse
+- https://git-scm.com/docs/git-symbolic-ref
+- https://docs.rs/getrandom/0.3.4/getrandom/fn.fill.html
+
+Used for Git-directory/common-directory, object-format, symbolic/detached HEAD
+behavior and the existing dependency's public random-byte API. The private
+context/session design is original; no external implementation was copied.
+
+### Inert Markdown draft preview
+
+Sources inspected 2026-11-01:
+
+- https://marked.js.org/using_pro#lexer
+- https://marked.js.org/license
+- https://github.com/markedjs/marked/security/advisories/GHSA-6v9c-7cg6-27q7
+- https://angular.dev/ecosystem/web-workers
+
+Used for the licensed public token API, notice obligations, known affected
+versions and worker integration. The bounded tree, inactive HTML/links/images,
+draft lifecycle and presentation are independent designs. No external code or
+visual assets were transcribed.

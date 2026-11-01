@@ -14,6 +14,7 @@
           "options": {
             "browser": "apps/desktop/src/main.ts",
             "tsConfig": "apps/desktop/tsconfig.app.json",
+            "webWorkerTsConfig": "apps/desktop/tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
             "assets": [{ "glob": "**/*", "input": "apps/desktop/public" }],
             "styles": ["apps/desktop/src/styles.scss"],

@@ -488,3 +488,42 @@ The crate was already present transitively in the lockfile; the core now pins it
 Usage: public URL parsing/serialization API only. No library implementation was copied or adapted.
 Redistribution: retain the published license notices through the existing Rust notice collector.
 No additional copyleft/source-distribution requirement is introduced by this dependency.
+
+
+## encoding_rs 0.8.42 direct dependency for working-file text
+
+Source: https://github.com/hsivonen/encoding_rs
+Published crate: https://docs.rs/crate/encoding_rs/0.8.42
+License: (Apache-2.0 OR MIT) AND BSD-3-Clause, verified from the exact cached
+published manifest, COPYRIGHT, LICENSE-APACHE, LICENSE-MIT and LICENSE-WHATWG.
+The WHATWG-derived data requires its BSD notice in addition to the chosen library
+license. All four complete files are already retained by the Linux Rust notice
+collector; their content hashes matched the canonical published crate files.
+The version was already transitively locked; direct use introduces no new package.
+Usage: public Windows-1252 codec API only, with replacement refused. No library
+implementation or tables were copied. UTF-8/UTF-16 handling uses Rust standard
+APIs and original validation. The original encoded bytes must round-trip exactly.
+
+## Native editor identifiers
+
+The native editor directly uses the public `getrandom` 0.3.4 API, already locked
+by the workspace, to create ephemeral opaque identifiers. Canonical source:
+https://github.com/rust-random/getrandom. License: MIT OR Apache-2.0. Both full
+license files were compared with the existing Linux notice catalog. No source
+was copied and no additional package was introduced by this direct relation.
+
+## Bounded Markdown interpretation
+
+Dependency: `marked` 18.1.2, pinned through pnpm.
+Source: https://github.com/markedjs/marked
+Public API: https://marked.js.org/using_pro#lexer
+License metadata: MIT. The package's complete `LICENSE` also contains the
+Markdown BSD-style notice; preserve the complete file in binary attribution.
+The full installed notice was reviewed against https://marked.js.org/license.
+Only the public lexer is consumed; no parser source or renderer was copied.
+An original bounded tree and Angular text interpolation render inert content.
+No external asset is embedded or fetched. The lexer runs in a terminable worker.
+The upstream advisory GHSA-6v9c-7cg6-27q7 identifies 18.0.0/18.0.1 as affected
+and 18.0.2 as patched; the selected 18.1.2 is newer. This is not a claim that
+all inputs or future advisories are covered. Distribution notice inclusion
+remains an exact-package acceptance requirement.

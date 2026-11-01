@@ -6658,6 +6658,7 @@ test('exposes consistent remote branch actions wherever a reference appears', as
   await expect(menu.getByRole('menuitem', { name: 'Copy remote branch name' })).toBeVisible();
   await expect(menu.getByRole('menuitem')).toHaveText([
     'Create local tracking branch',
+    'Share repository context…',
     'Copy remote branch name',
     'Compare with working directory',
     'Delete branch on remote…',

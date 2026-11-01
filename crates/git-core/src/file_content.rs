@@ -298,7 +298,7 @@ pub(super) fn worktree_root(path: &Path) -> Result<PathBuf, AppError> {
 }
 
 #[cfg(unix)]
-mod worktree {
+pub(crate) mod worktree {
     use super::*;
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, open, openat, readlinkat, statat};
     use std::os::fd::OwnedFd;
@@ -307,7 +307,7 @@ mod worktree {
     fn directories() -> OFlags {
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
-    fn descend(root: &OwnedFd, relative: &Path) -> Result<OwnedFd, rustix::io::Errno> {
+    pub(crate) fn descend(root: &OwnedFd, relative: &Path) -> Result<OwnedFd, rustix::io::Errno> {
         let mut directory = root.try_clone().map_err(|_| rustix::io::Errno::IO)?;
         for part in relative.components() {
             let Component::Normal(name) = part else {
@@ -317,11 +317,11 @@ mod worktree {
         }
         Ok(directory)
     }
-    fn absolute(path: &Path) -> Result<OwnedFd, AppError> {
+    pub(crate) fn absolute(path: &Path) -> Result<OwnedFd, AppError> {
         let root = open("/", directories(), Mode::empty()).map_err(io_error)?;
         descend(&root, path.strip_prefix("/").map_err(io_error)?).map_err(io_error)
     }
-    fn identity(metadata: &fs::Metadata) -> (u64, u64, u32, u64, i64, i64, i64, i64) {
+    pub(crate) fn identity(metadata: &fs::Metadata) -> (u64, u64, u32, u64, i64, i64, i64, i64) {
         (
             metadata.dev(),
             metadata.ino(),

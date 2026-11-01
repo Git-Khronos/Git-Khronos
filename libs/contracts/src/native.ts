@@ -68,6 +68,9 @@ export type CommitSummary = { oid: string; parents: string[]; authorName: string
 export type ConflictDetails = { path: string; ancestor: string | null; current: string | null; incoming: string | null; output: string | null; binary: boolean; truncated: boolean; state: string; editable: boolean; currentExists: boolean; incomingExists: boolean; submodule: boolean }
 export type DiscardRecoveryInfo = { id: string; restored: boolean }
 export type DiscardResult = { id: string; status: RepositoryStatus }
+export type EditorSnapshot = { editorId: string; revision: string; path: string; text: string; encoding: WorkingTextEncoding; bom: boolean; encodedByteLen: string; lineEndings: LineEndings; readOnlyReason: string | null; workingReference: string | null; headOid: string | null }
+export type EditorStage = "notRequested" | "staged" | "unconfirmed"
+export type EditorWriteResult = { editorId: string; revision: string; file: EditorSnapshot | null; disk: WorkingFileWriteStatus; stage: EditorStage; stageError: AppError | null; warning: string | null }
 /**
  * Optional history extension for shallow repositories.
  */
@@ -188,6 +191,7 @@ referenced: number;
 recent: number }
 export type LfsTrackingPattern = { pattern: string; source: string; lockable: boolean; tracked: boolean }
 export type LfsTrackingRules = { patterns: LfsTrackingPattern[]; state: string; rootAttributes: string | null }
+export type LineEndings = "none" | "lf" | "crLf" | "cr" | "mixed"
 export type MailPatchAction = "continue" | "skip" | "abort"
 export type MailPatchCommit = { oid: string; authorName: string; authorEmail: string; subject: string; root: boolean; empty: boolean }
 export type MailPatchEntry = { authorName: string; authorEmail: string; subject: string; empty: boolean }
@@ -269,6 +273,8 @@ export type TerminalExit = { sessionId: string }
 export type TerminalInfo = { id: string; label: string; cwd: string }
 export type TerminalOutput = { sessionId: string; data: number[] }
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
+export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
+export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
 export type WorkingTreeEntry = { path: string; indexStatus: string; worktreeStatus: string; conflicted: boolean }
 export type WorkingTreeFileDiff = { path: string; staged: boolean; patch: string; truncated: boolean }
 export type Worktree = { path: string; oid: string; branch: string | null; current: boolean; locked: boolean; prunable: boolean; statusLoaded: boolean; changes: number; ahead: number; behind: number }
@@ -341,6 +347,10 @@ function __makeEvents__<T extends Record<string, any>>(
 // Named-argument functions derived from the generated command AST.
 export function answer_authentication(args: { requestId: string; answer?: string | null }): Promise<null> { return TAURI_INVOKE("answer_authentication", args); }
 export function pending_authentication(args: {  } = {}): Promise<GitAuthenticationPrompt[]> { return TAURI_INVOKE("pending_authentication", args); }
+export function open_working_file_editor(args: { repoId: string; path: string; encoding?: WorkingTextEncoding | null; operationId: string }): Promise<EditorSnapshot> { return TAURI_INVOKE("open_working_file_editor", args); }
+export function save_working_file_editor(args: { editorId: string; revision: string; text: string; stage: boolean; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("save_working_file_editor", args); }
+export function stage_saved_working_file_editor(args: { editorId: string; revision: string; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("stage_saved_working_file_editor", args); }
+export function close_working_file_editor(args: { editorId: string }): Promise<boolean> { return TAURI_INVOKE("close_working_file_editor", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
 export function cancel_git_operation(args: { operationId: string }): Promise<boolean> { return TAURI_INVOKE("cancel_git_operation", args); }
 export function open_repository(args: { path: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("open_repository", args); }
@@ -550,6 +560,10 @@ export function close_terminal(args: { sessionId: string }): Promise<null> { ret
 export type CommandMap = {
   answer_authentication: typeof answer_authentication;
   pending_authentication: typeof pending_authentication;
+  open_working_file_editor: typeof open_working_file_editor;
+  save_working_file_editor: typeof save_working_file_editor;
+  stage_saved_working_file_editor: typeof stage_saved_working_file_editor;
+  close_working_file_editor: typeof close_working_file_editor;
   system_info: typeof system_info;
   cancel_git_operation: typeof cancel_git_operation;
   open_repository: typeof open_repository;

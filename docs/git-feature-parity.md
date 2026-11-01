@@ -63,7 +63,7 @@ behavioral cases during the audit; grouping does not remove any listed action.
 | G26 | Import/export patches, mail series and bundles; inspect and recover failed imports | Audit existing exchange implementations and format compatibility |
 | G27 | Maintain repository integrity and offer actionable diagnostics without silently losing data | Audit fsck/maintenance, cancellation and missing/corrupt repositories |
 | G28 | Open and generate repository/branch/commit/tag links; select among local copies and offer a prefilled clone when none exists | Candidate: original version-one URI, explicit known-copy lookup, fetch-free local opening, sharing and isolated clone review have source and focused renderer evidence. Packaged acceptance, OS protocol delivery and full renderer qualification remain open; see the [independent specification](specifications/repository-links.md) |
-| G29 | Edit current working files with visible unsaved state, explicit save/discard and save-and-stage versus stage-saved choices; preview Markdown and handle declared encodings accurately | Audit existing editing; Markdown and encoding breadth need dedicated implementation evidence |
+| G29 | Edit current working files with visible unsaved state, explicit save/discard and save-and-stage versus stage-saved choices; preview Markdown and handle declared encodings accurately | Candidate: bounded lossless core editing and versioned native sessions have focused source tests; original draft/save/stage UI and bounded inert Markdown have focused renderer evidence. Final integration and packaged editor acceptance and broader codec/platform support remain open; see the [independent editor specification](specifications/working-file-editor.md) |
 
 ## Hosted Git collaboration
 
