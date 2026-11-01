@@ -1521,3 +1521,15 @@ Used for independent content-based presentation and canonical pointer recognitio
 The original pointer parser never invokes an LFS filter, fetches an object or
 materializes a working file. SVG remains text. Dependency review and fixture
 provenance are recorded in third-party-code.md and assets.md.
+
+
+## Independent repository links specification
+
+- https://help.gitkraken.com/gitkraken-desktop/linking/ (public capability scope only; inspected 2026-11-01)
+- https://www.rfc-editor.org/rfc/rfc3986 (URI components and percent encoding)
+- https://git-scm.com/docs/git-check-ref-format (public ref-name validation)
+- https://v2.tauri.app/plugin/deep-linking/ (platform delivery and lifecycle constraints)
+
+Used for the unfinished G28 specification in `docs/specifications/repository-links.md`.
+The proposed scheme and interaction design are independent. No vendor URL format,
+source, assets or documentation prose was copied. No plugin has been added.
