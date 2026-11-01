@@ -1,6 +1,6 @@
 # Repository and Git object links
 
-Status: independently implemented manual-link candidate with packaged evidence; OS-delivery candidate under validation. Full renderer and platform delivery qualification remain open.
+Status: independently implemented manual links and Linux incoming delivery pass the full renderer and preserved-package gates below. Cold desktop-launcher association, installed-host integration and other platforms remain open.
 Inventory requirement: G28. This document does not qualify the media candidate.
 
 ## Capability and sources
@@ -299,7 +299,21 @@ actual state across restart. These failed attempts remain retained and are not
 counted as successful full gates. Only the native test helper changed after package
 preservation; application inputs and executable/package hashes remain unchanged.
 
-The fresh full 1394-case renderer gate is still running. This checkpoint verifies
+The fresh full renderer gate `parity-incoming-links-current-menu-full-renderer`
+passes **1394/1394** with one worker and no retries (85m01). The prior full gate
+passed 1393 and failed one outdated remote-menu expectation; the expected Share
+repository context action was corrected, passed three focused repeats and then
+passed this complete fresh gate. The previous failure remains retained.
+
+Application inputs still match the preserved package. Only qualification documents,
+renderer expectations and owned native helpers differ from its input capture. A later
+remote `dev` CI run at `44ec1a23` passed its renderer job but failed an immediate
+Content-button lookup after an asynchronous file-row click. Retained CI DOM contains
+the actual control; the helper now waits for it to be visible and enabled, without
+replaying a click. Remote success for this correction still requires a new exact-SHA
+workflow result; local package/source results are not remote acceptance.
+
+This checkpoint verifies
 Linux cold executable argument delivery and warm GIO routing separately; it does
 not claim cold desktop-launcher association, installed-host integration or
 Windows/macOS acceptance. G28 and the broader parity goal remain open.
