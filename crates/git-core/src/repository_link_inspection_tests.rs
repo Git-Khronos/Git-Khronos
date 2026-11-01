@@ -295,18 +295,21 @@ fn repository_link_inspection_rejects_incomplete_metadata_and_cancels_before_pat
     assert!(inspect_repository_link(&f.repo, &link, &CancellationToken::default()).is_err());
 }
 
-#[test]
 #[cfg(unix)]
-fn repository_link_inspection_missing_promised_object_never_fetches_or_changes_index() {
+struct MissingBlob {
+    oid: String,
+    loose: PathBuf,
+    saved: Vec<u8>,
+    marker: PathBuf,
+}
+#[cfg(unix)]
+fn missing_blob(f: &Fixture, tagged: bool) -> MissingBlob {
     use std::os::unix::fs::PermissionsExt;
-    let f = Fixture::new();
-    f.commit();
-    let blob = f.git(&["rev-parse", "HEAD:owned-file"]);
-    let loose = f
-        .repo
-        .join(".git/objects")
-        .join(&blob[..2])
-        .join(&blob[2..]);
+    let oid = f.git(&["rev-parse", "HEAD:owned-file"]);
+    if tagged {
+        f.git(&["tag", "owned-missing-object", &oid]);
+    }
+    let loose = f.repo.join(".git/objects").join(&oid[..2]).join(&oid[2..]);
     let saved = fs::read(&loose).unwrap();
     let remote = f.dir.join("owned-promisor.git");
     f.git(&["init", "--bare", remote.to_str().unwrap()]);
@@ -328,24 +331,164 @@ fn repository_link_inspection_missing_promised_object_never_fetches_or_changes_i
     ] {
         f.git(&["config", key, value]);
     }
+    fs::remove_file(&loose).unwrap();
+    MissingBlob {
+        oid,
+        loose,
+        saved,
+        marker,
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn repository_link_inspection_missing_promised_object_never_fetches_or_changes_index() {
+    let f = Fixture::new();
+    f.commit();
+    let object = missing_blob(&f, false);
     let index = fs::read(f.repo.join(".git/index")).unwrap();
     let config = fs::read(f.repo.join(".git/config")).unwrap();
-    fs::remove_file(&loose).unwrap();
-    let inspected = f.inspect(RepositoryLinkTarget::Commit { oid: blob.clone() });
+    let inspected = f.inspect(RepositoryLinkTarget::Commit {
+        oid: object.oid.clone(),
+    });
     assert!(matches!(
         inspected.target,
         RepositoryLinkTargetState::Unavailable { .. }
     ));
-    assert!(!marker.exists());
-    assert!(!loose.exists());
+    assert!(!object.marker.exists());
+    assert!(!object.loose.exists());
     assert_eq!(fs::read(f.repo.join(".git/index")).unwrap(), index);
     assert_eq!(fs::read(f.repo.join(".git/config")).unwrap(), config);
     let control = f
-        .command(&f.repo, &["cat-file", "-t", &blob])
+        .command(&f.repo, &["cat-file", "-t", &object.oid])
         .env_remove("GIT_NO_LAZY_FETCH")
         .output()
         .unwrap();
     assert!(!control.status.success());
-    assert_eq!(fs::read(marker).unwrap(), b"owned");
-    fs::write(loose, saved).unwrap();
+    assert_eq!(fs::read(&object.marker).unwrap(), b"owned");
+    fs::write(object.loose, object.saved).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn no_lazy_fetch_scopes_are_reentrant_and_restore_behavior_after_unwinding() {
+    for outer_panic in [false, true] {
+        let f = Fixture::new();
+        f.commit();
+        let object = missing_blob(&f, false);
+        let result = std::panic::catch_unwind(|| {
+            without_lazy_fetch(|| {
+                assert!(
+                    !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                        .unwrap()
+                        .status
+                        .success()
+                );
+                assert!(!object.marker.exists());
+                let nested = std::panic::catch_unwind(|| {
+                    without_lazy_fetch(|| panic!("owned nested unwind"))
+                });
+                assert!(nested.is_err());
+                assert!(
+                    !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                        .unwrap()
+                        .status
+                        .success()
+                );
+                assert!(!object.marker.exists());
+                if outer_panic {
+                    panic!("owned outer unwind");
+                }
+            })
+        });
+        assert_eq!(result.is_err(), outer_panic);
+        assert!(
+            !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                .unwrap()
+                .status
+                .success()
+        );
+        assert_eq!(fs::read(object.marker).unwrap(), b"owned");
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn no_lazy_fetch_scope_does_not_change_another_workers_git_policy() {
+    let f = Fixture::new();
+    f.commit();
+    let object = missing_blob(&f, false);
+    without_lazy_fetch(|| {
+        assert!(
+            !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(!object.marker.exists());
+        std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    assert!(
+                        !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                            .unwrap()
+                            .status
+                            .success()
+                    );
+                })
+                .join()
+                .unwrap();
+        });
+        assert_eq!(fs::read(&object.marker).unwrap(), b"owned");
+        fs::remove_file(&object.marker).unwrap();
+        assert!(
+            !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(!object.marker.exists());
+    });
+}
+
+#[test]
+#[cfg(unix)]
+fn no_lazy_fetch_snapshot_scope_covers_its_composed_reference_readers() {
+    let f = Fixture::new();
+    f.commit();
+    let object = missing_blob(&f, true);
+    let index = fs::read(f.repo.join(".git/index")).unwrap();
+    let config = fs::read(f.repo.join(".git/config")).unwrap();
+    let _ = without_lazy_fetch(|| snapshot(&f.repo));
+    assert!(!object.marker.exists());
+    assert!(!object.loose.exists());
+    assert_eq!(fs::read(f.repo.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(f.repo.join(".git/config")).unwrap(), config);
+    let _ = snapshot(&f.repo);
+    assert_eq!(
+        fs::read(object.marker).unwrap(),
+        b"owned",
+        "ordinary snapshot must exercise the fetch sentinel"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn no_lazy_fetch_scope_still_permits_an_explicit_owned_fetch() {
+    let f = Fixture::new();
+    f.commit();
+    let object = missing_blob(&f, false);
+    without_lazy_fetch(|| {
+        assert!(
+            !run_git(&f.repo, &["cat-file", "-t", &object.oid])
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(!object.marker.exists());
+        assert!(
+            matches!(run_git(&f.repo, &["fetch", "owned"]), Err(error) if error.kind == "gitTransportFailure")
+        );
+        assert_eq!(fs::read(&object.marker).unwrap(), b"owned");
+    });
 }

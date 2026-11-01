@@ -1543,3 +1543,12 @@ source, assets or documentation prose was copied. No plugin has been added.
 
 Used for independently implemented known-path matching and local target checks.
 No vendor implementation, proprietary URL grammar or third-party source was copied.
+
+
+## Composed fetch-free Git reads
+
+- https://git-scm.com/docs/git (`--no-lazy-fetch` behavior)
+
+Used for a project-created, thread-scoped inspection policy and its independently
+written local-promisor tests. Explicit fetch remains a separate user operation.
+No external implementation was copied.

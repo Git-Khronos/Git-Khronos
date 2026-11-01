@@ -129,3 +129,22 @@ passes 721 tests (708 unit, 12 clone-policy and one trust-policy test), with 37
 intentionally ignored. All-target Clippy passes with warnings denied. This API does not yet implement the
 multiple-copy selector, native IPC, clipboard/menu actions, clone handoff or OS
 URL delivery. G28 remains open.
+
+
+## Composed fetch-free read checkpoint
+
+A scoped core policy now applies Git's no-lazy-fetch flag to composed reads on
+one worker without changing the process environment. Nested scopes and unwinding
+restore the preceding policy. Snapshot reads stay on that worker in this mode,
+so the policy and cancellation context cannot be lost in their usual parallel
+lanes. Normal snapshots retain their existing parallel behavior. The scope does
+not prohibit an explicit user-requested fetch.
+
+Four behavioral tests use owned local fetch sentinels to prove scope restoration,
+worker isolation, composed snapshot protection and explicit-fetch dispatch. The
+first explicit-fetch fixture incorrectly expected a raw failure output from the
+transport API; its corrected expectation retains the positive dispatch sentinel.
+That failed attempt is retained. The full core regression passes 725 tests (712
+unit plus 13 integration), with 37 intentionally ignored, and all-target Clippy
+passes with warnings denied. Native navigation/session policy and UI integration
+are still pending; this checkpoint does not establish end-to-end G28 acceptance.

@@ -20,6 +20,8 @@ mod file_comparison;
 mod file_media;
 mod repository_links;
 mod repository_link_inspection;
+mod no_lazy_fetch;
+pub use no_lazy_fetch::without_lazy_fetch;
 pub use repository_link_inspection::{RepositoryLinkInspection, RepositoryLinkTargetState, inspect_repository_link};
 pub use repository_links::{RepositoryLink, RepositoryLinkTarget, parse_repository_link, create_repository_link, repository_link_remote_identity};
 pub use file_media::{FileMediaComparison, FileMediaSide, FileMediaState,
@@ -1262,14 +1264,20 @@ fn snapshot_with_status(
         ))
     };
     let (references, metadata, history) = thread::scope(|scope| {
-        let references = thread::Builder::new()
-            .name("snapshot-references".into())
-            .spawn_scoped(scope, read_references)
-            .ok();
-        let metadata = thread::Builder::new()
-            .name("snapshot-metadata".into())
-            .spawn_scoped(scope, read_metadata)
-            .ok();
+        // A fetch-free scope is thread-bound. Keep its composed readers on the
+        // current worker so cancellation and the no-lazy-fetch policy stay active.
+        let references = if no_lazy_fetch::enabled() {
+            None
+        } else {
+            thread::Builder::new().name("snapshot-references".into())
+                .spawn_scoped(scope, read_references).ok()
+        };
+        let metadata = if no_lazy_fetch::enabled() {
+            None
+        } else {
+            thread::Builder::new().name("snapshot-metadata".into())
+                .spawn_scoped(scope, read_metadata).ok()
+        };
         let history = (|| {
             let stashes = read_stashes(path)?;
             let history_read_limit = commit_limit
@@ -8011,6 +8019,9 @@ pub const GIT_CONTEXT_ENVIRONMENT_VARIABLES: [&str; 8] = [
 /// Starts a Git command scoped to `path`, the only way repository commands are spawned.
 pub(crate) fn git_in(path: &Path) -> Command {
     let mut command = Command::new("git");
+    if no_lazy_fetch::enabled() {
+        command.arg("--no-lazy-fetch");
+    }
     command.arg("-C").arg(path);
     // UI commands choose their repository and exact paths explicitly. Shell
     // overrides must not redirect its index/worktree or reinterpret path magic.
