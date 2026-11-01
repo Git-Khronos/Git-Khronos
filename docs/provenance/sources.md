@@ -1623,3 +1623,17 @@ for `%U` argument expansion and MIME declarations. The project-owned desktop ent
 advertises only `x-scheme-handler/git-khronos`; no proprietary scheme is registered.
 The acceptance harness rebases this entry solely inside owned XDG fixtures and
 uses GIO to test association routing without replacing host defaults.
+
+## Independently configured tools: initial requirements
+
+Sources inspected 2026-11-01:
+
+- https://help.gitkraken.com/gitkraken-desktop/preferences/
+- https://git-scm.com/docs/git-difftool
+- https://git-scm.com/docs/git-mergetool
+
+Used for neutral editor/terminal/agent/diff/merge capabilities, documented file
+roles and process-result interpretation. The versioned profile, closed argument
+placeholders and execution design are original. Only the profile/argument model
+is introduced at this stage; no execution or complete integration is claimed.
+No external implementation or assets were copied and no dependency was added.

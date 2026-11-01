@@ -17,6 +17,8 @@ mod ignore_rules;
 mod file_statistics;
 mod file_content;
 mod working_file_text;
+mod configured_tools;
+pub use configured_tools::{ToolArgumentContext, ToolProfile, ToolRole};
 mod working_file_edit;
 pub use working_file_edit::{WorkingFileEdit, WorkingFileSave, WorkingFileWriteStatus, open_working_file_edit};
 pub use working_file_text::{DecodedWorkingText, WorkingTextEncoding, MAX_WORKING_TEXT_BYTES, decode_working_text};
