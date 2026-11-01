@@ -15,8 +15,32 @@ async function prepare(page: Page, mode = 'ready') {
       readOnlyReason: state.mode === 'mixed' ? 'Mixed line endings require an external editor.' : null,
       workingReference: 'refs/heads/main', headOid: repo.headOid });
     (window as any).__editor = state;
-    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+    state.windowCallbacks = {}; state.nextWindowCallback = 100; state.windowDestroyCalls = 0;
+    state.windowUnlistens = [];
+    state.requestNativeClose = () => {
+      const handler = state.windowCallbacks[state.windowCloseHandler];
+      if (!handler) throw Error('Owned close listener not installed');
+      return handler({ event: 'tauri://close-requested', id: state.windowCloseHandler, payload: null });
+    };
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event: string, id: number) => state.windowUnlistens.push(id) };
+    (window as any).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+      transformCallback: (handler: any) => { const id = ++state.nextWindowCallback; state.windowCallbacks[id] = handler; return id; },
+      unregisterCallback: () => undefined,
+      invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
+      if (command === 'plugin:event|listen') {
+        if (args.event === 'tauri://close-requested') {
+          state.windowCloseHandler = args.handler;
+          if (state.mode === 'close-listen-error') return Promise.reject({ message: 'Owned close protection failure' });
+          if (state.mode === 'held-close-listen') return new Promise(resolve => { state.finishWindowListen = () => resolve(args.handler); });
+        }
+        return Promise.resolve(args.handler);
+      }
+      if (command === 'plugin:window|destroy') {
+        state.windowDestroyCalls++;
+        return state.windowDestroyError ? Promise.reject({ message: 'Owned close refusal' }) : Promise.resolve(null);
+      }
       if (command === 'open_working_file_editor') {
         state.serial++;
         if (state.mode === 'held-open') return new Promise(resolve => { state.finish = () => resolve(state.snapshot()); });
@@ -237,4 +261,120 @@ test('a timed-out Markdown worker is terminated while the draft remains editable
   await page.getByRole('button', { name: 'Edit text', exact: true }).click();
   await expect(page.getByLabel('Working file text', { exact: true })).toHaveValue('# Retained draft');
   await expect(page.getByRole('button', { name: 'Save file', exact: true })).toBeEnabled();
+});
+
+async function requestWindowClose(page: Page) {
+  await page.evaluate(() => (window as any).__editor.requestNativeClose());
+}
+async function destroyedWindows(page: Page) {
+  return page.evaluate(() => (window as any).__editor.windowDestroyCalls);
+}
+
+test('dirty window-close review preserves the draft and cancels the close intent on keep editing', async ({ page }) => {
+  await open(page);
+  const text = page.getByRole('textbox', { name: 'Working file text', exact: true });
+  await text.fill('retained for window close\n');
+  await requestWindowClose(page);
+  await expect(page.getByRole('group', { name: 'Review unsaved draft' })).toContainText('closing the window');
+  expect(await destroyedWindows(page)).toBe(0);
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(text).toHaveValue('retained for window close\n');
+  await page.getByRole('button', { name: 'Save file', exact: true }).click();
+  await expect(page.locator('gc-working-file-editor [role=status]')).toContainText('File saved.');
+  expect(await destroyedWindows(page)).toBe(0);
+});
+
+test('saving a dirty window-close review saves once without staging before requesting destruction', async ({ page }) => {
+  await open(page);
+  await page.getByRole('textbox', { name: 'Working file text', exact: true }).fill('save before close\n');
+  await requestWindowClose(page);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect.poll(() => destroyedWindows(page)).toBe(1);
+  const result = await page.evaluate(() => ({ disk: (window as any).__editor.disk, calls: (window as any).__editor.calls.filter((c: any) => c.command === 'save_working_file_editor') }));
+  expect(result.disk).toBe('save before close\n'); expect(result.calls).toHaveLength(1); expect(result.calls[0].args.stage).toBe(false);
+});
+
+test('discarding a dirty window-close review requests destruction without saving or staging', async ({ page }) => {
+  await open(page);
+  await page.getByRole('textbox', { name: 'Working file text', exact: true }).fill('explicit discard\n');
+  await requestWindowClose(page);
+  await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await expect.poll(() => destroyedWindows(page)).toBe(1);
+  expect(await page.evaluate(() => (window as any).__editor.calls.filter((c: any) => ['save_working_file_editor', 'stage_saved_working_file_editor'].includes(c.command)))).toEqual([]);
+});
+
+test('a lost save reply retains a window-close draft without requesting destruction', async ({ page }) => {
+  await open(page, 'transport-error');
+  const text = page.getByRole('textbox', { name: 'Working file text', exact: true }); await text.fill('uncertain save\n');
+  await requestWindowClose(page); await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.locator('gc-working-file-editor [role=alert]')).toContainText('Retain your draft');
+  await expect(text).toHaveValue('uncertain save\n'); expect(await destroyedWindows(page)).toBe(0);
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Review unsaved draft' })).toHaveCount(0);
+});
+
+test('a window-close request waits for an already running save without replaying it', async ({ page }) => {
+  await open(page, 'held-save');
+  await page.getByRole('textbox', { name: 'Working file text', exact: true }).fill('save already in progress\n');
+  await page.getByRole('button', { name: 'Save file', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__editor.finish)).toBe('function');
+  await requestWindowClose(page);
+  await expect(page.getByRole('button', { name: 'Discard draft', exact: true })).toBeDisabled();
+  expect(await destroyedWindows(page)).toBe(0);
+  await page.evaluate(() => (window as any).__editor.finish());
+  await expect.poll(() => destroyedWindows(page)).toBe(1);
+  expect(await page.evaluate(() => (window as any).__editor.calls.filter((c: any) => c.command === 'save_working_file_editor').length)).toBe(1);
+});
+
+test('a refused window destruction retains the draft and requires an explicit retry', async ({ page }) => {
+  await open(page);
+  const text = page.getByRole('textbox', { name: 'Working file text', exact: true }); await text.fill('keep after close failure\n');
+  await page.evaluate(() => { (window as any).__editor.windowDestroyError = true; });
+  await requestWindowClose(page); await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await expect(page.locator('gc-working-file-editor [role=alert]')).toContainText('Your draft is retained');
+  expect(await destroyedWindows(page)).toBe(1); await expect(text).toHaveValue('keep after close failure\n');
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  expect(await destroyedWindows(page)).toBe(1);
+  await page.evaluate(() => { (window as any).__editor.windowDestroyError = false; });
+  await requestWindowClose(page); await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await expect.poll(() => destroyedWindows(page)).toBe(2);
+});
+
+test('late window-close listener registration is removed without opening an editor', async ({ page }) => {
+  await prepare(page, 'held-close-listen');
+  await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Preparing editor…', exact: true })).toBeDisabled();
+  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__editor.finishWindowListen)).toBe('function');
+  await page.getByRole('button', { name: 'Close file content', exact: true }).click();
+  await page.evaluate(() => (window as any).__editor.finishWindowListen());
+  await expect.poll(() => page.evaluate(() => (window as any).__editor.windowUnlistens.length)).toBe(1);
+  await expect(page.locator('gc-working-file-editor')).toHaveCount(0); expect(await destroyedWindows(page)).toBe(0);
+});
+
+test('failed close protection refuses editing and permits explicit installation retry', async ({ page }) => {
+  await prepare(page, 'close-listen-error');
+  await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
+  await expect(page.locator('gc-file-content-dialog [role=alert]')).toContainText('Editing has not opened');
+  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await page.evaluate(() => { (window as any).__editor.mode = 'ready'; });
+  await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Working file text', exact: true })).toHaveValue('before\n');
+});
+
+
+test('late close protection does not open an editor for a replaced file request', async ({ page }) => {
+  await prepare(page, 'held-close-listen');
+  await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__editor.finishWindowListen)).toBe('function');
+  await page.evaluate(() => {
+    const state = (window as any).__editor, previous = state.app.fileContentDialog();
+    state.app.fileContentDialog.set({ ...previous, selection: { ...previous.selection,
+      request: { ...previous.selection.request, path: 'replacement.md' } } });
+  });
+  await expect(page.locator('#standalone-content-title')).toHaveText('replacement.md');
+  await page.evaluate(() => (window as any).__editor.finishWindowListen());
+  await expect.poll(() => page.evaluate(() => (window as any).__editor.windowUnlistens.length)).toBe(1);
+  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__editor.calls.filter((c: any) => c.command === 'open_working_file_editor'))).toEqual([]);
 });

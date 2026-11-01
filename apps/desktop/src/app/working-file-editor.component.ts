@@ -42,17 +42,17 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; }
     } @else {
     <label class="visually-hidden" for="working-editor-text">Working file text</label>
     <textarea #textArea id="working-editor-text" spellcheck="false" [value]="draft()"
-      [readOnly]="busy() || !file() || !!file()?.readOnlyReason || needsReload() || !sameRepository()"
+      [readOnly]="windowClosing() || busy() || !file() || !!file()?.readOnlyReason || needsReload() || !sameRepository()"
       (input)="draft.set($any($event.target).value)" aria-describedby="working-editor-scope"></textarea>
     }
     <footer>
       <p id="working-editor-scope">Edits affect the current working file. Historical content and the index change only through explicit actions.</p>
       @if (review()) {
         <div class="draft-review" role="group" aria-label="Review unsaved draft">
-          <p>Keep this draft before {{ review() === 'close' ? 'returning to the preview' : 'reloading disk' }}?</p>
+          <p>Keep this draft before {{ review() === 'window' ? 'closing the window' : review() === 'close' ? 'returning to the preview' : 'reloading disk' }}?</p>
           <button type="button" [disabled]="!canSave()" (click)="save(false, true)">Save draft</button>
-          <button type="button" [disabled]="busy()" (click)="discardReviewed()">Discard draft</button>
-          <button type="button" [disabled]="busy()" (click)="review.set(null); focusText()">Keep editing</button>
+          <button type="button" [disabled]="busy() || windowClosing()" (click)="discardReviewed()">Discard draft</button>
+          <button type="button" [disabled]="busy() || windowClosing()" (click)="keepEditing()">Keep editing</button>
         </div>
       } @else {
         <div class="actions">
@@ -91,7 +91,10 @@ export class WorkingFileEditorComponent {
   readonly error = signal('');
   readonly notice = signal('');
   readonly needsReload = signal(false);
-  readonly review = signal<'close' | 'reload' | null>(null);
+  readonly review = signal<'close' | 'reload' | 'window' | null>(null);
+  readonly windowClosing = signal(false);
+  private closeWindow: (() => Promise<void>) | null = null;
+  private windowCloseAttempted = false;
   readonly markdown = signal(false);
   readonly dirty = computed(() => !!this.file() && this.draft() !== this.file()!.text);
   readonly sameRepository = computed(() => {
@@ -100,9 +103,9 @@ export class WorkingFileEditorComponent {
       && captured.repoId === request.repoId && captured.path === request.path;
   });
   readonly canSave = computed(() => this.sameRepository() && !!this.file() && !this.file()!.readOnlyReason
-    && !this.busy() && !this.git.busy() && !this.needsReload() && this.dirty());
+    && !this.windowClosing() && !this.busy() && !this.git.busy() && !this.needsReload() && this.dirty());
   readonly canStageSaved = computed(() => this.sameRepository() && !!this.file()
-    && !this.busy() && !this.git.busy() && !this.needsReload());
+    && !this.windowClosing() && !this.busy() && !this.git.busy() && !this.needsReload());
   private operation: string | null = null;
   private destroyed = false;
 
@@ -121,18 +124,41 @@ export class WorkingFileEditorComponent {
     if (this.error()) this.encoding.set(previous);
   }
   requestReload(): void {
+    if (this.windowClosing()) return;
+    this.closeWindow = null;
     if (this.busy() || !this.sameRepository()) return;
     if (this.dirty()) this.review.set('reload'); else void this.reload();
   }
   requestClose(): void {
+    if (this.windowClosing()) return;
+    this.closeWindow = null;
     if (this.busy()) { if (!this.writing() && !this.dirty()) this.closed.emit(); return; }
     if (this.dirty()) this.review.set('close'); else this.closed.emit();
   }
   discardReviewed(): void {
-    if (this.busy()) return;
+    if (this.busy() || this.windowClosing()) return;
     const action = this.review(); this.review.set(null);
     if (action === 'close') this.closed.emit();
     else if (action === 'reload') void this.reload();
+    else if (action === 'window') void this.approveWindowClose();
+  }
+  requestWindowClose(close: () => Promise<void>): void {
+    if (this.destroyed || this.windowClosing()) return;
+    this.closeWindow = close; this.windowCloseAttempted = false;
+    this.review.set('window');
+    if (!this.writing() && !this.dirty()) void this.approveWindowClose();
+  }
+  keepEditing(): void {
+    if (this.windowClosing()) return;
+    this.closeWindow = null; this.review.set(null); this.focusText();
+  }
+  private async approveWindowClose(): Promise<void> {
+    const close = this.closeWindow;
+    if (!close || this.windowClosing() || this.writing()) return;
+    this.windowCloseAttempted = true; this.windowClosing.set(true);
+    try { await close(); this.closeWindow = null; }
+    catch { if (!this.destroyed) { this.review.set('window'); this.error.set('The window could not close. Your draft is retained. Try again or keep editing.'); } }
+    finally { if (!this.destroyed) this.windowClosing.set(false); }
   }
   private async release(id: string): Promise<void> {
     await ipc.close_working_file_editor({ editorId: id }).catch(() => undefined);
@@ -178,6 +204,7 @@ export class WorkingFileEditorComponent {
         const review = this.review(); this.review.set(null);
         if (review === 'close') this.closed.emit();
         else if (review === 'reload') { this.busy.set(false); await this.reload(); }
+        else if (review === 'window') { this.writing.set(false); await this.approveWindowClose(); }
       }
       void this.git.refreshStatusInBackground(request.repoId);
     } catch (error) {
@@ -185,11 +212,13 @@ export class WorkingFileEditorComponent {
         this.needsReload.set(true);
         this.error.set(`${this.message(error)} Retain your draft; reload and review disk before another save or stage.`);
       }
-    } finally { if (!this.destroyed) { this.operation = null; this.writing.set(false); this.busy.set(false); this.focusText(); } }
+    } finally { if (!this.destroyed) { this.operation = null; this.writing.set(false); this.busy.set(false); this.focusText();
+      if (this.review() === 'window' && !this.windowCloseAttempted && !this.dirty() && !this.needsReload() && !this.error()) void this.approveWindowClose();
+    } }
   }
   handleKey(event: KeyboardEvent): void {
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.requestClose(); }
+    if (event.key === 'Escape') { event.preventDefault(); if (this.review() === 'window') this.keepEditing(); else this.requestClose(); }
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void this.save(false); }
   }
   ngOnDestroy(): void {

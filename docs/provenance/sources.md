@@ -1637,3 +1637,24 @@ roles and process-result interpretation. The versioned profile, closed argument
 placeholders and execution design are original. Only the profile/argument model
 is introduced at this stage; no execution or complete integration is claimed.
 No external implementation or assets were copied and no dependency was added.
+
+## Working-file window-close review
+
+- Tauri public window API: https://v2.tauri.app/reference/javascript/api/namespacewindow/
+- Inspected 2026-11-01 for close-request prevention, listener ownership and the
+  documented destruction permission. Used to design original draft review and
+  asynchronous listener cleanup. No third-party implementation or assets copied.
+
+## Owned X11 window-close acceptance
+
+- ICCCM: https://xorg.freedesktop.org/releases/current/doc/xorg-docs/icccm/icccm.html
+- Xlib API: https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html
+- EWMH application properties: https://specifications.freedesktop.org/wm/latest/ar01s05.html
+
+Inspected 2026-11-01 for standard WM_PROTOCOLS/WM_DELETE_WINDOW delivery, the Xlib
+ABI and PID window binding. The original ctypes helper verifies the exact extracted
+fixture executable and one PID-bound close-capable window before sending a normal
+close request. It does not destroy windows or terminate processes. No third-party
+implementation, comments or assets were copied. libX11 is a host acceptance-tool
+requirement, not a new bundled application dependency. Protocol constants and API
+field names are used for the required standard interoperability.

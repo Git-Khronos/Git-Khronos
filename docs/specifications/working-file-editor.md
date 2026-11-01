@@ -192,3 +192,42 @@ stopped and is not editor acceptance evidence.
 The native media helper also waits for an enabled visible Content control after
 a file-row click. This addresses the asynchronous lookup failure seen in the
 older `44ec1a23` remote workflow; remote acceptance is tracked separately.
+
+## Window-close review candidate
+
+A separate candidate addresses ordinary window-close requests while editing. It
+installs the public Tauri close listener before opening a writable editor; failed
+or late registration leaves the preview available and editing unopened. A dirty
+window close offers save, explicit discard or keeping the draft. A running save
+settles before a close can proceed, without replaying the save. Failed save
+transport or failed window destruction retains the draft and requires an explicit
+next action. Cancelling the close intent does not turn a later ordinary save into
+an application-close action. Browser preview uses the browser's ordinary unload
+confirmation for dirty text or an in-flight write.
+
+The SDK's documented close listener completes an approved close through window
+destruction. This candidate grants `core:window:allow-destroy` only to the existing
+`main` window capability; other windows receive no additional permissions and process APIs are unchanged.
+The behavior comes from the public [Tauri window API](https://v2.tauri.app/reference/javascript/api/namespacewindow/),
+inspected 2026-11-01. No SDK implementation was copied. Focused renderer checks,
+production compilation and actual packaged window-close acceptance remain pending.
+This does not provide crash recovery or protection against forced process termination.
+
+The close-review source candidate passes all 24 focused editor renderer cases,
+including nine new window-close/listener journeys. Production compilation passes
+under the unchanged 1.40 MB hard cap. All 59 package-policy and 37 native-harness
+unit tests pass; four new harness safety tests refuse missing/ambiguous owned
+process bindings before any X request and check missing-library/process-state
+handling. The application Rust/core sources and generated contracts are unchanged
+from the configured-tools candidate's 808-test Rust gate; the main-window capability
+and two original renderer components differ. A fresh packaged build is required
+to verify the permission and real platform event route.
+
+Three new actual acceptance scenarios use standard ICCCM WM_DELETE_WINDOW
+requests bound to the owned extracted process and X window, then normal UI
+Save/Discard/Keep choices with independent disk/index/ref checks and process
+relaunch. These scenarios have not yet executed against a close-guard package.
+The helper's first positive-control attempt failed during initial WebDriver session
+creation before any scenario or X request; this is retained as a failed startup,
+not evidence of window-close behavior. Complete renderer and actual packaged
+qualification remain pending. Crash recovery remains unimplemented.
