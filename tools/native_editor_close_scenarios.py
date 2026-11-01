@@ -7,6 +7,28 @@ from native_acceptance import open_ui
 from native_window_close import owned_application_pid, process_running, request_owned_window_close
 
 
+def approve_editor_window_close(driver, text, pid, report):
+    # Observe one visible enabled control, then dispatch exactly one real click.
+    element = driver.wait("return (() => {const buttons=[...document.querySelectorAll('gc-working-file-editor button')]"
+                          + ".filter(button=>button.textContent.trim()===" + json.dumps(text)
+                          + " && !button.matches(':disabled') && button.getClientRects().length);return buttons.length===1 ? buttons[0] : null;})()")
+    identifier = element['element-6066-11e4-a52e-4f735466cecf']
+    try:
+        driver.request('POST', driver.path('element/' + identifier + '/click'), {})
+    except RuntimeError as error:
+        try: detail = json.loads(str(error))
+        except (ValueError, TypeError): raise error
+        value = detail.get('value', {}) if isinstance(detail, dict) else {}
+        if not isinstance(value, dict) or value.get('error') != 'unknown error' or value.get('message') != 'Session terminated without a reply':
+            raise
+        deadline = time.monotonic() + 10
+        while process_running(pid) and time.monotonic() < deadline: time.sleep(.02)
+        if process_running(pid):
+            raise RuntimeError('The approved close lost its reply but the owned application is still running') from error
+        report.setdefault('editorWindowCloseTerminatedReplies', []).append({
+            'pid': pid, 'action': text, 'ownedProcessExited': True, 'clickReplayed': False})
+
+
 def editor_window_close(driver, fixtures, original_repository, report):
     repository = fixtures.repository('editor-window-close-owned', commits=2)
     path = 'close guarded [owned].txt'; file = repository / path
@@ -78,7 +100,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
         report['scenarios'].append('native-ui-editor-icccm-window-close-keeps-dirty-draft-and-original-disk-index')
 
         pid = request()
-        button('Save draft')
+        approve_editor_window_close(driver, 'Save draft', pid, report)
         relaunch_after_close(pid)
         assert file.read_bytes() == b'saved before window close\n'
         unchanged_metadata()
@@ -86,7 +108,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
 
         edit(); text('explicitly discarded window draft\n')
         pid = request()
-        button('Discard draft')
+        approve_editor_window_close(driver, 'Discard draft', pid, report)
         relaunch_after_close(pid)
         assert file.read_bytes() == b'saved before window close\n'
         unchanged_metadata()

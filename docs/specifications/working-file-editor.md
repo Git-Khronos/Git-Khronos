@@ -170,7 +170,9 @@ The build started during the reviewed merge at `38b50eb8` with captured dirty
 inputs. Application inputs match committed candidate `795f4d07`; it is not
 represented as a clean-commit build. Qualification documents and native helpers
 changed afterward; no application input changed. The environment suite and full
-1409-case renderer gate are still running.
+1409-case renderer attempts were later interrupted by the verified systemd-oomd
+scope kill. Neither interrupted run is counted as a pass; the newer combined
+candidate requires fresh complete acceptance.
 
 Real packaged checks cover UTF-8 BOM, both BOM-marked UTF-16 byte orders and
 explicit Windows-1252, CRLF/mode preservation, actual index contents, single-use
@@ -209,8 +211,8 @@ The SDK's documented close listener completes an approved close through window
 destruction. This candidate grants `core:window:allow-destroy` only to the existing
 `main` window capability; other windows receive no additional permissions and process APIs are unchanged.
 The behavior comes from the public [Tauri window API](https://v2.tauri.app/reference/javascript/api/namespacewindow/),
-inspected 2026-11-01. No SDK implementation was copied. Focused renderer checks,
-production compilation and actual packaged window-close acceptance remain pending.
+inspected 2026-11-01. No SDK implementation was copied. Focused renderer checks and production
+compilation pass as recorded below; complete packaged acceptance remains pending.
 This does not provide crash recovery or protection against forced process termination.
 
 The close-review source candidate passes all 24 focused editor renderer cases,
@@ -220,14 +222,72 @@ unit tests pass; four new harness safety tests refuse missing/ambiguous owned
 process bindings before any X request and check missing-library/process-state
 handling. The application Rust/core sources and generated contracts are unchanged
 from the configured-tools candidate's 808-test Rust gate; the main-window capability
-and two original renderer components differ. A fresh packaged build is required
-to verify the permission and real platform event route.
+and two original renderer components differ. The fresh package build and actual
+permission/platform-event evidence are recorded below.
 
 Three new actual acceptance scenarios use standard ICCCM WM_DELETE_WINDOW
 requests bound to the owned extracted process and X window, then normal UI
 Save/Discard/Keep choices with independent disk/index/ref checks and process
-relaunch. These scenarios have not yet executed against a close-guard package.
+relaunch. The initial combined-package attempt reached this helper but refused its
+ambiguous window binding before sending any request. The later complete normal-mode run below supplies passing actual close-guard
+package evidence; the earlier refusal remains a recorded failure.
 The helper's first positive-control attempt failed during initial WebDriver session
 creation before any scenario or X request; this is retained as a failed startup,
-not evidence of window-close behavior. Complete renderer and actual packaged
-qualification remain pending. Crash recovery remains unimplemented.
+not evidence of window-close behavior. Full renderer and inherited-environment
+qualification remain pending; the passing normal packaged run is recorded below.
+Crash recovery remains unimplemented.
+
+
+## Combined package and acceptance recovery
+
+Candidate `8a6682fcd12bed20ec1cfea30fd2f8813a590c0c` has a clean captured
+711-file source manifest and a completed target-specific build receipt. The fresh
+Debian package passes payload verification, production compilation and the
+unchanged renderer hard cap. Retained artifact:
+
+- Package SHA-256: `ecbdad48a0f774851ea6e47e77859b0cbbd89decbd67695f2a1a60ef5c0910ca`.
+- Executable SHA-256: `8951c88b83df289ce475836088c5b96e89d75021f7e5fc532c6653ed58c5f9c4`.
+- `parity-combined-marker-package`: complete fresh build, exit zero.
+- `parity-package-cache-marker-complete`: all 65 packaging tests pass.
+
+The stale incoming-link-only artifact previously returned by the interrupted
+Task cache was rejected. It is not evidence for this editor/program/close-guard
+candidate. The source checksum plus completed receipt and exact output hashes
+replace mere artifact existence as the incremental build reuse check.
+
+The first two actual native attempts stopped in a new configured-program test
+helper: it selected a dynamic Angular form name that is not a DOM name attribute.
+A readiness wait alone did not resolve that mismatch. The corrected helper waits
+for the input's existing accessible label, then performs one input action. The
+next retained run passes all six editor scenarios and all three configured-program
+scenarios, including real PTY arguments and normal desktop persistence, launch,
+close and deletion. It stops before a window request because three windows share
+the owned PID and close protocol; this is not a passing full native run.
+
+The Xlib helper now requires exactly one visible InputOutput window that does not
+bypass the window manager, in addition to the exact executable, PID and close
+protocol binding. It rechecks the target immediately before delivery. All five
+helper safety unit tests pass. `parity-owned-visible-window-diagnostic` passes an
+actual clean-window close and new-process relaunch on the retained package; its
+scope is that positive control, not the complete native suite. These helper
+changes do not alter the packaged application.
+
+`parity-combined-native-approved-close` subsequently passes all **213/213** unique
+normal-mode native scenarios on this exact artifact. All three dirty-window
+scenarios pass, with two confirmed application process exits and new-process
+relaunches. The Discard click produces the observed WebDriver response
+“Session terminated without a reply”; the helper accepts that specific response
+only after its single dispatched click and confirmation that the owned process
+exited. It never replays the click. Independent post-relaunch disk/index/ref/config
+checks still run and pass. Unrelated errors and a still-running process fail the
+helper. All **41** native-harness unit tests pass. Actual editor, configured-program
+and kept-draft screenshots were reviewed.
+
+The retained report is `full-1793526371650989681/report.json` under the combined
+checkout's native artifacts. The application inputs match the preserved 711-file
+package source snapshot; only reviewed helper/test files and evidence documents
+changed afterward. Prior failed full attempts are not added to the passing count.
+
+Complete combined inherited-environment native acceptance and the full renderer
+suite remain required before integration into `dev`. Crash recovery remains
+unimplemented in this packaged candidate.

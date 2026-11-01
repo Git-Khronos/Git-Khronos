@@ -38,6 +38,17 @@ class OwnedWindowCloseTests(unittest.TestCase):
                 close.request_owned_window_close(':owned-fixture', '/owned/program')
             library.assert_not_called()
 
+    def test_close_target_refuses_hidden_unviewable_popup_and_input_only_windows(self):
+        attributes = close._WindowAttributes()
+        attributes.map_state = 2; attributes.window_class = 1
+        attributes.width = 1440; attributes.height = 900
+        self.assertTrue(close._visible_regular_window(attributes))
+        for name, value in [('map_state', 0), ('map_state', 1), ('window_class', 2),
+                            ('override_redirect', 1), ('width', 0), ('height', 0)]:
+            previous = getattr(attributes, name); setattr(attributes, name, value)
+            self.assertFalse(close._visible_regular_window(attributes), (name, value))
+            setattr(attributes, name, previous)
+
     def test_process_state_handles_names_with_parentheses_and_does_not_treat_zombies_as_running(self):
         with tempfile.TemporaryDirectory() as directory:
             stat = Path(directory) / 'stat'

@@ -1653,8 +1653,10 @@ No external implementation or assets were copied and no dependency was added.
 
 Inspected 2026-11-01 for standard WM_PROTOCOLS/WM_DELETE_WINDOW delivery, the Xlib
 ABI and PID window binding. The original ctypes helper verifies the exact extracted
-fixture executable and one PID-bound close-capable window before sending a normal
-close request. It does not destroy windows or terminate processes. No third-party
+fixture executable and exactly one visible, regular PID-bound close-capable
+window before sending a normal close request. XGetWindowAttributes and its public
+ABI define visibility, InputOutput class and override-redirect handling; the target
+is revalidated immediately before delivery. It does not destroy windows or terminate processes. No third-party
 implementation, comments or assets were copied. libX11 is a host acceptance-tool
 requirement, not a new bundled application dependency. Protocol constants and API
 field names are used for the required standard interoperability.

@@ -43,6 +43,22 @@ class _Event(c.Union):
     _fields_ = [('client', _ClientMessage), ('padding', c.c_long * 24)]
 
 
+class _WindowAttributes(c.Structure):
+    # Public Xlib ABI; field order is required for XGetWindowAttributes.
+    _fields_ = [(name, c.c_int) for name in ('x', 'y', 'width', 'height', 'border_width', 'depth')] + [
+        ('visual', c.c_void_p), ('root', c.c_ulong), ('window_class', c.c_int),
+        ('bit_gravity', c.c_int), ('win_gravity', c.c_int), ('backing_store', c.c_int),
+        ('backing_planes', c.c_ulong), ('backing_pixel', c.c_ulong), ('save_under', c.c_int),
+        ('colormap', c.c_ulong), ('map_installed', c.c_int), ('map_state', c.c_int),
+        ('all_event_masks', c.c_long), ('your_event_mask', c.c_long),
+        ('do_not_propagate_mask', c.c_long), ('override_redirect', c.c_int), ('screen', c.c_void_p)]
+
+
+def _visible_regular_window(attributes):
+    return (attributes.map_state == 2 and attributes.window_class == 1
+            and not attributes.override_redirect and attributes.width > 0 and attributes.height > 0)
+
+
 def request_owned_window_close(display_name, executable):
     """Use the standard window-manager request, after PID/executable binding."""
     pid = owned_application_pid(executable)
@@ -63,6 +79,7 @@ def request_owned_window_close(display_name, executable):
                                     c.POINTER(c.c_ulong), c.POINTER(c.c_ulong), c.POINTER(c.c_void_p)]
     x.XSendEvent.argtypes = [c.c_void_p, window, c.c_int, c.c_long, c.POINTER(_Event)]
     x.XSync.argtypes = [c.c_void_p, c.c_int]
+    x.XGetWindowAttributes.argtypes = [c.c_void_p, window, c.POINTER(_WindowAttributes)]
     error_handler_type = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_void_p)
     x.XSetErrorHandler.argtypes = [c.c_void_p]; x.XSetErrorHandler.restype = c.c_void_p
     # Windows can disappear between a tree query and a property read. Keep the
@@ -93,15 +110,22 @@ def request_owned_window_close(display_name, executable):
             finally:
                 if data.value: x.XFree(data)
 
-        queue = [x.XDefaultRootWindow(display)]; visited = set(); matches = []
+        queue = [x.XDefaultRootWindow(display)]; visited = set(); matches = []; observed = []
         while queue:
             target = queue.pop()
             if target in visited: continue
             visited.add(target)
             if len(visited) > 1024:
                 raise RuntimeError('The fixture X window tree exceeds the acceptance limit')
-            if property_values(target, pid_atom, 6, 1) == [pid] and delete_atom in property_values(target, protocols_atom, 4, 64):
-                matches.append(target)
+            pids = property_values(target, pid_atom, 6, 1)
+            if pids:
+                protocols = property_values(target, protocols_atom, 4, 64)
+                attributes = _WindowAttributes()
+                have_attributes = x.XGetWindowAttributes(display, target, c.byref(attributes))
+                observed.append({'windowId': target, 'pids': pids, 'protocols': protocols,
+                                 'mapState': attributes.map_state, 'overrideRedirect': attributes.override_redirect})
+                if pids == [pid] and delete_atom in protocols and have_attributes and _visible_regular_window(attributes):
+                    matches.append(target)
             root = window(); parent = window(); children = c.POINTER(window)(); count = c.c_uint()
             if x.XQueryTree(display, target, c.byref(root), c.byref(parent), c.byref(children), c.byref(count)):
                 try:
@@ -111,10 +135,19 @@ def request_owned_window_close(display_name, executable):
                     if children: x.XFree(children)
         x.XSync(display, 0)
         if errors or len(matches) != 1:
-            raise RuntimeError('Could not bind exactly one close-capable X window to the owned process')
+            raise RuntimeError('Could not bind exactly one close-capable X window to the owned process: ' + repr({'ownedPid': pid, 'errors': len(errors), 'matches': matches, 'visited': len(visited), 'deleteAtom': delete_atom, 'observed': observed[:16]}))
         if owned_application_pid(executable) != pid:
             raise RuntimeError('The owned application process changed before the close request')
-        target = matches[0]; event = _Event()
+        target = matches[0]
+        attributes = _WindowAttributes()
+        if (not x.XGetWindowAttributes(display, target, c.byref(attributes))
+            or not _visible_regular_window(attributes)
+            or property_values(target, pid_atom, 6, 1) != [pid]
+            or delete_atom not in property_values(target, protocols_atom, 4, 64)):
+            raise RuntimeError('The owned visible window changed before the close request')
+        x.XSync(display, 0)
+        if errors: raise RuntimeError('The owned visible window could not be revalidated')
+        event = _Event()
         event.client.type = 33  # X11 ClientMessage
         event.client.send_event = 1; event.client.display = display
         event.client.window = target; event.client.message_type = protocols_atom

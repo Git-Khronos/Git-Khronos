@@ -37,6 +37,10 @@ for line in sys.stdin:
         raise AssertionError('The owned configured program did not record its invocation')
 
     def fill(selector, value):
+        # Add-argument schedules an Angular render; observe the resulting enabled
+        # control before issuing an input action. Do not replay that action.
+        driver.wait("return (() => {const input=document.querySelector(" + json.dumps(selector)
+                    + ");return !!input && !input.matches(':disabled');})()")
         driver.script("const input=document.querySelector(arguments[0]); if(!input || input.disabled) throw Error('Owned profile input unavailable'); input.value=arguments[1]; input.dispatchEvent(new Event('input',{bubbles:true}));", selector, value)
 
     def preferences():
@@ -74,7 +78,7 @@ for line in sys.stdin:
         fill('[name=toolName]', profile['name']); fill('[name=toolExecutable]', profile['executable'])
         for number, argument in enumerate(profile['arguments']):
             driver.click_text('gc-configured-tools-panel button', 'Add argument')
-            fill('[name=toolArgument' + str(number) + ']', argument)
+            fill('[aria-label=' + json.dumps('Program argument ' + str(number + 1)) + ']', argument)
         driver.click('[name=toolDefault]')
         driver.click_text('gc-configured-tools-panel button', 'Save program profile')
         driver.wait("return [...document.querySelectorAll('gc-configured-tools-panel [role=status]')].some(p=>p.textContent.includes('Profile saved.'))")
