@@ -14,11 +14,12 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { ipc, events, type TerminalInfo, type AgentProgram } from '@git-khronos/contracts';
+import { ipc, events, type TerminalInfo, type AgentProgram, type ToolProfile } from '@git-khronos/contracts';
 import { type UnlistenFn } from '@tauri-apps/api/event';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type IDisposable } from '@xterm/xterm';
 import type { AppTheme } from './app-theme';
+import { CONFIGURED_TOOLS } from './configured-tools.service';
 import { IconComponent } from './icon.component';
 import {
   applyTerminalAppearance,
@@ -91,9 +92,9 @@ interface TerminalTab extends TerminalInfo {
       </header>
       @if (agentLauncherOpen() && !minimized()) {
         <div class="agent-launcher" aria-label="Start agent session" (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeAgentLauncher()">
-          <label [attr.for]="panelId() + '-agent-program'">Agent program</label><select #agentProgramSelect [id]="panelId() + '-agent-program'" [value]="agentProgram()" (change)="agentProgram.set($any($event.target).value)"><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option></select>
+          <label [attr.for]="panelId() + '-agent-program'">Agent program</label><select #agentProgramSelect [id]="panelId() + '-agent-program'" [value]="agentProgram()" (change)="agentProgram.set($any($event.target).value)"><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option>@for (profile of tools.profiles(); track profile.id) { <option [value]="'profile:' + profile.id">{{ profile.name }} · {{ profile.role }}</option> }</select>
           <span>Starts in {{ repositoryLabel() }} using the installed CLI and its normal permissions. Create or open a worktree first for an isolated checkout.</span>
-          <button type="button" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openTab(agentProgram())">Start agent</button>
+          <button type="button" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openSelectedProgram()">Start agent</button>
           <button type="button" (click)="closeAgentLauncher()">Cancel</button>
         </div>
       }
@@ -101,7 +102,7 @@ interface TerminalTab extends TerminalInfo {
         @for (tab of tabs(); track tab.id) {
           <div class="terminal-host" role="tabpanel" [attr.id]="tabPanelId(tab.id)" [attr.aria-labelledby]="tabId(tab.id)" [attr.aria-hidden]="activeId() !== tab.id" [class.active]="activeId() === tab.id" [attr.data-terminal-id]="tab.id"></div>
         }
-        @if (error(); as message) { <div class="terminal-error" role="status" aria-live="polite"><strong>{{ failedCloseId() ? 'Terminal could not close' : 'Terminal unavailable' }}</strong><span>{{ message }}</span>@if (nativeAvailable()) { @if (failedCloseId(); as id) { <button type="button" (click)="closeTab(id)">Retry closing terminal</button> } @else { <button type="button" (click)="openTab(retryAgent())">Try again</button> } }</div> }
+        @if (error(); as message) { <div class="terminal-error" role="status" aria-live="polite"><strong>{{ failedCloseId() ? 'Terminal could not close' : 'Terminal unavailable' }}</strong><span>{{ message }}</span>@if (nativeAvailable()) { @if (failedCloseId(); as id) { <button type="button" (click)="closeTab(id)">Retry closing terminal</button> } @else { <button type="button" (click)="openTab(retryAgent(), retryProfile())">Try again</button> } }</div> }
         @if (opening() && !tabs().length) { <div class="terminal-loading" role="status" aria-live="polite">Starting terminal…</div> }
       </div>
     </section>
@@ -129,7 +130,9 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
 
   protected readonly agentLauncherOpen = signal(false);
   protected readonly retryAgent = signal<AgentProgram | null>(null);
-  protected readonly agentProgram = signal<AgentProgram>('codex');
+  protected readonly retryProfile = signal<ToolProfile | null>(null);
+  protected readonly tools = inject(CONFIGURED_TOOLS);
+  protected readonly agentProgram = signal<string>('codex');
   protected readonly tabs = signal<TerminalTab[]>([]);
   protected readonly activeId = signal<string | null>(null);
   protected readonly minimized = signal(false);
@@ -263,7 +266,18 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.agentLauncherButton?.nativeElement.focus();
   }
 
-  protected async openTab(agent: AgentProgram | null = null): Promise<void> {
+  protected openSelectedProgram(): void {
+    const selected = this.agentProgram();
+    if (selected.startsWith('profile:')) {
+      const profile = this.tools.profiles().find((p) => p.id === selected.slice(8));
+      if (!profile) { this.error.set('The selected profile is no longer available. Choose a program again.'); return; }
+      void this.openTab(null, profile);
+    } else if (['codex', 'claude', 'gemini', 'opencode'].includes(selected)) {
+      void this.openTab(selected as AgentProgram);
+    }
+  }
+
+  protected async openTab(agent: AgentProgram | null = null, profile: ToolProfile | null = agent ? null : this.tools.defaultTerminal()): Promise<void> {
     if (this.destroyed) return;
     if (!this.nativeAvailable()) {
       this.error.set('Terminal sessions are available in the desktop app.');
@@ -271,7 +285,9 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     }
     if (this.opening() || this.failedStartup()) return;
     this.opening.set(true);
+    const selectedProfile = profile ? structuredClone(profile) : null;
     this.retryAgent.set(agent);
+    this.retryProfile.set(selectedProfile);
     this.error.set(null);
     this.failedCloseId.set(null);
     let nativeSession: TerminalInfo | null = null;
@@ -280,8 +296,9 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     let createdTitleChange: IDisposable | undefined;
     try {
       const args = { repoId: this.repositoryId(), rows: 24, cols: 80 };
-      const info = agent ? await ipc.open_agent_terminal({ ...args, program: agent }) : await ipc.open_terminal(args);
-      if (agent) this.agentLauncherOpen.set(false);
+      const info = selectedProfile ? await ipc.open_configured_terminal({ ...args, profile: selectedProfile })
+        : agent ? await ipc.open_agent_terminal({ ...args, program: agent }) : await ipc.open_terminal(args);
+      if (agent || selectedProfile) this.agentLauncherOpen.set(false);
       nativeSession = info;
       if (this.destroyed) {
         await ipc.close_terminal({ sessionId: info.id }).catch(() => undefined);

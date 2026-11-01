@@ -10,6 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { ConfiguredToolsPanelComponent } from './configured-tools-panel.component';
 import { FormsModule } from '@angular/forms';
 import type { RepositorySnapshot } from '@git-khronos/contracts';
 import { APP_THEME_OPTIONS } from './app-theme';
@@ -31,6 +32,7 @@ interface PreferenceSearchEntry {
 }
 
 const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
+  { label: 'Terminal and agent programs', category: 'Terminal', section: 'terminal', targetId: 'preference-programs', keywords: 'configured tools executable arguments profiles default shell' },
   { label: 'Application theme', category: 'General', section: 'general', targetId: 'preference-appearance', keywords: 'appearance color dark midnight chronos' },
   { label: 'Toolbar labels', category: 'General', section: 'general', targetId: 'preference-toolbar', keywords: 'buttons icons actions' },
   { label: 'Worktree tab groups', category: 'General', section: 'general', targetId: 'preference-tabs', keywords: 'tabs repositories grouping' },
@@ -55,7 +57,7 @@ const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
 
 @Component({
   selector: 'gc-preferences-dialog',
-  imports: [FormsModule, IconComponent, IntegrityPanelComponent, PatchExchangePanelComponent],
+  imports: [FormsModule, ConfiguredToolsPanelComponent, IconComponent, IntegrityPanelComponent, PatchExchangePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './preferences-dialog.component.html',
 })

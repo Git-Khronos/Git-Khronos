@@ -278,6 +278,8 @@ export type TagDetails = { name: string; oid: string; annotated: boolean; messag
 export type TerminalExit = { sessionId: string }
 export type TerminalInfo = { id: string; label: string; cwd: string }
 export type TerminalOutput = { sessionId: string; data: number[] }
+export type ToolProfile = { version: number; id: string; name: string; role: ToolRole; executable: string; arguments: string[] }
+export type ToolRole = "editor" | "diff" | "merge" | "terminal" | "agent"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
 export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
@@ -357,6 +359,8 @@ export function open_working_file_editor(args: { repoId: string; path: string; e
 export function save_working_file_editor(args: { editorId: string; revision: string; text: string; stage: boolean; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("save_working_file_editor", args); }
 export function stage_saved_working_file_editor(args: { editorId: string; revision: string; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("stage_saved_working_file_editor", args); }
 export function close_working_file_editor(args: { editorId: string }): Promise<boolean> { return TAURI_INVOKE("close_working_file_editor", args); }
+export function validate_tool_profile(args: { profile: ToolProfile }): Promise<null> { return TAURI_INVOKE("validate_tool_profile", args); }
+export function open_configured_terminal(args: { repoId: string; profile: ToolProfile; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_configured_terminal", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
 export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
 export function acknowledge_incoming_repository_link(args: { requestId: string }): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("acknowledge_incoming_repository_link", args); }
@@ -573,6 +577,8 @@ export type CommandMap = {
   save_working_file_editor: typeof save_working_file_editor;
   stage_saved_working_file_editor: typeof stage_saved_working_file_editor;
   close_working_file_editor: typeof close_working_file_editor;
+  validate_tool_profile: typeof validate_tool_profile;
+  open_configured_terminal: typeof open_configured_terminal;
   system_info: typeof system_info;
   incoming_repository_links: typeof incoming_repository_links;
   acknowledge_incoming_repository_link: typeof acknowledge_incoming_repository_link;

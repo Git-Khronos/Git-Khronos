@@ -1,7 +1,8 @@
 # Independently configured external tools
 
-Status: initial profile/argument model under source validation. Program execution,
-persistence, native commands and preferences UI are not implemented by this checkpoint.
+Status: profile/argument model passes focused source checks. A terminal/agent PTY,
+versioned preferences and explicit launcher candidate is under integration validation.
+External editor, diff and merge program execution remains unimplemented.
 Inventory: G07, G20 and W05. No complete tool-integration parity claim is made.
 
 ## Capability and sources
@@ -41,7 +42,32 @@ Limits: 32 arguments, 16 KiB per template/expanded argument and 64 KiB total. ID
 bounded ASCII identifiers; display names and executable/context paths have independent
 bounds. Profile Debug output omits executable paths and argument values.
 
-## Execution and desktop work still required
+## Terminal and agent candidate
+
+Main-window commands validate a profile or open a configured terminal against a registered
+repository session. Terminal and agent profiles expand a captured repository cwd and
+literal argv, then reuse the existing owned PTY registry, I/O, close/retry and exit lifecycle.
+File-tool profiles refuse this endpoint before PTY setup. Existing fixed agent launchers
+and the system-shell fallback remain available. No extra shell is introduced. The same
+eight inherited repository selectors are cleared as for existing terminals; ordinary
+user configuration remains available.
+
+Application-local storage contains a version-one list of at most 16 terminal/agent
+profiles and an optional default terminal ID. The preferences form accepts separate
+argument rows, validates through the native command before saving and commits storage
+before live state. A failed write preserves existing preferences. Invalid stored data is
+preserved until an explicit reviewed clear. Saving, loading, selecting or deleting a
+profile starts no program, changes no Git configuration and does not close existing
+sessions. New terminal actions use the current default; explicit agent-launcher selection
+can start a saved profile. A retry retains the originally submitted profile snapshot.
+These remain candidate behaviors; focused renderer checks pass, while complete
+renderer and packaged UI qualification remain pending.
+
+These preferences contain ordinary program paths/arguments, not secret storage. Users
+configure and authenticate installed programs independently. Launching an agent proves
+neither task state nor approval, worktree isolation, resume or provider integration.
+
+## External file-tool execution still required
 
 Native execution must derive captured repository/file roles and private snapshots,
 validate their current ownership/identity and the selected program, and explicitly
@@ -64,6 +90,24 @@ status/resume integrations require separate qualification.
 
 Six focused Unix argument-model tests pass for literal boundaries, escaped/nonrecursive
 placeholders, role requirements, missing values, bounds and strict profile data. These
-are argument-model tests, not proof that any program launched. Next gates require owned
-executables recording actual argv/cwd/environment, process/cancellation and snapshot
-checks, native profile persistence, renderer journeys and real packaged UI acceptance.
+are argument-model tests. Three native tests additionally pass, including a real owned
+Python recorder under a PTY proving literal argv, captured cwd, TTY endpoints, absence
+of inherited repository selectors and preservation of user configuration. Six preference
+transaction tests pass for persistence/reload, corrupt data, storage/validation failures,
+concurrent saves and deletion/default behavior. Initial decorator-based test setup failed
+before collecting tests; a normal injection-token factory permits testing the same store.
+All 178 frontend unit tests, generated-contract freshness/type checks and workspace
+all-target Clippy pass. The complete focused renderer group passes 23 cases, including
+validation refusal, literal argv handoff, retrying the original captured profile after
+a saved profile changes, default consistency and 320/700px layouts. Actual compact
+screenshots were reviewed; controls use existing project theme tokens.
+
+Production compilation passes at approximately 1.38353 MB under the unchanged
+1.40 MB hard cap; all 51 JavaScript assets pass the production-preview exclusion
+check. Existing soft bundle/style warnings remain. The initial template attempt failed
+on unescaped literal placeholder braces; character entities corrected it.
+
+Full Rust and complete renderer regression, plus actual packaged UI acceptance,
+remain pending. Three new owned native acceptance scenarios are syntax-checked
+but have not executed against a configured-tools package.
+External file-tool snapshot, wait/detach and cancellation behavior needs its own tests.

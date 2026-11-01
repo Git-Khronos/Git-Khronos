@@ -139,6 +139,7 @@
         <label>Line height<select aria-label="Terminal line height" [ngModel]="host.terminalLineHeight()" (ngModelChange)="host.setTerminalPreference('line-height', $event)"><option [ngValue]="1">1.0</option><option [ngValue]="1.15">1.15</option><option [ngValue]="1.25">1.25</option><option [ngValue]="1.4">1.4</option><option [ngValue]="1.5">1.5</option></select></label>
         <label>Cursor<select aria-label="Terminal cursor style" [ngModel]="host.terminalCursorStyle()" (ngModelChange)="host.setTerminalPreference('cursor-style', $event)"><option value="block">Block</option><option value="underline">Underline</option><option value="bar">Bar</option></select></label>
       </div>
+      @if (host.preferencesSection() === 'terminal') { <div id="preference-programs" class="preference-group"><gc-configured-tools-panel /></div> }
       <div id="preference-reset" class="preference-group reset-preferences" [hidden]="host.preferencesSection() !== 'general'">
         <span>Interface defaults</span><small>Restore the original layout and appearance. Repositories, Git configuration, credentials, and files are not changed.</small>
         @if (host.resetUiConfirmation()) { <div class="reset-preference-confirmation"><strong>Restore interface defaults?</strong><button type="button" (click)="host.restoreInterfaceDefaults()">Restore</button><button type="button" (click)="host.resetUiConfirmation.set(false)">Cancel</button></div> }

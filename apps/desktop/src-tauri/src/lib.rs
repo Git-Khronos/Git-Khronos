@@ -98,6 +98,7 @@ mod incoming_repository_links;
 mod hosted_repository_commands;
 mod branch_workflow_commands;
 mod working_file_commands;
+mod terminal_profile_commands;
 
 #[derive(Default)]
 struct AppState {
@@ -3119,7 +3120,7 @@ fn open_agent_terminal(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<TerminalInfo, AppError> {
-    open_terminal_program(repo_id, rows, cols, Some(program), app, state)
+    open_terminal_program(repo_id, rows, cols, TerminalLaunch::Agent(program), app, state)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3131,14 +3132,49 @@ fn open_terminal(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<TerminalInfo, AppError> {
-    open_terminal_program(repo_id, rows, cols, None, app, state)
+    open_terminal_program(repo_id, rows, cols, TerminalLaunch::Default, app, state)
+}
+
+enum TerminalLaunch {
+    Default,
+    Agent(AgentProgram),
+    Configured(git_khronos_git_core::ToolProfile),
+}
+
+struct TerminalLaunchSpec {
+    executable: String,
+    arguments: Vec<String>,
+    label: String,
+}
+
+fn terminal_launch_spec(program: TerminalLaunch, repository: &Path) -> Result<TerminalLaunchSpec, AppError> {
+    use git_khronos_git_core::{ToolArgumentContext, ToolRole};
+    if let TerminalLaunch::Configured(profile) = program {
+        if !matches!(profile.role, ToolRole::Terminal | ToolRole::Agent) {
+            return Err(AppError { kind: "invalidTerminalToolRole".into(),
+                message: "Choose a terminal or agent profile for a terminal session.".into(),
+                hint: Some("No program was started.".into()) });
+        }
+        let arguments = profile.expanded_arguments(&ToolArgumentContext {
+            repository: repository.to_owned(), ..Default::default()
+        })?;
+        return Ok(TerminalLaunchSpec { executable: profile.executable, arguments, label: profile.name });
+    }
+    let executable = match program {
+        TerminalLaunch::Default => default_shell(),
+        TerminalLaunch::Agent(agent) => agent.executable().to_owned(),
+        TerminalLaunch::Configured(_) => unreachable!(),
+    };
+    let label = Path::new(&executable).file_name().map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| executable.clone());
+    Ok(TerminalLaunchSpec { executable, arguments: Vec::new(), label })
 }
 
 fn open_terminal_program(
     repo_id: String,
     rows: u16,
     cols: u16,
-    program: Option<AgentProgram>,
+    program: TerminalLaunch,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<TerminalInfo, AppError> {
@@ -3153,11 +3189,8 @@ fn open_terminal_program(
             message: "This repository session has expired.".into(),
             hint: Some("Open the repository again.".into()),
         })?;
-    let shell = program.map(|agent| agent.executable().to_owned()).unwrap_or_else(default_shell);
-    let label = Path::new(&shell)
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| shell.clone());
+    let launch = terminal_launch_spec(program, &repository.path)?;
+    let label = launch.label;
     let pair = NativePtySystem::default()
         .openpty(PtySize {
             rows: rows.max(2),
@@ -3166,7 +3199,8 @@ fn open_terminal_program(
             pixel_height: 0,
         })
         .map_err(|error| terminal_error("open a pseudo-terminal", error))?;
-    let mut command = CommandBuilder::new(&shell);
+    let mut command = CommandBuilder::new(&launch.executable);
+    command.args(&launch.arguments);
     configure_terminal_command(&mut command, &repository.path);
     let terminal_io::Endpoints { mut reader, writer, cancelled } = terminal_io::connect(pair.master.as_ref())
         .map_err(|error| terminal_error("connect terminal I/O", error))?;
@@ -3448,6 +3482,8 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             working_file_commands::save_working_file_editor,
             working_file_commands::stage_saved_working_file_editor,
             working_file_commands::close_working_file_editor,
+            terminal_profile_commands::validate_tool_profile,
+            terminal_profile_commands::open_configured_terminal,
             system_info,
             incoming_repository_links::incoming_repository_links,
             incoming_repository_links::acknowledge_incoming_repository_link,

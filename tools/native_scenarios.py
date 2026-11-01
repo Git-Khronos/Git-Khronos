@@ -17,6 +17,7 @@ from native_fork_remote_scenarios import hosted_fork_remote_attachment
 from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
 from native_editor_scenarios import working_file_editor
+from native_configured_tool_scenarios import configured_tools
 
 from native_incoming_link_scenarios import incoming_repository_links
 
@@ -2902,6 +2903,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 def full_toolkit(driver, fixtures, repository, repo_id, report):
     incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
+    configured_tools(driver, fixtures, repository, report)
     repository_links(driver, fixtures, repository, report)
     file_media_comparisons(driver, fixtures, repository, report)
     hosted_fork_remote_attachment(driver, fixtures, repository, report)
