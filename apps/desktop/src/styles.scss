@@ -571,7 +571,8 @@ code, kbd { font-family: var(--font-mono); }
 .diff-mode-toggle button:focus-visible { outline: 2px solid color-mix(in srgb, var(--purple) 78%, white); outline-offset: -2px; color: white; }
 .diff-mode-toggle button.active { background: #45435f; color: #f2f1f7; box-shadow: 0 1px 2px #0007; }
 .diff-mode-split-compact { display: none; }
-.diff-workspace-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.diff-workspace-actions { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+.diff-workspace-actions > * { flex: none; }
 .diff-insight-toggle { display: flex; align-items: center; padding: 2px; border: 1px solid #44435a; border-radius: 4px; background: #191925; }
 .diff-insight-toggle button { min-width: 43px; padding: 4px 7px; border-radius: 3px; background: transparent; color: #858499; font-size: 12px; font-weight: 700; }
 .diff-insight-toggle button:hover:not(:disabled), .diff-insight-toggle button.active { background: #39384f; color: white; }
@@ -700,7 +701,7 @@ code, kbd { font-family: var(--font-mono); }
 .diff-footer-hunk-nav span { min-width: 34px; padding: 0 4px; border-right: 1px solid #39384d; border-left: 1px solid #39384d; color: #8e8ca0; font: 11px "SFMono-Regular", Consolas, monospace; text-align: center; }
 .diff-footer-wrap-toggle { display: none; height: 23px; padding: 0 6px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
 .diff-footer-wrap-toggle:hover, .diff-footer-wrap-toggle.active { border-color: #44435a; background: #34334b; color: white; }
-@container (max-width: 900px) { .diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-rows: 40px 30px; gap: 0 8px; padding-block: 3px; }.diff-back { grid-column: 1; grid-row: 1; }.diff-file-identity { grid-column: 2 / 4; grid-row: 1; }.diff-file-picker { grid-column: 1; grid-row: 2; }.diff-mode-toggle { grid-column: 2; grid-row: 2; justify-self: start; }.diff-workspace-actions { grid-column: 3 / 5; grid-row: 2; justify-self: end; }.diff-close { grid-column: 4; grid-row: 1; }.diff-file-identity > .diff-file-status { width: 25px; height: 25px; }.diff-insight-toggle button { padding-inline: 5px; } }
+@container (max-width: 1100px) { .diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-rows: 40px minmax(30px, auto); gap: 0 8px; padding-block: 3px; }.diff-back { grid-column: 1; grid-row: 1; }.diff-file-identity { grid-column: 2 / 4; grid-row: 1; }.diff-file-picker { grid-column: 1; grid-row: 2; }.diff-mode-toggle { grid-column: 2; grid-row: 2; justify-self: start; }.diff-workspace-actions { grid-column: 3 / 5; grid-row: 2; justify-self: end; }.diff-close { grid-column: 4; grid-row: 1; }.diff-file-identity > .diff-file-status { width: 25px; height: 25px; }.diff-insight-toggle button { padding-inline: 5px; } }
 @container (max-width: 600px) { .diff-file-navigation .diff-file-position { min-width: 64px; padding-inline: 5px; }.diff-file-position small, .diff-file-identity > .diff-file-status, .diff-file-change-stats { display: none; }.diff-file-identity { gap: 5px; } }
 @container (max-width: 820px) { .diff-hunk-nav, .diff-wrap-toggle { display: none; }.diff-footer-hunk-nav { display: flex; }.diff-footer-wrap-toggle { display: block; } }
 @container (max-width: 820px) {
@@ -723,11 +724,10 @@ code, kbd { font-family: var(--font-mono); }
 @media (min-width: 1051px) and (max-width: 1100px) { .app-shell:has(.sidebar:not(.panel-hidden)):has(.detail-panel:not(.panel-hidden)) .diff-workspace { left: 205px !important; right: 310px !important; } }
 @media (max-width: 1050px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: var(--responsive-detail-width) !important; }.diff-workspace { left: 0 !important; }.diff-workspace.sidebar-collapsed .diff-workspace-toolbar { padding-left: 62px; } }
 @media (max-width: 550px) { .diff-workspace { right: 0 !important; } }
-@media (max-width: 760px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: 0 !important; }.diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; }.diff-mode-toggle { order: initial; grid-column: 2; justify-self: start; }.diff-workspace { grid-template-rows: 78px minmax(0, 1fr) 27px; }.diff-wrap-toggle, .diff-hunk-nav { display: none; }.diff-content-shell { grid-template-columns: minmax(0, 1fr) 36px; }.diff-insight-toggle button { padding-inline: 5px; }.diff-file-identity .diff-file-directory { max-width: 32%; flex: 0 1 auto; }.diff-file-identity .diff-source-context { display: block; flex: 1 1 auto; color: var(--toolbar-control-text); }.diff-file-identity .diff-source-separator { display: inline; }.blame-line { grid-template-columns: 38px 70px 95px minmax(380px, 1fr); }.blame-line > time { display: none; } }
+@media (max-width: 760px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: 0 !important; }.diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; }.diff-mode-toggle { order: initial; grid-column: 2; justify-self: start; }.diff-workspace { grid-template-rows: auto minmax(0, 1fr) 27px; }.diff-wrap-toggle, .diff-hunk-nav { display: none; }.diff-content-shell { grid-template-columns: minmax(0, 1fr) 36px; }.diff-insight-toggle button { padding-inline: 5px; }.diff-file-identity .diff-file-directory { max-width: 32%; flex: 0 1 auto; }.diff-file-identity .diff-source-context { display: block; flex: 1 1 auto; color: var(--toolbar-control-text); }.diff-file-identity .diff-source-separator { display: inline; }.blame-line { grid-template-columns: 38px 70px 95px minmax(380px, 1fr); }.blame-line > time { display: none; } }
 @media (max-width: 700px) { .diff-workspace.sidebar-collapsed .diff-workspace-toolbar { padding-left: 39px; } }
-@media (max-width: 550px) {
-  .diff-workspace { grid-template-rows: 108px minmax(0, 1fr) 27px; }
-  .diff-workspace-toolbar { grid-template-columns: 29px minmax(0, 1fr) auto 29px; grid-template-rows: 36px 30px 30px; gap: 0 5px; }
+@container (max-width: 600px) {
+  .diff-workspace-toolbar { grid-template-columns: auto minmax(0, 1fr) auto 29px; grid-template-rows: 36px minmax(30px, auto) 30px; gap: 0 5px; }
   .diff-file-identity { grid-column: 2 / 4; grid-row: 1; }
   .diff-close { grid-column: 4; grid-row: 1; }
   .diff-file-picker { grid-column: 1 / 3; grid-row: 2; justify-self: start; min-width: 0; width: 100%; max-width: 120px; }
@@ -738,6 +738,9 @@ code, kbd { font-family: var(--font-mono); }
   .diff-workspace-actions { grid-column: 3 / 5; grid-row: 2; }
   .diff-mode-toggle { display: flex; visibility: visible; position: static; grid-column: 1 / -1; grid-row: 3; justify-self: start; }
   .diff-insight-toggle button { min-width: 0; padding-inline: 2px; }
+  .diff-workspace-toolbar:has(.selected-line-actions) { grid-template-rows: 36px 30px auto 30px; }
+  .diff-workspace-toolbar:has(.selected-line-actions) .diff-workspace-actions { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; }
+  .diff-workspace-toolbar:has(.selected-line-actions) .diff-mode-toggle { grid-row: 4; }
 }
 
 /* Repository chrome and toolbar are global so the feature-rich shell stays below Angular's component-style budget. */
