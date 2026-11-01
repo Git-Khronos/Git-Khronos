@@ -288,6 +288,21 @@ checkout's native artifacts. The application inputs match the preserved 711-file
 package source snapshot; only reviewed helper/test files and evidence documents
 changed afterward. Prior failed full attempts are not added to the passing count.
 
-Complete combined inherited-environment native acceptance and the full renderer
-suite remain required before integration into `dev`. Crash recovery remains
-unimplemented in this packaged candidate.
+`parity-combined-native-inherited-environment` also passes all **214/214** unique
+scenarios on the identical package and executable hashes. Its scenario set covers
+the same 213 normal cases plus the outside-repository/index preservation check
+under deliberately conflicting inherited Git environment variables. The report
+is `environment-1793527172548274173/report.json`. Together these are 427 scenario
+executions across two modes, not 427 distinct scenarios.
+
+The complete combined renderer suite remains required before integration into
+`dev`. Crash recovery remains unimplemented in this packaged candidate.
+
+
+The earlier `154c16d1` remote renderer workflow failed one case with Chromium
+“Target crashed” while updating a fetch destination; it did not report a failed
+behavioral assertion. `parity-hosted-fetch-destination-repeat` passes that exact
+case ten times on the combined candidate, one worker and zero retries. Repetition
+is isolated by Playwright and is not proof of a long-lived-worker memory cause
+or that the remote failure is fixed. No application change or retry was introduced
+to obtain these passes. A fresh complete combined renderer gate remains required.

@@ -107,7 +107,21 @@ Production compilation passes at approximately 1.38353 MB under the unchanged
 check. Existing soft bundle/style warnings remain. The initial template attempt failed
 on unescaped literal placeholder braces; character entities corrected it.
 
-Full Rust and complete renderer regression, plus actual packaged UI acceptance,
-remain pending. Three new owned native acceptance scenarios are syntax-checked
-but have not executed against a configured-tools package.
+The configured-profile source passes the complete 808-test Rust candidate gate
+(`parity-configured-tools-full-rust`; unique tests are counted once despite the
+then-current Nx dependency expansion executing them twice). The configured
+program core/native source remains unchanged in the combined package.
+
+The fresh combined Linux package `ecbdad48a0f7` passes all 213 normal and 214
+inherited-environment native scenarios. All three configured-program scenarios
+execute in each mode: real PTY argument/cwd/configuration checks, invalid-profile
+refusal, and normal preferences persistence/default/explicit-launch/close/delete
+behavior. These are three distinct configured-program cases executed twice, not
+six distinct cases. The desktop screenshot was reviewed. The first two attempts
+used a nonexistent DOM name selector for a dynamic form input; the helper now
+waits for its existing accessible label. Those failures are retained separately.
+Exact artifact hashes and full-run evidence are recorded in the
+[editor specification](working-file-editor.md#combined-package-and-acceptance-recovery).
+
+Complete combined renderer regression and final integration remain pending.
 External file-tool snapshot, wait/detach and cancellation behavior needs its own tests.
