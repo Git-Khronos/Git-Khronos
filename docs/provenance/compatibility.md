@@ -2232,3 +2232,15 @@ renderer cases and five inbox unit cases pass. The Linux OS-transport package no
 passes 403 native executions across normal/inherited-environment suites; complete
 renderer qualification, cold launcher routing and other platforms remain open. See the repository-link
 specification for exact scope, artifact hashes and retained unsuccessful attempts.
+
+### Linux incoming-link renderer qualification
+
+The independently implemented incoming-link candidate passes a fresh complete
+1394-case renderer run and 403 actual native scenario executions (201 normal,
+202 environment) against the same retained Linux package. Package SHA-256:
+`24b73deaf96a89e54e9daf855bf546efb661f94d5496868ecec1b96fa73160fa`.
+Executable SHA-256:
+`45bd67cb28215d49b9bacb479ad8308eb9805216e09289d2e5947eb4e92bfe96`.
+Source, failed attempts and test-only corrections are recorded in the repository-link
+specification. Cold desktop-launcher association and other platforms remain unqualified.
+No proprietary implementation material or assets were used.

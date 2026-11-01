@@ -59,6 +59,14 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         """, selector)
         driver.click_visible(selector)
 
+    def open_content():
+        # Row clicks load the diff asynchronously. Element lookup is immediate;
+        # wait for the actual enabled control, without replaying the row click.
+        driver.wait("""return [...document.querySelectorAll('.diff-insight-toggle button')]
+          .some(button => button.textContent.trim() === 'Content' && !button.disabled
+            && button.getClientRects().length > 0)""")
+        driver.click_text('.diff-insight-toggle button', 'Content')
+
     def payload(side):
         assert side['state'] == 'raster', side
         return base64.b64decode(side['dataUrl'].split(',', 1)[1], validate=True)
@@ -98,7 +106,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
             path = 'image-' + name
             selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
             click_file(selector)
-            driver.click_text('.diff-insight-toggle button', 'Content')
+            open_content()
             driver.wait('''return (() => {
               const article = document.querySelector('gc-file-media article[aria-label="After content"]');
               const image = article?.querySelector('img');
@@ -115,7 +123,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
 
         selector = '[aria-label="View changes in malformed-image"]'
         click_file(selector)
-        driver.click_text('.diff-insight-toggle button', 'Content')
+        open_content()
         driver.wait("return document.querySelector('gc-file-media')?.textContent.includes('Image decoding failed')")
         assert driver.script("return document.querySelectorAll('gc-file-media img').length") == 0
         driver.screenshot(Path(report['artifactsDirectory']) / 'media-native-decode-failure.png')
