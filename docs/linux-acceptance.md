@@ -45,6 +45,21 @@ uses an ephemeral loopback listener and private keys/trust files, and does not
 require installing or reconfiguring the host's SSH service. A missing prerequisite
 is not an application transport regression or a successful qualification.
 
+## CI Rust build footprint
+
+The checks job builds serially with line-table debug information for Cargo's
+`dev` and `test` profiles. This retains source-line backtraces without full type
+and variable debug information. It does not disable debug assertions, overflow
+checks or tests. Local developer defaults and the packaged release profile are
+unchanged. See the [Cargo profile reference](https://doc.rust-lang.org/cargo/reference/profiles.html).
+
+The checks cache uses the `checks-line-tables-v1` prefix, preventing restoration
+of the previous full-debug target cache when establishing the smaller profile.
+The [Rust cache action](https://github.com/Swatinem/rust-cache) includes Cargo
+environment values in its cache identity. Disk availability is recorded before
+verification and after releasing checked desktop artifacts. A CI disk-exhaustion
+failure is retained as a failed build; it is never reported as passing tests.
+
 ## Durable local validation
 
 For a long-running Linux validation command, run the existing Nx targets through

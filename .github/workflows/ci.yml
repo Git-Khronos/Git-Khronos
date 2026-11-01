@@ -31,6 +31,10 @@ jobs:
     name: Checks and renderer acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -45,6 +49,8 @@ jobs:
           toolchain: 1.99.0
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: checks-line-tables-v1
       - name: Install Linux build and renderer prerequisites
         run: |
           sudo apt-get update
@@ -53,6 +59,7 @@ jobs:
       - name: Verify generated IPC, TypeScript, Rust, and harness tests
         run: |
           mkdir -p "$RUNNER_TEMP/git-khronos-tests"
+          df -h . "$RUNNER_TEMP"
           pnpm nx run-many -t check -p contracts desktop --output-style=static
           TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test --output-style=static
           TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
