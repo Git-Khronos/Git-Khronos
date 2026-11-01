@@ -67,7 +67,8 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     def button(selector, text):
         driver.wait('return [...document.querySelectorAll(' + json.dumps(selector)
                     + ')].some(b=>b.textContent.trim()===' + json.dumps(text) + '&&!b.disabled)')
-        driver.click_text(selector, text)
+        geometry = driver.click_scrolled_text(selector, text)
+        report.setdefault('editorRecoveryClicks', []).append({'text': text, **geometry})
 
     def recovery_panel():
         driver.click('[aria-label="Main menu"]')

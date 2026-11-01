@@ -218,6 +218,37 @@ class Driver:
         identifier = elements[0]["element-6066-11e4-a52e-4f735466cecf"]
         self.request("POST", self.path(f"element/{identifier}/click"), {})
 
+    def click_scrolled_text(self, selector, text):
+        """Scroll normally, verify the painted hit target, then click exactly once."""
+        elements = self.script("return [...document.querySelectorAll(arguments[0])].filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible' && !element.matches(':disabled') && !element.closest('[inert]') && element.textContent.trim() === arguments[1]);", selector, text)
+        if len(elements) != 1:
+            raise ValueError(f"Expected one enabled {selector!r} with text {text!r}, found {len(elements)}")
+        element = elements[0]
+        geometry = self.request("POST", self.path("execute/async"), {"script": """
+          const element=arguments[0], done=arguments[arguments.length-1];
+          const bounds=()=>{
+            const r=element.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2;
+            const hit=document.elementFromPoint(x,y);
+            return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,
+              hitTarget:element.isConnected && r.width>0 && r.height>0 && x>=0 && y>=0
+                && x<innerWidth && y<innerHeight && !element.matches(':disabled')
+                && !element.closest('[inert]') && getComputedStyle(element).visibility==='visible'
+                && !!hit && element.contains(hit)};
+          };
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            const before=bounds();element.scrollIntoView({block:'center',inline:'nearest'});
+            requestAnimationFrame(()=>requestAnimationFrame(()=>{
+              const after=bounds();done({before,after,interactable:after.hitTarget});
+            }));
+          }));
+        """, "args": [element]})
+        if not isinstance(geometry, dict) or geometry.get("interactable") is not True:
+            raise RuntimeError("The control is not interactable after ordinary scrolling: " + json.dumps(geometry))
+        identifier = element["element-6066-11e4-a52e-4f735466cecf"]
+        # A failed/lost click reply is an uncertain action, never a reason to replay.
+        self.request("POST", self.path(f"element/{identifier}/click"), {})
+        return geometry
+
     def click_visible(self, selector):
         element = self.wait(f"""return (() => {{
           const matches = [...document.querySelectorAll({json.dumps(selector)})]

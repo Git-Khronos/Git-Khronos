@@ -303,6 +303,50 @@ class FixtureTests(unittest.TestCase):
                     driver.click_text("button", "Discard captured changes")
                 request.assert_not_called()
 
+    def test_scrolled_text_click_waits_for_paint_and_dispatches_one_native_click(self):
+        driver = Driver("http://127.0.0.1:1"); driver.session = "owned"
+        element = {"element-6066-11e4-a52e-4f735466cecf": "recovery-button"}
+        geometry = {"before": {"hitTarget": False}, "after": {"hitTarget": True}, "interactable": True}
+        with patch.object(driver, "script", return_value=[element]), patch.object(driver, "request", side_effect=[geometry, None]) as request:
+            self.assertEqual(driver.click_scrolled_text("button", "Load recovered text into editor"), geometry)
+        self.assertEqual(request.call_count, 2)
+        scroll, click = request.call_args_list
+        self.assertEqual(scroll.args[:2], ("POST", "/session/owned/execute/async"))
+        self.assertEqual(scroll.args[2]["args"], [element])
+        self.assertIn("scrollIntoView", scroll.args[2]["script"])
+        self.assertIn("elementFromPoint", scroll.args[2]["script"])
+        self.assertNotIn(".click(", scroll.args[2]["script"])
+        self.assertNotIn("dispatchEvent", scroll.args[2]["script"])
+        self.assertEqual(click.args, ("POST", "/session/owned/element/recovery-button/click", {}))
+
+    def test_scrolled_text_click_refuses_ambiguous_or_missing_controls_without_dispatch(self):
+        driver = Driver("http://127.0.0.1:1"); driver.session = "owned"
+        element = {"element-6066-11e4-a52e-4f735466cecf": "recovery-button"}
+        for matches in ([], [element, element]):
+            with self.subTest(matches=matches), patch.object(driver, "script", return_value=matches), patch.object(driver, "request") as request:
+                with self.assertRaises(ValueError): driver.click_scrolled_text("button", "Load recovered text into editor")
+                request.assert_not_called()
+
+    def test_scrolled_text_click_refuses_a_clipped_or_obscured_target_without_clicking(self):
+        driver = Driver("http://127.0.0.1:1"); driver.session = "owned"
+        element = {"element-6066-11e4-a52e-4f735466cecf": "recovery-button"}
+        with patch.object(driver, "script", return_value=[element]), patch.object(driver, "request", return_value={"interactable": False}) as request:
+            with self.assertRaisesRegex(RuntimeError, "not interactable after ordinary scrolling"):
+                driver.click_scrolled_text("button", "Load recovered text into editor")
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/owned/execute/async")
+
+    def test_scrolled_text_click_never_replays_a_lost_scroll_or_action_reply(self):
+        element = {"element-6066-11e4-a52e-4f735466cecf": "recovery-button"}
+        geometry = {"interactable": True}
+        for replies, expected in [([RemoteDisconnected("scroll reply lost")], 1),
+                                  ([geometry, RemoteDisconnected("click reply lost")], 2)]:
+            driver = Driver("http://127.0.0.1:1"); driver.session = "owned"
+            with self.subTest(expected=expected), patch.object(driver, "script", return_value=[element]), patch.object(driver, "request", side_effect=replies) as request:
+                with self.assertRaises(RemoteDisconnected): driver.click_scrolled_text("button", "Load recovered text into editor")
+            self.assertEqual(request.call_count, expected)
+            self.assertEqual(sum(call.args[1].endswith("/click") for call in request.call_args_list), expected - 1)
+
     def test_key_press_releases_the_same_native_key_without_replay(self):
         driver = Driver("http://127.0.0.1:1")
         driver.session = "owned"
