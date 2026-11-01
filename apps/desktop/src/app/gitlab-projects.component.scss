@@ -21,3 +21,5 @@ li span { display: block; }
 [role=alert], .invalid { color: var(--danger); }
 button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } li { flex-direction: column; align-items: flex-start; } }
+
+.project-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

@@ -96,6 +96,19 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.execute_hosted_clone({ token: 'owned-token', operationId: 'owned-clone' });
   // @ts-expect-error repository IDs must not cross the JavaScript precision boundary as numbers
   void ipc.inspect_hosted_repository({ fullName: 'team/owned', repositoryId: 9007199254740993, accountId: '7', operationId: 'owned-inspection' });
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: '9007199254740993', operationId: 'owned-inspection' } });
+  void ipc.execute_gitlab_clone({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-clone' } });
+  void ipc.discard_gitlab_clone_plan({ contextId: 'owned-context', token: 'owned-token' });
+  // @ts-expect-error stable GitLab IDs must retain decimal precision across JavaScript
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: 9007199254740993, operationId: 'owned-inspection' } });
+  // @ts-expect-error execution accepts only a native-held review token, not a replacement plan
+  void ipc.execute_gitlab_clone({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-clone', plan: { url: 'https://other.test/project.git' } } });
+  // @ts-expect-error execution must remain bound to its original review context
+  void ipc.execute_gitlab_clone({ request: { token: 'owned-token', operationId: 'owned-clone' } });
+  // @ts-expect-error a renderer cannot replace the instance bound to a native connection
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: '1', operationId: 'owned-inspection', origin: 'https://other.test' } });
+  // @ts-expect-error discarding a clone review must identify its owned context
+  void ipc.discard_gitlab_clone_plan({ token: 'owned-token' });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

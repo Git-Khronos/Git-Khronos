@@ -90,6 +90,7 @@ use tauri_specta::Event;
 
 mod authentication;
 mod gitlab_commands;
+mod gitlab_clone_commands;
 mod recovery_commands;
 mod hosting_commands;
 mod fork_commands;
@@ -3455,6 +3456,7 @@ pub fn run() {
         .manage(working_file_commands::EditorState::default())
         .manage(working_file_commands::recovery::RecoveryState::default())
         .manage(gitlab_commands::GitLabAccounts::default())
+        .manage(gitlab_clone_commands::GitLabClonePlans::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(bindings.invoke_handler())
@@ -3492,6 +3494,10 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             working_file_commands::recovery::review_editor_draft,
             working_file_commands::recovery::discard_editor_draft,
             working_file_commands::recovery::discard_editor_draft_entry,
+            gitlab_clone_commands::inspect_gitlab_project,
+            gitlab_clone_commands::prepare_gitlab_clone,
+            gitlab_clone_commands::execute_gitlab_clone,
+            gitlab_clone_commands::discard_gitlab_clone_plan,
             gitlab_commands::connect_gitlab_account,
             gitlab_commands::gitlab_connections,
             gitlab_commands::load_gitlab_projects,

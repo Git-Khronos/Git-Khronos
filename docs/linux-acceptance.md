@@ -109,8 +109,11 @@ pnpm nx run desktop:test-lfs
 TMPDIR=/tmp pnpm nx run desktop:test-signing
 ```
 
-The packaged GitLab catalogue suite uses the same verified package and ordinary
-native IPC with an owned HTTPS service and synthetic credential:
+The packaged GitLab discovery/clone suite uses the same verified package and
+ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
+credentials. It requires `sshd` (`openssh-server`) in addition to the client;
+set `GIT_KHRONOS_SSHD` to an absolute private server path when it is not installed
+at `/usr/sbin/sshd`:
 
 ```sh
 package=$(task --silent package:deb:path)
@@ -118,9 +121,12 @@ pnpm nx exec -p desktop --excludeTaskDependencies -- \
   python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
 ```
 
-Its private CA applies only to the owned application process. It does not alter
-host trust or contact a real GitLab account. See the
-[GitLab specification](specifications/gitlab-projects.md) for behavior and evidence.
+Its private CA and SSH identity/known-hosts configuration apply only to the owned
+application process. The SSH server accepts one read-only test repository command.
+It changes no host trust, keys, agent, accounts or system service and contacts no
+real GitLab account. Missing prerequisites fail the suite rather than skipping
+SSH coverage. See the [GitLab discovery](specifications/gitlab-projects.md) and
+[reviewed clone](specifications/gitlab-reviewed-clone.md) specifications.
 
 `test-lfs` runs the normally ignored Rust LFS integration checks serially with
 real Git LFS, using disposable repositories and local transfer/locking fixtures.

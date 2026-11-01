@@ -58,7 +58,8 @@
       @for (project of result.entries; track project.id) {
         <li><div><strong>{{ project.fullPath }}</strong><span>{{ project.visibility }}{{ project.archived ? ' · Archived' : '' }} · {{ project.defaultBranch ?? 'Default branch not reported' }}</span>
           @if (project.description) { <p>{{ project.description }}</p> }
-        </div><button type="button" (click)="copyPath(project.fullPath)">Copy path for {{ project.fullPath }}</button></li>
+        </div><div class="project-actions"><button type="button" (click)="copyPath(project.fullPath)">Copy path for {{ project.fullPath }}</button>
+          <button type="button" [disabled]="!canSelectClone(project)" (click)="selectClone(project)">Inspect and clone {{ project.fullPath }}</button></div></li>
       } @empty { <li>No projects were returned for this page and query.</li> }
     </ul>
     <nav aria-label="GitLab project pages">
@@ -66,5 +67,9 @@
       <button type="button" [disabled]="!canRead() || queryChanged() || !result.nextPage" (click)="load(result.nextPage!)">Next GitLab page</button>
     </nav>
     <p>{{ result.mayHaveMore ? 'More projects may exist beyond this page.' : 'No further page was indicated.' }} Results describe the selected account at the time of the read.</p>
+  }
+  @for (target of cloneViews(); track target.generation) {
+    <gc-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+      (back)="closeClone()" (opening)="opening.emit()" (opened)="opened.emit()" />
   }
 </section>

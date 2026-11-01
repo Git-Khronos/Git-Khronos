@@ -256,7 +256,11 @@ fn gitlab_native_project_reads_are_bound_to_the_verified_account_even_on_first_p
     assert!(changed.message.contains("Reconnect the account"));
     // Local metadata refresh does not silently rebind a connection to a new user.
     let listed = state.connections().unwrap();
-    assert!(listed.iter().all(|connection| connection.account == account()));
+    assert!(
+        listed
+            .iter()
+            .all(|connection| connection.account == account())
+    );
     let retried = projects(&state, request(SECOND), &CancellationToken::default()).unwrap_err();
     assert!(retried.message.contains("Reconnect the account"));
 }
@@ -423,4 +427,55 @@ fn gitlab_native_expiry_between_requests_prevents_later_provider_reads() {
     // The first account read crosses the deadline. Neither the projects read
     // nor the final account check may start with that expired authority.
     assert_eq!(*calls.lock().unwrap(), vec!["user".to_owned()]);
+}
+
+#[test]
+fn gitlab_native_scoped_read_releases_api_authority_before_git_handoff() {
+    let state = GitLabAccounts::default();
+    connect(&state, FIRST, FixtureTransport::default());
+    let cancellation = CancellationToken::default();
+    let value = state
+        .read(
+            FIRST,
+            "inspect",
+            &cancellation,
+            |transport, instance, account| {
+                assert_eq!(account, &self::account());
+                assert!(
+                    state
+                        .read(
+                            FIRST,
+                            "concurrent",
+                            &CancellationToken::default(),
+                            |_, _, _| Ok(())
+                        )
+                        .is_err()
+                );
+                transport.get(instance, "user", &cancellation)
+            },
+        )
+        .unwrap();
+    assert_eq!(value["id"], 41);
+    state
+        .read(FIRST, "fresh", &CancellationToken::default(), |_, _, _| {
+            Ok(())
+        })
+        .unwrap();
+    assert!(state.disconnect(FIRST).unwrap());
+    // The API operation is over. Its token is no longer held in Session.active;
+    // a separately accepted Git operation is not cancelled by disconnect.
+    assert!(!cancellation.is_cancelled());
+}
+
+#[test]
+fn gitlab_native_scoped_read_rechecks_retirement_before_handoff() {
+    let state = GitLabAccounts::default();
+    connect(&state, FIRST, FixtureTransport::default());
+    let cancellation = CancellationToken::default();
+    let result = state.read(FIRST, "inspect", &cancellation, |_, _, _| {
+        state.disconnect(FIRST).unwrap();
+        Ok("must not authorize Git")
+    });
+    assert!(result.is_err());
+    assert!(cancellation.is_cancelled());
 }

@@ -1,0 +1,48 @@
+<section class="gitlab-clone" aria-label="Clone selected GitLab project" (keydown)="preventInputSubmit($event)">
+  <h3 #heading tabindex="-1">Clone {{ project().fullPath }}</h3>
+  @if (error()) { <p #errorBox class="error" role="alert" tabindex="-1">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  <div class="actions">
+    <button type="button" [disabled]="unavailable()" (click)="returnToProjects()">Return to GitLab projects</button>
+    <button type="button" [disabled]="unavailable()" (click)="inspect()">Refresh selected GitLab project</button>
+  </div>
+  @if (busy()) {
+    <div class="actions" role="status"><span>{{ busy() === 'inspecting' ? 'Checking the selected project…' : busy() === 'preparing' ? 'Preparing the clone review…' : 'Cloning the reviewed project…' }}</span>
+      <button type="button" [disabled]="cancelling()" (click)="cancel()">{{ cancelling() ? 'Requesting cancellation…' : 'Cancel GitLab clone request' }}</button>
+    </div>
+  }
+  @if (inspection(); as selected) {
+    <dl><dt>API account</dt><dd>{{ selected.account.login }} · {{ selected.account.origin }}</dd>
+      <dt>Project page</dt><dd><code>{{ selected.project.url }}</code></dd></dl>
+    <p>Git authentication uses your Git credential helpers or SSH setup. The API token is not supplied to Git.</p>
+    <fieldset #options [disabled]="unavailable()"><legend>GitLab clone options</legend>
+      <label for="gitlab-clone-transport">Git transport<select id="gitlab-clone-transport" [value]="transport()" (change)="transport.set($any($event.target).value); invalidate()">
+        <option value="https" [selected]="transport() === 'https'" [disabled]="!selected.cloneHttps">HTTPS</option><option value="ssh" [selected]="transport() === 'ssh'" [disabled]="!selected.cloneSsh">SSH</option>
+      </select></label>
+      @if (selectedUrl(); as url) { <p>Selected Git address <code>{{ url }}</code></p> } @else { <p>No supported URL was supplied for this transport.</p> }
+      <label for="gitlab-clone-parent">Destination directory</label><div class="path"><input id="gitlab-clone-parent" autocomplete="off" [value]="parentPath()" (input)="parentPath.set($any($event.target).value); invalidate()" /><button type="button" (click)="chooseParent()">Choose GitLab clone directory</button></div>
+      <label for="gitlab-clone-folder">New folder<input id="gitlab-clone-folder" autocomplete="off" maxlength="255" [value]="folder()" (input)="folder.set($any($event.target).value); invalidate()" /></label>
+      <label for="gitlab-clone-branch">Branch (optional)<input id="gitlab-clone-branch" autocomplete="off" maxlength="1024" [value]="branch()" (input)="branch.set($any($event.target).value); invalidate()" /></label>
+      <p>Leave the branch blank for Git's default behavior, including empty repositories. Choosing a branch limits the clone to that branch.</p>
+      <label class="check"><input type="checkbox" [checked]="shallow()" (change)="shallow.set($any($event.target).checked); invalidate()" />Limit history depth</label>
+      @if (shallow()) { <label for="gitlab-clone-depth">History depth<input id="gitlab-clone-depth" type="number" min="1" max="4294967295" step="1" [value]="depth()" (input)="depth.set(+$any($event.target).value); invalidate()" /></label> }
+      <label class="check"><input type="checkbox" [checked]="recurse()" (change)="recurse.set($any($event.target).checked); invalidate()" />Initialize nested submodules</label>
+      @if (recurse()) { <p>Submodule history is independent of the parent clone depth.</p> }
+      <button type="button" [disabled]="!ready()" (click)="prepare()">Review GitLab clone</button>
+    </fieldset>
+  }
+  @if (preview(); as reviewPlan) {
+    <section #review class="review" aria-label="Review GitLab clone" tabindex="-1">
+      <h4>Review before starting Git</h4>
+      <dl><dt>Account and API origin</dt><dd>{{ reviewPlan.plan.account.login }} · {{ reviewPlan.plan.account.origin }}</dd>
+        <dt>Project</dt><dd>{{ reviewPlan.plan.project.fullPath }}<code>{{ reviewPlan.plan.project.url }}</code></dd>
+        <dt>Git transport</dt><dd>{{ reviewPlan.plan.transport }}<code>{{ reviewPlan.plan.url }}</code></dd>
+        <dt>New destination</dt><dd><code>{{ reviewPlan.plan.destination }}</code></dd>
+        <dt>Branch and history</dt><dd>{{ reviewPlan.plan.branch ?? 'Git default' }} · {{ reviewPlan.plan.depth ? 'Depth ' + reviewPlan.plan.depth : 'Full history' }}</dd>
+        <dt>Submodules</dt><dd>{{ reviewPlan.plan.recurseSubmodules ? 'Initialize nested submodules' : 'Leave submodules uninitialized' }}</dd>
+      </dl>
+      <p>The API and Git addresses may use different hosts or ports. Check the complete Git address. Starting this clone creates a new local directory; a failed or stopped clone may leave partial data there.</p>
+      <div class="actions"><button type="button" [disabled]="unavailable()" (click)="apply()">Clone reviewed GitLab project</button><button type="button" [disabled]="unavailable()" (click)="invalidate()">Discard GitLab clone review</button></div>
+    </section>
+  }
+</section>

@@ -1,6 +1,6 @@
 # Compatibility notes
 
-## GitLab account and project discovery candidate
+## GitLab account and project discovery
 
 Public GitLab REST v4 documentation defines the authenticated user and project
 list endpoints, API token header, response fields, literal search parameters and
@@ -16,10 +16,17 @@ window boundaries are independent requirements. Normal use of official glab
 behavior; that raw CLI transport is not adopted. No real account credential was
 read and no access control was bypassed.
 
-The candidate has source and license/notice checks, with behavioral tests written
-but not yet executed. It does not establish live GitLab, desktop IPC, clone,
-provider-write or cross-platform acceptance. The
-[specification](../specifications/gitlab-projects.md) records the remaining gates.
+The catalogue passed local source, behavioral, notice, renderer and exact Linux
+package/IPC checks recorded in its [specification](../specifications/gitlab-projects.md).
+This does not establish live GitLab, cloning, provider-write or cross-platform
+acceptance. The independent [reviewed cloning workflow](../specifications/gitlab-reviewed-clone.md)
+extends the public API read boundary to stable-ID single-project inspection and
+uses the existing Git execution/authentication boundary. Its corrected Linux
+package passes fresh renderer/native acceptance, including real verified HTTPS
+Git transfer with a separate credential and cancellation after a real PACK prefix,
+and a desktop SSH clone against a private pinned-host OpenSSH server.
+No proprietary package internals, source, assets, wording or visual composition
+were used. Live-service and other-platform acceptance remain open.
 
 ## Reviewed fork remote attachment
 

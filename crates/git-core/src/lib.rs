@@ -71,6 +71,12 @@ pub use hosted_clone::{
     prepare_hosted_clone, execute_hosted_clone,
 };
 mod hosted_repositories;
+mod gitlab_clone;
+pub use gitlab_clone::{
+    GitLabCloneRequest, GitLabClonePlan, GitLabProjectInspection,
+    inspect_gitlab_project_with, prepare_gitlab_clone_with,
+    revalidate_gitlab_clone_with, execute_gitlab_clone_with, clone_gitlab_plan,
+};
 mod gitlab_https;
 pub use gitlab_https::GitLabHttpsTransport;
 mod gitlab_projects;

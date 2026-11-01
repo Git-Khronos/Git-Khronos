@@ -1,6 +1,7 @@
-import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild, type OnDestroy } from '@angular/core';
-import { ipc, type AppError, type GitLabAccount, type GitLabConnection, type GitLabProjectPage, type GitLabProjectQuery, type GitLabProjectScope } from '@git-khronos/contracts';
+import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal, viewChild, type OnDestroy } from '@angular/core';
+import { ipc, type AppError, type GitLabAccount, type GitLabConnection, type GitLabProject, type GitLabProjectPage, type GitLabProjectQuery, type GitLabProjectScope } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
+import { GitLabCloneComponent } from './gitlab-clone.component';
 
 type Operation = { id: string; generation: number; kind: 'connecting' | 'reading'; cancelled: boolean };
 type Busy = Operation['kind'] | 'listing' | 'disconnecting' | null;
@@ -12,12 +13,20 @@ function sameAccount(a: GitLabAccount, b: GitLabAccount): boolean {
 
 @Component({
   selector: 'gc-gitlab-projects',
+  imports: [GitLabCloneComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-projects.component.html',
   styleUrl: './gitlab-projects.component.scss',
 })
 export class GitLabProjectsComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
+  readonly initialParentPath = input('');
+  readonly opening = output<void>();
+  readonly opened = output<void>();
+  readonly cloneTarget = signal<{ generation: number; connection: GitLabConnection; project: GitLabProject } | null>(null);
+  readonly cloneViews = computed(() => this.cloneTarget() ? [this.cloneTarget()!] : []);
+  private cloneGeneration = 0;
+  private readonly cloneBrowser = viewChild(GitLabCloneComponent);
   readonly origin = signal('https://gitlab.com');
   readonly token = signal('');
   readonly showToken = signal(false);
@@ -32,7 +41,7 @@ export class GitLabProjectsComponent implements OnDestroy {
   readonly notice = signal('');
   readonly busy = signal<Busy>(null);
   readonly cancelling = signal(false);
-  readonly unavailable = computed(() => !!this.busy() || this.git.busy() || this.git.browserPreview());
+  readonly unavailable = computed(() => !!this.busy() || !!this.cloneTarget() || this.git.busy() || this.git.browserPreview());
   readonly validOrigin = computed(() => {
     try {
       const value = this.origin(), parsed = new URL(value);
@@ -165,8 +174,23 @@ export class GitLabProjectsComponent implements OnDestroy {
       if (this.accepted(operation)) this.error.set(this.message(reason, 'Projects could not be loaded. Earlier results were retained.'));
     } finally { this.finish(operation); }
   }
+  canSelectClone(project: GitLabProject): boolean {
+    const result = this.page(), connection = this.selected();
+    return !!result && !!connection && !this.unavailable() && !this.connectionsStale() && !this.stale() && !this.queryChanged()
+      && sameAccount(result.account, connection.account) && result.entries.some(entry => entry.id === project.id && entry.fullPath === project.fullPath);
+  }
+  selectClone(project: GitLabProject): void {
+    const connection = this.selected(); if (!connection || !this.canSelectClone(project)) return;
+    this.cloneTarget.set({ generation: ++this.cloneGeneration, connection, project });
+  }
+  closeClone(): void {
+    this.cloneBrowser()?.dismiss(); this.cloneTarget.set(null);
+    window.setTimeout(() => { if (!this.closing && !this.destroyed) this.heading()?.nativeElement.focus(); });
+  }
+
   async disconnect(): Promise<void> {
     const connection = this.selected(); if (!connection || !this.canDisconnect() || this.closing || this.destroyed) return;
+    if (!this.cloneBrowser()?.executing()) this.closeClone();
     if (this.operation) this.operation.cancelled = true;
     this.operation = null;
     const generation = ++this.generation; this.busy.set('disconnecting'); this.error.set(''); this.stale.set(!!this.page());
@@ -202,6 +226,7 @@ export class GitLabProjectsComponent implements OnDestroy {
   }
   dismiss(): void {
     if (this.closing) return;
+    this.cloneBrowser()?.dismiss();
     this.closing = true; this.generation++; this.token.set(''); this.showToken.set(false);
     const operation = this.operation;
     if (operation) { operation.cancelled = true; void ipc.cancel_git_operation({ operationId: operation.id }).catch(() => undefined); }

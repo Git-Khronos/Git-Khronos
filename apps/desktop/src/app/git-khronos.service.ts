@@ -587,6 +587,14 @@ export class GitKhronosService {
     return outcome === 'success';
   }
 
+  async cloneGitLabRepository(contextId: string, token: string, operationId: string): Promise<boolean> {
+    const outcome = await this.run('Cloning reviewed GitLab project…', async report => {
+      const snapshot = await ipc.execute_gitlab_clone({ request: { contextId, token, operationId } });
+      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
+    }, null, operationId);
+    return outcome === 'success';
+  }
+
   async initializeRepository(
     parentPath: string,
     folder: string,

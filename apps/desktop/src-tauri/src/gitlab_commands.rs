@@ -86,7 +86,7 @@ fn check(cancellation: &CancellationToken) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn main_label(label: &str) -> Result<(), AppError> {
+pub(super) fn main_label(label: &str) -> Result<(), AppError> {
     if label != "main" {
         return Err(error(
             "gitlabWindowPermission",
@@ -95,7 +95,7 @@ fn main_label(label: &str) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn identifier() -> Result<String, AppError> {
+pub(super) fn identifier() -> Result<String, AppError> {
     let mut bytes = [0; 16];
     getrandom::fill(&mut bytes).map_err(|_| {
         error(
@@ -270,6 +270,35 @@ impl Reservation<'_> {
 }
 
 impl GitLabAccounts {
+    // A closure cannot retain the transport or its lease. Git execution starts
+    // only after this scope returns and releases provider read authority.
+    pub(super) fn read<T>(
+        &self,
+        connection_id: &str,
+        operation_id: &str,
+        cancellation: &CancellationToken,
+        action: impl FnOnce(
+            &mut dyn core::GitLabReadTransport,
+            &core::GitLabInstance,
+            &core::GitLabAccount,
+        ) -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        let session = self.get(connection_id)?;
+        let lease = session.begin(operation_id, cancellation)?;
+        let mut transport = session.transport.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => busy(),
+            std::sync::TryLockError::Poisoned(error) => state_error(error),
+        })?;
+        lease.check()?;
+        let mut transport = LeasedTransport {
+            lease: &lease,
+            inner: transport.as_mut(),
+        };
+        let result = action(&mut transport, &session.instance, &session.view.account)?;
+        lease.check()?;
+        Ok(result)
+    }
+
     pub fn start_cleanup(&self) {
         tauri::async_runtime::spawn(cleanup_loop(
             Arc::downgrade(&self.0),

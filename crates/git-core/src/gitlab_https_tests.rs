@@ -9,6 +9,12 @@ fn gitlab_https_endpoint_allowlist_refuses_arbitrary_routes_and_query_reinterpre
     );
     let base = "projects?per_page=20&page=1&order_by=id&sort=asc";
     assert!(endpoint_url(&instance, base).is_ok());
+    assert_eq!(
+        endpoint_url(&instance, "projects/18446744073709551615")
+            .unwrap()
+            .as_str(),
+        "https://gitlab.example.test:8443/api/v4/projects/18446744073709551615"
+    );
     assert!(
         endpoint_url(
             &instance,
@@ -22,6 +28,14 @@ fn gitlab_https_endpoint_allowlist_refuses_arbitrary_routes_and_query_reinterpre
         "../user",
         "user?token=other",
         "graphql",
+        "projects/0",
+        "projects/01",
+        "projects/18446744073709551616",
+        "projects/1?token=other",
+        "projects/1/repository",
+        "projects/1#fragment",
+        "projects/%31",
+        "projects/../user",
         "projects?per_page=100",
         "projects?per_page=20&page=01&order_by=id&sort=asc",
     ] {
@@ -175,6 +189,43 @@ mod tls {
             let _ = self.child.wait();
             let _ = fs::remove_dir_all(&self.root);
         }
+    }
+
+    #[test]
+    fn gitlab_https_inspects_selected_project_with_three_origin_bound_reads() {
+        let fixture = Fixture::new();
+        let expected = crate::GitLabAccount {
+            origin: fixture.instance.origin().into(),
+            id: "41".into(),
+            login: "owned-reader".into(),
+        };
+        let inspected = crate::inspect_gitlab_project_with(
+            &mut fixture.transport(),
+            &fixture.instance,
+            &expected,
+            "101",
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        assert_eq!(inspected.project.full_path, "team/subgroup/owned-project");
+        assert!(inspected.project.default_branch.is_none());
+        assert_eq!(
+            inspected.clone_ssh.as_deref(),
+            Some("ssh://git@ssh.example.test:2222/team/subgroup/owned-project.git")
+        );
+        let requests = fixture.requests();
+        assert_eq!(
+            requests
+                .iter()
+                .map(|r| r["path"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["/api/v4/user", "/api/v4/projects/101", "/api/v4/user"]
+        );
+        assert!(
+            requests
+                .iter()
+                .all(|r| r["credentialMatched"] == true && r["destination"] == false)
+        );
     }
 
     #[test]

@@ -34,8 +34,11 @@ def start_gitlab_fixture(fixtures, children, log, report):
                                "certificateSha256": hashlib.sha256((gate / "certificate.pem").read_bytes()).hexdigest()}
     # Native TLS verifies this certificate normally. Only the owned application
     # process inherits the private trust store; host trust is never changed.
+    from native_gitlab_ssh_fixture import start_gitlab_ssh
+    # The packaged GitLab suite requires SSH; HTTPS fixture units remain isolated.
+    ssh_environment = start_gitlab_ssh(fixtures, gate, children, report) if report.get("suite") == "gitlab" else {}
     return {"SSL_CERT_FILE": str(gate / "certificate.pem"),
-            "SSL_CERT_DIR": str(empty_ca_directory)}
+            "SSL_CERT_DIR": str(empty_ca_directory), **ssh_environment}
 
 
 def gitlab_catalogue(driver, fixtures, repository, report):
@@ -167,6 +170,9 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert fixtures.git(repository, "status", "--porcelain=v1") == status
     report["gitlabRequests"] = requests()
     report["scenarios"].append("native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree")
+
+    from native_gitlab_clone_scenarios import gitlab_reviewed_clones
+    gitlab_reviewed_clones(driver, fixtures, repository, report)
 
 
 def report_path(report, name):

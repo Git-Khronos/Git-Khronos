@@ -45,7 +45,7 @@ fn refused(message: &str) -> AppError {
         Some("Review a fresh hosted clone preview."),
     )
 }
-fn destination(
+pub(super) fn destination(
     parent: &str,
     folder: &str,
     branch: Option<&str>,

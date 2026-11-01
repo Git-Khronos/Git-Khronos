@@ -165,7 +165,7 @@ fn id(value: &Value) -> Result<String, AppError> {
     super::hosted_repositories::id(value).map_err(|_| response_error())
 }
 
-fn validate_query(instance: &GitLabInstance, query: &GitLabProjectQuery) -> Result<(), AppError> {
+pub(super) fn validate_query(instance: &GitLabInstance, query: &GitLabProjectQuery) -> Result<(), AppError> {
     if query.page == 0 || query.page > MAX_PAGE {
         return Err(request_error("Choose a project page from 1 through 1000."));
     }
@@ -214,7 +214,7 @@ pub fn load_gitlab_account_with(
     })
 }
 
-fn project(instance: &GitLabInstance, value: &Value) -> Result<GitLabProject, AppError> {
+pub(super) fn project(instance: &GitLabInstance, value: &Value) -> Result<GitLabProject, AppError> {
     let full_path = text(value, "path_with_namespace", 4096)?;
     if !full_path.contains('/')
         || full_path

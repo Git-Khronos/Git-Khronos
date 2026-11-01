@@ -1,6 +1,25 @@
 # Informational sources
 
-## GitLab account and project discovery candidate
+## Reviewed GitLab cloning
+
+- [GitLab Projects API](https://docs.gitlab.com/api/projects/)
+- [Git clone manual](https://git-scm.com/docs/git-clone)
+- [Git HTTP backend](https://git-scm.com/docs/git-http-backend)
+- [Git credential helpers](https://git-scm.com/docs/gitcredentials)
+- [Git TLS configuration](https://git-scm.com/docs/git-config)
+- [OpenSSH server configuration](https://man.openbsd.org/sshd_config)
+- [OpenSSH client configuration](https://man.openbsd.org/ssh_config)
+
+Used for stable-ID project inspection, documented clone URL fields and literal
+branch/depth/submodule options, and an owned verified-HTTPS Git fixture using
+public CGI/credential-helper contracts. The normalization, preview ownership and fixtures
+are independently written. No proprietary code or assets, external implementation
+source or documentation passages were copied. The private loopback SSH fixture uses documented forced commands, explicit
+identity files and pinned known hosts without changing host configuration.
+Local desktop and exact-package evidence is recorded in the
+[reviewed clone specification](../specifications/gitlab-reviewed-clone.md).
+
+## GitLab account and project discovery
 
 - [GitLab REST API](https://docs.gitlab.com/api/rest/)
 - [REST API token authentication](https://docs.gitlab.com/api/rest/authentication/)
@@ -13,13 +32,14 @@
 Used for public response fields, account/instance requirements, bounded discovery
 and review of a possible optional transport. The core model and JSON behavioral
 fixtures are original project code. No external source code or assets were copied.
-No CLI dependency has been adopted or bundled; concrete transport and live-service
-qualification remain pending. See the [candidate specification](../specifications/gitlab-projects.md).
+No CLI dependency has been adopted or bundled. The concrete HTTPS transport and
+owned packaged fixture passed local qualification; live-service acceptance remains
+open. See the [catalogue specification](../specifications/gitlab-projects.md).
 
 The owned CLI 1.126.0 HTTPS fixtures also inform the redirect refusal requirement;
 they contain no real account credentials or third-party implementation material.
 
-## GitLab HTTPS transport candidate
+## GitLab HTTPS transport
 
 - [reqwest 0.13.5 client configuration](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html)
 - [Response streaming](https://docs.rs/reqwest/0.13.5/reqwest/struct.Response.html)
@@ -33,7 +53,8 @@ cooperative request cancellation. Transport and fixture implementations are
 original. No external example or implementation code copied. Published local
 manifests identify reqwest 0.13.5 as MIT OR Apache-2.0 and Tokio 1.53.3 as MIT.
 The lockfile adds fifteen packages with known MIT/Apache terms; locked offline
-Linux notice collection passes. Runtime and exact-package gates remain pending.
+Linux notice collection, behavioral tests and exact-package gates pass as recorded
+in the catalogue specification. This does not establish live-service acceptance.
 
 ## GitLab catalogue interface candidate
 

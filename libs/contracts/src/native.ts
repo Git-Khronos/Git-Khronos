@@ -108,9 +108,19 @@ export type GitAuthenticationDismissed = string
 export type GitAuthenticationPrompt = { requestId: string; operationId: string; repositoryId: string | null; secret: boolean }
 export type GitIdentity = { name: string | null; email: string | null }
 export type GitLabAccount = { origin: string; id: string; login: string }
+/**
+ * Returned for review, then retained by the native preview registry.
+ * Execution must not deserialize a replacement plan from the renderer.
+ */
+export type GitLabClonePlan = { account: GitLabAccount; project: GitLabProject; transport: HostedCloneTransport; url: string; parentPath: string; folder: string; destination: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
+export type GitLabCloneRequest = { projectId: string; fullPath: string; transport: HostedCloneTransport; parentPath: string; folder: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
 export type GitLabConnectRequest = { origin: string; token: string; operationId: string }
 export type GitLabConnection = { connectionId: string; account: GitLabAccount; expiresAtMillis: string }
+export type GitLabExecuteCloneRequest = { contextId: string; token: string; operationId: string }
+export type GitLabInspectRequest = { connectionId: string; projectId: string; operationId: string }
+export type GitLabPrepareCloneRequest = { connectionId: string; contextId: string; request: GitLabCloneRequest; operationId: string }
 export type GitLabProject = { id: string; name: string; fullPath: string; url: string; description: string | null; defaultBranch: string | null; visibility: string; archived: boolean }
+export type GitLabProjectInspection = { account: GitLabAccount; project: GitLabProject; cloneHttps: string | null; cloneSsh: string | null }
 export type GitLabProjectPage = { account: GitLabAccount; query: GitLabProjectQuery; entries: GitLabProject[];
 /**
  * A full preview page permits another explicit read; it does not prove one exists.
@@ -235,6 +245,7 @@ export type PatchTarget = "worktree" | "index" | "both"
 export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
 export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
+export type PreparedGitLabClone = { token: string; plan: GitLabClonePlan }
 export type PreparedHostedClone = { token: string; plan: HostedClonePlan }
 export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedForkRemote = { token: string; plan: HostedForkRemotePlan }
@@ -408,6 +419,10 @@ export function load_editor_draft_entry(args: { id: string; kind: RecoveryDraftE
 export function review_editor_draft(args: { request: EditorDraftReviewRequest }): Promise<EditorDraftReview> { return TAURI_INVOKE("review_editor_draft", args); }
 export function discard_editor_draft(args: { editorId: string; revision: string }): Promise<EditorDraftDiscarded> { return TAURI_INVOKE("discard_editor_draft", args); }
 export function discard_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<null> { return TAURI_INVOKE("discard_editor_draft_entry", args); }
+export function inspect_gitlab_project(args: { request: GitLabInspectRequest }): Promise<GitLabProjectInspection> { return TAURI_INVOKE("inspect_gitlab_project", args); }
+export function prepare_gitlab_clone(args: { request: GitLabPrepareCloneRequest }): Promise<PreparedGitLabClone> { return TAURI_INVOKE("prepare_gitlab_clone", args); }
+export function execute_gitlab_clone(args: { request: GitLabExecuteCloneRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_gitlab_clone", args); }
+export function discard_gitlab_clone_plan(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_gitlab_clone_plan", args); }
 export function connect_gitlab_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_account", args); }
 export function gitlab_connections(args: {  } = {}): Promise<GitLabConnection[]> { return TAURI_INVOKE("gitlab_connections", args); }
 export function load_gitlab_projects(args: { request: GitLabProjectsRequest }): Promise<GitLabProjectPage> { return TAURI_INVOKE("load_gitlab_projects", args); }
@@ -636,6 +651,10 @@ export type CommandMap = {
   review_editor_draft: typeof review_editor_draft;
   discard_editor_draft: typeof discard_editor_draft;
   discard_editor_draft_entry: typeof discard_editor_draft_entry;
+  inspect_gitlab_project: typeof inspect_gitlab_project;
+  prepare_gitlab_clone: typeof prepare_gitlab_clone;
+  execute_gitlab_clone: typeof execute_gitlab_clone;
+  discard_gitlab_clone_plan: typeof discard_gitlab_clone_plan;
   connect_gitlab_account: typeof connect_gitlab_account;
   gitlab_connections: typeof gitlab_connections;
   load_gitlab_projects: typeof load_gitlab_projects;

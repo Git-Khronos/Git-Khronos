@@ -101,7 +101,11 @@ fn status_error(status: reqwest::StatusCode) -> AppError {
 }
 
 fn endpoint_url(instance: &GitLabInstance, endpoint: &str) -> Result<url::Url, AppError> {
-    if endpoint != "user" {
+    let project_id = endpoint.strip_prefix("projects/").is_some_and(|id| {
+        id.parse::<u64>()
+            .is_ok_and(|value| value > 0 && value.to_string() == id)
+    });
+    if endpoint != "user" && !project_id {
         let query = endpoint
             .strip_prefix("projects?")
             .ok_or_else(invalid_request)?;

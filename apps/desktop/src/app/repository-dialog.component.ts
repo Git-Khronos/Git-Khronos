@@ -76,7 +76,7 @@ export class RepositoryFormDrafts {
             }
             @if (gitlabMode()) {
                 @defer (on immediate) {
-                  <gc-gitlab-projects #gitlabBrowser />
+                  <gc-gitlab-projects #gitlabBrowser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" />
                 } @placeholder {
                   <div data-gitlab-loader role="region" aria-label="Opening GitLab projects"><p role="status">Opening GitLab projects…</p><button type="button" (click)="closeGitlabMode()">Cancel opening GitLab projects</button></div>
                 } @loading {
