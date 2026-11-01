@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // Share the source-library aliases used by Angular. Contracts is an Nx source
 // library rather than a separately published/linked package.
@@ -14,5 +14,5 @@ const alias = Object.fromEntries(
 
 export default defineConfig({
   resolve: { alias },
-  test: { maxWorkers: 2 },
+  test: { maxWorkers: 2, exclude: [...configDefaults.exclude, '**/target/**'] },
 });

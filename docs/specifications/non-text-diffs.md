@@ -192,3 +192,29 @@ remain open. The Content view currently follows selected patch retrieval; a
 standalone content entry and recovery when the preceding patch cannot load
 (including missing/promised objects) remain open. Fetch-free guarantees here
 cover the new Content reader, not all existing text-patch retrieval paths. This slice does not complete the broader parity inventory.
+
+
+### Direct content entry candidate
+
+File context menus now offer an independent content dialog for commit, revision
+comparison, revision-to-working-copy, saved-work, staged, unstaged and conflicted
+selections. Opening a working-file context menu no longer starts patch retrieval;
+View changes remains an explicit action. The content action freezes the selected
+repository, paths and revision pair at menu opening, refuses a stale repository
+session, and closes on repository switching. The dialog traps keyboard focus,
+restores its opener when appropriate, and cancels its reader on destruction.
+Both content entry points load lazily within the existing production size budget.
+
+The candidate passes 166 unique frontend unit cases and six focused lifecycle,
+keyboard and deferred-loading renderer cases. A broader 87-case run and new
+packaged direct-entry acceptance are pending. Native cases use owned fixtures
+and ordinary menu actions; a missing promised base object is paired with a
+readable working image and a local fetch sentinel, whose effectiveness is checked
+separately with ordinary Git. No native result is claimed before execution.
+
+The preceding media-only package, SHA-256
+`5bea9f4f60d4fb82e59052cd458dfffaed7e9669f87b920a4f64adc51ee0c1f5`,
+passes 185 normal and 186 inherited-environment native scenarios (371 executions),
+including six actual WebKit decoders and malformed-body feedback. Its full
+1,327-case renderer run is still active. These results belong to that artifact;
+they do not qualify the new direct-entry candidate or establish full parity.

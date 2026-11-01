@@ -1,6 +1,8 @@
 """Owned image fixtures through actual packaged IPC and native WebKit controls."""
 import base64
 import json
+import shlex
+import subprocess
 from pathlib import Path
 import uuid
 
@@ -126,6 +128,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         assert fixtures.git(repository, 'rev-parse', 'HEAD') == base
         for path, data in dirty.items():
             assert (repository / path).read_bytes() == data
+        direct_file_content(driver, fixtures, source, report)
     except Exception:
         try:
             destination = Path(report['artifactsDirectory'])
@@ -145,3 +148,94 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         raise
     finally:
         open_ui(driver, original_repository)
+
+
+def direct_file_content(driver, fixtures, source, report):
+    """Normal menu actions, real IPC and a non-vacuous local fetch sentinel."""
+    repository = fixtures.repository('direct-content', commits=2)
+    path = 'direct-owned-image'
+    before = b'owned unavailable base\0direct content fixture'
+    after = (source / 'tiles.png').read_bytes()
+    (repository / path).write_bytes(before)
+    fixtures.git(repository, 'add', '--', path)
+    fixtures.git(repository, 'commit', '-qm', 'Owned direct content base')
+    blob = fixtures.git(repository, 'rev-parse', 'HEAD:' + path)
+    (repository / path).write_bytes(after)
+
+    def preview(selector):
+        driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
+        element = driver.script("const row = document.querySelector(arguments[0]); row.scrollIntoView({block:'nearest'}); return row", selector)
+        driver.request('POST', driver.path('actions'), {'actions': [{
+            'type': 'pointer', 'id': 'direct-content-menu', 'parameters': {'pointerType': 'mouse'},
+            'actions': [{'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
+                        {'type': 'pointerDown', 'button': 2}, {'type': 'pointerUp', 'button': 2}],
+        }]})
+        driver.click_text('[role="menuitem"]', 'Preview file content')
+        driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
+
+    def decoded():
+        driver.wait("""return (() => {
+          const image = document.querySelector('gc-file-content-dialog article[aria-label="After content"] img');
+          return image?.complete && image.naturalWidth === 3 && image.naturalHeight === 2;
+        })()""")
+
+    open_ui(driver, repository)
+    driver.click('.wip-nav')
+    selector = '[aria-label="View changes in ' + path + '"]'
+    preview(selector)
+    decoded()
+    assert not driver.script("return !!document.querySelector('.diff-viewer')")
+    driver.key('\ue00c')
+    driver.wait("return !document.querySelector('gc-file-content-dialog')")
+    report['scenarios'].append('native-ui-direct-unstaged-content-real-webkit-decode-and-escape')
+
+    # Stage only through the owned Git fixture; the app's menu must choose HEAD/index.
+    fixtures.git(repository, 'add', '--', path)
+    open_ui(driver, repository)
+    driver.click('.wip-nav')
+    preview('[aria-label="View staged changes in ' + path + '"]')
+    decoded()
+    assert driver.script("return document.querySelector('gc-file-content-dialog').textContent.includes('HEAD → index')")
+    driver.click('[aria-label="Close file content"]')
+    report['scenarios'].append('native-ui-direct-staged-content-selects-head-and-index')
+    fixtures.git(repository, 'reset', '-q', 'HEAD', '--', path)
+    open_ui(driver, repository)
+    driver.click('.wip-nav')
+    driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
+
+    loose = repository / '.git/objects' / blob[:2] / blob[2:]
+    saved = loose.read_bytes()
+    remote = fixtures.root / 'direct-owned-promisor.git'
+    fixtures.git(repository, 'init', '--bare', str(remote))
+    marker = fixtures.root / 'direct-unexpected-lazy-fetch'
+    helper = fixtures.root / 'direct-owned-upload-pack'
+    helper.write_text('#!/bin/sh\nprintf owned > ' + shlex.quote(str(marker)) + '\nexit 1\n')
+    helper.chmod(0o700)
+    for key, value in [('extensions.partialClone', 'owned'), ('remote.owned.promisor', 'true'),
+                       ('remote.owned.url', str(remote)), ('remote.owned.uploadpack', str(helper)),
+                       ('protocol.file.allow', 'always')]:
+        fixtures.git(repository, 'config', key, value)
+    index = (repository / '.git/index').read_bytes()
+    config = (repository / '.git/config').read_bytes()
+    refs = fixtures.git(repository, 'show-ref')
+    loose.unlink()
+    try:
+        preview(selector)
+        decoded()
+        driver.wait("return document.querySelector('gc-file-content-dialog article[aria-label=\"Before content\"]')?.textContent.toLowerCase().includes('unavailable')")
+        assert not marker.exists(), 'Direct preview started an implicit fetch'
+        assert not loose.exists(), 'Direct preview materialized the missing blob'
+        assert (repository / '.git/index').read_bytes() == index
+        assert (repository / '.git/config').read_bytes() == config
+        assert fixtures.git(repository, 'show-ref') == refs
+        assert (repository / path).read_bytes() == after
+        driver.screenshot(Path(report['artifactsDirectory']) / 'direct-content-missing-base.png')
+        driver.click('[aria-label="Close file content"]')
+        control_env = dict(fixtures.env)
+        control_env.pop('GIT_NO_LAZY_FETCH', None)
+        control = subprocess.run(['git', '-C', str(repository), 'cat-file', '-t', blob],
+                                 env=control_env, capture_output=True, timeout=30)
+        assert control.returncode != 0 and marker.read_bytes() == b'owned', 'Fetch sentinel was not effective'
+        report['scenarios'].append('native-ui-direct-missing-promised-base-keeps-working-image-without-fetch-or-write')
+    finally:
+        loose.write_bytes(saved)

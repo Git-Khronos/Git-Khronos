@@ -1,3 +1,4 @@
+import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
@@ -31,6 +32,7 @@ import { FileHistoryComponent } from './file-history.component';
 import type {
   Branch,
   CommitFile,
+  FileComparisonContext,
   CommitPolicy,
   CommitSummary,
   DiscardPreview,
@@ -365,6 +367,7 @@ interface PendingWorktreeAction {
 }
 
 interface FileContextMenuState {
+  content: FileMediaSelection | null;
   x: number;
   y: number;
   path: string;
@@ -396,6 +399,7 @@ type DiffFileNavigationTarget =
   | { source: 'commit' | 'comparison'; file: CommitFile };
 
 interface CommitFileContextMenuState {
+  content: FileMediaSelection | null;
   x: number;
   y: number;
   oid: string;
@@ -616,7 +620,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -639,6 +643,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
   private readonly worktreeReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeReviewLoaderClose');
+  private readonly fileContentLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileContentLoaderClose');
+  private readonly fileContentLoaderFocus = afterRenderEffect(() => this.fileContentLoaderClose()?.nativeElement.focus());
   private readonly actionLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('actionLoaderClose');
   private readonly historyLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyLoaderClose');
   private readonly workspaceCenterLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceCenterLoaderClose');
@@ -811,6 +817,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly contextMenu = signal<ContextMenuState | null>(null);
+  protected readonly fileContentDialog = signal<FileContentDialogRequest | null>(null);
   protected readonly fileContextMenu = signal<FileContextMenuState | null>(null);
   protected readonly commitFileContextMenu = signal<CommitFileContextMenuState | null>(null);
   protected readonly stashContextMenu = signal<StashContextMenuState | null>(null);
@@ -1544,6 +1551,12 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
+      const request = this.fileContentDialog();
+      if (request && request.selection.repoId !== this.git.activeRepositoryId()) {
+        untracked(() => this.fileContentDialog.set(null));
+      }
+    });
+    effect(() => {
       const unstaged = this.unstagedFilesList()?.nativeElement;
       const staged = this.stagedFilesList()?.nativeElement;
       untracked(() => {
@@ -1745,29 +1758,37 @@ export class AppComponent implements OnInit, OnDestroy {
     this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
   ]);
 
-  protected readonly activeMediaSelection = computed<FileMediaSelection | null>(() => {
+  private workingMediaSelection(path: string, staged: boolean): FileMediaSelection | null {
     const repoId = this.git.activeRepositoryId();
+    return repoId ? { repoId, request: { context: { kind: 'workingTree', staged }, path, previousPath: null } } : null;
+  }
+
+  private commitMediaSelection(file: Pick<CommitFile, 'path' | 'previousPath'>, oid: string, source: 'commit' | 'comparison'): FileMediaSelection | null {
+    const repoId = this.git.activeRepositoryId();
+    if (!repoId) return null;
+    const comparison = source === 'comparison' ? this.git.commitComparison() : null;
+    if (source === 'comparison' && !comparison || source === 'commit' && !oid) return null;
+    const context: FileComparisonContext = comparison
+      ? comparison.workingTree ? { kind: 'revisionWorktree', baseOid: comparison.baseOid }
+        : { kind: 'revisions', baseOid: comparison.baseOid, targetOid: comparison.targetOid }
+      : this.git.inspectedStashReference() && this.git.commitDetails()?.oid === oid
+        ? { kind: 'stash', oid, layer: 'combined' } : { kind: 'commit', oid };
+    return { repoId, request: { context, path: file.path, previousPath: file.previousPath } };
+  }
+
+  protected readonly activeMediaSelection = computed<FileMediaSelection | null>(() => {
     const diff = this.activeDiff();
-    if (!repoId || !diff) return null;
+    if (!diff) return null;
     if (this.changesOpen()) {
       const working = this.git.workingTreeFileDiff();
-      if (!working) return null;
-      return { repoId, request: { context: { kind: 'workingTree', staged: working.staged }, path: working.path, previousPath: null } };
+      return working ? this.workingMediaSelection(working.path, working.staged) : null;
     }
     const comparison = this.git.commitComparison();
-    if (comparison) {
-      const entry = comparison.files.find(entry => entry.path === diff.path);
-      return { repoId, request: { context: comparison.workingTree
-        ? { kind: 'revisionWorktree', baseOid: comparison.baseOid }
-        : { kind: 'revisions', baseOid: comparison.baseOid, targetOid: comparison.targetOid },
-        path: diff.path, previousPath: entry?.previousPath ?? null } };
-    }
     const details = this.git.commitDetails();
-    if (!details) return null;
-    const entry = details.files.find(entry => entry.path === diff.path);
-    return { repoId, request: { context: this.git.inspectedStashReference()
-      ? { kind: 'stash', oid: details.oid, layer: 'combined' }
-      : { kind: 'commit', oid: details.oid }, path: diff.path, previousPath: entry?.previousPath ?? null } };
+    if (!comparison && !details) return null;
+    const file = (comparison?.files ?? details?.files)?.find(file => file.path === diff.path);
+    return this.commitMediaSelection({ path: diff.path, previousPath: file?.previousPath ?? null },
+      comparison ? comparison.targetOid : details!.oid, comparison ? 'comparison' : 'commit');
   });
 
   protected readonly activeWorkingTreeDiff = computed(() => this.changesOpen()
@@ -3761,6 +3782,7 @@ export class AppComponent implements OnInit, OnDestroy {
           this.panelFileSelectionSource.set('comparison');
           this.panelFileSelectionAnchor.set(file.path);
           this.commitFileContextMenu.set({
+            content: this.commitMediaSelection(file, comparison.targetOid, 'comparison'),
             x: Math.max(20, window.innerWidth - 620),
             y: 345,
             oid: comparison.targetOid,
@@ -10892,6 +10914,7 @@ export class AppComponent implements OnInit, OnDestroy {
     else if (!focusMenu) this.fileContextMenuReturnFocus = null;
     const preferredPosition = { x: event.clientX, y: event.clientY };
     const state: FileContextMenuState = {
+      content: this.workingMediaSelection(entry.path, staged),
       path: entry.path,
       staged,
       untracked: entry.indexStatus === '?',
@@ -10901,7 +10924,6 @@ export class AppComponent implements OnInit, OnDestroy {
     };
     this.fileContextMenu.set(state);
     this.settleFileActionMenuPosition('working', `${entry.path}:${staged}`, preferredPosition, focusMenu);
-    void this.git.inspectWorkingTreeFile(entry.path, staged);
   }
 
   protected openCommitFileMenu(
@@ -10927,6 +10949,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.panelFileSelectionAnchor.set(file.path);
     const preferredPosition = { x: event.clientX, y: event.clientY };
     this.commitFileContextMenu.set({
+      content: this.commitMediaSelection(file, oid, source),
       file,
       oid,
       paths: selected,
@@ -10977,6 +11000,34 @@ export class AppComponent implements OnInit, OnDestroy {
       clientX: Math.min(bounds.right - 10, bounds.left + 250),
       clientY: bounds.bottom,
     }), file, oid, source, true);
+  }
+
+  protected viewContextFileContent(source: 'working' | 'commit'): void {
+    const menu = source === 'working' ? this.fileContextMenu() : this.commitFileContextMenu();
+    const selection = menu?.content;
+    if (!selection) return;
+    if (selection.repoId !== this.git.activeRepositoryId()) { this.dismissFileActionMenu(); return; }
+    const returnFocus = this.fileContextMenuReturnFocus;
+    this.dismissFileActionMenu();
+    this.fileContentDialog.set({ selection, returnFocus });
+  }
+
+  protected handleFileContentLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeFileContentDialog(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.fileContentLoaderClose()?.nativeElement.focus(); }
+  }
+
+  protected closeFileContentDialog(): void {
+    const request = this.fileContentDialog();
+    this.fileContentDialog.set(null);
+    if (request?.selection.repoId === this.git.activeRepositoryId()) {
+      setTimeout(() => {
+        if (!this.fileContentDialog() && request.selection.repoId === this.git.activeRepositoryId() && request.returnFocus?.isConnected) {
+          request.returnFocus.focus({ preventScroll: true });
+        }
+      });
+    }
   }
 
   protected async viewCommitFileChanges(): Promise<void> {

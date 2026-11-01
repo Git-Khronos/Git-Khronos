@@ -1760,7 +1760,13 @@
         </header>
         <div class="diff-content-shell" [class.insight-open]="diffInsightMode() !== 'diff'">
           @if (diffInsightMode() === 'content') {
-            <gc-file-media [selection]="activeMediaSelection()" />
+            @defer (on immediate) {
+              <gc-file-media [selection]="activeMediaSelection()" />
+            } @loading {
+              <div class="file-insight-panel" role="status"><p>Opening content view…</p></div>
+            } @error {
+              <div class="file-insight-panel" role="alert"><p>Content view could not open. Return to Diff, preserve drafts and restart to try again.</p></div>
+            }
           }
           <div [style.display]="diffInsightMode() === 'history' ? 'contents' : 'none'">
             @defer (when diffInsightMode() === 'history') {
@@ -2106,6 +2112,21 @@
       <footer><code>{{ shortOid(preview.oid) }}</code><span>Right-click for actions</span></footer>
     </section>
   }
+  @if (fileContentDialog(); as request) {
+    @defer (on immediate) {
+      <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening file content" (keydown)="handleFileContentLoaderKey($event)">
+        <p role="status">Opening file content…</p>
+        <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Cancel</button>
+      </section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="File content unavailable" (keydown)="handleFileContentLoaderKey($event)">
+        <p role="alert">File content could not open. Preserve drafts and restart to try again.</p>
+        <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Close</button>
+      </section></div>
+    }
+  }
   @if (fileContextMenu(); as menu) {
     <div
       #fileActionMenuElement
@@ -2119,12 +2140,14 @@
       <div class="context-heading"><span>{{ menu.conflicted ? 'Conflicted file' : menu.staged ? 'Staged file' : menu.untracked ? 'Untracked file' : 'Modified file' }}</span><strong>{{ menu.path }}</strong></div>
       @if (menu.conflicted) {
         <button type="button" role="menuitem" (click)="fileContextMenu.set(null); openConflictTool(menu.path)"><span><gc-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
+        <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('working')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
         <div class="context-divider"></div>
         <div class="context-subheading">Resolve conflict</div>
         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="resolveContextConflict('current')"><span><gc-icon name="check" [size]="13" /></span>Take current</button>
         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="resolveContextConflict('incoming')"><span><gc-icon name="check" [size]="13" /></span>Take incoming</button>
       } @else {
         <button type="button" role="menuitem" (click)="viewFileChanges()"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
+        <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('working')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="toggleFileStaging()"><span><gc-icon name="check" [size]="13" /></span>{{ menu.staged ? 'Unstage file' : 'Stage file' }}</button>
         <div class="context-divider"></div>
         <button type="button" role="menuitem" (click)="configureLfsForContextFile()"><span><gc-icon name="server" [size]="13" /></span>Configure Git LFS for this file type…</button>
@@ -2144,6 +2167,7 @@
     <div #fileActionMenuElement class="context-menu commit-file-context-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleFileContextMenuKeydown($event)">
       <div class="context-heading"><span>{{ menu.paths.length === 1 ? 'File' : menu.paths.length + ' files selected' }} at {{ shortOid(menu.oid) }}</span><strong>{{ menu.paths.length === 1 ? menu.file.path : 'Restore or inspect the focused file' }}</strong></div>
       <button type="button" role="menuitem" (click)="viewCommitFileChanges()"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
+      <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('commit')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
       <button type="button" role="menuitem" (click)="viewCommitFileInsight('history')"><span><gc-icon name="history" [size]="13" /></span>View file history</button>
       <button type="button" role="menuitem" (click)="viewCommitFileInsight('blame')"><span><gc-icon name="git-commit" [size]="13" /></span>Blame file</button>
       <div class="context-divider"></div>
