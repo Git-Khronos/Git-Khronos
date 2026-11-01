@@ -1,8 +1,8 @@
 # Independent working-file editing
 
 Status: core/native candidate with an original desktop editor under validation.
-A bounded inert Markdown preview is implemented as a candidate. Packaged editor
-acceptance remains pending.
+A bounded inert Markdown preview passes the Linux normal package suite. Full
+renderer and environment qualification remain pending.
 Inventory requirement: G29. No full feature-parity claim is made.
 
 ## Capability and provenance
@@ -127,9 +127,9 @@ Packaged worker/CSP and attribution checks remain separate gates.
 
 ## Remaining acceptance
 
-Complete the combined renderer regression, full renderer gate and exact-package
-real UI/disk/index assertions, including truthful save/stage partial success.
-Six native editor scenarios have been added but not yet executed. Broader codec,
+Complete the full renderer gate and remaining environment acceptance. Normal
+exact-package UI/disk/index assertions now pass, including truthful partial success.
+All six native editor scenarios pass in the 207-case normal package suite below. Broader codec,
 mixed-newline editing and other-platform support remain explicit gaps.
 
 The current dirty-draft review covers leaving the editor and reloading disk.
@@ -152,5 +152,43 @@ The first combined production attempt exceeded the cap by 6.10 kB. Native title
 and zoom APIs now load on asynchronous use; stale requests do not override newer
 selections. No bundle limit was increased. A 698-file source snapshot was captured
 before the full 1,409-case renderer and Linux-package gates started. The application
-source is frozen for those gates. Merged-source all-target Clippy also passes. Complete renderer outcome and
-exact-package native editor acceptance remain pending at this checkpoint.
+source is frozen for those gates. Merged-source all-target Clippy also passes.
+The later section records normal package acceptance; complete renderer and
+environment outcomes remain pending.
+
+
+## Preserved Linux package: normal acceptance
+
+The combined package was built successfully and retained before acceptance:
+
+- Package SHA-256: `0362430100cc5bed92c3bf73fb380160a6d3c05d9b1e7dacbb8d099dacd5bea7`.
+- Executable SHA-256: `d92fb7c2a2eadba58f1de566ea511d7970cd5907f9670665ca3cfa70d5f55327`.
+- `parity-editor-incoming-native-reviewed-harness`: **207/207** actual normal
+  native scenarios pass, including all six new editor scenarios.
+
+The build started during the reviewed merge at `38b50eb8` with captured dirty
+inputs. Application inputs match committed candidate `795f4d07`; it is not
+represented as a clean-commit build. Qualification documents and native helpers
+changed afterward; no application input changed. The environment suite and full
+1409-case renderer gate are still running.
+
+Real packaged checks cover UTF-8 BOM, both BOM-marked UTF-16 byte orders and
+explicit Windows-1252, CRLF/mode preservation, actual index contents, single-use
+revisions, stale/mixed/readonly/binary refusals and owned index-lock failures.
+Normal WebDriver menu/text controls save a UTF-16 file and stage saved bytes while
+retaining an unsaved draft. The production worker renders inert Markdown under
+WebKit/CSP; disk and index remain unchanged by preview. Actual screenshots were
+reviewed for the editor and preview.
+
+Initial acceptance attempts exposed test expectations needing correction: a
+staging failure can invalidate the context while reporting disk success, and a
+successful stage can likewise require reload while retaining the draft. Tests now
+check refusal of the invalid context and explicit reload/recovery. The preview
+assertion trims ordinary rendered whitespace; the same emphasis requirement is
+retained. All prior failures remain recorded; only the complete later 207-case
+run is counted as passing. A duplicate invocation from the wrong checkout was
+stopped and is not editor acceptance evidence.
+
+The native media helper also waits for an enabled visible Content control after
+a file-row click. This addresses the asynchronous lookup failure seen in the
+older `44ec1a23` remote workflow; remote acceptance is tracked separately.

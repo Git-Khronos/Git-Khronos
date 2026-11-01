@@ -103,13 +103,21 @@ def working_file_editor(driver, fixtures, original_repository, report):
         try:
             partial = save(opened, 'saved despite index refusal\n', stage=True)
             assert partial['disk'] == 'saved' and partial['stage'] == 'unconfirmed', partial
-            assert partial['stageError'] is not None and partial['file'] is not None, partial
+            assert partial['stageError'] is not None and partial['file'] is None and partial['warning'], partial
+            assert 'workingFileEditorExpired' in refuses('save_working_file_editor', editorId=opened['editorId'],
+                revision=partial['revision'], text='must not replay', stage=True)
             assert (repository / 'legacy.txt').read_bytes() == b'saved despite index refusal\r\n'
             assert (repository / '.git/index').read_bytes() == index_before
             assert lock.read_bytes() == b'Owned staged-write refusal fixture\n'
         finally:
             lock.unlink()
             close(opened)
+        recovered = open_file('legacy.txt', 'windows1252')
+        assert recovered['text'] == 'saved despite index refusal\n', recovered
+        restaged = call('stage_saved_working_file_editor', editorId=recovered['editorId'], revision=recovered['revision'])
+        assert restaged['disk'] == 'unchanged' and restaged['stage'] == 'staged', restaged
+        assert index_bytes('legacy.txt') == b'saved despite index refusal\r\n'
+        close(recovered)
         report['scenarios'].append('native-editor-save-stage-partial-success-retains-actual-disk-index-and-owned-lock')
 
         opened = open_file('mixed.txt')
@@ -165,11 +173,17 @@ def working_file_editor(driver, fixtures, original_repository, report):
         driver.screenshot(Path(report['artifactsDirectory']) / 'working-file-editor-saved-and-dirty.png')
         report['scenarios'].append('native-ui-editor-normal-menu-save-stage-saved-and-dirty-escape-preserve-real-utf16-bytes-index')
 
+        # Staging can invalidate the conservative file context. The dirty draft is
+        # retained until an explicit reload/discard; do not type into a readonly view.
+        button('Reload disk')
+        button('Discard draft')
+        driver.wait("return !!document.querySelector('#working-editor-text') && !document.querySelector('#working-editor-text').readOnly")
+        assert (repository / ui_path).read_bytes() == encode_le('saved through WebKit\r\n')
         markdown = '# Owned preview\n\n**bold** and *emphasis*\n\n<script>window.__ownedEditorScript=true</script>\n\n![inactive](https://unrequested.invalid/image) [inactive](javascript:alert%281%29)\n'
         type_text(markdown)
         button('Preview Markdown')
         driver.wait("return [...document.querySelectorAll('gc-markdown-preview [role=heading]')].some(h=>h.textContent.trim()==='Owned preview')")
-        assert driver.script("return document.querySelector('gc-markdown-preview strong')?.textContent") == 'bold'
+        assert driver.script("return document.querySelector('gc-markdown-preview strong')?.textContent.trim()") == 'bold'
         assert driver.script("return document.querySelectorAll('gc-markdown-preview img, gc-markdown-preview script, gc-markdown-preview a[href], gc-markdown-preview iframe').length") == 0
         assert driver.script("return window.__ownedEditorScript === undefined")
         assert (repository / ui_path).read_bytes() == encode_le('saved through WebKit\r\n')
@@ -190,7 +204,7 @@ def working_file_editor(driver, fixtures, original_repository, report):
             try:
                 destination = Path(report['artifactsDirectory'])
                 driver.screenshot(destination / 'working-file-editor-failure.png')
-                state = driver.script("return {editor:document.querySelector('gc-working-file-editor')?.innerText,dialog:document.querySelector('gc-file-content-dialog')?.innerText,active:document.activeElement?.outerHTML}")
+                state = driver.script("return {editor:document.querySelector('gc-working-file-editor')?.innerText,editorHtml:document.querySelector('gc-working-file-editor')?.outerHTML,dialog:document.querySelector('gc-file-content-dialog')?.innerText,active:document.activeElement?.outerHTML}")
                 (destination / 'working-file-editor-failure.json').write_text(json.dumps(state, indent=2))
             except Exception as error:
                 report.setdefault('editorCaptureErrors', []).append(str(error))
