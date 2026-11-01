@@ -1668,3 +1668,18 @@ field names are used for the required standard interoperability.
   and programmatic status checks. Used to design original target-specific build
   completion receipts after reproducing hard-kill and cross-target stale reuse.
   No upstream implementation copied; no new dependency introduced.
+
+## Complete renderer acceptance partitions
+
+- [Playwright sharding](https://playwright.dev/docs/test-sharding)
+
+Used for the standard shard argument and complete-suite partition semantics.
+CI runs four partitions serially with one worker and zero retries, retaining
+separate artifacts and restarting the browser/server for each invocation.
+Collection identities are checked locally for disjoint full coverage.
+Partitioning does not alter assertions, individual test timeouts or application behavior; no
+external code copied.
+
+The aggregate checks-job budget is 120 minutes: the earlier unpartitioned CI
+checks job took 87 minutes 27 seconds, leaving insufficient margin under its
+90-minute budget for four fresh server startups and expanded acceptance.

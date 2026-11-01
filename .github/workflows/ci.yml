@@ -30,7 +30,7 @@ jobs:
   checks:
     name: Checks and renderer acceptance
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -64,9 +64,17 @@ jobs:
           cargo clean --profile dev --package git-khronos-desktop
           df -h . "$RUNNER_TEMP"
       - name: Run renderer acceptance
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
         run: |
           pnpm exec playwright install --with-deps chromium
-          pnpm nx run desktop:e2e --output-style=static
+          # Bound each browser/server lifetime while still running every case.
+          for shard in 1 2 3 4; do
+            GIT_KHRONOS_RENDERER_OUTPUT_DIR="test-results/renderer/shard-${shard}" \
+            GIT_KHRONOS_RENDERER_REPORT_DIR="test-results/renderer-report/shard-${shard}" \
+              pnpm nx run desktop:e2e --output-style=static --skipNxCache -- \
+                --shard="${shard}/4" --workers=1 --retries=0
+          done
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
