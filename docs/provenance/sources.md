@@ -1601,3 +1601,25 @@ Used for the licensed public token API, notice obligations, known affected
 versions and worker integration. The bounded tree, inactive HTML/links/images,
 draft lifecycle and presentation are independent designs. No external code or
 visual assets were transcribed.
+
+
+## Original incoming-link queue and platform transport
+
+- [Tauri deep linking](https://v2.tauri.app/plugin/deep-linking/)
+- [Tauri single instance](https://v2.tauri.app/plugin/single-instance/)
+- [Canonical plugin workspace](https://github.com/tauri-apps/plugins-workspace)
+- [Tauri driver release history](https://v3.tauri.app/release/tauri-driver/)
+  (`tauri:options.args` supplies separate application arguments)
+- [D-Bus daemon configuration](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
+
+Used for public SDK configuration/lifecycle and an isolated native acceptance bus.
+The bounded FIFO, redaction, explicit acknowledgement, review UI and read policies
+are original designs. No proprietary implementation or assets were inspected.
+
+
+Linux scheme association uses the public
+[Desktop Entry specification](https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html)
+for `%U` argument expansion and MIME declarations. The project-owned desktop entry
+advertises only `x-scheme-handler/git-khronos`; no proprietary scheme is registered.
+The acceptance harness rebases this entry solely inside owned XDG fixtures and
+uses GIO to test association routing without replacing host defaults.

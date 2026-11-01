@@ -131,3 +131,26 @@ Complete the combined renderer regression, full renderer gate and exact-package
 real UI/disk/index assertions, including truthful save/stage partial success.
 Six native editor scenarios have been added but not yet executed. Broader codec,
 mixed-newline editing and other-platform support remain explicit gaps.
+
+The current dirty-draft review covers leaving the editor and reloading disk.
+Whole-window/process closure and crash recovery of unsaved drafts are not yet
+qualified; persistent draft recovery is not claimed. Track those separately
+before marking the complete editing capability accepted.
+
+## Integrated source candidate (2026-11-01)
+
+The editor candidate was combined with the original incoming-link transport in
+its own checkout. Full Rust regression passes 799 tests with 45 ignored: 42
+native unit, eight native integration, 736 core unit and 13 core integration.
+All 172 frontend unit tests, generated IPC checks and package/harness targets
+pass. The combined focused renderer group passes 85 cases; four zoom/title
+regressions pass after native platform APIs were deferred. That production build
+passes at approximately 1.383 MB under the unchanged 1.40 MB hard limit, with
+50 JavaScript assets verified free of development-preview initialization.
+
+The first combined production attempt exceeded the cap by 6.10 kB. Native title
+and zoom APIs now load on asynchronous use; stale requests do not override newer
+selections. No bundle limit was increased. A 698-file source snapshot was captured
+before the full 1,409-case renderer and Linux-package gates started. The application
+source is frozen for those gates. Merged-source all-target Clippy also passes. Complete renderer outcome and
+exact-package native editor acceptance remain pending at this checkpoint.

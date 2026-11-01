@@ -307,7 +307,7 @@ async function packagePayloadFixture(t) {
   await chmod(join(payload, 'usr/bin/git-khronos'), 0o755);
   await put('usr/share/applications/Git Khronos.desktop', [
     '[Desktop Entry]', 'Type=Application', 'Name=Git Khronos',
-    'Exec=git-khronos', 'Icon=git-khronos', 'StartupWMClass=git-khronos', '',
+    'Exec=git-khronos %U', 'MimeType=x-scheme-handler/git-khronos;', 'Icon=git-khronos', 'StartupWMClass=git-khronos', '',
   ].join('\n'));
   for (const size of ['32x32', '128x128', '256x256@2']) {
     await put(`usr/share/icons/hicolor/${size}/apps/git-khronos.png`, 'fixture');
@@ -491,7 +491,7 @@ test('renamed package replaces the legacy payload in a private dpkg database', a
   }
   assert.equal(upgraded.status, 0, `${upgraded.error ?? ''}\n${upgraded.stdout}\n${upgraded.stderr}`);
   assert.equal(await readFile(join(privateRoot, 'usr/bin/git-khronos'), 'utf8'), '#!/bin/sh\nexit 0\n');
-  assert.match(await readFile(join(privateRoot, 'usr/share/applications/Git Khronos.desktop'), 'utf8'), /^Exec=git-khronos$/m);
+  assert.match(await readFile(join(privateRoot, 'usr/share/applications/Git Khronos.desktop'), 'utf8'), /^Exec=git-khronos %U$/m);
   await assert.rejects(stat(join(privateRoot, 'usr/bin/git-khronos-desktop')), { code: 'ENOENT' });
 });
 
@@ -803,3 +803,19 @@ printf '%s\\n' "$@" > "$GIT_KHRONOS_PACKAGE_FIXTURE/removal-args"
     }
   }
 });
+
+
+for (const [name, transform, key] of [
+  ['drops URI arguments', text => text.replace('Exec=git-khronos %U', 'Exec=git-khronos'), 'Exec'],
+  ['omits scheme association', text => text.replace('MimeType=x-scheme-handler/git-khronos;\n', ''), 'MimeType'],
+]) {
+  test(`package verification rejects a desktop entry that ${name}`, async t => {
+    const f = await packagePayloadFixture(t);
+    const path = 'usr/share/applications/Git Khronos.desktop';
+    await f.put(path, transform(await readFile(join(f.payload, path), 'utf8')));
+    f.build();
+    const result = f.verify();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, new RegExp(`desktop entry.*${key}`));
+  });
+}

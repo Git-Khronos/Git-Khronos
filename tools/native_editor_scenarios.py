@@ -145,6 +145,9 @@ def working_file_editor(driver, fixtures, original_repository, report):
         driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
         driver.click_text('gc-file-content-dialog button', 'Edit working copy')
         driver.wait("return document.querySelector('#working-editor-text')?.value === 'working\\n'")
+        actual_title = driver.invoke('plugin:window|title', label='main')
+        assert repository.name in actual_title, actual_title
+        report['editorNativeWindowTitle'] = actual_title
         type_text('saved through WebKit\n')
         button('Save file')
         driver.wait("return [...document.querySelectorAll('gc-working-file-editor [role=status]')].some(p=>p.textContent.trim()==='File saved.')")

@@ -23,8 +23,6 @@ import {
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { MergePreviewDialogComponent, type MergePreviewDialogRequest } from './merge-preview-dialog.component';
 import { TextValueDirective } from './text-value.directive';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { type UnlistenFn } from '@tauri-apps/api/event';
 import { events } from '@git-khronos/contracts';
 import { StashDeleteDialogComponent, type StashDeleteRequest } from './stash-delete-dialog.component';
@@ -1552,6 +1550,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private repositoryChangeUnlisten: UnlistenFn | null = null;
   private rebaseRequest = 0;
   private nativeWindowTitle = '';
+  private zoomApplication = 0;
 
   constructor() {
     effect(() => {
@@ -1583,7 +1582,10 @@ export class AppComponent implements OnInit, OnDestroy {
       if (document.title !== title) document.title = title;
       if (!systemInfo || browserPreview || this.nativeWindowTitle === title) return;
       this.nativeWindowTitle = title;
-      void Promise.resolve().then(() => getCurrentWindow().setTitle(title)).catch(() => {
+      void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        if (this.nativeWindowTitle === title) return getCurrentWindow().setTitle(title);
+        return undefined;
+      }).catch(() => {
         if (this.nativeWindowTitle === title) this.nativeWindowTitle = '';
       });
     });
@@ -1620,7 +1622,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const browserPreview = this.git.browserPreview();
       this.cancelAutoFetchTimer();
       const paused = repositoryId ? this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused : false;
-      if (!repositoryId || interval === 0 || browserPreview || paused) return;
+      if (!repositoryId || interval === 0 || browserPreview || paused || this.git.incomingRepositoryLinksPending()) return;
       queueMicrotask(() => this.scheduleAutoFetch(interval * 60_000));
     });
     effect(() => {
@@ -3207,6 +3209,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'workspace-rename', group: 'Workspace', label: 'Rename Current Workspace', detail: `Rename ${this.git.activeWorkspace().name}`, enabled: !busy, icon: 'edit' },
       { id: 'workspace-delete', group: 'Workspace', label: 'Delete Current Workspace', detail: 'Remove this saved tab layout without deleting repositories', enabled: this.git.workspaces().length > 1 && !busy, icon: 'trash' },
       { id: 'new-tab', group: 'Repository', label: 'New Tab', detail: 'Open repository management', shortcut: `${this.primaryShortcutKey} T`, enabled: !busy, icon: 'plus' },
+      { id: 'incoming-links', group: 'Repository', label: 'Incoming repository links', detail: 'Review queued external requests without replacing other dialogs', enabled: !busy && this.git.incomingRepositoryLinksReady() && !this.git.browserPreview(), icon: 'repo' },
       { id: 'open-link', group: 'Repository', label: 'Open repository link…', detail: 'Review shared context in a matching local copy', enabled: !busy && !this.git.browserPreview(), icon: 'repo' },
       { id: 'open', group: 'Repository', label: 'Open Repository', detail: 'Open a local Git working tree', shortcut: `${this.primaryShortcutKey} Shift O`, enabled: !busy, icon: 'folder-git' },
       { id: 'clone', group: 'Repository', label: 'Clone Repository', detail: 'Download a remote repository to this machine', enabled: !busy, icon: 'copy' },
@@ -3819,6 +3822,7 @@ export class AppComponent implements OnInit, OnDestroy {
     for (const timer of this.repositoryRefreshTimers.values()) clearTimeout(timer);
     this.repositoryRefreshTimers.clear();
     this.repositoryChangeUnlisten?.();
+    this.git.stopIncomingRepositoryLinks();
   }
 
   @HostListener('document:visibilitychange')
@@ -3874,7 +3878,11 @@ export class AppComponent implements OnInit, OnDestroy {
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
     if (this.repositoryLinkDialog()) {
-      if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryLink(); }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        const close = document.querySelector<HTMLButtonElement>('gc-repository-link-dialog [role=dialog] button[aria-label^="Close"]');
+        if (close) close.click(); else this.closeRepositoryLink();
+      }
       else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-repository-link-dialog'))) {
         event.preventDefault();
         (document.querySelector<HTMLElement>('gc-repository-link-dialog [role=dialog] button:not(:disabled)') ?? this.repositoryLinkLoaderClose()?.nativeElement)?.focus();
@@ -5562,9 +5570,18 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleAutoFetchStatus(): void {
+    if (this.git.incomingRepositoryLinksPending()) { this.openIncomingLinks(); return; }
     const repoId = this.git.activeRepositoryId();
     if (repoId && this.git.repositoryLinkPolicies()[repoId]?.autoFetchPaused) void this.git.resumeRepositoryLinkAutoFetch();
     else this.runAutoFetchNow();
+  }
+
+  protected openIncomingLinks(returnFocus: HTMLElement | null = null): void {
+    if (this.git.busy() || !this.git.incomingRepositoryLinksReady() || [...document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="alertdialog"]')].some(element => element.getClientRects().length > 0 && !(element.closest('gc-command-palette') && !this.commandPaletteOpen()))) return;
+    const opener = returnFocus ?? this.captureDialogOpener();
+    this.closeContextMenu();
+    this.repositoryLinkDialog.set({ mode: 'inbox', returnFocus: opener });
+    void this.git.refreshIncomingRepositoryLinks();
   }
 
   protected openRepositoryLink(returnFocus: HTMLElement | null = null): void {
@@ -5593,7 +5610,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeRepositoryLink(): void {
     const request = this.repositoryLinkDialog();
     this.repositoryLinkDialog.set(null);
-    setTimeout(() => { if (!this.repositoryLinkDialog() && request?.returnFocus?.isConnected) request.returnFocus.focus({ preventScroll: true }); });
+    setTimeout(() => { if (!this.repositoryLinkDialog()) (request?.returnFocus?.isConnected ? request.returnFocus : document.querySelector<HTMLElement>('.workspace-toggle'))?.focus({ preventScroll: true }); });
   }
 
   protected handleRepositoryLinkLoaderKey(event: KeyboardEvent): void {
@@ -5628,6 +5645,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected autoFetchStatusLabel(): string {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return 'Auto-fetch';
+    if (this.git.incomingRepositoryLinksPending()) return 'Incoming links pending';
     if (this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Auto-fetch paused';
     if (this.git.backgroundFetchRepositoryId() === repositoryId) return 'Fetching…';
     if (this.git.backgroundFetchErrors()[repositoryId]) return 'Fetch failed';
@@ -5642,6 +5660,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected autoFetchStatusTitle(): string {
+    if (this.git.incomingRepositoryLinksPending()) return 'Automatic fetch waits until incoming links are reviewed or dismissed. Click to open the incoming links.';
     const repositoryId = this.git.activeRepositoryId();
     if (repositoryId && this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Automatic fetch is paused for this link session. Click to resume your configured schedule.';
     const error = repositoryId ? this.git.backgroundFetchErrors()[repositoryId] : null;
@@ -9897,6 +9916,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'workspace-rename': this.openWorkspaceDialog('rename', paletteReturnFocus); break;
       case 'workspace-delete': this.requestWorkspaceDelete(paletteReturnFocus); break;
       case 'new-tab': this.openRepositoryManager('manager', paletteReturnFocus); break;
+      case 'incoming-links': this.openIncomingLinks(paletteReturnFocus); break;
       case 'open-link': this.openRepositoryLink(paletteReturnFocus); break;
       case 'open': await this.chooseRepository(paletteReturnFocus); break;
       case 'clone': this.openRepositoryManager('clone', paletteReturnFocus); break;
@@ -12362,7 +12382,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cancelAutoFetchTimer();
     const repositoryId = this.git.activeRepositoryId();
     const interval = this.autoFetchIntervalMinutes();
-    if (!repositoryId || this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused || this.git.browserPreview() || (interval === 0 && !force)) return;
+    if (!repositoryId || this.git.incomingRepositoryLinksPending() || this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused || this.git.browserPreview() || (interval === 0 && !force)) return;
     const intervalMs = (interval || 5) * 60_000;
     if (typeof document !== 'undefined' && document.hidden) return;
     if (this.git.busy() || this.git.backgroundFetchBusy()) {
@@ -12772,7 +12792,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private async applyZoom(value: number): Promise<void> {
+    const request = ++this.zoomApplication;
     try {
+      const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+      if (request !== this.zoomApplication) return;
       await getCurrentWebview().setZoom(value / 100);
     } catch {
       // Browser-only previews do not expose a Tauri webview.

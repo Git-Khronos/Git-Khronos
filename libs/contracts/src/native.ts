@@ -12,12 +12,14 @@
 export const events = __makeEvents__<{
 gitAuthenticationDismissed: GitAuthenticationDismissed,
 gitAuthenticationPrompt: GitAuthenticationPrompt,
+incomingRepositoryLinksChanged: IncomingRepositoryLinksChanged,
 repositoryChanged: RepositoryChanged,
 terminalExit: TerminalExit,
 terminalOutput: TerminalOutput
 }>({
 gitAuthenticationDismissed: "git-authentication-dismissed",
 gitAuthenticationPrompt: "git-authentication-prompt",
+incomingRepositoryLinksChanged: "incoming-repository-links-changed",
 repositoryChanged: "repository-changed",
 terminalExit: "terminal-exit",
 terminalOutput: "terminal-output"
@@ -158,6 +160,10 @@ mayHaveMore: boolean; page: number; nextPage: number | null }
 export type HostingQuery = { page: number; state: HostingState }
 export type HostingSection = "pullRequests" | "issues" | "workflows"
 export type HostingState = "open" | "closed" | "all"
+export type IncomingRepositoryLink = { id: string; payload: IncomingRepositoryLinkPayload }
+export type IncomingRepositoryLinkPayload = { kind: "ready"; uri: string; link: RepositoryLink } | { kind: "rejected"; message: string }
+export type IncomingRepositoryLinkState = { requests: IncomingRepositoryLink[]; overflowed: boolean }
+export type IncomingRepositoryLinksChanged = { pending: boolean }
 export type IntegrityReport = { passed: boolean; exitCode: number; stdout: string; stderr: string; truncated: boolean }
 export type InteractiveRebaseCommit = { oid: string; authorName: string; authorEmail: string; subject: string; message: string }
 export type InteractiveRebasePlan = { source: string; target: string; base: string; commits: InteractiveRebaseCommit[]; remoteReachableOids: string[] }
@@ -352,6 +358,9 @@ export function save_working_file_editor(args: { editorId: string; revision: str
 export function stage_saved_working_file_editor(args: { editorId: string; revision: string; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("stage_saved_working_file_editor", args); }
 export function close_working_file_editor(args: { editorId: string }): Promise<boolean> { return TAURI_INVOKE("close_working_file_editor", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
+export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
+export function acknowledge_incoming_repository_link(args: { requestId: string }): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("acknowledge_incoming_repository_link", args); }
+export function dismiss_incoming_repository_link_overflow(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("dismiss_incoming_repository_link_overflow", args); }
 export function cancel_git_operation(args: { operationId: string }): Promise<boolean> { return TAURI_INVOKE("cancel_git_operation", args); }
 export function open_repository(args: { path: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("open_repository", args); }
 export function clone_repository(args: { remote: string; parentPath: string; folder: string; branch?: string | null; depth?: number | null; recurseSubmodules?: boolean | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("clone_repository", args); }
@@ -565,6 +574,9 @@ export type CommandMap = {
   stage_saved_working_file_editor: typeof stage_saved_working_file_editor;
   close_working_file_editor: typeof close_working_file_editor;
   system_info: typeof system_info;
+  incoming_repository_links: typeof incoming_repository_links;
+  acknowledge_incoming_repository_link: typeof acknowledge_incoming_repository_link;
+  dismiss_incoming_repository_link_overflow: typeof dismiss_incoming_repository_link_overflow;
   cancel_git_operation: typeof cancel_git_operation;
   open_repository: typeof open_repository;
   clone_repository: typeof clone_repository;

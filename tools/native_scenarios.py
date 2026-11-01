@@ -18,6 +18,8 @@ from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
 from native_editor_scenarios import working_file_editor
 
+from native_incoming_link_scenarios import incoming_repository_links
+
 
 def shallow_history_pagination(driver, fixtures, report):
     repository = fixtures.repository("shallow-history", commits=420)
@@ -2898,6 +2900,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 
 
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
     repository_links(driver, fixtures, repository, report)
     file_media_comparisons(driver, fixtures, repository, report)

@@ -897,3 +897,5 @@
 .authentication-load-error p { margin: 0; font-size: 12px; line-height: 1.45; }
 .authentication-load-error button { pointer-events: auto; color: inherit; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 3px; padding: 5px 7px; }
 .authentication-load-error button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.workspace-control:has(.incoming-link-inbox) { display: flex; align-items: center; gap: 4px; }
