@@ -1,3 +1,4 @@
+import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from './repository-link-dialog.component';
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
@@ -620,7 +621,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -643,6 +644,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
   private readonly worktreeReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeReviewLoaderClose');
+  private readonly repositoryLinkLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositoryLinkLoaderClose');
+  private readonly repositoryLinkLoaderFocus = afterRenderEffect(() => this.repositoryLinkLoaderClose()?.nativeElement.focus());
   private readonly fileContentLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileContentLoaderClose');
   private readonly fileContentLoaderFocus = afterRenderEffect(() => this.fileContentLoaderClose()?.nativeElement.focus());
   private readonly actionLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('actionLoaderClose');
@@ -818,6 +821,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly contextMenu = signal<ContextMenuState | null>(null);
   protected readonly fileContentDialog = signal<FileContentDialogRequest | null>(null);
+  protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
   protected readonly fileContextMenu = signal<FileContextMenuState | null>(null);
   protected readonly commitFileContextMenu = signal<CommitFileContextMenuState | null>(null);
   protected readonly stashContextMenu = signal<StashContextMenuState | null>(null);
@@ -1615,7 +1619,8 @@ export class AppComponent implements OnInit, OnDestroy {
       const interval = this.autoFetchIntervalMinutes();
       const browserPreview = this.git.browserPreview();
       this.cancelAutoFetchTimer();
-      if (!repositoryId || interval === 0 || browserPreview) return;
+      const paused = repositoryId ? this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused : false;
+      if (!repositoryId || interval === 0 || browserPreview || paused) return;
       queueMicrotask(() => this.scheduleAutoFetch(interval * 60_000));
     });
     effect(() => {
@@ -3202,6 +3207,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'workspace-rename', group: 'Workspace', label: 'Rename Current Workspace', detail: `Rename ${this.git.activeWorkspace().name}`, enabled: !busy, icon: 'edit' },
       { id: 'workspace-delete', group: 'Workspace', label: 'Delete Current Workspace', detail: 'Remove this saved tab layout without deleting repositories', enabled: this.git.workspaces().length > 1 && !busy, icon: 'trash' },
       { id: 'new-tab', group: 'Repository', label: 'New Tab', detail: 'Open repository management', shortcut: `${this.primaryShortcutKey} T`, enabled: !busy, icon: 'plus' },
+      { id: 'open-link', group: 'Repository', label: 'Open repository link…', detail: 'Review shared context in a matching local copy', enabled: !busy && !this.git.browserPreview(), icon: 'repo' },
       { id: 'open', group: 'Repository', label: 'Open Repository', detail: 'Open a local Git working tree', shortcut: `${this.primaryShortcutKey} Shift O`, enabled: !busy, icon: 'folder-git' },
       { id: 'clone', group: 'Repository', label: 'Clone Repository', detail: 'Download a remote repository to this machine', enabled: !busy, icon: 'copy' },
       { id: 'init', group: 'Repository', label: 'Initialize Repository', detail: 'Create a new local Git working tree', enabled: !busy, icon: 'repo' },
@@ -3867,6 +3873,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    if (this.repositoryLinkDialog()) {
+      if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryLink(); }
+      else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-repository-link-dialog'))) {
+        event.preventDefault();
+        (document.querySelector<HTMLElement>('gc-repository-link-dialog [role=dialog] button:not(:disabled)') ?? this.repositoryLinkLoaderClose()?.nativeElement)?.focus();
+      }
+      return;
+    }
     if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview() || this.mergePreviewRequest() || this.workspaceCenterRequest() || this.branchWorkflowRequest()) return;
     // Disabling a focused item can move focus out of the menu. Its local
     // keydown handler may then never receive Tab, but dismissal must still work.
@@ -5547,6 +5561,52 @@ export class AppComponent implements OnInit, OnDestroy {
     this.sparseCheckoutIndex.set(sparse?.enabled ? sparse.sparseIndex : true);
   }
 
+  protected handleAutoFetchStatus(): void {
+    const repoId = this.git.activeRepositoryId();
+    if (repoId && this.git.repositoryLinkPolicies()[repoId]?.autoFetchPaused) void this.git.resumeRepositoryLinkAutoFetch();
+    else this.runAutoFetchNow();
+  }
+
+  protected openRepositoryLink(returnFocus: HTMLElement | null = null): void {
+    this.repositoryLinkDialog.set({ mode: 'open', returnFocus: returnFocus ?? this.captureDialogOpener() });
+  }
+
+  protected shareRepositoryFromTab(): void {
+    const menu = this.repositoryTabMenu();
+    if (!menu) return;
+    const returnFocus = this.repositoryTabMenuReturnFocus;
+    this.dismissRepositoryTabMenu();
+    this.repositoryLinkDialog.set({ mode: 'share', repoId: menu.repoId, target: { kind: 'repository' }, returnFocus });
+  }
+
+  protected shareRepositoryContext(): void {
+    const menu = this.contextMenu();
+    const repoId = this.git.activeRepositoryId();
+    if (!menu || !repoId || (menu.kind === 'commit' && menu.oids.length !== 1)) return;
+    const returnFocus = this.contextMenuReturnFocus;
+    this.contextMenu.set(null);
+    const target = menu.kind === 'commit' ? { kind: 'commit' as const, oid: menu.oid }
+      : { kind: 'reference' as const, reference: `refs/${menu.kind === 'tag' ? 'tags' : menu.kind === 'remote' ? 'remotes' : 'heads'}/${menu.label}` };
+    this.repositoryLinkDialog.set({ mode: 'share', repoId, target, returnFocus });
+  }
+
+  protected closeRepositoryLink(): void {
+    const request = this.repositoryLinkDialog();
+    this.repositoryLinkDialog.set(null);
+    setTimeout(() => { if (!this.repositoryLinkDialog() && request?.returnFocus?.isConnected) request.returnFocus.focus({ preventScroll: true }); });
+  }
+
+  protected handleRepositoryLinkLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryLink(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.repositoryLinkLoaderClose()?.nativeElement.focus(); }
+  }
+
+  protected finishRepositoryLink(oid: string | null): void {
+    this.finishRepositoryCreation();
+    if (oid) this.selectCommit(oid);
+  }
+
   protected runAutoFetchNow(): void {
     void this.git.remote('fetch_repository');
   }
@@ -5568,6 +5628,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected autoFetchStatusLabel(): string {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return 'Auto-fetch';
+    if (this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Auto-fetch paused';
     if (this.git.backgroundFetchRepositoryId() === repositoryId) return 'Fetching…';
     if (this.git.backgroundFetchErrors()[repositoryId]) return 'Fetch failed';
     const timestamp = this.git.backgroundFetchLastAt()[repositoryId];
@@ -5582,6 +5643,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected autoFetchStatusTitle(): string {
     const repositoryId = this.git.activeRepositoryId();
+    if (repositoryId && this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Automatic fetch is paused for this link session. Click to resume your configured schedule.';
     const error = repositoryId ? this.git.backgroundFetchErrors()[repositoryId] : null;
     if (error) return `Automatic fetch failed: ${error}. Click to retry.`;
     const timestamp = repositoryId ? this.git.backgroundFetchLastAt()[repositoryId] : null;
@@ -9835,6 +9897,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'workspace-rename': this.openWorkspaceDialog('rename', paletteReturnFocus); break;
       case 'workspace-delete': this.requestWorkspaceDelete(paletteReturnFocus); break;
       case 'new-tab': this.openRepositoryManager('manager', paletteReturnFocus); break;
+      case 'open-link': this.openRepositoryLink(paletteReturnFocus); break;
       case 'open': await this.chooseRepository(paletteReturnFocus); break;
       case 'clone': this.openRepositoryManager('clone', paletteReturnFocus); break;
       case 'init': this.openRepositoryManager('init', paletteReturnFocus); break;
@@ -12299,7 +12362,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cancelAutoFetchTimer();
     const repositoryId = this.git.activeRepositoryId();
     const interval = this.autoFetchIntervalMinutes();
-    if (!repositoryId || this.git.browserPreview() || (interval === 0 && !force)) return;
+    if (!repositoryId || this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused || this.git.browserPreview() || (interval === 0 && !force)) return;
     const intervalMs = (interval || 5) * 60_000;
     if (typeof document !== 'undefined' && document.hidden) return;
     if (this.git.busy() || this.git.backgroundFetchBusy()) {

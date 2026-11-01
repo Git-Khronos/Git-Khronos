@@ -27,6 +27,8 @@ import type {
   ResetPreview,
   RepositoryStatus,
   RepositorySnapshot,
+  OpenedRepositoryLink,
+  RepositoryLinkReadPolicy,
   SigningDiagnostic,
   StashOptions,
   StashEntry,
@@ -186,6 +188,8 @@ export class GitKhronosService {
   readonly repository = computed(
     () => this.repositories().find((repository) => repository.id === this.activeRepositoryId()) ?? null,
   );
+  private repositoryLinkPolicyRequest = 0;
+  readonly repositoryLinkPolicies = signal<Partial<Record<string, RepositoryLinkReadPolicy>>>({});
   readonly recentPaths = signal<string[]>(this.readRecents());
   readonly favoritePaths = signal<string[]>(this.readFavorites());
   readonly unpinnedRecentPaths = computed(() => {
@@ -417,12 +421,42 @@ export class GitKhronosService {
       return;
     }
 
+    await this.refreshRepositoryLinkPolicies();
     try {
       await this.restoreRepositories();
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
       this.activity.set('Could not restore saved repositories');
     }
+  }
+
+  async refreshRepositoryLinkPolicies(): Promise<void> {
+    const request = ++this.repositoryLinkPolicyRequest;
+    try {
+      const policies = await ipc.repository_link_read_policies();
+      if (request === this.repositoryLinkPolicyRequest && policies && typeof policies === 'object') this.repositoryLinkPolicies.set(policies);
+    } catch { /* A failed policy query must not resume a paused native session. */ }
+  }
+
+  acceptRepositoryLink(opened: OpenedRepositoryLink): void {
+    ++this.repositoryLinkPolicyRequest;
+    this.repositoryLinkPolicies.update(policies => ({ ...policies,
+      [opened.repository.id]: { noLazyReads: true, autoFetchPaused: true },
+    }));
+    this.acceptOpenedRepository(opened.repository, 'Opened local repository link', message => this.activity.set(message));
+  }
+
+  async resumeRepositoryLinkAutoFetch(): Promise<void> {
+    const repoId = this.activeRepositoryId();
+    if (!repoId) return;
+    await this.run('Resuming automatic fetch…', async report => {
+      await ipc.resume_repository_link_auto_fetch({ repoId });
+      ++this.repositoryLinkPolicyRequest;
+      this.repositoryLinkPolicies.update(policies => ({ ...policies,
+        [repoId]: { noLazyReads: policies[repoId]?.noLazyReads ?? true, autoFetchPaused: false },
+      }));
+      report('Automatic fetch schedule resumed');
+    }, repoId);
   }
 
   async chooseRepository(): Promise<void> {
@@ -607,7 +641,7 @@ export class GitKhronosService {
 
   async fetchInBackground(repositoryId: string | null = this.activeRepositoryId()): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
-    if (!repository || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
+    if (!repository || this.repositoryLinkPolicies()[repository.id]?.autoFetchPaused || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
     // An explicit fetch retries a failure; timers must not repeatedly retry authentication.
     if (this.backgroundFetchErrors()[repository.id]) return false;
     this.backgroundFetchBusy.set(true);

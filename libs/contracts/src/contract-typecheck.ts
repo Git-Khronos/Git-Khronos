@@ -2,6 +2,21 @@ import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSe
 
 // Compiled, never executed. Widened bindings make expect-error directives fail.
 function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
+  void ipc.parse_repository_link({ rawLink: 'git-khronos://repository?v=1&remote=https%3A%2F%2Fexample.test%2Fowned.git' });
+  void ipc.create_repository_link({ remote: 'git@example.test:owned/project.git', target: { kind: 'reference', reference: 'refs/heads/main' } });
+  void ipc.discover_repository_link({ rawLink: 'owned-link', knownPaths: ['/owned/repository'], operationId: 'owned-discovery' });
+  void ipc.open_repository_link({ rawLink: 'owned-link', path: '/owned/repository', expectedOid: 'a'.repeat(40), operationId: 'owned-open' });
+  void ipc.repository_link_read_policies();
+  void ipc.resume_repository_link_auto_fetch({ repoId: 'owned-repository' });
+  // @ts-expect-error known locations are explicit and lookup has a cancellable operation
+  void ipc.discover_repository_link({ rawLink: 'owned-link', root: '/scan-everything' });
+  // @ts-expect-error link creation has no checkout or mutation request
+  void ipc.create_repository_link({ remote: 'owned', target: { kind: 'commit', oid: 'a'.repeat(40) }, checkout: true });
+  // @ts-expect-error repository targets do not contain an ambiguous object selector
+  void ipc.create_repository_link({ remote: 'owned', target: { kind: 'repository', oid: 'a'.repeat(40) } });
+  // @ts-expect-error exact IPC camelCase arguments are required
+  void ipc.open_repository_link({ raw_link: 'owned-link', path: '/owned/repository', operation_id: 'owned-open' });
+
   const privateAttachmentFieldsAbsent: Extract<keyof HostedForkRemotePlan, 'snapshot' | 'request' | 'created'> extends never ? true : never = true;
   void privateAttachmentFieldsAbsent;
   void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: {

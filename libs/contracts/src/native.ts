@@ -201,6 +201,7 @@ export type MergePreviewRequest = { source: string; target: string; sourceOid: s
 export type MergeRebaseCommit = ({ oid: string; authorName: string; authorEmail: string; subject: string; message: string }) & { parents: string[] }
 export type MergeRebasePlan = { request: MergeRebaseRequest; commits: MergeRebaseCommit[]; remoteReachableOids: string[] }
 export type MergeRebaseRequest = { source: string; target: string; sourceOid: string; targetOid: string; base: string }
+export type OpenedRepositoryLink = { repository: RepositorySnapshot; inspection: RepositoryLinkInspection }
 export type OperationRecovery = { id: string; label: string; headOid: string; snapshotOid: string | null; headReference: string; snapshotReference: string | null; restored: boolean }
 export type PatchFile = { path: string; added: number | null; deleted: number | null }
 export type PatchRequest = { file: string; target: PatchTarget; patch: number[]; headOid: string; headRef: string; indexState: number[] }
@@ -225,6 +226,13 @@ export type ReflogEntry = { oid: string; selector: string; subject: string; auth
 export type ReflogPage = { entries: ReflogEntry[]; truncated: boolean }
 export type Remote = { name: string; fetchUrl: string; pushUrl: string }
 export type RepositoryChanged = { repositoryId: string }
+export type RepositoryLink = { remote: string; target: RepositoryLinkTarget }
+export type RepositoryLinkDiscovery = { link: RepositoryLink; inspectedPaths: number; matches: RepositoryLinkInspection[]; unavailable: RepositoryLinkLocationIssue[] }
+export type RepositoryLinkInspection = { link: RepositoryLink; path: string; bare: boolean; matchedRemotes: string[]; target: RepositoryLinkTargetState }
+export type RepositoryLinkLocationIssue = { path: string; message: string }
+export type RepositoryLinkReadPolicy = { noLazyReads: boolean; autoFetchPaused: boolean }
+export type RepositoryLinkTarget = { kind: "repository" } | { kind: "commit"; oid: string } | { kind: "reference"; reference: string }
+export type RepositoryLinkTargetState = { kind: "notMatched" } | { kind: "repository" } | { kind: "commit"; oid: string } | { kind: "unavailable"; message: string }
 export type RepositorySnapshot = ({ name: string; path: string; identity: GitIdentity; signing: SigningInfo; headOid: string | null; status: RepositoryStatus; remotes: Remote[]; branches: Branch[]; stashes: StashEntry[]; tags: Tag[]; worktrees: Worktree[]; submodules: Submodule[]; lfs: LfsInfo; sparseCheckout: SparseCheckoutInfo; commitTemplate: string | null; commitTemplateError: AppError | null; commits: CommitSummary[]; historyTruncated: boolean;
 /**
  * Bare repositories have no working tree; working-tree actions are unavailable.
@@ -505,6 +513,13 @@ export function inspect_commit(args: { repoId: string; oid: string }): Promise<C
 export function inspect_tag(args: { repoId: string; name: string }): Promise<TagDetails> { return TAURI_INVOKE("inspect_tag", args); }
 export function inspect_commit_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_commit_file", args); }
 export function inspect_file_media(args: { repoId: string; request: FileComparisonRequest; operationId: string }): Promise<FileMediaComparison> { return TAURI_INVOKE("inspect_file_media", args); }
+export function parse_repository_link(args: { rawLink: string }): Promise<RepositoryLink> { return TAURI_INVOKE("parse_repository_link", args); }
+export function create_repository_link(args: { remote: string; target: RepositoryLinkTarget }): Promise<string> { return TAURI_INVOKE("create_repository_link", args); }
+export function discover_repository_link(args: { rawLink: string; knownPaths: string[]; operationId: string }): Promise<RepositoryLinkDiscovery> { return TAURI_INVOKE("discover_repository_link", args); }
+export function open_repository_link(args: { rawLink: string; path: string; expectedOid?: string | null; operationId: string }): Promise<OpenedRepositoryLink> { return TAURI_INVOKE("open_repository_link", args); }
+export function repository_link_read_policy(args: { repoId: string }): Promise<RepositoryLinkReadPolicy> { return TAURI_INVOKE("repository_link_read_policy", args); }
+export function repository_link_read_policies(args: {  } = {}): Promise<Partial<{ [key in string]: RepositoryLinkReadPolicy }>> { return TAURI_INVOKE("repository_link_read_policies", args); }
+export function resume_repository_link_auto_fetch(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("resume_repository_link_auto_fetch", args); }
 export function inspect_stash(args: { repoId: string; oid: string }): Promise<CommitDetails> { return TAURI_INVOKE("inspect_stash", args); }
 export function inspect_stash_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_stash_file", args); }
 export function compare_commits(args: { repoId: string; baseOid: string; targetOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commits", args); }
@@ -707,6 +722,13 @@ export type CommandMap = {
   inspect_tag: typeof inspect_tag;
   inspect_commit_file: typeof inspect_commit_file;
   inspect_file_media: typeof inspect_file_media;
+  parse_repository_link: typeof parse_repository_link;
+  create_repository_link: typeof create_repository_link;
+  discover_repository_link: typeof discover_repository_link;
+  open_repository_link: typeof open_repository_link;
+  repository_link_read_policy: typeof repository_link_read_policy;
+  repository_link_read_policies: typeof repository_link_read_policies;
+  resume_repository_link_auto_fetch: typeof resume_repository_link_auto_fetch;
   inspect_stash: typeof inspect_stash;
   inspect_stash_file: typeof inspect_stash_file;
   compare_commits: typeof compare_commits;

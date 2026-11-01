@@ -8,7 +8,7 @@ export type RepositoryDialogMode = 'manager' | 'clone' | 'init';
 
 /** Keeps clone and initialize drafts while the dialog is closed and reopened. */
 @Injectable({ providedIn: 'root' })
-class RepositoryFormDrafts {
+export class RepositoryFormDrafts {
   readonly cloneRemote = signal('');
   readonly cloneParentPath = signal('');
   readonly cloneFolder = signal('');
@@ -35,9 +35,9 @@ class RepositoryFormDrafts {
         <button type="button" aria-label="Close repository management" (click)="close()"><gc-icon name="x" [size]="14" /></button>
       </header>
       <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleTabKey($event)">
-        <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button>
+        @if (!cloneOnly()) { <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button> }
         <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="setMode('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
-        <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="setMode('init')"><gc-icon name="repo" [size]="13" />Initialize</button>
+        @if (!cloneOnly()) { <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="setMode('init')"><gc-icon name="repo" [size]="13" />Initialize</button> }
       </nav>
       @if (mode() === 'manager') {
         <div id="repository-dialog-panel" class="repository-manager-body" role="tabpanel" aria-labelledby="repository-tab-manager">
@@ -67,7 +67,7 @@ class RepositoryFormDrafts {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-clone" (submit)="$event.preventDefault(); submitClone()">
           <div class="repository-form-body">
             <div class="form-intro"><span><gc-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
-            <button type="button" [disabled]="git.busy()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button>
+            @if (!cloneOnly()) { <button type="button" [disabled]="git.busy()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button> }
             @if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gc-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
             <label>Repository URL<input name="cloneRemote" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="form.cloneRemote()" (ngModelChange)="updateCloneRemote($event)" /></label>
             <label>Where to clone<div class="path-picker"><input name="cloneParent" readonly placeholder="Choose a destination folder" [ngModel]="form.cloneParentPath()" /><button type="button" (click)="chooseCloneParent()">Browse</button></div></label>
@@ -133,6 +133,7 @@ export class RepositoryDialogComponent {
   /** Incremented by the opener to move focus to the selected mode's first control. */
   readonly focusRequest = input(0);
   readonly favoriteShortcut = input('');
+  readonly cloneOnly = input(false);
   readonly closed = output<void>();
   readonly browse = output<void>();
   readonly openFavorite = output<string>();
@@ -159,6 +160,7 @@ export class RepositoryDialogComponent {
     this.hostedMode.set(!this.hostedMode());
   }
   protected setMode(mode: RepositoryDialogMode): void {
+    if (this.cloneOnly() && mode !== 'clone') return;
     if (mode !== 'clone') this.hostedBrowser()?.dismiss();
     else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
     this.mode.set(mode);
@@ -201,7 +203,7 @@ export class RepositoryDialogComponent {
 
   protected handleTabKey(event: KeyboardEvent): void {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const modes: RepositoryDialogMode[] = ['manager', 'clone', 'init'];
+    const modes: RepositoryDialogMode[] = this.cloneOnly() ? ['clone'] : ['manager', 'clone', 'init'];
     const tabs = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'));
     const current = Math.max(0, modes.indexOf(this.mode()));
     let next = current;

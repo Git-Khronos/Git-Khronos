@@ -21,7 +21,7 @@ mod file_media;
 mod repository_links;
 mod repository_link_inspection;
 mod no_lazy_fetch;
-pub use no_lazy_fetch::without_lazy_fetch;
+pub use no_lazy_fetch::{without_lazy_fetch, without_lazy_fetch_cancellable};
 pub use repository_link_inspection::{RepositoryLinkInspection, RepositoryLinkTargetState, inspect_repository_link};
 pub use repository_links::{RepositoryLink, RepositoryLinkTarget, parse_repository_link, create_repository_link, repository_link_remote_identity};
 pub use file_media::{FileMediaComparison, FileMediaSide, FileMediaState,

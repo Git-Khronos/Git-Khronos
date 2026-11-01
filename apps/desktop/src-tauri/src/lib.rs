@@ -93,6 +93,7 @@ mod recovery_commands;
 mod hosting_commands;
 mod fork_commands;
 mod fork_remote_commands;
+mod repository_link_commands;
 mod hosted_repository_commands;
 mod branch_workflow_commands;
 
@@ -139,11 +140,23 @@ struct RepositoryChanged {
 }
 
 struct RepositorySession {
+    no_lazy_reads: std::sync::atomic::AtomicBool,
+    pause_auto_sync: std::sync::atomic::AtomicBool,
     path: PathBuf,
     operation: Mutex<()>,
     history_cursor: Mutex<CommitHistoryCursor>,
     history_limit: AtomicUsize,
     status_limit: AtomicUsize,
+}
+
+impl RepositorySession {
+    fn with_read_policy<T>(&self, action: impl FnOnce() -> T) -> T {
+        if self.no_lazy_reads.load(Ordering::Acquire) {
+            git_khronos_git_core::without_lazy_fetch(action)
+        } else {
+            action()
+        }
+    }
 }
 
 const INITIAL_HISTORY_LIMIT: usize = 80;
@@ -308,6 +321,15 @@ fn register_repository(
     state: &tauri::State<'_, AppState>,
     app: &AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
+    register_repository_with_read_policy(root, state, app, false)
+}
+
+fn register_repository_with_read_policy(
+    root: PathBuf,
+    state: &tauri::State<'_, AppState>,
+    app: &AppHandle,
+    no_lazy_reads: bool,
+) -> Result<RepositorySnapshot, AppError> {
     let mut repositories = state.repositories.lock().map_err(state_error)?;
     let existing = repositories
         .iter()
@@ -317,6 +339,8 @@ fn register_repository(
         repositories.insert(
             id.clone(),
             Arc::new(RepositorySession {
+                no_lazy_reads: std::sync::atomic::AtomicBool::new(no_lazy_reads),
+                pause_auto_sync: std::sync::atomic::AtomicBool::new(no_lazy_reads),
                 path: root.clone(),
                 operation: Mutex::new(()),
                 history_cursor: Mutex::new(CommitHistoryCursor::default()),
@@ -327,6 +351,11 @@ fn register_repository(
         id
     });
     drop(repositories);
+    if no_lazy_reads {
+        let session = repository_session(&id, state)?;
+        session.no_lazy_reads.store(true, Ordering::Release);
+        session.pause_auto_sync.store(true, Ordering::Release);
+    }
     let snapshot = startup_snapshot_for_id(&id, state)?;
     install_repository_watcher(&id, &root, state, app);
     Ok(snapshot)
@@ -405,7 +434,7 @@ async fn refresh_repository_status(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed))
+        session.with_read_policy(|| status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed)))
     })
     .await
     .map_err(background_task_error)?
@@ -426,11 +455,11 @@ async fn load_more_commits(repo_id: String, app: AppHandle) -> Result<CommitHist
         // Snapshot refreshes reset the cursor. Keep the page and its retained
         // snapshot limit in the same repository operation as that reset.
         let _operation = session.operation.lock().map_err(state_error)?;
-        let page = session
+        let page = session.with_read_policy(|| session
             .history_cursor
             .lock()
             .map_err(state_error)?
-            .next_page(&session.path, HISTORY_PAGE_SIZE)?;
+            .next_page(&session.path, HISTORY_PAGE_SIZE))?;
         let limit = session.history_limit.load(Ordering::Relaxed);
         session
             .history_limit
@@ -452,7 +481,7 @@ async fn search_tracked_files(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        git_search_tracked_files(&session.path, &query, limit)
+        session.with_read_policy(|| git_search_tracked_files(&session.path, &query, limit))
     })
     .await
     .map_err(background_task_error)?
@@ -464,7 +493,7 @@ async fn load_reflog(repo_id: String, app: AppHandle) -> Result<ReflogPage, AppE
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        git_reflog_entries(&session.path, 250)
+        session.with_read_policy(|| git_reflog_entries(&session.path, 250))
     })
     .await
     .map_err(background_task_error)?
@@ -479,7 +508,7 @@ async fn load_more_changes(repo_id: String, app: AppHandle) -> Result<Repository
         let _operation = session.operation.lock().map_err(state_error)?;
         let current = session.status_limit.load(Ordering::Relaxed);
         let next = current.saturating_add(STATUS_PAGE_SIZE);
-        let status = status_with_entry_limit(&session.path, next)?;
+        let status = session.with_read_policy(|| status_with_entry_limit(&session.path, next))?;
         session.status_limit.store(next, Ordering::Relaxed);
         Ok(status)
     })
@@ -1630,6 +1659,7 @@ async fn sync_repository(
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
+        if session.pause_auto_sync.load(Ordering::Acquire) { return Ok(None); }
         let fetched = authentication::run(
             &app,
             "background-fetch",
@@ -2792,7 +2822,7 @@ fn working_tree_status(
     _repo_id: String,
     session: &RepositorySession,
 ) -> Result<RepositoryStatus, AppError> {
-    status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed))
+    session.with_read_policy(|| status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed)))
 }
 
 async fn mutate_working_tree_background<F>(
@@ -2826,37 +2856,41 @@ fn startup_snapshot_for_id(
 ) -> Result<RepositorySnapshot, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
-    let snapshot = RepositorySnapshot {
-        id: repo_id.to_owned(),
-        data: snapshot_with_limits_startup(
-            &session.path,
-            session.history_limit.load(Ordering::Relaxed),
-            session.status_limit.load(Ordering::Relaxed),
-        )?,
-    };
-    session
-        .history_cursor
-        .lock()
-        .map_err(state_error)?
-        .reset(&session.path, &snapshot.data.commits)?;
-    Ok(snapshot)
+    session.with_read_policy(|| {
+        let snapshot = RepositorySnapshot {
+            id: repo_id.to_owned(),
+            data: snapshot_with_limits_startup(
+                &session.path,
+                session.history_limit.load(Ordering::Relaxed),
+                session.status_limit.load(Ordering::Relaxed),
+            )?,
+        };
+        session
+            .history_cursor
+            .lock()
+            .map_err(state_error)?
+            .reset(&session.path, &snapshot.data.commits)?;
+        Ok(snapshot)
+    })
 }
 
 fn build_snapshot(id: String, session: &RepositorySession) -> Result<RepositorySnapshot, AppError> {
-    let snapshot = RepositorySnapshot {
-        id,
-        data: snapshot_with_limits_fast(
-            &session.path,
-            session.history_limit.load(Ordering::Relaxed),
-            session.status_limit.load(Ordering::Relaxed),
-        )?,
-    };
-    session
-        .history_cursor
-        .lock()
-        .map_err(state_error)?
-        .reset(&session.path, &snapshot.data.commits)?;
-    Ok(snapshot)
+    session.with_read_policy(|| {
+        let snapshot = RepositorySnapshot {
+            id,
+            data: snapshot_with_limits_fast(
+                &session.path,
+                session.history_limit.load(Ordering::Relaxed),
+                session.status_limit.load(Ordering::Relaxed),
+            )?,
+        };
+        session
+            .history_cursor
+            .lock()
+            .map_err(state_error)?
+            .reset(&session.path, &snapshot.data.commits)?;
+        Ok(snapshot)
+    })
 }
 
 fn repository_session(
@@ -2883,7 +2917,7 @@ fn with_repository<T>(
 ) -> Result<T, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
-    action(&session.path)
+    session.with_read_policy(|| action(&session.path))
 }
 
 async fn with_repository_background<T, F>(
@@ -2915,7 +2949,7 @@ where
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        action(&session.path)
+        session.with_read_policy(|| action(&session.path))
     })
     .await
     .map_err(background_task_error)?
@@ -3552,6 +3586,13 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             inspect_tag,
             inspect_commit_file,
             inspect_file_media,
+            repository_link_commands::parse_repository_link,
+            repository_link_commands::create_repository_link,
+            repository_link_commands::discover_repository_link,
+            repository_link_commands::open_repository_link,
+            repository_link_commands::repository_link_read_policy,
+            repository_link_commands::repository_link_read_policies,
+            repository_link_commands::resume_repository_link_auto_fetch,
             inspect_stash,
             inspect_stash_file,
             compare_commits,

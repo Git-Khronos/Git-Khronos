@@ -1552,3 +1552,12 @@ No vendor implementation, proprietary URL grammar or third-party source was copi
 Used for a project-created, thread-scoped inspection policy and its independently
 written local-promisor tests. Explicit fetch remains a separate user operation.
 No external implementation was copied.
+
+
+## Git SSH repository address semantics
+
+- https://git-scm.com/docs/git-clone (Git URL syntax and SCP path semantics)
+
+Used for independent explicit-user SCP address validation, preserving relative,
+absolute, home-relative and literal-percent paths without converting them into
+absolute SSH URLs. No parser implementation or vendor source was copied.

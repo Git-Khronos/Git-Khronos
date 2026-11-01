@@ -1,6 +1,6 @@
 # Repository and Git object links
 
-Status: neutral specification; implementation and runtime acceptance pending.
+Status: independently implemented core and in-progress native/UI candidate; packaged and OS delivery acceptance pending.
 Inventory requirement: G28. This document does not qualify the media candidate.
 
 ## Capability and sources
@@ -20,7 +20,7 @@ Any new plugin requires a version-specific license and notice review before use.
 
 ## Independent version-one format
 
-Proposed Khronos-owned format:
+Khronos-owned version-one format:
 
 ```text
 git-khronos://repository?v=1&remote=<percent-encoded-remote-url>
@@ -37,8 +37,12 @@ Commit IDs contain exactly 40 or 64 hexadecimal characters. A ref is a complete
 revision operators, option-like expressions and arbitrary object queries are not
 part of this format. A commit link identifies a commit, not an arbitrary blob.
 
-Remote identity is a parsed network URL, never a shell command or filesystem
-path. Initial supported transports are HTTPS and SSH. Reject passwords, HTTPS
+Remote identity is a parsed network address, never a shell command or filesystem
+path. Supported forms are HTTPS, explicit-user SSH URLs and explicit-user SCP-style
+SSH addresses. SCP-relative, absolute and `~user` paths keep their original Git
+semantics; they are not rewritten into absolute `ssh://` paths. Literal percent
+characters in SCP paths remain literal. SCP and SSH URL identities remain distinct.
+Ambiguous host-only SCP forms are refused. Reject passwords, HTTPS
 userinfo, query strings, fragments, local/file URLs and executable transports.
 Never copy tokens or secret URL parameters into links, clipboard text or logs.
 SSH usernames and ports remain explicit; do not silently equate unrelated users
@@ -148,3 +152,49 @@ That failed attempt is retained. The full core regression passes 725 tests (712
 unit plus 13 integration), with 37 intentionally ignored, and all-target Clippy
 passes with warnings denied. Native navigation/session policy and UI integration
 are still pending; this checkpoint does not establish end-to-end G28 acceptance.
+
+
+## Native and UI candidate (not yet qualified)
+
+Strict JSON target decoding rejects extraneous fields for every target variant.
+The SCP and cancellation extension passes 21 focused cases. The latest complete
+core suite passes 729 cases (716 unit and 13 integration), with 37 intentionally
+ignored; workspace all-target Clippy passes with warnings denied. A blocking owned
+FIFO configuration fixture proves cancellation interrupts the running Git read,
+rather than merely discarding a result after the process finishes.
+
+Typed native commands parse/create links, inspect at most 32 explicit absolute
+known locations, and open a freshly revalidated local selection. Discovery never
+registers a repository. Opening builds its snapshot under a cancellable no-fetch
+scope; the registered session retains no-lazy reads and pauses automatic fetch.
+A late refusal or cancellation may leave that conservative session policy cached,
+but must not activate a renderer tab. The policy-list API exposes cached flags for hydration after a WebView
+reload in the same application process; packaged recovery acceptance is pending. Explicit schedule resumption is separate
+from manual fetch and does not change global preferences.
+
+The original lazy dialog requires an explicit remote for sharing, generates a
+selectable URI before a separate clipboard gesture, and lists local copy paths
+before opening one. It keeps unavailable target feedback. Link changes and dialog
+destruction invalidate pending replies. The clone review uses its own form service
+instance and exposes only clone controls; it never overwrites ordinary clone or
+initialization drafts. After clone success the retained request is inspected again
+and the user reviews the matching context before opening it. No automatic clone,
+fetch, checkout or destructive retry is requested.
+
+The workspace source gate passes 767 Rust tests (45 intentionally ignored) and
+166 unique frontend unit cases. Typed binding drift checks pass. The first UI
+typecheck and production build pass within the existing size budget. Fifteen
+renderer cases pass from a frozen source tree, including actual ordinary-clone
+draft preservation, retained unavailable targets, refusal of late navigation
+after a repository switch, modal focus recovery and stale policy-reply refusal.
+A later 15-case attempt failed its newly added policy-ordering case after source
+edits during server startup; that served revision was uncertain. Its diagnostics
+are retained. The fresh 15-case run verifies unchanged inputs and passes. The initial renderer
+attempt used an incorrect status-response fixture and was stopped with status
+143 after failures; its traces are retained, and the corrected focused and full
+link-specific groups pass. This is not a successful full application renderer
+gate. Seven owned packaged scenarios have been added but not executed yet. Native
+packaged acceptance, OS protocol registration and cold/warm single-instance
+delivery remain open. No
+Tauri deep-link plugin has been added; manual paste/share does not prove OS
+integration. G28 is not accepted.

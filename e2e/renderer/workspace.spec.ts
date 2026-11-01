@@ -2643,6 +2643,8 @@ test('opens working-tree and historical file actions from the keyboard', async (
   let menu = page.locator('.file-context-menu[role="menu"]');
   await expect(menu.getByRole('menuitem', { name: 'View changes' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitem', { name: 'Preview file content', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Stage file' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(workingFile).toBeFocused();

@@ -5,10 +5,10 @@ use url::Url;
 
 const MAX_LINK_BYTES: usize = 8 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RepositoryLinkTarget {
-    Repository,
+    Repository {},
     Commit { oid: String },
     Reference { reference: String },
 }
@@ -83,6 +83,20 @@ pub fn repository_link_remote_identity(input: &str) -> Result<String, AppError> 
         || input.contains(['\\', '?', '#'])
     {
         return Err(refused());
+    }
+    if !input.contains("://") {
+        let (user, host_path) = input.split_once('@').ok_or_else(refused)?;
+        if user.is_empty() || !user.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) { return Err(refused()); }
+        let (host, path) = if host_path.starts_with('[') {
+            let end = host_path.find("]:").ok_or_else(refused)?;
+            (&host_path[..end + 1], &host_path[end + 2..])
+        } else { host_path.split_once(':').ok_or_else(refused)? };
+        if host.is_empty() || host.contains(['/', '@', '%']) || path.is_empty() || path.starts_with('-')
+            || path.split('/').any(|part| matches!(part, "." | "..")) { return Err(refused()); }
+        let authority = Url::parse(&format!("ssh://{user}@{host}/owned-validation")).map_err(|_| refused())?;
+        let host = authority.host_str().ok_or_else(refused)?.to_ascii_lowercase();
+        // SCP path bytes are literal, not URL escapes; keep relative/absolute and ~ semantics.
+        return Ok(format!("{user}@{host}:{path}"));
     }
     let (scheme, authority_path) = input.split_once("://").ok_or_else(refused)?;
     if !scheme.eq_ignore_ascii_case("https") && !scheme.eq_ignore_ascii_case("ssh") {
@@ -171,7 +185,7 @@ pub fn parse_repository_link(input: &str) -> Result<RepositoryLink, AppError> {
     }
     Ok(RepositoryLink {
         remote: repository_link_remote_identity(&remote.ok_or_else(refused)?)?,
-        target: target.unwrap_or(RepositoryLinkTarget::Repository),
+        target: target.unwrap_or(RepositoryLinkTarget::Repository {}),
     })
 }
 
@@ -192,7 +206,7 @@ pub fn create_repository_link(
         let mut query = link.query_pairs_mut();
         query.append_pair("v", "1").append_pair("remote", &remote);
         match target {
-            RepositoryLinkTarget::Repository => {}
+            RepositoryLinkTarget::Repository {} => {}
             RepositoryLinkTarget::Commit { oid } => {
                 query.append_pair("commit", &oid.to_ascii_lowercase());
             }

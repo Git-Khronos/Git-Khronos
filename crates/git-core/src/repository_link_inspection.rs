@@ -115,7 +115,7 @@ fn target_state(
     target: &RepositoryLinkTarget,
 ) -> Result<RepositoryLinkTargetState, AppError> {
     let oid = match target {
-        RepositoryLinkTarget::Repository => return Ok(RepositoryLinkTargetState::Repository),
+        RepositoryLinkTarget::Repository {} => return Ok(RepositoryLinkTargetState::Repository),
         RepositoryLinkTarget::Commit { oid } => oid.clone(),
         RepositoryLinkTarget::Reference { reference } => {
             let expression = format!("{reference}^{{commit}}");

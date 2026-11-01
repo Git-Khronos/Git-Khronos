@@ -21,3 +21,24 @@ pub fn without_lazy_fetch<T>(action: impl FnOnce() -> T) -> T {
     let _restore = Restore(DISABLED.with(|slot| slot.replace(true)));
     action()
 }
+
+/// Compose cancellable inspection on the current worker with implicit fetch disabled.
+/// Keep this scope inside the background closure, never across an await.
+pub fn without_lazy_fetch_cancellable<T>(
+    cancellation: &super::CancellationToken,
+    action: impl FnOnce() -> Result<T, super::AppError>,
+) -> Result<T, super::AppError> {
+    if cancellation.is_cancelled() {
+        return Err(super::operation_cancelled());
+    }
+    super::git_cancellation::with(Some(cancellation), || {
+        without_lazy_fetch(|| {
+            let result = action();
+            if cancellation.is_cancelled() {
+                Err(super::operation_cancelled())
+            } else {
+                result
+            }
+        })
+    })
+}

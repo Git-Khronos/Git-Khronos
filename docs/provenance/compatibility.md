@@ -2214,3 +2214,15 @@ contexts from surviving coalesced close/reopen or tab transitions. Thirty-two
 focused cases pass; the new packaged/native workflow and local remote attachment
 remain under development. No proprietary code, screenshots as implementation
 specifications, assets, distinctive wording or interface composition were used.
+
+
+## Project-owned repository links
+
+Capability sources: public product documentation for sharing context and choosing
+local copies, RFC 3986 for URI handling, and Git documentation for references,
+remote identity and SSH address semantics. See `sources.md` for canonical links.
+
+The version-one Khronos URI grammar, validation, local-copy lookup, fetch-free
+session policy and original review dialog were designed independently. Owned
+fixtures test observable behavior; no proprietary URL grammar, source, assets,
+wording or visual composition was reused. OS handler delivery remains unfinished.

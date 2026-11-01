@@ -1874,7 +1874,7 @@
       @if (repo.status.entryCount) { <button class="status-changes" type="button" title="Open working directory changes" aria-label="Open working directory changes ({{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }})" [class.active]="changesOpen()" (click)="selectWip()"><gc-icon name="file" [size]="10" /><span>{{ repo.status.entryCount }}</span><em>{{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</em></button> }
       <span class="status-spacer"></span>
       @if (!git.browserPreview() && autoFetchIntervalMinutes()) {
-        <button class="auto-fetch-status" type="button" [class.syncing]="git.backgroundFetchBusy()" [class.failed]="!!git.backgroundFetchErrors()[repo.id]" [disabled]="git.busy() || git.backgroundFetchBusy()" title="{{ autoFetchStatusTitle() }}" (click)="runAutoFetchNow()"><gc-icon name="refresh" [size]="10" /><span>{{ autoFetchStatusLabel() }}</span></button>
+        <button class="auto-fetch-status" type="button" [class.syncing]="git.backgroundFetchBusy()" [class.failed]="!!git.backgroundFetchErrors()[repo.id]" [disabled]="git.busy() || git.backgroundFetchBusy()" title="{{ autoFetchStatusTitle() }}" (click)="handleAutoFetchStatus()"><gc-icon name="refresh" [size]="10" /><span>{{ autoFetchStatusLabel() }}</span></button>
       }
       <span class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-git-operation-status>Git status: {{ git.activeActivity()?.description ?? git.activity() }}</span>
       <button
@@ -2112,6 +2112,15 @@
       <footer><code>{{ shortOid(preview.oid) }}</code><span>Right-click for actions</span></footer>
     </section>
   }
+  @if (repositoryLinkDialog(); as request) {
+    @defer (on immediate) {
+      <gc-repository-link-dialog [request]="request" (opening)="saveCommitDraft()" (opened)="finishRepositoryLink($event)" (closed)="closeRepositoryLink()" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening repository link controls" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="status">Opening link controls…</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Repository link controls unavailable" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="alert">Link controls could not open. Preserve drafts and restart to try again.</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Close</button></section></div>
+    }
+  }
   @if (fileContentDialog(); as request) {
     @defer (on immediate) {
       <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" />
@@ -2238,6 +2247,7 @@
       <button type="button" role="menuitem" [disabled]="(menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
         <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Create local tracking branch' : menu.label === git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
       </button>
+      <button type="button" role="menuitem" [disabled]="git.busy() || git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="shareRepositoryContext()"><span><gc-icon name="copy" [size]="13" /></span>Share repository context…</button>
       <button type="button" role="menuitem" (click)="copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
         <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
       </button>
@@ -2370,6 +2380,7 @@
             <footer><button class="secondary" type="button" (click)="cancelRepositoryAliasEdit()">Cancel</button><button type="submit">Save</button></footer>
           </form>
         } @else {
+          <button class="tab-menu-action" type="button" role="menuitem" [disabled]="git.busy() || git.browserPreview()" (click)="shareRepositoryFromTab()"><gc-icon name="copy" [size]="13" /><span>Share repository context…</span></button>
           <button class="tab-menu-action" type="button" role="menuitem" (click)="openRepositoryTerminalFromMenu()"><gc-icon name="terminal" [size]="13" /><span>Open terminal</span></button>
           <button class="tab-menu-action" type="button" role="menuitem" (click)="openRepositoryFolderFromMenu()"><gc-icon name="folder-git" [size]="13" /><span>Open in file manager</span></button>
           <button class="tab-menu-action" type="button" role="menuitemcheckbox" [attr.aria-checked]="git.isFavoritePath(tabRepository.path)" (click)="toggleRepositoryFavoriteFromMenu()"><gc-icon name="star" [size]="13" /><span>{{ git.isFavoritePath(tabRepository.path) ? 'Remove from favorites' : 'Add to favorites' }}</span></button>

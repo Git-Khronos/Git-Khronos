@@ -84,7 +84,7 @@ impl Drop for Fixture {
 fn repository_link_inspection_supports_empty_and_dirty_repositories_without_writes() {
     let f = Fixture::new();
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).target,
+        f.inspect(RepositoryLinkTarget::Repository {}).target,
         RepositoryLinkTargetState::Repository
     );
     let oid = f.commit();
@@ -153,7 +153,7 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
         "owned-alias:",
     ]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
         vec!["origin"]
     );
     f.git(&[
@@ -163,7 +163,7 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
         "https://elsewhere.test/other.git",
     ]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
         vec!["origin"]
     );
     f.git(&["config", "--unset-all", "remote.origin.url"]);
@@ -171,7 +171,7 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
     fs::write(&include, format!("[remote \"included\"]\nurl = {REMOTE}\n")).unwrap();
     f.git(&["config", "include.path", include.to_str().unwrap()]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
         vec!["included"]
     );
 }
@@ -188,18 +188,18 @@ fn repository_link_inspection_does_not_match_secondary_urls_or_unrelated_names()
     ] {
         f.git(&["config", "remote.origin.url", other]);
         assert_eq!(
-            f.inspect(RepositoryLinkTarget::Repository).target,
+            f.inspect(RepositoryLinkTarget::Repository {}).target,
             RepositoryLinkTargetState::NotMatched
         );
     }
     f.git(&["config", "--add", "remote.origin.url", REMOTE]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).target,
+        f.inspect(RepositoryLinkTarget::Repository {}).target,
         RepositoryLinkTargetState::NotMatched
     );
     f.git(&["config", "--unset-all", "remote.origin.url"]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository).target,
+        f.inspect(RepositoryLinkTarget::Repository {}).target,
         RepositoryLinkTargetState::NotMatched
     );
 }
@@ -238,7 +238,7 @@ fn repository_link_inspection_handles_bare_and_linked_roots_but_refuses_nested_p
     ));
     let nested = f.repo.join("nested");
     fs::create_dir(&nested).unwrap();
-    let link = create_repository_link(REMOTE, &RepositoryLinkTarget::Repository).unwrap();
+    let link = create_repository_link(REMOTE, &RepositoryLinkTarget::Repository {}).unwrap();
     for path in [&nested, &f.repo.join(".git")] {
         assert!(inspect_repository_link(path, &link, &CancellationToken::default()).is_err());
     }
@@ -248,7 +248,7 @@ fn repository_link_inspection_handles_bare_and_linked_roots_but_refuses_nested_p
 fn repository_link_inspection_rejects_incomplete_metadata_and_cancels_before_path_reads() {
     let f = Fixture::new();
     f.commit();
-    let link = create_repository_link(REMOTE, &RepositoryLinkTarget::Repository).unwrap();
+    let link = create_repository_link(REMOTE, &RepositoryLinkTarget::Repository {}).unwrap();
     let cancelled = CancellationToken::default();
     cancelled.cancel();
     assert_eq!(
@@ -285,7 +285,7 @@ fn repository_link_inspection_rejects_incomplete_metadata_and_cancels_before_pat
         "remote.origin.url",
         "https://user:owned-secret@example.test/owned/project.git",
     ]);
-    let result = f.inspect(RepositoryLinkTarget::Repository);
+    let result = f.inspect(RepositoryLinkTarget::Repository {});
     assert_eq!(result.target, RepositoryLinkTargetState::NotMatched);
     assert!(!format!("{result:?}").contains("owned-secret"));
     f.git(&["config", "remote.origin.url", REMOTE]);
@@ -491,4 +491,72 @@ fn no_lazy_fetch_scope_still_permits_an_explicit_owned_fetch() {
         );
         assert_eq!(fs::read(&object.marker).unwrap(), b"owned");
     });
+}
+
+#[test]
+#[cfg(unix)]
+fn no_lazy_fetch_cancellable_composition_stops_a_blocked_git_reader_without_releasing_input() {
+    let f = Fixture::new();
+    f.commit();
+    let fifo = f.dir.join("owned-held-config");
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        &fifo,
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        0,
+    )
+    .unwrap();
+    f.git(&["config", "include.path", fifo.to_str().unwrap()]);
+    let cancellation = CancellationToken::default();
+    let token = cancellation.clone();
+    let path = f.repo.clone();
+    let (sent, received) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let result = without_lazy_fetch_cancellable(&token, || {
+            run_git(&path, &["config", "--get", "user.name"])
+        });
+        sent.send(result).unwrap();
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let writer = loop {
+        match rustix::fs::open(
+            &fifo,
+            rustix::fs::OFlags::WRONLY | rustix::fs::OFlags::NONBLOCK,
+            rustix::fs::Mode::empty(),
+        ) {
+            Ok(writer) => break Some(writer),
+            Err(rustix::io::Errno::NXIO) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
+            _ => break None,
+        }
+    };
+    cancellation.cancel();
+    // Keep the writer alive: only cancellation can release the active Git read.
+    let result = received.recv_timeout(Duration::from_secs(3));
+    let observed_reader = writer.is_some();
+    drop(writer);
+    worker.join().unwrap();
+    assert!(
+        observed_reader,
+        "the owned Git reader never opened its FIFO include"
+    );
+    assert_eq!(
+        result
+            .expect("cancellation must stop Git before input is released")
+            .unwrap_err()
+            .kind,
+        "operationCancelled"
+    );
+}
+
+
+#[test]
+fn repository_link_inspection_matches_scp_addresses_without_contacting_ssh() {
+    let f = Fixture::new(); f.commit();
+    f.git(&["config", "remote.origin.url", "git@EXAMPLE.TEST:Owned/project.git"]);
+    let link = create_repository_link("git@example.test:Owned/project.git", &RepositoryLinkTarget::Repository {}).unwrap();
+    let result = inspect_repository_link(&f.repo, &link, &CancellationToken::default()).unwrap();
+    assert_eq!(result.matched_remotes, vec!["origin"]);
 }
