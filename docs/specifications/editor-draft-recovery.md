@@ -245,13 +245,12 @@ except documentation updates. Together the passing partitions cover the complete
 correction and minimal Rust formatting cleanup; the final partition and four
 focused menu cases qualify those corrections. This composite local evidence
 does not replace exact-head CI qualification after integration.
-Final self-review is recorded. Exact-package acceptance passes on the final artifact. Selective integration
-and exact-head remote CI remain required.
+Final self-review and exact-package acceptance are recorded below. Integration
+CI is tracked separately from local artifact acceptance.
 Controlled filesystem interruption/corruption/quotas/link tests are valuable
 separate evidence; they do not establish an actual process crash. The older
 editor/tools package already on dev does not qualify this new recovery runtime.
-Final exact-package acceptance passes; selective integration and exact-head
-remote CI remain outstanding.
+Final exact-package acceptance passes. Integration CI is tracked separately.
 
 Final scoped qualification starts from the two minimal Rust registration diffs,
 the menu correction and the 120-minute aggregate CI checks budget. Generated
@@ -294,5 +293,9 @@ and preserved Git index/refs/config are covered. All three screenshots were visu
 executions are not thirteen additional capabilities beyond the full suites.
 The probe source and qualification receipt are preserved beside the final
 archive. Earlier package evidence remains retained without substituting for
-these final artifact results. Final scoped local qualification is complete;
-selective commits, dev integration and exact-head remote CI remain required.
+these final artifact results. Final scoped local qualification is complete.
+Recovery source is committed as
+`5608bd0f98d7332871d54d78d7a22ecb586ab651`; the separate renderer CI update is
+`13f08a0` and current dev qualification documentation is merged. This merge
+preserves the accepted runtime inputs. Integration CI is tracked separately
+from local artifact acceptance.
