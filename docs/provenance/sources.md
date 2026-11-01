@@ -1658,3 +1658,11 @@ close request. It does not destroy windows or terminate processes. No third-part
 implementation, comments or assets were copied. libX11 is a host acceptance-tool
 requirement, not a new bundled application dependency. Protocol constants and API
 field names are used for the required standard interoperability.
+
+## Linux package cache completion
+
+- Task up-to-date checks: https://taskfile.dev/docs/guide/up-to-date
+- Inspected 2026-11-01 for declared source/output checks, per-task checksum scope
+  and programmatic status checks. Used to design original target-specific build
+  completion receipts after reproducing hard-kill and cross-target stale reuse.
+  No upstream implementation copied; no new dependency introduced.

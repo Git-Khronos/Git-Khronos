@@ -46,12 +46,13 @@ async function fixture(t) {
   };
   await copyFile(join(repositoryRoot, 'Taskfile.yml'), join(root, 'Taskfile.yml'));
   await put('tools/check-node.mjs', '');
+  await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
   await put('crates/git-core/src/lib.rs');
   await put('packaging/debian/changelog');
   await put('bin/pnpm', `#!/usr/bin/env node
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 if (process.argv[2] === '--version') {
   console.log('12.14.0');
@@ -63,6 +64,15 @@ if (process.argv[2] === '--version') {
   if (!process.env.TMPDIR || !existsSync(process.env.TMPDIR)) throw new Error('Missing build temp directory');
   writeFileSync('build-tmpdir', process.env.TMPDIR);
   appendFileSync('calls', 'build\\n');
+  if (process.env.HARD_STOP_BUILD) {
+    // Kill only this fixture's direct Task parent; never a caller or host job.
+    const parent = '/proc/' + process.ppid;
+    if (!readlinkSync(parent + '/exe').endsWith('/task') || readlinkSync(parent + '/cwd') !== process.cwd()) {
+      throw new Error('Refused to interrupt an unverified fixture parent');
+    }
+    process.kill(process.ppid, 'SIGKILL');
+    process.exit(99);
+  }
   if (process.env.FAIL_BUILD) process.exit(1);
   for (const path of ${JSON.stringify(outputs)}) {
     const output = process.env.CARGO_TARGET_DIR && path.startsWith('target/release/')
@@ -77,7 +87,7 @@ if (process.argv[2] === '--version') {
   await put('bin/rustc', '#!/bin/sh\nprintf "rustc fixture\\n"\n');
   await put('tools/manage-linux-package.sh', `#!/bin/sh
 [ "$1" = name ] && exit 0
-[ "$1" = print-package ] && { grep -qx built "\${CARGO_TARGET_DIR:-target}/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb"; exit $?; }
+[ "$1" = print-package ] && { package="\${CARGO_TARGET_DIR:-target}/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb"; grep -qx built "$package" || exit $?; case "$package" in /*) printf '%s\\n' "$package" ;; *) printf '%s\\n' "$PWD/$package" ;; esac; exit 0; }
 printf '%s\\n' "$1" >> calls
 test -z "$FAIL_VERIFY"
 `);
@@ -326,6 +336,8 @@ async function packagePayloadFixture(t) {
   await writeFile(join(root, 'target/package-assets/frontend-dependency-notices.txt.gz'), frontendNotices);
   const directory = join(root, 'target/release/bundle/deb');
   await mkdir(directory, { recursive: true });
+  await copyFile(join(payload, 'usr/bin/git-khronos'), join(root, 'target/release/git-khronos'));
+  await chmod(join(root, 'target/release/git-khronos'), 0o755);
   const artifact = join(directory, 'fixture.deb');
   const build = () => {
     const result = spawnSync('dpkg-deb', ['--build', payload, artifact], { encoding: 'utf8' });
@@ -819,3 +831,55 @@ for (const [name, transform, key] of [
     assert.match(result.stderr, new RegExp(`desktop entry.*${key}`));
   });
 }
+
+
+test('hard-stopped builds cannot accept older outputs as a completed current build', async (t) => {
+  const f = await fixture(t); f.ok();
+  await f.put('apps/desktop/src/main.ts', 'new source after completed old build');
+  const interrupted = f.run(undefined, { HARD_STOP_BUILD: '1' });
+  assert.equal(interrupted.signal, 'SIGKILL', interrupted.stderr);
+  const previous = await f.builds();
+  f.ok();
+  assert.equal(await f.builds(), previous + 1, 'a hard stop must not bless old package outputs under the new source checksum');
+});
+
+test('returning to a prior Cargo target rebuilds outputs associated with an older source', async (t) => {
+  const f = await fixture(t); f.ok();
+  await f.put('apps/desktop/src/main.ts', 'new source for another target');
+  f.ok(undefined, { CARGO_TARGET_DIR: join(f.root, 'another Cargo target') });
+  const previous = await f.builds();
+  f.ok();
+  assert.equal(await f.builds(), previous + 1, 'a shared Task checksum must not qualify another target directory\'s older output');
+});
+
+
+test('completed package receipts reject modified outputs and missing receipts with unchanged source', async (t) => {
+  const f = await fixture(t); f.ok();
+  for (const path of [outputs[0], outputs[7], 'target/release/.git-khronos-package-build.v1.json']) {
+    const previous = await f.builds();
+    if (path.endsWith('.json')) await rm(join(f.root, path)); else await f.put(path, 'changed generated output');
+    f.ok();
+    assert.equal(await f.builds(), previous + 1, path);
+  }
+});
+
+test('another live build owner is preserved before Tauri can overwrite outputs', async (t) => {
+  const f = await fixture(t); f.ok();
+  const started = (await readFile(`/proc/${process.pid}/stat`, 'utf8')).split(')').at(-1).trim().split(/\s+/)[19];
+  const pending = 'target/release/.git-khronos-package-build.v1.json.pending';
+  const value = JSON.stringify({ version: 1, owner: { pid: process.pid, started } });
+  await f.put(pending, value); const previous = await f.builds();
+  const refused = f.run(['--force', 'package:deb']);
+  assert.notEqual(refused.status, 0); assert.match(refused.stderr, /Another package build still owns/);
+  assert.equal(await f.builds(), previous); assert.equal(await readFile(join(f.root, pending), 'utf8'), value);
+});
+
+test('package verification rejects a stale bundled executable even when payload and notices are otherwise valid', async (t) => {
+  const f = await packagePayloadFixture(t); f.build(); assert.equal(f.verify().status, 0);
+  const executable = join(f.root, 'target/release/git-khronos');
+  await writeFile(executable, '#!/bin/sh\nexit 23\n');
+  const mismatch = f.verify(); assert.notEqual(mismatch.status, 0);
+  assert.match(mismatch.stderr, /packaged executable differs from the current release/);
+  await rm(executable);
+  const missing = f.verify(); assert.notEqual(missing.status, 0); assert.match(missing.stderr, /release executable is missing/);
+});

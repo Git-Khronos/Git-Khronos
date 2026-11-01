@@ -117,7 +117,12 @@ verify_package() {
   dpkg-deb --extract "$package_file" "$temporary_directory"
   extracted="${temporary_directory}/usr"
 
-  [[ -x "${extracted}/bin/git-khronos" ]] || fail "package executable is missing or is not executable."
+  [[ -s "${extracted}/bin/git-khronos" && -x "${extracted}/bin/git-khronos" ]] || fail "package executable is missing or is not executable."
+  local release_executable="${cargo_target_directory}/release/git-khronos"
+  [[ -s "$release_executable" && -x "$release_executable" ]] \
+    || fail "the current release executable is missing; rebuild with 'task package:deb'."
+  cmp -s -- "$release_executable" "${extracted}/bin/git-khronos" \
+    || fail "the packaged executable differs from the current release output; rebuild with 'task package:deb'."
   [[ ! -e "${extracted}/bin/git-khronos-desktop" ]] || fail "package contains the obsolete git-khronos-desktop executable."
   [[ ! -e "${extracted}/bin/export-ipc" ]] || fail "package contains the development-only export-ipc executable."
   local required_file

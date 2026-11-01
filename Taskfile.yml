@@ -102,8 +102,10 @@ tasks:
       - tools/prepare-frontend-notices.mjs
       - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
+      - tools/package-build-receipt.mjs
     generates:
       - '{{.CARGO_OUTPUT}}/release/git-khronos'
+      - '{{.CARGO_OUTPUT}}/release/.git-khronos-package-build.v1.json'
       - '{{.CARGO_OUTPUT}}/release/bundle/deb/*.deb'
       - target/package-assets/changelog.gz
       - target/package-assets/git-khronos.1.gz
@@ -112,11 +114,13 @@ tasks:
       - dist/apps/desktop/3rdpartylicenses.txt
       - dist/apps/desktop/browser/index.html
     status:
-      - tools/manage-linux-package.sh print-package >/dev/null 2>&1
+      - node tools/package-build-receipt.mjs check "{{.CHECKSUM}}" >/dev/null 2>&1
     cmds:
+      - node tools/package-build-receipt.mjs begin "{{.CHECKSUM}}"
       - mkdir -p "${TMPDIR:-$PWD/target/package-tmp}"
       - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
       - tools/manage-linux-package.sh name
+      - node tools/package-build-receipt.mjs complete "{{.CHECKSUM}}"
 
   package:deb:path:
     desc: Print the latest Debian/Ubuntu package path
