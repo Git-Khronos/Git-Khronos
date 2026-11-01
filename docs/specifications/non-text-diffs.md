@@ -250,3 +250,41 @@ found and corrected two wider-pane overlaps at 1550px and 1600px: the two-row
 breakpoint now allows the full action group, action groups wrap, and selected-line
 controls receive enough header space. A new integrated artifact, its full renderer
 suite and both native environment runs remain required before push.
+
+
+### Corrected artifact and current renderer qualification
+
+The corrected Debian package has SHA-256
+`47e83c15899ac70a24e266bdd471db294589c87d866758d269b23e7264c1e5a5`,
+with executable SHA-256
+`767d39aee07e4fa06b32bd7f9ad51b12a458fc032dc1d86e4eeea066007d6607`.
+Its runtime source is `aff66edccc1ba80701ccf24ed6ce858228e47ddd`; all 671 recorded
+inputs matched at preservation. It passes 188 normal and 189 inherited-environment
+native scenarios (377 actual executions), including six real image decoders and
+three direct content-entry cases. These results belong to this corrected artifact,
+separately from the preceding artifacts. The 159 native/core inputs remain identical
+to the 746-case Rust source gate. The focused 22-case renderer sweep and final
+typecheck pass; the existing production size budget was preserved.
+
+The first corrected full renderer attempt passes 1361 cases and fails one outdated
+keyboard expectation: the newly available Preview content action receives the first
+ArrowDown, ahead of Stage. The test now verifies that focus explicitly and advances
+to Stage with a second ArrowDown; five isolated repetitions pass without a runtime
+change. The next full attempt passes 1360 cases but fails two trace-cleanup operations
+with ENOENT. An assistant-launched recheck mistakenly used the same checkout/output
+directory and cleared active Playwright traces. This was a validation infrastructure
+mistake, not a successful full gate. The failed and interrupted attempts remain
+retained; no assertion failure was observed in those two cleanup failures.
+
+Named validation runs now receive distinct Playwright artifact/report directories,
+and record actual checkout/branch/commit/status provenance. Eleven process-runner
+regressions pass, including destructive-output isolation and refusal to overwrite
+existing evidence. The fresh full renderer run from qualification source
+`fcb5fb7f4de970788cc8c98a96651a772ac7b4a2` passes all 1362 cases with no retries,
+finishing 2026-11-01 at 04:13:18 UTC. Its changes after the artifact are test
+infrastructure and expectations only; app runtime stays frozen. This locally
+qualifies the corrected Linux content checkpoint together with its 377 exact-package
+native executions. The qualification documentation adds no runtime change.
+Exact-commit remote CI remains separate and pending after integration. This
+checkpoint does not accept the complete G08 inventory, other platforms, SVG or
+local LFS previews.
