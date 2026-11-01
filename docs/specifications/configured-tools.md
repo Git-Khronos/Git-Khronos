@@ -1,7 +1,7 @@
 # Independently configured external tools
 
-Status: profile/argument model passes focused source checks. A terminal/agent PTY,
-versioned preferences and explicit launcher candidate is under integration validation.
+Status: the terminal/agent PTY, versioned preferences and explicit launcher have
+combined Linux renderer and exact-package qualification recorded below.
 External editor, diff and merge program execution remains unimplemented.
 Inventory: G07, G20 and W05. No complete tool-integration parity claim is made.
 
@@ -60,8 +60,8 @@ preserved until an explicit reviewed clear. Saving, loading, selecting or deleti
 profile starts no program, changes no Git configuration and does not close existing
 sessions. New terminal actions use the current default; explicit agent-launcher selection
 can start a saved profile. A retry retains the originally submitted profile snapshot.
-These remain candidate behaviors; focused renderer checks pass, while complete
-renderer and packaged UI qualification remain pending.
+These initial focused results are supplemented by the complete combined Linux
+renderer and packaged UI qualification recorded below.
 
 These preferences contain ordinary program paths/arguments, not secret storage. Users
 configure and authenticate installed programs independently. Launching an agent proves
@@ -123,5 +123,11 @@ waits for its existing accessible label. Those failures are retained separately.
 Exact artifact hashes and full-run evidence are recorded in the
 [editor specification](working-file-editor.md#combined-package-and-acceptance-recovery).
 
-Complete combined renderer regression and final integration remain pending.
-External file-tool snapshot, wait/detach and cancellation behavior needs its own tests.
+`parity-combined-renderer-network-recheck` also passes all 1,424 renderer tests
+on clean `0696f9a64b2d368205767127b7b1a63df1ed3ce3`, with one worker, zero
+retries and zero skips. The 712 source inputs remain unchanged. Application runtime
+is identical to the retained package source; later changes are reviewed harness
+and documentation only. The final [editor qualification](working-file-editor.md#complete-combined-linux-qualification-2026-11-01)
+records source/artifact association and the separately retained failed attempts.
+Remote CI and other platforms remain separate gates. External file-tool snapshot,
+wait/detach and cancellation behavior still needs its own implementation and tests.
