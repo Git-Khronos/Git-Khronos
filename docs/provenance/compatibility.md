@@ -2225,4 +2225,10 @@ remote identity and SSH address semantics. See `sources.md` for canonical links.
 The version-one Khronos URI grammar, validation, local-copy lookup, fetch-free
 session policy and original review dialog were designed independently. Owned
 fixtures test observable behavior; no proprietary URL grammar, source, assets,
-wording or visual composition was reused. OS handler delivery remains unfinished.
+wording or visual composition was reused. The exact manual-link package passes
+391 native executions across normal and inherited-environment suites. A separate
+original bounded incoming queue uses the public Tauri transport APIs; 32 focused
+renderer cases and five inbox unit cases pass. The Linux OS-transport package now
+passes 403 native executions across normal/inherited-environment suites; complete
+renderer qualification, cold launcher routing and other platforms remain open. See the repository-link
+specification for exact scope, artifact hashes and retained unsuccessful attempts.

@@ -94,11 +94,13 @@ mod hosting_commands;
 mod fork_commands;
 mod fork_remote_commands;
 mod repository_link_commands;
+mod incoming_repository_links;
 mod hosted_repository_commands;
 mod branch_workflow_commands;
 
 #[derive(Default)]
 struct AppState {
+    incoming_links: incoming_repository_links::IncomingRepositoryLinks,
     repositories: Mutex<HashMap<String, Arc<RepositorySession>>>,
     repository_watchers: Mutex<HashMap<String, RecommendedWatcher>>,
     discard_recoveries: Mutex<HashMap<String, DiscardRecovery>>,
@@ -140,6 +142,7 @@ struct RepositoryChanged {
 }
 
 struct RepositorySession {
+    incoming_link_guard: Arc<std::sync::atomic::AtomicBool>,
     no_lazy_reads: std::sync::atomic::AtomicBool,
     pause_auto_sync: std::sync::atomic::AtomicBool,
     path: PathBuf,
@@ -151,7 +154,7 @@ struct RepositorySession {
 
 impl RepositorySession {
     fn with_read_policy<T>(&self, action: impl FnOnce() -> T) -> T {
-        if self.no_lazy_reads.load(Ordering::Acquire) {
+        if self.no_lazy_reads.load(Ordering::Acquire) || self.incoming_link_guard.load(Ordering::Acquire) {
             git_khronos_git_core::without_lazy_fetch(action)
         } else {
             action()
@@ -339,6 +342,7 @@ fn register_repository_with_read_policy(
         repositories.insert(
             id.clone(),
             Arc::new(RepositorySession {
+                incoming_link_guard: state.incoming_links.guard(),
                 no_lazy_reads: std::sync::atomic::AtomicBool::new(no_lazy_reads),
                 pause_auto_sync: std::sync::atomic::AtomicBool::new(no_lazy_reads),
                 path: root.clone(),
@@ -1659,7 +1663,7 @@ async fn sync_repository(
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
-        if session.pause_auto_sync.load(Ordering::Acquire) { return Ok(None); }
+        if session.pause_auto_sync.load(Ordering::Acquire) || session.incoming_link_guard.load(Ordering::Acquire) { return Ok(None); }
         let fetched = authentication::run(
             &app,
             "background-fetch",
@@ -3388,13 +3392,36 @@ fn default_shell() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let bindings = ipc_registry();
-    tauri::Builder::default()
+    let state = AppState::default();
+    // Capture before saved tabs can restore, so their reads remain guarded.
+    for argument in std::env::args_os().skip(1) {
+        if let Some(raw) = argument.to_str() { let _ = state.incoming_links.receive(raw); }
+    }
+    let builder = tauri::Builder::default();
+    #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Windows/Linux deliver raw URI arguments. macOS uses the SDK's
+            // native URL event below; using one route avoids duplicate delivery.
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            incoming_repository_links::receive_arguments(app, args);
+            #[cfg(target_os = "macos")]
+            let _ = args;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init());
+    builder
         .manage(authentication::AuthenticationState::default())
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState::default())
+        .manage(state)
         .invoke_handler(bindings.invoke_handler())
         .setup(move |app| {
             bindings.mount_events(app);
+            incoming_repository_links::install_listener(app.handle())?;
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -3406,6 +3433,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .events(tauri_specta::collect_events![
             RepositoryChanged,
+            incoming_repository_links::IncomingRepositoryLinksChanged,
             TerminalOutput,
             TerminalExit,
             authentication::GitAuthenticationPrompt,
@@ -3415,6 +3443,9 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             authentication::answer_authentication,
             authentication::pending_authentication,
             system_info,
+            incoming_repository_links::incoming_repository_links,
+            incoming_repository_links::acknowledge_incoming_repository_link,
+            incoming_repository_links::dismiss_incoming_repository_link_overflow,
             cancel_git_operation,
             open_repository,
             clone_repository,

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import pwd
 import select
 import signal
 import shlex
@@ -21,6 +22,8 @@ import sys
 import tempfile
 import time
 import traceback
+import uuid
+from xml.sax.saxutils import quoteattr
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -64,6 +67,30 @@ def stop_owned_process_group(process, timeout=10):
     else:
         raise TimeoutError("Owned acceptance descendants did not stop; fixtures must be retained")
     process.wait(timeout=timeout)
+
+
+def start_private_dbus(fixtures, children, log):
+    """Own one Unix-only bus with no host service-activation directories."""
+    address = 'unix:abstract=git-khronos-test-' + uuid.uuid4().hex
+    user = quoteattr(pwd.getpwuid(os.getuid()).pw_name)
+    config = fixtures.root / 'private-session-bus.conf'
+    config.write_text('<busconfig><type>session</type><listen>' + address
+                      + '</listen><auth>EXTERNAL</auth><policy context="default">'
+                      + '<allow user=' + user + '/><allow own="*"/>'
+                      + '<allow send_destination="*"/><allow receive_sender="*"/>'
+                      + '</policy></busconfig>')
+    process = subprocess.Popen(['dbus-daemon', '--config-file=' + str(config), '--nofork',
+                                '--print-address=1', '--nosyslog'], env=fixtures.env,
+                               stdout=subprocess.PIPE, stderr=log, start_new_session=True)
+    children.append(process)
+    if not select.select([process.stdout], [], [], 15)[0]:
+        raise TimeoutError('Private session bus did not become ready')
+    published = process.stdout.readline().decode().strip()
+    if not published.startswith(address + ',') or process.poll() is not None:
+        raise RuntimeError('Private session bus failed; see driver.log')
+    fixtures.env.update(DBUS_SESSION_BUS_ADDRESS=published, NO_AT_BRIDGE='1',
+                        GTK_A11Y='none', GSETTINGS_BACKEND='memory')
+    return {'pid': process.pid, 'private': True, 'hostServiceActivation': False}
 
 
 def run(*args, env=None, input=None):
@@ -120,10 +147,12 @@ class Driver:
             raise RuntimeError(json.dumps(value))
         return value
 
-    def start(self, executable):
+    def start(self, executable, args=None):
         payload = {"capabilities": {"alwaysMatch": {
             "tauri:options": {"application": str(executable)}, "pageLoadStrategy": "normal"
         }}}
+        if args is not None:
+            payload["capabilities"]["alwaysMatch"]["tauri:options"]["args"] = list(args)
         deadline = time.monotonic() + 5
         while True:
             try:
@@ -234,7 +263,7 @@ class Driver:
             self.request("DELETE", f"/session/{self.session}")
             self.session = None
 
-    def restart_application(self):
+    def restart_application(self, args=None):
         """Close and relaunch only this fixture's exact packaged executable."""
         if not self.session or self.executable is None or not Path('/proc').is_dir():
             raise RuntimeError("Application restart requires an active owned Linux session")
@@ -267,7 +296,10 @@ class Driver:
             if time.monotonic() >= deadline:
                 raise RuntimeError("Session closure did not stop the owned application process")
             time.sleep(.02)
-        self.start(executable)
+        if args is None:
+            self.start(executable)
+        else:
+            self.start(executable, args=args)
         deadline = time.monotonic() + 10
         while True:
             new_pid = application_pid()
@@ -285,7 +317,7 @@ class Fixtures:
     def __init__(self, directory):
         self.root = Path(directory)
         self.env = {key: value for key, value in os.environ.items()
-                    if not key.startswith("GIT_") and key not in ("SSH_AUTH_SOCK", "SSH_AGENT_PID", "ENV", "BASH_ENV")}
+                    if not key.startswith(("GIT_", "DBUS_")) and key not in ("SSH_AUTH_SOCK", "SSH_AGENT_PID", "ENV", "BASH_ENV")}
         home = self.root / "home"
         home.mkdir(mode=0o700)
         self.env.update(HOME=str(home), SHELL="/bin/sh")
@@ -528,7 +560,7 @@ def main():
     driver = None
     temporary_directory = None
     try:
-        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb") + (("Xvfb",) if args.headless else ()):
+        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon") + (("Xvfb",) if args.headless else ()):
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         package = args.package.resolve(strict=True)
@@ -556,6 +588,7 @@ def main():
             report["executableSha256"] = hashlib.file_digest(executable_data, "sha256").hexdigest()
         fixtures.env["TAURI_WEBVIEW_AUTOMATION"] = "true"
         with (output / "driver.log").open("w") as log:
+            report["sessionBus"] = start_private_dbus(fixtures, children, log)
             if args.headless:
                 display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
                                            env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)

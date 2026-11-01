@@ -84,5 +84,14 @@
         }
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "git-khronos"
+        ]
+      }
+    }
   }
 }

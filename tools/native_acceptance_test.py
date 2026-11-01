@@ -12,13 +12,50 @@ import time
 import unittest
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
-from native_acceptance import Driver, Fixtures, main, run, stop_owned_process_group
+from native_acceptance import Driver, Fixtures, main, run, start_private_dbus, stop_owned_process_group
 
 
 class FixtureTests(unittest.TestCase):
+    def test_private_session_buses_are_distinct_and_cannot_activate_host_services(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first_root, second_root = root / 'first', root / 'second'
+            first_root.mkdir(); second_root.mkdir()
+            children = []
+            with patch.dict(os.environ, {'DBUS_SESSION_BUS_ADDRESS': 'unix:abstract=unowned-fixture-bus',
+                                         'DBUS_STARTER_ADDRESS': 'unix:abstract=unowned-fixture-starter'}):
+                first, second = Fixtures(first_root), Fixtures(second_root)
+                self.assertNotIn('DBUS_SESSION_BUS_ADDRESS', first.env)
+                self.assertNotIn('DBUS_STARTER_ADDRESS', first.env)
+                try:
+                    with (root / 'bus.log').open('w') as log:
+                        one = start_private_dbus(first, children, log)
+                        two = start_private_dbus(second, children, log)
+                    self.assertNotEqual(one['pid'], two['pid'])
+                    self.assertNotEqual(first.env['DBUS_SESSION_BUS_ADDRESS'], second.env['DBUS_SESSION_BUS_ADDRESS'])
+                    identities = []
+                    for fixture in (first, second):
+                        command = ['dbus-send', '--bus=' + fixture.env['DBUS_SESSION_BUS_ADDRESS'],
+                                   '--print-reply', '--type=method_call', '--dest=org.freedesktop.DBus',
+                                   '/org/freedesktop/DBus']
+                        identity = subprocess.run(command + ['org.freedesktop.DBus.GetId'], env=fixture.env,
+                                                  capture_output=True, check=True, timeout=5)
+                        identities.append(identity.stdout.decode().split('string "', 1)[1].split('"', 1)[0])
+                        denied = subprocess.run(command + ['org.freedesktop.DBus.StartServiceByName',
+                                                'string:org.freedesktop.portal.Desktop', 'uint32:0'],
+                                                env=fixture.env, capture_output=True, timeout=5)
+                        self.assertNotEqual(denied.returncode, 0)
+                        self.assertIn(b'ServiceUnknown', denied.stderr)
+                    self.assertNotEqual(identities[0], identities[1])
+                    self.assertEqual(os.environ['DBUS_SESSION_BUS_ADDRESS'], 'unix:abstract=unowned-fixture-bus')
+                finally:
+                    for process in reversed(children):
+                        stop_owned_process_group(process)
+                        process.stdout.close()
+
     def test_owned_hosting_cli_is_read_only_and_preserves_the_inherited_path(self):
         with tempfile.TemporaryDirectory() as directory:
             fixtures = Fixtures(directory)
@@ -297,6 +334,15 @@ class FixtureTests(unittest.TestCase):
         ])
         self.assertEqual(up["actions"], [{"type": "pointerUp", "button": 0}])
 
+    def test_start_keeps_incoming_links_as_separate_literal_arguments(self):
+        driver = Driver("http://127.0.0.1:1")
+        arguments = ['git-khronos://repository?v=1&remote=ssh%3A%2F%2Fowned%40example.test%2Fa',
+                     'git-khronos:invalid $(literal)']
+        with patch.object(driver, "request", side_effect=[{"sessionId": "owned"}, None]) as request:
+            driver.start(Path("/fixture/git-khronos"), args=arguments)
+        options = request.call_args_list[0].args[2]["capabilities"]["alwaysMatch"]["tauri:options"]
+        self.assertEqual(options["args"], arguments)
+
     def test_start_does_not_repeat_session_creation_after_a_lost_response(self):
         driver = Driver("http://127.0.0.1:1")
         with patch.object(driver, "request", side_effect=RemoteDisconnected("reply lost")) as request:
@@ -363,6 +409,11 @@ class FixtureTests(unittest.TestCase):
             driver.close.side_effect = lambda: observed.append(("close", cleaned))
             process = MagicMock()
             process.poll.return_value = 0
+            bus = MagicMock()
+            bus.stdout = None
+            def private_bus(_fixtures, children, _log):
+                children.append(bus)
+                return {'pid': 123, 'private': True, 'hostServiceActivation': False}
             args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke", headless=False)
             with ExitStack() as mocks:
                 for target, value in {
@@ -379,12 +430,13 @@ class FixtureTests(unittest.TestCase):
                 mocks.enter_context(patch("native_acceptance.run", side_effect=lambda *command: {
                     "Package": "git-khronos", "Architecture": "amd64",
                 }.get(command[-1], "fixture")))
+                mocks.enter_context(patch("native_acceptance.start_private_dbus", side_effect=private_bus))
                 mocks.enter_context(patch("builtins.print"))
                 shutdown = mocks.enter_context(patch("native_acceptance.stop_owned_process_group",
                                                     side_effect=stop))
                 self.assertEqual(main(), 1)
-            self.assertEqual(observed, [("screenshot", False), ("close", False), ("stop", False)])
-            shutdown.assert_called_once_with(process)
+            self.assertEqual(observed, [("screenshot", False), ("close", False), ("stop", False), ("stop", False)])
+            self.assertEqual(shutdown.call_args_list, [call(process), call(bus)])
             evidence = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
             self.assertFalse(evidence["passed"])
             if shutdown_fails:

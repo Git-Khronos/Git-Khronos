@@ -1,11 +1,14 @@
+import { IncomingLinksDialogComponent } from './incoming-links-dialog.component';
 import { afterRenderEffect, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ipc, type RepositoryLink, type RepositoryLinkDiscovery, type RepositoryLinkInspection, type RepositoryLinkTarget } from '@git-khronos/contracts';
+import { ipc, type RepositoryLink, type RepositoryLinkDiscovery, type RepositoryLinkInspection, type RepositoryLinkTarget, type IncomingRepositoryLink } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { RepositoryDialogComponent, RepositoryFormDrafts } from './repository-dialog.component';
 
 export interface RepositoryLinkDialogRequest {
-  mode: 'open' | 'share';
+  mode: 'open' | 'share' | 'inbox';
+  rawLink?: string;
+  inboxId?: string;
   repoId?: string;
   target?: RepositoryLinkTarget;
   returnFocus: HTMLElement | null;
@@ -13,12 +16,14 @@ export interface RepositoryLinkDialogRequest {
 
 @Component({
   selector: 'gc-repository-link-dialog',
-  imports: [FormsModule, RepositoryDialogComponent],
+  imports: [FormsModule, RepositoryDialogComponent, IncomingLinksDialogComponent],
   providers: [RepositoryFormDrafts],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (cloneReview()) {
       <gc-repository-dialog mode="clone" [cloneOnly]="true" (closed)="cloneReview.set(false)" (opening)="opening.emit()" (opened)="afterClone()" />
+    } @else if (inboxView()) {
+      <gc-incoming-links-dialog (closed)="close()" (review)="reviewIncoming($event)" />
     } @else {
       <div class="link-backdrop" (click)="close()">
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="repository-link-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)" [attr.aria-busy]="busy()">
@@ -76,6 +81,8 @@ export class RepositoryLinkDialogComponent {
   protected readonly error = signal('');
   protected readonly notice = signal('');
   protected readonly cloneReview = signal(false);
+  protected readonly inboxView = signal(false);
+  private currentInboxId: string | null = null;
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   private generation = 0;
   private operation: string | null = null;
@@ -87,7 +94,7 @@ export class RepositoryLinkDialogComponent {
     inject(DestroyRef).onDestroy(() => { this.destroyed = true; this.stop(); });
     effect(() => {
       this.request();
-      untracked(() => { this.stop(); this.remote.set(''); this.raw.set(''); this.shareUri.set(''); this.discovery.set(null); this.validatedLink = null; this.cloneReview.set(false); });
+      untracked(() => { this.stop(); this.remote.set(''); this.raw.set(this.request().rawLink ?? ''); this.shareUri.set(''); this.discovery.set(null); this.validatedLink = null; this.cloneReview.set(false); this.inboxView.set(this.request().mode === 'inbox'); this.currentInboxId = this.request().inboxId ?? null; });
     });
     effect(() => {
       const source = this.source();
@@ -109,9 +116,18 @@ export class RepositoryLinkDialogComponent {
   }
   private current(generation: number): boolean { return !this.destroyed && this.generation === generation; }
   private failure(error: unknown): string { return (error as { message?: string })?.message ?? 'The link operation could not be completed.'; }
-  protected close(): void { this.stop(); this.closed.emit(); }
+  protected close(): void {
+    this.stop();
+    if (this.request().mode === 'inbox' && !this.inboxView()) { this.inboxView.set(true); this.currentInboxId = null; }
+    else this.closed.emit();
+  }
+  protected reviewIncoming(request: IncomingRepositoryLink): void {
+    const fresh = this.git.incomingRepositoryLinks().requests.find(entry => entry.id === request.id);
+    if (this.git.busy() || fresh?.payload.kind !== 'ready') return;
+    this.changeRaw(fresh.payload.uri); this.currentInboxId = fresh.id; this.inboxView.set(false);
+  }
   protected cancel(): void { this.stop(); this.error.set('Link operation cancelled.'); }
-  protected changeRaw(value: string): void { this.stop(); this.raw.set(value); this.discovery.set(null); this.validatedLink = null; this.error.set(''); this.notice.set(''); }
+  protected changeRaw(value: string): void { this.stop(); this.currentInboxId = null; this.raw.set(value); this.discovery.set(null); this.validatedLink = null; this.error.set(''); this.notice.set(''); }
   protected changeRemote(value: string): void { this.stop(); this.remote.set(value); this.shareUri.set(''); this.error.set(''); this.notice.set(''); }
   protected targetLabel(target: RepositoryLinkTarget | undefined = this.request().target): string {
     return target?.kind === 'commit' ? `Commit ${target.oid.slice(0, 12)}` : target?.kind === 'reference' ? target.reference : 'Repository';
@@ -165,6 +181,7 @@ export class RepositoryLinkDialogComponent {
     this.stop(); this.error.set(''); this.notice.set('');
     const generation = this.generation;
     const activeId = this.git.activeRepositoryId();
+    const inboxId = this.currentInboxId;
     const operationId = `repository-link-${crypto.randomUUID()}`;
     this.operation = operationId; this.busy.set(true); this.pendingLabel.set('Opening local context…');
     this.opening.emit();
@@ -178,6 +195,12 @@ export class RepositoryLinkDialogComponent {
       if (opened.inspection.target.kind === 'unavailable') {
         this.error.set(opened.inspection.target.message);
         this.notice.set('The local repository is open. The shared target is retained here; no fetch or checkout was requested.');
+      } else if (inboxId) {
+        await this.git.acknowledgeIncomingRepositoryLink(inboxId);
+        if (this.current(generation)) {
+          if (this.request().mode === 'inbox') { this.inboxView.set(true); this.currentInboxId = null; }
+          else this.closed.emit();
+        }
       } else this.closed.emit();
     } catch (error) { if (this.current(generation)) this.error.set(this.failure(error)); }
     finally {

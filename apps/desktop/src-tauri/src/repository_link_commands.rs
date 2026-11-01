@@ -190,8 +190,10 @@ pub(super) fn repository_link_read_policy(
 ) -> Result<RepositoryLinkReadPolicy, AppError> {
     let session = repository_session(&repo_id, &state)?;
     Ok(RepositoryLinkReadPolicy {
-        no_lazy_reads: session.no_lazy_reads.load(Ordering::Acquire),
-        auto_fetch_paused: session.pause_auto_sync.load(Ordering::Acquire),
+        no_lazy_reads: session.no_lazy_reads.load(Ordering::Acquire)
+            || session.incoming_link_guard.load(Ordering::Acquire),
+        auto_fetch_paused: session.pause_auto_sync.load(Ordering::Acquire)
+            || session.incoming_link_guard.load(Ordering::Acquire),
     })
 }
 
@@ -202,6 +204,12 @@ pub(super) fn resume_repository_link_auto_fetch(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = repository_session(&repo_id, &state)?;
+    if session.incoming_link_guard.load(Ordering::Acquire) {
+        return Err(refused(
+            "incomingRepositoryLinksPending",
+            "Review or dismiss incoming repository links before resuming automatic fetch.",
+        ));
+    }
     session.pause_auto_sync.store(false, Ordering::Release);
     Ok(())
 }
@@ -214,8 +222,10 @@ pub(super) fn repository_link_read_policies(
     let sessions = state.repositories.lock().map_err(state_error)?;
     let mut policies = HashMap::new();
     for (id, session) in sessions.iter() {
-        let no_lazy_reads = session.no_lazy_reads.load(Ordering::Acquire);
-        let auto_fetch_paused = session.pause_auto_sync.load(Ordering::Acquire);
+        let no_lazy_reads = session.no_lazy_reads.load(Ordering::Acquire)
+            || session.incoming_link_guard.load(Ordering::Acquire);
+        let auto_fetch_paused = session.pause_auto_sync.load(Ordering::Acquire)
+            || session.incoming_link_guard.load(Ordering::Acquire);
         if no_lazy_reads || auto_fetch_paused {
             policies.insert(
                 id.clone(),

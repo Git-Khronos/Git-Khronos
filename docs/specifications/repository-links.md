@@ -1,6 +1,6 @@
 # Repository and Git object links
 
-Status: independently implemented core and in-progress native/UI candidate; packaged and OS delivery acceptance pending.
+Status: independently implemented manual-link candidate with packaged evidence; OS-delivery candidate under validation. Full renderer and platform delivery qualification remain open.
 Inventory requirement: G28. This document does not qualify the media candidate.
 
 ## Capability and sources
@@ -154,7 +154,7 @@ passes with warnings denied. Native navigation/session policy and UI integration
 are still pending; this checkpoint does not establish end-to-end G28 acceptance.
 
 
-## Native and UI candidate (not yet qualified)
+## Manual-link source and native checkpoints
 
 Strict JSON target decoding rejects extraneous fields for every target variant.
 The SCP and cancellation extension passes 21 focused cases. The latest complete
@@ -193,8 +193,113 @@ are retained. The fresh 15-case run verifies unchanged inputs and passes. The in
 attempt used an incorrect status-response fixture and was stopped with status
 143 after failures; its traces are retained, and the corrected focused and full
 link-specific groups pass. This is not a successful full application renderer
-gate. Seven owned packaged scenarios have been added but not executed yet. Native
-packaged acceptance, OS protocol registration and cold/warm single-instance
-delivery remain open. No
-Tauri deep-link plugin has been added; manual paste/share does not prove OS
-integration. G28 is not accepted.
+gate. The exact manual-link Debian package
+`7c6069acc6fe32343526cba9b5ef47116d74d0c35f74b5985feba5959d26b3f5`
+contains executable `fdd017bf889b8d78bfd32100a0311a16c4290bf8706e4df4d84ce0f38a5119c9`
+from runtime commit `ac79b33bfe5c187a836cf48d6c762b44e6f37554`. Its 680 recorded
+inputs matched. Normal acceptance passes 195 scenarios and inherited-Git-environment
+acceptance passes 196: 391 actual native executions, including the seven new link
+scenarios in each environment. These verify real UI navigation, policy hydration,
+FIFO cancellation, no-lazy composed/follow-up reads with an independent positive
+fetch control, and unchanged owned config/index/refs/HEAD/dirty bytes. That artifact
+has no OS-link plugin. The broad 1377-case renderer attempt was stopped after two
+large-diff timeouts; six isolated repetitions pass, but their original cause is
+unresolved. This is not a full renderer qualification. G28 remains open.
+
+
+## OS-delivery candidate
+
+Public Tauri deep-link 2.6.3 and single-instance 2.5.5 APIs provide platform
+transport. These pinned MIT OR Apache-2.0 dependencies were reviewed with the
+44 newly locked packages; all declare known permissive licenses. The existing
+package notice collector retains complete notices for the Linux dependency graph.
+
+Before saved-tab restoration, process arguments enter an independently written
+in-memory FIFO with capacity eight. Canonically identical pending requests coalesce;
+acknowledged links can arrive again with a new ID. Malformed/oversize own-scheme
+input becomes one static, redacted rejection. Other arguments are ignored. Overflow
+retains the original requests plus an explicitly dismissible notice. The queue is
+volatile across application-process shutdown; no durable delivery guarantee is made.
+
+Any pending request or overflow notice pauses automatic fetch and applies no-lazy
+reads to every native repository session. Closing a review does not consume a
+request. Review uses the same original local-copy/clone dialog, retains the selected
+request ID through new arrivals, and acknowledges it only after successful explicit
+navigation or dismissal. Existing tabs and ordinary clone drafts are retained.
+Configured schedule resumption is refused while the inbox remains pending. Manual
+fetch remains a separate deliberate action.
+
+The final focused group passes 32 renderer cases (15 manual links, 17 incoming-link cases),
+including startup restoration, listener teardown/stale replies, rejected native
+unlisten recovery, edited-link retention, queue/error/overflow handling, clone-draft
+preservation and narrow layouts. Five native inbox unit cases
+pass. These are source/renderer evidence, not actual OS delivery evidence.
+
+The native harness runs each candidate on a private D-Bus session with no service
+activation directories; 33 harness tests pass, including real isolated bus identities,
+refused host-service activation and literal startup argument handling. At this source-only stage, packaged
+startup/singleton acceptance remained pending; the later Linux package checkpoint
+below records its actual transport results. No host protocol
+handler is replaced. Linux association routing and Windows/macOS behavior require
+separate actual platform acceptance. The unchanged production size budget remains a
+gate; source compile or mocked IPC does not establish end-to-end G28 parity.
+
+
+The OS candidate source gate passes 772 Rust cases (35 desktop unit, eight terminal
+integration, 716 core unit and 13 core integration), with 45 intentionally ignored.
+The final frontend recheck passes 166 cases across 25 files and typechecking. The
+All-target workspace Clippy passes with warnings denied, and generated IPC drift
+checks pass. The Linux package regression passes 59 tests, including rejection of missing URI
+arguments or scheme association. The desktop entry explicitly declares the owned
+scheme and `%U` argument forwarding.
+
+An initial 1392-case renderer run was stopped with status 143 after case 47 for
+review corrections, before any production edits. It is not acceptance evidence.
+Editing a received link now separates it from the original queue ID, so opening
+that edited context cannot acknowledge the untouched request. Failed native
+unsubscription cannot prevent reconnection, and invalidated callbacks stay inert.
+The corrected 32-case group passes; a fresh full 1394-case run is pending.
+
+The package acceptance plan includes executable argv delivery, startup
+and warm-instance forwarding, private-XDG GIO association from the packaged desktop
+entry, WebView queue retention, exact/stale acknowledgement, malformed/oversize
+redaction, bounded overflow and a missing promised-object fetch sentinel during
+cold saved-tab restoration. An independent ordinary Git read must activate the
+owned sentinel. These checks were pending at this source-only stage; their executed results are
+recorded below. Cold process argument delivery
+is separate from a cold desktop-launcher association claim; Windows/macOS delivery
+and installed-host integration remain unqualified.
+
+
+## Linux OS-transport package checkpoint
+
+The independently implemented OS-delivery candidate is preserved as Debian SHA-256
+`24b73deaf96a89e54e9daf855bf546efb661f94d5496868ecec1b96fa73160fa`, executable
+`45bd67cb28215d49b9bacb479ad8308eb9805216e09289d2e5947eb4e92bfe96`.
+All 686 recorded inputs matched at preservation. The final production build passes
+without raising the size budget. All 201 normal native scenarios and 202 inherited-
+environment scenarios pass against these same bytes: 403 actual executions.
+
+Six new owned scenarios execute in each suite: actual secondary executable argv
+forwarding/deduplication while preserving an open review, WebView reload and exact/
+stale acknowledgements, GIO association from the packaged desktop entry inside
+private XDG roots, actual cold process startup with saved tabs, missing promised-
+object saved-tab/patch reads with an independent positive fetch control, and
+redacted malformed/oversize FIFO/overflow handling with unchanged Git bytes.
+The reports verify saved workspace identity/path sets across the cold process
+boundary. Both suites use a private D-Bus session with no host service activation.
+They perform no live provider writes or host protocol-handler replacement.
+
+The first native attempt stopped on a new test's JavaScript selector quoting
+mistake after ten baseline cases. Two further attempts completed the three warm
+transport/retention cases but exposed incomplete saved-layout fixture assumptions:
+legacy tab data versus canonical workspace data, including valid legacy-only
+state. The corrected fixture seeds both supported representations and records the
+actual state across restart. These failed attempts remain retained and are not
+counted as successful full gates. Only the native test helper changed after package
+preservation; application inputs and executable/package hashes remain unchanged.
+
+The fresh full 1394-case renderer gate is still running. This checkpoint verifies
+Linux cold executable argument delivery and warm GIO routing separately; it does
+not claim cold desktop-launcher association, installed-host integration or
+Windows/macOS acceptance. G28 and the broader parity goal remain open.

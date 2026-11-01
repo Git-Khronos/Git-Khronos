@@ -488,3 +488,23 @@ The crate was already present transitively in the lockfile; the core now pins it
 Usage: public URL parsing/serialization API only. No library implementation was copied or adapted.
 Redistribution: retain the published license notices through the existing Rust notice collector.
 No additional copyleft/source-distribution requirement is introduced by this dependency.
+
+
+## Tauri desktop link transport plugins
+
+Canonical source: https://github.com/tauri-apps/plugins-workspace
+Published crates: `tauri-plugin-deep-link` 2.6.3 and
+`tauri-plugin-single-instance` 2.5.5 (desktop only, deep-link feature enabled).
+Both declare MIT OR Apache-2.0; the published manifests and complete MIT and
+Apache-2.0 files were checked. Their permissive options are compatible with this
+repository's GPL-3.0 license. No plugin implementation was copied or adapted.
+Usage is through public Rust SDK APIs and static scheme configuration only.
+
+The lockfile introduces 44 transitive/direct packages. Canonical manifests declare
+MIT, MIT OR Apache-2.0, Apache-2.0 OR MIT, or CC0-1.0; no unknown license was accepted.
+The Linux notice audit covers 41 active added packages and the existing collector
+retains complete license files/notices in distributable package assets. The three
+non-Linux packages were separately checked against their published manifests.
+Generated Tauri ACL/schema files are build output from these pinned dependencies;
+they are not manually transcribed third-party source. License and copyright notices
+remain in package dependency notices. No proprietary material was introduced.

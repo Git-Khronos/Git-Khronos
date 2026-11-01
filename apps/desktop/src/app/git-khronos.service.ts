@@ -1,3 +1,4 @@
+import type { IncomingLinksController } from './incoming-links-controller';
 import { Injectable, computed, signal } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
 import { ipc } from '@git-khronos/contracts';
@@ -27,6 +28,7 @@ import type {
   ResetPreview,
   RepositoryStatus,
   RepositorySnapshot,
+  IncomingRepositoryLinkState,
   OpenedRepositoryLink,
   RepositoryLinkReadPolicy,
   SigningDiagnostic,
@@ -188,6 +190,19 @@ export class GitKhronosService {
   readonly repository = computed(
     () => this.repositories().find((repository) => repository.id === this.activeRepositoryId()) ?? null,
   );
+  readonly incomingRepositoryLinks = signal<IncomingRepositoryLinkState>({ requests: [], overflowed: false });
+  readonly incomingRepositoryLinksPending = signal(false);
+  readonly incomingRepositoryLinksReady = signal(false);
+  readonly incomingRepositoryLinksLoading = signal(false);
+  private readonly incomingLinksSupported = signal(false);
+  private readonly incomingLinksReadError = signal('');
+  private readonly incomingLinksListenError = signal('');
+  readonly incomingRepositoryLinksError = computed(() => this.incomingLinksSupported()
+    ? [this.incomingLinksReadError(), this.incomingLinksListenError()].filter(Boolean).join(' ') : '');
+  private incomingInitializationRequest = 0;
+  private incomingControllerRequest = 0;
+  private incomingController: IncomingLinksController | null = null;
+  private incomingControllerLoad: Promise<IncomingLinksController | null> | null = null;
   private repositoryLinkPolicyRequest = 0;
   readonly repositoryLinkPolicies = signal<Partial<Record<string, RepositoryLinkReadPolicy>>>({});
   readonly recentPaths = signal<string[]>(this.readRecents());
@@ -283,9 +298,14 @@ export class GitKhronosService {
   private closedRepositories: ClosedRepository[] = [];
 
   async initialize(): Promise<void> {
+    const initialization = ++this.incomingInitializationRequest;
+    this.incomingRepositoryLinksReady.set(false);
     try {
-      this.systemInfo.set(await ipc.system_info());
+      const info = await ipc.system_info();
+      if (initialization !== this.incomingInitializationRequest) return;
+      this.systemInfo.set(info);
     } catch (error: unknown) {
+      if (initialization !== this.incomingInitializationRequest) return;
       if (isTauri()) {
         this.error.set(this.formatError(error));
         this.activity.set('Desktop initialization failed');
@@ -418,16 +438,59 @@ export class GitKhronosService {
         this.activeRepositoryId.set(preview.id);
         this.activity.set('Repository preview');
       }
+      this.incomingRepositoryLinksReady.set(true);
       return;
     }
 
+    await this.connectIncomingRepositoryLinks();
+    if (initialization !== this.incomingInitializationRequest) return;
+    await this.refreshIncomingRepositoryLinks();
+    if (initialization !== this.incomingInitializationRequest) return;
     await this.refreshRepositoryLinkPolicies();
+    if (initialization !== this.incomingInitializationRequest) return;
     try {
       await this.restoreRepositories();
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
       this.activity.set('Could not restore saved repositories');
+    } finally {
+      if (initialization === this.incomingInitializationRequest) this.incomingRepositoryLinksReady.set(true);
     }
+  }
+
+  private async loadIncomingLinksController(): Promise<IncomingLinksController | null> {
+    if (this.incomingController) return this.incomingController;
+    if (this.incomingControllerLoad) return this.incomingControllerLoad;
+    const request = ++this.incomingControllerRequest;
+    const loading = import('./incoming-links-controller').then(({ IncomingLinksController }) => {
+      if (request !== this.incomingControllerRequest) return null;
+      return this.incomingController = new IncomingLinksController({
+        state: this.incomingRepositoryLinks, pending: this.incomingRepositoryLinksPending,
+        loading: this.incomingRepositoryLinksLoading, supported: this.incomingLinksSupported,
+        readError: this.incomingLinksReadError, listenError: this.incomingLinksListenError,
+        refreshPolicies: () => this.refreshRepositoryLinkPolicies(),
+      });
+    }).catch(() => {
+      if (request === this.incomingControllerRequest) {
+        this.incomingLinksSupported.set(true); this.incomingRepositoryLinksPending.set(true);
+        this.incomingLinksReadError.set('Incoming link controls could not load. Preserve drafts and retry or restart.');
+      }
+      return null;
+    }).finally(() => { if (request === this.incomingControllerRequest) this.incomingControllerLoad = null; });
+    this.incomingControllerLoad = loading;
+    return loading;
+  }
+
+  private async connectIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.connect(); }
+  async refreshIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.refresh(); }
+  async retryIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.retry(); }
+  async acknowledgeIncomingRepositoryLink(id: string): Promise<boolean> { return await (await this.loadIncomingLinksController())?.acknowledge(id) ?? false; }
+  async dismissIncomingRepositoryLinkOverflow(): Promise<void> { await (await this.loadIncomingLinksController())?.dismissOverflow(); }
+
+  stopIncomingRepositoryLinks(): void {
+    ++this.incomingInitializationRequest; ++this.incomingControllerRequest;
+    this.incomingController?.stop(); this.incomingController = null;
+    this.incomingControllerLoad = null; this.incomingRepositoryLinksLoading.set(false);
   }
 
   async refreshRepositoryLinkPolicies(): Promise<void> {
@@ -641,7 +704,7 @@ export class GitKhronosService {
 
   async fetchInBackground(repositoryId: string | null = this.activeRepositoryId()): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
-    if (!repository || this.repositoryLinkPolicies()[repository.id]?.autoFetchPaused || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
+    if (!repository || this.incomingRepositoryLinksPending() || this.repositoryLinkPolicies()[repository.id]?.autoFetchPaused || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
     // An explicit fetch retries a failure; timers must not repeatedly retry authentication.
     if (this.backgroundFetchErrors()[repository.id]) return false;
     this.backgroundFetchBusy.set(true);
@@ -2746,7 +2809,7 @@ export class GitKhronosService {
     this.activeRepositoryId.set(snapshot.id);
     this.clearInspection();
     this.remember(snapshot.path);
-    this.persistOpenTabs();
+    this.persistOpenTabs(this.incomingRepositoryLinksPending());
     report(activity);
     this.deferMetadataRefresh(snapshot.id);
   }
@@ -3014,7 +3077,8 @@ export class GitKhronosService {
     const activeRepositoryId = this.activeRepositoryId();
     if (activeRepositoryId) this.deferMetadataRefresh(activeRepositoryId);
     const remaining = paths.filter((path) => path !== restoredPath);
-    this.restoreRepositoryTabsWhenIdle(remaining, paths, workspaceId);
+    if (this.incomingRepositoryLinksPending()) await this.restoreRepositoryTabs(remaining, paths, workspaceId);
+    else this.restoreRepositoryTabsWhenIdle(remaining, paths, workspaceId);
   }
 
   private restoreRepositoryTabsWhenIdle(paths: string[], originalOrder: string[], workspaceId: string): void {
@@ -3061,8 +3125,11 @@ export class GitKhronosService {
     );
   }
 
-  private persistOpenTabs(): void {
-    const repositoryPaths = this.repositories().map((repository) => repository.path);
+  private persistOpenTabs(preserveSavedPaths = false): void {
+    const loadedPaths = this.repositories().map((repository) => repository.path);
+    const repositoryPaths = preserveSavedPaths
+      ? [...new Set([...(this.activeWorkspace()?.repositoryPaths ?? []), ...loadedPaths])]
+      : loadedPaths;
     const activeRepositoryPath = this.repository()?.path ?? null;
     const workspaceId = this.activeWorkspaceId();
     this.workspaceRepositoryCache.set(workspaceId, this.repositories());

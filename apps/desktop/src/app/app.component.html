@@ -1913,6 +1913,10 @@
         <small [title]="activeWorkspaceCount + ' ' + (activeWorkspaceCount === 1 ? 'repository' : 'repositories') + ' in this workspace'">{{ activeWorkspaceCount }}</small>
         <gc-icon name="chevron-down" [size]="11" />
       </button>
+      @if (git.incomingRepositoryLinksPending() || git.incomingRepositoryLinksError()) {
+        <button class="chrome-icon notification-button incoming-link-inbox" type="button" aria-label="Incoming repository links" title="Review queued external links after finishing any current dialog" [attr.aria-expanded]="repositoryLinkDialog()?.mode === 'inbox'" [disabled]="git.busy() || !git.incomingRepositoryLinksReady()" (click)="openIncomingLinks()"><gc-icon name="repo" [size]="14" /><b aria-hidden="true">{{ git.incomingRepositoryLinks().requests.length || '!' }}</b></button>
+        <span class="sr-only" role="status" aria-live="polite">{{ git.incomingRepositoryLinks().requests.length }} incoming repository links. {{ git.incomingRepositoryLinksError() }}</span>
+      }
       @if (workspaceMenuOpen()) {
         <div class="workspace-menu" role="menu" aria-label="Workspaces" (click)="$event.stopPropagation()" (keydown)="handleWorkspaceMenuKeydown($event)">
           <header><span>Workspaces</span><small>Switch repository sets</small></header>
