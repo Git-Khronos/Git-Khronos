@@ -47,6 +47,16 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
                                  context=context or dict(kind='workingTree', staged=False),
                                  path=path, previousPath=None))
 
+    def click_file(selector):
+        driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
+        driver.script("""
+          const candidates = [...document.querySelectorAll(arguments[0])]
+            .filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible');
+          if (candidates.length !== 1) throw Error('Expected one visible owned media row');
+          candidates[0].scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'auto'});
+        """, selector)
+        driver.click_visible(selector)
+
     def payload(side):
         assert side['state'] == 'raster', side
         return base64.b64decode(side['dataUrl'].split(',', 1)[1], validate=True)
@@ -85,8 +95,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         for name, _, mime, width, height in formats:
             path = 'image-' + name
             selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
-            driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
-            driver.click_visible(selector)
+            click_file(selector)
             driver.click_text('.diff-insight-toggle button', 'Content')
             driver.wait('''return (() => {
               const article = document.querySelector('gc-file-media article[aria-label="After content"]');
@@ -103,7 +112,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
             report['scenarios'].append('native-ui-media-' + name + '-decode-fit-actual-size-and-single-side')
 
         selector = '[aria-label="View changes in malformed-image"]'
-        driver.click_visible(selector)
+        click_file(selector)
         driver.click_text('.diff-insight-toggle button', 'Content')
         driver.wait("return document.querySelector('gc-file-media')?.textContent.includes('Image decoding failed')")
         assert driver.script("return document.querySelectorAll('gc-file-media img').length") == 0
@@ -117,5 +126,22 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         assert fixtures.git(repository, 'rev-parse', 'HEAD') == base
         for path, data in dirty.items():
             assert (repository / path).read_bytes() == data
+    except Exception:
+        try:
+            destination = Path(report['artifactsDirectory'])
+            driver.screenshot(destination / 'media-native-failure.png')
+            state = driver.script("""return {
+              text: document.body.innerText.slice(0, 30000),
+              rows: [...document.querySelectorAll('.file-name-button')].map(element => ({
+                label: element.getAttribute('aria-label'), title: element.title,
+                rect: element.getBoundingClientRect().toJSON(),
+                parent: {scrollTop: element.parentElement.parentElement.scrollTop,
+                  height: element.parentElement.parentElement.clientHeight}
+              }))
+            }""")
+            (destination / 'media-native-failure.json').write_text(json.dumps(state, indent=2))
+        except Exception as capture_error:
+            (Path(report['artifactsDirectory']) / 'media-capture-error.txt').write_text(str(capture_error))
+        raise
     finally:
         open_ui(driver, original_repository)
