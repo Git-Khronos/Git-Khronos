@@ -19,6 +19,7 @@ mod file_content;
 mod working_file_text;
 mod configured_tools;
 pub mod draft_recovery;
+pub mod draft_recovery_editor;
 #[cfg(target_os = "linux")]
 pub mod draft_recovery_store;
 pub use configured_tools::{ToolArgumentContext, ToolProfile, ToolRole};

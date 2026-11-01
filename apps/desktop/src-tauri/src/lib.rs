@@ -3452,6 +3452,7 @@ pub fn run() {
     builder
         .manage(authentication::AuthenticationState::default())
         .manage(working_file_commands::EditorState::default())
+        .manage(working_file_commands::recovery::RecoveryState::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(bindings.invoke_handler())
@@ -3482,6 +3483,12 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             working_file_commands::save_working_file_editor,
             working_file_commands::stage_saved_working_file_editor,
             working_file_commands::close_working_file_editor,
+            working_file_commands::recovery::snapshot_editor_draft,
+            working_file_commands::recovery::inspect_editor_drafts,
+            working_file_commands::recovery::load_editor_draft_entry,
+            working_file_commands::recovery::review_editor_draft,
+            working_file_commands::recovery::discard_editor_draft,
+            working_file_commands::recovery::discard_editor_draft_entry,
             terminal_profile_commands::validate_tool_profile,
             terminal_profile_commands::open_configured_terminal,
             system_info,

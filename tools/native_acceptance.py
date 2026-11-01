@@ -548,13 +548,16 @@ def performance(driver, fixtures, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb")
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance"), default="smoke")
+    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery"), default="smoke")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--inherited-git-environment", action="store_true",
+                        help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
     output.mkdir(parents=True)
     report = {"suite": args.suite, "scenarios": [], "passed": False,
+              "inheritedGitEnvironment": args.suite == "environment" or args.inherited_git_environment,
               "platform": platform.platform(), "git": run("git", "--version"), "artifactsDirectory": str(output)}
     children = []
     driver = None
@@ -573,7 +576,7 @@ def main():
         temporary_directory = tempfile.TemporaryDirectory(prefix="git-khronos-native-")
         fixtures = Fixtures(temporary_directory.name)
         outside = None
-        if args.suite == "environment":
+        if args.suite == "environment" or args.inherited_git_environment:
             outside = fixtures.repository("inherited-environment-outside", 1)
             (outside / ".gitattributes").write_text("* -diff\n")
             fixtures.git(outside, "add", ".gitattributes")
@@ -632,6 +635,9 @@ def main():
                     time.sleep(0.1)
             driver.start(executable)
             repository, repo_id = smoke(driver, fixtures, report)
+            if args.suite == "recovery":
+                from native_editor_recovery_scenarios import editor_draft_recovery
+                editor_draft_recovery(driver, fixtures, repository, report)
             if args.suite in ("full", "environment"):
                 from native_scenarios import full_toolkit
                 full_toolkit(driver, fixtures, repository, repo_id, report)

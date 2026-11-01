@@ -96,7 +96,7 @@
         [primaryShortcutKey]="primaryShortcutKey" [favoriteShortcut]="favoriteShortcut"
         (repositoryChosen)="chooseRepository()" (repositoryManagerOpened)="openRepositoryManager($event)"
         (closedRepositoryReopened)="reopenClosedRepository()" (favoriteOpened)="openFavoriteRepository($event)"
-        (repositoryOpened)="openRepositoryPath($event)" (themeToggled)="toggleAppTheme()" />
+        (repositoryOpened)="openRepositoryPath($event)" (themeToggled)="toggleAppTheme()" (editorDraftRecoveryOpened)="openEditorDraftRecovery()" />
     }
   } @else if (git.repository(); as repo) {
     <header class="chrome">
@@ -124,6 +124,7 @@
                 <span>Current Repository</span>
                 <button type="button" role="menuitem" (click)="appMenuOpen.set(false); git.openRepositoryInFileManager()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open in File Manager</strong><small>{{ repo.path }}</small></span></button>
                 <button type="button" role="menuitem" (click)="appMenuOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="14" /><span><strong>Terminal</strong><small>Open repository terminal tabs</small></span><kbd>{{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</kbd></button>
+                <button type="button" role="menuitem" [disabled]="!!fileContentDialog()" (click)="openEditorDraftRecovery()"><gc-icon name="history" [size]="14" /><span><strong>Editor draft recovery</strong><small>Inspect retained unsaved text</small></span></button>
                 <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Recover commits from previous reference positions</small></span></button>
               </div>
               <div class="app-menu-section">
@@ -2123,6 +2124,15 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening repository link controls" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="status">Opening link controls…</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Cancel</button></section></div>
     } @error {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Repository link controls unavailable" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="alert">Link controls could not open. Preserve drafts and restart to try again.</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Close</button></section></div>
+    }
+  }
+  @if (editorDraftRecoveryOpen()) {
+    @defer (on immediate) {
+      <gc-editor-draft-recovery (closed)="closeEditorDraftRecovery()" (openRequested)="reviewEditorDraft($event)" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading editor draft recovery" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="status">Loading recovery controls…</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Editor draft recovery unavailable" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="alert">Recovery controls could not load. Stored copies were preserved. Restart to try again.</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Close</button></section></div>
     }
   }
   @if (fileContentDialog(); as request) {

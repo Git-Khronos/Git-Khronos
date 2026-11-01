@@ -1,12 +1,14 @@
-import { afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, HostListener, inject, input, type OnDestroy, output, signal, type WritableSignal, viewChild } from '@angular/core';
+import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, HostListener, inject, input, type OnDestroy, output, signal, type WritableSignal, viewChild } from '@angular/core';
 import { GitKhronosService } from './git-khronos.service';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { WorkingFileEditorComponent } from './working-file-editor.component';
+import type { EditorDraftReference } from './editor-draft-recovery';
 
 export interface FileContentDialogRequest {
   selection: FileMediaSelection;
   returnFocus: HTMLElement | null;
   editing: WritableSignal<boolean>;
+  recovery?: EditorDraftReference;
 }
 
 @Component({
@@ -19,8 +21,8 @@ export interface FileContentDialogRequest {
         [class.editing]="editing()"
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         @if (editing()) {
-          <gc-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path }"
-            (closed)="leaveEditor()" />
+          <gc-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path, recovery: editorRecovery() }"
+            (closed)="leaveEditor()" (recoveryResolved)="resolvedRecovery.set($event)" />
         } @else {
         <header>
           <div><p>File content · {{ contextLabel() }}</p><h2 id="standalone-content-title" [title]="request().selection.request.path">{{ request().selection.request.path }}</h2></div>
@@ -45,16 +47,23 @@ export class FileContentDialogComponent implements OnDestroy {
   private readonly git = inject(GitKhronosService);
   readonly preparingEditor = signal(false);
   readonly closeProtectionError = signal('');
+  readonly resolvedRecovery = signal<EditorDraftReference | null>(null);
   private unlistenWindowClose: (() => void) | null = null;
   private destroyed = false;
   readonly request = input.required<FileContentDialogRequest>();
   readonly closed = output<void>();
   editing(): boolean { return this.request().editing(); }
+  editorRecovery(): EditorDraftReference | undefined {
+    const reference = this.request().recovery, resolved = this.resolvedRecovery();
+    return reference && resolved && reference.id === resolved.id && reference.kind === resolved.kind
+      && reference.reviewToken === resolved.reviewToken ? undefined : reference;
+  }
   private readonly editor = viewChild(WorkingFileEditorComponent);
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
   constructor() {
     afterRenderEffect(() => this.closeButton()?.nativeElement.focus({ preventScroll: true }));
+    afterNextRender(() => { if (this.request().recovery) void this.editWorkingCopy(); });
   }
 
   contextLabel(): string {

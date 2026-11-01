@@ -25,6 +25,7 @@
         <button class="secondary large welcome-reopen-action" type="button" title="{{ primaryShortcutKey() }}+Shift+T" (click)="closedRepositoryReopened.emit()"><span class="welcome-action-icon"><gc-icon name="redo" [size]="17" /></span><span class="welcome-action-copy"><strong>Reopen {{ git.pathLabel(closedPath) }}</strong><small>Restore the most recently closed tab</small></span></button>
       }
     </div>
+    <button class="secondary" type="button" (click)="editorDraftRecoveryOpened.emit()">Editor draft recovery</button>
     @if (git.systemInfo(); as info) {
       <div class="git-health" [class.warning]="info.appVersion !== 'browser preview' && !info.gitSupported">
         <span class="health-dot"></span>

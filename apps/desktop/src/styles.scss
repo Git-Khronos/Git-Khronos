@@ -796,7 +796,7 @@ code, kbd { font-family: var(--font-mono); }
 .app-menu-section { display: grid; gap: 2px; padding: 7px; border-bottom: 1px solid var(--border); }
 .app-menu-section:last-child { border-bottom: 0; }
 .app-menu-section > span { padding: 2px 6px 3px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
-.app-menu-section > button { min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px; border-radius: 4px; background: transparent; color: var(--text); text-align: left; }
+.app-menu-section > button { min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 5px; border-radius: 4px; background: transparent; color: var(--text); text-align: left; }
 .app-menu-section > button:hover, .app-menu-section > button:focus-visible { background: var(--surface-hover); }
 .app-menu-section > button > gc-icon { color: var(--accent); }
 .app-menu-section > button > span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -812,7 +812,7 @@ code, kbd { font-family: var(--font-mono); }
   .app-menu-section { gap: 1px; padding: 3px 7px; }
   .app-menu-section > span { padding-block: 1px; }
   .app-menu-section > button,
-  .app-menu-section.compact > button { min-height: 27px; padding-block: 4px; }
+  .app-menu-section.compact > button { min-height: 24px; padding-block: 3px; }
   .app-menu-section > button small { display: none; }
 }
 .repository-tabs { min-width: 0; height: 34px; display: flex; flex: 0 1 auto; align-items: end; overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: none; }

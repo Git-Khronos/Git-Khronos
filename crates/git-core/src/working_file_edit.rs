@@ -194,6 +194,12 @@ pub fn open_working_file_edit(
     })
 }
 impl WorkingFileEdit {
+    /// Capture this editor's original metadata without retaining save authority.
+    pub fn recovery_binding(
+        &self,
+    ) -> Result<crate::draft_recovery_editor::WorkingFileRecoveryBinding, AppError> {
+        crate::draft_recovery_editor::WorkingFileRecoveryBinding::capture(&self.root, self)
+    }
     pub fn path(&self) -> &str {
         &self.file
     }
@@ -843,6 +849,254 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    fn recovery_record(edit: &WorkingFileEdit) -> crate::draft_recovery::RecoveryDraftRecord {
+        edit.recovery_binding()
+            .unwrap()
+            .record(
+                &"a".repeat(32),
+                &"b".repeat(32),
+                1,
+                "retained unsaved text\n",
+                "1793510000000",
+            )
+            .unwrap()
+    }
+    #[test]
+    fn draft_recovery_binding_uses_opened_editor_metadata_and_preserves_unborn_repository() {
+        use crate::draft_recovery::{RecoveryDraftGitContextMatch, recovery_text_sha256};
+        let repo = Repository::new();
+        let bytes = "original é\r\n".as_bytes();
+        fs::write(repo.0.join("literal [file].txt"), bytes).unwrap();
+        let config = fs::read(repo.0.join(".git/config")).unwrap();
+        let head = fs::read(repo.0.join(".git/HEAD")).unwrap();
+        let edit = repo.open("literal [file].txt", None);
+        let record = recovery_record(&edit);
+        assert_eq!(record.repository_path, repo.0.to_str().unwrap());
+        assert_eq!(record.path, "literal [file].txt");
+        assert_eq!(record.encoding, WorkingTextEncoding::Utf8);
+        assert_eq!(
+            record.baseline_sha256,
+            recovery_text_sha256("original é\n").unwrap()
+        );
+        let context = record.git_context.as_ref().unwrap();
+        assert_eq!(
+            context.working_reference.as_deref(),
+            Some("refs/heads/main")
+        );
+        assert!(context.head_oid.is_none());
+        let review = record
+            .review_with_editor(&edit, &CancellationToken::default())
+            .unwrap();
+        assert!(
+            review.repository_location_matches
+                && review.path_matches
+                && review.encoding_matches
+                && review.baseline_text_matches
+        );
+        assert_eq!(review.git_context, RecoveryDraftGitContextMatch::Same);
+        assert_eq!(fs::read(repo.0.join("literal [file].txt")).unwrap(), bytes);
+        assert!(!repo.0.join(".git/index").exists());
+        assert_eq!(fs::read(repo.0.join(".git/config")).unwrap(), config);
+        assert_eq!(fs::read(repo.0.join(".git/HEAD")).unwrap(), head);
+    }
+    #[test]
+    fn draft_recovery_review_detects_changed_branch_with_identical_head_and_file() {
+        use crate::draft_recovery::RecoveryDraftGitContextMatch;
+        let repo = Repository::new();
+        fs::write(repo.0.join("file"), b"original\n").unwrap();
+        repo.git(&["add", "--", "file"]);
+        repo.git(&["commit", "-q", "-m", "Owned baseline"]);
+        let original = repo.open("file", None);
+        let record = recovery_record(&original);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        let current = repo.open("file", None);
+        assert_eq!(original.head_oid(), current.head_oid());
+        let refs = repo.git(&["show-ref"]);
+        let index = fs::read(repo.0.join(".git/index")).unwrap();
+        let review = record
+            .review_with_editor(&current, &CancellationToken::default())
+            .unwrap();
+        assert!(review.baseline_text_matches);
+        assert_eq!(review.git_context, RecoveryDraftGitContextMatch::Changed);
+        assert!(
+            record
+                .review_with_editor(&original, &CancellationToken::default())
+                .is_err()
+        );
+        assert_eq!(repo.git(&["show-ref"]), refs);
+        assert_eq!(fs::read(repo.0.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(repo.0.join("file")).unwrap(), b"original\n");
+    }
+    #[test]
+    fn draft_recovery_review_detects_head_changes_and_detached_sha1_and_sha256_contexts() {
+        use crate::draft_recovery::RecoveryDraftGitContextMatch;
+        for format in ["sha1", "sha256"] {
+            let repo = Repository::new_format(format);
+            fs::write(repo.0.join("file"), b"original\n").unwrap();
+            repo.git(&["add", "--", "file"]);
+            repo.git(&["commit", "-q", "-m", "Owned baseline"]);
+            let record = recovery_record(&repo.open("file", None));
+            repo.git(&["commit", "-q", "--allow-empty", "-m", "Owned newer HEAD"]);
+            let current = repo.open("file", None);
+            assert_eq!(
+                record
+                    .git_context
+                    .as_ref()
+                    .unwrap()
+                    .working_reference
+                    .as_deref(),
+                current.working_reference()
+            );
+            let review = record
+                .review_with_editor(&current, &CancellationToken::default())
+                .unwrap();
+            assert!(review.baseline_text_matches);
+            assert_eq!(review.git_context, RecoveryDraftGitContextMatch::Changed);
+            repo.git(&["checkout", "-q", "--detach"]);
+            let detached = repo.open("file", None);
+            let detached_record = recovery_record(&detached);
+            let context = detached_record.git_context.as_ref().unwrap();
+            assert!(context.working_reference.is_none());
+            assert_eq!(
+                context.head_oid.as_ref().unwrap().len(),
+                if format == "sha1" { 40 } else { 64 }
+            );
+            assert_eq!(
+                detached_record
+                    .review_with_editor(&detached, &CancellationToken::default())
+                    .unwrap()
+                    .git_context,
+                RecoveryDraftGitContextMatch::Same
+            );
+        }
+    }
+    #[test]
+    fn draft_recovery_review_checks_fresh_file_path_repository_and_encoding_independently() {
+        let repo = Repository::new();
+        fs::write(repo.0.join("file"), b"original\n").unwrap();
+        let old = repo.open("file", None);
+        let record = recovery_record(&old);
+        fs::write(repo.0.join("file"), b"external\n").unwrap();
+        assert!(
+            record
+                .review_with_editor(&old, &CancellationToken::default())
+                .is_err()
+        );
+        let current = repo.open("file", None);
+        assert!(
+            !record
+                .review_with_editor(&current, &CancellationToken::default())
+                .unwrap()
+                .baseline_text_matches
+        );
+        fs::write(repo.0.join("other"), b"original\n").unwrap();
+        let other = repo.open("other", Some(WorkingTextEncoding::Windows1252));
+        let review = record
+            .review_with_editor(&other, &CancellationToken::default())
+            .unwrap();
+        assert!(review.repository_location_matches && review.baseline_text_matches);
+        assert!(!review.path_matches);
+        assert!(!review.encoding_matches);
+        let second = Repository::new();
+        fs::write(second.0.join("file"), b"original\n").unwrap();
+        let review = record
+            .review_with_editor(&second.open("file", None), &CancellationToken::default())
+            .unwrap();
+        assert!(!review.repository_location_matches);
+        assert!(review.path_matches && review.baseline_text_matches);
+        let cancelled = CancellationToken::default();
+        cancelled.cancel();
+        assert!(record.review_with_editor(&current, &cancelled).is_err());
+        assert_eq!(fs::read(repo.0.join("file")).unwrap(), b"external\n");
+    }
+    #[test]
+    fn draft_recovery_capture_refuses_lossy_repository_locations() {
+        use std::os::unix::ffi::OsStringExt;
+        let repo = Repository::new();
+        fs::write(repo.0.join("file"), b"original\n").unwrap();
+        let edit = repo.open("file", None);
+        let mut name = repo.0.file_name().unwrap().as_encoded_bytes().to_vec();
+        name.push(0xff);
+        let invalid_location = repo.0.with_file_name(OsString::from_vec(name));
+        assert!(
+            crate::draft_recovery_editor::WorkingFileRecoveryBinding::capture(
+                &invalid_location,
+                &edit,
+            )
+            .is_err()
+        );
+        assert_eq!(fs::read(repo.0.join("file")).unwrap(), b"original\n");
+    }
+    #[test]
+    fn draft_recovery_binding_retains_data_after_write_authority_is_consumed() {
+        let repo = Repository::new();
+        fs::write(repo.0.join("file"), b"original\n").unwrap();
+        let edit = repo.open("file", None);
+        let binding = edit.recovery_binding().unwrap();
+        let saved = edit.save("saved\n", &CancellationToken::default()).unwrap();
+        assert_eq!(saved.status, WorkingFileWriteStatus::Saved);
+        assert!(edit.verify_current(&CancellationToken::default()).is_err());
+        let record = binding
+            .record(&"a".repeat(32), &"b".repeat(32), 1, "still unsaved\n", "1")
+            .unwrap();
+        let review = record
+            .review_with_editor(saved.next.as_ref().unwrap(), &CancellationToken::default())
+            .unwrap();
+        assert!(!review.baseline_text_matches);
+        let mut relocated_record = record.clone();
+        relocated_record.repository_path = repo
+            .0
+            .join("never-opened-repository")
+            .to_str()
+            .unwrap()
+            .into();
+        relocated_record.path = "never-opened-file".into();
+        let review = relocated_record
+            .review_with_editor(saved.next.as_ref().unwrap(), &CancellationToken::default())
+            .unwrap();
+        assert!(!review.repository_location_matches && !review.path_matches);
+        assert!(!repo.0.join("never-opened-repository").exists());
+        assert!(!repo.0.join("never-opened-file").exists());
+        assert_eq!(fs::read(repo.0.join("file")).unwrap(), b"saved\n");
+        assert!(!repo.0.join(".git/index").exists());
+    }
+    #[test]
+    fn draft_recovery_binding_refuses_invalid_snapshot_inputs_and_unknown_legacy_context() {
+        use crate::draft_recovery::{MAX_RECOVERY_TEXT_BYTES, RecoveryDraftGitContextMatch};
+        let repo = Repository::new();
+        fs::write(repo.0.join("file"), b"original\n").unwrap();
+        let edit = repo.open("file", None);
+        let binding = edit.recovery_binding().unwrap();
+        let id = "a".repeat(32);
+        let revision = "b".repeat(32);
+        assert!(
+            binding
+                .record("invalid", &revision, 1, "draft", "1")
+                .is_err()
+        );
+        assert!(binding.record(&id, "invalid", 1, "draft", "1").is_err());
+        assert!(binding.record(&id, &revision, 0, "draft", "1").is_err());
+        assert!(binding.record(&id, &revision, 1, "draft", "01").is_err());
+        assert!(binding.record(&id, &revision, 1, "draft\0", "1").is_err());
+        assert!(
+            binding
+                .record(
+                    &id,
+                    &revision,
+                    1,
+                    &"x".repeat(MAX_RECOVERY_TEXT_BYTES + 1),
+                    "1"
+                )
+                .is_err()
+        );
+        let mut legacy = recovery_record(&edit);
+        legacy.git_context = None;
+        let review = legacy
+            .review_with_editor(&edit, &CancellationToken::default())
+            .unwrap();
+        assert!(review.baseline_text_matches);
+        assert_eq!(review.git_context, RecoveryDraftGitContextMatch::Unknown);
     }
     #[test]
     fn working_file_edit_refuses_modified_or_swapped_save_temporary_and_preserves_foreign_path() {

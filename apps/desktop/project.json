@@ -14,6 +14,11 @@
       "cache": false,
       "options": { "command": "node --test tools/owned-command.test.mjs tools/run-validation.test.mjs" }
     },
+    "editor-recovery-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "node --test tools/editor-draft-snapshots.test.mjs" }
+    },
     "audit": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -129,7 +134,7 @@
       }
     },
     "test": {
-      "dependsOn": ["graph-test-typecheck", "owned-process-test"],
+      "dependsOn": ["graph-test-typecheck", "owned-process-test", "editor-recovery-test"],
       "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
       "executor": "nx:run-commands",
       "options": {

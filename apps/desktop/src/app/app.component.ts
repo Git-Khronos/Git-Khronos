@@ -1,5 +1,7 @@
 import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from './repository-link-dialog.component';
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
+import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
+import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
@@ -619,7 +621,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -819,6 +821,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly contextMenu = signal<ContextMenuState | null>(null);
   protected readonly fileContentDialog = signal<FileContentDialogRequest | null>(null);
+  protected readonly editorDraftRecoveryOpen = signal(false);
+  private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
+  private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
   protected readonly fileContextMenu = signal<FileContextMenuState | null>(null);
   protected readonly commitFileContextMenu = signal<CommitFileContextMenuState | null>(null);
@@ -3252,6 +3257,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'fullscreen', group: 'View', label: 'Toggle Fullscreen', detail: 'Enter or leave fullscreen mode', shortcut: this.fullscreenShortcut, enabled: true, icon: 'maximize' },
       { id: 'search', group: 'View', label: 'Search All History', detail: 'Search whole-repository history with optional advanced filters', shortcut: `${this.primaryShortcutKey} Shift F`, enabled: !!repository, icon: 'search' },
       { id: 'file-search', group: 'History', label: 'Find File History or Blame', detail: 'Search every tracked file in this repository', shortcut: `${this.primaryShortcutKey} Shift H`, enabled: !!repository, icon: 'history' },
+      { id: 'editor-draft-recovery', group: 'Edit', label: 'Editor Draft Recovery', detail: 'Inspect retained editor copies and review a working file', enabled: !busy && !this.fileContentDialog(), icon: 'history' },
       { id: 'recovery-history', group: 'History', label: 'Recovery History', detail: 'Find previous reference positions and preserve a commit with a new branch', enabled: !!repository && !busy, icon: 'history' },
       ...(repository?.status.mergeInProgress ? [
         { id: 'merge-continue', group: 'Branch', label: 'Continue Merge', detail: repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Create the merge commit from the resolved index', enabled: !repository.status.conflicted && !busy, icon: 'merge' as IconName },
@@ -9958,6 +9964,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'tag-create': this.openTagCreator(); break;
       case 'search': this.openHistorySearch(); break;
       case 'file-search': this.openCommandPalette('', 'files'); break;
+      case 'editor-draft-recovery': this.openEditorDraftRecovery(paletteReturnFocus); break;
       case 'recovery-history': await this.openRecoveryHistory(); break;
       case 'merge-continue': await this.controlMerge('continue'); break;
       case 'merge-abort': await this.controlMerge('abort'); break;
@@ -11093,6 +11100,35 @@ export class AppComponent implements OnInit, OnDestroy {
     const returnFocus = this.fileContextMenuReturnFocus;
     this.dismissFileActionMenu();
     this.fileContentDialog.set({ selection, returnFocus, editing: signal(false) });
+  }
+
+  protected openEditorDraftRecovery(returnFocus: HTMLElement | null = null): void {
+    if (this.fileContentDialog()) { this.git.error.set('Finish the current editor or file preview before opening draft recovery.'); return; }
+    this.editorDraftRecoveryReturnFocus = returnFocus ?? this.appMenuToggle()?.nativeElement
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    this.appMenuOpen.set(false); this.editorDraftRecoveryOpen.set(true);
+  }
+
+  protected closeEditorDraftRecovery(): void {
+    this.editorDraftRecoveryOpen.set(false);
+    const target = this.editorDraftRecoveryReturnFocus; this.editorDraftRecoveryReturnFocus = null;
+    queueMicrotask(() => { if (!this.fileContentDialog() && target?.isConnected) target.focus({ preventScroll: true }); });
+  }
+
+  protected reviewEditorDraft(request: EditorDraftOpenRequest): void {
+    const repository = this.git.repository();
+    if (this.git.busy() || this.fileContentDialog() || repository?.path !== request.repositoryPath) return;
+    const selection = this.workingMediaSelection(request.path, false);
+    if (!selection) return;
+    const returnFocus = this.editorDraftRecoveryReturnFocus;
+    this.editorDraftRecoveryOpen.set(false); this.editorDraftRecoveryReturnFocus = null;
+    this.fileContentDialog.set({ selection, returnFocus, editing: signal(false), recovery: { ...request.reference } });
+  }
+
+  protected handleEditorDraftRecoveryLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeEditorDraftRecovery(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.editorDraftRecoveryLoaderClose()?.nativeElement.focus(); }
   }
 
   protected handleFileContentLoaderKey(event: KeyboardEvent): void {

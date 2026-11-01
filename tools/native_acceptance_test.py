@@ -414,7 +414,8 @@ class FixtureTests(unittest.TestCase):
             def private_bus(_fixtures, children, _log):
                 children.append(bus)
                 return {'pid': 123, 'private': True, 'hostServiceActivation': False}
-            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke", headless=False)
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
+                                   headless=False, inherited_git_environment=False)
             with ExitStack() as mocks:
                 for target, value in {
                     "native_acceptance.argparse.ArgumentParser.parse_args": args,

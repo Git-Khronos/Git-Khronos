@@ -70,6 +70,9 @@ export type CommitSummary = { oid: string; parents: string[]; authorName: string
 export type ConflictDetails = { path: string; ancestor: string | null; current: string | null; incoming: string | null; output: string | null; binary: boolean; truncated: boolean; state: string; editable: boolean; currentExists: boolean; incomingExists: boolean; submodule: boolean }
 export type DiscardRecoveryInfo = { id: string; restored: boolean }
 export type DiscardResult = { id: string; status: RepositoryStatus }
+export type EditorDraftDiscarded = { editorId: string; revision: string }
+export type EditorDraftReview = { editorId: string; revision: string; draft: RecoveryDraftRecord; comparison: RecoveryDraftEditorReview }
+export type EditorDraftReviewRequest = { editorId: string; revision: string; id: string; kind: RecoveryDraftEntryKind; reviewToken: string; operationId: string }
 export type EditorSnapshot = { editorId: string; revision: string; path: string; text: string; encoding: WorkingTextEncoding; bom: boolean; encodedByteLen: string; lineEndings: LineEndings; readOnlyReason: string | null; workingReference: string | null; headOid: string | null }
 export type EditorStage = "notRequested" | "staged" | "unconfirmed"
 export type EditorWriteResult = { editorId: string; revision: string; file: EditorSnapshot | null; disk: WorkingFileWriteStatus; stage: EditorStage; stageError: AppError | null; warning: string | null }
@@ -231,6 +234,34 @@ export type RasterMetadata = { mime: string;
  */
 width: number; height: number }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
+/**
+ * Comparison with an independently opened, currently verified editor. Even all
+ * matching fields do not authorize a write or establish filesystem identity.
+ */
+export type RecoveryDraftEditorReview = { repositoryLocationMatches: boolean; pathMatches: boolean; encodingMatches: boolean;
+/**
+ * Only the normalized editor text, not raw bytes, BOM or file identity.
+ */
+baselineTextMatches: boolean; gitContext: RecoveryDraftGitContextMatch }
+export type RecoveryDraftEntryKind = "committed" | "pending"
+export type RecoveryDraftEntryReview = { id: string; kind: RecoveryDraftEntryKind; reviewToken: string | null; draft: RecoveryDraftSummary | null; error: AppError | null }
+/**
+ * Original reference/HEAD metadata for review, never checkout/write authority.
+ */
+export type RecoveryDraftGitContext = { workingReference: string | null; headOid: string | null }
+export type RecoveryDraftGitContextMatch = "same" | "changed" | "unknown"
+export type RecoveryDraftInspection = { entries: RecoveryDraftEntryReview[]; issues: RecoveryDraftIssue[]; incomplete: boolean }
+export type RecoveryDraftIssue = { id: string | null; message: string }
+export type RecoveryDraftRecord = { version: number; id: string; repositoryPath: string; path: string; encoding: WorkingTextEncoding; baselineSha256: string;
+/**
+ * Missing in early records. None means unknown, never an inferred match.
+ */
+gitContext?: RecoveryDraftGitContext | null; revision: string; sequence: number; text: string;
+/**
+ * Canonical decimal milliseconds; no lossy wide-integer JSON conversion.
+ */
+updatedAtMillis: string }
+export type RecoveryDraftSummary = { id: string; repositoryPath: string; path: string; encoding: WorkingTextEncoding; textBytes: string; updatedAtMillis: string; pending: boolean; sequence: number; gitContext: RecoveryDraftGitContext | null }
 export type ReferenceTransport = { remote: string; name: string; kind: string; delete: boolean; expectedOid: string | null }
 export type ReflogEntry = { oid: string; selector: string; subject: string; authorName: string; authorEmail: string }
 export type ReflogPage = { entries: ReflogEntry[]; truncated: boolean }
@@ -359,6 +390,12 @@ export function open_working_file_editor(args: { repoId: string; path: string; e
 export function save_working_file_editor(args: { editorId: string; revision: string; text: string; stage: boolean; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("save_working_file_editor", args); }
 export function stage_saved_working_file_editor(args: { editorId: string; revision: string; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("stage_saved_working_file_editor", args); }
 export function close_working_file_editor(args: { editorId: string }): Promise<boolean> { return TAURI_INVOKE("close_working_file_editor", args); }
+export function snapshot_editor_draft(args: { editorId: string; revision: string; sequence: number; text: string }): Promise<RecoveryDraftSummary> { return TAURI_INVOKE("snapshot_editor_draft", args); }
+export function inspect_editor_drafts(args: {  } = {}): Promise<RecoveryDraftInspection> { return TAURI_INVOKE("inspect_editor_drafts", args); }
+export function load_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<RecoveryDraftRecord> { return TAURI_INVOKE("load_editor_draft_entry", args); }
+export function review_editor_draft(args: { request: EditorDraftReviewRequest }): Promise<EditorDraftReview> { return TAURI_INVOKE("review_editor_draft", args); }
+export function discard_editor_draft(args: { editorId: string; revision: string }): Promise<EditorDraftDiscarded> { return TAURI_INVOKE("discard_editor_draft", args); }
+export function discard_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<null> { return TAURI_INVOKE("discard_editor_draft_entry", args); }
 export function validate_tool_profile(args: { profile: ToolProfile }): Promise<null> { return TAURI_INVOKE("validate_tool_profile", args); }
 export function open_configured_terminal(args: { repoId: string; profile: ToolProfile; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_configured_terminal", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
@@ -577,6 +614,12 @@ export type CommandMap = {
   save_working_file_editor: typeof save_working_file_editor;
   stage_saved_working_file_editor: typeof stage_saved_working_file_editor;
   close_working_file_editor: typeof close_working_file_editor;
+  snapshot_editor_draft: typeof snapshot_editor_draft;
+  inspect_editor_drafts: typeof inspect_editor_drafts;
+  load_editor_draft_entry: typeof load_editor_draft_entry;
+  review_editor_draft: typeof review_editor_draft;
+  discard_editor_draft: typeof discard_editor_draft;
+  discard_editor_draft_entry: typeof discard_editor_draft_entry;
   validate_tool_profile: typeof validate_tool_profile;
   open_configured_terminal: typeof open_configured_terminal;
   system_info: typeof system_info;

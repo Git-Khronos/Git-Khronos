@@ -16,6 +16,9 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
+#[path = "editor_draft_recovery.rs"]
+pub(crate) mod recovery;
+
 const CAPACITY: usize = 8;
 const LIFETIME: Duration = Duration::from_secs(15 * 60);
 #[derive(Default)]
@@ -23,6 +26,7 @@ pub struct EditorState(Mutex<HashMap<String, Arc<Editor>>>);
 struct Editor {
     repository: String,
     created: Instant,
+    recovery_activity: Mutex<Option<Instant>>,
     closed: AtomicBool,
     active: Mutex<Option<CancellationToken>>,
     value: Mutex<Revision>,
@@ -30,6 +34,8 @@ struct Editor {
 struct Revision {
     id: String,
     edit: Option<WorkingFileEdit>,
+    #[cfg(target_os = "linux")]
+    recovery: Option<Result<recovery::Draft, AppError>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
@@ -116,11 +122,16 @@ impl Editor {
         }
     }
     fn live(&self) -> bool {
-        !self.closed.load(Ordering::Acquire) && self.created.elapsed() < LIFETIME
+        !self.closed.load(Ordering::Acquire)
+            && (self.created.elapsed() < LIFETIME
+                || self.recovery_activity.lock().is_ok_and(|activity| {
+                    activity.is_some_and(|activity| activity.elapsed() < LIFETIME)
+                }))
     }
     fn activate(&self, token: &CancellationToken) -> Result<ActiveEdit<'_>, AppError> {
         let mut active = self.active.lock().map_err(state_error)?;
-        if !self.live() {
+        // Recovery activity retains data access, never extends save authority.
+        if !self.live() || self.created.elapsed() >= LIFETIME {
             return Err(unavailable());
         }
         if active.is_some() {
@@ -169,9 +180,22 @@ impl EditorState {
         Ok(())
     }
     fn get(&self, id: &str) -> Result<Arc<Editor>, AppError> {
-        let mut entries = self.0.lock().map_err(state_error)?;
-        Self::prune(&mut entries);
-        entries.get(id).cloned().ok_or_else(unavailable)
+        let editor = self.get_for_cleanup(id)?;
+        if !editor.live() {
+            return Err(unavailable());
+        }
+        Ok(editor)
+    }
+    fn get_for_cleanup(&self, id: &str) -> Result<Arc<Editor>, AppError> {
+        // Refusing an expired save must not erase its recovery binding before
+        // the owner can explicitly discard. Insertion still prunes abandoned
+        // contexts; this lookup grants no file-write authority or new lifetime.
+        let entries = self.0.lock().map_err(state_error)?;
+        entries
+            .get(id)
+            .filter(|editor| !editor.closed.load(Ordering::Acquire))
+            .cloned()
+            .ok_or_else(unavailable)
     }
     fn close(&self, id: &str) -> Result<bool, AppError> {
         let editor = self.0.lock().map_err(state_error)?.remove(id);
@@ -272,17 +296,22 @@ pub async fn open_working_file_editor(
         let id = identifier()?;
         let revision = identifier()?;
         let result = snapshot(&id, &revision, &edit);
+        #[cfg(target_os = "linux")]
+        let recovery = Some(recovery::Draft::capture(&edit));
         let state = app.state::<EditorState>();
         state.insert(
             id.clone(),
             Arc::new(Editor {
                 repository: repo_id,
                 created: Instant::now(),
+                recovery_activity: Mutex::new(None),
                 closed: AtomicBool::new(false),
                 active: Mutex::new(None),
                 value: Mutex::new(Revision {
                     id: revision,
                     edit: Some(edit),
+                    #[cfg(target_os = "linux")]
+                    recovery,
                 }),
             }),
         )?;
@@ -349,7 +378,8 @@ async fn write(
         let _repository = session.operation.lock().map_err(state_error)?;
         let _active = editor.activate(&token)?;
         let mut value = editor.value.lock().map_err(state_error)?;
-        session.with_read_policy(|| {
+        let was_save = text.is_some();
+        let result = session.with_read_policy(|| {
             apply_write(
                 &mut value,
                 &editor_id,
@@ -367,7 +397,16 @@ async fn write(
                     )
                 },
             )
-        })
+        })?;
+        #[cfg(target_os = "linux")]
+        let mut result = result;
+        #[cfg(target_os = "linux")]
+        if was_save && result.disk != WorkingFileWriteStatus::Unconfirmed {
+            recovery::after_save(&mut value, &mut result, &app);
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = was_save;
+        Ok(result)
     })
     .await
     .map_err(background_task_error)?
@@ -446,10 +485,10 @@ fn apply_write(
 mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
-    struct Fixture(std::path::PathBuf);
+    pub(super) struct Fixture(pub(super) std::path::PathBuf);
     #[cfg(target_os = "linux")]
     impl Fixture {
-        fn git(&self, args: &[&str]) -> Vec<u8> {
+        pub(super) fn git(&self, args: &[&str]) -> Vec<u8> {
             let mut command = std::process::Command::new("git");
             for key in git_khronos_git_core::GIT_CONTEXT_ENVIRONMENT_VARIABLES {
                 command.env_remove(key);
@@ -481,7 +520,7 @@ mod tests {
             );
             result.stdout
         }
-        fn new(bytes: &[u8]) -> Self {
+        pub(super) fn new(bytes: &[u8]) -> Self {
             let fixture = Self(
                 std::env::temp_dir().join(format!("git-khronos-editor-{}", identifier().unwrap())),
             );
@@ -494,7 +533,7 @@ mod tests {
             fixture.git(&["commit", "--quiet", "-m", "Owned baseline"]);
             fixture
         }
-        fn revision(&self) -> Revision {
+        pub(super) fn revision(&self) -> Revision {
             Revision {
                 id: "reviewed".into(),
                 edit: Some(
@@ -506,12 +545,13 @@ mod tests {
                     )
                     .unwrap(),
                 ),
+                recovery: None,
             }
         }
-        fn disk(&self) -> Vec<u8> {
+        pub(super) fn disk(&self) -> Vec<u8> {
             std::fs::read(self.0.join("literal [file].txt")).unwrap()
         }
-        fn index(&self) -> Vec<u8> {
+        pub(super) fn index(&self) -> Vec<u8> {
             self.git(&["show", ":literal [file].txt"])
         }
     }
@@ -700,15 +740,18 @@ mod tests {
             assert_eq!(textarea_text(input), normalized);
         }
     }
-    fn editor() -> Arc<Editor> {
+    pub(super) fn editor() -> Arc<Editor> {
         Arc::new(Editor {
             repository: "owned-fixture".into(),
             created: Instant::now(),
+            recovery_activity: Mutex::new(None),
             closed: AtomicBool::new(false),
             active: Mutex::new(None),
             value: Mutex::new(Revision {
                 id: "revision".into(),
                 edit: None,
+                #[cfg(target_os = "linux")]
+                recovery: None,
             }),
         })
     }
@@ -724,6 +767,18 @@ mod tests {
         assert!(token.is_cancelled());
         assert!(state.get("id").is_err());
         assert!(editor.activate(&CancellationToken::default()).is_err());
+    }
+    #[test]
+    fn recovery_activity_retains_data_access_without_extending_file_write_authority() {
+        let state = EditorState::default();
+        let mut editor = editor();
+        Arc::get_mut(&mut editor).unwrap().created = Instant::now() - LIFETIME;
+        *editor.recovery_activity.lock().unwrap() = Some(Instant::now());
+        state.insert("active-draft".into(), editor.clone()).unwrap();
+        assert!(state.get("active-draft").is_ok());
+        assert!(editor.activate(&CancellationToken::default()).is_err());
+        assert!(state.close("active-draft").unwrap());
+        assert!(state.get("active-draft").is_err());
     }
     #[test]
     fn capacity_expiry_and_collision_do_not_evict_live_drafts() {

@@ -227,7 +227,8 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await expect(page.getByRole('heading', { name: 'Open a repository' })).toBeVisible();
   await expect(launcher).toContainText('Choose a local repository, clone a remote, or start a new one.');
   await expect(page.getByText('Find your way through')).toHaveCount(0);
-  await expect(launcher.getByRole('button')).toHaveCount(3);
+  await expect(launcher.getByRole('button')).toHaveCount(4);
+  await expect(launcher.getByRole('button', { name: 'Editor draft recovery', exact: true })).toBeVisible();
   await expect(launcher.getByRole('button', { name: /Clone repository/ })).toContainText('Download from a remote URL');
   await expect(launcher.getByRole('button', { name: /Initialize repository/ })).toContainText('Create a repository in a folder');
   await expect(openRepository).toHaveCSS('border-top-width', '0px');
@@ -5671,7 +5672,7 @@ test('keeps every main-menu command reachable in compact-height windows', async 
   await expect(preferences).toBeInViewport();
 
   const currentRepositorySection = scrollRegion.locator('.app-menu-section').filter({ hasText: 'Current Repository' });
-  const editSection = scrollRegion.locator('.app-menu-section').filter({ hasText: 'Edit' });
+  const editSection = scrollRegion.locator('.app-menu-section').filter({ has: page.locator(':scope > span', { hasText: /^Edit$/ }) });
   const [currentRepositoryBox, editBox] = await Promise.all([
     currentRepositorySection.boundingBox(),
     editSection.boundingBox(),
@@ -5708,6 +5709,7 @@ test('condenses the main menu without hiding commands at the native minimum heig
     /Manage Repositories/,
     /^Terminal/,
     /Recovery History/,
+    /Editor draft recovery/,
     /^Undo/,
     /^Redo/,
     /Command Palette/,
@@ -5753,6 +5755,7 @@ test('fits the complete main menu without needless scrolling when the viewport h
   expect(metrics[3].scrollHeight).toBe(metrics[3].clientHeight);
   expect(metrics[2]!.y + metrics[2]!.height).toBeLessThanOrEqual(metrics[1]!.y + metrics[1]!.height);
   await expect(menu.getByRole('menuitem', { name: /Recovery History/ })).toBeInViewport();
+  await expect(menu.getByRole('menuitem', { name: /Editor draft recovery/ })).toBeInViewport();
   await expect(menu.getByRole('menuitem', { name: /^Undo/ })).toBeInViewport();
 });
 

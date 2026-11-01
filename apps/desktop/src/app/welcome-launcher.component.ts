@@ -46,6 +46,7 @@ export class WelcomeLauncherComponent {
   readonly favoriteOpened = output<string>();
   readonly repositoryOpened = output<string>();
   readonly themeToggled = output<void>();
+  readonly editorDraftRecoveryOpened = output<void>();
 
   constructor() {
     afterNextRender(() => {

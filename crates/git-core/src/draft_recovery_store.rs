@@ -64,6 +64,7 @@ fn same_binding(a: &RecoveryDraftRecord, b: &RecoveryDraftRecord) -> bool {
         && a.path == b.path
         && a.encoding == b.encoding
         && a.baseline_sha256 == b.baseline_sha256
+        && a.git_context == b.git_context
 }
 
 pub struct RecoveryDraftStore {
@@ -423,6 +424,7 @@ mod tests {
             path: "literal [file].txt".into(),
             encoding: WorkingTextEncoding::Utf8,
             baseline_sha256: recovery_text_sha256("base\n").unwrap(),
+            git_context: None,
             revision: "b".repeat(32),
             sequence: 1,
             text: "unsaved é\n".into(),
@@ -627,5 +629,53 @@ mod tests {
         record.text = "x".repeat(crate::draft_recovery::MAX_RECOVERY_TEXT_BYTES + 1);
         assert!(store.persist(&record).is_err());
         assert_eq!(store.load(&record.id).unwrap().unwrap().0.sequence, 1);
+    }
+    #[test]
+    fn recovery_store_preserves_original_git_context_and_reviews_conflicting_copies() {
+        use crate::draft_recovery::RecoveryDraftGitContext;
+        let dir = OwnedDirectory::new();
+        let mut store = dir.open();
+        let mut original = draft();
+        original.git_context = Some(RecoveryDraftGitContext {
+            working_reference: Some("refs/heads/dev".into()),
+            head_oid: Some("a".repeat(40)),
+        });
+        store.persist(&original).unwrap();
+        let mut changed = original.clone();
+        changed.sequence += 1;
+        changed.git_context.as_mut().unwrap().working_reference = Some("refs/heads/other".into());
+        assert!(store.persist(&changed).is_err());
+        let mut changed_head = original.clone();
+        changed_head.sequence += 1;
+        changed_head.git_context.as_mut().unwrap().head_oid = Some("b".repeat(40));
+        assert!(store.persist(&changed_head).is_err());
+        let mut unknown = original.clone();
+        unknown.sequence += 1;
+        unknown.git_context = None;
+        assert!(store.persist(&unknown).is_err());
+        assert_eq!(
+            store.load(&original.id).unwrap(),
+            Some((original.clone(), false))
+        );
+        dir.put(&changed, "next");
+        assert!(store.load(&original.id).is_err());
+        let inspection = store.inspect().unwrap();
+        assert!(inspection.incomplete);
+        assert_eq!(inspection.entries.len(), 2);
+        for entry in inspection.entries {
+            let loaded = store
+                .load_reviewed_entry(
+                    &entry.id,
+                    entry.kind,
+                    entry.review_token.as_deref().unwrap(),
+                )
+                .unwrap();
+            let expected = match entry.kind {
+                crate::draft_recovery::RecoveryDraftEntryKind::Committed => &original,
+                crate::draft_recovery::RecoveryDraftEntryKind::Pending => &changed,
+            };
+            assert_eq!(&loaded, expected);
+            assert_eq!(entry.draft.unwrap().git_context, expected.git_context);
+        }
     }
 }
