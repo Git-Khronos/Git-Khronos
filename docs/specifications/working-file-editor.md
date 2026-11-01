@@ -306,3 +306,20 @@ case ten times on the combined candidate, one worker and zero retries. Repetitio
 is isolated by Playwright and is not proof of a long-lived-worker memory cause
 or that the remote failure is fixed. No application change or retry was introduced
 to obtain these passes. A fresh complete combined renderer gate remains required.
+
+
+The first fresh combined renderer attempt, `parity-combined-complete-renderer`,
+encountered a failed bootstrap in `diff-performance.spec.ts:3`. Its trace records
+Chromium `net::ERR_NETWORK_CHANGED` for `main.js` and six local JavaScript chunks;
+the screenshot shows an unmounted blank application. The initial blame-readiness
+assertion failed, before dense/long-line injection and syntax/text-preservation
+assertions ran. This is observed browser asset failure, not proof of a product
+logic defect or of the underlying network-change cause.
+
+That failed run was deliberately stopped with SIGINT (runner exit 130), retaining
+its trace, screenshot, error context, source manifest and read-only memory samples.
+It is not a complete passing renderer run. The same exact case subsequently passes
+three full executions on unchanged candidate source, with one worker, zero retries
+and unchanged assertion/performance limits:
+`parity-diff-performance-bootstrap-reviewed`. A fresh complete 1424-case gate is
+still required; passing these three cases does not replace it.
