@@ -18,6 +18,9 @@ mod file_statistics;
 mod file_content;
 mod working_file_text;
 mod configured_tools;
+pub mod draft_recovery;
+#[cfg(target_os = "linux")]
+pub mod draft_recovery_store;
 pub use configured_tools::{ToolArgumentContext, ToolProfile, ToolRole};
 mod working_file_edit;
 pub use working_file_edit::{WorkingFileEdit, WorkingFileSave, WorkingFileWriteStatus, open_working_file_edit};
