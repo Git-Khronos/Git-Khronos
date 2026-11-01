@@ -12,7 +12,7 @@
     "owned-process-test": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "node --test tools/owned-command.test.mjs" }
+      "options": { "command": "node --test tools/owned-command.test.mjs tools/run-validation.test.mjs" }
     },
     "audit": {
       "executor": "nx:run-commands",
