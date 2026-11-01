@@ -127,15 +127,11 @@ Packaged worker/CSP and attribution checks remain separate gates.
 
 ## Remaining acceptance
 
-Complete the full renderer gate and remaining environment acceptance. Normal
-exact-package UI/disk/index assertions now pass, including truthful partial success.
-All six native editor scenarios pass in the 207-case normal package suite below. Broader codec,
-mixed-newline editing and other-platform support remain explicit gaps.
-
-The current dirty-draft review covers leaving the editor and reloading disk.
-Whole-window/process closure and crash recovery of unsaved drafts are not yet
-qualified; persistent draft recovery is not claimed. Track those separately
-before marking the complete editing capability accepted.
+The latest combined Linux renderer and exact-package qualification is recorded
+at the end of this document. Broader codec, mixed-newline editing and other-platform
+support remain open. Ordinary Linux window-close review is qualified for the
+retained combined package. Persistent draft recovery and forced process termination
+are outside that package's implemented/qualified scope.
 
 ## Integrated source candidate (2026-11-01)
 
@@ -323,3 +319,29 @@ three full executions on unchanged candidate source, with one worker, zero retri
 and unchanged assertion/performance limits:
 `parity-diff-performance-bootstrap-reviewed`. A fresh complete 1424-case gate is
 still required; passing these three cases does not replace it.
+
+## Complete combined Linux qualification (2026-11-01)
+
+`parity-combined-renderer-network-recheck` passes **all 1,424 renderer tests**,
+with one worker, zero retries, zero skips and exit zero. It ran from 10:54:07 to
+11:56:59 UTC on clean candidate
+`0696f9a64b2d368205767127b7b1a63df1ed3ce3`. All 712 captured source inputs,
+file kinds and executable bits were verified unchanged after completion; the
+input digest is `3893eb3d5b1727cf2bcd2df152d96932d56ac14335eecdc9bc98a3ab266c5dfc`.
+This complete run supersedes the earlier pending combined-renderer gates, while
+the failed/interrupted attempts above remain part of the evidence.
+
+The retained package remains `ecbdad48a0f7` with the full hashes recorded above.
+Its source is clean `8a6682fcd12bed20ec1cfea30fd2f8813a590c0c`; exactly nine
+reviewed harness/test/documentation paths differ between that source and the
+renderer candidate, with no application-runtime differences. The full package
+hash and all **213 normal / 214 inherited-environment** native scenario results
+were reverified. These are **214 distinct native cases and 427 executions**.
+The production hard cap, 65 packaging tests and 41 native-harness tests retain
+their earlier passing results; no app change was introduced for the final run.
+
+The runner, its child and bounded read-only observer exited, and the owned server
+port was released before another heavy gate started. This is a local Linux
+checkpoint, not completed remote CI or qualification of Windows/macOS. The old
+remote Chromium crash's underlying cause remains unproven. New persistent draft
+recovery work is on a separate branch and is absent from this artifact.
