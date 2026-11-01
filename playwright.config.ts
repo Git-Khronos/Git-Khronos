@@ -7,12 +7,12 @@ export default defineConfig({
   testDir: './e2e/renderer',
   // Playwright clears this directory at startup. Never clear native evidence
   // or another named audit stored alongside the renderer results.
-  outputDir: './test-results/renderer',
+  outputDir: process.env['GIT_KHRONOS_RENDERER_OUTPUT_DIR'] ?? './test-results/renderer',
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: 0,
   workers: process.env['CI'] ? 1 : 2,
-  reporter: process.env['CI'] ? [['line'], ['html', { open: 'never' }]] : 'line',
+  reporter: process.env['CI'] ? [['line'], ['html', { open: 'never', outputFolder: process.env['GIT_KHRONOS_RENDERER_REPORT_DIR'] ?? 'playwright-report' }]] : 'line',
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     colorScheme: 'dark',
