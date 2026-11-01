@@ -12,6 +12,8 @@ development-only application endpoint.
 - `fakeroot` for the package regression suite's private dpkg ownership checks
   (not required for normal application use or installation);
 - `tauri-driver 2.0.6`, `WebKitWebDriver`, and Xvfb for headless runs;
+- `desktop-file-utils` (`desktop-file-validate`, `update-desktop-database`) and
+  `libglib2.0-bin` (`gio`) for full/inherited-environment incoming-link checks;
 - the Linux libraries required by Tauri and WebKitGTK.
 
 Missing prerequisites are failures. The harness never reports a skipped native
