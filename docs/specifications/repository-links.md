@@ -108,3 +108,24 @@ literal plus/percent/Unicode refs, and independent `git check-ref-format` oracle
 The full core regression passes 714 tests (701 unit, 12 clone-policy and one trust-policy test), with 37 intentionally ignored. All-target Clippy passes with warnings denied. The notice collector retains both complete published URL license files. No native IPC, menu,
 clipboard, local-copy resolver, clone handoff or OS handler is implemented by this
 slice; G28 remains open.
+
+
+## Known-repository verification candidate
+
+A separate read-only core API now inspects one explicit canonical working-tree or
+bare root. It matches the first effective fetch URL returned by Git, honoring
+`insteadOf` and owned include configuration, and conservatively preserves host,
+path, port, user and transport distinctions. Secondary fetch URLs and push-only
+locations do not establish a match. Full branch/tag references resolve to a local
+commit; missing objects and non-commit targets remain unavailable. No checkout,
+fetch, scan, registration or repository write is requested. All Git queries use
+the bounded no-lazy-fetch reader and thread-scoped cancellation. Malformed or
+truncated metadata is refused rather than reported as an empty successful match.
+
+Thirteen focused tests pass across the parser and verifier, including a local
+promisor sentinel with an independent ordinary-Git control, dirty/index/config
+preservation, bare/linked roots, includes and URL rewrites. Full core regression
+passes 721 tests (708 unit, 12 clone-policy and one trust-policy test), with 37
+intentionally ignored. All-target Clippy passes with warnings denied. This API does not yet implement the
+multiple-copy selector, native IPC, clipboard/menu actions, clone handoff or OS
+URL delivery. G28 remains open.

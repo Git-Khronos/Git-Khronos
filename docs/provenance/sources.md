@@ -1533,3 +1533,13 @@ provenance are recorded in third-party-code.md and assets.md.
 Used for the unfinished G28 specification in `docs/specifications/repository-links.md`.
 The proposed scheme and interaction design are independent. No vendor URL format,
 source, assets or documentation prose was copied. No plugin has been added.
+
+
+## Read-only repository-link verification
+
+- https://git-scm.com/docs/git-remote (effective first fetch URL and insteadOf expansion)
+- https://git-scm.com/docs/git-rev-parse (full-ref commit resolution)
+- https://git-scm.com/docs/git-cat-file (local object type verification)
+
+Used for independently implemented known-path matching and local target checks.
+No vendor implementation, proprietary URL grammar or third-party source was copied.

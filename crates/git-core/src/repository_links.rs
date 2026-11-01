@@ -57,7 +57,7 @@ fn decode_component(value: &str) -> Result<String, AppError> {
     Ok(decoded)
 }
 
-fn valid_reference(reference: &str) -> bool {
+pub(super) fn valid_reference(reference: &str) -> bool {
     let namespace = ["refs/heads/", "refs/remotes/", "refs/tags/"]
         .iter()
         .any(|prefix| reference.starts_with(prefix));
