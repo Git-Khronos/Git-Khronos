@@ -548,7 +548,7 @@ def performance(driver, fixtures, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb")
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery"), default="smoke")
+    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--inherited-git-environment", action="store_true",
                         help="Point inherited Git context variables at an owned outside repository for any suite")
@@ -563,7 +563,7 @@ def main():
     driver = None
     temporary_directory = None
     try:
-        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon") + (("Xvfb",) if args.headless else ()):
+        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         package = args.package.resolve(strict=True)
@@ -589,6 +589,16 @@ def main():
         executable = extracted / "usr/bin/git-khronos"
         with executable.open("rb") as executable_data:
             report["executableSha256"] = hashlib.file_digest(executable_data, "sha256").hexdigest()
+        if args.suite == "gitlab":
+            dependencies = run("dpkg-deb", "-f", str(package), "Depends")
+            names = {alternative.strip().split()[0] for clause in dependencies.split(",")
+                     for alternative in clause.split("|") if alternative.strip()}
+            assert names & {"libssl3", "libssl3t64"}, dependencies
+            dynamic = run("readelf", "-d", str(executable), env=fixtures.env | {"LC_ALL": "C"})
+            needed = [line.split("Shared library: [", 1)[1].split("]", 1)[0]
+                      for line in dynamic.splitlines() if "Shared library: [" in line]
+            assert {"libssl.so.3", "libcrypto.so.3"} <= set(needed), needed
+            report["nativeTlsPackage"] = {"depends": dependencies, "neededLibraries": needed}
         fixtures.env["TAURI_WEBVIEW_AUTOMATION"] = "true"
         with (output / "driver.log").open("w") as log:
             report["sessionBus"] = start_private_dbus(fixtures, children, log)
@@ -610,6 +620,9 @@ def main():
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
+            if args.suite == "gitlab":
+                from native_gitlab_scenarios import start_gitlab_fixture
+                application_env.update(start_gitlab_fixture(fixtures, children, log, report))
             if outside is not None:
                 application_env.update({
                     "GIT_DIR": str(outside / ".git"),
@@ -635,6 +648,9 @@ def main():
                     time.sleep(0.1)
             driver.start(executable)
             repository, repo_id = smoke(driver, fixtures, report)
+            if args.suite == "gitlab":
+                from native_gitlab_scenarios import gitlab_catalogue
+                gitlab_catalogue(driver, fixtures, repository, report)
             if args.suite == "recovery":
                 from native_editor_recovery_scenarios import editor_draft_recovery
                 editor_draft_recovery(driver, fixtures, repository, report)

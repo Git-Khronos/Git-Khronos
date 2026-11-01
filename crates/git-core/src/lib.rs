@@ -71,6 +71,14 @@ pub use hosted_clone::{
     prepare_hosted_clone, execute_hosted_clone,
 };
 mod hosted_repositories;
+mod gitlab_https;
+pub use gitlab_https::GitLabHttpsTransport;
+mod gitlab_projects;
+pub use gitlab_projects::{
+    GitLabAccount, GitLabInstance, GitLabProject, GitLabProjectPage, GitLabProjectQuery,
+    GitLabProjectScope, GitLabReadTransport, load_gitlab_account_with,
+    load_gitlab_project_page_with,
+};
 mod hosted_forks;
 mod hosted_fork_request;
 mod hosted_fork_remote;

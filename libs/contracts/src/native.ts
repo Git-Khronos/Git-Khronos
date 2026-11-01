@@ -107,6 +107,18 @@ export type FileMediaState = "absent" | "text" | "binary" | "raster" | "invalidR
 export type GitAuthenticationDismissed = string
 export type GitAuthenticationPrompt = { requestId: string; operationId: string; repositoryId: string | null; secret: boolean }
 export type GitIdentity = { name: string | null; email: string | null }
+export type GitLabAccount = { origin: string; id: string; login: string }
+export type GitLabConnectRequest = { origin: string; token: string; operationId: string }
+export type GitLabConnection = { connectionId: string; account: GitLabAccount; expiresAtMillis: string }
+export type GitLabProject = { id: string; name: string; fullPath: string; url: string; description: string | null; defaultBranch: string | null; visibility: string; archived: boolean }
+export type GitLabProjectPage = { account: GitLabAccount; query: GitLabProjectQuery; entries: GitLabProject[];
+/**
+ * A full preview page permits another explicit read; it does not prove one exists.
+ */
+mayHaveMore: boolean; nextPage: number | null; warnings: string[] }
+export type GitLabProjectQuery = { page: number; expectedAccount: GitLabAccount | null; scope: GitLabProjectScope; search: string; includeArchived: boolean }
+export type GitLabProjectScope = "membership" | "accessible"
+export type GitLabProjectsRequest = { connectionId: string; query: GitLabProjectQuery; operationId: string }
 export type HistoricalFileEntry = ({ oid: string; authorName: string; authorEmail: string; authoredAt: string; subject: string }) & { path: string; previousPath: string | null }
 export type HistoryCursor = { query: HistoryQuery; revisions: string[]; offset: number }
 export type HistoryQuery = { message?: string; author?: string; oid?: string; since?: string; until?: string; path?: string;
@@ -396,6 +408,10 @@ export function load_editor_draft_entry(args: { id: string; kind: RecoveryDraftE
 export function review_editor_draft(args: { request: EditorDraftReviewRequest }): Promise<EditorDraftReview> { return TAURI_INVOKE("review_editor_draft", args); }
 export function discard_editor_draft(args: { editorId: string; revision: string }): Promise<EditorDraftDiscarded> { return TAURI_INVOKE("discard_editor_draft", args); }
 export function discard_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<null> { return TAURI_INVOKE("discard_editor_draft_entry", args); }
+export function connect_gitlab_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_account", args); }
+export function gitlab_connections(args: {  } = {}): Promise<GitLabConnection[]> { return TAURI_INVOKE("gitlab_connections", args); }
+export function load_gitlab_projects(args: { request: GitLabProjectsRequest }): Promise<GitLabProjectPage> { return TAURI_INVOKE("load_gitlab_projects", args); }
+export function disconnect_gitlab_account(args: { connectionId: string }): Promise<boolean> { return TAURI_INVOKE("disconnect_gitlab_account", args); }
 export function validate_tool_profile(args: { profile: ToolProfile }): Promise<null> { return TAURI_INVOKE("validate_tool_profile", args); }
 export function open_configured_terminal(args: { repoId: string; profile: ToolProfile; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_configured_terminal", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
@@ -620,6 +636,10 @@ export type CommandMap = {
   review_editor_draft: typeof review_editor_draft;
   discard_editor_draft: typeof discard_editor_draft;
   discard_editor_draft_entry: typeof discard_editor_draft_entry;
+  connect_gitlab_account: typeof connect_gitlab_account;
+  gitlab_connections: typeof gitlab_connections;
+  load_gitlab_projects: typeof load_gitlab_projects;
+  disconnect_gitlab_account: typeof disconnect_gitlab_account;
   validate_tool_profile: typeof validate_tool_profile;
   open_configured_terminal: typeof open_configured_terminal;
   system_info: typeof system_info;

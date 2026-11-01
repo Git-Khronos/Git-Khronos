@@ -1,5 +1,26 @@
 # Compatibility notes
 
+## GitLab account and project discovery candidate
+
+Public GitLab REST v4 documentation defines the authenticated user and project
+list endpoints, API token header, response fields, literal search parameters and
+pagination. The project independently projects those responses into bounded
+account/project metadata with string IDs, nested namespace paths and explicit
+account/instance checks. These public protocol names are used for interoperability;
+no proprietary schema, SDK implementation or client internals were copied.
+
+The HTTPS client, native in-memory account sessions and original fixtures are
+project designs. Redirect refusal, byte limits, cancellation, native lifetime and
+window boundaries are independent requirements. Normal use of official glab
+1.126.0 against owned HTTPS fixtures identified cross-origin credential-forwarding
+behavior; that raw CLI transport is not adopted. No real account credential was
+read and no access control was bypassed.
+
+The candidate has source and license/notice checks, with behavioral tests written
+but not yet executed. It does not establish live GitLab, desktop IPC, clone,
+provider-write or cross-platform acceptance. The
+[specification](../specifications/gitlab-projects.md) records the remaining gates.
+
 ## Reviewed fork remote attachment
 
 The public Git configuration and remote manuals define URL/refspec entries and

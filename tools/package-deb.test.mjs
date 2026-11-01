@@ -738,7 +738,9 @@ writeFileSync(root + '/apt-acted', 'fixture action only');
 `);
   const run = (status, actions) => spawnSync('bash', [f.script, 'install'], {
     encoding: 'utf8', timeout: 10000,
-    env: { ...process.env, TMPDIR: f.root, PATH: `${bin}:${process.env.PATH}`,
+    // This installer scenario owns its package under f.root. An inherited
+    // Cargo target must never redirect verification to a real build artifact.
+    env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: f.root, PATH: `${bin}:${process.env.PATH}`,
       GIT_KHRONOS_PACKAGE_FIXTURE: f.root, GIT_KHRONOS_TEST_LEGACY_STATUS: status,
       GIT_KHRONOS_APT_ACTIONS: actions },
   });

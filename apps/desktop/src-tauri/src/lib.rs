@@ -89,6 +89,7 @@ use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
 mod authentication;
+mod gitlab_commands;
 mod recovery_commands;
 mod hosting_commands;
 mod fork_commands;
@@ -3453,11 +3454,13 @@ pub fn run() {
         .manage(authentication::AuthenticationState::default())
         .manage(working_file_commands::EditorState::default())
         .manage(working_file_commands::recovery::RecoveryState::default())
+        .manage(gitlab_commands::GitLabAccounts::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(bindings.invoke_handler())
         .setup(move |app| {
             bindings.mount_events(app);
+            app.state::<gitlab_commands::GitLabAccounts>().start_cleanup();
             incoming_repository_links::install_listener(app.handle())?;
             Ok(())
         })
@@ -3489,6 +3492,10 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             working_file_commands::recovery::review_editor_draft,
             working_file_commands::recovery::discard_editor_draft,
             working_file_commands::recovery::discard_editor_draft_entry,
+            gitlab_commands::connect_gitlab_account,
+            gitlab_commands::gitlab_connections,
+            gitlab_commands::load_gitlab_projects,
+            gitlab_commands::disconnect_gitlab_account,
             terminal_profile_commands::validate_tool_profile,
             terminal_profile_commands::open_configured_terminal,
             system_info,

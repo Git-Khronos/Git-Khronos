@@ -1,5 +1,64 @@
 # Third-party code and development tools
 
+## GitLab HTTPS dependencies
+
+The secondary candidate manifest directly requests reqwest 0.13.5
+(`MIT OR Apache-2.0`, <https://github.com/seanmonstar/reqwest>) and Tokio 1.53.3
+(`MIT`, <https://github.com/tokio-rs/tokio>). Their exact published local manifests
+and license files were inspected. The MIT terms are compatible with this
+repository's GPL-3.0-only license; preserve the upstream copyright and terms in
+the distribution's dependency notices. No implementation source was copied into
+the repository.
+
+Both package versions already appear transitively in the base lockfile. The
+candidate selects native TLS and Tokio runtime features. Resolution adds fifteen
+packages and removes or updates none of the existing package/version identities.
+The added declarations are MIT and/or Apache-2.0; published notice files are
+present and retained by the existing notice collector.
+
+| Package | Version | Declared license | Canonical source |
+| --- | --- | --- | --- |
+| foreign-types | 0.3.2 | MIT/Apache-2.0 | https://github.com/sfackler/foreign-types |
+| foreign-types-shared | 0.1.1 | MIT/Apache-2.0 | https://github.com/sfackler/foreign-types |
+| hyper-tls | 0.6.0 | MIT/Apache-2.0 | https://github.com/hyperium/hyper-tls |
+| native-tls | 0.2.18 | MIT OR Apache-2.0 | https://github.com/rust-native-tls/rust-native-tls |
+| openssl | 0.10.81 | Apache-2.0 | https://github.com/rust-openssl/rust-openssl |
+| openssl-macros | 0.1.1 | MIT/Apache-2.0 | https://github.com/rust-openssl/rust-openssl |
+| openssl-probe | 0.2.2 | MIT OR Apache-2.0 | https://github.com/rustls/openssl-probe |
+| openssl-sys | 0.9.117 | MIT | https://github.com/rust-openssl/rust-openssl |
+| rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
+| schannel | 0.1.30 | MIT | https://github.com/steffengy/schannel-rs |
+| security-framework | 3.7.0 | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
+| security-framework-sys | 2.17.0 | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
+| tokio-native-tls | 0.3.1 | MIT | https://github.com/tokio-rs/tls |
+| vcpkg | 0.2.15 | MIT/Apache-2.0 | https://github.com/mcgoo/vcpkg-rs |
+| zeroize | 1.9.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
+
+The openssl-macros published repository field is absent and remains absent in
+metadata. Its published VCS record identifies revision
+`29d993ffaad363b2bfae80434d57d428ef25484d`, path `openssl-macros`. The exact
+[upstream manifest](https://github.com/rust-openssl/rust-openssl/blob/29d993ffaad363b2bfae80434d57d428ef25484d/openssl-macros/Cargo.toml)
+matches the published original and establishes the canonical source above.
+Both published MIT and Apache notices are present; no missing-notice exception
+or invented repository metadata was added.
+
+Locked offline notice collection passes for the Linux conservative normal/build
+closure, 468 packages, in `parity-gitlab-notice-collection-run`. This includes
+actual reqwest, Tokio and native-TLS dependency terms. It is not an exact
+linked-artifact SBOM or legal approval. Compilation, behavioral tests and
+exact-package verification pass as recorded in the GitLab specification. The adapter and
+TLS fixtures are independently written; no upstream implementation was copied.
+
+The native session timer directly uses the same pinned Tokio version and existing
+runtime/time features. The subsequent offline resolution adds no further package
+versions, and `parity-gitlab-native-notice-collection-run` again passes for the
+468-package Linux conservative closure. The exact qualified Linux Deb contains
+that catalogue (SHA-256 `8b664da372f502e532c1db55e844fffaa369ef6570619b5558f5f367137a6fa7`).
+Platform-only Windows/macOS packages are not included in this Linux catalogue.
+See [packaged qualification](../specifications/gitlab-projects.md) for the
+separate runtime and dependency checks; this remains a conservative catalogue,
+not an exact linked-artifact SBOM.
+
 ## Frontend dialog-plugin notice supplement
 
 The published `@tauri-apps/plugin-dialog 2.8.1` npm package declares

@@ -1,5 +1,50 @@
 # Informational sources
 
+## GitLab account and project discovery candidate
+
+- [GitLab REST API](https://docs.gitlab.com/api/rest/)
+- [REST API token authentication](https://docs.gitlab.com/api/rest/authentication/)
+- [Projects API](https://docs.gitlab.com/api/projects/)
+- [GitLab CLI API interface](https://docs.gitlab.com/cli/api/)
+- [CLI configuration and environment precedence](https://docs.gitlab.com/cli/configuration/)
+- [CLI account status](https://docs.gitlab.com/cli/auth/status/)
+- [Canonical CLI MIT license](https://gitlab.com/gitlab-org/cli/-/raw/main/LICENSE)
+
+Used for public response fields, account/instance requirements, bounded discovery
+and review of a possible optional transport. The core model and JSON behavioral
+fixtures are original project code. No external source code or assets were copied.
+No CLI dependency has been adopted or bundled; concrete transport and live-service
+qualification remain pending. See the [candidate specification](../specifications/gitlab-projects.md).
+
+The owned CLI 1.126.0 HTTPS fixtures also inform the redirect refusal requirement;
+they contain no real account credentials or third-party implementation material.
+
+## GitLab HTTPS transport candidate
+
+- [reqwest 0.13.5 client configuration](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html)
+- [Response streaming](https://docs.rs/reqwest/0.13.5/reqwest/struct.Response.html)
+- [Disabling automatic retries](https://docs.rs/reqwest/0.13.5/reqwest/retry/fn.never.html)
+- [reqwest canonical repository](https://github.com/seanmonstar/reqwest)
+- [Tokio canonical repository](https://github.com/tokio-rs/tokio)
+- [Tokio 1.53.3 runtime shutdown](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Runtime.html#method.shutdown_background)
+
+Used for public client APIs, verified TLS, redirect refusal, response bounds and
+cooperative request cancellation. Transport and fixture implementations are
+original. No external example or implementation code copied. Published local
+manifests identify reqwest 0.13.5 as MIT OR Apache-2.0 and Tokio 1.53.3 as MIT.
+The lockfile adds fifteen packages with known MIT/Apache terms; locked offline
+Linux notice collection passes. Runtime and exact-package gates remain pending.
+
+## GitLab catalogue interface candidate
+
+- [Angular deferred loading](https://angular.dev/guide/templates/defer)
+
+Used for public standalone-component deferral and loading/error lifecycle rules.
+The catalogue, token-input lifecycle, cancellation guards and original behavioral
+fixtures use Khronos's own design tokens and repository dialog. No external source,
+assets, screenshots or distinctive vendor wording were copied. Syntax checks alone
+do not prove chunk separation, rendering, interaction or native behavior.
+
 ## Reviewed local fork remote configuration
 
 - [Git remote manual](https://git-scm.com/docs/git-remote)
@@ -1683,3 +1728,40 @@ external code copied.
 The aggregate checks-job budget is 120 minutes: the earlier unpartitioned CI
 checks job took 87 minutes 27 seconds, leaving insufficient margin under its
 90-minute budget for four fresh server startups and expanded acceptance.
+
+## Deferred provider panel failure
+
+- Angular deferred views: https://angular.dev/guide/templates/defer
+- Angular deferred-load error: https://angular.dev/errors/NG0750
+- Upstream retry discussion: https://github.com/angular/angular/issues/52800
+
+Inspected 2026-11-01 after an owned failed-download browser regression showed
+that recreating the deferred view cannot retry its failed dependency. The
+GitLab panel reports the failure, preserves drafts, offers the existing manual
+URL form and explains saving work before restarting. It does not reload the
+application or promise an unsupported in-place retry. No source code copied.
+
+## Linux native HTTPS runtime dependency
+
+- Tauri Debian bundle dependencies: https://v2.tauri.app/reference/config/#debconfig
+- Debian OpenSSL 3 package: https://packages.debian.org/en/bookworm/libs/libssl3
+- Debian time64 package files: https://packages.debian.org/trixie/amd64/libssl3t64/filelist
+
+Inspected 2026-11-01 for explicit runtime dependency declaration. The native HTTPS
+transport links libssl.so.3 and libcrypto.so.3. Debian's libssl3 supplies both; the
+local libssl3t64 package also declares a versioned libssl3 provision. The Deb
+configuration now declares libssl3, and the GitLab packaged acceptance checks the
+actual control dependency and ELF libraries before launching. No code copied or
+system package modified. Other Linux distributions and platforms require their
+own package qualification.
+
+## Public provider workflow scope
+
+- Public GitLab integration capabilities: https://help.gitkraken.com/gitkraken-desktop/gitlab-gitkraken-desktop/
+- Public self-managed integration capabilities: https://help.gitkraken.com/gitkraken-desktop/gitlab-self-hosted/
+- GitLab project API: https://docs.gitlab.com/api/projects/
+
+Refreshed 2026-11-01 to keep the neutral parity scope broader than project
+discovery: clone/remote, review-request and issue workflows remain requirements.
+The documented project lookup and transport URL fields inform future independent
+clone inspection. No competitor code, UI composition, assets or wording copied.

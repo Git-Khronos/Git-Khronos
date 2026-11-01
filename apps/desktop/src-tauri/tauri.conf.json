@@ -51,7 +51,8 @@
         ],
         "depends": [
           "git (>= 1:2.39)",
-          "libc6"
+          "libc6",
+          "libssl3"
         ],
         "recommends": [
           "openssh-client",

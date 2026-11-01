@@ -1,4 +1,5 @@
 import { HostedRepositoryBrowserComponent } from './hosted-repository-browser.component';
+import { GitLabProjectsComponent } from './gitlab-projects.component';
 import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GitKhronosService } from './git-khronos.service';
@@ -25,7 +26,7 @@ export class RepositoryFormDrafts {
 /** Loaded on demand so repository management stays out of the startup bundle. */
 @Component({
   selector: 'gc-repository-dialog',
-  imports: [FormsModule, IconComponent, HostedRepositoryBrowserComponent],
+  imports: [FormsModule, IconComponent, HostedRepositoryBrowserComponent, GitLabProjectsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="repository-backdrop" (click)="close()">
@@ -67,8 +68,23 @@ export class RepositoryFormDrafts {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-clone" (submit)="$event.preventDefault(); submitClone()">
           <div class="repository-form-body">
             <div class="form-intro"><span><gc-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
-            @if (!cloneOnly()) { <button type="button" [disabled]="git.busy()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button> }
-            @if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gc-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
+            @if (!cloneOnly()) {
+              <div class="provider-catalogues" role="group" aria-label="Hosted repository catalogues">
+                <button type="button" [disabled]="git.busy()" [attr.aria-expanded]="hostedMode()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button>
+                <button type="button" [disabled]="git.busy()" [attr.aria-expanded]="gitlabMode()" (click)="toggleGitlabMode()">{{ gitlabMode() ? 'Return to repository URL' : 'Browse GitLab projects' }}</button>
+              </div>
+            }
+            @if (gitlabMode()) {
+                @defer (on immediate) {
+                  <gc-gitlab-projects #gitlabBrowser />
+                } @placeholder {
+                  <div data-gitlab-loader role="region" aria-label="Opening GitLab projects"><p role="status">Opening GitLab projects…</p><button type="button" (click)="closeGitlabMode()">Cancel opening GitLab projects</button></div>
+                } @loading {
+                  <div data-gitlab-loader role="region" aria-label="Opening GitLab projects"><p role="status">Opening GitLab projects…</p><button type="button" (click)="closeGitlabMode()">Cancel opening GitLab projects</button></div>
+                } @error {
+                  <div role="region" aria-label="GitLab projects unavailable"><p role="alert">GitLab browsing could not open. Continue with a repository URL, or save your work and restart the application before trying GitLab browsing again.</p><button type="button" (click)="closeGitlabMode()">Return to repository URL</button></div>
+                }
+            } @else if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gc-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
             <label>Repository URL<input name="cloneRemote" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="form.cloneRemote()" (ngModelChange)="updateCloneRemote($event)" /></label>
             <label>Where to clone<div class="path-picker"><input name="cloneParent" readonly placeholder="Choose a destination folder" [ngModel]="form.cloneParentPath()" /><button type="button" (click)="chooseCloneParent()">Browse</button></div></label>
             <label>Folder name<input name="cloneFolder" autocomplete="off" placeholder="repository" [ngModel]="form.cloneFolder()" (ngModelChange)="form.cloneFolder.set($event)" /></label>
@@ -83,7 +99,7 @@ export class RepositoryFormDrafts {
             </fieldset>
             }
           </div>
-          @if (!hostedMode()) {
+          @if (!hostedMode() && !gitlabMode()) {
           <footer><small class="form-readiness" [class.ready]="cloneReady()">{{ cloneReadiness() }}</small><button type="button" (click)="close()">Cancel</button><button class="primary" type="submit" [disabled]="!cloneReady() || git.busy()">Clone repository</button></footer>
           }
         </form>
@@ -105,11 +121,21 @@ export class RepositoryFormDrafts {
     </section>
   </div>
   `,
+  styles: `
+    .provider-catalogues { display: flex; flex-wrap: wrap; gap: 8px; }
+    .provider-catalogues > button { flex: 1 1 220px; min-width: 0; min-height: 36px; padding: 8px 12px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--inspector-row); color: var(--text); font: inherit; font-size: 13px; white-space: normal; cursor: pointer; }
+    .provider-catalogues > button[aria-expanded=true] { border-color: var(--accent); }
+    .provider-catalogues > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .provider-catalogues > button:disabled { opacity: .5; cursor: default; }
+  `,
 })
 export class RepositoryDialogComponent {
   protected readonly git = inject(GitKhronosService);
   protected readonly form = inject(RepositoryFormDrafts);
   protected readonly hostedMode = signal(false);
+  protected readonly gitlabMode = signal(false);
+  // A string query keeps the component's runtime dependency inside @defer.
+  private readonly gitlabBrowser = viewChild<{ dismiss(): void }>('gitlabBrowser');
   private readonly hostedGeneration = signal(0);
   protected readonly hostedViews = computed(() => this.hostedMode() ? [this.hostedGeneration()] : []);
   protected readonly repositoryQuery = signal('');
@@ -153,15 +179,28 @@ export class RepositoryDialogComponent {
     });
   }
 
-  protected close(): void { this.hostedBrowser()?.dismiss(); this.closed.emit(); }
+  protected close(): void { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.closed.emit(); }
   protected toggleHostedMode(): void {
+    if (this.git.busy()) return;
+    this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
     if (this.hostedMode()) this.hostedBrowser()?.dismiss();
     else this.hostedGeneration.update(generation => generation + 1);
     this.hostedMode.set(!this.hostedMode());
   }
+  protected toggleGitlabMode(): void {
+    if (this.git.busy()) return;
+    if (this.gitlabMode()) { this.closeGitlabMode(); return; }
+    this.hostedBrowser()?.dismiss(); this.hostedMode.set(false);
+    this.gitlabMode.set(true);
+    window.setTimeout(() => this.focusMode('clone'));
+  }
+  protected closeGitlabMode(): void {
+    this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
+    window.setTimeout(() => this.focusMode('clone'));
+  }
   protected setMode(mode: RepositoryDialogMode): void {
     if (this.cloneOnly() && mode !== 'clone') return;
-    if (mode !== 'clone') this.hostedBrowser()?.dismiss();
+    if (mode !== 'clone') { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false); }
     else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
     this.mode.set(mode);
   }
@@ -169,7 +208,7 @@ export class RepositoryDialogComponent {
   private focusMode(mode: RepositoryDialogMode): void {
     const dialog = this.dialog()?.nativeElement;
     const target = mode === 'clone'
-      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"], gc-hosted-repository-browser button:not(:disabled)')
+      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"], gc-hosted-repository-browser button:not(:disabled), gc-gitlab-projects input:not(:disabled), [data-gitlab-loader] button:not(:disabled)')
       : mode === 'init'
         ? dialog?.querySelector<HTMLElement>('.path-picker button')
         : dialog?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -253,7 +292,7 @@ export class RepositoryDialogComponent {
   }
 
   protected async submitClone(): Promise<void> {
-    if (this.hostedMode() || !this.cloneReady() || this.git.busy()) return;
+    if (this.hostedMode() || this.gitlabMode() || !this.cloneReady() || this.git.busy()) return;
     const form = this.form;
     this.opening.emit();
     const depth = form.shallowClone() ? Math.max(1, Math.floor(Number(form.cloneDepth()) || 1)) : undefined;

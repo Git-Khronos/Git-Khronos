@@ -114,7 +114,7 @@ jobs:
       - name: Install Linux package and WebDriver prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client fakeroot desktop-file-utils libglib2.0-bin
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client fakeroot desktop-file-utils libglib2.0-bin openssl
       - run: pnpm install --frozen-lockfile
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6
@@ -140,6 +140,11 @@ jobs:
         run: pnpm nx run desktop:package-deb --output-style=static
       - name: Run packaged WebKitGTK acceptance
         run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
+      - name: Run packaged GitLab catalogue acceptance
+        run: |
+          package=$(task --silent package:deb:path)
+          pnpm nx exec -p desktop --excludeTaskDependencies -- \
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

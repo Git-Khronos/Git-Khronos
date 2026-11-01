@@ -8,7 +8,8 @@ development-only application endpoint.
 ## Prerequisites
 
 - the pinned Node, pnpm, and Rust toolchains;
-- `task`, `dpkg-deb`, Git, Git LFS, and OpenSSH;
+- `task`, `dpkg-deb`, Python 3, Git, Git LFS, and OpenSSH;
+- `openssl` for the owned GitLab HTTPS test fixture;
 - `fakeroot` for the package regression suite's private dpkg ownership checks
   (not required for normal application use or installation);
 - `tauri-driver 2.0.6`, `WebKitWebDriver`, and Xvfb for headless runs;
@@ -107,6 +108,19 @@ pnpm nx run desktop:native-performance
 pnpm nx run desktop:test-lfs
 TMPDIR=/tmp pnpm nx run desktop:test-signing
 ```
+
+The packaged GitLab catalogue suite uses the same verified package and ordinary
+native IPC with an owned HTTPS service and synthetic credential:
+
+```sh
+package=$(task --silent package:deb:path)
+pnpm nx exec -p desktop --excludeTaskDependencies -- \
+  python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
+```
+
+Its private CA applies only to the owned application process. It does not alter
+host trust or contact a real GitLab account. See the
+[GitLab specification](specifications/gitlab-projects.md) for behavior and evidence.
 
 `test-lfs` runs the normally ignored Rust LFS integration checks serially with
 real Git LFS, using disposable repositories and local transfer/locking fixtures.
