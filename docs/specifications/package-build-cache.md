@@ -3,7 +3,10 @@
 A cached package may be reused only after a completed build receipt matches the
 Task source checksum, selected Cargo output directory and exact required output
 hashes. Debian payload verification also compares the packaged executable with
-the current release executable. A valid package header or an existing `.deb` is
+the current release executable, allowing only Tauri’s single bundle marker
+change from `__TAURI_BUNDLE_TYPE_VAR_UNK` to `__TAURI_BUNDLE_TYPE_VAR_DEB`.
+This transformation was observed in our own freshly built executable; all other
+bytes must match. A valid package header or an existing `.deb` is
 not evidence that current application source was built.
 
 ## Interrupted and redirected builds
@@ -19,7 +22,8 @@ The build recipe now runs these steps:
 1. Write a pending marker containing the declared source checksum and owning Task
    process identity. Refuse another live owner of that Cargo output directory.
 2. Run the normal Tauri build and normalize the Debian filename.
-3. Validate the package payload and its equality with the release executable;
+3. Validate the package payload and its equality with the release executable
+   after the narrowly defined bundle marker change;
    hash the package, executable, notices and declared renderer/package outputs.
 4. Atomically write the completed receipt, then remove the pending marker.
 
@@ -40,9 +44,11 @@ environment/toolchain overrides may require `task --force package:deb`.
 
 The original implementation failed both new stale-cache reproductions: hard-kill
 recovery and a return to a Cargo target containing an older source build. The
-corrected implementation passes all **64** packaging tests, including five new
+corrected implementation passes all **65** packaging tests, including six new
 cases for those conditions, changed outputs/deleted receipts, live owner refusal
-and mismatched release/package executables. Tests use temporary owned artifacts
+mismatched release/package executables, and the one allowed bundle marker
+transformation (additional byte changes, repeated markers and other bundle types
+are rejected). Tests use temporary owned artifacts
 and private package databases. No host package installation is performed.
 
 A fresh real package and complete renderer/native acceptance are still required

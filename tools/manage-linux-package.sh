@@ -121,8 +121,21 @@ verify_package() {
   local release_executable="${cargo_target_directory}/release/git-khronos"
   [[ -s "$release_executable" && -x "$release_executable" ]] \
     || fail "the current release executable is missing; rebuild with 'task package:deb'."
-  cmp -s -- "$release_executable" "${extracted}/bin/git-khronos" \
+  # Tauri temporarily patches its one bundle-kind marker when making the Deb,
+  # then restores the release executable. Allow only that observed transformation.
+  node --input-type=module - "$release_executable" "${extracted}/bin/git-khronos" <<'NODE' \
     || fail "the packaged executable differs from the current release output; rebuild with 'task package:deb'."
+import { readFileSync } from 'node:fs';
+const [releasePath, bundledPath] = process.argv.slice(2);
+const release = readFileSync(releasePath), bundled = readFileSync(bundledPath);
+if (release.equals(bundled)) process.exit(0);
+const marker = Buffer.from('__TAURI_BUNDLE_TYPE_VAR_UNK');
+const offset = release.indexOf(marker);
+if (offset < 0 || release.indexOf(marker, offset + 1) !== -1) process.exit(1);
+const expected = Buffer.from(release);
+Buffer.from('__TAURI_BUNDLE_TYPE_VAR_DEB').copy(expected, offset);
+process.exit(expected.equals(bundled) ? 0 : 1);
+NODE
   [[ ! -e "${extracted}/bin/git-khronos-desktop" ]] || fail "package contains the obsolete git-khronos-desktop executable."
   [[ ! -e "${extracted}/bin/export-ipc" ]] || fail "package contains the development-only export-ipc executable."
   local required_file

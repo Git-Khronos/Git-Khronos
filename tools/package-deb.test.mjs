@@ -883,3 +883,22 @@ test('package verification rejects a stale bundled executable even when payload 
   await rm(executable);
   const missing = f.verify(); assert.notEqual(missing.status, 0); assert.match(missing.stderr, /release executable is missing/);
 });
+
+
+test('package verification allows only the single Tauri Deb bundle marker transformation', async (t) => {
+  const f = await packagePayloadFixture(t);
+  const executable = join(f.root, 'target/release/git-khronos');
+  const original = 'owned-prefix\0__TAURI_BUNDLE_TYPE_VAR_UNK\0owned-suffix';
+  const bundled = original.replace('_VAR_UNK', '_VAR_DEB');
+  await writeFile(executable, original);
+  await f.put('usr/bin/git-khronos', bundled); f.build();
+  assert.equal(f.verify().status, 0);
+  await f.put('usr/bin/git-khronos', bundled + 'unexpected'); f.build();
+  assert.notEqual(f.verify().status, 0);
+  await writeFile(executable, original + original);
+  await f.put('usr/bin/git-khronos', bundled + bundled); f.build();
+  assert.notEqual(f.verify().status, 0);
+  await writeFile(executable, original);
+  await f.put('usr/bin/git-khronos', original.replace('_VAR_UNK', '_VAR_RPM')); f.build();
+  assert.notEqual(f.verify().status, 0);
+});
