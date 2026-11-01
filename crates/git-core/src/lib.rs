@@ -18,6 +18,8 @@ mod file_statistics;
 mod file_content;
 mod file_comparison;
 mod file_media;
+mod repository_links;
+pub use repository_links::{RepositoryLink, RepositoryLinkTarget, parse_repository_link, create_repository_link, repository_link_remote_identity};
 pub use file_media::{FileMediaComparison, FileMediaSide, FileMediaState,
     RasterMetadata, FileLfsPointer, MAX_PREVIEW_DIMENSION, MAX_PREVIEW_PIXELS,
     read_file_media};

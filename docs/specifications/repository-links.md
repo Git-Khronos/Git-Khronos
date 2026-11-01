@@ -95,3 +95,16 @@ Linux registration tests must use owned desktop/XDG and D-Bus fixtures; they mus
 not replace the user's protocol handlers. Windows/macOS acceptance remains open
 until performed on those platforms. Tests must inspect actual behavior and avoid
 proprietary implementation matching.
+
+
+## Parser foundation checkpoint
+
+The first source slice provides bounded parse/generate functions and conservative
+network-remote identities. It performs no Git, network or filesystem operation.
+The only newly direct library is the already locked `url` 2.5.8 crate, whose
+MIT/Apache-2.0 provenance and notice obligations are recorded separately. Six
+focused tests pass, including strict malformed-input refusal, exact round trips,
+literal plus/percent/Unicode refs, and independent `git check-ref-format` oracles.
+The full core regression passes 714 tests (701 unit, 12 clone-policy and one trust-policy test), with 37 intentionally ignored. All-target Clippy passes with warnings denied. The notice collector retains both complete published URL license files. No native IPC, menu,
+clipboard, local-copy resolver, clone handoff or OS handler is implemented by this
+slice; G28 remains open.

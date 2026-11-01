@@ -477,3 +477,14 @@ notices. Neither implementation was copied into project source. The project
 independently implements comparison selection, classification policy and UI.
 Header dimensions are metadata, not proof that a complete image decodes. Actual
 browser decode outcomes and dimensions remain separate acceptance checks.
+
+
+## url 2.5.8 direct dependency for independent repository links
+
+Source: https://github.com/servo/rust-url
+Published package: https://docs.rs/crate/url/2.5.8
+License: MIT OR Apache-2.0, verified against the cached published manifest and both license files.
+The crate was already present transitively in the lockfile; the core now pins its direct use.
+Usage: public URL parsing/serialization API only. No library implementation was copied or adapted.
+Redistribution: retain the published license notices through the existing Rust notice collector.
+No additional copyleft/source-distribution requirement is introduced by this dependency.
