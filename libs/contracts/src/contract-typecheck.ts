@@ -109,6 +109,25 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: '1', operationId: 'owned-inspection', origin: 'https://other.test' } });
   // @ts-expect-error discarding a clone review must identify its owned context
   void ipc.discard_gitlab_clone_plan({ token: 'owned-token' });
+  void ipc.prepare_file_tool_launch({ request: { repoId: 'owned-repository', contextId: 'owned-context', operationId: 'owned-review', request: { kind: 'editor', path: 'file.txt', line: 1 }, profile: { version: 1, id: 'editor', name: 'Owned editor', role: 'editor', executable: '/owned/editor', arguments: ['{file}'] } } });
+  void ipc.prepare_file_tool_launch({ request: { repoId: 'owned-repository', contextId: 'owned-context', operationId: 'owned-review', request: { kind: 'comparison', request: { context: { kind: 'workingTree', staged: false }, path: 'file.txt', previousPath: null } }, profile: { version: 1, id: 'diff', name: 'Owned comparison', role: 'diff', executable: '/owned/diff', arguments: ['{before}', '{after}'] } } });
+  void ipc.launch_reviewed_file_tool({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-launch' } });
+  // @ts-expect-error launch authority is a native token, never renderer-authored argv or plan
+  void ipc.launch_reviewed_file_tool({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-launch', plan: { executable: '/other', arguments: [] } } });
+  // @ts-expect-error launch must remain bound to its review context
+  void ipc.launch_reviewed_file_tool({ request: { token: 'owned-token', operationId: 'owned-launch' } });
+  // @ts-expect-error the renderer cannot supply replacement result bytes
+  void ipc.save_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-save', finishedEditing: true, bytes: [1, 2, 3] } });
+  // @ts-expect-error saving requires an explicit editing-finished acknowledgement
+  void ipc.save_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-save' } });
+  // @ts-expect-error staging cannot replace the captured working path
+  void ipc.stage_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-stage', path: 'other.txt' } });
+  // @ts-expect-error cleanup must acknowledge the completed GUI handoff
+  void ipc.discard_reviewed_file_tool_session({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-cleanup' } });
+  // @ts-expect-error cleanup never accepts a renderer-selected directory
+  void ipc.discard_reviewed_file_tool_session({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-cleanup', finishedUsingFiles: true, directory: '/other' } });
+  // @ts-expect-error review purposes are a closed set
+  void ipc.discard_file_tool_review({ request: { contextId: 'owned-context', token: 'owned-token', purpose: 'unknown' } });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

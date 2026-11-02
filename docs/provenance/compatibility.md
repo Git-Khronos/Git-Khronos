@@ -2272,3 +2272,20 @@ Executable SHA-256:
 Source, failed attempts and test-only corrections are recorded in the repository-link
 specification. Cold desktop-launcher association and other platforms remain unqualified.
 No proprietary implementation material or assets were used.
+
+## Reviewed external file programs
+
+The [file-tool candidate](../specifications/external-file-tools.md) extends the public
+Git comparison/merge role semantics recorded in the configured-program specification.
+Native file snapshots, one-use reviews, direct Child ownership, raw-byte publication,
+separate staging and cleanup are independently designed. Owned Git/filesystem/process
+fixtures define expected behavior; renderer protocol fixtures exercise the UI without
+claiming real execution. No proprietary implementation or assets were inspected or
+incorporated. The current package identified in the specification passes 14 normal
+and 15 inherited-environment native executions, with 12 capture images actually viewed.
+The original loading-state visual rejection remains recorded. The current package
+also passes 471 broad native executions over 241 distinct scenarios; all 45 optional
+LFS/signing/SSH source cases pass. All 1,484 current renderer cases pass exactly once,
+with no retries or skips and all earlier 1,473 cases preserved. Restart storage
+management, absent-target save and other-platform support remain open. These local
+results do not establish remote CI success.

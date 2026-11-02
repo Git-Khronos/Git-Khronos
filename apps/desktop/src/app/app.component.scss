@@ -616,6 +616,7 @@
 .merge-tool > header h2 { overflow: hidden; margin: 2px 0; color: #f0eff5; font: 600 14px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .merge-tool > header p { margin: 0; color: #8f8d9f; font-size: 12px; }
 .merge-tool > header > button { align-self: start; background: transparent; color: #8f8d9f; }
+.merge-external-tool { grid-column: 2 / -1; justify-self: start; max-width: 100%; padding: 6px 9px; border: 1px solid #48475c; border-radius: 3px; font-size: 12px; text-align: left; white-space: normal; }
 .merge-sides { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
 .merge-sides > section { display: grid; grid-template-rows: 34px minmax(0, 1fr); min-width: 0; border-right: 1px solid #39384b; }
 .merge-sides > section:last-child { border-right: 0; }

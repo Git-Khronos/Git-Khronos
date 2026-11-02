@@ -1,3 +1,5 @@
+import { FileToolsDialogComponent } from './file-tools-dialog.component';
+import type { FileToolsDialogRequest } from './file-tools-dialog-request';
 import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from './repository-link-dialog.component';
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
@@ -621,7 +623,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileToolsDialogComponent, EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -820,6 +822,25 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly contextMenu = signal<ContextMenuState | null>(null);
+  protected readonly fileToolsDialog = signal<FileToolsDialogRequest | null>(null);
+  private readonly fileToolsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileToolsLoaderClose');
+  protected openFileTools(action: FileToolsDialogRequest['action'] = null, returnFocus: HTMLElement | null = null): void {
+    const repoId = this.git.activeRepositoryId();
+    if (!repoId || this.git.busy() || this.fileContentDialog()) return;
+    this.appMenuOpen.set(false);
+    this.fileToolsDialog.set({ id: crypto.randomUUID(), repoId, action,
+      returnFocus: returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null) });
+  }
+  protected closeFileTools(): void {
+    const opener = this.fileToolsDialog()?.returnFocus; this.fileToolsDialog.set(null);
+    queueMicrotask(() => { if (!this.fileToolsDialog() && opener?.isConnected && !opener.closest('[inert]')) opener.focus(); });
+  }
+  protected handleFileToolsLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeFileTools(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.fileToolsLoaderClose()?.nativeElement.focus(); }
+  }
+  protected fileToolsChanged(repoId: string): void { this.scheduleRepositoryRefresh(repoId); }
   protected readonly fileContentDialog = signal<FileContentDialogRequest | null>(null);
   protected readonly editorDraftRecoveryOpen = signal(false);
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
@@ -1558,6 +1579,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private zoomApplication = 0;
 
   constructor() {
+    afterRenderEffect(() => this.fileToolsLoaderClose()?.nativeElement.focus());
     effect(() => {
       const request = this.fileContentDialog();
       if (request && !request.editing() && request.selection.repoId !== this.git.activeRepositoryId()) {
@@ -3257,6 +3279,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'fullscreen', group: 'View', label: 'Toggle Fullscreen', detail: 'Enter or leave fullscreen mode', shortcut: this.fullscreenShortcut, enabled: true, icon: 'maximize' },
       { id: 'search', group: 'View', label: 'Search All History', detail: 'Search whole-repository history with optional advanced filters', shortcut: `${this.primaryShortcutKey} Shift F`, enabled: !!repository, icon: 'search' },
       { id: 'file-search', group: 'History', label: 'Find File History or Blame', detail: 'Search every tracked file in this repository', shortcut: `${this.primaryShortcutKey} Shift H`, enabled: !!repository, icon: 'history' },
+      { id: 'file-tools', group: 'Edit', label: 'External File Tools', detail: 'Inspect reviewed editor, comparison and merge sessions', enabled: !!repository && !busy && !this.fileContentDialog(), icon: 'terminal' },
       { id: 'editor-draft-recovery', group: 'Edit', label: 'Editor Draft Recovery', detail: 'Inspect retained editor copies and review a working file', enabled: !busy && !this.fileContentDialog(), icon: 'history' },
       { id: 'recovery-history', group: 'History', label: 'Recovery History', detail: 'Find previous reference positions and preserve a commit with a new branch', enabled: !!repository && !busy, icon: 'history' },
       ...(repository?.status.mergeInProgress ? [
@@ -3883,6 +3906,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    if (this.fileToolsDialog() || this.fileContentDialog()) return;
     if (this.repositoryLinkDialog()) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -9964,6 +9988,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'tag-create': this.openTagCreator(); break;
       case 'search': this.openHistorySearch(); break;
       case 'file-search': this.openCommandPalette('', 'files'); break;
+      case 'file-tools': this.openFileTools(null, paletteReturnFocus); break;
       case 'editor-draft-recovery': this.openEditorDraftRecovery(paletteReturnFocus); break;
       case 'recovery-history': await this.openRecoveryHistory(); break;
       case 'merge-continue': await this.controlMerge('continue'); break;

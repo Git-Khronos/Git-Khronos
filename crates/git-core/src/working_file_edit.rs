@@ -322,6 +322,32 @@ impl WorkingFileEdit {
     }
 }
 
+// Shared native byte baseline; text decoding is deliberately outside publication.
+#[cfg(target_os = "linux")]
+struct ByteBaseline<'a> {
+    root: &'a Path,
+    file: &'a str,
+    bytes: &'a [u8],
+    identity: &'a platform::Identity,
+    context: &'a RepositoryEditContext,
+    limit: usize,
+}
+#[cfg(target_os = "linux")]
+impl ByteBaseline<'_> {
+    fn verify_context(&self, cancellation: &CancellationToken) -> Result<(), AppError> {
+        let current = git_cancellation::with(Some(cancellation), || {
+            file_content::worktree_root(self.root)
+        })?;
+        if current != self.root || repository_context(self.root, cancellation)? != *self.context {
+            return Err(changed());
+        }
+        Ok(())
+    }
+}
+#[cfg(target_os = "linux")]
+#[path = "working_file_bytes.rs"]
+pub(crate) mod bytes;
+
 #[cfg(target_os = "linux")]
 mod platform {
     use super::*;
@@ -451,13 +477,21 @@ mod platform {
         file: &str,
         cancellation: &CancellationToken,
     ) -> Result<(Vec<u8>, Identity), AppError> {
+        read_bounded(root, file, cancellation, MAX_WORKING_TEXT_BYTES)
+    }
+    pub(super) fn read_bounded(
+        root: &Path,
+        file: &str,
+        cancellation: &CancellationToken,
+        limit: usize,
+    ) -> Result<(Vec<u8>, Identity), AppError> {
         check_cancel(cancellation)?;
         let location = Location::new(root, file)?;
         let mut input = location.open()?;
         let before = io(input.metadata())?;
-        if before.len() > MAX_WORKING_TEXT_BYTES as u64 {
+        if before.len() > limit as u64 {
             return Err(refused(
-                "The working file exceeds the one MiB editor limit.",
+                "The working file exceeds the selected write limit.",
             ));
         }
         let mut bytes = Vec::new();
@@ -471,8 +505,10 @@ mod platform {
             if count == 0 {
                 break;
             }
-            if bytes.len() + count > MAX_WORKING_TEXT_BYTES {
-                return Err(refused("The working file grew beyond the editor limit."));
+            if bytes.len() + count > limit {
+                return Err(refused(
+                    "The working file grew beyond the selected write limit.",
+                ));
             }
             bytes.extend_from_slice(&buffer[..count]);
         }
@@ -629,8 +665,51 @@ mod platform {
         rename: RenameOperation,
         before_verify_temporary: impl FnOnce(&OwnedFd, &str) -> Result<(), rustix::io::Errno>,
     ) -> Result<(WorkingFileWriteStatus, Option<String>), AppError> {
-        let (current, identity) = read(&edit.root, &edit.file, cancellation)?;
-        if identity != edit.identity || current != edit.bytes {
+        let baseline = ByteBaseline {
+            root: &edit.root,
+            file: &edit.file,
+            bytes: &edit.bytes,
+            identity: &edit.identity,
+            context: &edit.context,
+            limit: MAX_WORKING_TEXT_BYTES,
+        };
+        replace_bytes_using(
+            &baseline,
+            encoded,
+            cancellation,
+            rename,
+            before_verify_temporary,
+            || Ok(()),
+        )
+    }
+    pub(super) fn replace_bytes(
+        baseline: &ByteBaseline<'_>,
+        replacement: &[u8],
+        cancellation: &CancellationToken,
+        guard: impl FnOnce() -> Result<(), AppError>,
+    ) -> Result<(WorkingFileWriteStatus, Option<String>), AppError> {
+        replace_bytes_using(
+            baseline,
+            replacement,
+            cancellation,
+            rename_file,
+            |_, _| Ok(()),
+            guard,
+        )
+    }
+    fn replace_bytes_using(
+        edit: &ByteBaseline<'_>,
+        encoded: &[u8],
+        cancellation: &CancellationToken,
+        rename: RenameOperation,
+        before_verify_temporary: impl FnOnce(&OwnedFd, &str) -> Result<(), rustix::io::Errno>,
+        guard: impl FnOnce() -> Result<(), AppError>,
+    ) -> Result<(WorkingFileWriteStatus, Option<String>), AppError> {
+        if encoded.len() > edit.limit {
+            return Err(refused("The replacement exceeds the selected write limit."));
+        }
+        let (current, identity) = read_bounded(edit.root, edit.file, cancellation, edit.limit)?;
+        if &identity != edit.identity || current != edit.bytes {
             return Err(changed());
         }
         if let Some(reason) = read_only_reason(&identity) {
@@ -639,7 +718,7 @@ mod platform {
         if encoded == edit.bytes {
             return Ok((WorkingFileWriteStatus::Unchanged, None));
         }
-        let location = Location::new(&edit.root, &edit.file)?;
+        let location = Location::new(edit.root, edit.file)?;
         if identity.root != directory_inode(&location.root)?
             || identity.parent != directory_inode(&location.parent)?
         {
@@ -693,13 +772,14 @@ mod platform {
             }
             io(output.sync_all())?;
             let prepared = io(output.metadata())?;
+            guard()?;
             // Rewalk the actual root and parents after preparing the temporary;
             // compare fresh bytes and metadata immediately before replacement.
-            let (current, fresh) = read(&edit.root, &edit.file, cancellation)?;
+            let (current, fresh) = read_bounded(edit.root, edit.file, cancellation, edit.limit)?;
             if fresh != identity || current != edit.bytes {
                 return Err(changed());
             }
-            let final_location = Location::new(&edit.root, &edit.file)?;
+            let final_location = Location::new(edit.root, edit.file)?;
             if directory_inode(&final_location.root)? != identity.root
                 || directory_inode(&final_location.parent)? != identity.parent
             {
@@ -708,11 +788,12 @@ mod platform {
             check_cancel(cancellation)?;
             edit.verify_context(cancellation)?;
             syscall(before_verify_temporary(&location.parent, &temporary.name))?;
-            let temporary_path = Path::new(&edit.file).with_file_name(&temporary.name);
-            let (temporary_bytes, temporary_identity) = read(
-                &edit.root,
+            let temporary_path = Path::new(edit.file).with_file_name(&temporary.name);
+            let (temporary_bytes, temporary_identity) = read_bounded(
+                edit.root,
                 temporary_path.to_str().ok_or_else(changed)?,
                 cancellation,
+                edit.limit,
             )?;
             if temporary_identity.file != file_content::worktree::identity(&prepared)
                 || inode(&prepared) != inode(&created)

@@ -21,7 +21,7 @@ import { CONFIGURED_TOOLS } from './configured-tools.service';
   `],
   template: `
     <strong>Programs and arguments</strong>
-    <small>Choose installed terminal and agent programs. Each argument below is passed separately. Use &#123;repository&#125; for the current checkout and doubled braces for literal braces.</small>
+    <small>Choose installed editor, comparison, merge, terminal and agent programs. Each argument below is passed separately. Use &#123;repository&#125; for the current checkout and doubled braces for literal braces.</small>
     @if (tools.storageError(); as message) {
       <p role="alert">{{ message }}</p>
       @if (confirmClear()) { <div class="actions"><button type="button" (click)="clearStorage()">Clear unreadable profiles</button><button type="button" (click)="confirmClear.set(false)">Keep stored data</button></div> }
@@ -29,7 +29,7 @@ import { CONFIGURED_TOOLS } from './configured-tools.service';
     }
     <div class="profiles" aria-label="Saved program profiles">
       @for (profile of tools.profiles(); track profile.id) {
-        <button type="button" [disabled]="busy()" (click)="edit(profile)">{{ profile.name }} · {{ profile.role }}{{ tools.defaultTerminal()?.id === profile.id ? ' · default terminal' : '' }}</button>
+        <button type="button" [disabled]="busy()" (click)="edit(profile)">{{ profile.name }} · {{ profile.role }}{{ tools.defaultFor(profile.role)?.id === profile.id ? ' · default ' + profile.role : '' }}</button>
       }
     </div>
     <button type="button" [disabled]="busy() || !!tools.storageError()" (click)="edit(null)">New program profile</button>
@@ -39,14 +39,17 @@ import { CONFIGURED_TOOLS } from './configured-tools.service';
         <fieldset [disabled]="busy()">
           <legend>{{ editingId ? 'Edit program profile' : 'New program profile' }}</legend>
           <label>Display name<input name="toolName" aria-label="Program profile name" maxlength="128" [ngModel]="value.name" (ngModelChange)="patch({name: $event})" /></label>
-          <label>Use for<select name="toolRole" aria-label="Program profile role" [ngModel]="value.role" (ngModelChange)="patch({role: $event})"><option value="terminal">Terminal</option><option value="agent">Agent</option></select></label>
+          <label>Use for<select name="toolRole" aria-label="Program profile role" [ngModel]="value.role" (ngModelChange)="patch({role: $event})"><option value="editor">Editor</option><option value="diff">Comparison</option><option value="merge">Merge</option><option value="terminal">Terminal</option><option value="agent">Agent</option></select></label>
           <label>Executable path<input name="toolExecutable" aria-label="Program executable path" autocomplete="off" spellcheck="false" [ngModel]="value.executable" (ngModelChange)="patch({executable: $event})" /></label>
           <small>Enter the absolute executable path without surrounding quotes. Shell commands require an explicitly selected shell program.</small>
+          @if (value.role === 'editor') { <small>Include &#123;file&#125; for the saved working file. Use &#123;line&#125; for a one-based line when the program supports it. Unsaved editor text is reviewed before handoff.</small> }
+          @if (value.role === 'diff') { <small>Include &#123;before&#125; and &#123;after&#125; for private comparison copies. The original files are unchanged.</small> }
+          @if (value.role === 'merge') { <small>Use &#123;base&#125;, &#123;before&#125; and &#123;after&#125; for the base, current and incoming copies. Include &#123;merged&#125; for the separate output file. Saving and staging that result require another review.</small> }
           @for (argument of value.arguments; track $index; let index = $index) {
             <div class="argument"><label>Argument {{ index + 1 }}<input [name]="'toolArgument' + index" [attr.aria-label]="'Program argument ' + (index + 1)" autocomplete="off" spellcheck="false" [ngModel]="argument" (ngModelChange)="setArgument(index, $event)" /></label><button type="button" [attr.aria-label]="'Remove program argument ' + (index + 1)" (click)="removeArgument(index)">Remove</button></div>
           }
           <button type="button" [disabled]="value.arguments.length >= 32" (click)="addArgument()">Add argument</button>
-          @if (value.role === 'terminal') { <label class="default-choice"><input name="toolDefault" type="checkbox" [ngModel]="makeDefault()" (ngModelChange)="makeDefault.set($event)" /> Use for new terminal tabs</label> }
+          @if (value.role !== 'agent') { <label class="default-choice"><input name="toolDefault" type="checkbox" [ngModel]="makeDefault()" (ngModelChange)="makeDefault.set($event)" /> {{ value.role === 'terminal' ? 'Use for new terminal tabs' : 'Use by default for this file action' }}</label> }
           <div class="actions"><button type="submit">{{ busy() ? 'Saving…' : 'Save program profile' }}</button><button type="button" (click)="draft.set(null)">Cancel profile changes</button>
             @if (editingId) { <button type="button" (click)="remove()">Delete program profile</button> }
           </div>
@@ -70,7 +73,7 @@ export class ConfiguredToolsPanelComponent {
   protected edit(profile: ToolProfile | null): void {
     this.editingId = profile?.id ?? null;
     this.draft.set(profile ? structuredClone(profile) : { version: 1, id: crypto.randomUUID(), name: '', role: 'terminal', executable: '', arguments: [] });
-    this.makeDefault.set(!!profile && this.tools.defaultTerminal()?.id === profile.id);
+    this.makeDefault.set(!!profile && this.tools.defaultFor(profile.role)?.id === profile.id);
     this.error.set(null); this.notice.set(null);
   }
   protected patch(update: Partial<ToolProfile>): void { this.draft.update((p) => p ? { ...p, ...update } : null); }
@@ -82,7 +85,7 @@ export class ConfiguredToolsPanelComponent {
   protected async save(): Promise<void> {
     const value = this.draft(); if (!value || this.busy()) return;
     this.busy.set(true); this.error.set(null); this.notice.set(null);
-    try { await this.tools.save(value, this.makeDefault()); this.draft.set(null); this.notice.set('Profile saved. Programs start only when you open a session.'); }
+    try { await this.tools.save(value, this.makeDefault()); this.draft.set(null); this.notice.set('Profile saved. Programs start only through an explicit launch.'); }
     catch (cause) { this.error.set(this.message(cause)); }
     finally { this.busy.set(false); }
   }

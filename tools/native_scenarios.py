@@ -18,6 +18,7 @@ from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
 from native_editor_scenarios import working_file_editor
 from native_configured_tool_scenarios import configured_tools
+from native_file_tool_scenarios import file_tools
 from native_editor_close_scenarios import editor_window_close
 from native_editor_recovery_scenarios import editor_draft_recovery
 
@@ -2906,6 +2907,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
     configured_tools(driver, fixtures, repository, report)
+    file_tools(driver, fixtures, repository, report)
     editor_window_close(driver, fixtures, repository, report)
     editor_draft_recovery(driver, fixtures, repository, report)
     repository_links(driver, fixtures, repository, report)

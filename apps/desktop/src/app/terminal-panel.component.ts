@@ -9,6 +9,7 @@ import {
   ViewChild,
   afterNextRender,
   effect,
+  computed,
   inject,
   input,
   output,
@@ -92,7 +93,7 @@ interface TerminalTab extends TerminalInfo {
       </header>
       @if (agentLauncherOpen() && !minimized()) {
         <div class="agent-launcher" aria-label="Start agent session" (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeAgentLauncher()">
-          <label [attr.for]="panelId() + '-agent-program'">Agent program</label><select #agentProgramSelect [id]="panelId() + '-agent-program'" [value]="agentProgram()" (change)="agentProgram.set($any($event.target).value)"><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option>@for (profile of tools.profiles(); track profile.id) { <option [value]="'profile:' + profile.id">{{ profile.name }} · {{ profile.role }}</option> }</select>
+          <label [attr.for]="panelId() + '-agent-program'">Agent program</label><select #agentProgramSelect [id]="panelId() + '-agent-program'" [value]="agentProgram()" (change)="agentProgram.set($any($event.target).value)"><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option>@for (profile of launcherProfiles(); track profile.id) { <option [value]="'profile:' + profile.id">{{ profile.name }} · {{ profile.role }}</option> }</select>
           <span>Starts in {{ repositoryLabel() }} using the installed CLI and its normal permissions. Create or open a worktree first for an isolated checkout.</span>
           <button type="button" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openSelectedProgram()">Start agent</button>
           <button type="button" (click)="closeAgentLauncher()">Cancel</button>
@@ -132,6 +133,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   protected readonly retryAgent = signal<AgentProgram | null>(null);
   protected readonly retryProfile = signal<ToolProfile | null>(null);
   protected readonly tools = inject(CONFIGURED_TOOLS);
+  protected readonly launcherProfiles = computed(() => this.tools.profiles().filter(p => p.role === 'terminal' || p.role === 'agent'));
   protected readonly agentProgram = signal<string>('codex');
   protected readonly tabs = signal<TerminalTab[]>([]);
   protected readonly activeId = signal<string | null>(null);
@@ -269,7 +271,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   protected openSelectedProgram(): void {
     const selected = this.agentProgram();
     if (selected.startsWith('profile:')) {
-      const profile = this.tools.profiles().find((p) => p.id === selected.slice(8));
+      const profile = this.launcherProfiles().find((p) => p.id === selected.slice(8));
       if (!profile) { this.error.set('The selected profile is no longer available. Choose a program again.'); return; }
       void this.openTab(null, profile);
     } else if (['codex', 'claude', 'gemini', 'opencode'].includes(selected)) {

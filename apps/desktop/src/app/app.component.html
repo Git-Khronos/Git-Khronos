@@ -124,6 +124,7 @@
                 <span>Current Repository</span>
                 <button type="button" role="menuitem" (click)="appMenuOpen.set(false); git.openRepositoryInFileManager()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open in File Manager</strong><small>{{ repo.path }}</small></span></button>
                 <button type="button" role="menuitem" (click)="appMenuOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="14" /><span><strong>Terminal</strong><small>Open repository terminal tabs</small></span><kbd>{{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</kbd></button>
+                <button type="button" role="menuitem" [disabled]="git.busy() || !!fileContentDialog()" (click)="openFileTools()"><gc-icon name="terminal" [size]="14" /><span><strong>External file tools</strong><small>Inspect commands and retained comparison files</small></span></button>
                 <button type="button" role="menuitem" [disabled]="!!fileContentDialog()" (click)="openEditorDraftRecovery()"><gc-icon name="history" [size]="14" /><span><strong>Editor draft recovery</strong><small>Inspect retained unsaved text</small></span></button>
                 <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Recover commits from previous reference positions</small></span></button>
               </div>
@@ -2135,9 +2136,18 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Editor draft recovery unavailable" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="alert">Recovery controls could not load. Stored copies were preserved. Restart to try again.</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Close</button></section></div>
     }
   }
+  @for (tool of fileToolsDialog() ? [fileToolsDialog()!] : []; track tool.id) {
+    @defer (on immediate) {
+      <gc-file-tools-dialog [request]="tool" (closed)="closeFileTools()" (changed)="fileToolsChanged($event)" />
+    } @placeholder {
+      <div class="confirmation-backdrop" style="z-index:175"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening external file tools" (keydown)="handleFileToolsLoaderKey($event)"><p role="status">Opening file tools…</p><button #fileToolsLoaderClose type="button" (click)="closeFileTools()">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop" style="z-index:175"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="External file tools unavailable" (keydown)="handleFileToolsLoaderKey($event)"><p role="alert">File tools could not load. Save your work before restarting the application.</p><button #fileToolsLoaderClose type="button" (click)="closeFileTools()">Close</button></section></div>
+    }
+  }
   @if (fileContentDialog(); as request) {
     @defer (on immediate) {
-      <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" />
+      <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" (changed)="fileToolsChanged($event)" />
     } @loading {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening file content" (keydown)="handleFileContentLoaderKey($event)">
         <p role="status">Opening file content…</p>
@@ -2440,11 +2450,14 @@
   }
   @if (git.conflictDetails(); as conflict) {
     <div class="merge-tool-backdrop" (click)="closeConflictTool()">
-      <section class="merge-tool" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="handleConflictKeydown($event)">
+      <section class="merge-tool" [inert]="!!fileToolsDialog()" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="handleConflictKeydown($event)">
         <header>
           <span class="merge-mark"><gc-icon name="merge" [size]="18" /></span>
           <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>Choose a side or edit the resolved output, then mark the file resolved.</p></div>
           <button type="button" aria-label="Close conflict editor" title="Close Merge Tool" (click)="closeConflictTool()"><gc-icon name="x" [size]="14" /></button>
+          @if (!conflict.submodule) {
+            <button class="merge-external-tool" type="button" [disabled]="git.busy() || git.browserPreview()" (click)="openFileTools({ kind: 'merge', path: conflict.path })">Review external merge program</button>
+          }
         </header>
         <div class="merge-notices">
         @if (git.repository()?.status?.rebaseInProgress) {

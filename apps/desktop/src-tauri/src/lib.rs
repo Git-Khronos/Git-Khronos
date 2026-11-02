@@ -101,6 +101,9 @@ mod hosted_repository_commands;
 mod branch_workflow_commands;
 mod working_file_commands;
 mod terminal_profile_commands;
+#[cfg(any(target_os = "linux", test))]
+mod file_tool_reviews;
+mod file_tool_commands;
 
 #[derive(Default)]
 struct AppState {
@@ -3457,6 +3460,7 @@ pub fn run() {
         .manage(working_file_commands::recovery::RecoveryState::default())
         .manage(gitlab_commands::GitLabAccounts::default())
         .manage(gitlab_clone_commands::GitLabClonePlans::default())
+        .manage(file_tool_commands::FileToolState::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(bindings.invoke_handler())
@@ -3504,6 +3508,17 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             gitlab_commands::disconnect_gitlab_account,
             terminal_profile_commands::validate_tool_profile,
             terminal_profile_commands::open_configured_terminal,
+            file_tool_commands::prepare_file_tool_launch,
+            file_tool_commands::launch_reviewed_file_tool,
+            file_tool_commands::list_file_tool_sessions,
+            file_tool_commands::stop_file_tool_command,
+            file_tool_commands::review_file_tool_result,
+            file_tool_commands::save_reviewed_file_tool_result,
+            file_tool_commands::review_file_tool_staging,
+            file_tool_commands::stage_reviewed_file_tool_result,
+            file_tool_commands::review_file_tool_cleanup,
+            file_tool_commands::discard_reviewed_file_tool_session,
+            file_tool_commands::discard_file_tool_review,
             system_info,
             incoming_repository_links::incoming_repository_links,
             incoming_repository_links::acknowledge_incoming_repository_link,

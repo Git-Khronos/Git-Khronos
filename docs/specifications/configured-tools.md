@@ -67,7 +67,17 @@ These preferences contain ordinary program paths/arguments, not secret storage. 
 configure and authenticate installed programs independently. Launching an agent proves
 neither task state nor approval, worktree isolation, resume or provider integration.
 
-## External file-tool execution still required
+## External file-tool execution candidate
+
+The independent [reviewed file-tool candidate](external-file-tools.md) now implements
+native preparation, owned direct execution, raw-byte result review, separate saving
+and staging, and checked cleanup. Its original UI has focused renderer and exact
+Linux-package evidence, including normal/compact capture review. All 1,484 current
+renderer cases and 471 broad package executions now pass, alongside 45 optional
+transport source cases. Missing-target save and restart storage management remain
+open. The requirements below remain the acceptance boundary.
+
+### Required behavior
 
 Native execution must derive captured repository/file roles and private snapshots,
 validate their current ownership/identity and the selected program, and explicitly

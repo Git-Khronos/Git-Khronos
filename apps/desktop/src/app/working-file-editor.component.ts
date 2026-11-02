@@ -5,6 +5,8 @@ import { MarkdownPreviewComponent } from './markdown-preview.component';
 import { EditorDraftSnapshots, type DraftSnapshotState } from './editor-draft-snapshots';
 import { discardReviewedEditorDraft, type EditorDraftReference } from './editor-draft-recovery';
 
+export interface ExternalEditorRequest { repoId: string; path: string; line: number; }
+
 export interface WorkingFileEditorRequest { repoId: string; path: string; recovery?: EditorDraftReference; }
 
 @Component({
@@ -16,6 +18,7 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
       <div><p>Working copy editor · {{ dirty() ? 'Unsaved draft' : 'Saved text' }}</p>
         <h2 id="working-editor-title" [title]="captured()?.path">{{ captured()?.path }}</h2></div>
       <button type="button" [disabled]="busy() && writing()" (click)="requestClose()">Back to preview</button>
+      <button type="button" [disabled]="!canReviewExternal()" (click)="requestExternalEditor()">Review external editor</button>
     </header>
     <div class="editor-controls">
       <label for="working-editor-encoding">Read encoding</label>
@@ -77,7 +80,14 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
     }
     <footer>
       <p id="working-editor-scope">Edits affect the current working file. Historical content and the index change only through explicit actions.</p>
-      @if (review()) {
+      @if (externalReview() && !review()) {
+        <div class="draft-review" role="group" aria-label="Review external editor handoff">
+          <p>The external editor opens the saved working file. Keep this unsaved draft here or save it first.</p>
+          <button type="button" [disabled]="!canSave()" (click)="saveAndReviewExternal()">Save and review</button>
+          <button type="button" [disabled]="!canReviewExternal()" (click)="retainDraftAndReviewExternal()">Review saved file while retaining draft</button>
+          <button type="button" [disabled]="busy() || windowClosing()" (click)="keepEditing()">Keep editing</button>
+        </div>
+      } @else if (review()) {
         <div class="draft-review" role="group" aria-label="Review unsaved draft">
           <p>Keep this draft before {{ review() === 'window' ? 'closing the window' : review() === 'close' ? 'returning to the preview' : 'reloading disk' }}?</p>
           <button type="button" [disabled]="!canSave()" (click)="save(false, true)">Save draft</button>
@@ -95,7 +105,7 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
   `,
   styles: `
     :host{display:flex;flex-direction:column;min-height:0;height:100%;color:var(--text)}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--inspector-divider)}header>div{min-width:0}
+    header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 16px;border-bottom:1px solid var(--inspector-divider)}header>div{min-width:0;flex:1 1 140px}
     h2{font-size:14px;line-height:1.5;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}p{font-size:13px;line-height:1.5;margin:4px 0}
     header p,.editor-controls span,footer>p{color:var(--muted)}
     button,select{min-height:34px;padding:7px 12px;border:1px solid var(--inspector-divider);background:var(--inspector-row);color:var(--text);font:inherit;font-size:13px}
@@ -110,6 +120,8 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
 export class WorkingFileEditorComponent {
   readonly request = input.required<WorkingFileEditorRequest>();
   readonly closed = output<void>();
+  readonly externalRequested = output<ExternalEditorRequest>();
+  readonly externalReview = signal(false);
   readonly recoveryResolved = output<EditorDraftReference>();
   private readonly git = inject(GitKhronosService);
   private readonly textArea = viewChild<ElementRef<HTMLTextAreaElement>>('textArea');
@@ -162,6 +174,39 @@ export class WorkingFileEditorComponent {
     && !this.windowClosing() && !this.busy() && !this.git.busy() && !this.needsReload() && this.dirty());
   readonly canStageSaved = computed(() => this.sameRepository() && !!this.file()
     && !this.windowClosing() && !this.busy() && !this.git.busy() && !this.needsReload());
+  readonly canReviewExternal = computed(() => this.sameRepository() && !this.busy() && !this.git.busy()
+    && !this.git.browserPreview() && !this.windowClosing() && !this.review());
+  requestExternalEditor(): void {
+    if (!this.canReviewExternal()) return;
+    if (this.dirty()) this.externalReview.set(true); else this.emitExternalRequest();
+  }
+  private emitExternalRequest(): void {
+    const request = this.captured();
+    if (!request || this.destroyed || !this.canReviewExternal()) return;
+    const area = this.textArea()?.nativeElement;
+    const line = area ? area.value.slice(0, area.selectionStart).split('\n').length : 1;
+    this.externalReview.set(false);
+    this.externalRequested.emit({ repoId: request.repoId, path: request.path, line });
+  }
+  async saveAndReviewExternal(): Promise<void> {
+    if (!this.externalReview() || !this.canSave()) return;
+    await this.save(false);
+    if (!this.destroyed && this.externalReview() && !this.dirty() && !this.needsReload() && !this.error()) this.emitExternalRequest();
+  }
+  async retainDraftAndReviewExternal(): Promise<void> {
+    if (!this.externalReview() || !this.canReviewExternal()) return;
+    const request = this.captured(), text = this.draft();
+    this.busy.set(true); this.pending.set('Retaining the current editor draft…');
+    try {
+      if (this.dirty() && !await this.snapshots.flush(text)) {
+        if (!this.destroyed) this.error.set('The recovery copy could not be confirmed. Your draft is retained here.');
+        return;
+      }
+    } catch (error) { if (!this.destroyed) this.error.set(this.message(error)); return; }
+    finally { if (!this.destroyed) this.busy.set(false); }
+    if (!this.destroyed && this.captured() === request && this.draft() === text && this.externalReview()
+      && this.recoveryState().kind !== 'failed') this.emitExternalRequest();
+  }
   private operation: string | null = null;
   private destroyed = false;
 
@@ -217,12 +262,14 @@ export class WorkingFileEditorComponent {
     if (this.error()) this.encoding.set(previous);
   }
   requestReload(): void {
+    this.externalReview.set(false);
     if (this.windowClosing()) return;
     this.closeWindow = null;
     if (this.busy() || !this.sameRepository()) return;
     if (this.dirty()) this.review.set('reload'); else void this.reload();
   }
   requestClose(): void {
+    this.externalReview.set(false);
     if (this.windowClosing()) return;
     this.closeWindow = null;
     if (this.busy()) { if (!this.writing() && !this.dirty()) this.closed.emit(); return; }
@@ -250,12 +297,14 @@ export class WorkingFileEditorComponent {
     } finally { if (!this.destroyed) this.busy.set(false); }
   }
   requestWindowClose(close: () => Promise<void>): void {
+    this.externalReview.set(false);
     if (this.destroyed || this.windowClosing()) return;
     this.closeWindow = close; this.windowCloseAttempted = false;
     this.review.set('window');
     if (!this.writing() && !this.dirty()) void this.approveWindowClose();
   }
   keepEditing(): void {
+    this.externalReview.set(false);
     if (this.windowClosing() || this.busy()) return;
     this.closeWindow = null; this.review.set(null); this.focusText();
   }

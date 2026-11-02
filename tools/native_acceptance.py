@@ -611,7 +611,7 @@ def performance(driver, fixtures, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb")
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab"), default="smoke")
+    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--inherited-git-environment", action="store_true",
                         help="Point inherited Git context variables at an owned outside repository for any suite")
@@ -715,6 +715,9 @@ def main():
             if args.suite == "gitlab":
                 from native_gitlab_scenarios import gitlab_catalogue
                 gitlab_catalogue(driver, fixtures, repository, report)
+            if args.suite == "file-tools":
+                from native_file_tool_scenarios import file_tools
+                file_tools(driver, fixtures, repository, report)
             if args.suite == "recovery":
                 from native_editor_recovery_scenarios import editor_draft_recovery
                 editor_draft_recovery(driver, fixtures, repository, report)

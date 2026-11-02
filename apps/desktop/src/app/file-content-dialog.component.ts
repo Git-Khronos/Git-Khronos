@@ -1,6 +1,9 @@
 import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, HostListener, inject, input, type OnDestroy, output, signal, type WritableSignal, viewChild } from '@angular/core';
 import { GitKhronosService } from './git-khronos.service';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
+import { FileToolsDialogComponent } from './file-tools-dialog.component';
+import type { FileToolsDialogRequest } from './file-tools-dialog-request';
+import type { ExternalEditorRequest } from './working-file-editor.component';
 import { WorkingFileEditorComponent } from './working-file-editor.component';
 import type { EditorDraftReference } from './editor-draft-recovery';
 
@@ -13,20 +16,22 @@ export interface FileContentDialogRequest {
 
 @Component({
   selector: 'gc-file-content-dialog',
-  imports: [FileMediaComponent, WorkingFileEditorComponent],
+  imports: [FileMediaComponent, WorkingFileEditorComponent, FileToolsDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="content-backdrop" (click)="requestClose()">
       <section role="dialog" aria-modal="true" [attr.aria-labelledby]="editing() ? 'working-editor-title' : 'standalone-content-title'"
-        [class.editing]="editing()"
+        [class.editing]="editing()" [inert]="!!toolRequest()"
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         @if (editing()) {
           <gc-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path, recovery: editorRecovery() }"
-            (closed)="leaveEditor()" (recoveryResolved)="resolvedRecovery.set($event)" />
+            (closed)="leaveEditor()" (recoveryResolved)="resolvedRecovery.set($event)" (externalRequested)="reviewExternalEditor($event)" />
         } @else {
         <header>
           <div><p>File content · {{ contextLabel() }}</p><h2 id="standalone-content-title" [title]="request().selection.request.path">{{ request().selection.request.path }}</h2></div>
           <button type="button" [disabled]="preparingEditor()" (click)="editWorkingCopy()">{{ preparingEditor() ? 'Preparing editor…' : 'Edit working copy' }}</button>
+          <button type="button" [disabled]="git.browserPreview() || git.busy()" (click)="reviewExternalEditor({ repoId: request().selection.repoId, path: request().selection.request.path, line: 1 })">Review external editor for working file</button>
+          <button type="button" [disabled]="git.browserPreview() || git.busy()" (click)="reviewExternalComparison()">Compare with external program</button>
           <button #closeButton type="button" aria-label="Close file content" (click)="requestClose()">Close</button>
           @if (closeProtectionError()) { <p role="alert" style="flex-basis:100%">{{ closeProtectionError() }}</p> }
         </header>
@@ -34,8 +39,18 @@ export interface FileContentDialogRequest {
         }
       </section>
     </div>
+    @for (tool of toolRequest() ? [toolRequest()!] : []; track tool.id) {
+      @defer (on immediate) {
+        <gc-file-tools-dialog [request]="tool" (closed)="toolRequest.set(null)" (changed)="changed.emit($event)" />
+      } @placeholder {
+        <div class="tool-loader"><section role="dialog" aria-modal="true" aria-label="Opening file tools" (keydown)="handleToolLoaderKey($event)"><p role="status">Opening file tools…</p><button #toolLoaderClose type="button" (click)="closeToolLoader()">Cancel</button></section></div>
+      } @error {
+        <div class="tool-loader"><section role="dialog" aria-modal="true" aria-label="File tools unavailable" (keydown)="handleToolLoaderKey($event)"><p role="alert">File tools could not load. Save your work before restarting the application.</p><button #toolLoaderClose type="button" (click)="closeToolLoader()">Close</button></section></div>
+      }
+    }
   `,
   styles: `
+    .tool-loader{position:fixed;inset:0;z-index:175;display:grid;place-items:center;background:rgb(0 0 0 / .45)}.tool-loader section{height:auto;max-height:calc(100dvh - 24px);padding:16px;overflow:auto;display:block}.tool-loader button{margin-top:12px}
     .content-backdrop{position:fixed;inset:0;z-index:170;display:grid;place-items:center;background:rgb(0 0 0 / .45)}
     section{box-sizing:border-box;width:min(1080px,calc(100vw - 24px));height:min(820px,calc(100dvh - 24px));display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);background:var(--overlay-surface);color:var(--text);border:1px solid var(--overlay-border);border-radius:6px;overflow:hidden}
     section.editing{grid-template-rows:minmax(0,1fr)}
@@ -44,7 +59,7 @@ export interface FileContentDialogRequest {
   `,
 })
 export class FileContentDialogComponent implements OnDestroy {
-  private readonly git = inject(GitKhronosService);
+  readonly git = inject(GitKhronosService);
   readonly preparingEditor = signal(false);
   readonly closeProtectionError = signal('');
   readonly resolvedRecovery = signal<EditorDraftReference | null>(null);
@@ -52,6 +67,30 @@ export class FileContentDialogComponent implements OnDestroy {
   private destroyed = false;
   readonly request = input.required<FileContentDialogRequest>();
   readonly closed = output<void>();
+  readonly changed = output<string>();
+  readonly toolRequest = signal<FileToolsDialogRequest | null>(null);
+  private readonly toolLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('toolLoaderClose');
+  reviewExternalEditor(request: ExternalEditorRequest): void {
+    if (this.destroyed || this.git.browserPreview() || this.git.busy() || request.repoId !== this.git.activeRepositoryId()) return;
+    this.openTool({ kind: 'editor', path: request.path, line: request.line });
+  }
+  reviewExternalComparison(): void {
+    if (this.destroyed || this.git.browserPreview() || this.git.busy() || this.request().selection.repoId !== this.git.activeRepositoryId()) return;
+    this.openTool({ kind: 'comparison', request: this.request().selection.request });
+  }
+  private openTool(action: NonNullable<FileToolsDialogRequest['action']>): void {
+    this.toolRequest.set({ id: crypto.randomUUID(), repoId: this.request().selection.repoId, action,
+      returnFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null });
+  }
+  closeToolLoader(): void {
+    const opener = this.toolRequest()?.returnFocus; this.toolRequest.set(null);
+    queueMicrotask(() => { if (!this.destroyed && !this.toolRequest() && opener?.isConnected) opener.focus(); });
+  }
+  handleToolLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeToolLoader(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.toolLoaderClose()?.nativeElement.focus(); }
+  }
   editing(): boolean { return this.request().editing(); }
   editorRecovery(): EditorDraftReference | undefined {
     const reference = this.request().recovery, resolved = this.resolvedRecovery();
@@ -62,7 +101,8 @@ export class FileContentDialogComponent implements OnDestroy {
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
   constructor() {
-    afterRenderEffect(() => this.closeButton()?.nativeElement.focus({ preventScroll: true }));
+    afterRenderEffect(() => { if (!this.toolRequest()) this.closeButton()?.nativeElement.focus({ preventScroll: true }); });
+    afterRenderEffect(() => this.toolLoaderClose()?.nativeElement.focus());
     afterNextRender(() => { if (this.request().recovery) void this.editWorkingCopy(); });
   }
 
@@ -99,6 +139,7 @@ export class FileContentDialogComponent implements OnDestroy {
         const editor = this.editor();
         if (editor) {
           event.preventDefault();
+          this.toolRequest.set(null);
           editor.requestWindowClose(async () => {
             if (this.destroyed) throw new Error('The editor window is no longer available.');
             await window.destroy();

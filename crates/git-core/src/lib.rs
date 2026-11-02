@@ -18,11 +18,25 @@ mod file_statistics;
 mod file_content;
 mod working_file_text;
 mod configured_tools;
+mod file_tool_model;
+pub use file_tool_model::{FileToolCleanupReview, FileToolMergeWriteResult, FileToolMergeStageResult, FileToolLaunchReview, FileToolRequest, FileToolSideReview, FileToolSource, FileToolProcessState, FileToolProcessStatus};
+#[cfg(target_os = "linux")]
+mod file_tool_snapshots;
+#[cfg(target_os = "linux")]
+mod file_tools;
+#[cfg(target_os = "linux")]
+mod file_tool_process;
+#[cfg(target_os = "linux")]
+pub use file_tool_process::FileToolProcess;
 pub mod draft_recovery;
 pub mod draft_recovery_editor;
 #[cfg(target_os = "linux")]
 pub mod draft_recovery_store;
 pub use configured_tools::{ToolArgumentContext, ToolProfile, ToolRole};
+#[cfg(target_os = "linux")]
+pub use file_tool_snapshots::{FileToolResult, FileToolSnapshotRole, FileToolSnapshots};
+#[cfg(target_os = "linux")]
+pub use file_tools::{PreparedFileToolCleanup, PreparedFileTool, prepare_file_tool};
 mod working_file_edit;
 pub use working_file_edit::{WorkingFileEdit, WorkingFileSave, WorkingFileWriteStatus, open_working_file_edit};
 pub use working_file_text::{DecodedWorkingText, WorkingTextEncoding, MAX_WORKING_TEXT_BYTES, decode_working_text};

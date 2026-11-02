@@ -68,6 +68,8 @@ export type CommitPolicy = { signOff: boolean; allowEmpty: boolean; author?: Com
 export type CommitSignature = { status: string; signer: string | null; key: string | null; fingerprint: string | null; trust: string | null }
 export type CommitSummary = { oid: string; parents: string[]; authorName: string; authorEmail: string; authoredAt: string; subject: string; description: string; decorations: string[] }
 export type ConflictDetails = { path: string; ancestor: string | null; current: string | null; incoming: string | null; output: string | null; binary: boolean; truncated: boolean; state: string; editable: boolean; currentExists: boolean; incomingExists: boolean; submodule: boolean }
+export type DiscardFileToolReviewRequest = { contextId: string; token: string; purpose: FileToolReviewPurpose }
+export type DiscardFileToolSessionRequest = { contextId: string; token: string; operationId: string; finishedUsingFiles: boolean }
 export type DiscardRecoveryInfo = { id: string; restored: boolean }
 export type DiscardResult = { id: string; status: RepositoryStatus }
 export type EditorDraftDiscarded = { editorId: string; revision: string }
@@ -76,6 +78,7 @@ export type EditorDraftReviewRequest = { editorId: string; revision: string; id:
 export type EditorSnapshot = { editorId: string; revision: string; path: string; text: string; encoding: WorkingTextEncoding; bom: boolean; encodedByteLen: string; lineEndings: LineEndings; readOnlyReason: string | null; workingReference: string | null; headOid: string | null }
 export type EditorStage = "notRequested" | "staged" | "unconfirmed"
 export type EditorWriteResult = { editorId: string; revision: string; file: EditorSnapshot | null; disk: WorkingFileWriteStatus; stage: EditorStage; stageError: AppError | null; warning: string | null }
+export type ExecuteFileToolReviewRequest = { contextId: string; token: string; operationId: string }
 /**
  * Optional history extension for shallow repositories.
  */
@@ -104,6 +107,22 @@ size: string | null; raster: RasterMetadata | null;
  */
 dataUrl: string | null; lfs: FileLfsPointer | null; message: string | null }
 export type FileMediaState = "absent" | "text" | "binary" | "raster" | "invalidRaster" | "overLimit" | "symbolicLink" | "submodule" | "unmerged" | "unavailable" | "lfsPointer"
+export type FileToolCleanupReview = { copyDirectory: string | null; sides: FileToolSideReview[]; outputBytes: number | null }
+export type FileToolLaunchReview = { profileId: string; profileName: string; role: ToolRole; executable: string; arguments: string[]; repositoryPath: string; sides: FileToolSideReview[] }
+export type FileToolMergeStageResult = { confirmed: boolean; error: AppError | null; warning: string | null }
+export type FileToolMergeWriteResult = { status: WorkingFileWriteStatus; warning: string | null; canReviewStaging: boolean }
+export type FileToolOutputSummary = { path: string; bytes: string; sha256: string; textPreview: string | null; truncated: boolean; binary: boolean }
+export type FileToolProcessState = "running" | "exited"
+export type FileToolProcessStatus = { state: FileToolProcessState; code: number | null; signal: number | null; success: boolean | null; cancellationRequested: boolean }
+export type FileToolRequest = { kind: "editor"; path: string; line: number | null } | { kind: "diff"; before: FileToolSource; after: FileToolSource } | { kind: "comparison"; request: FileComparisonRequest } | { kind: "merge"; path: string }
+export type FileToolReviewPurpose = "launch" | "result" | "stage" | "cleanup"
+export type FileToolReviewRequest = { sessionId: string; contextId: string; operationId: string }
+export type FileToolSaveOutcome = { session: FileToolSessionSnapshot; write: FileToolMergeWriteResult }
+export type FileToolSessionPhase = "launching" | "launched" | "failed" | "cleanupFailed"
+export type FileToolSessionSnapshot = { requestedAtMillis: string; id: string; revision: string; repoId: string; review: FileToolLaunchReview; phase: FileToolSessionPhase; process: FileToolProcessStatus | null; error: AppError | null; canReviewStaging: boolean }
+export type FileToolSideReview = { role: string; path: string; kind: string; bytes: number; oid: string | null }
+export type FileToolSource = { kind: "revision"; oid: string; path: string } | { kind: "index"; path: string } | { kind: "workingTree"; path: string }
+export type FileToolStageOutcome = { session: FileToolSessionSnapshot; stage: FileToolMergeStageResult }
 export type GitAuthenticationDismissed = string
 export type GitAuthenticationPrompt = { requestId: string; operationId: string; repositoryId: string | null; secret: boolean }
 export type GitIdentity = { name: string | null; email: string | null }
@@ -242,8 +261,13 @@ export type PatchFile = { path: string; added: number | null; deleted: number | 
 export type PatchRequest = { file: string; target: PatchTarget; patch: number[]; headOid: string; headRef: string; indexState: number[] }
 export type PatchReview = { request: PatchRequest; files: PatchFile[]; summary: string }
 export type PatchTarget = "worktree" | "index" | "both"
+export type PrepareFileToolLaunchRequest = { repoId: string; contextId: string; request: FileToolRequest; profile: ToolProfile; operationId: string }
 export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
+export type PreparedFileToolCleanup = { token: string; sessionId: string; review: FileToolCleanupReview }
+export type PreparedFileToolLaunch = { token: string; review: FileToolLaunchReview }
+export type PreparedFileToolResult = { token: string; sessionId: string; output: FileToolOutputSummary }
+export type PreparedFileToolStage = { token: string; sessionId: string; path: string; bytes: string; sha256: string }
 export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
 export type PreparedGitLabClone = { token: string; plan: GitLabClonePlan }
 export type PreparedHostedClone = { token: string; plan: HostedClonePlan }
@@ -303,6 +327,7 @@ export type RepositorySnapshot = ({ name: string; path: string; identity: GitIde
  */
 bare: boolean }) & { id: string }
 export type RepositoryStatus = { branch: string | null; ahead: number; behind: number; staged: number; unstaged: number; untracked: number; conflicted: number; mergeInProgress: boolean; historyOperation: string | null; historyNoCommit: boolean; rebaseInProgress: boolean; rebaseEditStopped: boolean; rebaseSplit: RebaseSplitStatus | null; mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
+export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
 export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }
 export type SigningDiagnostic = { available: boolean; program: string; format: string; keyConfigured: boolean; message: string }
 export type SigningInfo = { enabled: boolean; format: string; key: string | null }
@@ -429,6 +454,17 @@ export function load_gitlab_projects(args: { request: GitLabProjectsRequest }): 
 export function disconnect_gitlab_account(args: { connectionId: string }): Promise<boolean> { return TAURI_INVOKE("disconnect_gitlab_account", args); }
 export function validate_tool_profile(args: { profile: ToolProfile }): Promise<null> { return TAURI_INVOKE("validate_tool_profile", args); }
 export function open_configured_terminal(args: { repoId: string; profile: ToolProfile; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_configured_terminal", args); }
+export function prepare_file_tool_launch(args: { request: PrepareFileToolLaunchRequest }): Promise<PreparedFileToolLaunch> { return TAURI_INVOKE("prepare_file_tool_launch", args); }
+export function launch_reviewed_file_tool(args: { request: ExecuteFileToolReviewRequest }): Promise<FileToolSessionSnapshot> { return TAURI_INVOKE("launch_reviewed_file_tool", args); }
+export function list_file_tool_sessions(args: {  } = {}): Promise<FileToolSessionSnapshot[]> { return TAURI_INVOKE("list_file_tool_sessions", args); }
+export function stop_file_tool_command(args: { sessionId: string }): Promise<FileToolSessionSnapshot> { return TAURI_INVOKE("stop_file_tool_command", args); }
+export function review_file_tool_result(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolResult> { return TAURI_INVOKE("review_file_tool_result", args); }
+export function save_reviewed_file_tool_result(args: { request: SaveFileToolResultRequest }): Promise<FileToolSaveOutcome> { return TAURI_INVOKE("save_reviewed_file_tool_result", args); }
+export function review_file_tool_staging(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolStage> { return TAURI_INVOKE("review_file_tool_staging", args); }
+export function stage_reviewed_file_tool_result(args: { request: ExecuteFileToolReviewRequest }): Promise<FileToolStageOutcome> { return TAURI_INVOKE("stage_reviewed_file_tool_result", args); }
+export function review_file_tool_cleanup(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolCleanup> { return TAURI_INVOKE("review_file_tool_cleanup", args); }
+export function discard_reviewed_file_tool_session(args: { request: DiscardFileToolSessionRequest }): Promise<boolean> { return TAURI_INVOKE("discard_reviewed_file_tool_session", args); }
+export function discard_file_tool_review(args: { request: DiscardFileToolReviewRequest }): Promise<null> { return TAURI_INVOKE("discard_file_tool_review", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
 export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
 export function acknowledge_incoming_repository_link(args: { requestId: string }): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("acknowledge_incoming_repository_link", args); }
@@ -661,6 +697,17 @@ export type CommandMap = {
   disconnect_gitlab_account: typeof disconnect_gitlab_account;
   validate_tool_profile: typeof validate_tool_profile;
   open_configured_terminal: typeof open_configured_terminal;
+  prepare_file_tool_launch: typeof prepare_file_tool_launch;
+  launch_reviewed_file_tool: typeof launch_reviewed_file_tool;
+  list_file_tool_sessions: typeof list_file_tool_sessions;
+  stop_file_tool_command: typeof stop_file_tool_command;
+  review_file_tool_result: typeof review_file_tool_result;
+  save_reviewed_file_tool_result: typeof save_reviewed_file_tool_result;
+  review_file_tool_staging: typeof review_file_tool_staging;
+  stage_reviewed_file_tool_result: typeof stage_reviewed_file_tool_result;
+  review_file_tool_cleanup: typeof review_file_tool_cleanup;
+  discard_reviewed_file_tool_session: typeof discard_reviewed_file_tool_session;
+  discard_file_tool_review: typeof discard_file_tool_review;
   system_info: typeof system_info;
   incoming_repository_links: typeof incoming_repository_links;
   acknowledge_incoming_repository_link: typeof acknowledge_incoming_repository_link;
