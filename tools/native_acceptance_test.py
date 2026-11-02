@@ -38,6 +38,8 @@ class FixtureTests(unittest.TestCase):
                     self.assertNotEqual(first.env['DBUS_SESSION_BUS_ADDRESS'], second.env['DBUS_SESSION_BUS_ADDRESS'])
                     identities = []
                     for fixture in (first, second):
+                        driver = Driver('http://127.0.0.1:1', session_bus_address=fixture.env['DBUS_SESSION_BUS_ADDRESS'])
+                        driver.wait_single_instance_release()
                         command = ['dbus-send', '--bus=' + fixture.env['DBUS_SESSION_BUS_ADDRESS'],
                                    '--print-reply', '--type=method_call', '--dest=org.freedesktop.DBus',
                                    '/org/freedesktop/DBus']
@@ -55,6 +57,71 @@ class FixtureTests(unittest.TestCase):
                     for process in reversed(children):
                         stop_owned_process_group(process)
                         process.stdout.close()
+
+    def test_restart_bus_barrier_waits_for_release_without_relaunch_or_mutation(self):
+        driver = Driver('http://127.0.0.1:1')
+        with patch.object(driver, 'single_instance_bus_call', side_effect=[
+                'method return\n boolean true', 'method return\n boolean true',
+                'method return\n boolean false']) as read, patch('native_acceptance.time.sleep') as sleep:
+            driver.wait_single_instance_release()
+        self.assertEqual(read.call_args_list, [call('NameHasOwner')] * 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_restart_bus_barrier_refuses_timeout_or_malformed_reply(self):
+        driver = Driver('http://127.0.0.1:1')
+        with patch.object(driver, 'single_instance_bus_call', return_value='boolean true'), \
+                patch('native_acceptance.time.monotonic', side_effect=[0, 10]):
+            with self.assertRaisesRegex(TimeoutError, 'relaunch refused'):
+                driver.wait_single_instance_release()
+        with patch.object(driver, 'single_instance_bus_call', return_value='unexpected'):
+            with self.assertRaisesRegex(RuntimeError, 'Unexpected'):
+                driver.wait_single_instance_release()
+        with patch('native_acceptance.run') as command:
+            with self.assertRaisesRegex(RuntimeError, 'owned private'):
+                driver.single_instance_bus_call('NameHasOwner')
+            command.assert_not_called()
+
+    def test_restart_checks_bus_owner_and_release_before_its_single_launch(self):
+        executable = Path('/owned/git-khronos')
+        old = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='123'))
+        new = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='456'))
+        for release_error in (None, TimeoutError('bus still owned')):
+            with self.subTest(release_error=release_error):
+                driver = Driver('http://127.0.0.1:1', session_bus_address='unix:abstract=git-khronos-test-owned')
+                driver.session = 'owned'; driver.executable = executable
+                events = []
+                def release():
+                    events.append('released')
+                    if release_error:
+                        raise release_error
+                with patch.object(Path, 'glob', side_effect=[[old], [new]]), \
+                        patch.object(Path, 'read_text', return_value='123 (owned) Z 0'), \
+                        patch.object(driver, 'single_instance_bus_call', return_value='uint32 123'), \
+                        patch.object(driver, 'close', side_effect=lambda: events.append('closed')), \
+                        patch.object(driver, 'wait_single_instance_release', side_effect=release), \
+                        patch.object(driver, 'start', side_effect=lambda path: events.append(('started', path))) as start:
+                    if release_error:
+                        with self.assertRaisesRegex(TimeoutError, 'bus still owned'):
+                            driver.restart_application()
+                        start.assert_not_called()
+                        self.assertEqual(events, ['closed', 'released'])
+                    else:
+                        self.assertEqual(driver.restart_application(), dict(oldPid=123, newPid=456))
+                        start.assert_called_once_with(executable)
+                        self.assertEqual(events, ['closed', 'released', ('started', executable)])
+
+    def test_restart_refuses_another_single_instance_owner_without_closing_or_launching(self):
+        executable = Path('/owned/git-khronos')
+        old = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='123'))
+        driver = Driver('http://127.0.0.1:1', session_bus_address='unix:abstract=git-khronos-test-owned')
+        driver.session = 'owned'; driver.executable = executable
+        with patch.object(Path, 'glob', return_value=[old]), \
+                patch.object(driver, 'single_instance_bus_call', return_value='uint32 999'), \
+                patch.object(driver, 'close') as close, patch.object(driver, 'start') as start:
+            with self.assertRaisesRegex(RuntimeError, 'does not belong'):
+                driver.restart_application()
+            close.assert_not_called()
+            start.assert_not_called()
 
     def test_owned_hosting_cli_is_read_only_and_preserves_the_inherited_path(self):
         with tempfile.TemporaryDirectory() as directory:

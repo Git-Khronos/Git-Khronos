@@ -114,7 +114,7 @@ jobs:
       - name: Install Linux package and WebDriver prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl dbus-daemon dbus-bin
       - run: pnpm install --frozen-lockfile
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6

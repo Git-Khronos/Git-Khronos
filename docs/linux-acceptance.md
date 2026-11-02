@@ -13,12 +13,18 @@ development-only application endpoint.
 - `fakeroot` for the package regression suite's private dpkg ownership checks
   (not required for normal application use or installation);
 - `tauri-driver 2.0.6`, `WebKitWebDriver`, and Xvfb for headless runs;
+- `dbus-daemon` and `dbus-send` for the owned private session bus and restart checks;
 - `desktop-file-utils` (`desktop-file-validate`, `update-desktop-database`) and
   `libglib2.0-bin` (`gio`) for full/inherited-environment incoming-link checks;
 - the Linux libraries required by Tauri and WebKitGTK.
 
 Missing prerequisites are failures. The harness never reports a skipped native
 suite as a pass.
+
+Application restart checks verify that the private single-instance bus name belongs
+to the owned executable's PID before closing it. They wait for both process exit and
+bus-name release before launching one new WebDriver session. A timeout or different
+bus owner fails the check without retrying a session creation whose outcome is unknown.
 
 Linux bundling also prepares `rust-dependency-notices.json.gz` from locked,
 offline Cargo metadata for Tauri's explicit target triple. It includes the

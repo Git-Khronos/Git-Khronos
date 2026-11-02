@@ -108,11 +108,35 @@ def port():
 
 
 class Driver:
-    def __init__(self, address, native_address=None):
+    def __init__(self, address, native_address=None, session_bus_address=None):
         self.address = address
         self.native_address = native_address
         self.session = None
         self.executable = None
+        self.session_bus_address = session_bus_address
+
+    def single_instance_bus_call(self, method):
+        """Read only the application name on this fixture's private session bus."""
+        if not self.session_bus_address or not self.session_bus_address.startswith('unix:abstract=git-khronos-test-'):
+            raise RuntimeError('Restart bus inspection requires the owned private session bus')
+        identifier = json.loads((ROOT / 'apps/desktop/src-tauri/tauri.conf.json').read_text())['identifier']
+        return run('dbus-send', '--bus=' + self.session_bus_address, '--print-reply',
+                   '--reply-timeout=1000', '--type=method_call', '--dest=org.freedesktop.DBus',
+                   '/org/freedesktop/DBus', 'org.freedesktop.DBus.' + method,
+                   'string:' + identifier + '.SingleInstance')
+
+    def wait_single_instance_release(self, timeout=10):
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self.single_instance_bus_call('NameHasOwner').splitlines()
+            value = reply[-1].strip() if reply else ''
+            if value == 'boolean false':
+                return
+            if value != 'boolean true':
+                raise RuntimeError('Unexpected single-instance bus ownership reply')
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Closed application still owns its single-instance bus name; relaunch refused')
+            time.sleep(.02)
 
     def request(self, method, path, payload=None):
         # Tauri translates session creation capabilities. Once created, use the
@@ -315,6 +339,10 @@ class Driver:
         old_pid = application_pid()
         if old_pid is None:
             raise RuntimeError("The owned application process could not be identified")
+        if self.session_bus_address:
+            owner = self.single_instance_bus_call('GetConnectionUnixProcessID').splitlines()[-1].strip()
+            if owner != 'uint32 ' + str(old_pid):
+                raise RuntimeError('The single-instance bus name does not belong to the owned application')
         self.close()
         deadline = time.monotonic() + 10
         while True:
@@ -327,6 +355,10 @@ class Driver:
             if time.monotonic() >= deadline:
                 raise RuntimeError("Session closure did not stop the owned application process")
             time.sleep(.02)
+        if self.session_bus_address:
+            # Process exit and bus name release are separate observable events.
+            # Never launch a second session while the old owner is still visible.
+            self.wait_single_instance_release()
         if args is None:
             self.start(executable)
         else:
@@ -594,7 +626,7 @@ def main():
     driver = None
     temporary_directory = None
     try:
-        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
+        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         package = args.package.resolve(strict=True)
@@ -666,7 +698,8 @@ def main():
             process = subprocess.Popen(["tauri-driver", "--port", str(listen_port), "--native-port", str(native_port)],
                                        env=application_env, stdout=log, stderr=log, start_new_session=True)
             children.append(process)
-            driver = Driver(f"http://127.0.0.1:{listen_port}", f"http://127.0.0.1:{native_port}")
+            driver = Driver(f"http://127.0.0.1:{listen_port}", f"http://127.0.0.1:{native_port}",
+                            session_bus_address=fixtures.env.get('DBUS_SESSION_BUS_ADDRESS'))
             report["webdriverTransport"] = "tauri-session-creation-native-session-control"
             deadline = time.monotonic() + 20
             while True:
