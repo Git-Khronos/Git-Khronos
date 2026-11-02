@@ -91,8 +91,34 @@ pub use gitlab_clone::{
     inspect_gitlab_project_with, prepare_gitlab_clone_with,
     revalidate_gitlab_clone_with, execute_gitlab_clone_with, clone_gitlab_plan,
 };
+mod gitlab_forks;
+pub use gitlab_forks::{
+    GitLabForkImportState, GitLabForkInspection, GitLabForkPage, GitLabForkQuery,
+    GitLabForkSelection, GitLabNamespace, GitLabNamespaceInspection, GitLabNamespaceKind,
+    GitLabNamespacePage, GitLabNamespaceQuery, GitLabNamespaceSelection, inspect_gitlab_fork_with,
+    inspect_gitlab_namespace_with, load_gitlab_fork_page_with, load_gitlab_namespace_page_with,
+};
 mod gitlab_https;
-pub use gitlab_https::GitLabHttpsTransport;
+mod gitlab_project_locator;
+mod gitlab_fork_reconcile;
+pub use gitlab_fork_reconcile::reconcile_gitlab_fork_with;
+pub use gitlab_https::{GitLabForkHttpsTransport, GitLabHttpsTransport};
+mod gitlab_fork_dispatch;
+pub use gitlab_fork_dispatch::{GitLabForkDispatch, GitLabForkPostReply, GitLabForkWriteTransport};
+mod gitlab_fork_record;
+pub use gitlab_fork_record::{GitLabForkFailure, GitLabForkIntent, GitLabForkPhase, GitLabForkRecord};
+mod gitlab_fork_plan;
+pub use gitlab_fork_plan::{
+    GitLabForkPlan, GitLabForkPrepareRequest, GitLabForkPreview, prepare_gitlab_fork_with,
+    revalidate_gitlab_fork_with,
+};
+#[cfg(target_os = "linux")]
+mod gitlab_fork_journal;
+#[cfg(target_os = "linux")]
+pub use gitlab_fork_journal::{
+    GitLabForkJournal, GitLabForkJournalEntry, GitLabForkJournalInspection,
+    GitLabForkJournalIssue, GitLabForkJournalIssueKind, GitLabForkJournalLease,
+};
 mod gitlab_projects;
 pub use gitlab_projects::{
     GitLabAccount, GitLabInstance, GitLabProject, GitLabProjectPage, GitLabProjectQuery,

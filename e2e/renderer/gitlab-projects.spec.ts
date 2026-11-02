@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
     app.commitMessage.set('Owned retained GitLab commit draft');
     const repositories = structuredClone(app.git.repositories());
     const fixture = { calls: [] as any[], connections: [] as any[], next: 0, hold: '',
-      release: null as (() => void) | null, fail: '', lostDisconnectReply: false, wrongAccount: false };
+      release: null as (() => void) | null, fail: '', lostDisconnectReply: false, wrongAccount: false, wrongCapability: false };
     (window as any).__gitlab = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       // This protocol fixture contains synthetic data only, never real credentials.
@@ -50,10 +50,10 @@ test.beforeEach(async ({ page }) => {
         if (!repository) throw Error('Unexpected repository in owned status refresh');
         result = repository.status;
       } else if (command === 'gitlab_connections') result = fixture.connections;
-      else if (command === 'connect_gitlab_account') {
+      else if (command === 'connect_gitlab_account' || command === 'connect_gitlab_fork_account') {
         result = { connectionId: (++fixture.next).toString(16).padStart(32, '0'),
           account: { origin: new URL(args.request.origin).origin, id: '9007199254740993', login: 'owned-reader' },
-          expiresAtMillis: String(Date.now() + 30 * 60 * 1000) };
+          canCreateFork: command === 'connect_gitlab_fork_account' && !fixture.wrongCapability, expiresAtMillis: String(Date.now() + 30 * 60 * 1000) };
         fixture.connections.push(structuredClone(result));
       } else if (command === 'load_gitlab_projects') {
         const selected = fixture.connections.find(connection => connection.connectionId === args.request.connectionId);
@@ -164,7 +164,7 @@ test('a cancelled late connection is retired exactly once before it can become t
 
 test('closing during connect clears only its late connection and preserves another account', async ({ page }) => {
   await page.evaluate(other => { (window as any).__gitlab.connections = [{ connectionId: other,
-    account: { origin: 'https://another.example.test', id: '71', login: 'other-owned-reader' }, expiresAtMillis: String(Date.now() + 60_000) }]; }, OTHER);
+    account: { origin: 'https://another.example.test', id: '71', login: 'other-owned-reader' }, canCreateFork: false, expiresAtMillis: String(Date.now() + 60_000) }]; }, OTHER);
   const panel = await open(page);
   await page.evaluate(() => { (window as any).__gitlab.hold = 'connect_gitlab_account'; });
   await panel.getByLabel('Personal access token', { exact: true }).fill(TOKEN);
@@ -348,4 +348,36 @@ test('disconnecting a GitLab account stays available during an unrelated Git ope
   } finally {
     await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy.set(false));
   }
+});
+
+
+test('fork submission capability needs a new explicitly opted-in connection and starts no provider mutation', async ({ page }) => {
+  const panel = await connect(page);
+  const permission = panel.getByRole('checkbox', { name: 'Enable reviewed fork requests for this new connection', exact: true });
+  await expect(permission).not.toBeChecked();
+  await permission.check();
+  await panel.getByLabel('Personal access token', { exact: true }).fill(TOKEN);
+  await panel.getByRole('button', { name: 'Connect to GitLab', exact: true }).click();
+  await expect(panel.getByRole('combobox', { name: 'Connected account', exact: true })).toHaveValue('00000000000000000000000000000002');
+  expect(await calls(page, 'connect_gitlab_account')).toHaveLength(1);
+  expect(await calls(page, 'connect_gitlab_fork_account')).toHaveLength(1);
+  expect(await page.evaluate(() => (window as any).__gitlab.connections.map((entry: any) => entry.canCreateFork))).toEqual([false, true]);
+  expect(await calls(page, 'prepare_gitlab_fork')).toHaveLength(0);
+  expect(await calls(page, 'execute_gitlab_fork')).toHaveLength(0);
+  await expect(panel.getByLabel('Personal access token', { exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(TOKEN);
+});
+
+test('a mismatched fork capability is retired without preparing or submitting any fork', async ({ page }) => {
+  const panel = await open(page);
+  await page.evaluate(() => { (window as any).__gitlab.wrongCapability = true; });
+  await panel.getByLabel('HTTPS instance', { exact: true }).fill('https://gitlab.example.test');
+  await panel.getByRole('checkbox', { name: 'Enable reviewed fork requests for this new connection', exact: true }).check();
+  await panel.getByLabel('Personal access token', { exact: true }).fill(TOKEN);
+  await panel.getByRole('button', { name: 'Connect to GitLab', exact: true }).click();
+  await expect(panel.getByRole('alert')).toContainText('The connection capability did not match this request');
+  expect(await calls(page, 'disconnect_gitlab_account')).toHaveLength(1);
+  expect(await calls(page, 'prepare_gitlab_fork')).toHaveLength(0);
+  expect(await calls(page, 'execute_gitlab_fork')).toHaveLength(0);
+  await expect(panel.getByRole('combobox', { name: 'Connected account', exact: true })).toHaveValue('');
 });

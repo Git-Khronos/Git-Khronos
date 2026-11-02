@@ -1,0 +1,16 @@
+:host { display: block; min-width: 0; }
+.forks { display: grid; gap: 12px; min-width: 0; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--overlay-border); color: var(--text); font-size: 13px; }
+h3, h4, p { margin: 0; } h3 { font-size: 16px; } h4 { font-size: 14px; }
+p, dd, code, strong { overflow-wrap: anywhere; line-height: 1.5; }
+fieldset { min-width: 0; padding: 12px; border: 1px solid var(--overlay-border); border-radius: 5px; }
+label { display: grid; gap: 6px; } input { box-sizing: border-box; width: 100%; min-width: 0; margin-bottom: 12px; }
+input, button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--inspector-row); color: var(--text); font: inherit; }
+button { cursor: pointer; white-space: normal; overflow-wrap: anywhere; } button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.actions, nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+ul { list-style: none; padding: 0; margin: 0; max-height: 320px; overflow: auto; scroll-padding: 8px; }
+li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--overlay-border); }
+li > div { min-width: 0; } li span { display: block; }
+.details { display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--accent); border-radius: 5px; }
+dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 6px 12px; margin: 0; } dd { min-width: 0; margin: 0; } code { font-size: 12px; }.error { color: var(--danger); }
+@media (max-width: 600px) { li { flex-direction: column; align-items: flex-start; } dl { grid-template-columns: minmax(0, 1fr); } }

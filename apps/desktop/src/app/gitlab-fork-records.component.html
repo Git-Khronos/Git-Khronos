@@ -1,0 +1,34 @@
+<section class="records" aria-label="Saved GitLab fork outcomes" [attr.aria-busy]="busy() ? true : null">
+  <h3 #heading tabindex="-1">Saved fork outcomes</h3>
+  <p>Inspect earlier requests without submitting them again. Local records contain no access token. Connect a matching account to read fresh project metadata.</p>
+  <div class="actions"><button type="button" [disabled]="unavailable()" (click)="returnToProjects()">Return from outcomes to GitLab projects</button><button type="button" [disabled]="unavailable()" (click)="load()">Reload saved fork outcomes</button></div>
+  @if (connection(); as account) { <p>Inspection account: {{ account.account.login }} · {{ account.account.origin }}</p> }
+  @else { <p>Offline records are available. Choose a matching connected account before inspecting provider metadata.</p> }
+  @if (error()) { <p #errorBox class="error" role="alert" tabindex="-1">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  @if (busy(); as operation) { <div class="actions" role="status"><span>{{ operation === 'listing' ? 'Reading local outcomes…' : operation === 'inspecting' ? 'Inspecting project metadata…' : 'Archiving a local outcome…' }}</span><button type="button" [disabled]="cancelling()" (click)="cancel()">{{ cancelling() ? 'Stopping…' : 'Stop outcome wait' }}</button></div> }
+  @if (stale()) { <p role="status">Reload saved outcomes before another action. An unfinished operation may have updated the stored revision.</p> }
+  @if (listing(); as result) {
+    @for (issue of result.issues; track $index) { <p role="status">Local storage needs review: {{ issue.kind }}{{ issue.id ? ' · ' + issue.id : '' }}. Existing data was retained.</p> }
+    <ul aria-label="Saved fork request records">@for (entry of result.entries; track entry.id) {
+      <li [class.highlighted]="entry.id === initialId()"><h4>{{ entry.record?.targetFullPath ?? 'Incomplete outcome record' }}</h4><p>ID: <code>{{ entry.id }}</code>{{ entry.retired ? ' · Archived locally' : '' }}</p>
+        @if (entry.pending || entry.operationActive) { <p role="status">A local operation or pending write exists. Reload after it finishes; no replay is available.</p> }
+        @if (entry.record; as record) {
+          <p>{{ phase(record) }} · Import: {{ record.importState }}</p>
+          <dl><dt>Instance</dt><dd>{{ record.origin }}</dd><dt>Account</dt><dd>{{ record.accountLogin }} · ID {{ record.accountId }}</dd><dt>Source</dt><dd>{{ record.sourceFullPath }} · ID {{ record.sourceId }}</dd><dt>Project ID</dt><dd>{{ record.projectId ?? 'Not confirmed' }}</dd><dt>Stored revision</dt><dd>{{ record.revision }}</dd></dl>
+          @if (record.httpStatus) { <p>Submission HTTP status: {{ record.httpStatus }}</p> }
+          @if (record.lastFailure) { <p>Last inspection or submission issue: {{ record.lastFailure }}</p> }
+          @if (!entry.retired) {
+            @if (!matching(record)) { <p>Fresh inspection needs the same instance and account ID. A read-only connection is sufficient.</p> }
+            <button type="button" [disabled]="!canInspect(entry)" (click)="inspect(entry)">Inspect saved outcome {{ record.targetFullPath }}</button>
+            <label class="check"><input type="checkbox" [disabled]="unavailable() || stale() || entry.pending || entry.operationActive" [checked]="acknowledgements().has(entry.id)" (change)="acknowledge(entry.id, $any($event.target).checked)" />I understand that the request may have reached GitLab; archiving only retires this local record.</label>
+            <button type="button" [disabled]="!canArchive(entry)" (click)="archive(entry)">Archive local outcome {{ record.targetFullPath }}</button>
+          }
+        }
+      </li>
+    } @empty { <li>No saved fork outcomes were found.</li> }</ul>
+  }
+  @if (observation(); as result) {
+    <section #observationBox class="details" aria-label="Latest fork outcome inspection" tabindex="-1"><h4>{{ result.observation.targetFullPath }}</h4><p>{{ phase(result.observation) }} · Import: {{ result.observation.importState }}</p><p>{{ result.persisted ? 'This inspection was saved.' : 'This inspection was not saved. Reload the actual stored revision before another action.' }}</p><p>Matching metadata does not prove this request created the project. Import metadata does not confirm Git access. Cloning requires a separate project and destination review.</p></section>
+  }
+</section>

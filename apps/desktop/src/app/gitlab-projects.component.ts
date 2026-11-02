@@ -1,6 +1,8 @@
 import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal, viewChild, type OnDestroy } from '@angular/core';
 import { ipc, type AppError, type GitLabAccount, type GitLabConnection, type GitLabProject, type GitLabProjectPage, type GitLabProjectQuery, type GitLabProjectScope } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
+import { GitLabForkRecordsComponent } from './gitlab-fork-records.component';
+import { GitLabForksComponent } from './gitlab-forks.component';
 import { GitLabCloneComponent } from './gitlab-clone.component';
 
 type Operation = { id: string; generation: number; kind: 'connecting' | 'reading'; cancelled: boolean };
@@ -13,7 +15,7 @@ function sameAccount(a: GitLabAccount, b: GitLabAccount): boolean {
 
 @Component({
   selector: 'gc-gitlab-projects',
-  imports: [GitLabCloneComponent],
+  imports: [GitLabCloneComponent, GitLabForksComponent, GitLabForkRecordsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-projects.component.html',
   styleUrl: './gitlab-projects.component.scss',
@@ -25,11 +27,19 @@ export class GitLabProjectsComponent implements OnDestroy {
   readonly opened = output<void>();
   readonly cloneTarget = signal<{ generation: number; connection: GitLabConnection; project: GitLabProject } | null>(null);
   readonly cloneViews = computed(() => this.cloneTarget() ? [this.cloneTarget()!] : []);
+  readonly recordsOpen = signal(false);
+  readonly outcomeId = signal<string | null>(null);
+  private readonly recordsBrowser = viewChild(GitLabForkRecordsComponent);
+  readonly forkTarget = signal<{ generation: number; connection: GitLabConnection; project: GitLabProject } | null>(null);
+  private readonly forkBrowser = viewChild<GitLabForksComponent>('forkBrowser');
+  private readonly forkLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('forkLoaderClose');
+  private readonly forkLoaderFocus = afterRenderEffect(() => this.forkLoaderClose()?.nativeElement.focus());
   private cloneGeneration = 0;
   private readonly cloneBrowser = viewChild(GitLabCloneComponent);
   readonly origin = signal('https://gitlab.com');
   readonly token = signal('');
   readonly showToken = signal(false);
+  readonly forkCreationEnabled = signal(false);
   readonly connections = signal<GitLabConnection[]>([]);
   readonly connectionsStale = signal(false);
   readonly selectedId = signal('');
@@ -41,7 +51,7 @@ export class GitLabProjectsComponent implements OnDestroy {
   readonly notice = signal('');
   readonly busy = signal<Busy>(null);
   readonly cancelling = signal(false);
-  readonly unavailable = computed(() => !!this.busy() || !!this.cloneTarget() || this.git.busy() || this.git.browserPreview());
+  readonly unavailable = computed(() => !!this.busy() || !!this.cloneTarget() || !!this.forkTarget() || this.recordsOpen() || this.git.busy() || this.git.browserPreview());
   readonly validOrigin = computed(() => {
     try {
       const value = this.origin(), parsed = new URL(value);
@@ -134,11 +144,12 @@ export class GitLabProjectsComponent implements OnDestroy {
   }
   async connect(): Promise<void> {
     if (!this.canConnect() || this.closing || this.destroyed) return;
-    const origin = this.origin(), token = this.token(), existing = new Set(this.connections().map(item => item.connectionId));
+    const origin = this.origin(), token = this.token(), forkCreation = this.forkCreationEnabled(), existing = new Set(this.connections().map(item => item.connectionId));
     const operation = this.begin('connecting');
     this.token.set(''); this.showToken.set(false);
     try {
-      const connection = await ipc.connect_gitlab_account({ request: { origin, token, operationId: operation.id } });
+      const request = { origin, token, operationId: operation.id };
+      const connection = forkCreation ? await ipc.connect_gitlab_fork_account({ request }) : await ipc.connect_gitlab_account({ request });
       if (!/^[a-f0-9]{32}$/.test(connection.connectionId) || existing.has(connection.connectionId)) {
         if (this.accepted(operation)) this.error.set('A new GitLab connection was not confirmed. Refresh active connections before retrying.');
         return;
@@ -147,6 +158,11 @@ export class GitLabProjectsComponent implements OnDestroy {
       if (connection.account.origin !== new URL(origin).origin) {
         await this.retireLate(connection.connectionId);
         if (this.accepted(operation)) this.error.set('The returned connection did not match the selected instance. Connect again.');
+        return;
+      }
+      if (connection.canCreateFork !== forkCreation) {
+        await this.retireLate(connection.connectionId);
+        if (this.accepted(operation)) this.error.set('The connection capability did not match this request. Connect again.');
         return;
       }
       this.connections.update(previous => [...previous, connection]);
@@ -183,14 +199,32 @@ export class GitLabProjectsComponent implements OnDestroy {
     const connection = this.selected(); if (!connection || !this.canSelectClone(project)) return;
     this.cloneTarget.set({ generation: ++this.cloneGeneration, connection, project });
   }
+  selectForks(project: GitLabProject): void {
+    const connection = this.selected(); if (!connection || !this.canSelectClone(project)) return;
+    this.forkTarget.set({ generation: ++this.cloneGeneration, connection, project });
+  }
+  openOutcomes(id: string | null = null): void {
+    if (this.busy() || this.cloneTarget() || this.git.busy() || this.git.browserPreview()) return;
+    this.closeForks(); this.outcomeId.set(id); this.recordsOpen.set(true);
+  }
+  closeOutcomes(): void {
+    this.recordsBrowser()?.dismiss(); this.recordsOpen.set(false);
+    window.setTimeout(() => { if (!this.closing && !this.destroyed && !this.recordsOpen()) this.heading()?.nativeElement.focus(); });
+  }
+  closeForks(): void {
+    this.forkBrowser()?.dismiss(); this.forkTarget.set(null);
+    window.setTimeout(() => { if (!this.closing && !this.destroyed && !this.forkTarget() && !this.cloneTarget() && !this.recordsOpen()) this.heading()?.nativeElement.focus(); });
+  }
   closeClone(): void {
     this.cloneBrowser()?.dismiss(); this.cloneTarget.set(null);
-    window.setTimeout(() => { if (!this.closing && !this.destroyed) this.heading()?.nativeElement.focus(); });
+    window.setTimeout(() => { if (!this.closing && !this.destroyed && !this.forkTarget() && !this.cloneTarget() && !this.recordsOpen()) this.heading()?.nativeElement.focus(); });
   }
 
   async disconnect(): Promise<void> {
     const connection = this.selected(); if (!connection || !this.canDisconnect() || this.closing || this.destroyed) return;
-    if (!this.cloneBrowser()?.executing()) this.closeClone();
+    this.recordsBrowser()?.cancelInspection();
+    if (this.cloneTarget() && !this.cloneBrowser()?.executing()) this.closeClone();
+    if (this.forkTarget() && !this.forkBrowser()?.executing()) this.closeForks();
     if (this.operation) this.operation.cancelled = true;
     this.operation = null;
     const generation = ++this.generation; this.busy.set('disconnecting'); this.error.set(''); this.stale.set(!!this.page());
@@ -226,7 +260,7 @@ export class GitLabProjectsComponent implements OnDestroy {
   }
   dismiss(): void {
     if (this.closing) return;
-    this.cloneBrowser()?.dismiss();
+    this.cloneBrowser()?.dismiss(); this.forkBrowser()?.dismiss(); this.recordsBrowser()?.dismiss();
     this.closing = true; this.generation++; this.token.set(''); this.showToken.set(false);
     const operation = this.operation;
     if (operation) { operation.cancelled = true; void ipc.cancel_git_operation({ operationId: operation.id }).catch(() => undefined); }

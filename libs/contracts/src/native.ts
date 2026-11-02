@@ -123,6 +123,23 @@ export type FileToolSessionSnapshot = { requestedAtMillis: string; id: string; r
 export type FileToolSideReview = { role: string; path: string; kind: string; bytes: number; oid: string | null }
 export type FileToolSource = { kind: "revision"; oid: string; path: string } | { kind: "index"; path: string } | { kind: "workingTree"; path: string }
 export type FileToolStageOutcome = { session: FileToolSessionSnapshot; stage: FileToolMergeStageResult }
+export type ForkRecordEntry = { id: string; record: ForkRecordView | null; pending: boolean; retired: boolean; operationActive: boolean }
+export type ForkRecordList = { entries: ForkRecordEntry[]; issues: ForkStorageIssue[] }
+export type ForkRecordListRequest = { operationId: string }
+export type ForkRecordRefresh = { observation: ForkRecordView;
+/**
+ * False means the new observation could not be saved. Reload the actual
+ * stored revision before another local action; this never authorizes POST.
+ */
+persisted: boolean }
+export type ForkRecordView = { id: string; revision: string; createdAtMillis: string; updatedAtMillis: string; origin: string; accountId: string; accountLogin: string; sourceId: string; sourceFullPath: string; sourceEmpty: boolean | null; namespaceId: string; namespaceFullPath: string; namespaceKind: GitLabNamespaceKind; projectPath: string; projectName: string | null; targetFullPath: string; phase: GitLabForkPhase; projectId: string | null; projectEmpty: boolean | null; httpStatus: number | null; importState: GitLabForkImportState; lastFailure: GitLabForkFailure | null }
+export type ForkStorageIssue = { id: string | null; kind: ForkStorageIssueKind }
+export type ForkStorageIssueKind = "unknownEntry" | "invalidRecord" | "pendingWrite" | "capacity"
+export type ForkSubmissionOutcome = { recordId: string; phase: SubmissionPhase;
+/**
+ * Last confirmed immutable revision, not a replay or restore token.
+ */
+revision: string | null; httpStatus: number | null }
 export type GitAuthenticationDismissed = string
 export type GitAuthenticationPrompt = { requestId: string; operationId: string; repositoryId: string | null; secret: boolean }
 export type GitIdentity = { name: string | null; email: string | null }
@@ -134,9 +151,40 @@ export type GitLabAccount = { origin: string; id: string; login: string }
 export type GitLabClonePlan = { account: GitLabAccount; project: GitLabProject; transport: HostedCloneTransport; url: string; parentPath: string; folder: string; destination: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
 export type GitLabCloneRequest = { projectId: string; fullPath: string; transport: HostedCloneTransport; parentPath: string; folder: string; branch: string | null; depth: number | null; recurseSubmodules: boolean }
 export type GitLabConnectRequest = { origin: string; token: string; operationId: string }
-export type GitLabConnection = { connectionId: string; account: GitLabAccount; expiresAtMillis: string }
+export type GitLabConnection = { connectionId: string; account: GitLabAccount; expiresAtMillis: string; canCreateFork: boolean }
 export type GitLabExecuteCloneRequest = { contextId: string; token: string; operationId: string }
+export type GitLabForkFailure = "interrupted" | "connection" | "invalidReply" | "storageUnconfirmed" | "identityMismatch"
+export type GitLabForkImportState = "none" | "scheduled" | "started" | "finished" | "failed" | "unknown"
+export type GitLabForkInspection = { account: GitLabAccount; source: GitLabProject; project: GitLabProject; namespace: GitLabNamespace;
+/**
+ * Import metadata is not proof of a reachable Git transport.
+ */
+importState: GitLabForkImportState; cloneHttps: string | null; cloneSsh: string | null }
+export type GitLabForkPage = { account: GitLabAccount; source: GitLabProject;
+/**
+ * Candidates only. Fresh relationship inspection is required before reuse.
+ */
+entries: GitLabProject[]; page: number; nextPage: number | null }
+export type GitLabForkPhase = "awaitingConfirmation" | "acceptedPending" | "metadataVerified" | "importFailed" | "conflict" | "responseRejected"
+export type GitLabForkPrepareRequest = { sourceId: string; sourceFullPath: string; namespace: GitLabNamespaceSelection; projectPath: string; projectName: string | null }
+export type GitLabForkPreview = { account: GitLabAccount; source: GitLabProject; sourceEmpty: boolean | null; namespace: GitLabNamespace; projectPath: string; projectName: string | null; targetFullPath: string }
+export type GitLabForkQuery = { sourceProjectId: string; sourceFullPath: string; page: number; search: string }
+export type GitLabForkSelection = { sourceProjectId: string; sourceFullPath: string; forkProjectId: string; forkFullPath: string }
+export type GitLabForksRequest = { connectionId: string; query: GitLabForkQuery; operationId: string }
+export type GitLabInspectForkRequest = { connectionId: string; selection: GitLabForkSelection; operationId: string }
+export type GitLabInspectNamespaceRequest = { connectionId: string; selection: GitLabNamespaceSelection; operationId: string }
 export type GitLabInspectRequest = { connectionId: string; projectId: string; operationId: string }
+export type GitLabNamespace = { id: string; name: string; fullPath: string; kind: GitLabNamespaceKind }
+export type GitLabNamespaceInspection = { account: GitLabAccount;
+/**
+ * Fresh identity only; neither namespace visibility nor ownership grants a write.
+ */
+namespace: GitLabNamespace }
+export type GitLabNamespaceKind = "user" | "group"
+export type GitLabNamespacePage = { account: GitLabAccount; entries: GitLabNamespace[]; page: number; nextPage: number | null }
+export type GitLabNamespaceQuery = { page: number; search: string; ownedOnly: boolean }
+export type GitLabNamespaceSelection = { id: string; fullPath: string; kind: GitLabNamespaceKind }
+export type GitLabNamespacesRequest = { connectionId: string; query: GitLabNamespaceQuery; operationId: string }
 export type GitLabPrepareCloneRequest = { connectionId: string; contextId: string; request: GitLabCloneRequest; operationId: string }
 export type GitLabProject = { id: string; name: string; fullPath: string; url: string; description: string | null; defaultBranch: string | null; visibility: string; archived: boolean }
 export type GitLabProjectInspection = { account: GitLabAccount; project: GitLabProject; cloneHttps: string | null; cloneSsh: string | null }
@@ -262,12 +310,14 @@ export type PatchRequest = { file: string; target: PatchTarget; patch: number[];
 export type PatchReview = { request: PatchRequest; files: PatchFile[]; summary: string }
 export type PatchTarget = "worktree" | "index" | "both"
 export type PrepareFileToolLaunchRequest = { repoId: string; contextId: string; request: FileToolRequest; profile: ToolProfile; operationId: string }
+export type PrepareForkRequest = { connectionId: string; context: string; selection: GitLabForkPrepareRequest; operationId: string }
 export type PreparedBranchWorkflow = { token: string; plan: BranchWorkflowPlan }
 export type PreparedDiscard = ({ paths: string[]; skippedPaths: string[]; untracked: number }) & { token: string }
 export type PreparedFileToolCleanup = { token: string; sessionId: string; review: FileToolCleanupReview }
 export type PreparedFileToolLaunch = { token: string; review: FileToolLaunchReview }
 export type PreparedFileToolResult = { token: string; sessionId: string; output: FileToolOutputSummary }
 export type PreparedFileToolStage = { token: string; sessionId: string; path: string; bytes: string; sha256: string }
+export type PreparedFork = { token: string; preview: GitLabForkPreview }
 export type PreparedForkAcknowledgement = { token: string; status: HostedForkStatus; unresolved: boolean }
 export type PreparedGitLabClone = { token: string; plan: GitLabClonePlan }
 export type PreparedHostedClone = { token: string; plan: HostedClonePlan }
@@ -281,6 +331,7 @@ export type RasterMetadata = { mime: string;
  */
 width: number; height: number }
 export type RebaseSplitStatus = { preparing: boolean; partCount: number; treeMatches: boolean }
+export type ReconcileForkRequest = { connectionId: string; recordId: string; expectedRevision: string; operationId: string }
 /**
  * Comparison with an independently opened, currently verified editor. Even all
  * matching fields do not authorize a write or establish filesystem identity.
@@ -327,6 +378,7 @@ export type RepositorySnapshot = ({ name: string; path: string; identity: GitIde
  */
 bare: boolean }) & { id: string }
 export type RepositoryStatus = { branch: string | null; ahead: number; behind: number; staged: number; unstaged: number; untracked: number; conflicted: number; mergeInProgress: boolean; historyOperation: string | null; historyNoCommit: boolean; rebaseInProgress: boolean; rebaseEditStopped: boolean; rebaseSplit: RebaseSplitStatus | null; mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
+export type RetireForkRequest = { recordId: string; expectedRevision: string; acknowledgeUnconfirmed: boolean; operationId: string }
 export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
 export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }
 export type SigningDiagnostic = { available: boolean; program: string; format: string; keyConfigured: boolean; message: string }
@@ -335,6 +387,8 @@ export type SparseCheckoutInfo = { enabled: boolean; coneMode: boolean; sparseIn
 export type StashContentLayer = "combined" | "index" | "workingTree" | "untracked"
 export type StashEntry = { reference: string; oid: string; message: string }
 export type StashOptions = { mode: string; includeUntracked: boolean; paths: string[] | null; message: string }
+export type SubmissionPhase = "awaitingConfirmation" | "acceptedAwaitingInspection" | "responseRejected" | "storageUnconfirmed"
+export type SubmitForkRequest = { context: string; token: string; operationId: string }
 export type Submodule = { name: string; path: string; absolutePath: string; url: string; oid: string | null; headOid: string | null; initialized: boolean; outOfSync: boolean }
 export type SubmoduleConflict = { base: string | null; ours: string | null; theirs: string | null; mixedTypes: boolean }
 export type SubmoduleDeinit = { path: string; expectedCheckoutOid: string }
@@ -448,7 +502,18 @@ export function inspect_gitlab_project(args: { request: GitLabInspectRequest }):
 export function prepare_gitlab_clone(args: { request: GitLabPrepareCloneRequest }): Promise<PreparedGitLabClone> { return TAURI_INVOKE("prepare_gitlab_clone", args); }
 export function execute_gitlab_clone(args: { request: GitLabExecuteCloneRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_gitlab_clone", args); }
 export function discard_gitlab_clone_plan(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_gitlab_clone_plan", args); }
+export function load_gitlab_namespaces(args: { request: GitLabNamespacesRequest }): Promise<GitLabNamespacePage> { return TAURI_INVOKE("load_gitlab_namespaces", args); }
+export function inspect_gitlab_namespace(args: { request: GitLabInspectNamespaceRequest }): Promise<GitLabNamespaceInspection> { return TAURI_INVOKE("inspect_gitlab_namespace", args); }
+export function load_gitlab_forks(args: { request: GitLabForksRequest }): Promise<GitLabForkPage> { return TAURI_INVOKE("load_gitlab_forks", args); }
+export function inspect_gitlab_fork(args: { request: GitLabInspectForkRequest }): Promise<GitLabForkInspection> { return TAURI_INVOKE("inspect_gitlab_fork", args); }
 export function connect_gitlab_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_account", args); }
+export function connect_gitlab_fork_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_fork_account", args); }
+export function prepare_gitlab_fork(args: { request: PrepareForkRequest }): Promise<PreparedFork> { return TAURI_INVOKE("prepare_gitlab_fork", args); }
+export function discard_gitlab_fork(args: { context: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_gitlab_fork", args); }
+export function execute_gitlab_fork(args: { request: SubmitForkRequest }): Promise<ForkSubmissionOutcome> { return TAURI_INVOKE("execute_gitlab_fork", args); }
+export function list_gitlab_fork_records(args: { request: ForkRecordListRequest }): Promise<ForkRecordList> { return TAURI_INVOKE("list_gitlab_fork_records", args); }
+export function reconcile_gitlab_fork_record(args: { request: ReconcileForkRequest }): Promise<ForkRecordRefresh> { return TAURI_INVOKE("reconcile_gitlab_fork_record", args); }
+export function retire_gitlab_fork_record(args: { request: RetireForkRequest }): Promise<boolean> { return TAURI_INVOKE("retire_gitlab_fork_record", args); }
 export function gitlab_connections(args: {  } = {}): Promise<GitLabConnection[]> { return TAURI_INVOKE("gitlab_connections", args); }
 export function load_gitlab_projects(args: { request: GitLabProjectsRequest }): Promise<GitLabProjectPage> { return TAURI_INVOKE("load_gitlab_projects", args); }
 export function disconnect_gitlab_account(args: { connectionId: string }): Promise<boolean> { return TAURI_INVOKE("disconnect_gitlab_account", args); }
@@ -691,7 +756,18 @@ export type CommandMap = {
   prepare_gitlab_clone: typeof prepare_gitlab_clone;
   execute_gitlab_clone: typeof execute_gitlab_clone;
   discard_gitlab_clone_plan: typeof discard_gitlab_clone_plan;
+  load_gitlab_namespaces: typeof load_gitlab_namespaces;
+  inspect_gitlab_namespace: typeof inspect_gitlab_namespace;
+  load_gitlab_forks: typeof load_gitlab_forks;
+  inspect_gitlab_fork: typeof inspect_gitlab_fork;
   connect_gitlab_account: typeof connect_gitlab_account;
+  connect_gitlab_fork_account: typeof connect_gitlab_fork_account;
+  prepare_gitlab_fork: typeof prepare_gitlab_fork;
+  discard_gitlab_fork: typeof discard_gitlab_fork;
+  execute_gitlab_fork: typeof execute_gitlab_fork;
+  list_gitlab_fork_records: typeof list_gitlab_fork_records;
+  reconcile_gitlab_fork_record: typeof reconcile_gitlab_fork_record;
+  retire_gitlab_fork_record: typeof retire_gitlab_fork_record;
   gitlab_connections: typeof gitlab_connections;
   load_gitlab_projects: typeof load_gitlab_projects;
   disconnect_gitlab_account: typeof disconnect_gitlab_account;

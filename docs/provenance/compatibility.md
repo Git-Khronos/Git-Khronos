@@ -2289,3 +2289,72 @@ LFS/signing/SSH source cases pass. All 1,484 current renderer cases pass exactly
 with no retries or skips and all earlier 1,473 cases preserved. Restart storage
 management, absent-target save and other-platform support remain open. These local
 results do not establish remote CI success.
+
+## GitLab fork workflow foundation (in progress)
+
+Public namespace and project-fork API documentation defines the read endpoints and
+reported identity/import fields. The bounded projections, account rechecks, candidate
+versus inspected relationship distinction, original fixtures and native lease design
+are independent project work. Initial nine core cases, 14 HTTPS regressions and strict
+core Clippy pass locally. The initial two native adapter cases, strict workspace Clippy
+and generated contracts also passed. The original fork browser passes an AOT build and
+50 renderer cases (15 new fork cases plus 35 existing clone/catalogue cases), with inspected
+320px/780px views. These renderer fixtures do not make real provider requests or Git clones.
+Namespace identity preflight and three real-HTTPS additions passed a fresh gate covering
+12 core, 17 HTTPS and three native cases plus contracts/Clippy. A distinct fork-only HTTPS
+port and exact request serializer pass four serializer and 25 HTTPS cases, including
+eight new POST cases against owned verified-TLS services. A data-only record model
+passes six further state/validation cases. Strict workspace Clippy and generated
+contract checks pass. This proves the local protocol/model slices; it does not prove a
+complete provider creation workflow or live-service use. Linux disk-journal source now
+passes ten filesystem cases and the expanded 27-case HTTPS suite, including
+two real journal/transport composition cases; strict workspace Clippy and generated
+contract checks also pass. The registered core fork plan passes six further read-only
+preparation/revalidation cases, including changed identities, cancellation, unknown or
+empty repositories and retained scope. In-app fork creation/recovery and durable read-only reconciliation now have
+qualified source and focused packaged evidence described below. Remote attachment
+and broader workflow qualification remain open.
+No proprietary implementation or assets were used. See
+[the workflow](../specifications/gitlab-fork-workflow.md) and the incomplete
+[dispatch design](../specifications/gitlab-fork-dispatch.md).
+
+The original native fork-review cache candidate passed ten standalone behavioral
+cases, compiled with warnings denied. It is now registered with a new native
+connection/review/submission adapter. The completed scoped gate passes 50 native,
+38 core fork and 27 HTTPS cases, strict workspace Clippy, generated contracts, AOT
+and 50 existing renderer cases without retries or skips. The adapter uses
+project-owned retained plans, a shared native session lease and the private journal
+callback. Native submission tests use actual owned filesystem journals and simulated
+ports; the HTTPS suite remains a separate proof. No proprietary source, assets or
+new dependencies were used. At that earlier checkpoint, the subsequent read-only
+reconciliation adapter and original creation/recovery UI were unqualified source
+candidates; their later results follow.
+The recovery backend passes its scoped 142-case gate and strict source checks.
+The corrected original UI passed a 68-case renderer checkpoint; eight later paired
+320px/780px views were inspected for readable content/actions. Two additional
+disconnect cases exposed a cancellation race, now corrected in source. The current
+combined dev source passes its full source checks (1,072 Rust, 182 frontend unit
+cases and strict Clippy), 60 harness cases, production AOT and all 81 focused
+renderer cases once without retries or skips. Eight current renderer captures
+were actually viewed for original content/action layout and horizontal fit.
+The subsequent native private-parent correction passes 1,077 full Rust cases
+(including 63 scoped native cases), strict Clippy and unchanged contracts. The
+immutable Linux package with DEB SHA-256
+`ff61643e85a9767a9550dfb44d5c05fff0771dacb47824dbe4c96d46b32f6d34`
+and packaged executable SHA-256
+`d0948757be7db28d0dfa908fc45290b4d41a4daa31daadb5ea99c93af755ad3d`
+passes all 37 focused native scenarios. The owned TLS server observes the actual
+private journal before each of two fork POSTs; restarting after a lost reply sends
+no replacement POST. Fresh read-only reconciliation and exact-ID 404 handling pass.
+Twelve normal/compact native captures were actually viewed and accepted. These
+results cover synthetic owned services, not live GitLab. The same package passes 220 full and 221 inherited-environment scenarios: 478
+native executions over 248 distinct scenarios including the focused 37. All 45
+optional LFS/signing/SSH source cases pass. The qualified renderer set passes all 1,519 cases, preserving all earlier 1,484
+identities with no retries or skips. An existing wall-clock-dependent date
+assertion failed after its sample crossed 30 days; the isolated test now pins the
+clock and asserts exact ISO/time/relative output. The first three unchanged
+shards were retained, the corrected fourth shard passed in full, and detailed
+reports confirm exact collection matching. Runtime and package inputs did not
+change for that test correction.
+Fork-network ancestry, branch-scope selection and reviewed remote attachment remain
+open; further packaged error/cancellation composition coverage is also required.

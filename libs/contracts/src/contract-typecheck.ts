@@ -128,6 +128,48 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   void ipc.discard_reviewed_file_tool_session({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-cleanup', finishedUsingFiles: true, directory: '/other' } });
   // @ts-expect-error review purposes are a closed set
   void ipc.discard_file_tool_review({ request: { contextId: 'owned-context', token: 'owned-token', purpose: 'unknown' } });
+
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', query: { page: 1, search: 'team & literal', ownedOnly: false } } });
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: '9007199254740993', fullPath: 'team/nested', kind: 'group' } } });
+  // @ts-expect-error A namespace read cannot receive or grant project creation permission.
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: '9', fullPath: 'team/nested', kind: 'group', canCreateProject: true } } });
+  // @ts-expect-error Namespace identifiers must not lose precision through JavaScript numbers.
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: 9007199254740993, fullPath: 'team/nested', kind: 'group' } } });
+  void ipc.load_gitlab_forks({ request: { connectionId: 'owned-connection', operationId: 'owned-forks', query: { sourceProjectId: '10', sourceFullPath: 'team/upstream', page: 1, search: '' } } });
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-fork-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: '9007199254740993', forkFullPath: 'group/nested/fork' } } });
+  // @ts-expect-error namespace reads use a native connection, not renderer credentials
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', token: 'forged', query: { page: 1, search: '', ownedOnly: false } } });
+  // @ts-expect-error fork reads cannot replace the account-bound instance
+  void ipc.load_gitlab_forks({ request: { connectionId: 'owned-connection', operationId: 'owned-forks', origin: 'https://other.test', query: { sourceProjectId: '10', sourceFullPath: 'team/upstream', page: 1, search: '' } } });
+  // @ts-expect-error a reported upstream relation cannot be supplied by the renderer
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: '20', forkFullPath: 'group/fork', forkedFromProject: { id: '10' } } } });
+  // @ts-expect-error stable fork IDs must not lose decimal precision
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: 9007199254740993, forkFullPath: 'group/fork' } } });
+  // @ts-expect-error namespace discovery does not confer write authority
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', query: { page: 1, search: '', ownedOnly: false, canWrite: true } } });
+  void ipc.connect_gitlab_fork_account({ request: { origin: 'https://gitlab.example.test', token: 'owned-token', operationId: 'owned-connect' } });
+  void ipc.prepare_gitlab_fork({ request: { connectionId: 'owned-connection', context: 'owned-review', operationId: 'owned-prepare', selection: { sourceId: '101', sourceFullPath: 'team/source', namespace: { id: '9007199254740993', fullPath: 'team/destination', kind: 'group' }, projectPath: 'forked', projectName: null } } });
+  void ipc.execute_gitlab_fork({ request: { context: 'owned-review', token: 'owned-token', operationId: 'owned-submit' } });
+  void ipc.discard_gitlab_fork({ context: 'owned-review', token: 'owned-token' });
+  // @ts-expect-error an existing read connection cannot be upgraded by a renderer flag
+  void ipc.connect_gitlab_account({ request: { origin: 'https://gitlab.example.test', token: 'owned-token', operationId: 'owned-connect', canCreateFork: true } });
+  // @ts-expect-error fork execution accepts no replacement plan or connection
+  void ipc.execute_gitlab_fork({ request: { context: 'owned-review', token: 'owned-token', operationId: 'owned-submit', connectionId: 'replacement' } });
+  // @ts-expect-error fork execution requires its original context
+  void ipc.execute_gitlab_fork({ request: { token: 'owned-token', operationId: 'owned-submit' } });
+  // @ts-expect-error fork IDs retain decimal precision
+  void ipc.prepare_gitlab_fork({ request: { connectionId: 'owned-connection', context: 'owned-review', operationId: 'owned-prepare', selection: { sourceId: 9007199254740993, sourceFullPath: 'team/source', namespace: { id: '202', fullPath: 'team/destination', kind: 'group' }, projectPath: 'forked', projectName: null } } });
+  void ipc.list_gitlab_fork_records({ request: { operationId: 'owned-list' } });
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: '9007199254740993', operationId: 'owned-reconcile' } });
+  void ipc.retire_gitlab_fork_record({ request: { recordId: 'owned-record', expectedRevision: '1', acknowledgeUnconfirmed: true, operationId: 'owned-retire' } });
+  // @ts-expect-error saved-record inspection cannot replace private storage
+  void ipc.list_gitlab_fork_records({ request: { operationId: 'owned-list', directory: '/elsewhere' } });
+  // @ts-expect-error reconciliation accepts no replacement plan or submission token
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: '1', operationId: 'owned-reconcile', token: 'old-submit-token' } });
+  // @ts-expect-error revisions must retain exact decimal precision
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: 9007199254740993, operationId: 'owned-reconcile' } });
+  // @ts-expect-error retiring an uncertain outcome requires an explicit acknowledgement value
+  void ipc.retire_gitlab_fork_record({ request: { recordId: 'owned-record', expectedRevision: '1', operationId: 'owned-retire' } });
   const id: string = prompt.requestId;
   void id;
   // @ts-expect-error native command names are exhaustive

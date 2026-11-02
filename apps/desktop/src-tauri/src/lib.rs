@@ -91,6 +91,10 @@ use tauri_specta::Event;
 mod authentication;
 mod gitlab_commands;
 mod gitlab_clone_commands;
+mod gitlab_fork_commands;
+mod gitlab_fork_reviews;
+mod gitlab_fork_submission;
+mod gitlab_fork_recovery;
 mod recovery_commands;
 mod hosting_commands;
 mod fork_commands;
@@ -3459,6 +3463,7 @@ pub fn run() {
         .manage(working_file_commands::EditorState::default())
         .manage(working_file_commands::recovery::RecoveryState::default())
         .manage(gitlab_commands::GitLabAccounts::default())
+        .manage(gitlab_fork_submission::GitLabForkReviews::default())
         .manage(gitlab_clone_commands::GitLabClonePlans::default())
         .manage(file_tool_commands::FileToolState::default())
         .plugin(tauri_plugin_dialog::init())
@@ -3502,7 +3507,18 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             gitlab_clone_commands::prepare_gitlab_clone,
             gitlab_clone_commands::execute_gitlab_clone,
             gitlab_clone_commands::discard_gitlab_clone_plan,
+            gitlab_fork_commands::load_gitlab_namespaces,
+            gitlab_fork_commands::inspect_gitlab_namespace,
+            gitlab_fork_commands::load_gitlab_forks,
+            gitlab_fork_commands::inspect_gitlab_fork,
             gitlab_commands::connect_gitlab_account,
+            gitlab_commands::connect_gitlab_fork_account,
+            gitlab_fork_submission::prepare_gitlab_fork,
+            gitlab_fork_submission::discard_gitlab_fork,
+            gitlab_fork_submission::execute_gitlab_fork,
+            gitlab_fork_recovery::list_gitlab_fork_records,
+            gitlab_fork_recovery::reconcile_gitlab_fork_record,
+            gitlab_fork_recovery::retire_gitlab_fork_record,
             gitlab_commands::gitlab_connections,
             gitlab_commands::load_gitlab_projects,
             gitlab_commands::disconnect_gitlab_account,

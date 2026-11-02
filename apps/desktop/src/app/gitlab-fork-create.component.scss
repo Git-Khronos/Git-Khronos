@@ -1,0 +1,14 @@
+:host { display: block; min-width: 0; }
+.fork-create, .details { display: grid; gap: 12px; min-width: 0; }
+.fork-create { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--overlay-border); }
+h4, p { margin: 0; } p, dd, code { overflow-wrap: anywhere; line-height: 1.5; }
+fieldset, .details { min-width: 0; padding: 12px; border: 1px solid var(--overlay-border); border-radius: 5px; }
+.details { border-color: var(--accent); }
+label { display: grid; gap: 6px; margin-bottom: 10px; } .check { display: flex; align-items: center; gap: 8px; }
+input, select, button { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--inspector-row); color: var(--text); font: inherit; }
+input, select { width: 100%; min-width: 0; } input[type=checkbox] { width: 18px; min-height: 18px; }
+button { cursor: pointer; white-space: normal; overflow-wrap: anywhere; } button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.actions, nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 6px 12px; margin: 0; } dd { margin: 0; min-width: 0; } .error { color: var(--danger); }
+@media (max-width: 600px) { dl { grid-template-columns: minmax(0, 1fr); } }

@@ -1,4 +1,5 @@
-//! Explicit, in-memory GitLab read connections. No Git transport authority.
+//! Explicit in-memory GitLab connections. Fork writes need a separate connection;
+//! neither connection kind grants Git transport authority.
 use super::{
     AppError, AppHandle, CancellationToken, Manager, background_task_error,
     register_active_operation, state_error,
@@ -31,6 +32,7 @@ struct Session {
     closed: AtomicBool,
     active: Mutex<Option<(String, CancellationToken)>>,
     transport: Mutex<Box<dyn core::GitLabReadTransport + Send>>,
+    fork_writer: Option<Mutex<Box<dyn core::GitLabForkWriteTransport + Send>>>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -39,6 +41,7 @@ pub struct GitLabConnection {
     pub connection_id: String,
     pub account: core::GitLabAccount,
     pub expires_at_millis: String,
+    pub can_create_fork: bool,
 }
 
 // Input only: do not derive Debug/Serialize or retain this request in settings.
@@ -74,7 +77,7 @@ fn unavailable() -> AppError {
 fn busy() -> AppError {
     error(
         "gitlabConnectionBusy",
-        "A read is already using this GitLab connection. Cancel or wait for it to finish.",
+        "An operation is already using this GitLab connection. Cancel or wait for it to finish.",
     )
 }
 fn check(cancellation: &CancellationToken) -> Result<(), AppError> {
@@ -221,6 +224,16 @@ impl Reservation<'_> {
         transport: Box<dyn core::GitLabReadTransport + Send>,
         cancellation: &CancellationToken,
     ) -> Result<GitLabConnection, AppError> {
+        self.finish_with_writer(instance, account, transport, None, cancellation)
+    }
+    fn finish_with_writer(
+        self,
+        instance: core::GitLabInstance,
+        account: core::GitLabAccount,
+        transport: Box<dyn core::GitLabReadTransport + Send>,
+        fork_writer: Option<Box<dyn core::GitLabForkWriteTransport + Send>>,
+        cancellation: &CancellationToken,
+    ) -> Result<GitLabConnection, AppError> {
         check(cancellation)?;
         if account.origin != instance.origin() {
             return Err(error(
@@ -243,6 +256,7 @@ impl Reservation<'_> {
             connection_id: self.id.clone(),
             account,
             expires_at_millis,
+            can_create_fork: fork_writer.is_some(),
         };
         let session = Arc::new(Session {
             view: view.clone(),
@@ -251,6 +265,7 @@ impl Reservation<'_> {
             closed: AtomicBool::new(false),
             active: Mutex::new(None),
             transport: Mutex::new(transport),
+            fork_writer: fork_writer.map(Mutex::new),
         });
         {
             let mut registry = self.state.0.lock().map_err(state_error)?;
@@ -270,6 +285,53 @@ impl Reservation<'_> {
 }
 
 impl GitLabAccounts {
+    /// Retain one exact session and shared operation lease through preflight and
+    /// submission. The action must check `live` at its durable dispatch boundary.
+    /// There is deliberately no final lease check: after possible submission it
+    /// must retain the outcome even if cancellation/disconnection wins the race.
+    pub(super) fn fork<T>(
+        &self,
+        connection_id: &str,
+        operation_id: &str,
+        cancellation: &CancellationToken,
+        action: impl FnOnce(
+            &mut dyn core::GitLabReadTransport,
+            &mut dyn core::GitLabForkWriteTransport,
+            &core::GitLabInstance,
+            &core::GitLabAccount,
+            &dyn Fn() -> Result<(), AppError>,
+        ) -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        let session = self.get(connection_id)?;
+        let lease = session.begin(operation_id, cancellation)?;
+        let writer = session.fork_writer.as_ref().ok_or_else(|| {
+            error(
+                "gitlabForkConnectionRequired",
+                "Connect explicitly for fork creation before reviewing a submission.",
+            )
+        })?;
+        let mut reader = session.transport.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => busy(),
+            std::sync::TryLockError::Poisoned(error) => state_error(error),
+        })?;
+        let mut writer = writer.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => busy(),
+            std::sync::TryLockError::Poisoned(error) => state_error(error),
+        })?;
+        lease.check()?;
+        let mut reader = LeasedTransport {
+            lease: &lease,
+            inner: reader.as_mut(),
+        };
+        action(
+            &mut reader,
+            writer.as_mut(),
+            &session.instance,
+            &session.view.account,
+            &|| lease.check(),
+        )
+    }
+
     // A closure cannot retain the transport or its lease. Git execution starts
     // only after this scope returns and releases provider read authority.
     pub(super) fn read<T>(
@@ -356,7 +418,7 @@ impl GitLabAccounts {
         });
         Ok(views)
     }
-    fn disconnect(&self, id: &str) -> Result<bool, AppError> {
+    pub(super) fn disconnect(&self, id: &str) -> Result<bool, AppError> {
         valid_id(id)?;
         let session = self.0.lock().map_err(state_error)?.sessions.remove(id);
         if let Some(session) = session {
@@ -364,6 +426,29 @@ impl GitLabAccounts {
             return Ok(true);
         }
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+impl GitLabAccounts {
+    pub(super) fn fixture_connection(
+        &self,
+        id: String,
+        instance: core::GitLabInstance,
+        account: core::GitLabAccount,
+        reader: Box<dyn core::GitLabReadTransport + Send>,
+        writer: Option<Box<dyn core::GitLabForkWriteTransport + Send>>,
+    ) -> GitLabConnection {
+        self.reserve_id(id)
+            .unwrap()
+            .finish_with_writer(
+                instance,
+                account,
+                reader,
+                writer,
+                &CancellationToken::default(),
+            )
+            .unwrap()
     }
 }
 
@@ -445,6 +530,42 @@ pub async fn connect_gitlab_account(
         drop(request.token);
         let account = core::load_gitlab_account_with(&mut transport, &instance, &cancellation)?;
         reservation.finish(instance, account, Box::new(transport), &cancellation)
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+pub async fn connect_gitlab_fork_account(
+    request: GitLabConnectRequest,
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+) -> Result<GitLabConnection, AppError> {
+    main_label(window.label())?;
+    if !cfg!(target_os = "linux") {
+        return Err(error(
+            "gitlabForkPlatform",
+            "Durable fork submission is not supported on this platform yet.",
+        ));
+    }
+    let (cancellation, operation) = register_active_operation(&app, request.operation_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _operation = operation;
+        let state = app.state::<GitLabAccounts>();
+        let reservation = state.reserve()?;
+        let instance = core::GitLabInstance::parse(&request.origin)?;
+        let mut reader = core::GitLabHttpsTransport::new(instance.clone(), &request.token)?;
+        let writer = core::GitLabForkHttpsTransport::new(instance.clone(), &request.token)?;
+        drop(request.token);
+        let account = core::load_gitlab_account_with(&mut reader, &instance, &cancellation)?;
+        reservation.finish_with_writer(
+            instance,
+            account,
+            Box::new(reader),
+            Some(Box::new(writer)),
+            &cancellation,
+        )
     })
     .await
     .map_err(background_task_error)?

@@ -1786,3 +1786,67 @@ Refreshed 2026-11-01 to keep the neutral parity scope broader than project
 discovery: clone/remote, review-request and issue workflows remain requirements.
 The documented project lookup and transport URL fields inform future independent
 clone inspection. No competitor code, UI composition, assets or wording copied.
+
+## GitLab fork workflow (in progress)
+
+Sources inspected 2026-11-02:
+
+- https://docs.gitlab.com/api/project_forks/
+- https://docs.gitlab.com/api/namespaces/
+- https://docs.gitlab.com/api/projects/
+- https://docs.gitlab.com/api/project_import_export/
+
+Used for public fork/namespace endpoints, stable identity and asynchronous import-state
+requirements. Original projection, authority, recovery and fixture design is recorded
+in [the candidate specification](../specifications/gitlab-fork-workflow.md). No proprietary
+implementation, assets, UI composition or substantial documentation was copied. The
+read/native/browser and namespace-preflight slices have local evidence. The closed
+POST port and data-only record model also have local qualification. The Linux journal
+is original project code using existing descriptor-relative storage techniques and
+the existing rustix dependency. Its ten filesystem cases and expanded 27-case HTTPS
+suite, including journal/transport composition, pass with strict workspace Clippy and
+contract checks.
+The complete creation/reconciliation/remote workflow is not implemented. The public create request fields and asynchronous outcome behavior
+were refreshed on the same date for the original
+[dispatch and recovery specification](../specifications/gitlab-fork-dispatch.md); that
+specification now records both the implemented submission/recovery slice and the
+remaining ancestry, branch-scope and remote-attachment requirements. Its current
+qualification does not complete the broader workflow.
+
+The projects API was refreshed on 2026-11-02 for its boolean `empty_repo` field.
+The registered fork plan retains that explicit fact separately from the default
+branch; absent/null metadata remains unknown. Its six cases are included in the
+completed source gates. No external implementation or example code was copied.
+
+## Saved GitLab fork reconciliation (2026-11-02)
+
+Sources:
+
+- https://docs.gitlab.com/api/projects/
+- https://docs.gitlab.com/api/project_forks/
+- https://docs.gitlab.com/user/reserved_names/
+
+Used for the public single-project lookup by ID or encoded namespace/project path,
+upstream/import metadata, and the distinction between display names and URL slugs.
+The new read route encodes namespace separators once and admits documented slug
+characters, with explicit rejection of traversal, nested percent encoding, query
+and resource-route aliases. Known IDs retain priority over destination paths.
+These protocol facts informed original requirements and fixtures. No vendor source,
+assets, example implementation or substantial documentation was copied.
+
+## Fork branch-scope requirements refresh (2026-11-02)
+
+Sources:
+
+- [GitLab project forks API](https://docs.gitlab.com/api/project_forks/)
+- [GitLab fork workflow](https://docs.gitlab.com/user/project/repository/forking_workflow/)
+
+The public API describes an optional string field `branches`, with an empty value
+meaning all branches. The workflow documents both the complete repository branch
+set and a default-branch-only option; the latter omits tags. These are requirements
+for a future scope selector, with a fresh native review of the resolved default
+branch. The pages reviewed do not establish a multi-branch expression grammar.
+No comma, wildcard, pattern or regular-expression semantics have been assumed.
+The present implementation still requests all branches; scope selection is not
+claimed complete. Only functional documentation was consulted, without vendor
+implementation, assets or copied interface wording.

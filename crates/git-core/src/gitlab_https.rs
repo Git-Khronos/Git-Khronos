@@ -100,15 +100,33 @@ fn status_error(status: reqwest::StatusCode) -> AppError {
     }
 }
 
-fn endpoint_url(instance: &GitLabInstance, endpoint: &str) -> Result<url::Url, AppError> {
-    let project_id = endpoint.strip_prefix("projects/").is_some_and(|id| {
+fn canonical_resource(route: &str, prefix: &str) -> bool {
+    route.strip_prefix(prefix).is_some_and(|id| {
         id.parse::<u64>()
             .is_ok_and(|value| value > 0 && value.to_string() == id)
-    });
-    if endpoint != "user" && !project_id {
-        let query = endpoint
-            .strip_prefix("projects?")
-            .ok_or_else(invalid_request)?;
+    })
+}
+fn endpoint_url(instance: &GitLabInstance, endpoint: &str) -> Result<url::Url, AppError> {
+    let (route, query) = endpoint
+        .split_once('?')
+        .map_or((endpoint, None), |(route, query)| (route, Some(query)));
+    let single = route == "user"
+        || canonical_resource(route, "projects/")
+        || crate::gitlab_project_locator::canonical_project_path_route(route)
+        || canonical_resource(route, "namespaces/");
+    if single {
+        if query.is_some() {
+            return Err(invalid_request());
+        }
+    } else {
+        let namespaces = route == "namespaces";
+        let forks = route
+            .strip_suffix("/forks")
+            .is_some_and(|route| canonical_resource(route, "projects/"));
+        if route != "projects" && !namespaces && !forks {
+            return Err(invalid_request());
+        }
+        let query = query.ok_or_else(invalid_request)?;
         if query.len() > 4096 || query.contains('#') || query.contains('\\') {
             return Err(invalid_request());
         }
@@ -122,10 +140,11 @@ fn endpoint_url(instance: &GitLabInstance, endpoint: &str) -> Result<url::Url, A
                 "page" => value.parse::<u32>().is_ok_and(|page| {
                     (1..=1000).contains(&page) && page.to_string() == value.as_ref()
                 }),
-                "order_by" => value == "id",
-                "sort" => value == "asc",
-                "membership" => value == "true",
-                "archived" => value == "false",
+                "order_by" if !namespaces => value == "id",
+                "sort" if !namespaces => value == "asc",
+                "membership" if !namespaces && !forks => value == "true",
+                "archived" if !namespaces && !forks => value == "false",
+                "owned_only" if namespaces => value == "true",
                 "search" => value.len() <= 256 && !value.chars().any(char::is_control),
                 _ => false,
             };
@@ -133,10 +152,12 @@ fn endpoint_url(instance: &GitLabInstance, endpoint: &str) -> Result<url::Url, A
                 return Err(invalid_request());
             }
         }
-        if !["per_page", "page", "order_by", "sort"]
-            .iter()
-            .all(|key| keys.contains(*key))
-        {
+        let required: &[&str] = if namespaces {
+            &["per_page", "page"]
+        } else {
+            &["per_page", "page", "order_by", "sort"]
+        };
+        if !required.iter().all(|key| keys.contains(*key)) {
             return Err(invalid_request());
         }
     }
@@ -305,3 +326,7 @@ impl GitLabReadTransport for GitLabHttpsTransport {
 #[cfg(test)]
 #[path = "gitlab_https_tests.rs"]
 mod tests;
+
+#[path = "gitlab_fork_https.rs"]
+mod fork;
+pub use fork::GitLabForkHttpsTransport;

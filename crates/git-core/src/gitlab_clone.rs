@@ -69,7 +69,7 @@ fn canonical_id(value: &str) -> bool {
         .is_ok_and(|id| id > 0 && id.to_string() == value)
 }
 
-fn clone_url(
+pub(super) fn clone_url(
     value: &Value,
     key: &str,
     full_path: &str,

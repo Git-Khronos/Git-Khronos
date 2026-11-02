@@ -1,4 +1,11 @@
-<section aria-label="GitLab project catalogue" (keydown)="handleEnter($event)">
+<section aria-label="GitLab project catalogue" [attr.aria-busy]="busy() ? true : null" (keydown)="handleEnter($event)">
+  @if (recordsOpen()) {
+    @if (error()) { <p #errorBox tabindex="-1" role="alert">{{ error() }}</p> }
+    @if (notice()) { <p role="status">{{ notice() }}</p> }
+    @if (busy() === 'disconnecting') { <p role="status">Disconnecting the inspection account…</p> }
+    @if (selected(); as connection) { <button type="button" [disabled]="!canDisconnect()" (click)="disconnect()">Disconnect {{ connection.account.login }}</button> }
+    <gc-gitlab-fork-records [connection]="connectionsStale() || busy() === 'disconnecting' ? null : selected()" [initialId]="outcomeId()" (back)="closeOutcomes()" />
+  } @else {
   <h3 #heading tabindex="-1">Projects on GitLab</h3>
   <p>Connect to the instance and account you want to browse. Project reads leave your local repositories unchanged.</p>
   @if (git.browserPreview()) { <p role="status">GitLab connections are available in the desktop app.</p> }
@@ -16,10 +23,12 @@
         spellcheck="false" autocapitalize="none" [value]="token()" (input)="token.set($any($event.target).value)" aria-describedby="gitlab-token-help" />
     </label>
     <button type="button" [attr.aria-pressed]="showToken()" (click)="showToken.set(!showToken())">{{ showToken() ? 'Hide token' : 'Show token' }}</button>
-    <p id="gitlab-token-help">Use a token with read_api access. It is cleared from this form when you connect. Connections last thirty minutes and are not restored after restarting the app.</p>
+    <p id="gitlab-token-help">{{ forkCreationEnabled() ? 'Use a token permitted to create forks. GitLab checks project and namespace permissions when a request is submitted.' : 'Use a token with read_api access.' }} It is cleared from this form when you connect. Connections last thirty minutes and are not restored after restarting the app.</p>
+    <label class="check" for="gitlab-fork-requests"><input id="gitlab-fork-requests" type="checkbox" [checked]="forkCreationEnabled()" (change)="forkCreationEnabled.set($any($event.target).checked)" />Enable reviewed fork requests for this new connection</label>
     <button type="button" [disabled]="!canConnect()" (click)="connect()">Connect to GitLab</button>
   </fieldset>
   <div class="actions">
+    <button type="button" [disabled]="unavailable()" (click)="openOutcomes()">Open saved fork outcomes</button>
     <button type="button" [disabled]="unavailable()" (click)="refreshConnections()">Refresh GitLab connections</button>
     @if (busy() === 'connecting' || busy() === 'reading') {
       <span role="status">{{ busy() === 'connecting' ? 'Checking the GitLab account…' : 'Reading projects…' }}</span>
@@ -31,13 +40,13 @@
     <select id="gitlab-account" [disabled]="unavailable() || connectionsStale()" (change)="selectConnection($any($event.target).value)">
       <option value="" [selected]="!selectedId()">Choose a connected account</option>
       @for (connection of connections(); track connection.connectionId) {
-        <option [value]="connection.connectionId" [selected]="selectedId() === connection.connectionId">{{ connection.account.login }} · {{ connection.account.origin }} · expires {{ expiry(connection.expiresAtMillis) }}</option>
+        <option [value]="connection.connectionId" [selected]="selectedId() === connection.connectionId">{{ connection.account.login }} · {{ connection.account.origin }} · {{ connection.canCreateFork ? 'Fork requests enabled' : 'Read-only API' }} · expires {{ expiry(connection.expiresAtMillis) }}</option>
       }
     </select>
   </label>
   @if (!connections().length && !busy() && !connectionsStale() && !git.browserPreview()) { <p>No active GitLab connections are listed. Connect an account to browse projects.</p> }
   @if (selected(); as connection) {
-    <div class="account"><strong>{{ connection.account.login }}</strong><span>{{ connection.account.origin }}</span><span>Expires {{ expiry(connection.expiresAtMillis) }}</span></div>
+    <div class="account"><strong>{{ connection.account.login }}</strong><span>{{ connection.account.origin }}</span><span>{{ connection.canCreateFork ? 'Fork requests enabled' : 'Read-only API' }}</span><span>Expires {{ expiry(connection.expiresAtMillis) }}</span></div>
     <button type="button" [disabled]="!canDisconnect()" (click)="disconnect()">Disconnect {{ connection.account.login }}</button>
     <fieldset [disabled]="unavailable() || connectionsStale()">
       <legend>Project query</legend>
@@ -59,6 +68,7 @@
         <li><div><strong>{{ project.fullPath }}</strong><span>{{ project.visibility }}{{ project.archived ? ' · Archived' : '' }} · {{ project.defaultBranch ?? 'Default branch not reported' }}</span>
           @if (project.description) { <p>{{ project.description }}</p> }
         </div><div class="project-actions"><button type="button" (click)="copyPath(project.fullPath)">Copy path for {{ project.fullPath }}</button>
+          <button type="button" [disabled]="!canSelectClone(project)" (click)="selectForks(project)">Browse forks of {{ project.fullPath }}</button>
           <button type="button" [disabled]="!canSelectClone(project)" (click)="selectClone(project)">Inspect and clone {{ project.fullPath }}</button></div></li>
       } @empty { <li>No projects were returned for this page and query.</li> }
     </ul>
@@ -68,8 +78,16 @@
     </nav>
     <p>{{ result.mayHaveMore ? 'More projects may exist beyond this page.' : 'No further page was indicated.' }} Results describe the selected account at the time of the read.</p>
   }
+  @for (target of forkTarget() ? [forkTarget()!] : []; track target.generation) {
+    @defer (on immediate) {
+      <gc-gitlab-forks #forkBrowser [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+        (back)="closeForks()" (outcomes)="openOutcomes($event)" (opening)="opening.emit()" (opened)="opened.emit()" />
+    } @placeholder { <p role="status">Opening fork controls…</p><button #forkLoaderClose type="button" (click)="closeForks()">Cancel opening forks</button>
+    } @error { <p role="alert">Fork controls could not load. Preserve work and restart the application to load them again.</p><button #forkLoaderClose type="button" (click)="closeForks()">Close unavailable forks</button> }
+  }
   @for (target of cloneViews(); track target.generation) {
     <gc-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
       (back)="closeClone()" (opening)="opening.emit()" (opened)="opened.emit()" />
+  }
   }
 </section>

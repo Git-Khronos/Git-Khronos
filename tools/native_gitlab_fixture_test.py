@@ -49,8 +49,8 @@ class GitLabFixtureTests(unittest.TestCase):
                     raw = (gate / "requests.jsonl").read_text()
                     self.assertNotIn("owned-api-fixture-token", raw)
                     self.assertEqual([json.loads(line) for line in raw.splitlines()], [
-                        {"destination": False, "path": "/api/v4/user", "credentialMatched": True},
-                        {"destination": False, "path": "/api/v4/user", "credentialMatched": True},
+                        {"destination": False, "path": "/api/v4/user", "method": "GET", "credentialMatched": True},
+                        {"destination": False, "path": "/api/v4/user", "method": "GET", "credentialMatched": True},
                     ])
                     (gate / "mode").write_text("normal")
                     project_url = fixtures.gitlab_origin + "/api/v4/projects/101"

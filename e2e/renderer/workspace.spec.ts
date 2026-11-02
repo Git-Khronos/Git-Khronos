@@ -5296,17 +5296,17 @@ test('formats graph dates with a persisted UI preference', async ({ page }) => {
   await preferences.getByRole('tab', { name: /Commit Graph/ }).click();
   const format = preferences.getByLabel('Commit graph date format');
   await format.selectOption('iso');
-  await expect(date.locator('span')).toHaveText(/^2026-10-\d{2}$/);
-  await expect(date.locator('small')).toHaveText(/^\d{2}:\d{2} Z$/);
-
+  await expect(date.locator('span')).toHaveText('2026-10-03');
+  await expect(date.locator('small')).toHaveText('09:42 Z');
+  await page.clock.setFixedTime(new Date('2026-11-02T09:42:00Z')); // Exactly 30 days after the sample commit.
   await page.reload();
-  await expect(date.locator('span')).toHaveText(/^2026-10-\d{2}$/);
+  await expect(date.locator('span')).toHaveText('2026-10-03');
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   preferences = page.getByRole('dialog', { name: 'Preferences' });
   await preferences.getByRole('tab', { name: /Commit Graph/ }).click();
   await expect(preferences.getByLabel('Commit graph date format')).toHaveValue('iso');
   await preferences.getByLabel('Commit graph date format').selectOption('relative');
-  await expect(date.locator('span')).toHaveText(/ago|yesterday|today|tomorrow|in |last (?:wk\.|week|month|year)/i);
+  await expect(date.locator('span')).toHaveText('last mo.');
 });
 
 test('persists privacy-preserving commit author markers', async ({ page }) => {

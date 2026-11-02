@@ -141,7 +141,8 @@ fn gitlab_native_listing_and_disconnect_return_metadata_without_provider_request
         HashSet::from([
             "connectionId".into(),
             "account".into(),
-            "expiresAtMillis".into()
+            "expiresAtMillis".into(),
+            "canCreateFork".into()
         ])
     );
     assert!(state.disconnect(FIRST).unwrap());

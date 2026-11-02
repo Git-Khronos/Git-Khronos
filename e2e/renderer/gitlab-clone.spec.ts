@@ -69,7 +69,7 @@ test.beforeEach(async ({ page }) => {
       let result: any;
       if (command === 'gitlab_connections') result = fixture.connections;
       else if (command === 'connect_gitlab_account') {
-        result = { connectionId: first, account: fixture.account, expiresAtMillis: String(Date.now() + 30 * 60 * 1000) };
+        result = { connectionId: first, account: fixture.account, canCreateFork: false, expiresAtMillis: String(Date.now() + 30 * 60 * 1000) };
         fixture.connections = [structuredClone(result)];
       } else if (command === 'load_gitlab_projects') result = { account: fixture.account, query: args.request.query,
         entries: [fixture.project], mayHaveMore: false, nextPage: null, warnings: [] };

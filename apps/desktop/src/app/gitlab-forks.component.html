@@ -1,0 +1,43 @@
+<section class="forks" aria-label="GitLab forks of selected project" (keydown)="preventSubmit($event)">
+  <h3 #heading tabindex="-1">Forks of {{ project().fullPath }}</h3>
+  <p>{{ connection().account.login }} · {{ connection().account.origin }}</p>
+  <p>Browse accessible fork candidates, then inspect the selected relationship. Reads leave local repositories unchanged.</p>
+  <div class="actions"><button type="button" [disabled]="unavailable()" (click)="returnToProjects()">Return from forks to GitLab projects</button><button type="button" [disabled]="unavailable() || !connection().canCreateFork" (click)="startCreation()">Review a new GitLab fork</button></div>
+  @if (!connection().canCreateFork) { <p>To submit a fork, return to projects and create a separate connection with reviewed fork requests enabled.</p> }
+  @if (error()) { <p #errorBox class="error" role="alert" tabindex="-1">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  @if (busy()) { <div class="actions" role="status"><span>{{ busy() }}</span><button type="button" [disabled]="cancelling()" (click)="cancel()">{{ cancelling() ? 'Requesting cancellation…' : 'Cancel fork read' }}</button></div> }
+  <fieldset [disabled]="unavailable()"><legend>Fork query</legend>
+    <label for="gitlab-fork-search">Fork search<input id="gitlab-fork-search" type="search" maxlength="256" [value]="search()" (input)="search.set($any($event.target).value)" [attr.aria-invalid]="searchError() ? true : null" /></label>
+    @if (searchError()) { <p class="error">{{ searchError() }}</p> }
+    <button type="button" [disabled]="!canRead()" (click)="load()">Reload accessible GitLab forks</button>
+  </fieldset>
+  @if (page(); as result) {
+    @if (stale() || queryChanged() || !pageMatches()) { <p role="status">Earlier candidates are shown. Reload forks before inspecting or cloning a result.</p> }
+    <p>Page {{ result.page }} · {{ result.entries.length }} candidates</p>
+    <ul aria-label="Accessible GitLab fork candidates">@for (project of result.entries; track project.id) {
+      <li><div><strong>{{ project.fullPath }}</strong><span>{{ project.visibility }}{{ project.archived ? ' · Archived' : '' }}</span>@if (project.description) { <p>{{ project.description }}</p> }</div>
+        <button type="button" [disabled]="!canInspect(project)" (click)="inspect(project)">Inspect fork {{ project.fullPath }}</button></li>
+    } @empty { <li>No accessible fork candidates were returned for this page and query.</li> }</ul>
+    <nav aria-label="GitLab fork pages"><button type="button" [disabled]="!canRead() || stale() || queryChanged() || result.page <= 1" (click)="load(result.page - 1)">Previous fork page</button><button type="button" [disabled]="!canRead() || stale() || queryChanged() || !result.nextPage" (click)="load(result.nextPage!)">Next fork page</button></nav>
+    @if (result.entries.length === 20) { <p>{{ result.page >= 1000 ? 'The page limit was reached. Narrow the search to inspect other candidates.' : 'More accessible forks may exist beyond this page.' }}</p> }
+    <p>Inaccessible forks are not listed. A candidate list does not confirm a current upstream relationship.</p>
+  }
+  @if (inspection(); as selected) {
+    <section #details class="details" aria-label="Inspected GitLab fork relationship" tabindex="-1">
+      <h4>{{ selected.project.fullPath }}</h4>
+      <dl><dt>Source</dt><dd><code>{{ selected.source.fullPath }}</code></dd><dt>Project ID</dt><dd>{{ selected.project.id }}</dd>
+        <dt>Namespace</dt><dd>{{ selected.namespace.fullPath }} · {{ selected.namespace.kind }} · ID {{ selected.namespace.id }}</dd>
+        <dt>Import</dt><dd>{{ importLabel(selected.importState) }}</dd><dt>HTTPS Git address</dt><dd><code>{{ selected.cloneHttps ?? 'Not supplied' }}</code></dd><dt>SSH Git address</dt><dd><code>{{ selected.cloneSsh ?? 'Not supplied' }}</code></dd></dl>
+      <p>The relationship describes the latest read. Import metadata does not confirm Git connectivity; cloning uses a separate destination and command review.</p>
+      @if (selected.importState === 'failed') { <p role="status">The server reports a failed import. Review its state on the instance before attempting to clone partial data.</p> }
+      <div class="actions"><button type="button" [disabled]="!canInspect(selected.project)" (click)="inspectAgain()">Refresh selected fork relationship</button><button type="button" [disabled]="!canInspect(selected.project) || (!selected.cloneHttps && !selected.cloneSsh)" (click)="reviewClone()">Review cloning this project</button></div>
+    </section>
+  }
+  @for (target of cloneTarget() ? [cloneTarget()!] : []; track target.key) {
+    <gc-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+      (back)="closeClone()" (opening)="opening.emit()" (opened)="opened.emit()" />
+  }
+</section>
+
+@if (creating()) { <gc-gitlab-fork-create [connection]="connection()" [project]="project()" (back)="closeCreation()" (outcomes)="inspectOutcomes($event)" /> }

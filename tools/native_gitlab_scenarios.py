@@ -174,6 +174,9 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     from native_gitlab_clone_scenarios import gitlab_reviewed_clones
     gitlab_reviewed_clones(driver, fixtures, repository, report)
 
+    from native_gitlab_fork_scenarios import gitlab_reviewed_forks
+    gitlab_reviewed_forks(driver, fixtures, repository, report)
+
 
 def report_path(report, name):
     from pathlib import Path
