@@ -721,7 +721,6 @@ code, kbd { font-family: var(--font-mono); }
 }
 @container (max-width: 500px) { .diff-workspace-toolbar { gap-inline: 5px; }.diff-file-identity { gap: 6px; }.diff-file-identity > .diff-file-status { display: none; }.diff-workspace-actions { gap: 2px; }.diff-insight-toggle button { min-width: 24px; padding-inline: 3px; font-size: 12px; }.diff-mode-toggle button { min-width: 50px; padding-inline: 6px; }.diff-workspace-footer span:last-child { display: none; } }
 @container (max-width: 430px) { .diff-back { width: 29px; justify-content: center; padding: 0; }.diff-back span { display: none; } }
-@media (min-width: 1051px) and (max-width: 1100px) { .app-shell:has(.sidebar:not(.panel-hidden)):has(.detail-panel:not(.panel-hidden)) .diff-workspace { left: 205px !important; right: 310px !important; } }
 @media (max-width: 1050px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: var(--responsive-detail-width) !important; }.diff-workspace { left: 0 !important; }.diff-workspace.sidebar-collapsed .diff-workspace-toolbar { padding-left: 62px; } }
 @media (max-width: 550px) { .diff-workspace { right: 0 !important; } }
 @media (max-width: 760px) { .app-shell:has(.detail-panel:not(.panel-hidden)) .diff-workspace { right: 0 !important; }.diff-workspace-toolbar { grid-template-columns: auto auto minmax(0, 1fr) auto; }.diff-mode-toggle { order: initial; grid-column: 2; justify-self: start; }.diff-workspace { grid-template-rows: auto minmax(0, 1fr) 27px; }.diff-wrap-toggle, .diff-hunk-nav { display: none; }.diff-content-shell { grid-template-columns: minmax(0, 1fr) 36px; }.diff-insight-toggle button { padding-inline: 5px; }.diff-file-identity .diff-file-directory { max-width: 32%; flex: 0 1 auto; }.diff-file-identity .diff-source-context { display: block; flex: 1 1 auto; color: var(--toolbar-control-text); }.diff-file-identity .diff-source-separator { display: inline; }.blame-line { grid-template-columns: 38px 70px 95px minmax(380px, 1fr); }.blame-line > time { display: none; } }
@@ -1891,8 +1890,7 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
   .responsive-sidebar-launcher:focus-visible { border-color: var(--purple); outline: 2px solid color-mix(in srgb, var(--purple) 70%, white); outline-offset: 1px; background: var(--surface-hover); color: var(--text); }
   .responsive-sidebar-launcher + .workspace .graph-columns > .responsive-leading-column { padding-left: 62px; }
   body .workspace > .sidebar.panel-hidden { display: none; }
-  body .workspace > .sidebar:not(.panel-hidden) { position: fixed; z-index: 20; isolation: isolate; top: 92px; bottom: var(--statusbar-height); left: 0; width: min(300px, 84vw); min-width: 0; display: flex; border-right-color: #45435d; background: var(--panel); box-shadow: 18px 0 42px #090911c7; animation: sidebar-drawer-in .14s ease-out; }
-  body .workspace > .sidebar > .panel-resizer { display: none; }
+  body .workspace > .sidebar:not(.panel-hidden) { position: fixed; z-index: 21; isolation: isolate; top: 92px; bottom: var(--statusbar-height); left: 0; width: min(300px, 84vw); min-width: 0; display: flex; border-right-color: #45435d; background: var(--panel); box-shadow: 18px 0 42px #090911c7; animation: sidebar-drawer-in .14s ease-out; }
   .responsive-sidebar-heading { min-height: 38px; display: flex; flex: 0 0 38px; align-items: center; justify-content: space-between; padding: 0 7px 0 11px; border-bottom: 1px solid var(--divider); background: var(--panel-raised); color: #aaa9bb; }
   .responsive-sidebar-heading strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
   .responsive-sidebar-heading button { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 3px; background: #302f44; color: #aaa9bb; box-shadow: 0 0 0 1px #45445b; }
@@ -1985,10 +1983,12 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
 .recovery-actions button, .recovery-branch-form button { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #48475e; border-radius: 3px; background: #333248; color: #aaa9bb; font-size: 12px; white-space: nowrap; }
 .recovery-actions button:hover, .recovery-branch-form button:hover { background: #414058; color: white; }
 .recovery-actions button.primary, .recovery-branch-form button.primary { border-color: #4c8e7c; background: #356f62; color: #e5fff8; }
+.recovery-actions button:disabled, .recovery-branch-form button:disabled { opacity: .5; }
 .recovery-branch-form { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 6px; padding: 8px; border: 1px solid #4b4964; border-radius: 4px; background: #222133; }
 .recovery-branch-form label { display: grid; gap: 5px; color: #8e8ca0; font-size: 12px; }
 .recovery-branch-form input { width: 100%; height: 29px; padding: 0 8px; border: 1px solid #4a4962; border-radius: 3px; outline: none; background: #171722; color: white; font-size: 12px; }
 .recovery-branch-form input:focus { border-color: var(--purple); }
+.recovery-branch-error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 .recovery-empty { min-height: 230px; display: grid; place-items: center; align-content: center; gap: 7px; color: #8e8c9d; }
 .recovery-empty strong { color: #b5b3c2; font-size: 13px; }
 .recovery-empty small { color: #8e8c9d; font-size: 12px; }
@@ -2016,6 +2016,9 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
    the component stylesheet within its enforced bundle budget. */
 gc-root .panel-resizer:focus-visible { outline: none; }
 gc-root .panel-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
+gc-root :is(.branch-creation-error, .context-branch-error) { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+gc-root .context-branch-error { margin-top: 5px; }
+gc-root .branch-drop-menu > button:disabled { opacity: .4; }
 gc-root .graph-columns .column-resizer:focus-visible { background: var(--splitter-hover); outline: none; }
 gc-root .graph-columns .column-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
 gc-root .reference-section-resizer:focus-visible { outline: none; }

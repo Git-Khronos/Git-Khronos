@@ -2593,6 +2593,16 @@ pub fn create_branch_at(path: &Path, name: &str, oid: &str) -> Result<(), AppErr
     )
 }
 
+pub fn create_branch_reference(path: &Path, name: &str, oid: &str) -> Result<(), AppError> {
+    validate_branch_name(path, name)?;
+    validate_commit_oid(oid)?;
+    run_mutation(
+        path,
+        &["branch", "--", name, oid],
+        "create the branch at that commit",
+    )
+}
+
 pub fn create_worktree(
     path: &Path,
     parent: &Path,
@@ -13145,6 +13155,80 @@ mod tests {
         pop_stash_entry(&repository.path, "stash@{0}").unwrap();
         assert!(read_stashes(&repository.path).unwrap().is_empty());
         assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "saved 0\n");
+    }
+
+    #[test]
+    fn creates_a_recovery_branch_without_changing_head_or_working_files() {
+        let repository = TestRepository::new();
+        repository.write("history.txt", "one\n");
+        stage_all(&repository.path).expect("stage first version");
+        commit(&repository.path, "First").expect("commit first version");
+        let first_oid = snapshot(&repository.path)
+            .expect("snapshot first version")
+            .head_oid
+            .expect("first oid");
+        repository.write("history.txt", "two\n");
+        stage_all(&repository.path).expect("stage second version");
+        commit(&repository.path, "Second").expect("commit second version");
+        repository.write("staged.txt", "staged\n");
+        repository.git(&["add", "--", "staged.txt"]);
+        repository.write("history.txt", "unstaged\n");
+        repository.write("untracked.txt", "untracked\n");
+        let before = snapshot(&repository.path).expect("snapshot before recovery");
+        let index_before = run_git(&repository.path, &["diff", "--cached", "--", "staged.txt"])
+            .expect("read index before recovery")
+            .stdout;
+
+        create_branch_reference(&repository.path, "recovery/first", &first_oid)
+            .expect("preserve first commit");
+        let after = snapshot(&repository.path).expect("snapshot after recovery");
+        let branch = after
+            .branches
+            .iter()
+            .find(|branch| branch.name == "recovery/first")
+            .expect("recovery branch exists");
+        assert_eq!(branch.oid, first_oid);
+        assert!(!branch.current);
+        assert_eq!(after.status.branch, before.status.branch);
+        assert_eq!(after.head_oid, before.head_oid);
+        assert_eq!(
+            run_git(&repository.path, &["diff", "--cached", "--", "staged.txt"])
+                .expect("read index after recovery")
+                .stdout,
+            index_before
+        );
+        assert_eq!(
+            (
+                after.status.staged,
+                after.status.unstaged,
+                after.status.untracked
+            ),
+            (
+                before.status.staged,
+                before.status.unstaged,
+                before.status.untracked
+            )
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("history.txt")).expect("read working file"),
+            "unstaged\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("staged.txt")).expect("read staged file"),
+            "staged\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("untracked.txt")).expect("read untracked file"),
+            "untracked\n"
+        );
+        assert!(create_branch_reference(&repository.path, "recovery/first", &first_oid).is_err());
+        assert!(create_branch_reference(&repository.path, "-invalid", &first_oid).is_err());
+        assert!(
+            create_branch_reference(&repository.path, "recovery/invalid", "not-an-oid").is_err()
+        );
+        assert!(
+            create_branch_reference(&repository.path, "recovery/missing", &"0".repeat(40)).is_err()
+        );
     }
 
     #[test]

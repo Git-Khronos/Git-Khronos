@@ -22,6 +22,7 @@ import { Terminal, type IDisposable } from '@xterm/xterm';
 import type { AppTheme } from './app-theme';
 import { CONFIGURED_TOOLS } from './configured-tools.service';
 import { IconComponent } from './icon.component';
+import { ResizePointer } from './resize-pointer';
 import {
   applyTerminalAppearance,
   terminalAppearance,
@@ -154,6 +155,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   private readonly pendingOutput = new Map<string, Uint8Array[]>();
   private readonly pendingExits = new Set<string>();
   private resizeStartY = 0;
+  private readonly resizePointer = new ResizePointer();
   private resizeStartHeight = 0;
   private resizing = false;
   private nextTabNumber = 1;
@@ -241,6 +243,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     this.finishPendingRender?.();
     this.finishPendingRender = undefined;
+    this.finishResize();
     this.unlistenOutput?.();
     this.unlistenExit?.();
     this.resizeObserver?.disconnect();
@@ -588,7 +591,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   }
 
   protected beginResize(event: PointerEvent): void {
-    event.preventDefault();
+    if (!this.resizePointer.begin(event, 'row-resize')) return;
     this.resizing = true;
     this.resizeStartY = event.clientY;
     this.resizeStartHeight = this.height();
@@ -596,13 +599,16 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
 
   @HostListener('document:pointermove', ['$event'])
   protected resize(event: PointerEvent): void {
-    if (!this.resizing) return;
+    if (!this.resizing || !this.resizePointer.matches(event)) return;
     this.height.set(this.clampHeight(this.resizeStartHeight + this.resizeStartY - event.clientY));
   }
 
-  @HostListener('document:pointerup')
-  protected finishResize(): void {
-    if (!this.resizing) return;
+  @HostListener('document:pointerup', ['$event'])
+  @HostListener('document:pointercancel', ['$event'])
+  @HostListener('document:lostpointercapture', ['$event'])
+  @HostListener('window:blur')
+  protected finishResize(event?: PointerEvent): void {
+    if (!this.resizePointer.finish(event)) return;
     this.resizing = false;
     this.storeHeight();
     this.fitActive();
@@ -611,6 +617,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
 
   @HostListener('window:resize')
   protected handleWindowResize(): void {
+    this.finishResize();
     const height = this.clampHeight(this.height());
     if (height !== this.height()) {
       this.height.set(height);

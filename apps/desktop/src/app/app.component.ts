@@ -131,6 +131,7 @@ import {
 import { orderBranchesCurrentFirst } from './branch-order';
 import { describeWorkingTreeStatus } from './working-tree-status';
 import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
+import { ResizePointer } from './resize-pointer';
 
 interface ActiveGraphLane {
   oid: string;
@@ -771,6 +772,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private contextMenuReturnFocus: HTMLElement | null = null;
   private fileContextMenuReturnFocus: HTMLElement | null = null;
   private sidebarActionMenuReturnFocus: HTMLElement | null = null;
+  protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarContextMenuReturnFocus: HTMLElement | null = null;
   private branchDropMenuReturnFocus: HTMLElement | null = null;
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
@@ -810,6 +812,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly coAuthorEmail = signal('');
   protected readonly branchCreatorOpen = signal(false);
   protected readonly branchName = signal('');
+  protected readonly branchCreationError = signal<string | null>(null);
+  private branchCreatorReturnFocus: HTMLElement | null = null;
+  private branchCreatorPreviousLocalHeight: number | null = null;
   protected readonly amendPrevious = signal(false);
   protected readonly skipGitHooks = signal(false);
   protected readonly commitPolicy = signal<CommitPolicy>({ signOff: false, allowEmpty: false, author: null, committer: null });
@@ -965,12 +970,15 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly recoveryQuery = signal('');
   protected readonly recoveryBranchEntry = signal<ReflogEntry | null>(null);
   protected readonly recoveryBranchName = signal('');
+  protected readonly recoveryBranchError = signal<string | null>(null);
   protected readonly terminalOpen = signal(false);
   protected readonly terminalRepositoryId = signal<string | null>(null);
   protected readonly terminalRepositoryIds = signal<string[]>([]);
   protected readonly activityLogTab = signal<ActivityLogTab>('repository');
   protected readonly contextBranchName = signal('');
   protected readonly contextBranchCreatorOpen = signal(false);
+  protected readonly contextBranchError = signal<string | null>(null);
+  private contextMenuGeneration = 0;
   protected readonly contextTagName = signal('');
   protected readonly pendingTagTarget = signal<{ oid: string; label: string } | null>(null);
   protected readonly tagCreationKind = signal<'lightweight' | 'annotated'>('lightweight');
@@ -1237,13 +1245,32 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly draggedRebaseOid = signal<string | null>(null);
   protected readonly sidebarWidth = signal(this.readWidth('sidebar'));
   protected readonly detailsWidth = signal(this.readWidth('details'));
+  private readonly manuallySizedPanels = signal({
+    sidebar: this.hasStoredPanelWidth('sidebar'),
+    details: this.hasStoredPanelWidth('details'),
+  });
+  private readonly viewportWidth = signal(window.innerWidth);
+  private readonly renderedPanelWidths = computed(() => {
+    const budget = Math.max(0, this.viewportWidth() - 420);
+    const compact = this.viewportWidth() <= 1100;
+    const requestedSidebar = compact && !this.manuallySizedPanels().sidebar ? 205 : this.sidebarWidth();
+    const requestedDetails = compact && !this.manuallySizedPanels().details ? 310 : this.detailsWidth();
+    const details = this.detailsVisible()
+      ? Math.min(requestedDetails, Math.max(PANEL_WIDTH_LIMITS.details.minimum,
+        budget - (this.sidebarVisible() ? PANEL_WIDTH_LIMITS.sidebar.minimum : 0)))
+      : 0;
+    const sidebar = this.sidebarVisible()
+      ? Math.min(requestedSidebar, Math.max(PANEL_WIDTH_LIMITS.sidebar.minimum, budget - details))
+      : 0;
+    return { sidebar, details };
+  });
   protected readonly gridColumns = computed(() => {
     const center = 'minmax(420px, 1fr)';
     if (this.sidebarVisible() && this.detailsVisible()) {
-      return `${this.sidebarWidth()}px ${center} ${this.detailsWidth()}px`;
+      return `${this.panelWidth('sidebar')}px ${center} ${this.panelWidth('details')}px`;
     }
-    if (this.sidebarVisible()) return `${this.sidebarWidth()}px ${center}`;
-    if (this.detailsVisible()) return `${center} ${this.detailsWidth()}px`;
+    if (this.sidebarVisible()) return `${this.panelWidth('sidebar')}px ${center}`;
+    if (this.detailsVisible()) return `${center} ${this.panelWidth('details')}px`;
     return center;
   });
   protected readonly graphGridColumns = computed(() => {
@@ -1398,6 +1425,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private resizeTarget: 'sidebar' | 'details' | null = null;
+  private resizePanelChanged = false;
+  private readonly resizePointer = new ResizePointer();
   private resizeStartX = 0;
   private resizeStartWidth = 0;
   private columnResizeTarget: GraphColumn | null = null;
@@ -1408,6 +1437,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // from these snapshots so dragging back returns it to the columns it came from.
   private columnResizeStartWidths: Partial<Record<GraphColumn, number>> = {};
   private referenceResizeTarget: ReferenceSection | null = null;
+  private referenceResizeChanged = false;
   private referenceResizeStartY = 0;
   private referenceResizeStartHeight = 0;
   private workingTreeFileListResizeTarget: WorkingTreeFileListSection | null = null;
@@ -1658,6 +1688,19 @@ export class AppComponent implements OnInit, OnDestroy {
       this.cancelLiveStatusRefresh();
       if (!repositoryId || browserPreview) return;
       queueMicrotask(() => this.scheduleLiveStatusRefresh(1_000));
+    });
+    effect(() => {
+      this.git.activeRepositoryId();
+      untracked(() => {
+        this.finishResize();
+        this.restoreBranchCreatorSectionHeight();
+        this.branchCreatorOpen.set(false);
+        this.branchName.set('');
+        this.branchCreationError.set(null);
+        this.branchCreatorReturnFocus = null;
+        this.closeToolbarCheckoutMenu();
+        this.dismissGraphActionMenu();
+      });
     });
     effect(() => {
       this.git.activeRepositoryId();
@@ -3566,6 +3609,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     document.addEventListener('pointerdown', this.dismissWorkspace, true);
+    document.addEventListener('pointerdown', this.dismissOutsideActionMenus, true);
+    document.addEventListener('click', this.dismissOutsideActionMenus, true);
     await this.git.initialize();
     if (!this.git.browserPreview()) {
       try {
@@ -3837,6 +3882,9 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopDiffViewportTracking?.();
     document.removeEventListener('pointerdown', this.dismissWorkspace, true);
+    document.removeEventListener('pointerdown', this.dismissOutsideActionMenus, true);
+    document.removeEventListener('click', this.dismissOutsideActionMenus, true);
+    this.finishResize();
     this.commitListResizeObserver?.disconnect();
     this.detachGraphWheel();
     if (this.graphScrollFrame !== null) cancelAnimationFrame(this.graphScrollFrame);
@@ -4234,6 +4282,10 @@ export class AppComponent implements OnInit, OnDestroy {
         return;
       }
       if (!editing && this.changesOpen() && (event.key.toLocaleLowerCase() === 's' || event.key.toLocaleLowerCase() === 'u')) {
+        if (this.git.busy()) {
+          event.preventDefault();
+          return;
+        }
         const selection = this.git.selectedWorkingTreeFile();
         if (!selection) return;
         const [area, ...pathParts] = selection.split(':');
@@ -4346,7 +4398,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (key === 'l') {
       event.preventDefault();
-      void this.git.remote('fetch_repository');
+      if (!this.git.busy()) void this.git.remote('fetch_repository');
       return;
     }
     if (key === 'w' && this.git.activeRepositoryId()) {
@@ -4378,12 +4430,12 @@ export class AppComponent implements OnInit, OnDestroy {
 
     if (event.shiftKey && key === 's' && this.changesOpen()) {
       event.preventDefault();
-      void this.git.stageAll();
+      if (!this.git.busy()) void this.git.stageAll();
       return;
     }
     if (event.shiftKey && key === 'u' && this.changesOpen()) {
       event.preventDefault();
-      void this.git.unstageAll();
+      if (!this.git.busy()) void this.git.unstageAll();
       return;
     }
     if (!editing && !inFileWorkspace && (event.key === 'Home' || (this.primaryShortcutKey === '⌘' && event.key === 'ArrowUp'))) {
@@ -4497,6 +4549,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('window:blur')
   protected closeContextMenuOnBlur(): void {
+    this.finishResize();
     this.closeContextMenu();
     this.commandPaletteOpen.set(false);
     this.commandPaletteOpener = null;
@@ -4504,6 +4557,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:pointermove', ['$event'])
   protected resizePanel(event: PointerEvent): void {
+    if (!this.resizePointer.matches(event)) return;
     if (this.workingTreeFileListResizeTarget) {
       this.workingTreeFileListHeightSignal(this.workingTreeFileListResizeTarget).set(Math.max(
         WORKING_TREE_FILE_LIST_MIN_HEIGHT,
@@ -4515,8 +4569,13 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (this.referenceResizeTarget) {
+      const section = this.referenceResizeTarget;
       const height = Math.max(REFERENCE_SECTION_MIN_HEIGHT, Math.min(REFERENCE_SECTION_MAX_HEIGHT, this.referenceResizeStartHeight + event.clientY - this.referenceResizeStartY));
-      this.referenceSectionHeights.update((heights) => ({ ...heights, [this.referenceResizeTarget!]: height }));
+      const current = this.referenceSectionHeights()[section] ?? this.referenceResizeStartHeight;
+      if (height === current) return;
+      if (section === 'local') this.branchCreatorPreviousLocalHeight = null;
+      this.referenceResizeChanged = true;
+      this.referenceSectionHeights.update((heights) => ({ ...heights, [section]: height }));
       return;
     }
     if (this.columnResizeTarget) {
@@ -4527,16 +4586,22 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!this.resizeTarget) return;
+    const target = this.resizeTarget;
     const delta = event.clientX - this.resizeStartX;
-    if (this.resizeTarget === 'sidebar') {
-      this.sidebarWidth.set(this.clampPanelWidth('sidebar', this.resizeStartWidth + delta));
-    } else {
-      this.detailsWidth.set(this.clampPanelWidth('details', this.resizeStartWidth - delta));
-    }
+    const next = this.resizeStartWidth + (target === 'sidebar' ? delta : -delta);
+    const width = Math.min(this.panelMaximumWidth(target), this.clampPanelWidth(target, next));
+    if (width === this.panelWidth(target)) return;
+    if (target === 'sidebar') this.sidebarWidth.set(width);
+    else this.detailsWidth.set(width);
+    this.manuallySizedPanels.update((panels) => ({ ...panels, [target]: true }));
+    this.resizePanelChanged = true;
   }
 
-  @HostListener('document:pointerup')
-  protected finishResize(): void {
+  @HostListener('document:pointerup', ['$event'])
+  @HostListener('document:pointercancel', ['$event'])
+  @HostListener('document:lostpointercapture', ['$event'])
+  protected finishResize(event?: PointerEvent): void {
+    if (!this.resizePointer.finish(event)) return;
     if (this.workingTreeFileListResizeTarget) {
       const section = this.workingTreeFileListResizeTarget;
       this.storeWorkingTreeFileListHeight(section, this.workingTreeFileListHeightSignal(section)());
@@ -4546,8 +4611,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.referenceResizeTarget) {
       const section = this.referenceResizeTarget;
       const height = this.referenceSectionHeights()[section];
-      if (height !== null) this.storeReferenceSectionHeight(section, height);
+      if (this.referenceResizeChanged && height !== null) this.storeReferenceSectionHeight(section, height);
       this.referenceResizeTarget = null;
+      this.referenceResizeChanged = false;
       return;
     }
     if (this.columnResizeTarget) {
@@ -4558,21 +4624,24 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!this.resizeTarget) return;
-    this.storeWidth('sidebar', this.sidebarWidth());
-    this.storeWidth('details', this.detailsWidth());
+    if (this.resizePanelChanged) {
+      this.storeWidth(this.resizeTarget, this.panelWidth(this.resizeTarget));
+    }
     this.resizeTarget = null;
+    this.resizePanelChanged = false;
   }
 
   protected beginResize(target: ResizablePanel, event: PointerEvent): void {
-    event.preventDefault();
+    if (!this.resizePointer.begin(event, 'col-resize')) return;
     this.resizeTarget = target;
+    this.resizePanelChanged = false;
     this.resizeStartX = event.clientX;
-    this.resizeStartWidth = target === 'sidebar' ? this.sidebarWidth() : this.detailsWidth();
+    this.resizeStartWidth = this.panelWidth(target);
   }
 
   protected handlePanelResizeKeydown(target: ResizablePanel, event: KeyboardEvent): void {
     const limits = PANEL_WIDTH_LIMITS[target];
-    const current = target === 'sidebar' ? this.sidebarWidth() : this.detailsWidth();
+    const current = this.panelWidth(target);
     const step = event.shiftKey ? 32 : 10;
     let next: number;
     switch (event.key) {
@@ -4593,9 +4662,11 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     event.preventDefault();
     event.stopPropagation();
-    const width = this.clampPanelWidth(target, next);
+    const width = Math.min(this.panelMaximumWidth(target), this.clampPanelWidth(target, next));
+    if (width === current) return;
     if (target === 'sidebar') this.sidebarWidth.set(width);
     else this.detailsWidth.set(width);
+    this.manuallySizedPanels.update((panels) => ({ ...panels, [target]: true }));
     this.storeWidth(target, width);
   }
 
@@ -4605,12 +4676,16 @@ export class AppComponent implements OnInit, OnDestroy {
     const width = PANEL_WIDTH_LIMITS[target].default;
     if (target === 'sidebar') this.sidebarWidth.set(width);
     else this.detailsWidth.set(width);
-    this.storeWidth(target, width);
+    this.manuallySizedPanels.update((panels) => ({ ...panels, [target]: false }));
+    try {
+      localStorage.removeItem(`git-khronos.panel.${target}.width`);
+    } catch {
+      // The automatic panel width remains active for this session.
+    }
   }
 
   protected beginColumnResize(target: GraphColumn, event: PointerEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
+    if (!this.resizePointer.begin(event, 'col-resize')) return;
     this.columnResizeMoved = false;
     this.suppressColumnResizeClick = false;
     this.columnResizeClickSuppressionUntil = 0;
@@ -4865,11 +4940,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected beginReferenceSectionResize(section: ReferenceSection, event: PointerEvent): void {
-    if (this.maximizedReferenceSection()) return;
-    event.preventDefault();
-    event.stopPropagation();
+    if (this.maximizedReferenceSection() || !this.referenceSectionOpen(section)) return;
+    if (!this.resizePointer.begin(event, 'row-resize')) return;
     const container = (event.currentTarget as HTMLElement | null)?.closest<HTMLElement>('.reference-section');
     this.referenceResizeTarget = section;
+    this.referenceResizeChanged = false;
     this.referenceResizeStartY = event.clientY;
     this.referenceResizeStartHeight = container?.getBoundingClientRect().height
       ?? this.referenceSectionHeights()[section]
@@ -4881,8 +4956,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected beginWorkingTreeFileListResize(section: WorkingTreeFileListSection, event: PointerEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
+    if (!this.resizePointer.begin(event, 'row-resize')) return;
     this.workingTreeFileListResizeTarget = section;
     this.workingTreeFileListResizeStartY = event.clientY;
     this.workingTreeFileListResizeStartHeight = this.workingTreeFileListHeightSignal(section)();
@@ -4942,6 +5016,8 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     height = Math.max(REFERENCE_SECTION_MIN_HEIGHT, Math.min(REFERENCE_SECTION_MAX_HEIGHT, height));
+    if (height === current) return;
+    if (section === 'local') this.branchCreatorPreviousLocalHeight = null;
     this.referenceSectionHeights.update((heights) => ({ ...heights, [section]: height }));
     this.referenceSectionMeasuredHeights.update((heights) => ({ ...heights, [section]: height }));
     this.storeReferenceSectionHeight(section, height);
@@ -4950,6 +5026,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected resetReferenceSectionHeight(section: ReferenceSection, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    if (section === 'local') this.branchCreatorPreviousLocalHeight = null;
     const target = event.currentTarget;
     this.referenceSectionHeights.update((heights) => ({ ...heights, [section]: null }));
     try {
@@ -5059,6 +5136,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openGraphSettingsContext(event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('settings');
     this.graphSettingsPosition.set({
       x: Math.max(
         GRAPH_SETTINGS_VIEWPORT_GUTTER,
@@ -5067,7 +5145,12 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(GRAPH_SETTINGS_VIEWPORT_GUTTER, Math.min(event.clientY, window.innerHeight - 230)),
     });
     this.graphSettingsOpen.set(true);
-    window.setTimeout(() => this.graphSettingsPanel()?.nativeElement.focus(), 0);
+    queueMicrotask(() => requestAnimationFrame(() => {
+      const element = this.graphSettingsPanel()?.nativeElement;
+      if (!element || !this.graphSettingsOpen() || !this.graphSettingsPosition()) return;
+      this.graphSettingsPosition.set(this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }));
+      element.focus();
+    }));
   }
 
   protected toggleAuthorFilter(event: MouseEvent): void {
@@ -5155,6 +5238,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workingTreeSortAscending.set(true);
     this.sidebarWidth.set(PANEL_WIDTH_LIMITS.sidebar.default);
     this.detailsWidth.set(PANEL_WIDTH_LIMITS.details.default);
+    this.manuallySizedPanels.set({ sidebar: false, details: false });
     this.referencePaneVisibility.set({
       worktrees: true,
       remote: true,
@@ -5325,6 +5409,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleToolbarCheckoutMenu(event: MouseEvent): void {
     event.stopPropagation();
+    if (this.git.busy()) return;
     this.toolbarRemoteMenuOpen.set(false);
     const open = !this.toolbarCheckoutMenuOpen();
     this.toolbarCheckoutMenuOpen.set(open);
@@ -5335,6 +5420,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleToolbarBranchSearchKeydown(event: KeyboardEvent): void {
+    if (event.isComposing) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -5367,8 +5453,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private navigateToolbarMenu(event: KeyboardEvent): void {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (event.target instanceof HTMLInputElement && !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
     const menu = event.currentTarget as HTMLElement;
-    const items = Array.from(menu.children).filter((child): child is HTMLButtonElement => child instanceof HTMLButtonElement);
+    const items = Array.from(menu.children).filter((child): child is HTMLButtonElement =>
+      child instanceof HTMLButtonElement && !child.disabled && !child.hidden);
     if (!items.length) return;
     const focused = (event.target as HTMLElement | null)?.closest('button');
     const current = items.indexOf(focused as HTMLButtonElement);
@@ -5398,15 +5486,26 @@ export class AppComponent implements OnInit, OnDestroy {
   protected createBranchFromPicker(): void {
     const suggestedName = this.toolbarBranchCreationName();
     this.closeToolbarCheckoutMenu();
-    this.openBranchCreator(suggestedName || undefined);
+    this.openBranchCreator(suggestedName || undefined, this.toolbarBranchToggle()?.nativeElement ?? null);
   }
 
   protected async checkoutFromBranchPicker(branch: Branch): Promise<void> {
-    this.toolbarCheckoutMenuOpen.set(false);
-    this.toolbarBranchQuery.set('');
-    if (branch.current) return;
+    if (this.git.busy()) return;
+    const picker = document.getElementById('branch-picker');
+    const repositoryId = this.git.repository()?.id;
+    const restoreFocus = () => queueMicrotask(() => {
+      if (this.git.repository()?.id === repositoryId && this.canRestoreFocusFrom(picker)) {
+        this.toolbarBranchToggle()?.nativeElement.focus({ preventScroll: true });
+      }
+    });
+    this.closeToolbarCheckoutMenu();
+    if (branch.current) {
+      restoreFocus();
+      return;
+    }
     if (branch.remote) await this.git.checkoutRemote(branch.name);
     else await this.git.checkout(branch.name);
+    restoreFocus();
   }
 
   protected toggleIdentityPopover(event: MouseEvent): void {
@@ -5755,6 +5854,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openReferencePaneMenu(event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('sidebar-context');
     this.contextMenu.set(null);
     this.stashContextMenu.set(null);
     this.fileContextMenu.set(null);
@@ -5979,21 +6079,23 @@ export class AppComponent implements OnInit, OnDestroy {
   protected toggleWorktreeMenu(event: MouseEvent, path: string): void {
     event.stopPropagation();
     const opening = this.worktreeMenuPath() !== path;
+    this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = opening && event.currentTarget instanceof HTMLElement
       ? event.currentTarget
       : null;
     this.submoduleMenuPath.set(null);
     this.worktreeMenuPath.set(opening ? path : null);
-    if (opening) this.focusSidebarActionMenu();
+    if (opening) this.focusSidebarActionMenu(event);
   }
 
   protected openWorktreeMenu(event: MouseEvent, path: string): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.worktree-list-main');
     this.submoduleMenuPath.set(null);
     this.worktreeMenuPath.set(path);
-    this.focusSidebarActionMenu();
+    this.focusSidebarActionMenu(event);
   }
 
   protected openWorktreeMove(worktree: Worktree): void {
@@ -6247,21 +6349,23 @@ export class AppComponent implements OnInit, OnDestroy {
   protected toggleSubmoduleMenu(event: MouseEvent, path: string): void {
     event.stopPropagation();
     const opening = this.submoduleMenuPath() !== path;
+    this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = opening && event.currentTarget instanceof HTMLElement
       ? event.currentTarget
       : null;
     this.worktreeMenuPath.set(null);
     this.submoduleMenuPath.set(opening ? path : null);
-    if (opening) this.focusSidebarActionMenu();
+    if (opening) this.focusSidebarActionMenu(event);
   }
 
   protected openSubmoduleMenu(event: MouseEvent, path: string): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.submodule-main');
     this.worktreeMenuPath.set(null);
     this.submoduleMenuPath.set(path);
-    this.focusSidebarActionMenu();
+    this.focusSidebarActionMenu(event);
   }
 
   protected async openSubmodule(submodule: Submodule): Promise<void> {
@@ -6359,6 +6463,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('window:resize')
   protected handleResponsiveLayout(): void {
+    this.finishResize();
+    this.viewportWidth.set(window.innerWidth);
     this.syncDefaultGraphMetadataColumns();
     const fullWidthInspector = window.innerWidth <= FULL_WIDTH_INSPECTOR_BREAKPOINT;
     const enteringFullWidthInspector = fullWidthInspector
@@ -6701,6 +6807,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private async stageAllAndCommit(): Promise<void> {
+    if (this.git.busy()) return;
     await this.git.stageAll();
     if (this.git.repository()?.status.staged) await this.commit();
   }
@@ -6765,16 +6872,81 @@ export class AppComponent implements OnInit, OnDestroy {
     this.coAuthors.set(body.authors);
   }
 
-  protected openBranchCreator(suggestedName = 'new-branch'): void {
+  protected openBranchCreatorFromToolbarMenu(): void {
+    const returnFocus = this.toolbarMenuReturnFocus;
+    this.closeToolbarMenus();
+    this.openBranchCreator(undefined, returnFocus);
+  }
+
+  protected openBranchCreator(suggestedName?: string, returnFocus: HTMLElement | null = null): void {
+    if (this.git.busy()) return;
+    const suggestion = suggestedName?.trim();
+    if (!this.branchCreatorOpen()) {
+      this.branchCreatorReturnFocus = returnFocus
+        ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    }
+    if (!this.branchCreatorOpen() || suggestion) {
+      this.branchName.set(suggestion || 'new-branch');
+      this.branchCreationError.set(null);
+    }
     this.setPanelVisibility('left-panel', true);
+    this.maximizedReferenceSection.set(null);
     this.localBranchesOpen.set(true);
     this.branchCreatorOpen.set(true);
-    this.branchName.set(suggestedName.trim() || 'new-branch');
+    const height = this.referenceSectionHeights().local;
+    if (height !== null && height < 150) {
+      this.branchCreatorPreviousLocalHeight = height;
+      this.referenceSectionHeights.update((heights) => ({ ...heights, local: 150 }));
+    }
+    const repositoryId = this.git.repository()?.id;
     window.setTimeout(() => {
+      if (!this.branchCreatorOpen() || this.git.repository()?.id !== repositoryId) return;
       const input = document.querySelector<HTMLInputElement>('.branch-create-form input[name="branch"]');
+      input?.scrollIntoView({ block: 'nearest' });
       input?.focus();
       input?.select();
     }, 0);
+  }
+
+  protected closeBranchCreator(): void {
+    if (this.git.busy()) return;
+    const form = document.querySelector<HTMLElement>('.branch-create-form');
+    this.restoreBranchCreatorSectionHeight();
+    this.branchCreatorOpen.set(false);
+    this.branchName.set('');
+    this.branchCreationError.set(null);
+    const target = this.branchCreatorReturnFocus;
+    this.branchCreatorReturnFocus = null;
+    queueMicrotask(() => {
+      if (this.branchCreatorOpen() || !this.canRestoreFocusFrom(form)) return;
+      if (target && target !== document.body && target !== document.documentElement
+          && target.isConnected && target.getClientRects().length) {
+        target.focus({ preventScroll: true });
+        if (document.activeElement === target) return;
+      }
+      document.querySelector<HTMLButtonElement>('[aria-label="Create branch"]')?.focus({ preventScroll: true });
+    });
+  }
+
+  private canRestoreFocusFrom(container: Element | null): boolean {
+    const active = document.activeElement;
+    return !active || active === document.body || active === document.documentElement
+      || !active.isConnected || !!container?.contains(active);
+  }
+
+  private restoreBranchCreatorSectionHeight(): void {
+    const height = this.branchCreatorPreviousLocalHeight;
+    this.branchCreatorPreviousLocalHeight = null;
+    if (height !== null && this.referenceSectionHeights().local === 150) {
+      this.referenceSectionHeights.update((heights) => ({ ...heights, local: height }));
+    }
+  }
+
+  protected handleBranchCreatorKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeBranchCreator();
   }
 
   private selectRelativeCommit(offset: number): void {
@@ -6898,13 +7070,26 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async createBranch(): Promise<void> {
-    await this.git.createBranch(this.branchName());
-    if (!this.git.error()) this.closeBranchCreator();
-  }
-
-  protected closeBranchCreator(): void {
-    this.branchCreatorOpen.set(false);
-    this.branchName.set('');
+    if (this.git.busy()) return;
+    const name = this.branchName().trim();
+    if (!name) {
+      this.branchCreationError.set('Enter a branch name.');
+      return;
+    }
+    const repositoryId = this.git.repository()?.id;
+    this.branchCreationError.set(null);
+    const result = await this.git.createBranch(name);
+    if (this.git.repository()?.id !== repositoryId || !this.branchCreatorOpen() || !result) return;
+    if (result.status === 'success') this.closeBranchCreator();
+    else {
+      this.branchCreationError.set(result.error ?? 'Branch creation was interrupted. Try again.');
+      queueMicrotask(() => requestAnimationFrame(() => {
+        const form = document.querySelector<HTMLElement>('.branch-create-form');
+        if (this.git.repository()?.id === repositoryId && this.branchCreatorOpen() && this.canRestoreFocusFrom(form)) {
+          form?.querySelector<HTMLInputElement>('input[name="branch"]')?.focus();
+        }
+      }));
+    }
   }
 
   protected initials(name: string): string {
@@ -7060,6 +7245,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openRemoteGroupMenu(event: MouseEvent, remote: string): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('sidebar-context');
     this.contextMenu.set(null);
     this.stashContextMenu.set(null);
     this.fileContextMenu.set(null);
@@ -7585,6 +7771,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected startBranchDrag(event: DragEvent, name: string): void {
+    if (this.git.busy()) {
+      event.preventDefault();
+      return;
+    }
     this.draggedCommit.set(null);
     this.draggedBranch.set(name);
     this.dismissBranchDropMenu();
@@ -7596,6 +7786,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected allowBranchDrop(event: DragEvent, target: string): void {
+    if (this.git.busy()) return;
     const commitOid = this.draggedCommit()?.oid
       ?? event.dataTransfer?.getData('application/x-git-khronos-commit');
     const source = this.draggedBranch()
@@ -7611,6 +7802,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected dropBranch(event: DragEvent, target: string): void {
+    if (this.git.busy()) {
+      this.finishBranchDrag();
+      return;
+    }
     const commitOid = this.draggedCommit()?.oid
       ?? event.dataTransfer?.getData('application/x-git-khronos-commit');
     const source = this.draggedBranch()
@@ -7681,13 +7876,16 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async runBranchDrop(strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
     const operation = this.branchDropMenu();
-    if (!operation) return;
+    if (!operation || this.git.busy()) return;
+    const repositoryId = this.git.activeRepositoryId();
     this.dismissBranchDropMenu();
     const checkout = strategy === 'rebase' ? operation.source : operation.target;
     const integrate = strategy === 'rebase' ? operation.target : operation.source;
     if (this.git.repository()?.status.branch !== checkout) {
-      await this.git.checkout(checkout);
-      if (this.git.error()) return;
+      const result = await this.git.checkout(checkout);
+      if (result?.status !== 'success'
+        || this.git.activeRepositoryId() !== repositoryId
+        || this.git.repository()?.status.branch !== checkout) return;
     }
     await this.git.integrateBranch(integrate, strategy);
   }
@@ -8041,6 +8239,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openReferenceStackFromTrigger(event: Event, oid: string, focusFirst = false): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('stack');
     this.cancelReferenceStackClose();
     const stack = (event.currentTarget as HTMLElement).closest<HTMLElement>('.commit-ref-stack');
     if (!focusFirst && this.pinnedReferenceStackOid() === oid) {
@@ -8066,6 +8265,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!contextRequest && !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('stack');
     this.cancelReferenceStackClose();
     this.collapsedReferenceStackOid.set(null);
     this.pinnedReferenceStackOid.set(oid);
@@ -8117,6 +8317,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openDetailReferenceStackFromTrigger(event: Event, focusFirst = false): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('stack');
     this.detailReferenceStackCollapsed.set(false);
     this.openDetailReferenceStack();
     if (focusFirst) {
@@ -8131,6 +8332,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!contextRequest && !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('stack');
     this.openDetailReferenceStack();
     const stack = (event.currentTarget as HTMLElement).closest<HTMLElement>('.commit-detail-ref-stack');
     this.focusReferenceStackItem(stack, event.key === 'ArrowUp' || event.key === 'End');
@@ -9606,11 +9808,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.moveRepositoryTab(menu.repoId, direction, restoreFocus);
   }
 
-  protected openRepositoryTabMenu(event: MouseEvent, repoId: string, focusMenu = false): void {
+  protected openRepositoryTabMenu(event: MouseEvent, repoId: string, focusMenu = true): void {
     event.preventDefault();
     event.stopPropagation();
     const repository = this.git.repositories().find((candidate) => candidate.id === repoId);
     if (!repository) return;
+    this.prepareActionMenu('repository');
+    if (focusMenu && event.currentTarget instanceof HTMLElement) {
+      this.repositoryTabMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.repo-tab-main');
+    }
     if (!focusMenu) this.repositoryTabMenuReturnFocus = null;
     this.repositoryTabsOpen.set(false);
     this.repositoryAlias.set(this.git.repositoryAliases()[repository.path] ?? '');
@@ -9620,6 +9826,12 @@ export class AppComponent implements OnInit, OnDestroy {
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - 280)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 390)),
     });
+    queueMicrotask(() => requestAnimationFrame(() => {
+      const element = this.repositoryTabMenuElement()?.nativeElement;
+      const menu = this.repositoryTabMenu();
+      if (!element || menu?.repoId !== repoId) return;
+      this.repositoryTabMenu.set({ ...menu, ...this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }) });
+    }));
     if (focusMenu) {
       this.focusWhenRendered(
         () => this.repositoryTabMenuElement()?.nativeElement.querySelector<HTMLElement>(
@@ -9655,6 +9867,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       return;
     }
+    if (event.target instanceof HTMLInputElement && ['Home', 'End', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -10410,9 +10623,19 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.publishBranch(remote, pending.branch);
   }
 
-  protected async checkoutFromToolbar(name: string): Promise<void> {
-    this.branchMenuOpen.set(false);
-    await this.git.checkout(name);
+  protected async checkoutFromToolbar(branch: Branch): Promise<void> {
+    if (this.git.busy()) return;
+    const menu = document.getElementById('branch-options-menu');
+    const target = this.toolbarMenuReturnFocus;
+    const repositoryId = this.git.activeRepositoryId();
+    this.closeToolbarMenus();
+    if (!branch.current) await this.git.checkout(branch.name);
+    queueMicrotask(() => requestAnimationFrame(() => {
+      if (this.git.activeRepositoryId() === repositoryId && !this.branchMenuOpen()
+        && this.canRestoreFocusFrom(menu) && target?.isConnected && !target.matches(':disabled')) {
+        target.focus({ preventScroll: true });
+      }
+    }));
   }
 
   protected toggleReferenceSectionOpen(section: ReferenceDisclosureSection): void {
@@ -10487,6 +10710,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.recoveryBranchName.set('');
     this.operationRecoveries.set(null);
     this.recoveryCaptureAction.set(null);
+    this.recoveryBranchError.set(null);
     this.recoveryHistoryOpen.set(true);
     await this.refreshRecoveryHistory();
   }
@@ -10571,6 +10795,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.recoveryCaptureAction.set(null);
     this.operationRecoveries.set(null);
     this.recoveryRepositoryId = null;
+    this.recoveryBranchError.set(null);
     this.git.clearReflog();
     const opener = this.recoveryHistoryReturnFocus;
     this.recoveryHistoryReturnFocus = null;
@@ -10590,8 +10815,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected beginRecoveryBranch(entry: ReflogEntry): void {
+    if (this.git.busy()) return;
     this.recoveryBranchEntry.set(entry);
     this.recoveryBranchName.set(`recovery/${this.shortOid(entry.oid)}`);
+    this.recoveryBranchError.set(null);
     setTimeout(() => {
       const input = document.querySelector<HTMLInputElement>('.recovery-branch-form input');
       input?.focus();
@@ -10603,17 +10830,39 @@ export class AppComponent implements OnInit, OnDestroy {
     const entry = this.recoveryBranchEntry();
     const name = this.recoveryBranchName().trim();
     const repositoryId = this.recoveryRepositoryId;
-    if (!entry || !name || !repositoryId) return;
-    await this.git.createBranchAt(name, entry.oid, repositoryId);
-    if (this.git.error()) {
+    if (!entry || !name || !repositoryId || this.git.busy()) return;
+    if (!this.git.requireRecoveryRepository(repositoryId)) {
       afterNextRender(() => {
         document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
       }, { injector: this.injector });
       return;
     }
-    this.recoveryBranchEntry.set(null);
-    this.recoveryBranchName.set('');
-    await this.git.loadReflog();
+    const form = document.querySelector<HTMLElement>('.recovery-branch-form');
+    const returnFocus = form?.closest('.recovery-entry')?.querySelector<HTMLButtonElement>('.recovery-actions .primary');
+    this.recoveryBranchError.set(null);
+    const result = await this.git.createBranchReference(name, entry.oid, repositoryId);
+    if (!result || !this.recoveryHistoryOpen() || this.recoveryRepositoryId !== repositoryId
+      || this.git.activeRepositoryId() !== repositoryId || this.recoveryBranchEntry() !== entry) return;
+    if (result.status === 'success') {
+      this.recoveryBranchEntry.set(null);
+      this.recoveryBranchName.set('');
+      queueMicrotask(() => requestAnimationFrame(() => {
+        if (this.recoveryHistoryOpen() && this.git.activeRepositoryId() === repositoryId
+          && !this.recoveryBranchEntry() && this.canRestoreFocusFrom(form)
+          && returnFocus?.isConnected && !returnFocus.disabled) {
+          returnFocus.focus({ preventScroll: true });
+        }
+      }));
+      await this.git.loadReflog();
+    } else {
+      this.recoveryBranchError.set(result.error ?? 'Branch creation was interrupted. Try again.');
+      queueMicrotask(() => requestAnimationFrame(() => {
+        if (this.recoveryHistoryOpen() && this.git.activeRepositoryId() === repositoryId
+          && this.recoveryBranchEntry() === entry && this.canRestoreFocusFrom(form)) {
+          form?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+        }
+      }));
+    }
   }
 
   protected async copyRecoveryOid(entry: ReflogEntry): Promise<void> {
@@ -10777,6 +11026,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private navigateContextMenu(event: KeyboardEvent): void {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const menuItems = Array.from(
       (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(
@@ -10836,6 +11086,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return;
+    this.prepareActionMenu('graph');
     this.contextMenu.set(null);
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
     this.fileContextMenu.set(null);
@@ -11021,6 +11272,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     if (this.isUntrackedDirectory(entry)) return;
+    this.prepareActionMenu('file');
     this.contextMenu.set(null);
     this.stashContextMenu.set(null);
     this.commitFileContextMenu.set(null);
@@ -11050,6 +11302,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ): void {
     event.preventDefault();
     event.stopPropagation();
+    this.prepareActionMenu('file');
     this.contextMenu.set(null);
     this.stashContextMenu.set(null);
     this.fileContextMenu.set(null);
@@ -11442,21 +11695,49 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async checkoutContextTarget(): Promise<void> {
     const menu = this.contextMenu();
-    if (!menu) return;
-    this.contextMenu.set(null);
+    if (!menu || (menu.kind !== 'tag' && this.git.busy())) return;
+    const element = this.actionMenuElement()?.nativeElement ?? null;
+    const target = this.contextMenuReturnFocus;
+    const repositoryId = this.git.activeRepositoryId();
+    this.dismissGraphActionMenu();
+    const generation = this.contextMenuGeneration;
     if (menu.kind === 'branch') await this.git.checkout(menu.label);
     else if (menu.kind === 'commit') await this.git.checkoutCommit(menu.oid);
     else if (menu.kind === 'remote') await this.git.checkoutRemote(menu.label);
     else this.selectCommit(menu.oid);
+    queueMicrotask(() => requestAnimationFrame(() => {
+      if (this.git.activeRepositoryId() === repositoryId && generation === this.contextMenuGeneration
+        && this.canRestoreFocusFrom(element) && target?.isConnected && !target.matches(':disabled')) {
+        target.focus({ preventScroll: true });
+      }
+    }));
   }
 
   protected async createContextBranch(): Promise<void> {
     const menu = this.contextMenu();
     const name = this.contextBranchName().trim();
-    if (!menu || !name) return;
-    this.contextMenu.set(null);
-    await this.git.createBranchAt(name, menu.oid);
-    if (!this.git.error()) this.contextBranchName.set('');
+    if (!menu || !name || this.git.busy()) return;
+    const generation = this.contextMenuGeneration;
+    const repositoryId = this.git.repository()?.id;
+    this.contextBranchError.set(null);
+    const result = await this.git.createBranchAt(name, menu.oid);
+    if (generation !== this.contextMenuGeneration || this.git.repository()?.id !== repositoryId || !this.contextMenu() || !result) return;
+    if (result.status === 'success') {
+      this.contextBranchName.set('');
+      this.dismissGraphActionMenu(true);
+      return;
+    }
+    this.contextBranchError.set(result.error ?? 'Branch creation was interrupted. Try again.');
+    queueMicrotask(() => requestAnimationFrame(() => {
+      const active = this.contextMenu();
+      const element = this.actionMenuElement()?.nativeElement;
+      if (generation !== this.contextMenuGeneration || !active || !element) return;
+      this.contextMenu.set({ ...active, ...this.fittedMenuPosition(element, active) });
+      if (this.canRestoreFocusFrom(element)) {
+        element.querySelector<HTMLInputElement>('#context-branch-name')?.focus({ preventScroll: true });
+        element.querySelector<HTMLElement>('#context-branch-error')?.scrollIntoView({ block: 'nearest' });
+      }
+    }));
   }
 
   protected openContextBranchCreator(event: Event): void {
@@ -11546,7 +11827,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async renameContextBranch(): Promise<void> {
     const menu = this.contextMenu();
     const name = this.contextRenameName().trim();
-    if (!menu || menu.kind !== 'branch' || !name || name === menu.label) return;
+    if (!menu || menu.kind !== 'branch' || !name || name === menu.label || this.git.busy()) return;
     const wasPinned = this.pinnedBranch() === menu.label;
     this.contextMenu.set(null);
     await this.git.renameBranch(menu.label, name);
@@ -11602,21 +11883,21 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmBranchUpstream(upstream: string | null = this.branchUpstreamChoice()): Promise<void> {
     const pending = this.pendingBranchUpstream();
-    if (!pending || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
+    if (!pending || this.git.busy() || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
     this.pendingBranchUpstream.set(null);
     await this.git.setBranchUpstream(pending.branch, upstream);
   }
 
   protected async unsetContextBranchUpstream(): Promise<void> {
     const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'branch' || !this.contextBranchUpstream(menu.label)) return;
+    if (!menu || menu.kind !== 'branch' || !this.contextBranchUpstream(menu.label) || this.git.busy()) return;
     this.contextMenu.set(null);
     await this.git.setBranchUpstream(menu.label, null);
   }
 
   protected async integrateContextBranch(strategy: 'merge' | 'ff-only' | 'squash'): Promise<void> {
     const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'branch' || menu.label === this.git.repository()?.status.branch) return;
+    if (!menu || menu.kind !== 'branch' || menu.label === this.git.repository()?.status.branch || this.git.busy()) return;
     this.contextMenu.set(null);
     await this.git.integrateBranch(menu.label, strategy);
   }
@@ -11632,7 +11913,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmBranchAction(): Promise<void> {
     const action = this.pendingBranchAction();
-    if (!action) return;
+    if (!action || this.git.busy()) return;
     const returnFocus = this.branchActionReturnFocus;
     this.dismissBranchConfirmation(false);
     if (action.kind === 'rebase') await this.git.integrateBranch(action.branch, 'rebase');
@@ -11745,10 +12026,10 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (action.kind === 'cherry-pick') {
       if (action.targetBranch && this.git.repository()?.status.branch !== action.targetBranch) {
-        await this.git.checkout(action.targetBranch);
-        if (this.git.error()) return;
-        if (this.pendingHistoryAction() !== action) return;
+        const result = await this.git.checkout(action.targetBranch);
+        if (result?.status !== 'success' || this.pendingHistoryAction() !== action) return;
         if (!this.git.requireRecoveryRepository(repositoryId)) return;
+        if (this.git.repository()?.status.branch !== action.targetBranch) return;
       }
       await this.git.cherryPick(action.oids, mainline, noCommit);
     }
@@ -11960,6 +12241,9 @@ export class AppComponent implements OnInit, OnDestroy {
     oids: string[] = [oid],
     focusMenu = false,
   ): void {
+    this.prepareActionMenu('graph');
+    this.stashContextMenu.set(null);
+    this.contextMenuGeneration += 1;
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
     if (focusMenu && event.currentTarget instanceof HTMLElement) {
       this.contextMenuReturnFocus = event.currentTarget;
@@ -11968,6 +12252,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     this.contextBranchName.set('');
     this.contextBranchCreatorOpen.set(false);
+    this.contextBranchError.set(null);
     this.contextTagName.set('');
     this.contextRenameName.set(kind === 'branch' ? label : '');
     const anchor = this.actionMenuAnchor(event);
@@ -12018,10 +12303,62 @@ export class AppComponent implements OnInit, OnDestroy {
       : null;
   }
 
-  private focusSidebarActionMenu(): void {
-    queueMicrotask(() => requestAnimationFrame(() => this.sidebarActionMenuElement()?.nativeElement
-      .querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')
-      ?.focus()));
+  private focusSidebarActionMenu(event: MouseEvent): void {
+    const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
+    const preferred = event.type === 'contextmenu' || !bounds
+      ? { x: event.clientX, y: event.clientY }
+      : { x: bounds.right - 218, y: bounds.bottom + 4 };
+    this.sidebarActionMenuPosition.set(preferred);
+    const key = this.worktreeMenuPath() ?? this.submoduleMenuPath();
+    queueMicrotask(() => requestAnimationFrame(() => {
+      const element = this.sidebarActionMenuElement()?.nativeElement;
+      if (!element || key !== (this.worktreeMenuPath() ?? this.submoduleMenuPath())) return;
+      this.sidebarActionMenuPosition.set(this.fittedMenuPosition(element, preferred));
+      element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+    }));
+  }
+
+  private fittedMenuPosition(element: HTMLElement, preferred: { x: number; y: number }): { x: number; y: number } {
+    return {
+      x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER)),
+      y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER)),
+    };
+  }
+
+  // Pointer presses also reach disabled controls and do not require a completed click.
+  private readonly dismissOutsideActionMenus = (event: MouseEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (!this.actionMenuElement()?.nativeElement.contains(target)) this.dismissGraphActionMenu();
+    if (!this.fileActionMenuElement()?.nativeElement.contains(target)) this.dismissFileActionMenu();
+    if (!this.sidebarContextMenuElement()?.nativeElement.contains(target)) this.dismissSidebarContextMenu();
+    if (!this.repositoryTabMenuElement()?.nativeElement.contains(target)) this.dismissRepositoryTabMenu();
+    const sidebarToggle = target instanceof Element && target.closest('.worktree-list-actions, .submodule-actions');
+    if (!sidebarToggle && !this.sidebarActionMenuElement()?.nativeElement.contains(target)) this.dismissSidebarActionMenu();
+    if (!this.branchDropMenuElement()?.nativeElement.contains(target)) this.dismissBranchDropMenu();
+    if (!this.graphSettingsToggle()?.nativeElement.contains(target) && !this.graphSettingsPanel()?.nativeElement.contains(target)) {
+      this.graphSettingsOpen.set(false);
+      this.graphSettingsPosition.set(null);
+    }
+  };
+
+  private prepareActionMenu(kind: 'graph' | 'file' | 'sidebar' | 'sidebar-context' | 'repository' | 'settings' | 'stack'): void {
+    if (kind !== 'graph') this.dismissGraphActionMenu();
+    if (kind !== 'file') this.dismissFileActionMenu();
+    if (kind !== 'sidebar') this.dismissSidebarActionMenu();
+    if (kind !== 'sidebar-context') this.dismissSidebarContextMenu();
+    if (kind !== 'repository') this.dismissRepositoryTabMenu();
+    if (kind !== 'settings') {
+      this.graphSettingsOpen.set(false);
+      this.graphSettingsPosition.set(null);
+    }
+    this.appMenuOpen.set(false);
+    this.workspaceMenuOpen.set(false);
+    this.repositoryTabsOpen.set(false);
+    this.toolbarRemoteMenuOpen.set(false);
+    this.closeToolbarCheckoutMenu();
+    this.closeToolbarMenus();
+    this.dismissBranchDropMenu();
   }
 
   private settleSidebarContextMenuPosition(
@@ -12188,11 +12525,16 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private dismissGraphActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.contextMenuReturnFocus : null;
+    const menu = this.actionMenuElement()?.nativeElement ?? null;
+    this.contextMenuGeneration += 1;
     this.contextMenu.set(null);
     this.contextBranchCreatorOpen.set(false);
     this.stashContextMenu.set(null);
+    this.contextBranchError.set(null);
     this.contextMenuReturnFocus = null;
-    if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
+    if (target) queueMicrotask(() => {
+      if (target.isConnected && this.canRestoreFocusFrom(menu)) target.focus({ preventScroll: true });
+    });
   }
 
   private dismissFileActionMenu(restoreFocus = false): void {
@@ -12260,9 +12602,28 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  private hasStoredPanelWidth(panel: ResizablePanel): boolean {
+    try {
+      const width = Number(localStorage.getItem(`git-khronos.panel.${panel}.width`));
+      return Number.isFinite(width) && width > 0;
+    } catch {
+      return false;
+    }
+  }
+
   private clampPanelWidth(panel: ResizablePanel, width: number): number {
     const { minimum, maximum } = PANEL_WIDTH_LIMITS[panel];
     return Math.max(minimum, Math.min(maximum, width));
+  }
+
+  protected panelWidth(panel: ResizablePanel): number {
+    return this.renderedPanelWidths()[panel];
+  }
+
+  protected panelMaximumWidth(panel: ResizablePanel): number {
+    const other = panel === 'sidebar' ? 'details' : 'sidebar';
+    return Math.max(PANEL_WIDTH_LIMITS[panel].minimum,
+      Math.min(PANEL_WIDTH_LIMITS[panel].maximum, this.viewportWidth() - 420 - this.panelWidth(other)));
   }
 
   private readReferenceSectionHeight(section: ReferenceSection): number | null {

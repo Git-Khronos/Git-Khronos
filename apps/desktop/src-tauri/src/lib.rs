@@ -18,7 +18,8 @@ use git_khronos_git_core::{
     compare_commits as git_compare_commits, conflict_details as git_conflict_details,
     continue_merge as git_continue_merge, continue_rebase as git_continue_rebase,
     control_history_operation as git_control_history_operation, create_branch as git_create_branch,
-    create_branch_at as git_create_branch_at, create_tag as git_create_tag,
+    create_branch_at as git_create_branch_at,
+    create_branch_reference as git_create_branch_reference, create_tag as git_create_tag,
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
     delete_branch as git_delete_branch, detect_git,
@@ -872,6 +873,19 @@ fn create_branch_at(
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
         git_create_branch_at(path, &name, &oid)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+fn create_branch_reference(
+    repo_id: String,
+    name: String,
+    oid: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_create_branch_reference(path, &name, &oid)
     })
 }
 
@@ -3578,6 +3592,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             checkout_remote_branch,
             create_branch,
             create_branch_at,
+            create_branch_reference,
             create_worktree,
             create_worktree_for_branch,
             set_worktree_locked,

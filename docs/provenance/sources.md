@@ -844,6 +844,7 @@ No source code was copied.
 Source:
 
 - [Git reflog documentation](https://git-scm.com/docs/git-reflog)
+- [Git branch documentation](https://git-scm.com/docs/git-branch)
 
 Used for:
 

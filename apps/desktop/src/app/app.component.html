@@ -287,12 +287,12 @@
           </div>
           <gc-icon class="toolbar-nav-divider" name="chevron-right" [size]="11" />
           <div class="toolbar-nav-control branch-nav-control">
-            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ repo.status.branch ?? 'detached HEAD' }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ repo.status.branch ?? 'detached HEAD' }}, {{ currentBranchStateLabel() }}" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
+            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ repo.status.branch ?? 'detached HEAD' }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ repo.status.branch ?? 'detached HEAD' }}, {{ currentBranchStateLabel() }}" aria-haspopup="dialog" aria-controls="branch-picker" [disabled]="git.busy()" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
               <gc-icon class="toolbar-nav-leading-icon" name="branch" [size]="12" />
               <span><small class="branch-state-summary">{{ currentBranchStateLabel() }}</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong></span><gc-icon name="chevron-down" [size]="9" />
             </button>
             @if (toolbarCheckoutMenuOpen()) {
-              <div class="toolbar-nav-menu branch-nav-menu" role="dialog" aria-label="Switch branch" (keydown)="handleToolbarBranchMenuKeydown($event)">
+              <div id="branch-picker" class="toolbar-nav-menu branch-nav-menu" role="dialog" aria-label="Switch branch" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchMenuKeydown($event)">
                 <label class="toolbar-nav-search">
                   <gc-icon name="search" [size]="12" />
                   <input #toolbarBranchSearch type="search" aria-label="Filter branches" aria-describedby="branch-picker-result-count" placeholder="Search local and remote branches" [gcTextValue]="toolbarBranchQuery()" (gcTextValueChange)="toolbarBranchQuery.set($event)" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchSearchKeydown($event)" />
@@ -302,7 +302,7 @@
                   @if (matches.local.length) {
                     <div class="toolbar-nav-section"><span>Local branches</span><b>{{ matches.local.length }}</b></div>
                     @for (branch of matches.local; track branch.fullName) {
-                      <button type="button" [class.current]="branch.current" [attr.aria-current]="branch.current ? 'true' : null" (click)="checkoutFromBranchPicker(branch)">
+                      <button type="button" [disabled]="git.busy()" [class.current]="branch.current" [attr.aria-current]="branch.current ? 'true' : null" (click)="checkoutFromBranchPicker(branch)">
                         <gc-icon class="branch-picker-location-icon" name="branch" [size]="13" />
                         <span><strong>{{ branch.name }}</strong><small [title]="branchPickerDescription(branch)">{{ branchPickerDescription(branch) }}</small></span>
                         @if (remoteLocationsForLocalBranch(branch); as locations) {
@@ -325,7 +325,7 @@
                   @if (matches.remote.length) {
                     <div class="toolbar-nav-section remote"><span>Remote branches</span><b>{{ matches.remote.length }}</b></div>
                     @for (group of matches.remote; track group.label) {
-                      <button type="button" [attr.aria-label]="'Remote branch ' + group.label + ', create local tracking branch from ' + group.primary.name + ', ' + group.locations.length + (group.locations.length === 1 ? ' location' : ' locations')" (click)="checkoutFromBranchPicker(group.primary)">
+                      <button type="button" [disabled]="git.busy()" [attr.aria-label]="'Remote branch ' + group.label + ', create local tracking branch from ' + group.primary.name + ', ' + group.locations.length + (group.locations.length === 1 ? ' location' : ' locations')" (click)="checkoutFromBranchPicker(group.primary)">
                         <gc-icon name="branch" [size]="13" />
                         <span><strong>{{ group.label }}</strong><small>Track {{ group.primary.name }}{{ group.locations.length > 1 ? ' · ' + group.locations.length + ' remote locations' : '' }}</small></span>
                         <span class="toolbar-branch-locations" aria-label="Remote locations">
@@ -412,11 +412,11 @@
                 <span><small>Current branch</small><strong>{{ currentBranch()?.name ?? 'Detached HEAD' }}</strong></span>
                 <b>{{ currentBranchStateLabel() }}</b>
               </header>
-              <button type="button" role="menuitem" (click)="branchMenuOpen.set(false); openBranchCreator()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
+              <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openBranchCreatorFromToolbarMenu()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
               <div class="menu-separator"></div>
               <div class="menu-caption">Local branches</div>
               @for (branch of visibleBranches(); track branch.fullName) {
-                <button type="button" role="menuitem" (click)="branch.current ? branchMenuOpen.set(false) : checkoutFromToolbar(branch.name)" [class.current]="branch.current">
+                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="checkoutFromToolbar(branch)" [class.current]="branch.current">
                   <gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="13" /><span><strong>{{ branch.name }}</strong><small>{{ branch.current ? 'Current branch' : 'Checkout branch' }}</small></span>
                 </button>
               }
@@ -592,8 +592,13 @@
     }
 
     <main id="repository-workspace" class="workspace" [style.grid-template-columns]="gridColumns()">
+      @if (sidebarVisible()) {
+        <div class="panel-resizer right" [style.left.px]="panelWidth('sidebar') - 6" role="separator" tabindex="0" aria-label="Resize left panel" aria-controls="repository-reference-panel" aria-orientation="vertical" [attr.aria-valuemin]="170" [attr.aria-valuemax]="panelMaximumWidth('sidebar')" [attr.aria-valuenow]="panelWidth('sidebar')" [attr.aria-valuetext]="panelWidth('sidebar') + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('sidebar', $event)" (keydown)="handlePanelResizeKeydown('sidebar', $event)" (dblclick)="resetPanelWidth('sidebar', $event)"></div>
+      }
+      @if (detailsVisible()) {
+        <div class="panel-resizer left" [style.right.px]="panelWidth('details') - 6" role="separator" tabindex="0" aria-label="Resize commit panel" aria-controls="repository-commit-panel" aria-orientation="vertical" [attr.aria-valuemin]="280" [attr.aria-valuemax]="panelMaximumWidth('details')" [attr.aria-valuenow]="panelWidth('details')" [attr.aria-valuetext]="panelWidth('details') + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('details', $event)" (keydown)="handlePanelResizeKeydown('details', $event)" (dblclick)="resetPanelWidth('details', $event)"></div>
+      }
       <aside id="repository-reference-panel" class="sidebar workspace-focus-region" aria-label="Repository references" tabindex="-1" [class.panel-hidden]="!sidebarVisible()" [class.reference-maximized]="maximizedReferenceSection()">
-        <div class="panel-resizer right" role="separator" tabindex="0" aria-label="Resize left panel" aria-controls="repository-reference-panel" aria-orientation="vertical" [attr.aria-valuemin]="170" [attr.aria-valuemax]="420" [attr.aria-valuenow]="sidebarWidth()" [attr.aria-valuetext]="sidebarWidth() + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('sidebar', $event)" (keydown)="handlePanelResizeKeydown('sidebar', $event)" (dblclick)="resetPanelWidth('sidebar', $event)"></div>
         <div class="responsive-sidebar-heading">
           <strong>Repository navigation</strong>
           <button type="button" aria-label="Close left panel" title="Close left panel" (click)="closeResponsiveSidebar()"><gc-icon name="x" [size]="12" /></button>
@@ -641,7 +646,7 @@
                   </button>
                   <button class="worktree-list-actions" type="button" [attr.data-worktree-path]="worktree.path" title="Worktree actions" aria-label="Worktree actions for {{ worktree.branch ?? git.pathLabel(worktree.path) }}" aria-haspopup="menu" [attr.aria-expanded]="worktreeMenuPath() === worktree.path" (click)="toggleWorktreeMenu($event, worktree.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (worktreeMenuPath() === worktree.path) {
-                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu" role="menu" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
+                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
                       <div><small>Worktree</small><strong>{{ worktree.branch || 'Detached HEAD' }}</strong></div>
                       <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="worktreeMenuPath.set(null); openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
                       <button type="button" role="menuitem" (click)="worktreeMenuPath.set(null); copyContextValue(worktree.path)"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
@@ -665,7 +670,7 @@
         <div id="reference-section-local" class="reference-section" [class.collapsed]="!localBranchesOpen()" [class.maximized]="maximizedReferenceSection() === 'local'" [class.resized]="referenceSectionHeight('local') !== null" [style.height.px]="referenceSectionHeight('local')">
           <div class="sidebar-heading" (dblclick)="maximizeReferenceSection('local')" (contextmenu)="openReferencePaneMenu($event)">
             <button class="heading-toggle" type="button" [attr.aria-expanded]="localBranchesOpen()" (click)="toggleReferenceSectionOpen('local')"><span><i><gc-icon [name]="localBranchesOpen() ? 'chevron-down' : 'chevron-right'" [size]="11" /></i><gc-icon class="branch-scope-heading-icon local" name="branch" [size]="11" /> Local</span><b>{{ visibleBranches().length }}</b></button>
-            <button type="button" title="New branch" aria-label="New branch" (click)="openBranchCreator()"><gc-icon name="plus" [size]="13" /></button>
+            <button type="button" title="New branch" aria-label="New branch" [disabled]="git.busy()" (dblclick)="$event.stopPropagation()" (click)="openBranchCreator()"><gc-icon name="plus" [size]="13" /></button>
           </div>
           @if (localBranchesOpen()) {
             <div role="list" aria-label="Local branches" gcViewportSize (gcViewportSize)="updateReferenceListHeight('local', $event)" (scroll)="updateReferenceListViewport('local', $event)" (keydown)="handleReferenceListKeydown('local', $event)" class="reference-content branch-list">
@@ -691,7 +696,6 @@
                     [class.tip-selected]="!changesOpen() && selectedCommit() === branch.oid"
                     type="button"
                     draggable="true"
-                    [disabled]="git.busy()"
                     [attr.aria-label]="'Local branch ' + branch.name + (branch.current ? ', current' : '') + (branch.tracking ? ', ' + branch.tracking : '')"
                     aria-haspopup="menu"
                     [title]="'Local branch ' + branch.name + (branch.current ? ' · Current branch' : '') + (branch.upstream ? ' · Tracking ' + branch.upstream : '') + (branch.tracking ? ' · ' + branch.tracking : '') + ' · Click to view branch tip · Double-click to checkout · Drop a commit here to cherry-pick'"
@@ -724,7 +728,6 @@
                           [class.tip-selected]="!changesOpen() && selectedCommit() === remoteBranch.oid"
                           [class.tip-diverged]="remoteBranch.oid !== branch.oid"
                           type="button"
-                          [disabled]="git.busy()"
                           [attr.aria-label]="'Remote branch ' + remoteBranch.name"
                           [title]="'Remote ' + remoteLocationName(remoteBranch.name) + ' location for ' + branch.name + (remoteBranch.oid === branch.oid ? ' · Same tip as local branch' : ' · Different tip from local branch') + ' · Click to view its branch tip · Right-click for actions'"
                           (mouseenter)="previewReference(remoteBranch.oid)"
@@ -763,16 +766,19 @@
               }
               <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualBranches().bottomPadding"></div>
               @if (branchCreatorOpen()) {
-                <form novalidate class="inline-form branch-create-form" aria-labelledby="branch-create-title" (submit)="$event.preventDefault(); createBranch()">
+                <form novalidate class="inline-form branch-create-form" aria-labelledby="branch-create-title" (keydown)="handleBranchCreatorKeydown($event)" (submit)="$event.preventDefault(); createBranch()">
                   <header>
                     <span><strong id="branch-create-title">Create branch</strong><small>From <code>{{ git.repository()?.status?.branch || 'detached commit' }}</code> at HEAD</small></span>
-                    <button class="branch-create-cancel" type="button" aria-label="Cancel branch creation" title="Cancel branch creation" (click)="closeBranchCreator()"><gc-icon name="x" [size]="11" /></button>
+                    <button class="branch-create-cancel" type="button" [disabled]="git.busy()" aria-label="Cancel branch creation" title="Cancel branch creation (Esc)" (click)="closeBranchCreator()"><gc-icon name="x" [size]="11" /></button>
                   </header>
                   <label class="sr-only" for="new-branch-name">New branch name</label>
                   <div class="branch-create-controls">
-                    <input id="new-branch-name" [gcTextValue]="branchName()" (gcTextValueChange)="branchName.set($event)" name="branch" autocomplete="off" spellcheck="false" autofocus />
-                    <button class="branch-create-submit" type="submit" [disabled]="!branchName().trim() || git.busy()">Create</button>
+                    <input id="new-branch-name" [attr.aria-invalid]="branchCreationError() ? 'true' : null" [attr.aria-describedby]="branchCreationError() ? 'branch-creation-error' : null" [disabled]="git.busy()" [gcTextValue]="branchName()" (gcTextValueChange)="branchName.set($event); branchCreationError.set(null)" name="branch" autocomplete="off" spellcheck="false" autofocus />
+                    <button class="branch-create-submit" type="submit" [disabled]="!branchName().trim() || git.busy()">{{ git.busy() ? 'Working…' : 'Create' }}</button>
                   </div>
+                  @if (branchCreationError()) {
+                    <p id="branch-creation-error" class="branch-creation-error" role="alert">{{ branchCreationError() }}</p>
+                  }
                 </form>
               }
             </div>
@@ -834,7 +840,7 @@
                         @if (remoteLocations.length) {
                           <span class="aligned-remote-only-locations" aria-label="Remote branch locations">
                             @for (location of remoteLocations; track location.fullName) {
-                              <button class="remote-branch-location" [class.reference-hidden]="isBranchHidden(location.name)" [class.reference-soloed]="isBranchSoloed(location.name)" [class.highlighting]="hoveredReferenceOid() === location.oid" [class.tip-selected]="!changesOpen() && selectedCommit() === location.oid" [class.tip-diverged]="location.oid !== branch.oid" type="button" [disabled]="git.busy()" [attr.aria-label]="'Remote location ' + remoteLocationName(location.name) + ' for branch ' + remoteBranchLabel(location.name)" [title]="'Remote ' + remoteLocationName(location.name) + ' location' + (location.oid === branch.oid ? ' · Same tip as ' : ' · Different tip from ') + remoteLocationName(branch.name) + ' · Click to view its branch tip · Right-click for actions'" (mouseenter)="previewReference(location.oid)" (mouseleave)="previewReference(null)" (click)="jumpToReference($event, location.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', location.name, location.oid)" (contextmenu)="openRemoteMenu($event, location.name, location.oid)"><gc-icon [name]="remoteIconForDecoration(location.name)" [size]="11" /></button>
+                              <button class="remote-branch-location" [class.reference-hidden]="isBranchHidden(location.name)" [class.reference-soloed]="isBranchSoloed(location.name)" [class.highlighting]="hoveredReferenceOid() === location.oid" [class.tip-selected]="!changesOpen() && selectedCommit() === location.oid" [class.tip-diverged]="location.oid !== branch.oid" type="button" [attr.aria-label]="'Remote location ' + remoteLocationName(location.name) + ' for branch ' + remoteBranchLabel(location.name)" [title]="'Remote ' + remoteLocationName(location.name) + ' location' + (location.oid === branch.oid ? ' · Same tip as ' : ' · Different tip from ') + remoteLocationName(branch.name) + ' · Click to view its branch tip · Right-click for actions'" (mouseenter)="previewReference(location.oid)" (mouseleave)="previewReference(null)" (click)="jumpToReference($event, location.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', location.name, location.oid)" (contextmenu)="openRemoteMenu($event, location.name, location.oid)"><gc-icon [name]="remoteIconForDecoration(location.name)" [size]="11" /></button>
                             }
                           </span>
                         }
@@ -944,7 +950,7 @@
                   </button>
                   <button class="submodule-actions" type="button" title="Submodule actions" [attr.aria-label]="'Submodule actions for ' + submodule.path" aria-haspopup="menu" [attr.aria-expanded]="submoduleMenuPath() === submodule.path" (click)="toggleSubmoduleMenu($event, submodule.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (submoduleMenuPath() === submodule.path) {
-                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu submodule-menu" role="menu" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
+                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu submodule-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
                       <div><small>Submodule</small><strong>{{ submodule.path }}</strong></div>
                       @if (!submodule.initialized) {
                         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="initializeSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Initialize</button>
@@ -1129,7 +1135,6 @@
       </section>
 
       <aside #commitPanel id="repository-commit-panel" class="detail-panel commit-panel workspace-focus-region" [attr.aria-label]="selectedLinkedWorktree() ? 'Worktree inspector' : changesOpen() ? 'Working directory inspector' : 'Commit inspector'" tabindex="-1" [class.panel-hidden]="!detailsVisible()" [class.working-tree-inspector]="changesOpen() && !repo.bare && !selectedLinkedWorktree()">
-        <div class="panel-resizer left" role="separator" tabindex="0" aria-label="Resize commit panel" aria-controls="repository-commit-panel" aria-orientation="vertical" [attr.aria-valuemin]="280" [attr.aria-valuemax]="560" [attr.aria-valuenow]="detailsWidth()" [attr.aria-valuetext]="detailsWidth() + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('details', $event)" (keydown)="handlePanelResizeKeydown('details', $event)" (dblclick)="resetPanelWidth('details', $event)"></div>
         <ng-template #commitPanelCloseControl>
           <button #commitPanelClose class="panel-close-action" type="button" aria-label="Close commit panel" aria-keyshortcuts="Control+K Meta+K" title="Close commit panel ({{ primaryShortcutKey }}+K)" (click)="setPanelVisibility('commit-panel', false)"><gc-icon name="x" [size]="12" /></button>
         </ng-template>
@@ -1686,8 +1691,8 @@
         [class.word-wrap]="diffWordWrap()"
         [style.--diff-font-size]="diffFontSize() + 'px'"
         [style.--diff-tab-size]="diffTabSize()"
-        [style.left.px]="sidebarVisible() ? sidebarWidth() : 0"
-        [style.right.px]="detailsVisible() ? detailsWidth() : 0"
+        [style.left.px]="panelWidth('sidebar')"
+        [style.right.px]="panelWidth('details')"
         aria-label="Diff viewer"
       >
         <header class="diff-workspace-toolbar">
@@ -2235,11 +2240,11 @@
       (keydown)="handleBranchDropMenuKeydown($event)"
     >
       <header><span><gc-icon name="branch" [size]="15" /></span><div><small>Move branch history</small><strong>{{ operation.source }} → {{ operation.target }}</strong></div></header>
-      <button type="button" role="menuitem" (click)="runBranchDrop('ff-only')"><gc-icon name="merge" [size]="14" /><span><strong>Fast-forward {{ operation.target }}</strong><small>Move {{ operation.target }} to {{ operation.source }} only when linear</small></span></button>
-      <button type="button" role="menuitem" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }}</strong><small>Preserve the source branch history</small></span></button>
-      <button type="button" role="menuitem" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage the combined result for one commit</small></span></button>
-      <button type="button" role="menuitem" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay source commits on the target</small></span></button>
-      <button type="button" role="menuitem" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, combine, or drop source commits</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('ff-only')"><gc-icon name="merge" [size]="14" /><span><strong>Fast-forward {{ operation.target }}</strong><small>Move {{ operation.target }} to {{ operation.source }} only when linear</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }}</strong><small>Preserve the source branch history</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage the combined result for one commit</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay source commits on the target</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, combine, or drop source commits</small></span></button>
       <footer><button type="button" (click)="dismissBranchDropMenu(true)">Cancel</button></footer>
     </section>
   }
@@ -2268,7 +2273,7 @@
       } @else if (menu.kind === 'remote') {
         <div class="context-section-label" aria-hidden="true">Checkout and inspect</div>
       }
-      <button type="button" role="menuitem" [disabled]="(menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
+      <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
         <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Create local tracking branch' : menu.label === git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
       </button>
       <button type="button" role="menuitem" [disabled]="git.busy() || git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="shareRepositoryContext()"><span><gc-icon name="copy" [size]="13" /></span>Share repository context…</button>
@@ -2314,7 +2319,7 @@
         <div class="context-section-label" aria-hidden="true">Tracking and worktrees</div>
         <button type="button" role="menuitem" [disabled]="!remoteUpstreamBranches().length" (click)="requestBranchUpstream()"><span><gc-icon name="remote" [size]="13" /></span>{{ contextBranchUpstream(menu.label) ? 'Change upstream…' : 'Set upstream…' }}</button>
         @if (contextBranchUpstream(menu.label)) {
-          <button type="button" role="menuitem" (click)="unsetContextBranchUpstream()"><span><gc-icon name="x" [size]="13" /></span>Unset upstream <small>{{ contextBranchUpstream(menu.label) }}</small></button>
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="unsetContextBranchUpstream()"><span><gc-icon name="x" [size]="13" /></span>Unset upstream <small>{{ contextBranchUpstream(menu.label) }}</small></button>
         }
         <button type="button" role="menuitem" [disabled]="!canCreateContextWorktree()" (click)="openContextWorktreeDialog()"><span><gc-icon name="folder-git" [size]="13" /></span>Create worktree</button>
         <div class="context-divider"></div>
@@ -2327,13 +2332,13 @@
         @if (menu.label === git.repository()?.status?.branch) {
           <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRootRebase()"><span><gc-icon name="edit" [size]="13" /></span>Edit entire history, including root…</button>
         } @else {
-          <button type="button" role="menuitem" (click)="openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}</button>
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}</button>
           <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openMergeRebase()"><span><gc-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
           <div class="context-divider"></div>
           <div class="context-section-label" aria-hidden="true">Integrate into {{ git.repository()?.status?.branch }}</div>
-          <button type="button" role="menuitem" (click)="integrateContextBranch('ff-only')"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ git.repository()?.status?.branch }} to {{ menu.label }}</button>
-          <button type="button" role="menuitem" (click)="integrateContextBranch('merge')"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
-          <button type="button" role="menuitem" (click)="integrateContextBranch('squash')"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('ff-only')"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ git.repository()?.status?.branch }} to {{ menu.label }}</button>
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('merge')"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
+          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('squash')"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
           <button type="button" role="menuitem" (click)="requestBranchAction('rebase')"><span><gc-icon name="refresh" [size]="13" /></span>Rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}…</button>
         }
         <div class="context-divider"></div>
@@ -2359,15 +2364,19 @@
               name="contextBranchName"
               placeholder="Branch name"
               autocomplete="off"
+              [disabled]="git.busy()"
+              [attr.aria-invalid]="contextBranchError() ? 'true' : null"
+              [attr.aria-describedby]="contextBranchError() ? 'context-branch-error' : null"
               [gcTextValue]="contextBranchName()"
-              (gcTextValueChange)="contextBranchName.set($event)"
+              (gcTextValueChange)="contextBranchName.set($event); contextBranchError.set(null)"
             />
             <button type="submit" [disabled]="!contextBranchName().trim() || git.busy()">Create</button>
             <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="closeContextBranchCreator($event)"><gc-icon name="x" [size]="10" /></button>
           </div>
+          @if (contextBranchError()) { <p id="context-branch-error" class="context-branch-error" role="alert">{{ contextBranchError() }}</p> }
         </form>
       } @else {
-        <button data-create-context-branch type="button" role="menuitem" (click)="openContextBranchCreator($event)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
+        <button data-create-context-branch type="button" role="menuitem" [disabled]="git.busy()" (click)="openContextBranchCreator($event)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
       }
       <button type="button" role="menuitem" (click)="openContextTagCreator()"><span><gc-icon name="tag" [size]="13" /></span>Create tag here…</button>
     </div>
@@ -2669,7 +2678,7 @@
             <label class="force-delete-option"><input type="checkbox" [checked]="forceBranchDelete()" (change)="forceBranchDelete.set($any($event.target).checked)" /> Force delete even when the branch is not merged</label>
           }
         </div>
-        <footer><button type="button" data-branch-dialog-cancel (click)="dismissBranchConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind === 'delete'" type="button" (click)="confirmBranchAction()">{{ action.kind === 'delete' ? (action.unmerged ? 'Delete anyway' : 'Delete branch') : 'Rebase' }}</button></footer>
+        <footer><button type="button" data-branch-dialog-cancel (click)="dismissBranchConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind === 'delete'" type="button" [disabled]="git.busy()" (click)="confirmBranchAction()">{{ action.kind === 'delete' ? (action.unmerged ? 'Delete anyway' : 'Delete branch') : 'Rebase' }}</button></footer>
       </section>
     </div>
   }
@@ -2686,7 +2695,7 @@
           </select></label>
         </div>
         <footer>
-          @if (pending.current) { <button type="button" class="remove-upstream" (click)="confirmBranchUpstream(null)">Unset {{ pending.current }}</button> }
+          @if (pending.current) { <button type="button" class="remove-upstream" [disabled]="git.busy()" (click)="confirmBranchUpstream(null)">Unset {{ pending.current }}</button> }
           <span></span><button type="button" (click)="pendingBranchUpstream.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!branchUpstreamChoice() || git.busy()">Set Upstream</button>
         </footer>
       </form>
@@ -2786,13 +2795,14 @@
                 <div class="recovery-actions">
                   @if (recoveryEntryInGraph(entry)) { <button type="button" (click)="viewRecoveryEntry(entry)">View in graph</button> }
                   <button type="button" title="Copy full commit SHA" (click)="copyRecoveryOid(entry)"><gc-icon name="copy" [size]="12" />Copy SHA</button>
-                  <button class="primary" type="button" (click)="beginRecoveryBranch(entry)"><gc-icon name="branch" [size]="12" />Create branch</button>
+                  <button class="primary" type="button" [disabled]="git.busy()" (click)="beginRecoveryBranch(entry)"><gc-icon name="branch" [size]="12" />Create branch</button>
                 </div>
                 @if (recoveryBranchEntry()?.selector === entry.selector && recoveryBranchEntry()?.oid === entry.oid) {
                   <form novalidate class="recovery-branch-form" (submit)="$event.preventDefault(); createRecoveryBranch()">
-                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [gcTextValue]="recoveryBranchName()" (gcTextValueChange)="recoveryBranchName.set($event)" /></label>
-                    <button type="button" (click)="recoveryBranchEntry.set(null); recoveryBranchName.set('')">Cancel</button>
+                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [disabled]="git.busy()" [attr.aria-invalid]="recoveryBranchError() ? 'true' : null" [attr.aria-describedby]="recoveryBranchError() ? 'recovery-branch-error' : null" [gcTextValue]="recoveryBranchName()" (gcTextValueChange)="recoveryBranchName.set($event); recoveryBranchError.set(null)" /></label>
+                    <button type="button" [disabled]="git.busy()" (click)="recoveryBranchEntry.set(null); recoveryBranchName.set(''); recoveryBranchError.set(null)">Cancel</button>
                     <button class="primary" type="submit" [disabled]="!recoveryBranchName().trim() || git.busy()">Create at {{ shortOid(entry.oid) }}</button>
+                    @if (recoveryBranchError()) { <p id="recovery-branch-error" class="recovery-branch-error" role="alert">{{ recoveryBranchError() }}</p> }
                   </form>
                 }
               </article>

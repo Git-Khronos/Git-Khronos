@@ -120,7 +120,7 @@
       }
     }</span> }
     @if (ghostBranch(); as ghost) {
-      <button type="button" class="ghost-reference" aria-label="Nearest containing branch {{ ghost.name }}" title="Nearest containing branch: {{ ghost.name }}. Double-click or press Enter to checkout." (click)="$event.stopPropagation()" (keydown.enter)="view.checkoutGhostBranch($event, ghost)" (dblclick)="view.checkoutGhostBranch($event, ghost)">
+      <button type="button" class="ghost-reference" [disabled]="view.git.busy()" aria-label="Nearest containing branch {{ ghost.name }}" title="Nearest containing branch: {{ ghost.name }}. Double-click or press Enter to checkout." (click)="$event.stopPropagation()" (keydown.enter)="view.checkoutGhostBranch($event, ghost)" (dblclick)="view.checkoutGhostBranch($event, ghost)">
         <span class="ghost-pill"><gc-icon name="branch" [size]="9" />{{ ghost.name }}</span><i></i>
       </button>
     }

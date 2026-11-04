@@ -573,6 +573,7 @@ export function checkout_branch(args: { repoId: string; name: string }): Promise
 export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
 export function create_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch", args); }
 export function create_branch_at(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_at", args); }
+export function create_branch_reference(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_reference", args); }
 export function create_worktree(args: { repoId: string; parentPath: string; folder: string; branch: string; base: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_worktree", args); }
 export function create_worktree_for_branch(args: { repoId: string; parentPath: string; folder: string; branch: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_worktree_for_branch", args); }
 export function set_worktree_locked(args: { repoId: string; path: string; locked: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_worktree_locked", args); }
@@ -827,6 +828,7 @@ export type CommandMap = {
   checkout_remote_branch: typeof checkout_remote_branch;
   create_branch: typeof create_branch;
   create_branch_at: typeof create_branch_at;
+  create_branch_reference: typeof create_branch_reference;
   create_worktree: typeof create_worktree;
   create_worktree_for_branch: typeof create_worktree_for_branch;
   set_worktree_locked: typeof set_worktree_locked;

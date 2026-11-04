@@ -1,5 +1,5 @@
 .ref-pill.with-icon, .draggable-reference { display: inline-flex; align-items: center; gap: 3px; }
-.column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; }
+.column-resizer { position: absolute; z-index: 3; top: -8px; right: -6px; bottom: -8px; width: 12px; cursor: col-resize; touch-action: none; }
 .column-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; }
 .column-resizer:hover { background: var(--splitter-hover); }
 .column-resizer:active { background: var(--splitter-active); }

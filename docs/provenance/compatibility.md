@@ -1741,7 +1741,7 @@ Independent implementation:
 
 - Git Khronos reads a bounded set of reflog records through the system Git executable with a byte-limited output buffer.
 - A project-designed searchable recovery view shows selectors, actions, authors, and abbreviated commit IDs.
-- Recovery creates a branch through the existing validated branch command and never moves the current branch implicitly.
+- Recovery creates a validated branch reference without checking it out, so the current branch and working files are unchanged.
 - Destructive reset is deliberately excluded from the recovery shortcut.
 
 No proprietary source code, assets, wording collections, or visual implementation details were used.

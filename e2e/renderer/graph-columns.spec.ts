@@ -229,8 +229,11 @@ test('resizes the last column from its right edge without moving columns to its 
       const last = order.at(-1)!;
       const neighbour = order.at(-2)!;
       // Freeze the automatic layout first so widths are exact.
-      await page.getByRole('separator', { name: SEPARATORS[order[0]], exact: true }).focus();
+      const firstSeparator = page.getByRole('separator', { name: SEPARATORS[order[0]], exact: true });
+      const firstWidth = await separatorWidth(page, order[0]);
+      await firstSeparator.focus();
       await page.keyboard.press('ArrowLeft');
+      await expect.poll(() => separatorWidth(page, order[0])).toBe(firstWidth - 8);
       const startLast = await separatorWidth(page, last);
       const startNeighbour = await separatorWidth(page, neighbour);
       const lastHeading = page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[last] }).first();
@@ -281,7 +284,24 @@ test('reorders columns by dragging headings in both directions and persists the 
     const to = order.indexOf(target);
     order = order.filter((column) => column !== source);
     order.splice(order.indexOf(target) + (from < to ? 1 : 0), 0, source);
-    await heading(source).locator('.column-heading-label, :scope').first().dragTo(heading(target));
+    const [sourceBox, targetBox, headerBox] = await Promise.all([
+      heading(source).boundingBox(),
+      heading(target).boundingBox(),
+      page.locator('.graph-columns').boundingBox(),
+    ]);
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    const visibleCenter = (box: NonNullable<typeof sourceBox>) =>
+      (Math.max(box.x, headerBox!.x) + Math.min(box.x + box.width, headerBox!.x + headerBox!.width - 48)) / 2;
+    const sourceX = visibleCenter(sourceBox!);
+    const targetX = visibleCenter(targetBox!);
+    const y = sourceBox!.y + sourceBox!.height / 2;
+    await page.mouse.move(sourceX, y);
+    await page.mouse.down();
+    await page.mouse.move(sourceX + 10, y, { steps: 2 });
+    await page.mouse.move(targetX, y, { steps: 10 });
+    await page.mouse.up();
     await expectLayout(page, order, `after dragging ${source} onto ${target}`);
     await exerciseSeparators(page, order, `dragged ${source} onto ${target}`, false);
   }

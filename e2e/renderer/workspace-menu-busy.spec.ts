@@ -9,7 +9,7 @@ for (const initialBusy of [false, true]) {
     // Renderer-only state fixture: no real Git operation or production hook.
     await page.evaluate(() => {
       const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
-      root.git.busy.set(true);
+      root.git.operationBusy.set(true);
     });
     await toggle.focus();
     if (key !== 'Escape') {
@@ -19,7 +19,7 @@ for (const initialBusy of [false, true]) {
     }
     if (!initialBusy) {
       await page.evaluate(() => {
-        (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy.set(false);
+        (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationBusy.set(false);
       });
     }
     await toggle.focus();
@@ -29,7 +29,7 @@ for (const initialBusy of [false, true]) {
     if (!initialBusy) {
       await expect(menu.getByRole('menuitemradio').first()).toBeFocused();
       await page.evaluate(() => {
-        (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy.set(true);
+        (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationBusy.set(true);
       });
     }
     await expect(menu.locator('button:not(:disabled)')).toHaveCount(0);

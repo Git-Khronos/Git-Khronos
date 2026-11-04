@@ -799,7 +799,7 @@ test('does not present a fully disabled split action as interactive on hover', a
 
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    app.git.busy.set(true);
+    app.git.operationBusy.set(true);
   });
   await expect(pull).toBeDisabled();
   await expect(split.getByRole('button', { name: 'Pull options' })).toBeDisabled();
@@ -4778,8 +4778,9 @@ test('resizes every graph column independently with flexible and narrow commit m
       await page.mouse.down();
       await page.mouse.move(x + 16, y, { steps: 4 });
       await page.mouse.up();
+      await expect.poll(async () => Math.round((await heading.boundingBox())!.width), { message: label })
+        .toBe(Math.round(before.width) + 16);
       const after = (await heading.boundingBox())!;
-      expect(Math.round(after.width), label).toBe(Math.round(before.width) + 16);
       const scrollAfter = await page.locator('.graph-columns').evaluate((header) => header.scrollLeft);
       // Columns are never pinned, so every other column keeps its left edge in the scrolled content.
       expect(Math.abs(after.x + scrollAfter - before.x - scrollBefore), label).toBeLessThanOrEqual(1);
@@ -4789,7 +4790,8 @@ test('resizes every graph column independently with flexible and narrow commit m
       expect(newWidths).toEqual(widths.map((width, index) => width + (index === columnIndex ? 16 : 0)));
       await separator.focus();
       await page.keyboard.press('ArrowLeft');
-      expect(Math.round((await heading.boundingBox())!.width)).toBe(Math.round(before.width) + 8);
+      await expect.poll(async () => Math.round((await heading.boundingBox())!.width), { message: label })
+        .toBe(Math.round(before.width) + 8);
     }
     const author = page.getByRole('separator', { name: labels[3], exact: true });
     await author.focus();
@@ -8942,6 +8944,13 @@ test('preserves a readable responsive diff while keeping commit context visible'
     await page.setViewportSize({ width, height: 768 });
     await page.goto('/?compare-commits&diff-viewer=split');
 
+    await expect.poll(async () => {
+      const [diff, panel] = await Promise.all([
+        page.getByLabel('Diff viewer').boundingBox(),
+        page.locator('.commit-panel').boundingBox(),
+      ]);
+      return diff && panel ? Math.abs(diff.x + diff.width - panel.x) : Infinity;
+    }).toBeLessThanOrEqual(1);
     const [sidebarBox, diffBox, commitPanelBox] = await Promise.all([
       page.locator('.sidebar').boundingBox(),
       page.getByLabel('Diff viewer').boundingBox(),

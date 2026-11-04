@@ -171,6 +171,11 @@ export interface RepositoryWorkspace {
   activeRepositoryPath: string | null;
 }
 
+interface MutationResult {
+  status: 'success' | 'error' | 'cancelled';
+  error: string | null;
+}
+
 interface ClosedRepository {
   path: string;
   preview: RepositorySnapshot | null;
@@ -213,7 +218,9 @@ export class GitKhronosService {
   });
   readonly repositoryAliases = signal<Record<string, string>>(this.readAliases());
   readonly recentlyClosedRepositoryPath = signal<string | null>(null);
-  readonly busy = signal(false);
+  private readonly operationBusy = signal(false);
+  private readonly branchMutationPending = signal(false);
+  readonly busy = computed(() => this.operationBusy() || this.branchMutationPending());
   private runningOperations = 0;
   readonly backgroundFetchBusy = signal(false);
   readonly backgroundFetchRepositoryId = signal<string | null>(null);
@@ -1127,6 +1134,7 @@ export class GitKhronosService {
   }
 
   private async replayHistory(undone: boolean): Promise<void> {
+    if (this.busy()) return;
     const repo = this.repository();
     const entry = repo ? this.operationHistory()[repo.id] : null;
     if (!repo || !entry || entry.undone === undone) return;
@@ -1140,9 +1148,9 @@ export class GitKhronosService {
           undone ? 'Discarded changes restored' : 'Changes discarded again') === 'success';
     } else if (entry.kind === 'checkout') {
       const branch = checkoutHistoryTarget(entry, direction)!;
-      succeeded = await this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
+      succeeded = await this.runBranchMutation(() => this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
         name: branch,
-      }) === 'success';
+      })) === 'success';
     } else if (entry.kind === 'rename-branch') {
       const rename = renameBranchHistoryTarget(entry, direction)!;
       succeeded = await this.mutate(
@@ -1163,37 +1171,47 @@ export class GitKhronosService {
     if (succeeded) this.setHistoryUndone(repo.id, entry, undone);
   }
 
-  async checkout(name: string): Promise<void> {
-    const repository = this.repository();
-    const beforeBranch = repository?.status.branch;
-    const outcome = await this.mutate('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name });
-    if (outcome === 'success') this.recordCheckout(repository?.id, beforeBranch);
-  }
-
-  async checkoutRemote(name: string): Promise<void> {
-    const repository = this.repository();
-    const beforeBranch = repository?.status.branch;
-    const outcome = await this.mutate(
-      'checkout_remote_branch',
-      `Creating a tracking branch for ${name}…`,
-      `Checked out ${name} as a local tracking branch`,
-      { name },
-    );
-    if (outcome === 'success') this.recordCheckout(repository?.id, beforeBranch);
-  }
-
-  async createBranch(name: string): Promise<void> {
-    if (!name.trim()) return;
-    await this.mutate('create_branch', `Creating ${name}…`, `Created ${name}`, { name: name.trim() });
-  }
-
-  async createBranchAt(name: string, oid: string, repositoryId?: string): Promise<void> {
-    if (repositoryId && !this.requireRecoveryRepository(repositoryId)) return;
-    if (!name.trim()) return;
-    await this.mutate('create_branch_at', `Creating ${name}…`, `Created ${name}`, {
-      name: name.trim(),
-      oid,
+  async checkout(name: string): Promise<MutationResult | null> {
+    return this.runBranchMutation(async () => {
+      const repository = this.repository();
+      const beforeBranch = repository?.status.branch;
+      const result = await this.mutateWithResult('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name });
+      if (result?.status === 'success') this.recordCheckout(repository?.id, beforeBranch);
+      return result;
     });
+  }
+
+  async checkoutRemote(name: string): Promise<MutationResult | null> {
+    return this.runBranchMutation(async () => {
+      const repository = this.repository();
+      const beforeBranch = repository?.status.branch;
+      const result = await this.mutateWithResult(
+        'checkout_remote_branch',
+        `Creating a tracking branch for ${name}…`,
+        `Checked out ${name} as a local tracking branch`,
+        { name },
+      );
+      if (result?.status === 'success') this.recordCheckout(repository?.id, beforeBranch);
+      return result;
+    });
+  }
+
+  async createBranch(name: string): Promise<MutationResult | null> {
+    if (!name.trim()) return null;
+    return this.runBranchMutation(() => this.mutateWithResult('create_branch', `Creating ${name}…`, `Created ${name}`, { name: name.trim() }));
+  }
+
+  async createBranchAt(name: string, oid: string, repositoryId?: string): Promise<MutationResult | null> {
+    if (repositoryId && !this.requireRecoveryRepository(repositoryId)) return null;
+    if (!name.trim()) return null;
+    return this.runBranchMutation(() => this.mutateWithResult('create_branch_at', `Creating ${name}…`, `Created ${name}`, { name: name.trim(), oid }));
+  }
+
+  /** Creates a branch at a commit without checking it out. */
+  async createBranchReference(name: string, oid: string, repositoryId?: string): Promise<MutationResult | null> {
+    if (repositoryId && !this.requireRecoveryRepository(repositoryId)) return null;
+    if (!name.trim()) return null;
+    return this.runBranchMutation(() => this.mutateWithResult('create_branch_reference', `Creating ${name}…`, `Created ${name}`, { name: name.trim(), oid }));
   }
 
   async createWorktree(
@@ -1373,8 +1391,8 @@ export class GitKhronosService {
     ) === 'success';
   }
 
-  async checkoutCommit(oid: string): Promise<void> {
-    await this.mutate('checkout_commit', 'Checking out commit…', 'Checked out commit', { oid });
+  async checkoutCommit(oid: string): Promise<MutationResult | null> {
+    return this.runBranchMutation(() => this.mutateWithResult('checkout_commit', 'Checking out commit…', 'Checked out commit', { oid }));
   }
 
   async renameBranch(oldName: string, newName: string): Promise<void> {
@@ -2654,15 +2672,35 @@ export class GitKhronosService {
     }
   }
 
+  private async runBranchMutation<T>(operation: () => Promise<T>): Promise<T | null> {
+    if (this.busy()) return null;
+    this.branchMutationPending.set(true);
+    try {
+      return await operation();
+    } finally {
+      this.branchMutationPending.set(false);
+    }
+  }
+
   private async mutate<K extends SnapshotCommand>(
     command: K,
     pending: string,
     done: string | ((snapshot: RepositorySnapshot) => string),
     ...options: MutationOptions<K>
   ): Promise<'success' | 'error' | 'cancelled' | undefined> {
+    return (await this.mutateWithResult(command, pending, done, ...options))?.status;
+  }
+
+  /** Captures this mutation's failure before refreshes or later actions replace the shared error. */
+  private async mutateWithResult<K extends SnapshotCommand>(
+    command: K,
+    pending: string,
+    done: string | ((snapshot: RepositorySnapshot) => string),
+    ...options: MutationOptions<K>
+  ): Promise<MutationResult | null> {
     const [extra = {}, preserveConflictOnFailure = false] = options;
     const repo = this.repository();
-    if (!repo) return;
+    if (!repo) return null;
     const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
     this.bumpStatusGeneration(repo.id);
     const generation = this.statusGeneration(repo.id);
@@ -2688,6 +2726,7 @@ export class GitKhronosService {
       this.clearMutationInspection(repo.id, inspectionRequest);
       report(typeof done === 'function' ? done(snapshot) : done);
     }, repo.id, operationId);
+    const failure = result === 'success' ? null : this.error();
     if (result === 'error' && this.repositories().some((repository) => repository.id === repo.id)) {
       try {
         await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
@@ -2699,7 +2738,7 @@ export class GitKhronosService {
     if (this.repositories().some((repository) => repository.id === repo.id)) {
       void this.refreshStatusInBackground(repo.id, true);
     }
-    return result;
+    return { status: result, error: failure };
   }
 
   /**
@@ -2890,7 +2929,7 @@ export class GitKhronosService {
 
   private updateRunningOperations(delta: 1 | -1): void {
     this.runningOperations += delta;
-    this.busy.set(this.runningOperations > 0);
+    this.operationBusy.set(this.runningOperations > 0);
   }
 
   private finishActivity(

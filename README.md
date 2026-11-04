@@ -250,6 +250,30 @@ A failed or incomplete preflight prevents maintenance from starting; failures
 during metadata updates can have partial effects, which should be inspected
 before an explicit retry. Local feedback and review do not transfer across
 repository switches.
+Create a branch from the toolbar or the Local section's add button. Both entry
+points reveal and focus the same form; a blank name keeps the form open, failed
+creation retains the draft for retry, and Escape cancels it. Creation switches
+to the new branch from the current HEAD. The branch picker preserves search-field
+editing keys. The picker, branch options, and context-menu checkout return focus
+unless it has moved elsewhere; branch mutations are disabled while another
+repository operation is running. Creating a branch at a selected commit or
+reference from its context menu also retains a failed draft for retry.
+Recovery history creates a branch at the chosen commit without switching the
+current branch or changing working files, and keeps failed names available to
+correct and retry.
+
+Resize the sidebar and inspector with their full-height separators, or focus a
+separator and use Left/Right (Shift for larger steps), Home, or End. Panel widths
+leave room for history and adapt to the window; double-click restores automatic
+sizing. Reference sections, working-file lists, and the terminal also have
+resizable separators. Cancelling a drag or leaving the window releases resizing
+and restores normal text selection.
+
+Right-click repository tabs, references, commits, worktrees, submodules, or files
+for their available actions. Menus stay inside the viewport, replace any previous
+action menu, and support keyboard navigation. Escape dismisses a menu and returns
+focus to its target; pressing outside dismisses it, including on disabled controls.
+Editing keys remain available in menu text fields.
 
 Resize graph columns from the right edge of each heading, or focus its separator
 and use Left/Right (Shift for larger steps), Home, or End. Drag a heading onto

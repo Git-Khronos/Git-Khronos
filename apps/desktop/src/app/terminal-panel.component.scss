@@ -3,7 +3,7 @@
 .terminal-panel.inactive { display: none; }
 .terminal-panel:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .terminal-panel.minimized { min-height: 32px; grid-template-rows: 32px; }
-.terminal-resizer { position: absolute; z-index: 3; top: -6px; right: 0; left: 0; height: 12px; cursor: row-resize; }
+.terminal-resizer { position: absolute; z-index: 3; top: -6px; right: 0; left: 0; height: 12px; cursor: row-resize; touch-action: none; }
 .terminal-resizer::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; transform: translateY(-50%); background: transparent; }
 .terminal-resizer:hover { background: var(--splitter-hover); }
 .terminal-resizer:active { background: var(--splitter-active); }
