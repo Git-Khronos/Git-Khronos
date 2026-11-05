@@ -290,8 +290,9 @@ blob, proves that normal Git reads hide the pointer, and requires cleanup to
 retain its cached content anyway. The packaged scenario also verifies that the
 replacement ref, HEAD, index, and all cached bytes remain unchanged.
 
-`native-smoke` checks the production CSP, graph layout, selection, lazy dialog
-styles, saved-tab restoration, native snapshot transport, workspace-menu outside
+`native-smoke` checks the production CSP, terminal font and ANSI/true-color
+rendering, graph layout, selection, lazy dialog styles, saved-tab restoration,
+native snapshot transport, workspace-menu outside
 dismissal before mouse-up (without consuming the toolbar action), and asynchronous
 untracked-file discovery and removal in the working-tree UI, including changes
 made alongside an external branch checkout. `native-full`

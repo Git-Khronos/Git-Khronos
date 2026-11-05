@@ -522,6 +522,56 @@ def menu_tab_focus(driver, report):
     report["scenarios"].append("native-menu-tab-dismissal-preserves-sequential-focus")
 
 
+def terminal_csp_rendering(driver, report):
+    driver.click('[title="Open repository terminal (Alt+T or Ctrl+`)"]')
+    driver.wait("return !!document.querySelector('gc-terminal-panel .xterm-screen')")
+    session_id = driver.script("return document.querySelector('gc-terminal-panel .terminal-host').dataset.terminalId")
+    command = (r"printf '\033[31mCSP_ANSI\033[0m \033[38;2;52;178;128mCSP_RGB\033[0m "
+               r"\033[48;2;40;60;80mCSP_BG\033[0m\n'" + "\n")
+    driver.invoke("write_terminal", sessionId=session_id, data=list(command.encode()))
+    probe = driver.wait("""return (() => {
+      const screen = document.querySelector('gc-terminal-panel .xterm-screen');
+      const rows = screen?.querySelector('.xterm-rows');
+      const spans = [...(rows?.querySelectorAll('span') || [])];
+      const ansi = spans.find(span => span.classList.contains('xterm-fg-1') && span.textContent === 'CSP_ANSI');
+      const rgb = spans.find(span => span.textContent === 'CSP_RGB');
+      const background = spans.find(span => span.textContent === 'CSP_BG');
+      if (!screen || !rows || !ansi || !rgb || !background) return null;
+      const styles = [...screen.querySelectorAll('style')];
+      return {
+        font: getComputedStyle(rows).fontFamily,
+        fontSize: getComputedStyle(rows).fontSize,
+        foreground: getComputedStyle(rows).color,
+        ansi: getComputedStyle(ansi).color,
+        rgb: getComputedStyle(rgb).color,
+        background: getComputedStyle(background).backgroundColor,
+        width: screen.getBoundingClientRect().width,
+        height: screen.getBoundingClientRect().height,
+        styles: styles.length,
+        protectedStyles: styles.every(style => !!style.nonce && !!style.sheet)
+      };
+    })()""")
+    assert probe["fontSize"] == "13px" and "monospace" in probe["font"].lower(), probe
+    assert probe["foreground"] == "rgb(216, 215, 226)" and probe["ansi"] == "rgb(239, 113, 134)", probe
+    assert probe["rgb"] == "rgb(52, 178, 128)" and probe["background"] == "rgb(40, 60, 80)", probe
+    assert probe["width"] > 100 and probe["height"] > 0 and probe["styles"] >= 2 and probe["protectedStyles"], probe
+    assert not driver.script(RENDER_PROBE)["blocked"], "Terminal styles blocked by CSP"
+    unnonced_loaded = driver.script("""
+      const style = document.createElement('style');
+      style.textContent = ':root { --untrusted-style-probe: allowed }';
+      document.head.append(style);
+      const loaded = !!style.sheet;
+      style.remove();
+      return loaded;
+    """)
+    assert not unnonced_loaded, "Unnonced style element was allowed by CSP"
+    driver.screenshot(Path(report["artifactsDirectory"]) / "terminal-csp.png")
+    driver.click('gc-terminal-panel [title="Close terminal tab"]')
+    driver.wait("return !document.querySelector('gc-terminal-panel')")
+    report["terminalRender"] = probe
+    report["scenarios"].append("native-terminal-csp-font-and-colors")
+
+
 def smoke(driver, fixtures, report):
     repository = fixtures.repository()
     repo_id = open_ui(driver, repository)
@@ -539,6 +589,7 @@ def smoke(driver, fixtures, report):
     assert snapshot["path"] == str(repository) and len(snapshot["commits"]) == 12
     report["render"] = probe
     report["scenarios"].extend(["production-csp", "graph-layout", "commit-selection", "lazy-preferences", "restart-tab-restore", "native-snapshot"])
+    terminal_csp_rendering(driver, report)
     driver.click('.workspace-toggle')
     driver.wait("return !!document.querySelector('.workspace-menu')")
     driver.pointer_down('[aria-label="Hide Left Panel"]')

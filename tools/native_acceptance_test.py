@@ -15,7 +15,67 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
-from native_acceptance import Driver, Fixtures, main, run, start_private_dbus, stop_owned_process_group
+from native_acceptance import (
+    Driver, Fixtures, main, run, start_private_dbus, stop_owned_process_group,
+    terminal_csp_rendering,
+)
+
+
+class TerminalCspTests(unittest.TestCase):
+    def setUp(self):
+        self.probe = {
+            "font": "Consolas, monospace", "fontSize": "13px",
+            "foreground": "rgb(216, 215, 226)", "ansi": "rgb(239, 113, 134)",
+            "rgb": "rgb(52, 178, 128)", "background": "rgb(40, 60, 80)",
+            "width": 800, "height": 200, "styles": 2, "protectedStyles": True,
+        }
+
+    def driver(self, probe, blocked=0, unnonced_loaded=False):
+        driver = MagicMock()
+        driver.wait.side_effect = [True, probe, True]
+        driver.script.side_effect = ["fixture-session", {"blocked": blocked}, unnonced_loaded]
+        return driver
+
+    def test_terminal_csp_scenario_uses_one_owned_shell_and_records_success(self):
+        driver = self.driver(self.probe)
+        report = {"scenarios": [], "artifactsDirectory": "/native-fixture"}
+        terminal_csp_rendering(driver, report)
+        driver.invoke.assert_called_once()
+        self.assertEqual(driver.invoke.call_args.args, ("write_terminal",))
+        self.assertEqual(driver.invoke.call_args.kwargs["sessionId"], "fixture-session")
+        command = bytes(driver.invoke.call_args.kwargs["data"])
+        self.assertIn(b"CSP_ANSI", command)
+        self.assertIn(b"CSP_RGB", command)
+        self.assertIn(b"CSP_BG", command)
+        self.assertEqual(driver.click.call_args_list, [
+            call('[title="Open repository terminal (Alt+T or Ctrl+`)"]'),
+            call('gc-terminal-panel [title="Close terminal tab"]'),
+        ])
+        driver.screenshot.assert_called_once_with(Path("/native-fixture/terminal-csp.png"))
+        self.assertEqual(report["terminalRender"], self.probe)
+        self.assertEqual(report["scenarios"], ["native-terminal-csp-font-and-colors"])
+
+    def test_terminal_csp_scenario_rejects_missing_visuals_or_weakened_style_policy(self):
+        invalid = (
+            {"font": "sans-serif"}, {"fontSize": "16px"},
+            {"foreground": "rgb(0, 0, 0)"}, {"ansi": "rgb(0, 0, 0)"},
+            {"rgb": "rgb(0, 0, 0)"}, {"background": "rgb(0, 0, 0)"},
+            {"width": 0}, {"height": 0}, {"styles": 1}, {"protectedStyles": False},
+        )
+        for change in invalid:
+            with self.subTest(change=change):
+                driver = self.driver(self.probe | change)
+                report = {"scenarios": []}
+                with self.assertRaises(AssertionError):
+                    terminal_csp_rendering(driver, report)
+                self.assertEqual(report["scenarios"], [])
+        for blocked, unnonced_loaded in ((1, False), (0, True)):
+            with self.subTest(blocked=blocked, unnonced_loaded=unnonced_loaded):
+                driver = self.driver(self.probe, blocked, unnonced_loaded)
+                report = {"scenarios": []}
+                with self.assertRaises(AssertionError):
+                    terminal_csp_rendering(driver, report)
+                self.assertEqual(report["scenarios"], [])
 
 
 class FixtureTests(unittest.TestCase):
