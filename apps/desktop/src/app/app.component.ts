@@ -2579,11 +2579,13 @@ export class AppComponent implements OnInit, OnDestroy {
     const pendingParentConnections = new Map<string, {
       fromOffset: number; color: number; nodeConnection?: GraphNodeConnection;
     }[]>();
+    // Parents whose lane opened only for an adjacent side link have no lane above them.
+    const sideLinkedParents = new Set<string>();
 
     for (let commitIndex = rows.length; commitIndex < commits.length; commitIndex += 1) {
       const commit = commits[commitIndex];
       let lane = active.findIndex((candidate) => candidate?.oid === commit.oid);
-      const hasIncomingConnection = lane >= 0;
+      const hasIncomingConnection = lane >= 0 && !sideLinkedParents.delete(commit.oid);
       if (lane < 0) {
         lane = active.indexOf(null);
         if (lane < 0) lane = Math.min(active.length, laneCapacity - 1);
@@ -2669,6 +2671,7 @@ export class AppComponent implements OnInit, OnDestroy {
           const parentOffset = laneOffset(pinnedHistory.has(parent) ? 0 : target);
           const connection = fromOffset !== parentOffset ? {
             sourceOffset: fromOffset, parentOffset, nodeRadius: compact ? 10 : 12,
+            sharedColumn: Boolean(after[nodeLane]),
           } : undefined;
           const boundaryOffset = connection ? graphNodeConnectionStemOffset(connection) : fromOffset;
           segments.push({
@@ -2679,6 +2682,7 @@ export class AppComponent implements OnInit, OnDestroy {
             color,
             nodeConnection: connection ? { ...connection, part: 'source' } : undefined,
           });
+          if (connection && !before.some((candidate) => candidate?.oid === parent)) sideLinkedParents.add(parent);
           const connections = pendingParentConnections.get(parent) ?? [];
           connections.push({ fromOffset: boundaryOffset, color,
             nodeConnection: connection ? { ...connection, part: 'parent' } : undefined });

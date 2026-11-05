@@ -440,6 +440,78 @@ for (const compact of [false, true]) {
     });
   }
 
+  test(`keeps a merge's adjacent parent link beside its continuing lane (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    await page.evaluate((compact) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = app.git.repository();
+      const template = repo.commits[0];
+      const topology: Array<[string, string[]]> = [
+        ['merge', ['base', 'feature']], ['feature', ['base']], ['base', []],
+      ];
+      const commits = topology.map(([oid, parents]) => ({ ...template, oid, parents,
+        subject: oid, decorations: [] }));
+      app.hiddenBranches.set([]);
+      app.soloBranches.set([]);
+      app.smartBranchVisibility.set(false);
+      app.pinnedBranch.set(null);
+      app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id ? {
+        ...item, commits, worktrees: [], stashes: [], branches: [],
+      } : item));
+      app.setCompactGraphColumn(compact);
+      app.graphColumnWidth.set(240);
+    }, compact);
+    await expect(page.locator('[data-commit-oid="feature"]')).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const rows = app.graphRows();
+      return ['merge', 'feature'].map((oid) => {
+        const row = rows.find((candidate: any) => candidate.commit.oid === oid);
+        const element = document.querySelector(`[data-commit-oid="${oid}"]`)!;
+        const paths = [...element.querySelectorAll<SVGPathElement>('.graph-edges path')];
+        const node = element.querySelector('.author-node')!.getBoundingClientRect();
+        const lines = row.segments.map((segment: any, index: number) => {
+          const path = paths[index];
+          const matrix = path.getScreenCTM()!;
+          const at = (length: number) => {
+            const point = new DOMPoint(path.getPointAtLength(length).x, path.getPointAtLength(length).y)
+              .matrixTransform(matrix);
+            return { x: point.x, y: point.y };
+          };
+          return { part: segment.nodeConnection?.part, start: at(0), end: at(path.getTotalLength()),
+            strokeWidth: parseFloat(getComputedStyle(path).strokeWidth) };
+        });
+        return { node: { centerX: node.x + node.width / 2, centerY: node.y + node.height / 2,
+          bottom: node.bottom }, lines };
+      });
+    });
+    const [merge, feature] = geometry;
+    const lane = merge.lines.find(line => !line.part)!;
+    const source = merge.lines.find(line => line.part === 'source')!;
+    const continuing = feature.lines.find(line => !line.part
+      && Math.abs(line.start.x - merge.node.centerX) < 0.1 && line.end.y > feature.node.bottom)!;
+    expect(continuing).toBeTruthy();
+    // The side link is the feature's only incoming edge; no lane stub above it.
+    expect(feature.lines).toHaveLength(3);
+    const parent = feature.lines.find(line => line.part === 'parent')!;
+    // The first-parent lane stays centered while the second-parent stem runs beside it.
+    expect(Math.abs(lane.end.x - merge.node.centerX)).toBeLessThan(0.1);
+    expect(Math.abs(continuing.start.x - merge.node.centerX)).toBeLessThan(0.1);
+    const gap = source.start.x - merge.node.centerX;
+    expect(Math.abs(gap)).toBeGreaterThanOrEqual(source.strokeWidth + 1);
+    expect(Math.sign(gap)).toBe(Math.sign(feature.node.centerX - merge.node.centerX));
+    expect(source.start.y).toBeGreaterThan(merge.node.centerY);
+    expect(source.start.y).toBeLessThanOrEqual(merge.node.bottom);
+    expect(Math.abs(source.end.x - source.start.x)).toBeLessThan(0.1);
+    expect(Math.abs(parent.start.x - source.end.x)).toBeLessThan(0.1);
+    await test.info().attach('Merge stem beside continuing lane', {
+      body: await page.locator('.virtual-commit-rows').screenshot({
+        path: test.info().outputPath(`merge-stem-beside-lane-${compact ? 'compact' : 'expanded'}.png`),
+      }), contentType: 'image/png',
+    });
+  });
+
   test(`aligns each avatar connection with its assigned side position (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/?unmerged-branch-preview');
     await expect(page.locator('.author-node').first()).toBeVisible();

@@ -246,6 +246,25 @@ describe('graph column layout', () => {
     })).toBe('M 56 0 V 14 A 6 6 0 0 1 50 20 H 28');
   });
 
+  it('runs a parent link beside a lane that continues through its source column', () => {
+    for (const nodeRadius of [10, 12]) {
+      for (const [sourceOffset, parentOffset] of [[16, 56], [56, 16]]) {
+        const connection = { sourceOffset, parentOffset, nodeRadius, sharedColumn: true };
+        const direction = Math.sign(parentOffset - sourceOffset);
+        const stem = sourceOffset + direction * 4;
+        const source = inspectRoundedPath(buildGraphSegmentPath({ x1: sourceOffset, y1: 20, x2: stem, y2: 40,
+          nodeConnection: { ...connection, part: 'source' } }));
+        const parent = inspectRoundedPath(buildGraphSegmentPath({ x1: stem, y1: 0, x2: parentOffset, y2: 20,
+          nodeConnection: { ...connection, part: 'parent' } }));
+        expect(source.start[0]).toBe(stem);
+        expect((source.start[0] - sourceOffset) ** 2 + (source.start[1] - 20) ** 2).toBeCloseTo(nodeRadius ** 2, 8);
+        expect(source.end).toEqual([stem, 40]);
+        expect(parent.start).toEqual([stem, 0]);
+        expect(parent.end).toEqual([parentOffset - direction * nodeRadius, 20]);
+      }
+    }
+  });
+
   it('routes continuing lane changes outside an unrelated avatar', () => {
     expect(buildGraphSegmentPath({ x1: 44, y1: 0, x2: 16, y2: 40,
       bypassNode: { offset: 16, radius: 12 } }))

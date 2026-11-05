@@ -9,6 +9,9 @@ export interface GraphNodeConnection {
   readonly parentOffset: number;
   readonly nodeRadius: number;
   readonly part: 'source' | 'parent';
+  // Another lane continues straight through the source column, so the stem
+  // runs beside it instead of on top of it.
+  readonly sharedColumn?: boolean;
 }
 
 export interface GraphSegmentGeometry {
@@ -59,10 +62,15 @@ export function graphColumnLayout(compact: boolean): GraphColumnLayout {
 
 type GraphPoint = readonly [number, number];
 
+// Matches the spacing between stacked horizontal tracks.
+const GRAPH_STACKED_EDGE_SPACING = 4;
+
 export function graphNodeConnectionStemOffset(
-  connection: Pick<GraphNodeConnection, 'sourceOffset' | 'parentOffset' | 'nodeRadius'>,
+  connection: Pick<GraphNodeConnection, 'sourceOffset' | 'parentOffset' | 'nodeRadius' | 'sharedColumn'>,
 ): number {
-  return connection.sourceOffset;
+  if (!connection.sharedColumn) return connection.sourceOffset;
+  return connection.sourceOffset
+    + Math.sign(connection.parentOffset - connection.sourceOffset) * GRAPH_STACKED_EDGE_SPACING;
 }
 
 // Round only the corners of an orthogonal route, never its straight stems.
@@ -122,7 +130,7 @@ function graphHorizontalSpan(segment: GraphSegmentGeometry, index: number): Grap
   if (segment.nodeConnection) {
     const { sourceOffset, parentOffset, nodeRadius: radius, part } = segment.nodeConnection;
     if (part === 'source' || sourceOffset === parentOffset) return null;
-    start = sourceOffset;
+    start = graphNodeConnectionStemOffset(segment.nodeConnection);
     end = parentOffset - Math.sign(parentOffset - sourceOffset) * radius;
     y = 20;
     kind = 'incoming';
@@ -269,7 +277,8 @@ export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
     const trackY = segment.horizontalTrack?.y ?? 20;
     const parentSide = graphNodeSideOffset(parentOffset, 20, nodeRadius, -direction, trackY);
     return part === 'source'
-      ? roundedGraphRoute([[sourceSide, 20 + nodeRadius], [sourceSide, 40]])
+      ? roundedGraphRoute([[sourceSide, 20 + Math.sqrt(Math.max(0,
+        nodeRadius * nodeRadius - (sourceSide - sourceOffset) ** 2))], [sourceSide, 40]])
       : roundedGraphRoute([[sourceSide, 0], [sourceSide, trackY], [parentSide, trackY]]);
   }
   if (segment.x1 === segment.x2) {
