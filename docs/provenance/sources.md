@@ -738,13 +738,19 @@ Sources:
 
 - [Angular render callbacks](https://angular.dev/api/core/afterNextRender)
 - [xterm.js terminal lifecycle API](https://xtermjs.org/docs/api/terminal/classes/terminal/)
+- [Tauri content security policy](https://v2.tauri.app/security/csp/)
+- [CSP style-src-attr directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/style-src-attr)
 
 Used for independently ordering screen creation after the Angular host render
 and disposing acquired terminal resources when setup or mounting fails. Native
 session cleanup remains part of the startup transaction. A failed native close
 retains its session ID for an explicit cleanup retry before another startup is
 allowed. Renderer disposal failures do not skip native cleanup or other resource
-disposals. No upstream implementation code was copied or adapted.
+disposals. In packaged builds, terminal-generated style elements receive the
+Tauri style nonce before attachment. The policy permits inline style attributes
+throughout the app for terminal true-color rendering while still requiring
+nonces for inline style elements; it does not relax the script policy. No
+upstream implementation code was copied or adapted.
 
 ## Authentication interface delivery
 

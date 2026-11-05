@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  CSP_NONCE,
   ElementRef,
   HostListener,
   Injector,
@@ -162,6 +163,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
   private readonly closingTabs = new Set<string>();
   private readonly injector = inject(Injector);
+  private readonly styleNonce = inject(CSP_NONCE, { optional: true });
   private finishPendingRender?: () => void;
 
   constructor() {
@@ -674,7 +676,19 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     const host = this.terminalBody?.nativeElement.querySelector<HTMLElement>(`[data-terminal-id="${tab.id}"]`);
     if (!host) throw new Error('The terminal screen could not be created.');
     if (host.childElementCount) return;
-    tab.terminal.open(host);
+    if (this.styleNonce) {
+      // xterm creates its theme and sizing styles without a CSP nonce. Attach
+      // them only after assigning Angular's nonce, then remeasure in the live DOM.
+      const stagingHost = host.ownerDocument.createElement('div');
+      tab.terminal.open(stagingHost);
+      const terminalElement = tab.terminal.element;
+      if (!terminalElement) throw new Error('The terminal screen could not be created.');
+      for (const style of terminalElement.querySelectorAll('style')) style.nonce = this.styleNonce;
+      host.appendChild(terminalElement);
+      tab.terminal.resize(tab.terminal.cols, tab.terminal.rows);
+    } else {
+      tab.terminal.open(host);
+    }
     for (const bytes of this.pendingOutput.get(tab.id) ?? []) tab.terminal.write(bytes);
     this.pendingOutput.delete(tab.id);
     if (current.ended) tab.terminal.write(TERMINAL_EXIT_MESSAGE);

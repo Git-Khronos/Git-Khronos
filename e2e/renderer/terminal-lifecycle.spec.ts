@@ -1,4 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { Terminal } from '@xterm/xterm';
+import { readFileSync } from 'node:fs';
+
+interface TerminalPanelHarness {
+  tabs(): Array<{ id: string; terminal: Terminal }>;
+}
+
+type TerminalTestWindow = typeof window & {
+  ng: { getComponent(element: Element): unknown };
+  terminalStyleViolations: Array<{ directive: string; sample: string; target: string | null }>;
+  terminalWrites: Array<{ id: string; data: string }>;
+  terminalResizes: Array<{ id: string; rows: number; cols: number }>;
+  terminalCloseRequests: string[];
+  failedTerminalDisposeCalls: number;
+};
+
+const TERMINAL_TEST_NONCE = 'dGVybWluYWwtdGVzdA==';
 
 async function pendingTerminalInput(page: Page): Promise<void> {
   await page.goto('/');
@@ -12,6 +29,7 @@ async function pendingTerminalInput(page: Page): Promise<void> {
     state.terminalWrites = [];
     state.terminalWriteReplies = [];
     state.terminalCloseRequests = [];
+    state.terminalResizes = [];
     state.inputTerminal = (id: string, data: string) => {
       const panel = state.ng.getComponent(document.querySelector('gc-terminal-panel'));
       panel.tabs().find((tab: any) => tab.id === id).terminal.input(data, true);
@@ -23,6 +41,10 @@ async function pendingTerminalInput(page: Page): Promise<void> {
         if (command === 'write_terminal') {
           state.terminalWrites.push({ id: args.sessionId, data: new TextDecoder().decode(new Uint8Array(args.data)) });
           return new Promise((resolve, reject) => state.terminalWriteReplies.push({ resolve, reject }));
+        }
+        if (command === 'resize_terminal') {
+          state.terminalResizes.push({ id: args.sessionId, rows: args.rows, cols: args.cols });
+          return Promise.resolve(null);
         }
         if (command === 'close_terminal') {
           state.terminalCloseRequests.push(args.sessionId);
@@ -42,6 +64,150 @@ async function pendingTerminalInput(page: Page): Promise<void> {
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
   await expect(page.locator('gc-terminal-panel').getByRole('tab', { name: 'bash 1', exact: true })).toBeVisible();
 }
+
+async function useNoncedDesktopStyles(page: Page): Promise<void> {
+  const config: { app: { security: { csp: string } } } =
+    JSON.parse(readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+  const directives: string[] = config.app.security.csp.split(';').map((directive: string) => directive.trim());
+  const styleSource = directives.find((directive) => directive.startsWith('style-src '));
+  const styleAttributes = directives.find((directive) => directive.startsWith('style-src-attr '));
+  if (!styleSource || !styleAttributes) throw new Error('Desktop style CSP directives are missing');
+  await page.route('**/', async (route) => {
+    const response = await route.fetch();
+    const original = await response.text();
+    if (!original.includes('<head>')) throw new Error('Renderer head not found');
+    const html = original.replace('<head>', `<head><style nonce="${TERMINAL_TEST_NONCE}"></style>`);
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        'content-security-policy': `${styleSource} 'nonce-${TERMINAL_TEST_NONCE}' 'report-sample'; ${styleAttributes}`,
+      },
+      body: html,
+    });
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'OffscreenCanvas', { value: undefined, configurable: true });
+    const state = window as TerminalTestWindow;
+    state.terminalStyleViolations = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      if (event.violatedDirective.startsWith('style-src')) {
+        state.terminalStyleViolations.push({
+          directive: event.violatedDirective,
+          sample: event.sample,
+          target: event.target instanceof Element ? event.target.outerHTML.slice(0, 150) : null,
+        });
+      }
+    });
+  });
+}
+
+test('renders terminal fonts and ANSI colors under a nonced style policy', async ({ page }) => {
+  await useNoncedDesktopStyles(page);
+  await pendingTerminalInput(page);
+  const panel = page.locator('gc-terminal-panel');
+  await panel.evaluate((element) => new Promise<void>((resolve) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    const terminal = (component as TerminalPanelHarness).tabs()[0].terminal;
+    terminal.write('normal \x1b[31mred\x1b[0m \x1b[38;2;52;178;128mtruecolor\x1b[0m \x1b[48;2;40;60;80mbackground\x1b[0m\r\n', resolve);
+  }));
+  const screen = panel.locator('[data-terminal-id="input-1"] .xterm-screen');
+  const rows = screen.locator('.xterm-rows');
+  await expect(rows).toHaveCSS('font-size', '13px');
+  await expect(rows).toHaveCSS('white-space', 'pre');
+  await expect(rows).toHaveCSS('color', 'rgb(216, 215, 226)');
+  expect(await rows.evaluate((element) => getComputedStyle(element).fontFamily)).toContain('monospace');
+  await expect(screen.locator('.xterm-fg-1')).toHaveCSS('color', 'rgb(239, 113, 134)');
+  await expect(screen.getByText('truecolor', { exact: true })).toHaveCSS('color', 'rgb(52, 178, 128)');
+  await expect(screen.getByText('background', { exact: true })).toHaveCSS('background-color', 'rgb(40, 60, 80)');
+  await expect.poll(() => screen.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(100);
+  const originalColumns = await panel.evaluate((element) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    return (component as TerminalPanelHarness).tabs()[0].terminal.cols;
+  });
+  expect(originalColumns).toBeGreaterThan(80);
+
+  await screen.locator('.xterm-helper-textarea').focus();
+  await panel.evaluate((element) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    const terminal = (component as TerminalPanelHarness).tabs()[0].terminal;
+    terminal.options.cursorBlink = false;
+    terminal.select(0, 0, 6);
+  });
+  await expect(screen.locator('.xterm-cursor')).toHaveCSS('background-color', 'rgb(99, 219, 181)');
+  const selection = screen.locator('.xterm-selection div').first();
+  await expect(selection).toBeVisible();
+  expect(await selection.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  await page.keyboard.insertText('git status');
+  await expect.poll(() => page.evaluate(() => (window as TerminalTestWindow).terminalWrites))
+    .toEqual([{ id: 'input-1', data: 'git status' }]);
+
+  const originalRows = await panel.evaluate((element) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    return (component as TerminalPanelHarness).tabs()[0].terminal.rows;
+  });
+  await panel.getByRole('separator', { name: 'Resize terminal' }).press('End');
+  await expect.poll(() => panel.evaluate((element) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    return (component as TerminalPanelHarness).tabs()[0].terminal.rows;
+  })).toBeGreaterThan(originalRows);
+  await expect.poll(() => page.evaluate((minimumRows) =>
+    (window as TerminalTestWindow).terminalResizes.some((size) => size.id === 'input-1' && size.rows > minimumRows),
+    originalRows)).toBe(true);
+
+  await page.evaluate(() => {
+    const root = document.querySelector('gc-root');
+    if (!root) throw new Error('Application root not found');
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(root);
+    const app = component as {
+      setTerminalPreference(name: string, value: string | number): void;
+      setAppTheme(theme: string): void;
+    };
+    app.setTerminalPreference('font-size', 16);
+    app.setTerminalPreference('font-family', 'Consolas, monospace');
+    app.setAppTheme('midnight');
+  });
+  await expect(rows).toHaveCSS('font-size', '16px');
+  await expect(rows).toHaveCSS('font-family', 'Consolas, monospace');
+  await expect(rows).toHaveCSS('color', 'rgb(220, 230, 242)');
+  await expect(screen.locator('.xterm-fg-1')).toHaveCSS('color', 'rgb(255, 120, 144)');
+  await expect.poll(() => panel.evaluate((element) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    return (component as TerminalPanelHarness).tabs()[0].terminal.cols;
+  })).toBeLessThan(originalColumns);
+
+  await panel.getByRole('button', { name: 'New terminal tab' }).click();
+  await expect(panel.getByRole('tab', { name: 'bash 2', exact: true })).toHaveAttribute('aria-selected', 'true');
+  const secondScreen = panel.locator('[data-terminal-id="input-2"] .xterm-screen');
+  await panel.evaluate((element) => new Promise<void>((resolve) => {
+    const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
+    (component as TerminalPanelHarness).tabs()[1].terminal.write('\x1b[34mblue\x1b[0m', resolve);
+  }));
+  await expect(secondScreen.locator('.xterm-rows')).toHaveCSS('font-size', '16px');
+  await expect(secondScreen.locator('.xterm-fg-4')).toHaveCSS('color', 'rgb(134, 160, 255)');
+  await panel.getByRole('tab', { name: 'bash 1', exact: true }).click();
+  await expect(rows).toBeVisible();
+  await expect(rows).toHaveCSS('font-size', '16px');
+
+  const styles = await panel.locator('.xterm-screen style').evaluateAll((elements) =>
+    elements.map((element) => {
+      const style = element as HTMLStyleElement;
+      return { nonce: style.nonce, loaded: !!style.sheet };
+    }));
+  expect(styles.length).toBeGreaterThanOrEqual(4);
+  expect(styles.every(({ nonce, loaded }) => nonce === TERMINAL_TEST_NONCE && loaded)).toBe(true);
+  expect(await page.evaluate(() => (window as TerminalTestWindow).terminalStyleViolations)).toEqual([]);
+
+  const unnoncedStyleLoaded = await page.evaluate(() => {
+    const style = document.createElement('style');
+    style.textContent = ':root { --untrusted-style-probe: allowed }';
+    document.head.append(style);
+    const loaded = !!style.sheet;
+    style.remove();
+    return loaded;
+  });
+  expect(unnoncedStyleLoaded).toBe(false);
+});
 
 async function failNextTerminalStartup(page: Page, stage: 'loadAddon' | 'open', disposeThrows = false): Promise<void> {
   await page.evaluate(({ stage, disposeThrows }) => {
@@ -63,6 +229,24 @@ async function failNextTerminalStartup(page: Page, stage: 'loadAddon' | 'open', 
     };
   }, { stage, disposeThrows });
 }
+
+test('cleans up a detached terminal after a nonced startup failure', async ({ page }) => {
+  await useNoncedDesktopStyles(page);
+  await pendingTerminalInput(page);
+  const panel = page.locator('gc-terminal-panel');
+  await failNextTerminalStartup(page, 'open');
+  await panel.getByRole('button', { name: 'New terminal tab' }).click();
+  await expect(panel.getByRole('status')).toContainText('Terminal open failed');
+  await expect.poll(() => page.evaluate(() => (window as TerminalTestWindow).terminalCloseRequests)).toEqual(['input-2']);
+  await expect.poll(() => page.evaluate(() => (window as TerminalTestWindow).failedTerminalDisposeCalls)).toBe(1);
+  await panel.getByRole('button', { name: 'Try again', exact: true }).click();
+  const screen = panel.locator('[data-terminal-id="input-3"] .xterm-screen');
+  await expect(screen.locator('.xterm-rows')).toHaveCSS('font-size', '13px');
+  expect(await screen.locator('style').evaluateAll((elements, nonce) =>
+    elements.length >= 2 && elements.every((element) => (element as HTMLStyleElement).nonce === nonce),
+    TERMINAL_TEST_NONCE)).toBe(true);
+  expect(await page.evaluate(() => (window as TerminalTestWindow).terminalStyleViolations)).toEqual([]);
+});
 
 for (const stage of ['loadAddon', 'open'] as const) {
   test(`cleans up a native session after terminal ${stage} fails and permits an explicit retry`, async ({ page }) => {
