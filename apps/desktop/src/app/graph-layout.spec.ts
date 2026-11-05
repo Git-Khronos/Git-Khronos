@@ -35,7 +35,7 @@ function inspectRoundedPath(path: string) {
       expect(command, path).toBe('A');
       const [rx, ry, rotation, large, sweep, endX, endY] = tokens.splice(0, 7).map(Number);
       expect(rx).toBeGreaterThan(0);
-      expect(rx).toBeLessThanOrEqual(6);
+      expect(rx).toBeLessThanOrEqual(10);
       expect([ry, rotation, large]).toEqual([rx, 0, 0]);
       expect([0, 1]).toContain(sweep);
       expect(Math.abs(endX - x), path).toBeCloseTo(rx, 8);
@@ -243,7 +243,7 @@ describe('graph column layout', () => {
     expect(buildGraphSegmentPath({
       x1: 56, y1: 0, x2: 16, y2: 20,
       nodeConnection: { ...connection, part: 'parent' },
-    })).toBe('M 56 0 V 14 A 6 6 0 0 1 50 20 H 28');
+    })).toBe('M 56 0 V 10 A 10 10 0 0 1 46 20 H 28');
   });
 
   it('runs a parent link beside a lane that continues through its source column', () => {
@@ -268,18 +268,18 @@ describe('graph column layout', () => {
   it('routes continuing lane changes outside an unrelated avatar', () => {
     expect(buildGraphSegmentPath({ x1: 44, y1: 0, x2: 16, y2: 40,
       bypassNode: { offset: 16, radius: 12 } }))
-      .toBe('M 44 0 V 28 A 6 6 0 0 1 38 34 H 22 A 6 6 0 0 0 16 40');
+      .toBe('M 44 0 V 24 A 10 10 0 0 1 34 34 H 22 A 6 6 0 0 0 16 40');
     expect(buildGraphSegmentPath({ x1: 16, y1: 0, x2: 44, y2: 40,
       bypassNode: { offset: 16, radius: 12 } }))
-      .toBe('M 16 0 A 6 6 0 0 0 22 6 H 38 A 6 6 0 0 1 44 12 V 40');
+      .toBe('M 16 0 A 6 6 0 0 0 22 6 H 34 A 10 10 0 0 1 44 16 V 40');
   });
 
   it('keeps same-lane history straight and turns cross-lane links at right angles', () => {
     expect(buildGraphSegmentPath({ x1: 32, y1: 0, x2: 32, y2: 40 })).toBe('M 32 0 V 40');
     expect(buildGraphSegmentPath({ x1: 48, y1: 20, x2: 32, y2: 40 }))
-      .toBe('M 48 20 V 30 A 6 6 0 0 1 42 36 H 36 A 4 4 0 0 0 32 40');
+      .toBe('M 48 20 V 28 A 8 8 0 0 1 40 36 H 36 A 4 4 0 0 0 32 40');
     expect(buildGraphSegmentPath({ x1: 32, y1: 20, x2: 48, y2: 40 }))
-      .toBe('M 32 20 V 30 A 6 6 0 0 0 38 36 H 44 A 4 4 0 0 1 48 40');
+      .toBe('M 32 20 V 28 A 8 8 0 0 0 40 36 H 44 A 4 4 0 0 1 48 40');
   });
 
   it('uses straight orthogonal stems and circular quarter turns, including reverse traversal', () => {
@@ -301,18 +301,18 @@ describe('graph column layout', () => {
 
   it('leaves the author node from the side facing the target lane', () => {
     expect(buildGraphSegmentPath({ x1: 16, y1: 20, x2: 44, y2: 40, sourceNodeRadius: 12 }))
-      .toBe('M 28 20 H 38 A 6 6 0 0 1 44 26 V 40');
+      .toBe('M 28 20 H 34 A 10 10 0 0 1 44 30 V 40');
     expect(buildGraphSegmentPath({ x1: 44, y1: 20, x2: 16, y2: 40, sourceNodeRadius: 12 }))
-      .toBe('M 32 20 H 22 A 6 6 0 0 0 16 26 V 40');
+      .toBe('M 32 20 H 26 A 10 10 0 0 0 16 30 V 40');
     expect(buildGraphSegmentPath({ x1: 14, y1: 20, x2: 34, y2: 40, sourceNodeRadius: 10 }))
-      .toBe('M 24 20 H 28 A 6 6 0 0 1 34 26 V 40');
+      .toBe('M 24 20 A 10 10 0 0 1 34 30 V 40');
   });
 
   it('joins a converging branch at the parent author node side', () => {
     expect(buildGraphSegmentPath({ x1: 44, y1: 0, x2: 16, y2: 20, parentNodeRadius: 12 }))
-      .toBe('M 44 0 V 14 A 6 6 0 0 1 38 20 H 28');
+      .toBe('M 44 0 V 10 A 10 10 0 0 1 34 20 H 28');
     expect(buildGraphSegmentPath({ x1: 14, y1: 0, x2: 34, y2: 20, parentNodeRadius: 10 }))
-      .toBe('M 14 0 V 14 A 6 6 0 0 0 20 20 H 24');
+      .toBe('M 14 0 V 10 A 10 10 0 0 0 24 20');
   });
 
   it('gives expanded avatars room for a rounded side connection', () => {

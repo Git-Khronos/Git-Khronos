@@ -471,7 +471,12 @@ for (const compact of [false, true]) {
         const element = document.querySelector(`[data-commit-oid="${oid}"]`)!;
         const paths = [...element.querySelectorAll<SVGPathElement>('.graph-edges path')];
         const node = element.querySelector('.author-node')!.getBoundingClientRect();
-        const lines = row.segments.map((segment: any, index: number) => {
+        const lines: {
+          part?: 'source' | 'parent';
+          start: { x: number; y: number };
+          end: { x: number; y: number };
+          strokeWidth: number;
+        }[] = row.segments.map((segment: any, index: number) => {
           const path = paths[index];
           const matrix = path.getScreenCTM()!;
           const at = (length: number) => {
@@ -593,7 +598,7 @@ for (const compact of [false, true]) {
       return { d: path.getAttribute('d'), x: screen.x, y: screen.y,
         expectedX: node.right, expectedY: node.y + node.height / 2 };
     });
-    expect(attachment.d).toMatch(/ A 6 6 0 0 [01] /);
+    expect(attachment.d).toMatch(/ A 10 10 0 0 [01] /);
     expect(Math.abs(attachment.x - attachment.expectedX), JSON.stringify(attachment)).toBeLessThan(0.1);
     expect(Math.abs(attachment.y - attachment.expectedY), JSON.stringify(attachment)).toBeLessThan(0.1);
     await test.info().attach('Pinned branch side attachment', {

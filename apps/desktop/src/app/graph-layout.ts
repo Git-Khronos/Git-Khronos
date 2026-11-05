@@ -64,6 +64,7 @@ type GraphPoint = readonly [number, number];
 
 // Matches the spacing between stacked horizontal tracks.
 const GRAPH_STACKED_EDGE_SPACING = 4;
+const GRAPH_EDGE_CORNER_RADIUS = 10;
 
 export function graphNodeConnectionStemOffset(
   connection: Pick<GraphNodeConnection, 'sourceOffset' | 'parentOffset' | 'nodeRadius' | 'sharedColumn'>,
@@ -99,7 +100,7 @@ function roundedGraphRoute(points: readonly GraphPoint[]): string {
     const previous = route[index - 1], corner = route[index], next = route[index + 1];
     const incoming = [Math.sign(corner[0] - previous[0]), Math.sign(corner[1] - previous[1])];
     const outgoing = [Math.sign(next[0] - corner[0]), Math.sign(next[1] - corner[1])];
-    const radius = Math.min(6,
+    const radius = Math.min(GRAPH_EDGE_CORNER_RADIUS,
       (Math.abs(corner[0] - previous[0]) + Math.abs(corner[1] - previous[1])) / (index === 1 ? 1 : 2),
       (Math.abs(next[0] - corner[0]) + Math.abs(next[1] - corner[1])) / (index === route.length - 2 ? 1 : 2));
     lineTo([corner[0] - incoming[0] * radius, corner[1] - incoming[1] * radius]);
