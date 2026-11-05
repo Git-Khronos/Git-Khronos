@@ -103,6 +103,7 @@ import {
   MAXIMUM_PERSISTED_GRAPH_COLUMN_WIDTH,
   normalizeGraphColumnWidth,
   advanceRequiredGraphLaneCount,
+  stackOverlappingGraphEdges,
   type RequiredGraphLaneProgress,
   type GraphNodeConnection,
   type GraphSegmentGeometry,
@@ -2699,7 +2700,7 @@ export class AppComponent implements OnInit, OnDestroy {
         nodeOffset: laneOffset(nodeLane),
         color: current.color,
         authorColor: authorColors.get(this.authorIdentity(commit.authorName, commit.authorEmail)) ?? AUTHOR_PALETTE[0],
-        segments,
+        segments: stackOverlappingGraphEdges(segments),
       });
     }
     this.graphLayoutCache = {

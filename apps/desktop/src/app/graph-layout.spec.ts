@@ -14,15 +14,22 @@ import {
   MAXIMUM_PERSISTED_GRAPH_COLUMN_WIDTH,
   normalizeGraphColumnWidth,
   requiredGraphLaneCount,
+  stackOverlappingGraphEdges,
+  type GraphSegmentGeometry,
 } from './graph-layout';
 
 function inspectRoundedPath(path: string) {
   const tokens = path.match(/[A-Za-z]|-?\d+(?:\.\d+)?/g)!;
   let x = 0, y = 0, start: number[] = [], arcs = 0;
+  const horizontals: { from: number; to: number; y: number }[] = [];
   while (tokens.length) {
     const command = tokens.shift();
     if (command === 'M') { x = Number(tokens.shift()); y = Number(tokens.shift()); start = [x, y]; }
-    else if (command === 'H') x = Number(tokens.shift());
+    else if (command === 'H') {
+      const endX = Number(tokens.shift());
+      horizontals.push({ from: x, to: endX, y });
+      x = endX;
+    }
     else if (command === 'V') y = Number(tokens.shift());
     else {
       expect(command, path).toBe('A');
@@ -31,14 +38,180 @@ function inspectRoundedPath(path: string) {
       expect(rx).toBeLessThanOrEqual(6);
       expect([ry, rotation, large]).toEqual([rx, 0, 0]);
       expect([0, 1]).toContain(sweep);
-      expect([Math.abs(endX - x), Math.abs(endY - y)], path).toEqual([rx, rx]);
+      expect(Math.abs(endX - x), path).toBeCloseTo(rx, 8);
+      expect(Math.abs(endY - y), path).toBeCloseTo(rx, 8);
       x = endX; y = endY; arcs++;
     }
   }
-  return { start, end: [x, y], arcs };
+  return { start, end: [x, y], arcs, horizontals };
+}
+
+function expectAvatarAttachment(point: number[], center: number, radius: number, y: number) {
+  expect(point[1]).toBe(y);
+  expect((point[0] - center) ** 2 + (point[1] - 20) ** 2).toBeCloseTo(radius ** 2, 8);
 }
 
 describe('graph column layout', () => {
+  it('stacks overlapping incoming and outgoing edges without moving their endpoints', () => {
+    const segments: GraphSegmentGeometry[] = [
+      { x1: 96, y1: 0, x2: 16, y2: 20, parentNodeRadius: 12,
+        nodeConnection: { sourceOffset: 96, parentOffset: 16, nodeRadius: 12, part: 'parent' } },
+      { x1: 16, y1: 20, x2: 136, y2: 40, sourceNodeRadius: 12 },
+      { x1: 16, y1: 20, x2: 176, y2: 40, sourceNodeRadius: 12 },
+    ];
+    const stacked = stackOverlappingGraphEdges(segments);
+    const paths = stacked.map((segment) => inspectRoundedPath(buildGraphSegmentPath(segment)));
+    expect(paths[0].start).toEqual([96, 0]);
+    expect(paths.slice(1).map((path) => path.end)).toEqual([[136, 40], [176, 40]]);
+    expectAvatarAttachment(paths[0].end, 16, 12, stacked[0].horizontalTrack!.y);
+    paths.slice(1).forEach((path, index) =>
+      expectAvatarAttachment(path.start, 16, 12, stacked[index + 1].horizontalTrack!.y));
+    const tracks = paths.map((path) => path.horizontals.find((horizontal) =>
+      Math.min(horizontal.from, horizontal.to) < 76 && Math.max(horizontal.from, horizontal.to) > 76)?.y);
+    expect(tracks.every((track) => track !== undefined)).toBe(true);
+    expect(new Set(tracks).size).toBe(segments.length);
+    const ordered = [...tracks].sort((a, b) => a! - b!);
+    expect(ordered[1]! - ordered[0]!).toBeGreaterThanOrEqual(3);
+    expect(ordered[2]! - ordered[1]!).toBeGreaterThanOrEqual(3);
+  });
+
+  it('leaves disjoint edges unchanged and separates dense overlapping tracks', () => {
+    const disjoint: GraphSegmentGeometry[] = [
+      { x1: 16, y1: 20, x2: 56, y2: 40, sourceNodeRadius: 12 },
+      { x1: 136, y1: 20, x2: 96, y2: 40, sourceNodeRadius: 12 },
+    ];
+    expect(stackOverlappingGraphEdges(disjoint)).toEqual(disjoint);
+    const dense: GraphSegmentGeometry[] = Array.from({ length: 14 }, (_, index) => ({
+      x1: 16, y1: 20, x2: 136 + index * 40, y2: 40, sourceNodeRadius: 12,
+    }));
+    const stacked = stackOverlappingGraphEdges(dense);
+    const tracks = stacked.map((segment) => segment.horizontalTrack!);
+    expect(tracks.every((track) => track && track.y > 0 && track.y < 40 && track.strokeWidth > 0)).toBe(true);
+    const ordered = [...tracks].sort((a, b) => a.y - b.y);
+    for (let index = 1; index < ordered.length; index++) {
+      expect(ordered[index].y - ordered[index - 1].y).toBeGreaterThan(ordered[index].strokeWidth);
+    }
+    expect(stacked.map((segment) => inspectRoundedPath(buildGraphSegmentPath(segment)).end))
+      .toEqual(dense.map((segment) => [segment.x2, segment.y2]));
+  });
+
+  it('separates overlapping bypasses without routing through an unrelated avatar', () => {
+    const segments: GraphSegmentGeometry[] = [
+      { x1: 56, y1: 0, x2: 136, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+      { x1: 96, y1: 0, x2: 176, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+    ];
+    const stacked = stackOverlappingGraphEdges(segments);
+    const paths = stacked.map((segment) => inspectRoundedPath(buildGraphSegmentPath(segment)));
+    const tracks = paths.map((path) => path.horizontals.find((horizontal) =>
+      Math.min(horizontal.from, horizontal.to) < 116 && Math.max(horizontal.from, horizontal.to) > 116)?.y);
+    expect(tracks.every((track) => track !== undefined && track >= 34)).toBe(true);
+    expect(new Set(tracks).size).toBe(2);
+    expect(paths.map((path) => path.start)).toEqual([[56, 0], [96, 0]]);
+    expect(paths.map((path) => path.end)).toEqual([[136, 40], [176, 40]]);
+  });
+
+  it('reuses tracks for edges that do not overlap, even in a connected group', () => {
+    const segments: GraphSegmentGeometry[] = [
+      { x1: 56, y1: 0, x2: 136, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+      { x1: 96, y1: 0, x2: 176, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+      { x1: 156, y1: 0, x2: 236, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+    ];
+    const tracks = stackOverlappingGraphEdges(segments).map((segment) => segment.horizontalTrack!);
+    expect(tracks[0].y).toBe(tracks[2].y);
+    expect(tracks[1].y).not.toBe(tracks[0].y);
+    expect(tracks.map((track) => track.strokeWidth)).toEqual([2, 2, 2]);
+  });
+
+  it('keeps parallel bypass lanes ordered at both ends', () => {
+    for (const mirror of [false, true]) {
+      const x = (offset: number) => mirror ? 232 - offset : offset;
+      const segments: GraphSegmentGeometry[] = [
+        { x1: x(56), y1: 0, x2: x(136), y2: 40, bypassNode: { offset: x(16), radius: 12 } },
+        { x1: x(96), y1: 0, x2: x(176), y2: 40, bypassNode: { offset: x(16), radius: 12 } },
+      ];
+      const tracks = stackOverlappingGraphEdges(segments).map((segment) => segment.horizontalTrack!);
+      expect(tracks[0].y).toBeGreaterThan(tracks[1].y);
+    }
+  });
+
+  it('separates overlapping bypasses moving in opposite directions', () => {
+    const segments: GraphSegmentGeometry[] = [
+      { x1: 56, y1: 0, x2: 136, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+      { x1: 176, y1: 0, x2: 96, y2: 40, bypassNode: { offset: 16, radius: 12 } },
+    ];
+    const stacked = stackOverlappingGraphEdges(segments);
+    const paths = stacked.map((segment) => inspectRoundedPath(buildGraphSegmentPath(segment)));
+    const tracks = paths.map((path) => path.horizontals.find((horizontal) =>
+      Math.min(horizontal.from, horizontal.to) < 116 && Math.max(horizontal.from, horizontal.to) > 116)?.y);
+    expect(tracks.every((track) => track !== undefined)).toBe(true);
+    expect(new Set(tracks).size).toBe(2);
+    expect(paths.map((path) => path.start)).toEqual([[56, 0], [176, 0]]);
+    expect(paths.map((path) => path.end)).toEqual([[136, 40], [96, 40]]);
+  });
+
+  it('keeps stacked links clear of a bypass around a compact avatar', () => {
+    const nodeEdges: GraphSegmentGeometry[] = Array.from({ length: 9 }, (_, index) => ({
+      x1: 14, y1: 20, x2: 110 + index * 32, y2: 40, sourceNodeRadius: 10,
+    }));
+    const bypass: GraphSegmentGeometry = {
+      x1: 46, y1: 0, x2: 142, y2: 40, bypassNode: { offset: 14, radius: 10 },
+    };
+    const stacked = stackOverlappingGraphEdges([...nodeEdges, bypass]);
+    expect(Math.max(...stacked.slice(0, -1).map((edge) => edge.horizontalTrack!.y))).toBeLessThanOrEqual(29);
+    expect(inspectRoundedPath(buildGraphSegmentPath(stacked.at(-1)!)).horizontals[0].y).toBe(32);
+  });
+
+  it('preserves both ends when more than one incoming edge needs a track', () => {
+    for (const mirror of [false, true]) {
+      const x = (offset: number) => mirror ? 192 - offset : offset;
+      const segments: GraphSegmentGeometry[] = [
+        { x1: x(96), y1: 0, x2: x(16), y2: 20, parentNodeRadius: 12 },
+        { x1: x(136), y1: 0, x2: x(16), y2: 20, parentNodeRadius: 12,
+          nodeConnection: { sourceOffset: x(136), parentOffset: x(16), nodeRadius: 12, part: 'parent' } },
+        { x1: x(16), y1: 20, x2: x(176), y2: 40, sourceNodeRadius: 12 },
+      ];
+      const stacked = stackOverlappingGraphEdges(segments);
+      const paths = stacked.map((segment) => inspectRoundedPath(buildGraphSegmentPath(segment)));
+      const tracks = paths.map((path) => path.horizontals.find((horizontal) =>
+        Math.min(horizontal.from, horizontal.to) < x(76)
+        && Math.max(horizontal.from, horizontal.to) > x(76))?.y);
+      expect(new Set(tracks).size).toBe(3);
+      expect(tracks.every((track) => track !== undefined)).toBe(true);
+      expect(paths.slice(0, 2).map((path) => path.start)).toEqual([[x(96), 0], [x(136), 0]]);
+      expect(paths[2].end).toEqual([x(176), 40]);
+      paths.forEach((path, index) => expectAvatarAttachment(index < 2 ? path.end : path.start,
+        x(16), 12, stacked[index].horizontalTrack!.y));
+    }
+  });
+
+  it('keeps stacked edges ordered and separate through their avatar attachments', () => {
+    for (const mirror of [false, true]) {
+      const x = (offset: number) => mirror ? 352 - offset : offset;
+      const segments: GraphSegmentGeometry[] = [
+        ...[96, 136, 176].map((offset) => ({
+          x1: x(offset), y1: 0, x2: x(16), y2: 20, parentNodeRadius: 12,
+        })),
+        ...[216, 256, 296].map((offset) => ({
+          x1: x(16), y1: 20, x2: x(offset), y2: 40, sourceNodeRadius: 12,
+        })),
+      ];
+      const stacked = stackOverlappingGraphEdges(segments);
+      const incoming = stacked.slice(0, 3).map((segment) => segment.horizontalTrack!);
+      const outgoing = stacked.slice(3).map((segment) => segment.horizontalTrack!);
+      expect(incoming[0].y).toBeLessThan(incoming[1].y);
+      expect(incoming[1].y).toBeLessThan(incoming[2].y);
+      expect(incoming[2].y).toBeLessThan(outgoing[2].y);
+      expect(outgoing[2].y).toBeLessThan(outgoing[1].y);
+      expect(outgoing[1].y).toBeLessThan(outgoing[0].y);
+      stacked.forEach((segment, index) => {
+        const path = inspectRoundedPath(buildGraphSegmentPath(segment));
+        const attachment = index < 3 ? path.end : path.start;
+        const trackY = segment.horizontalTrack!.y;
+        expectAvatarAttachment(attachment, x(16), 12, trackY);
+      });
+    }
+  });
+
   it('routes cross-lane parent links from the source bottom center into the parent side', () => {
     for (const nodeRadius of [10, 12]) {
       for (const [sourceOffset, parentOffset] of [[14, 46], [46, 14], [16, 56], [56, 16], [16, 136], [136, 16]]) {

@@ -1515,7 +1515,7 @@ test('joins a converging branch at the parent avatar right-middle edge', async (
     return null;
   }, parentOffset + 12);
   expect(connection).not.toBeNull();
-  expect(connection!.startX).toBe((branchOffset + parentOffset) / 2);
+  expect(connection!.startX).toBe(branchOffset);
   expect(connection!.startY).toBe(0);
   expect(connection!.tangentY).toBeLessThan(.01);
   expect(Math.abs(connection!.x - (nodeBox!.x + nodeBox!.width))).toBeLessThan(.1);

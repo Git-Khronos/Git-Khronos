@@ -52,6 +52,8 @@
 .graph-cell.multi-lane { display: block; overflow: visible; }
 .graph-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .graph-edges path { fill: none; stroke: var(--graph-lane-color, #55c9a5); stroke-width: 2; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.graph-edges .graph-edge-cap { fill: var(--graph-lane-color, #55c9a5); pointer-events: none; }
+.commit-row.branch-highlighted .graph-edges .graph-edge-cap { filter: brightness(1.2); }
 .lane-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--graph-lane-color, #55c9a5); }
 .merge-arc { position: absolute; top: 19px; width: 17px; height: 18px; border: 2px solid var(--graph-lane-color, #7c6ef6); border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
 .wip-edges { height: 100%; }

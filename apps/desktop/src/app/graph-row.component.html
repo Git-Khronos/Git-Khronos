@@ -132,7 +132,13 @@
   @if (view.showGraphColumn()) { <span class="graph-cell multi-lane" [style.order]="view.graphColumnPosition('graph')" [class.trailing-cell]="view.trailingGraphColumn() === 'graph'" aria-hidden="true">
     <svg class="graph-edges" [attr.viewBox]="'0 0 ' + view.graphColumnWidth() + ' 40'" preserveAspectRatio="none">
       @for (segment of row.segments; track $index) {
-        <path class="color-{{ segment.color }}" [attr.d]="view.graphSegmentPath(segment)" />
+        <path class="color-{{ segment.color }}" [attr.d]="view.graphSegmentPath(segment)" [style.stroke-width.px]="segment.horizontalTrack?.strokeWidth" />
+        @if (segment.horizontalTrack; as track) {
+          @if (track.strokeWidth < 2) {
+            @if (segment.y1 === 0) { <circle class="graph-edge-cap color-{{ segment.color }}" [attr.cx]="segment.x1" cy="0" r="1" /> }
+            @if (segment.y2 === 40) { <circle class="graph-edge-cap color-{{ segment.color }}" [attr.cx]="segment.x2" cy="40" r="1" /> }
+          }
+        }
       }
     </svg>
     @if (view.visibleDecorations(row.commit).length || view.stashForOid(row.commit.oid)) { <span class="ref-connector color-{{ row.color }}" [style.width.px]="row.nodeOffset"></span> }

@@ -21,6 +21,7 @@ export interface GraphSegmentGeometry {
   readonly sourceNodeRadius?: number;
   readonly nodeConnection?: GraphNodeConnection;
   readonly bypassNode?: { readonly offset: number; readonly radius: number };
+  readonly horizontalTrack?: { readonly y: number; readonly strokeWidth: number };
 }
 
 const EXPANDED_GRAPH_LAYOUT: GraphColumnLayout = {
@@ -103,15 +104,173 @@ function roundedGraphRoute(points: readonly GraphPoint[]): string {
   return path;
 }
 
+interface GraphHorizontalSpan {
+  readonly index: number;
+  readonly start: number;
+  readonly end: number;
+  readonly y: number;
+  readonly kind: 'incoming' | 'outgoing' | 'bypass';
+  readonly nodeRadius?: number;
+  readonly from: number;
+  readonly to: number;
+}
+
+function graphHorizontalSpan(segment: GraphSegmentGeometry, index: number): GraphHorizontalSpan | null {
+  let start: number, end: number, y: number;
+  let kind: GraphHorizontalSpan['kind'];
+  let nodeRadius: number | undefined;
+  if (segment.nodeConnection) {
+    const { sourceOffset, parentOffset, nodeRadius: radius, part } = segment.nodeConnection;
+    if (part === 'source' || sourceOffset === parentOffset) return null;
+    start = sourceOffset;
+    end = parentOffset - Math.sign(parentOffset - sourceOffset) * radius;
+    y = 20;
+    kind = 'incoming';
+    nodeRadius = radius;
+  } else if (segment.x1 === segment.x2) {
+    return null;
+  } else if (segment.bypassNode) {
+    const { offset, radius } = segment.bypassNode;
+    start = segment.x1;
+    end = segment.x2;
+    y = segment.x1 === offset ? 20 - radius - 2 : 20 + radius + 2;
+    kind = 'bypass';
+  } else if (segment.parentNodeRadius && segment.y2 === 20) {
+    start = segment.x1;
+    end = segment.x2 - Math.sign(segment.x2 - segment.x1) * segment.parentNodeRadius;
+    y = segment.y2;
+    kind = 'incoming';
+    nodeRadius = segment.parentNodeRadius;
+  } else if (segment.sourceNodeRadius && segment.y1 === 20 && segment.y2 > segment.y1) {
+    const direction = Math.sign(segment.x2 - segment.x1);
+    start = segment.x1 + direction * segment.sourceNodeRadius;
+    end = segment.x2;
+    if (Math.sign(end - start) !== direction) return null;
+    y = segment.y1;
+    kind = 'outgoing';
+    nodeRadius = segment.sourceNodeRadius;
+  } else {
+    return null;
+  }
+  return {
+    index, start: Math.min(start, end), end: Math.max(start, end), y, kind, nodeRadius,
+    from: segment.x1, to: segment.x2,
+  };
+}
+
+function graphSpansOverlap(a: GraphHorizontalSpan, b: GraphHorizontalSpan): boolean {
+  return a.start < b.end && b.start < a.end;
+}
+
+function assignBypassTrackSlots(group: readonly GraphHorizontalSpan[]): number[] {
+  const occupied = new Map<number, GraphHorizontalSpan[]>();
+  return group.map((span) => {
+    let slot = 0;
+    while (occupied.get(slot)?.some((other) => graphSpansOverlap(span, other))) slot++;
+    const onTrack = occupied.get(slot) ?? [];
+    onTrack.push(span);
+    occupied.set(slot, onTrack);
+    return slot;
+  });
+}
+
+export function stackOverlappingGraphEdges<T extends GraphSegmentGeometry>(segments: T[]): T[] {
+  const spans = segments.flatMap((segment, index) => {
+    const span = graphHorizontalSpan(segment, index);
+    return span ? [span] : [];
+  });
+  if (spans.length < 2) return segments;
+  const byHeight = new Map<number, GraphHorizontalSpan[]>();
+  for (const span of spans) {
+    const sameHeight = byHeight.get(span.y) ?? [];
+    sameHeight.push(span);
+    byHeight.set(span.y, sameHeight);
+  }
+  const tracks = new Map<number, NonNullable<GraphSegmentGeometry['horizontalTrack']>>();
+  for (const [height, sameHeight] of byHeight) {
+    sameHeight.sort((a, b) => a.start - b.start);
+    for (let first = 0; first < sameHeight.length;) {
+      let end = first + 1;
+      let right = sameHeight[first].end;
+      while (end < sameHeight.length && sameHeight[end].start < right) {
+        right = Math.max(right, sameHeight[end].end);
+        end++;
+      }
+      if (end - first > 1) {
+        const group = sameHeight.slice(first, end);
+        let minY = 2, maxY = 38;
+        if (height === 20) {
+          const radius = Math.min(...group.map((span) => span.nodeRadius!));
+          const inset = Math.min(1, radius / 2);
+          minY = Math.max(minY, height - radius + inset);
+          maxY = Math.min(maxY, height + radius - inset);
+          for (const span of spans) {
+            if (span.kind !== 'bypass' || span.start >= right || span.end <= group[0].start) continue;
+            if (span.y < height) minY = Math.max(minY, span.y + 3);
+            if (span.y > height) maxY = Math.min(maxY, span.y - 3);
+          }
+          // Nearby incoming lanes belong above distant ones; outgoing lanes use
+          // the reverse order so their vertical stems do not cross the stack.
+          group.sort((a, b) => {
+            const kindOrder = (a.kind === 'incoming' ? 0 : 1) - (b.kind === 'incoming' ? 0 : 1);
+            const lengthOrder = (a.end - a.start) - (b.end - b.start);
+            return kindOrder || (a.kind === 'incoming' ? lengthOrder : -lengthOrder) || a.index - b.index;
+          });
+          const slots: number[] = [];
+          for (const span of group) {
+            let slot = 0;
+            for (let index = 0; index < slots.length; index++) {
+              if (graphSpansOverlap(span, group[index])) slot = Math.max(slot, slots[index] + 1);
+            }
+            slots.push(slot);
+          }
+          const lastSlot = Math.max(...slots);
+          const available = Math.min(height - minY, maxY - height);
+          const spacing = Math.min(4, available * 2 / lastSlot);
+          const strokeWidth = Math.min(2, spacing * 0.7);
+          group.forEach((span, index) => tracks.set(span.index, {
+            y: height + (slots[index] - lastSlot / 2) * spacing, strokeWidth,
+          }));
+        } else {
+          const direction = height < 20 ? -1 : 1;
+          const available = direction < 0 ? height - minY : maxY - height;
+          const movement = Math.sign(group[0].to - group[0].from);
+          if (group.every((span) => Math.sign(span.to - span.from) === movement)) {
+            group.sort((a, b) => -movement * direction * (a.from - b.from || a.to - b.to));
+          }
+          const slots = assignBypassTrackSlots(group);
+          const spacing = Math.min(4, available / Math.max(...slots));
+          const strokeWidth = Math.min(2, spacing * 0.7);
+          group.forEach((span, index) => tracks.set(span.index, {
+            y: height + direction * slots[index] * spacing, strokeWidth,
+          }));
+        }
+      }
+      first = end;
+    }
+  }
+  if (!tracks.size) return segments;
+  return segments.map((segment, index) => {
+    const horizontalTrack = tracks.get(index);
+    return horizontalTrack ? { ...segment, horizontalTrack } : segment;
+  });
+}
+
+function graphNodeSideOffset(nodeX: number, nodeY: number, radius: number, side: number, trackY: number): number {
+  const verticalOffset = trackY - nodeY;
+  return nodeX + side * Math.sqrt(Math.max(0, radius * radius - verticalOffset * verticalOffset));
+}
+
 export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
   if (segment.nodeConnection) {
     const { sourceOffset, parentOffset, nodeRadius, part } = segment.nodeConnection;
     const direction = Math.sign(parentOffset - sourceOffset);
     const sourceSide = graphNodeConnectionStemOffset(segment.nodeConnection);
-    const parentSide = parentOffset - direction * nodeRadius;
+    const trackY = segment.horizontalTrack?.y ?? 20;
+    const parentSide = graphNodeSideOffset(parentOffset, 20, nodeRadius, -direction, trackY);
     return part === 'source'
       ? roundedGraphRoute([[sourceSide, 20 + nodeRadius], [sourceSide, 40]])
-      : roundedGraphRoute([[sourceSide, 0], [sourceSide, 20], [parentSide, 20]]);
+      : roundedGraphRoute([[sourceSide, 0], [sourceSide, trackY], [parentSide, trackY]]);
   }
   if (segment.x1 === segment.x2) {
     return `M ${segment.x1} ${segment.y1} V ${segment.y2}`;
@@ -123,18 +282,23 @@ export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
     // A continuing lane is not an edge to this commit. Move away above the
     // circle when leaving its column, or cross below it when entering/crossing.
     const { offset, radius: nodeRadius } = segment.bypassNode;
-    const bridgeY = segment.x1 === offset ? 20 - nodeRadius - 2 : 20 + nodeRadius + 2;
+    const bridgeY = segment.horizontalTrack?.y
+      ?? (segment.x1 === offset ? 20 - nodeRadius - 2 : 20 + nodeRadius + 2);
     return roundedGraphRoute([[segment.x1, segment.y1], [segment.x1, bridgeY], [segment.x2, bridgeY], [segment.x2, segment.y2]]);
   }
   if (segment.parentNodeRadius) {
-    const attachmentX = segment.x2 - horizontalDirection * segment.parentNodeRadius;
-    return roundedGraphRoute([[segment.x1, segment.y1], [segment.x1, segment.y2], [attachmentX, segment.y2]]);
+    const trackY = segment.horizontalTrack?.y ?? segment.y2;
+    const attachmentX = graphNodeSideOffset(segment.x2, segment.y2, segment.parentNodeRadius,
+      -horizontalDirection, trackY);
+    return roundedGraphRoute([[segment.x1, segment.y1], [segment.x1, trackY], [attachmentX, trackY]]);
   }
   if (segment.sourceNodeRadius && direction > 0) {
-    // Depart horizontally from the side center, then turn into the target lane.
-    const exitX = segment.x1 + horizontalDirection * segment.sourceNodeRadius;
+    // Depart horizontally from the avatar, then turn into the target lane.
+    const trackY = segment.horizontalTrack?.y ?? segment.y1;
+    const exitX = graphNodeSideOffset(segment.x1, segment.y1, segment.sourceNodeRadius,
+      horizontalDirection, trackY);
     if (Math.sign(segment.x2 - exitX) === horizontalDirection) {
-      return roundedGraphRoute([[exitX, segment.y1], [segment.x2, segment.y1], [segment.x2, segment.y2]]);
+      return roundedGraphRoute([[exitX, trackY], [segment.x2, trackY], [segment.x2, segment.y2]]);
     }
   }
   // Commit nodes are centered at y=20 with a 12px radius. Keep a straight
