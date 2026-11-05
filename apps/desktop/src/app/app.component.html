@@ -1215,7 +1215,7 @@
               </div>
             }
 <p id="working-tree-file-navigation-help" class="sr-only">Focus a file list and use Home or End to reach the first or last files. Use Tab to move through visible file actions.</p>
-            @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('unstaged')" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
+            @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('unstaged')" [style.height.px]="workingTreeFileListSized.unstaged() ? workingTreeFileListHeight('unstaged') : null" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
               <gc-working-tree-viewport #unstagedFilesViewport [content]="unstagedRows" />
               <ng-template #unstagedRows>
               @if (workingTreeViewMode() === 'path') {
@@ -1255,7 +1255,7 @@
           </section>
           <section class="file-section staged-section">
             <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gc-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><button type="button" (click)="git.unstageAll()" [disabled]="!stagedEntries().length || git.busy()">Unstage all</button></div>
-            @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
+            @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" [style.height.px]="workingTreeFileListSized.staged() ? workingTreeFileListHeight('staged') : null" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
               <gc-working-tree-viewport #stagedFilesViewport [content]="stagedRows" />
               <ng-template #stagedRows>
                 @if (workingTreeViewMode() === 'path') {

@@ -1155,6 +1155,11 @@ export class AppComponent implements OnInit, OnDestroy {
     unstaged: signal(this.readWorkingTreeFileListHeight('unstaged')),
     staged: signal(this.readWorkingTreeFileListHeight('staged')),
   };
+  // A sized list keeps its chosen height even when it holds fewer rows than fit.
+  protected readonly workingTreeFileListSized = {
+    unstaged: signal(this.hasStoredWorkingTreeFileListHeight('unstaged')),
+    staged: signal(this.hasStoredWorkingTreeFileListHeight('staged')),
+  };
   protected readonly changedFilesOpen = signal(true);
   protected readonly branchFilter = signal('');
   protected readonly commitFilter = signal('');
@@ -4590,12 +4595,13 @@ export class AppComponent implements OnInit, OnDestroy {
   protected resizePanel(event: PointerEvent): void {
     if (!this.resizePointer.matches(event)) return;
     if (this.workingTreeFileListResizeTarget) {
-      this.workingTreeFileListHeightSignal(this.workingTreeFileListResizeTarget).set(Math.max(
+      const section = this.workingTreeFileListResizeTarget;
+      const delta = event.clientY - this.workingTreeFileListResizeStartY;
+      if (!this.workingTreeFileListSized[section]() && delta === 0) return;
+      this.workingTreeFileListSized[section].set(true);
+      this.workingTreeFileListHeightSignal(section).set(Math.max(
         WORKING_TREE_FILE_LIST_MIN_HEIGHT,
-        Math.min(
-          WORKING_TREE_FILE_LIST_MAX_HEIGHT,
-          this.workingTreeFileListResizeStartHeight + event.clientY - this.workingTreeFileListResizeStartY,
-        ),
+        Math.min(WORKING_TREE_FILE_LIST_MAX_HEIGHT, this.workingTreeFileListResizeStartHeight + delta),
       ));
       return;
     }
@@ -4635,7 +4641,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.resizePointer.finish(event)) return;
     if (this.workingTreeFileListResizeTarget) {
       const section = this.workingTreeFileListResizeTarget;
-      this.storeWorkingTreeFileListHeight(section, this.workingTreeFileListHeightSignal(section)());
+      if (this.workingTreeFileListSized[section]()) {
+        this.storeWorkingTreeFileListHeight(section, this.workingTreeFileListHeightSignal(section)());
+      }
       this.workingTreeFileListResizeTarget = null;
       return;
     }
@@ -4990,16 +4998,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.resizePointer.begin(event, 'row-resize')) return;
     this.workingTreeFileListResizeTarget = section;
     this.workingTreeFileListResizeStartY = event.clientY;
-    this.workingTreeFileListResizeStartHeight = this.workingTreeFileListHeightSignal(section)();
+    this.workingTreeFileListResizeStartHeight = this.renderedWorkingTreeFileListHeight(section);
   }
 
   protected handleWorkingTreeFileListResizeKeydown(section: WorkingTreeFileListSection, event: KeyboardEvent): void {
     const step = event.shiftKey ? 32 : 10;
     const heightSignal = this.workingTreeFileListHeightSignal(section);
+    const current = this.renderedWorkingTreeFileListHeight(section);
     let height: number;
     switch (event.key) {
-      case 'ArrowUp': height = heightSignal() - step; break;
-      case 'ArrowDown': height = heightSignal() + step; break;
+      case 'ArrowUp': height = current - step; break;
+      case 'ArrowDown': height = current + step; break;
       case 'Home': height = WORKING_TREE_FILE_LIST_MIN_HEIGHT; break;
       case 'End': height = WORKING_TREE_FILE_LIST_MAX_HEIGHT; break;
       default: return;
@@ -5007,13 +5016,22 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     height = Math.max(WORKING_TREE_FILE_LIST_MIN_HEIGHT, Math.min(WORKING_TREE_FILE_LIST_MAX_HEIGHT, height));
+    this.workingTreeFileListSized[section].set(true);
     heightSignal.set(height);
     this.storeWorkingTreeFileListHeight(section, height);
+  }
+
+  private renderedWorkingTreeFileListHeight(section: WorkingTreeFileListSection): number {
+    if (this.workingTreeFileListSized[section]()) return this.workingTreeFileListHeightSignal(section)();
+    const list = document.getElementById(`${section}-files-list`);
+    const rendered = list ? Math.round(list.getBoundingClientRect().height) : 0;
+    return rendered > 0 ? rendered : this.workingTreeFileListHeightSignal(section)();
   }
 
   protected resetWorkingTreeFileListHeight(section: WorkingTreeFileListSection, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    this.workingTreeFileListSized[section].set(false);
     this.workingTreeFileListHeightSignal(section).set(WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT);
     try {
       localStorage.removeItem(`git-khronos.working-tree.${section}-file-list-height`);
@@ -12814,6 +12832,15 @@ export class AppComponent implements OnInit, OnDestroy {
         : WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT;
     } catch {
       return WORKING_TREE_FILE_LIST_DEFAULT_HEIGHT;
+    }
+  }
+
+  private hasStoredWorkingTreeFileListHeight(section: WorkingTreeFileListSection): boolean {
+    try {
+      const value = Number(localStorage.getItem(`git-khronos.working-tree.${section}-file-list-height`));
+      return Number.isFinite(value) && value >= WORKING_TREE_FILE_LIST_MIN_HEIGHT;
+    } catch {
+      return false;
     }
   }
 

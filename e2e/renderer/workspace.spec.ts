@@ -1163,24 +1163,26 @@ test('moves files between change lists before Git responds and offers per-file d
 test('resizes and remembers staged and unstaged file viewports independently', async ({ page }) => {
   const stagedResizer = page.getByRole('separator', { name: 'Resize Staged Files section' });
   const stagedList = page.locator('#staged-files-list');
-  await expect(stagedResizer).toHaveAttribute('aria-valuenow', '165');
+  const renderedHeight = async (locator: typeof stagedList) => Math.round((await locator.boundingBox())!.height);
+  const stagedStart = await renderedHeight(stagedList);
+  const stagedExpected = Math.max(80, stagedStart + 10);
   await stagedResizer.focus();
   await stagedResizer.press('ArrowDown');
-  await expect(stagedResizer).toHaveAttribute('aria-valuenow', '175');
-  await expect(stagedList).toHaveCSS('max-height', '175px');
+  await expect(stagedResizer).toHaveAttribute('aria-valuenow', String(stagedExpected));
+  await expect(stagedList).toHaveCSS('height', `${stagedExpected}px`);
 
   const resizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
   const list = page.locator('#unstaged-files-list');
   await expect(resizer).toBeVisible();
-  await expect(resizer).toHaveAttribute('aria-valuenow', '165');
   await expect(resizer).toHaveAttribute('aria-valuemin', '80');
   await expect(resizer).toHaveAttribute('aria-valuemax', '420');
 
+  const unstagedExpected = Math.max(80, await renderedHeight(list) + 10);
   await resizer.focus();
   await resizer.press('ArrowDown');
-  await expect(resizer).toHaveAttribute('aria-valuenow', '175');
-  await expect(list).toHaveCSS('max-height', '175px');
-  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBe('175');
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(unstagedExpected));
+  await expect(list).toHaveCSS('height', `${unstagedExpected}px`);
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBe(String(unstagedExpected));
 
   const resizerBox = await resizer.boundingBox();
   expect(resizerBox).not.toBeNull();
@@ -1188,14 +1190,16 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await page.mouse.down();
   await page.mouse.move(resizerBox!.x + resizerBox!.width / 2, resizerBox!.y + resizerBox!.height / 2 + 60);
   await page.mouse.up();
-  await expect(resizer).toHaveAttribute('aria-valuenow', '235');
-  await expect(list).toHaveCSS('max-height', '235px');
+  const dragged = Math.min(420, unstagedExpected + 60);
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(dragged));
+  await expect(list).toHaveCSS('height', `${dragged}px`);
 
   await page.reload();
   await expect(page.locator('.app-shell')).toBeVisible();
-  await expect(page.getByRole('separator', { name: 'Resize Staged Files section' })).toHaveAttribute('aria-valuenow', '175');
+  await expect(page.getByRole('separator', { name: 'Resize Staged Files section' })).toHaveAttribute('aria-valuenow', String(stagedExpected));
   const restoredResizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
-  await expect(restoredResizer).toHaveAttribute('aria-valuenow', '235');
+  await expect(restoredResizer).toHaveAttribute('aria-valuenow', String(dragged));
+  await expect(list).toHaveCSS('height', `${dragged}px`);
   await restoredResizer.focus();
   await restoredResizer.press('End');
   await expect(restoredResizer).toHaveAttribute('aria-valuenow', '420');
@@ -1206,6 +1210,30 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await restoredResizer.dblclick();
   await expect(restoredResizer).toHaveAttribute('aria-valuenow', '165');
   expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBeNull();
+});
+
+test('grows a working-tree file list that holds fewer rows than its default height', async ({ page }) => {
+  const list = page.locator('#unstaged-files-list');
+  const resizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
+  const initialHeight = (await list.boundingBox())!.height;
+  expect(initialHeight).toBeLessThan(165);
+
+  const box = (await resizer.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 120);
+  await page.mouse.up();
+
+  const expected = Math.round(initialHeight) + 120;
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(expected));
+  await expect.poll(async () => Math.round((await list.boundingBox())!.height)).toBe(expected);
+  const staged = page.getByRole('separator', { name: 'Resize Staged Files section' });
+  expect((await staged.boundingBox())!.y).toBeGreaterThan(box.y + 100);
+
+  await resizer.dblclick();
+  await expect.poll(async () => Math.round((await list.boundingBox())!.height)).toBe(Math.round(initialHeight));
 });
 
 test('opens branch creation consistently from the primary toolbar action', async ({ page }) => {
