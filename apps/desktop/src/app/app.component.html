@@ -1079,6 +1079,7 @@
               <i class="settings-divider"></i>
               <strong>Branch visibility</strong>
               <label><input type="checkbox" [checked]="smartBranchVisibility()" (change)="setSmartBranchVisibility($any($event.target).checked)" /> Smart Branch Visibility</label>
+              <label title="Include Copilot checkpoint references and their history"><input #checkpointVisibility type="checkbox" [checked]="!!git.repository()?.showCheckpoints" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (change)="setCheckpointVisibility(checkpointVisibility.checked, checkpointVisibility)" /> Show Copilot checkpoints</label>
               <i class="settings-divider"></i>
               <strong>Columns</strong>
               @for (column of graphColumnOrder(); track column) {
@@ -1526,6 +1527,8 @@
                   <button class="ref-pill remote interactive-detail-ref lane-color-{{ graphLaneColor(commit.oid) }}" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Remote branch {{ decorationLabel(decoration) }}" aria-haspopup="menu" title="Click to view branch tip · Double-click or press Enter to create and checkout a local tracking branch · Right-click for actions" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', decorationLabel(decoration), commit.oid)" (keydown.enter)="checkoutRemoteBranch($event, decorationLabel(decoration))" (dblclick)="checkoutRemoteBranch($event, decorationLabel(decoration))" (contextmenu)="openRemoteMenu($event, decorationLabel(decoration), commit.oid)"><gc-icon [name]="remoteIconForDecoration(decoration)" [size]="9" />{{ decorationLabel(decoration) }}</button>
                 } @else if (decorationKind(decoration) === 'tag') {
                   <button class="ref-pill tag interactive-detail-ref interactive-tag-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Tag {{ decorationLabel(decoration) }}" [attr.aria-describedby]="tagPreview()?.name === decorationLabel(decoration) ? 'tag-reference-preview' : null" aria-haspopup="menu" title="View tag {{ decorationLabel(decoration) }} · Right-click for actions" (mouseenter)="scheduleTagPreview($event, decorationLabel(decoration), commit.oid)" (mouseleave)="closeTagPreview()" (focus)="scheduleTagPreview($event, decorationLabel(decoration), commit.oid, true)" (blur)="closeTagPreview()" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'tag', decorationLabel(decoration), commit.oid)" (contextmenu)="openTagMenu($event, decorationLabel(decoration), commit.oid)"><gc-icon name="tag" [size]="9" />{{ decorationLabel(decoration) }}</button>
+                } @else if (decorationKind(decoration) === 'checkpoint') {
+                  <button class="ref-pill checkpoint interactive-detail-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Copilot checkpoint {{ decoration }}" aria-haspopup="menu" title="{{ decoration }} · Click or right-click for actions" (click)="openCheckpointMenu($event, decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'checkpoint', decoration, commit.oid)" (contextmenu)="openCheckpointMenu($event, decoration, commit.oid)"><gc-icon name="archive" [size]="9" />{{ decorationLabel(decoration) }}</button>
                 } @else {
                   <span class="ref-pill {{ decorationKind(decoration) }}" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" title="{{ decoration }}">{{ decorationLabel(decoration) }}</span>
                 }
@@ -1542,7 +1545,7 @@
                   (click)="openDetailReferenceStackFromTrigger($event)"
                   (contextmenu)="openDetailReferenceStackFromTrigger($event, true)"
                   (keydown)="handleDetailReferenceStackTriggerKeydown($event)"
-                ><span class="reference-stack-locations" aria-hidden="true">@for (location of detailReferenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? remoteIconForDecoration(location.decoration) : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ detailReferenceSummary.label }}</span>@if (detailReferenceSummary.hiddenCount) { <b>+{{ detailReferenceSummary.hiddenCount }}</b> }</button>
+                ><span class="reference-stack-locations" aria-hidden="true">@for (location of detailReferenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? remoteIconForDecoration(location.decoration) : location.kind === 'checkpoint' ? 'archive' : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ detailReferenceSummary.label }}</span>@if (detailReferenceSummary.hiddenCount) { <b>+{{ detailReferenceSummary.hiddenCount }}</b> }</button>
                 <span class="detail-reference-popover" role="menu" aria-label="References on selected commit" (keydown)="handleDetailReferenceStackMenuKeydown($event)">
                   @let selectedReferenceGroups = referenceGroups(commit.decorations);
                   <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ referenceGroupHeading(selectedReferenceGroups) }}</span>
@@ -1556,6 +1559,8 @@
                             <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to create a local tracking branch" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', location.label, commit.oid)" (keydown.enter)="checkoutRemoteBranch($event, location.label)" (dblclick)="checkoutRemoteBranch($event, location.label)" (contextmenu)="openRemoteMenu($event, location.label, commit.oid)"><gc-icon [name]="remoteIconForDecoration(location.decoration)" [size]="10" /></button>
                           } @else if (location.kind === 'tag') {
                             <button class="grouped-reference-location tag" type="button" role="menuitem" aria-label="Tag {{ location.label }}" title="Tag {{ location.label }} · Right-click for actions" (mouseenter)="scheduleTagPreview($event, location.label, commit.oid)" (mouseleave)="closeTagPreview()" (focus)="scheduleTagPreview($event, location.label, commit.oid, true)" (blur)="closeTagPreview()" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'tag', location.label, commit.oid)" (contextmenu)="openTagMenu($event, location.label, commit.oid)"><gc-icon name="tag" [size]="10" /></button>
+                          } @else if (location.kind === 'checkpoint') {
+                            <button class="grouped-reference-location checkpoint" type="button" role="menuitem" aria-label="Copilot checkpoint {{ location.decoration }}" aria-haspopup="menu" title="{{ location.decoration }} · Click or right-click for actions" (click)="openCheckpointMenu($event, location.decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'checkpoint', location.decoration, commit.oid)" (contextmenu)="openCheckpointMenu($event, location.decoration, commit.oid)"><gc-icon name="archive" [size]="10" /></button>
                           } @else {
                             <span class="grouped-reference-location" title="{{ location.decoration }}"><gc-icon name="branch" [size]="10" /></span>
                           }
@@ -2255,7 +2260,7 @@
       [class.commit-context-menu]="menu.kind === 'commit'"
       [class.branch-context-menu]="menu.kind === 'branch'"
       role="menu"
-      [attr.aria-label]="menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Actions for commit ' + menu.label : 'Actions for ' + menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Actions for tag ' + menu.label : menu.kind === 'remote' ? 'Actions for remote branch ' + menu.label : 'Actions for branch ' + menu.label"
+      [attr.aria-label]="menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Actions for commit ' + menu.label : 'Actions for ' + menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Actions for tag ' + menu.label : menu.kind === 'remote' ? 'Actions for remote branch ' + menu.label : menu.kind === 'checkpoint' ? 'Actions for Copilot checkpoint ' + menu.label : 'Actions for branch ' + menu.label"
       [style.left.px]="menu.x"
       [style.top.px]="menu.y"
       [style.--context-menu-top.px]="menu.y"
@@ -2263,7 +2268,7 @@
       (keydown)="handleContextMenuKeydown($event)"
     >
       <div class="context-heading">
-        <span class="context-heading-eyebrow">{{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Commit' : menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Tag' : menu.kind === 'remote' ? 'Remote branch' : 'Branch' }}@if (menu.kind === 'commit' && menu.oids.length === 1) { <code>{{ shortOid(menu.oid) }}</code> }</span>
+        <span class="context-heading-eyebrow">{{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Commit' : menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Tag' : menu.kind === 'remote' ? 'Remote branch' : menu.kind === 'checkpoint' ? 'Copilot checkpoint' : 'Branch' }}@if (menu.kind === 'commit' && menu.oids.length === 1) { <code>{{ shortOid(menu.oid) }}</code> }</span>
         <strong [attr.title]="menu.kind === 'commit' && menu.oids.length > 1 ? null : menu.label">{{ menu.kind === 'commit' && menu.oids.length > 1 ? 'Oldest to newest' : menu.label }}</strong>
       </div>
       @if (menu.kind === 'commit') {
@@ -2273,6 +2278,10 @@
       } @else if (menu.kind === 'remote') {
         <div class="context-section-label" aria-hidden="true">Checkout and inspect</div>
       }
+      @if (menu.kind === 'checkpoint') {
+        <button type="button" role="menuitem" (click)="copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy checkpoint reference</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestCheckpointDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
+      } @else {
       <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
         <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Create local tracking branch' : menu.label === git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
       </button>
@@ -2379,6 +2388,7 @@
         <button data-create-context-branch type="button" role="menuitem" [disabled]="git.busy()" (click)="openContextBranchCreator($event)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
       }
       <button type="button" role="menuitem" (click)="openContextTagCreator()"><span><gc-icon name="tag" [size]="13" /></span>Create tag here…</button>
+      }
     </div>
   }
   @if (referencePaneMenu(); as menu) {
@@ -2591,6 +2601,21 @@
         <div class="confirmation-copy">
           <span>Start binary search</span>
           <h2 id="bisect-dialog-title">Find the commit that introduced a problem</h2>
+  @if (pendingCheckpointDelete(); as action) {
+    <div class="confirmation-backdrop" (click)="dismissCheckpointConfirmation(true)">
+      <section #checkpointConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleCheckpointConfirmationKeydown($event)">
+        <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+        <div class="confirmation-copy">
+          <span>Delete Copilot checkpoint</span>
+          <h2 id="checkpoint-confirmation-title">Delete checkpoint reference?</h2>
+          <p><code class="checkpoint-reference-name">{{ action.reference }}</code></p>
+          <p>Points to commit <code>{{ shortOid(action.oid) }}</code>.</p>
+          <p id="checkpoint-confirmation-warning">Deleting this reference may prevent Copilot from recovering this session or checkpoint. Git may eventually remove commits that are no longer reachable. This action cannot be undone here.</p>
+        </div>
+        <footer><button type="button" data-checkpoint-dialog-cancel (click)="dismissCheckpointConfirmation(true)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="confirmCheckpointDelete()">Delete checkpoint reference</button></footer>
+      </section>
+    </div>
+  }
           <p>Git will temporarily check out commits between these two points. Test each one, then mark it Good, Bad, or Skip.</p>
           <div class="bisect-endpoints">
             <div><small>KNOWN GOOD</small><strong>{{ bisect.goodLabel }}</strong><code>{{ shortOid(bisect.goodOid) }}</code></div>

@@ -22,7 +22,8 @@ use git_khronos_git_core::{
     create_branch_reference as git_create_branch_reference, create_tag as git_create_tag,
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
-    delete_branch as git_delete_branch, detect_git,
+    delete_branch as git_delete_branch,
+    delete_checkpoint_reference as git_delete_checkpoint_reference, detect_git,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
     execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
@@ -55,7 +56,8 @@ use git_khronos_git_core::{
     set_repository_identity as git_set_repository_identity,
     set_sparse_checkout as git_set_sparse_checkout, set_worktree_locked as git_set_worktree_locked,
     signing_diagnostic as git_signing_diagnostic, skip_rebase as git_skip_rebase,
-    snapshot_with_limits_fast, snapshot_with_limits_startup, stage_all as git_stage_all,
+    snapshot_with_limits_fast_and_checkpoint_visibility,
+    snapshot_with_limits_startup_and_checkpoint_visibility, stage_all as git_stage_all,
     stage_path as git_stage_path, start_bisect as git_start_bisect,
     stash_details_at_oid as git_stash_details, stash_file_diff_at_oid as git_stash_file_diff,
     stash_with_message as git_stash, status_with_entry_limit, status_with_entry_limit_fast,
@@ -68,8 +70,8 @@ use git_khronos_git_core::{
 };
 use git_khronos_git_core::{
     DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
-    discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard_with_preview,
-    recover_discarded_changes,
+    discarded_change_recoveries, execute_discard, prepare_discard,
+    prepare_partial_discard_with_preview, recover_discarded_changes,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 mod reference_commands;
@@ -85,30 +87,30 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
 mod authentication;
-mod gitlab_commands;
-mod gitlab_clone_commands;
-mod gitlab_fork_commands;
-mod gitlab_fork_reviews;
-mod gitlab_fork_submission;
-mod gitlab_fork_recovery;
-mod recovery_commands;
-mod hosting_commands;
-mod fork_commands;
-mod fork_remote_commands;
-mod repository_link_commands;
-mod incoming_repository_links;
-mod hosted_repository_commands;
 mod branch_workflow_commands;
-mod working_file_commands;
-mod terminal_profile_commands;
+mod file_tool_commands;
 #[cfg(any(target_os = "linux", test))]
 mod file_tool_reviews;
-mod file_tool_commands;
+mod fork_commands;
+mod fork_remote_commands;
+mod gitlab_clone_commands;
+mod gitlab_commands;
+mod gitlab_fork_commands;
+mod gitlab_fork_recovery;
+mod gitlab_fork_reviews;
+mod gitlab_fork_submission;
+mod hosted_repository_commands;
+mod hosting_commands;
+mod incoming_repository_links;
+mod recovery_commands;
+mod repository_link_commands;
+mod terminal_profile_commands;
+mod working_file_commands;
 
 #[derive(Default)]
 struct AppState {
@@ -120,7 +122,9 @@ struct AppState {
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
     hosted_write_plans: Mutex<HashMap<String, hosting_commands::CachedPlan>>,
     hosted_fork_reviews: Mutex<HashMap<String, fork_commands::CachedReview>>,
-    hosted_fork_remote_plans: Mutex<HashMap<String, fork_remote_commands::Cached<git_khronos_git_core::HostedForkRemotePlan>>>,
+    hosted_fork_remote_plans: Mutex<
+        HashMap<String, fork_remote_commands::Cached<git_khronos_git_core::HostedForkRemotePlan>>,
+    >,
     hosted_clone_plans: Mutex<HashMap<String, hosted_repository_commands::CachedClone>>,
     branch_workflow_plans: Mutex<HashMap<String, branch_workflow_commands::CachedPlan>>,
     active_operations: Arc<Mutex<HashMap<String, CancellationToken>>>,
@@ -162,11 +166,14 @@ struct RepositorySession {
     history_cursor: Mutex<CommitHistoryCursor>,
     history_limit: AtomicUsize,
     status_limit: AtomicUsize,
+    show_checkpoints: AtomicBool,
 }
 
 impl RepositorySession {
     fn with_read_policy<T>(&self, action: impl FnOnce() -> T) -> T {
-        if self.no_lazy_reads.load(Ordering::Acquire) || self.incoming_link_guard.load(Ordering::Acquire) {
+        if self.no_lazy_reads.load(Ordering::Acquire)
+            || self.incoming_link_guard.load(Ordering::Acquire)
+        {
             git_khronos_git_core::without_lazy_fetch(action)
         } else {
             action()
@@ -238,6 +245,7 @@ struct SystemInfo {
 #[serde(rename_all = "camelCase")]
 struct RepositorySnapshot {
     id: String,
+    show_checkpoints: bool,
     #[serde(flatten)]
     data: RepositoryData,
 }
@@ -362,6 +370,7 @@ fn register_repository_with_read_policy(
                 history_cursor: Mutex::new(CommitHistoryCursor::default()),
                 history_limit: AtomicUsize::new(INITIAL_HISTORY_LIMIT),
                 status_limit: AtomicUsize::new(INITIAL_STATUS_LIMIT),
+                show_checkpoints: AtomicBool::new(false),
             }),
         );
         id
@@ -450,7 +459,12 @@ async fn refresh_repository_status(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
-        session.with_read_policy(|| status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed)))
+        session.with_read_policy(|| {
+            status_with_entry_limit_fast(
+                &session.path,
+                session.status_limit.load(Ordering::Relaxed),
+            )
+        })
     })
     .await
     .map_err(background_task_error)?
@@ -464,6 +478,37 @@ async fn diagnose_signing(repo_id: String, app: AppHandle) -> Result<SigningDiag
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn set_checkpoint_visibility(
+    repo_id: String,
+    show: bool,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        let data = snapshot_with_limits_fast_and_checkpoint_visibility(
+            &session.path,
+            session.history_limit.load(Ordering::Relaxed),
+            session.status_limit.load(Ordering::Relaxed),
+            show,
+        )?;
+        let mut cursor = CommitHistoryCursor::default();
+        cursor.reset_with_checkpoint_visibility(&session.path, &data.commits, show)?;
+        *session.history_cursor.lock().map_err(state_error)? = cursor;
+        session.show_checkpoints.store(show, Ordering::Relaxed);
+        Ok(RepositorySnapshot {
+            id: repo_id,
+            show_checkpoints: show,
+            data,
+        })
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_more_commits(repo_id: String, app: AppHandle) -> Result<CommitHistoryPage, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -471,11 +516,13 @@ async fn load_more_commits(repo_id: String, app: AppHandle) -> Result<CommitHist
         // Snapshot refreshes reset the cursor. Keep the page and its retained
         // snapshot limit in the same repository operation as that reset.
         let _operation = session.operation.lock().map_err(state_error)?;
-        let page = session.with_read_policy(|| session
-            .history_cursor
-            .lock()
-            .map_err(state_error)?
-            .next_page(&session.path, HISTORY_PAGE_SIZE))?;
+        let page = session.with_read_policy(|| {
+            session
+                .history_cursor
+                .lock()
+                .map_err(state_error)?
+                .next_page(&session.path, HISTORY_PAGE_SIZE)
+        })?;
         let limit = session.history_limit.load(Ordering::Relaxed);
         session
             .history_limit
@@ -850,6 +897,27 @@ fn checkout_remote_branch(
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
         git_checkout_remote_branch(path, &name)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+fn delete_checkpoint_reference(
+    repo_id: String,
+    reference: String,
+    expected_oid: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    let session = repository_session(&repo_id, &state)?;
+    let _operation = session.operation.lock().map_err(state_error)?;
+    git_delete_checkpoint_reference(&session.path, &reference, &expected_oid)?;
+    build_snapshot(repo_id, &session).map_err(|error| AppError {
+        kind: "checkpointDeletedRefreshFailed".into(),
+        message: format!(
+            "The checkpoint reference was deleted, but the repository could not refresh: {}",
+            error.message
+        ),
+        hint: Some("Refresh the repository to update its history.".into()),
     })
 }
 
@@ -1427,7 +1495,8 @@ async fn preview_merge(
     let (cancellation, _operation) = register_active_operation(&app, operation_id)?;
     with_repository_background(repo_id, app, move |path| {
         git_khronos_git_core::preview_merge(path, &request, &cancellation)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1688,7 +1757,11 @@ async fn sync_repository(
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
-        if session.pause_auto_sync.load(Ordering::Acquire) || session.incoming_link_guard.load(Ordering::Acquire) { return Ok(None); }
+        if session.pause_auto_sync.load(Ordering::Acquire)
+            || session.incoming_link_guard.load(Ordering::Acquire)
+        {
+            return Ok(None);
+        }
         let fetched = authentication::run(
             &app,
             "background-fetch",
@@ -2135,7 +2208,9 @@ fn pop_stash(
     expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_pop_stash_entry(path, "stash@{0}", &expected_oid))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_pop_stash_entry(path, "stash@{0}", &expected_oid)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2146,7 +2221,9 @@ fn apply_stash(
     expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_apply_stash(path, &reference, &expected_oid))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_apply_stash(path, &reference, &expected_oid)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2170,7 +2247,9 @@ fn drop_stash(
     expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_drop_stash(path, &reference, &expected_oid))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_drop_stash(path, &reference, &expected_oid)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2590,11 +2669,17 @@ async fn inspect_file_blame(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-async fn inspect_file_blame_page(repo_id: String, revision: String, path: String, first_line: usize, app: AppHandle)
-    -> Result<git_khronos_git_core::FileBlamePage, AppError> {
+async fn inspect_file_blame_page(
+    repo_id: String,
+    revision: String,
+    path: String,
+    first_line: usize,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::FileBlamePage, AppError> {
     with_repository_background_read(repo_id, app, move |repository| {
         git_khronos_git_core::file_blame_page(repository, &revision, &path, first_line)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2851,7 +2936,9 @@ fn working_tree_status(
     _repo_id: String,
     session: &RepositorySession,
 ) -> Result<RepositoryStatus, AppError> {
-    session.with_read_policy(|| status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed)))
+    session.with_read_policy(|| {
+        status_with_entry_limit_fast(&session.path, session.status_limit.load(Ordering::Relaxed))
+    })
 }
 
 async fn mutate_working_tree_background<F>(
@@ -2886,38 +2973,52 @@ fn startup_snapshot_for_id(
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
     session.with_read_policy(|| {
+        let show_checkpoints = session.show_checkpoints.load(Ordering::Relaxed);
         let snapshot = RepositorySnapshot {
             id: repo_id.to_owned(),
-            data: snapshot_with_limits_startup(
+            show_checkpoints,
+            data: snapshot_with_limits_startup_and_checkpoint_visibility(
                 &session.path,
                 session.history_limit.load(Ordering::Relaxed),
                 session.status_limit.load(Ordering::Relaxed),
+                show_checkpoints,
             )?,
         };
         session
             .history_cursor
             .lock()
             .map_err(state_error)?
-            .reset(&session.path, &snapshot.data.commits)?;
+            .reset_with_checkpoint_visibility(
+                &session.path,
+                &snapshot.data.commits,
+                show_checkpoints,
+            )?;
         Ok(snapshot)
     })
 }
 
 fn build_snapshot(id: String, session: &RepositorySession) -> Result<RepositorySnapshot, AppError> {
     session.with_read_policy(|| {
+        let show_checkpoints = session.show_checkpoints.load(Ordering::Relaxed);
         let snapshot = RepositorySnapshot {
             id,
-            data: snapshot_with_limits_fast(
+            show_checkpoints,
+            data: snapshot_with_limits_fast_and_checkpoint_visibility(
                 &session.path,
                 session.history_limit.load(Ordering::Relaxed),
                 session.status_limit.load(Ordering::Relaxed),
+                show_checkpoints,
             )?,
         };
         session
             .history_cursor
             .lock()
             .map_err(state_error)?
-            .reset(&session.path, &snapshot.data.commits)?;
+            .reset_with_checkpoint_visibility(
+                &session.path,
+                &snapshot.data.commits,
+                show_checkpoints,
+            )?;
         Ok(snapshot)
     })
 }
@@ -3143,7 +3244,14 @@ fn open_agent_terminal(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<TerminalInfo, AppError> {
-    open_terminal_program(repo_id, rows, cols, TerminalLaunch::Agent(program), app, state)
+    open_terminal_program(
+        repo_id,
+        rows,
+        cols,
+        TerminalLaunch::Agent(program),
+        app,
+        state,
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3170,27 +3278,43 @@ struct TerminalLaunchSpec {
     label: String,
 }
 
-fn terminal_launch_spec(program: TerminalLaunch, repository: &Path) -> Result<TerminalLaunchSpec, AppError> {
+fn terminal_launch_spec(
+    program: TerminalLaunch,
+    repository: &Path,
+) -> Result<TerminalLaunchSpec, AppError> {
     use git_khronos_git_core::{ToolArgumentContext, ToolRole};
     if let TerminalLaunch::Configured(profile) = program {
         if !matches!(profile.role, ToolRole::Terminal | ToolRole::Agent) {
-            return Err(AppError { kind: "invalidTerminalToolRole".into(),
+            return Err(AppError {
+                kind: "invalidTerminalToolRole".into(),
                 message: "Choose a terminal or agent profile for a terminal session.".into(),
-                hint: Some("No program was started.".into()) });
+                hint: Some("No program was started.".into()),
+            });
         }
         let arguments = profile.expanded_arguments(&ToolArgumentContext {
-            repository: repository.to_owned(), ..Default::default()
+            repository: repository.to_owned(),
+            ..Default::default()
         })?;
-        return Ok(TerminalLaunchSpec { executable: profile.executable, arguments, label: profile.name });
+        return Ok(TerminalLaunchSpec {
+            executable: profile.executable,
+            arguments,
+            label: profile.name,
+        });
     }
     let executable = match program {
         TerminalLaunch::Default => default_shell(),
         TerminalLaunch::Agent(agent) => agent.executable().to_owned(),
         TerminalLaunch::Configured(_) => unreachable!(),
     };
-    let label = Path::new(&executable).file_name().map(|name| name.to_string_lossy().into_owned())
+    let label = Path::new(&executable)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| executable.clone());
-    Ok(TerminalLaunchSpec { executable, arguments: Vec::new(), label })
+    Ok(TerminalLaunchSpec {
+        executable,
+        arguments: Vec::new(),
+        label,
+    })
 }
 
 fn open_terminal_program(
@@ -3225,15 +3349,21 @@ fn open_terminal_program(
     let mut command = CommandBuilder::new(&launch.executable);
     command.args(&launch.arguments);
     configure_terminal_command(&mut command, &repository.path);
-    let terminal_io::Endpoints { mut reader, writer, cancelled } = terminal_io::connect(pair.master.as_ref())
+    let terminal_io::Endpoints {
+        mut reader,
+        writer,
+        cancelled,
+    } = terminal_io::connect(pair.master.as_ref())
         .map_err(|error| terminal_error("connect terminal I/O", error))?;
     // Finish fallible I/O setup and acquire registry ownership before spawning.
     // Otherwise an early return can leave an unregistered shell running.
     let mut terminals = state.terminals.lock().map_err(state_error)?;
-    let child = pair
-        .slave
-        .spawn_command(command)
-        .map_err(|error| terminal_error(&format!("start {label}; install and authenticate this program separately if needed"), error))?;
+    let child = pair.slave.spawn_command(command).map_err(|error| {
+        terminal_error(
+            &format!("start {label}; install and authenticate this program separately if needed"),
+            error,
+        )
+    })?;
     drop(pair.slave);
     let id = format!(
         "terminal-{}",
@@ -3276,8 +3406,10 @@ fn open_terminal_program(
                 data: format!(
                     "\r\nTerminal cleanup failed: {} Close this tab to retry.\r\n",
                     error.message,
-                ).into_bytes(),
-            }.emit(&app);
+                )
+                .into_bytes(),
+            }
+            .emit(&app);
         }
         if let Ok(mut lifecycle) = lifecycle.lock() {
             lifecycle.reader_finished = true;
@@ -3373,11 +3505,14 @@ fn announce_terminal_exit(
     session_id: &str,
     lifecycle: &Mutex<TerminalLifecycle>,
 ) {
-    let announce = lifecycle.lock().is_ok_and(|mut lifecycle| lifecycle.claim_exit());
+    let announce = lifecycle
+        .lock()
+        .is_ok_and(|mut lifecycle| lifecycle.claim_exit());
     if announce {
         let _ = TerminalExit {
             session_id: session_id.to_owned(),
-        }.emit(app);
+        }
+        .emit(app);
     }
 }
 
@@ -3390,11 +3525,13 @@ fn close_terminal_session(
         .lock()
         .map_err(state_error)?
         .get(session_id)
-        .map(|terminal| (
-            terminal.child.clone(),
-            terminal.cancelled.clone(),
-            terminal.lifecycle.clone(),
-        ))
+        .map(|terminal| {
+            (
+                terminal.child.clone(),
+                terminal.cancelled.clone(),
+                terminal.lifecycle.clone(),
+            )
+        })
     else {
         return Ok(None);
     };
@@ -3453,7 +3590,9 @@ pub fn run() {
     let state = AppState::default();
     // Capture before saved tabs can restore, so their reads remain guarded.
     for argument in std::env::args_os().skip(1) {
-        if let Some(raw) = argument.to_str() { let _ = state.incoming_links.receive(raw); }
+        if let Some(raw) = argument.to_str() {
+            let _ = state.incoming_links.receive(raw);
+        }
     }
     let builder = tauri::Builder::default();
     #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
@@ -3485,7 +3624,8 @@ pub fn run() {
         .invoke_handler(bindings.invoke_handler())
         .setup(move |app| {
             bindings.mount_events(app);
-            app.state::<gitlab_commands::GitLabAccounts>().start_cleanup();
+            app.state::<gitlab_commands::GitLabAccounts>()
+                .start_cleanup();
             incoming_repository_links::install_listener(app.handle())?;
             Ok(())
         })
@@ -3561,6 +3701,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             refresh_repository_status,
             diagnose_signing,
             load_more_commits,
+            set_checkpoint_visibility,
             search_tracked_files,
             load_reflog,
             load_more_changes,
@@ -3617,6 +3758,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             rename_branch,
             set_branch_upstream,
             delete_branch,
+            delete_checkpoint_reference,
             integrate_branch,
             continue_merge,
             abort_merge,
@@ -3934,7 +4076,9 @@ mod tests {
         let writer_state = state.clone();
         let worker = std::thread::spawn(move || {
             tauri::async_runtime::block_on(super::write_terminal_data(
-                &writer_state, "blocked", b"paste".to_vec(),
+                &writer_state,
+                "blocked",
+                b"paste".to_vec(),
             ))
         });
         let started = observed.recv_timeout(Duration::from_secs(5)).is_ok();

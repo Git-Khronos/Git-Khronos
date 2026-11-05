@@ -227,6 +227,7 @@ export class GitKhronosService {
   readonly backgroundFetchLastAt = signal<Record<string, number>>({});
   readonly backgroundFetchErrors = signal<Record<string, string>>({});
   readonly historyLoading = signal(false);
+  readonly checkpointVisibilityUpdating = signal(false);
   private historyRequest: { repoId: string } | null = null;
   readonly changesLoading = signal(false);
   readonly trackedFileSearch = signal<TrackedFileSearch | null>(null);
@@ -298,8 +299,12 @@ export class GitKhronosService {
   private trackedFileSearchRequest = 0;
   private reflogRequest = 0;
   private nextActivityId = 1;
-  private readonly liveRefreshes = new Set<string>();
+  private readonly liveRefreshes = new Map<string, number>();
   private readonly statusGenerations = new Map<string, number>();
+  private readonly historyGenerations = new Map<string, number>();
+  // Full snapshots reset the native cursor, so page reads wait for those operations.
+  private readonly historyBarriers = new Set<Promise<void>>();
+  private historyLoadFinished: Promise<void> | null = null;
   private readonly pendingWorkingTreeMutations = new Map<string, number>();
   private readonly deferredMetadataRefreshes = new Set<string>();
   private closedRepositories: ClosedRepository[] = [];
@@ -667,9 +672,12 @@ export class GitKhronosService {
       || this.busy()
       || this.backgroundFetchRepositoryId() === repositoryId
       || this.liveRefreshes.has(repositoryId)) return false;
-    this.liveRefreshes.add(repositoryId);
-    const generation = this.statusGeneration(repositoryId);
+    this.beginLiveRefresh(repositoryId);
+    const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
+      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.busy() || !this.repositories().some((candidate) => candidate.id === repositoryId)) return false;
+      const generation = this.statusGeneration(repositoryId);
       const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
       if (generation !== this.statusGeneration(repositoryId)) return true;
       await this.storeRefreshedSnapshot(snapshot);
@@ -678,7 +686,8 @@ export class GitKhronosService {
     } catch {
       return false;
     } finally {
-      this.liveRefreshes.delete(repositoryId);
+      this.endLiveRefresh(repositoryId);
+      finishHistoryBarrier();
     }
   }
 
@@ -692,7 +701,7 @@ export class GitKhronosService {
       || (!force && (this.busy()
         || this.backgroundFetchRepositoryId() === repository.id
         || this.liveRefreshes.has(repository.id)))) return false;
-    this.liveRefreshes.add(repository.id);
+    this.beginLiveRefresh(repository.id);
     const generation = this.statusGeneration(repository.id);
     try {
       const status = await ipc.refresh_repository_status({ repoId: repository.id });
@@ -702,10 +711,18 @@ export class GitKhronosService {
       if (generation !== this.statusGeneration(repository.id)
         || this.pendingWorkingTreeMutations.has(repository.id)) return true;
       if (status.branch !== currentRepository.status.branch) {
-        const snapshot = await ipc.refresh_repository({ repoId: repository.id });
-        // Branch changes need metadata too, but its fast status omits untracked
-        // discovery. Reconcile it just like other metadata refreshes.
-        if (generation === this.statusGeneration(repository.id)) await this.storeRefreshedSnapshot(snapshot);
+        const finishHistoryBarrier = this.beginHistoryBarrier();
+        try {
+          if (this.historyLoadFinished) await this.historyLoadFinished;
+          if (generation !== this.statusGeneration(repository.id)
+            || !this.repositories().some((candidate) => candidate.id === repository.id)) return true;
+          const snapshot = await ipc.refresh_repository({ repoId: repository.id });
+          // Branch changes need metadata too, but its fast status omits untracked
+          // discovery. Reconcile it just like other metadata refreshes.
+          if (generation === this.statusGeneration(repository.id)) await this.storeRefreshedSnapshot(snapshot);
+        } finally {
+          finishHistoryBarrier();
+        }
       } else {
         this.storeStatus(repository.id, status);
       }
@@ -713,7 +730,7 @@ export class GitKhronosService {
     } catch {
       return false;
     } finally {
-      this.liveRefreshes.delete(repository.id);
+      this.endLiveRefresh(repository.id);
     }
   }
 
@@ -729,8 +746,11 @@ export class GitKhronosService {
       delete updated[repository.id];
       return updated;
     });
-    const generation = this.statusGeneration(repository.id);
+    const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
+      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.busy() || !this.repositories().some((candidate) => candidate.id === repository.id)) return false;
+      const generation = this.statusGeneration(repository.id);
       const snapshot = await ipc.sync_repository({ repoId: repository.id });
       // Reconciliation itself ignores repositories closed while fetch ran.
       if (snapshot && generation === this.statusGeneration(repository.id)) {
@@ -752,6 +772,7 @@ export class GitKhronosService {
     } finally {
       this.backgroundFetchBusy.set(false);
       this.backgroundFetchRepositoryId.set(null);
+      finishHistoryBarrier();
     }
   }
 
@@ -761,7 +782,7 @@ export class GitKhronosService {
     await this.run('Opening repository folder…', async report => {
       await ipc.open_repository_in_file_manager({ repoId: repository.id });
       report('Repository folder opened');
-    }, repository.id);
+    }, repository.id, null, true, false);
   }
 
   async openExternalUrl(url: string, successMessage = 'Link opened'): Promise<void> {
@@ -777,7 +798,7 @@ export class GitKhronosService {
     await this.run('Opening link…', async report => {
       await ipc.open_external_url({ url });
       report(successMessage);
-    }, this.activeRepositoryId());
+    }, this.activeRepositoryId(), null, true, false);
   }
 
   async toggleFullscreen(): Promise<void> {
@@ -790,17 +811,31 @@ export class GitKhronosService {
   }
 
   async loadMoreHistory(): Promise<boolean> {
+    const requestedRepositoryId = this.activeRepositoryId();
+    if (!requestedRepositoryId || !this.repository()?.historyTruncated || this.historyLoading()) return false;
+    // Snapshots reset the native history cursor; never page across that reset.
+    while (this.historyBarriers.size) {
+      await Promise.all([...this.historyBarriers]);
+      if (this.activeRepositoryId() !== requestedRepositoryId || this.historyLoading()) return false;
+    }
     const repository = this.repository();
-    if (!repository?.historyTruncated || this.historyLoading()) return false;
+    if (!repository?.historyTruncated || repository.id !== requestedRepositoryId) return false;
     const request = { repoId: repository.id };
     this.historyRequest = request;
     this.historyLoading.set(true);
     this.error.set(null);
+    const generation = this.historyGeneration(repository.id);
+    let finishLoad!: () => void;
+    const finished = new Promise<void>((resolve) => { finishLoad = resolve; });
+    this.historyLoadFinished = finished;
     try {
       const page = await ipc.load_more_commits({
         repoId: repository.id,
       });
       if (this.historyRequest !== request) return false;
+      const current = this.repositories().find((candidate) => candidate.id === repository.id);
+      if (generation !== this.historyGeneration(repository.id)
+        || !current || current.showCheckpoints !== repository.showCheckpoints) return false;
       this.repositories.update((repositories) => repositories.map((candidate) => {
         if (candidate.id !== repository.id) return candidate;
         const known = new Set(candidate.commits.map((commit) => commit.oid));
@@ -819,6 +854,8 @@ export class GitKhronosService {
         this.historyRequest = null;
         this.historyLoading.set(false);
       }
+      if (this.historyLoadFinished === finished) this.historyLoadFinished = null;
+      finishLoad();
     }
   }
 
@@ -1430,6 +1467,40 @@ export class GitKhronosService {
     return 'failed';
   }
 
+  async setCheckpointVisibility(show: boolean): Promise<void> {
+    const repository = this.repository();
+    if (!repository || this.busy() || this.historyLoading() || this.checkpointVisibilityUpdating()
+      || repository.showCheckpoints === show) return;
+    this.checkpointVisibilityUpdating.set(true);
+    try {
+      if (this.browserPreview()) {
+        this.error.set(null);
+        this.repositories.update((repositories) => repositories.map((candidate) => candidate.id === repository.id
+          ? { ...candidate, showCheckpoints: show }
+          : candidate));
+        this.activity.set(show ? 'Checkpoint references shown' : 'Checkpoint references hidden');
+        return;
+      }
+      await this.mutate(
+        'set_checkpoint_visibility',
+        'Updating checkpoint visibility…',
+        show ? 'Checkpoint references shown' : 'Checkpoint references hidden',
+        { show },
+      );
+    } finally {
+      this.checkpointVisibilityUpdating.set(false);
+    }
+  }
+
+  async deleteCheckpointReference(reference: string, expectedOid: string): Promise<void> {
+    await this.mutate(
+      'delete_checkpoint_reference',
+      'Deleting checkpoint reference…',
+      'Checkpoint reference deleted',
+      { reference, expectedOid },
+    );
+  }
+
   async integrateBranch(name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
     const verbs = { merge: 'Merging', 'ff-only': 'Fast-forwarding', squash: 'Squashing', rebase: 'Rebasing' };
     await this.mutate('integrate_branch', `${verbs[strategy]} ${name}…`, `${verbs[strategy]} ${name} complete`, {
@@ -1451,7 +1522,7 @@ export class GitKhronosService {
         ...(root ? { root: true } : {}),
       });
       report(root ? `Whole-history rebase ready on ${source}` : selectionOids ? `Selected-range rebase ready on ${source}` : `Interactive rebase ready: ${source} onto ${target}`);
-    }, repo.id);
+    }, repo.id, null, true, false);
     return plan;
   }
 
@@ -1605,7 +1676,7 @@ export class GitKhronosService {
       if (this.activeRepositoryId() !== repo.id || request !== this.conflictRequest) return;
       this.conflictDetails.set(details);
       report(`Resolving conflict in ${path}`);
-    }, repo.id);
+    }, repo.id, null, true, false);
     return this.activeRepositoryId() === repo.id && request === this.conflictRequest ? details : null;
   }
 
@@ -2701,44 +2772,50 @@ export class GitKhronosService {
     const [extra = {}, preserveConflictOnFailure = false] = options;
     const repo = this.repository();
     if (!repo) return null;
-    const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
-    this.bumpStatusGeneration(repo.id);
-    const generation = this.statusGeneration(repo.id);
-    const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
-    const result = await this.run(pending, async report => {
-      const snapshot = await invokeCommand(command, {
-        repoId: repo.id,
-        ...extra,
-        ...(operationId ? { operationId } : {}),
-      } as CommandArgs<K>) as RepositorySnapshot;
-      if (generation === this.statusGeneration(repo.id)) {
-        this.storeMutationSnapshot(snapshot);
-      } else if (this.repositories().some((repository) => repository.id === repo.id)) {
-        // Reply order need not match Git's mutation order. Read current state
-        // instead of replacing a newer result with this action's snapshot.
+    const finishHistoryBarrier = this.beginHistoryBarrier();
+    try {
+      const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
+      this.bumpStatusGeneration(repo.id);
+      const generation = this.statusGeneration(repo.id);
+      const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
+      const result = await this.run(pending, async report => {
+        const snapshot = await invokeCommand(command, {
+          repoId: repo.id,
+          ...extra,
+          ...(operationId ? { operationId } : {}),
+        } as CommandArgs<K>) as RepositorySnapshot;
+        if (generation === this.statusGeneration(repo.id)) {
+          this.storeMutationSnapshot(snapshot);
+        } else if (this.repositories().some((repository) => repository.id === repo.id)) {
+          // Reply order need not match Git's mutation order. Read current state
+          // instead of replacing a newer result with this action's snapshot.
+          try {
+            await this.refreshMutationSnapshot(repo.id, inspectionRequest);
+          } catch {
+            // The mutation succeeded even if reconciliation needs a later retry.
+            this.deferMetadataRefresh(repo.id);
+          }
+        }
+        this.clearMutationInspection(repo.id, inspectionRequest);
+        report(typeof done === 'function' ? done(snapshot) : done);
+      }, repo.id, operationId);
+      const failure = result === 'success' ? null : this.error();
+      if (result === 'error' && this.repositories().some((repository) => repository.id === repo.id)) {
         try {
-          await this.refreshMutationSnapshot(repo.id, inspectionRequest);
+          if (this.historyLoadFinished) await this.historyLoadFinished;
+          await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
         } catch {
-          // The mutation succeeded even if reconciliation needs a later retry.
-          this.deferMetadataRefresh(repo.id);
+          // Keep the original mutation error; a manual refresh can retry the snapshot.
         }
       }
-      this.clearMutationInspection(repo.id, inspectionRequest);
-      report(typeof done === 'function' ? done(snapshot) : done);
-    }, repo.id, operationId);
-    const failure = result === 'success' ? null : this.error();
-    if (result === 'error' && this.repositories().some((repository) => repository.id === repo.id)) {
-      try {
-        await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
-      } catch {
-        // Keep the original mutation error; a manual refresh can retry the snapshot.
+      // Fast snapshots skip untracked discovery; complete the status right away.
+      if (this.repositories().some((repository) => repository.id === repo.id)) {
+        void this.refreshStatusInBackground(repo.id, true);
       }
+      return { status: result, error: failure };
+    } finally {
+      finishHistoryBarrier();
     }
-    // Fast snapshots skip untracked discovery; complete the status right away.
-    if (this.repositories().some((repository) => repository.id === repo.id)) {
-      void this.refreshStatusInBackground(repo.id, true);
-    }
-    return { status: result, error: failure };
   }
 
   /**
@@ -2781,7 +2858,7 @@ export class GitKhronosService {
         inspectionRequest = this.workingTreeRequest;
       }
       report(done);
-    }, repoId);
+    }, repoId, null, true, false);
     const result = { succeeded: outcome === 'success', inspectionRequest };
     const statusIsCurrent = generation === this.statusGeneration(repoId);
     // Every completion invalidates older replies, including overlapping work.
@@ -2804,6 +2881,30 @@ export class GitKhronosService {
 
   private statusGeneration(repoId: string): number {
     return this.statusGenerations.get(repoId) ?? 0;
+  }
+
+  private beginLiveRefresh(repoId: string): void {
+    this.liveRefreshes.set(repoId, (this.liveRefreshes.get(repoId) ?? 0) + 1);
+  }
+
+  private endLiveRefresh(repoId: string): void {
+    const remaining = (this.liveRefreshes.get(repoId) ?? 1) - 1;
+    if (remaining > 0) this.liveRefreshes.set(repoId, remaining);
+    else this.liveRefreshes.delete(repoId);
+  }
+
+  private historyGeneration(repoId: string): number {
+    return this.historyGenerations.get(repoId) ?? 0;
+  }
+
+  private beginHistoryBarrier(): () => void {
+    let finish!: () => void;
+    const barrier = new Promise<void>((resolve) => { finish = resolve; });
+    this.historyBarriers.add(barrier);
+    return () => {
+      this.historyBarriers.delete(barrier);
+      finish();
+    };
   }
 
   private bumpStatusGeneration(repoId: string): void {
@@ -2869,6 +2970,7 @@ export class GitKhronosService {
     repositoryId: string | null = null,
     operationId: string | null = null,
     refreshOnCancel = true,
+    changesHistory = true,
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
@@ -2897,7 +2999,9 @@ export class GitKhronosService {
       description = message;
       this.activity.set(message);
     };
+    const finishHistoryBarrier = changesHistory ? this.beginHistoryBarrier() : null;
     try {
+      if (changesHistory && this.historyLoadFinished) await this.historyLoadFinished;
       await action(report);
       this.finishActivity(id, 'success', description, startedAt, null);
       return 'success';
@@ -2906,13 +3010,17 @@ export class GitKhronosService {
       const cancelled = this.isOperationCancelled(error);
       let detail = this.formatError(error);
       if (cancelled && repositoryId && refreshOnCancel) {
+        const finishRecoveryBarrier = changesHistory ? null : this.beginHistoryBarrier();
         try {
+          if (!changesHistory && this.historyLoadFinished) await this.historyLoadFinished;
           await this.refreshMutationSnapshot(repositoryId, inspectionRequest);
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
           detail += ` Repository refresh also failed: ${this.formatError(refreshError)}`;
           this.error.set(detail);
           this.activity.set('Operation canceled; repository refresh failed');
+        } finally {
+          finishRecoveryBarrier?.();
         }
       } else {
         this.error.set(detail);
@@ -2924,6 +3032,7 @@ export class GitKhronosService {
     } finally {
       if (operationId) this.finishCancellationRequest(operationId);
       this.updateRunningOperations(-1);
+      finishHistoryBarrier?.();
     }
   }
 
@@ -3099,7 +3208,10 @@ export class GitKhronosService {
     this.updateRunningOperations(1);
     this.activity.set('Restoring active repository…');
     let restoredPath: string | null = null;
+    const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
+      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.activeWorkspaceId() !== workspaceId) return;
       for (const path of ordered) {
         try {
           const snapshot = await ipc.open_repository({ path });
@@ -3116,6 +3228,7 @@ export class GitKhronosService {
       this.activity.set('Ready');
     } finally {
       this.updateRunningOperations(-1);
+      finishHistoryBarrier();
     }
     if (!restoredPath) {
       if (failedPaths.length) this.reportRestoreFailures(failedPaths);
@@ -3147,22 +3260,28 @@ export class GitKhronosService {
 
   private async restoreRepositoryTabs(paths: string[], originalOrder: string[], workspaceId: string): Promise<void> {
     const failedPaths: string[] = [];
-    for (const path of paths) {
-      if (this.activeWorkspaceId() !== workspaceId) return;
-      try {
-        const snapshot = await ipc.open_repository({ path });
+    const finishHistoryBarrier = this.beginHistoryBarrier();
+    try {
+      if (this.historyLoadFinished) await this.historyLoadFinished;
+      for (const path of paths) {
         if (this.activeWorkspaceId() !== workspaceId) return;
-        this.deferredMetadataRefreshes.add(snapshot.id);
-        this.storeSnapshot(snapshot, true);
-        this.repositories.update((repositories) => [...repositories].sort(
-          (left, right) => originalOrder.indexOf(left.path) - originalOrder.indexOf(right.path),
-        ));
-      } catch {
-        failedPaths.push(path);
+        try {
+          const snapshot = await ipc.open_repository({ path });
+          if (this.activeWorkspaceId() !== workspaceId) return;
+          this.deferredMetadataRefreshes.add(snapshot.id);
+          this.storeSnapshot(snapshot, true);
+          this.repositories.update((repositories) => [...repositories].sort(
+            (left, right) => originalOrder.indexOf(left.path) - originalOrder.indexOf(right.path),
+          ));
+        } catch {
+          failedPaths.push(path);
+        }
       }
+      if (failedPaths.length) this.reportRestoreFailures(failedPaths);
+      else this.persistOpenTabs();
+    } finally {
+      finishHistoryBarrier();
     }
-    if (failedPaths.length) this.reportRestoreFailures(failedPaths);
-    else this.persistOpenTabs();
   }
 
   private reportRestoreFailures(paths: readonly string[]): void {
@@ -3216,6 +3335,9 @@ export class GitKhronosService {
   }
 
   private storeSnapshot(snapshot: RepositorySnapshot, addIfMissing = false): void {
+    if (addIfMissing || this.repositories().some((repository) => repository.id === snapshot.id)) {
+      this.historyGenerations.set(snapshot.id, this.historyGeneration(snapshot.id) + 1);
+    }
     this.repositories.update((repositories) => {
       const index = repositories.findIndex((repository) => repository.id === snapshot.id);
       if (index < 0) return addIfMissing ? [...repositories, snapshot] : repositories;
@@ -3460,6 +3582,7 @@ function createRepositoryPreview(): RepositorySnapshot {
   commits.unshift({ oid: stashOid, parents: [headOid], authorName: 'Maya Chen', authorEmail: 'maya@example.test', authoredAt: '2026-10-03T10:05:00Z', subject: 'WIP on graph polish', description: '', decorations: ['refs/stash'] });
   return {
     id: 'browser-preview',
+    showCheckpoints: false,
     name: 'git-khronos',
     path: '/home/maya/projects/git-khronos',
     identity: { name: 'Maya Chen', email: 'maya@example.test' },

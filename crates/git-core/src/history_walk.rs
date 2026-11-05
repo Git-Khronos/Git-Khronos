@@ -1,10 +1,11 @@
 //! In-process, date-ordered commit history walk backed by gitoxide (`gix`).
 //!
 //! The walk reproduces the observable output of
-//! `git log --decorate=short --format=%H %P %an %ae %aI %s %b %D` for the
-//! fields the desktop renders, without spawning a Git process per page.
-//! Reference tips and decorations are taken from the Git CLI once per reset
-//! so `--all` and `%D` keep Git's exact semantics.
+//! `git log --format=%H %P %an %ae %aI %s %b %D` for the fields the desktop
+//! renders, without spawning a Git process per page. Reference names stay
+//! unambiguous when a branch resembles a private checkpoint reference.
+//! Reference tips and decorations are taken from the Git CLI once per reset,
+//! using the same checkpoint visibility as the initial history snapshot.
 
 use crate::{AppError, CommitSummary};
 use gix::ObjectId;

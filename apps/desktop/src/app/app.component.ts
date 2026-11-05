@@ -302,12 +302,18 @@ interface BranchSyncState {
 }
 
 interface ContextMenuState {
-  kind: 'commit' | 'branch' | 'remote' | 'tag';
+  kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint';
   x: number;
   y: number;
   oid: string;
   oids: string[];
   label: string;
+}
+
+interface PendingCheckpointDelete {
+  repoId: string;
+  reference: string;
+  oid: string;
 }
 
 interface TagPreviewPopover {
@@ -690,6 +696,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly repositoryTabs = viewChild<ElementRef<HTMLElement>>('repositoryTabs');
   private readonly historyConfirmationDialog = viewChild<unknown, ElementRef<HTMLElement>>('historyConfirmationDialog', { read: ElementRef });
   private readonly branchConfirmationDialog = viewChild<ElementRef<HTMLElement>>('branchConfirmationDialog');
+  private readonly checkpointConfirmationDialog = viewChild<ElementRef<HTMLElement>>('checkpointConfirmationDialog');
   private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
   private readonly workingTreeOptionsMenu = viewChild<ElementRef<HTMLElement>>('workingTreeOptionsMenu');
   private readonly workingTreeOptionsToggle = viewChild<ElementRef<HTMLButtonElement>>('workingTreeOptionsToggle');
@@ -779,6 +786,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
   private branchActionReturnFocus: HTMLElement | null = null;
+  private checkpointActionReturnFocus: HTMLElement | null = null;
   private fileActionReturnFocus: HTMLElement | null = null;
   private readonly graphCommitChildrenByOid = computed(() => {
     const children = new Map<string, CommitSummary[]>();
@@ -1000,6 +1008,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
   protected readonly pendingBranchRename = signal<string | null>(null);
   protected readonly pendingBranchAction = signal<PendingBranchAction | null>(null);
+  protected readonly pendingCheckpointDelete = signal<PendingCheckpointDelete | null>(null);
   protected readonly pendingBranchUpstream = signal<PendingBranchUpstream | null>(null);
   protected readonly branchUpstreamChoice = signal('');
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
@@ -2373,7 +2382,11 @@ export class AppComponent implements OnInit, OnDestroy {
     const visibleTips = this.graphBranches()
       .filter((branch) => this.isBranchGraphVisible(branch.name))
       .map((branch) => branch.oid)
-      .concat(this.graphStashes().filter((stash) => !hiddenStashes.has(stash.oid)).map((stash) => stash.oid));
+      .concat(this.graphStashes().filter((stash) => !hiddenStashes.has(stash.oid)).map((stash) => stash.oid))
+      .concat(this.git.repository()?.showCheckpoints
+        ? candidates.filter((commit) => commit.decorations.some((decoration) =>
+          decoration.startsWith('refs/copilot/checkpoints/'))).map((commit) => commit.oid)
+        : []);
     const parentsByOid = new Map(commits.map((commit) => [commit.oid, commit.parents]));
     const reachable = new Set<string>();
     const pending = [...visibleTips];
@@ -2882,6 +2895,7 @@ export class AppComponent implements OnInit, OnDestroy {
     isCommitHighlighted: this.isCommitHighlighted.bind(this),
     jumpToReference: this.jumpToReference.bind(this),
     openBranchMenu: this.openBranchMenu.bind(this),
+    openCheckpointMenu: this.openCheckpointMenu.bind(this),
     openCommitMenu: this.openCommitMenu.bind(this),
     openReferenceStack: this.openReferenceStack.bind(this),
     openReferenceStackFromTrigger: this.openReferenceStackFromTrigger.bind(this),
@@ -3954,6 +3968,11 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.pendingCheckpointDelete()) {
+      event.preventDefault();
+      this.dismissCheckpointConfirmation(true);
+      return;
+    }
     if (this.fileToolsDialog() || this.fileContentDialog()) return;
     if (this.repositoryLinkDialog()) {
       if (event.key === 'Escape') {
@@ -6471,9 +6490,9 @@ export class AppComponent implements OnInit, OnDestroy {
       && !this.fullWidthInspectorMode()
       && this.detailsVisible();
     this.fullWidthInspectorMode.set(fullWidthInspector);
-    if (enteringFullWidthInspector && !this.pendingHistoryAction()) {
+    if (enteringFullWidthInspector && !this.pendingHistoryAction() && !this.pendingCheckpointDelete()) {
       setTimeout(() => {
-        if (!this.pendingHistoryAction()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
+        if (!this.pendingHistoryAction() && !this.pendingCheckpointDelete()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
       });
     }
     const activeRepositoryId = this.git.activeRepositoryId();
@@ -6623,6 +6642,20 @@ export class AppComponent implements OnInit, OnDestroy {
     } catch {
       // Marker visibility remains available for this session.
     }
+  }
+
+  protected async setCheckpointVisibility(visible: boolean, input: HTMLInputElement): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    await this.git.setCheckpointVisibility(visible);
+    if (input.isConnected) input.checked = !!this.git.repository()?.showCheckpoints;
+    this.reconcileCheckpointSelection(repositoryId);
+  }
+
+  private reconcileCheckpointSelection(repositoryId: string | null): void {
+    if (!repositoryId || this.git.activeRepositoryId() !== repositoryId) return;
+    const selected = this.selectedCommits();
+    const visible = new Set(this.git.repository()?.commits.map((commit) => commit.oid) ?? []);
+    if (selected.some((oid) => !visible.has(oid))) this.selectWip();
   }
 
   protected setSmartBranchVisibility(visible: boolean): void {
@@ -7156,9 +7189,10 @@ export class AppComponent implements OnInit, OnDestroy {
       .replace(/^remotes\//, '');
   }
 
-  protected decorationKind(decoration: string): 'head' | 'tag' | 'remote' | 'local' {
+  protected decorationKind(decoration: string): 'head' | 'tag' | 'remote' | 'local' | 'checkpoint' {
     if (decoration.startsWith('HEAD ->')) return 'head';
     if (decoration.startsWith('tag:')) return 'tag';
+    if (decoration.startsWith('refs/copilot/checkpoints/')) return 'checkpoint';
     const branch = this.branchForRawDecoration(decoration);
     if (branch) return branch.remote ? 'remote' : 'local';
     if (/^(?:refs\/)?remotes\//.test(decoration)) return 'remote';
@@ -7166,6 +7200,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private branchForRawDecoration(decoration: string): Branch | null {
+    if (decoration.startsWith('refs/copilot/checkpoints/')) return null;
     const fullName = decoration.startsWith('refs/')
       ? decoration
       : decoration.startsWith('heads/') || decoration.startsWith('remotes/')
@@ -11227,7 +11262,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected handleReferenceActionKeydown(
     event: KeyboardEvent,
-    kind: 'branch' | 'remote' | 'tag',
+    kind: 'branch' | 'remote' | 'tag' | 'checkpoint',
     name: string,
     oid: string,
   ): void {
@@ -11261,6 +11296,12 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.openContextMenu('branch', oid, name, event, [oid], true);
+  }
+
+  protected openCheckpointMenu(event: MouseEvent, reference: string, oid: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.openContextMenu('checkpoint', oid, reference, event, [oid], true);
   }
 
   protected openFileMenu(
@@ -11911,6 +11952,64 @@ export class AppComponent implements OnInit, OnDestroy {
     this.openBranchConfirmation({ kind, branch: menu.label }, returnFocus);
   }
 
+  protected requestCheckpointDelete(): void {
+    const menu = this.contextMenu();
+    const repoId = this.git.activeRepositoryId();
+    if (!menu || menu.kind !== 'checkpoint' || !repoId) return;
+    const action = { repoId, reference: menu.label, oid: menu.oid };
+    this.checkpointActionReturnFocus = this.contextMenuReturnFocus;
+    this.dismissGraphActionMenu();
+    this.pendingCheckpointDelete.set(action);
+    queueMicrotask(() => requestAnimationFrame(() => {
+      if (this.pendingCheckpointDelete() !== action) return;
+      this.checkpointConfirmationDialog()?.nativeElement
+        .querySelector<HTMLElement>('[data-checkpoint-dialog-cancel]')
+        ?.focus();
+    }));
+  }
+
+  protected dismissCheckpointConfirmation(restoreFocus = true): void {
+    const target = restoreFocus ? this.checkpointActionReturnFocus : null;
+    this.pendingCheckpointDelete.set(null);
+    this.checkpointActionReturnFocus = null;
+    if (restoreFocus) this.restoreCheckpointActionFocus(target);
+  }
+
+  protected handleCheckpointConfirmationKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.dismissCheckpointConfirmation(true);
+      return;
+    }
+    this.cycleDialogFocus(this.checkpointConfirmationDialog()?.nativeElement, event);
+  }
+
+  protected async confirmCheckpointDelete(): Promise<void> {
+    const action = this.pendingCheckpointDelete();
+    if (!action || this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating()) return;
+    const returnFocus = this.checkpointActionReturnFocus;
+    this.dismissCheckpointConfirmation(false);
+    if (this.git.activeRepositoryId() !== action.repoId) {
+      this.git.error.set('The active repository changed. Open the checkpoint again before deleting it.');
+      this.restoreCheckpointActionFocus(returnFocus);
+      return;
+    }
+    await this.git.deleteCheckpointReference(action.reference, action.oid);
+    this.reconcileCheckpointSelection(action.repoId);
+    this.restoreCheckpointActionFocus(returnFocus);
+  }
+
+  private restoreCheckpointActionFocus(target: HTMLElement | null): void {
+    queueMicrotask(() => {
+      const fallback = this.historyInert()
+        ? this.commitPanelClose()?.nativeElement
+        : this.graphSettingsToggle()?.nativeElement;
+      (target?.isConnected && target.getClientRects().length && !target.closest('[inert]') ? target : fallback)
+        ?.focus({ preventScroll: true });
+    });
+  }
+
   protected async confirmBranchAction(): Promise<void> {
     const action = this.pendingBranchAction();
     if (!action || this.git.busy()) return;
@@ -12234,7 +12333,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private openContextMenu(
-    kind: 'commit' | 'branch' | 'remote' | 'tag',
+    kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint',
     oid: string,
     label: string,
     event: MouseEvent,

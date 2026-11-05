@@ -1442,6 +1442,7 @@ code, kbd { font-family: var(--font-mono); }
 .grouped-reference-location { width: 18px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid transparent; border-radius: 4px; background: #343247; color: #aaa3ef; }
 .grouped-reference-location.local { color: #78d5b8; }
 .grouped-reference-location.tag { color: #e5bb68; }
+.grouped-reference-location.checkpoint { color: #f0bf8a; }
 button.grouped-reference-location:hover, button.grouped-reference-location:focus-visible { border-color: #7771a7; background: #46435f; color: white; }
 .grouped-reference-label { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: normal; }
 .grouped-reference-row > .ref-sync { flex: none; }
@@ -1603,6 +1604,11 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .ref-connector[class*='color-'] { background: var(--graph-lane-color); }
 .ref-pill.local[class*='lane-color-'], .ref-pill.remote[class*='lane-color-'], .ref-pill.head[class*='lane-color-'] { background: var(--graph-lane-label); }
 .ref-pill.tag { border-radius: 2px; background: #296388; color: #d8f1ff; }
+.ref-pill.checkpoint { min-width: 0; border-radius: 2px; background: #86572f; color: #ffe0bb; cursor: pointer; }
+.ref-pill.checkpoint:hover, .ref-pill.checkpoint:focus-visible { filter: brightness(1.18); }
+.checkpoint-confirmation-dialog { max-height: calc(100vh - 36px); overflow-y: auto; }
+.checkpoint-confirmation-dialog .confirmation-copy p + p { margin-top: 8px; }
+.checkpoint-reference-name { overflow-wrap: anywhere; }
 .ref-pill.stash-ref { border-radius: 2px; background: #86572f; color: #ffe0bb; }
 .tag-reference-preview { position: fixed; z-index: 38; width: 280px; display: grid; gap: 8px; padding: 10px; border: 1px solid #4f4e68; border-radius: 5px; background: #242337f5; color: #d6d5df; box-shadow: 0 12px 34px #000b; pointer-events: none; }
 .tag-reference-preview header { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: #72c8f4; }

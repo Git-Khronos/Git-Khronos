@@ -1211,6 +1211,28 @@ directory and are reapplied only after Git validates the current files.
 Behavioral sources: Git's `git-status`, `git-diff`, and `git-apply` manuals.
 No third-party implementation code or proprietary assets were copied.
 
+## Private checkpoint references in commit history
+
+Independent implementation:
+
+- By default, initial snapshots, offset-based pages, and incremental history
+  walks exclude `refs/copilot/checkpoints/*` as traversal roots and as commit
+  decorations. A per-open-repository setting can include them instead.
+- Hiding checkpoints never deletes references. Commits reachable through normal
+  branches, tags, remote references, or HEAD remain visible even when a
+  checkpoint also points to them.
+- A user may explicitly delete one loose or packed checkpoint reference after
+  reviewing a warning. Deletion is restricted to that namespace and guarded
+  by the reviewed object ID; a moved or missing reference is rejected.
+- If a branch's short name resembles a checkpoint reference, history uses
+  unambiguous full reference names so their actions cannot be confused.
+- Other custom references and stash history retain their existing behavior.
+- Refreshing history resets the incremental cursor from live references, so
+  deleted references cannot retain unreachable commits in later pages.
+
+The implementation uses Git's public `--exclude`, `--decorate-refs-exclude`,
+and `update-ref` options. No proprietary implementation or assets used.
+
 ## Repository tab utilities
 
 Documented behavior:

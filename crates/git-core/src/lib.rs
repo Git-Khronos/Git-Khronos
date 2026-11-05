@@ -10,22 +10,26 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod configured_tools;
 mod discard;
+mod file_content;
+mod file_statistics;
+mod file_tool_model;
+mod ignore_rules;
 #[cfg(unix)]
 mod process_pipe;
-mod ignore_rules;
-mod file_statistics;
-mod file_content;
 mod working_file_text;
-mod configured_tools;
-mod file_tool_model;
-pub use file_tool_model::{FileToolCleanupReview, FileToolMergeWriteResult, FileToolMergeStageResult, FileToolLaunchReview, FileToolRequest, FileToolSideReview, FileToolSource, FileToolProcessState, FileToolProcessStatus};
+pub use file_tool_model::{
+    FileToolCleanupReview, FileToolLaunchReview, FileToolMergeStageResult,
+    FileToolMergeWriteResult, FileToolProcessState, FileToolProcessStatus, FileToolRequest,
+    FileToolSideReview, FileToolSource,
+};
+#[cfg(target_os = "linux")]
+mod file_tool_process;
 #[cfg(target_os = "linux")]
 mod file_tool_snapshots;
 #[cfg(target_os = "linux")]
 mod file_tools;
-#[cfg(target_os = "linux")]
-mod file_tool_process;
 #[cfg(target_os = "linux")]
 pub use file_tool_process::FileToolProcess;
 pub mod draft_recovery;
@@ -36,60 +40,72 @@ pub use configured_tools::{ToolArgumentContext, ToolProfile, ToolRole};
 #[cfg(target_os = "linux")]
 pub use file_tool_snapshots::{FileToolResult, FileToolSnapshotRole, FileToolSnapshots};
 #[cfg(target_os = "linux")]
-pub use file_tools::{PreparedFileToolCleanup, PreparedFileTool, prepare_file_tool};
+pub use file_tools::{PreparedFileTool, PreparedFileToolCleanup, prepare_file_tool};
 mod working_file_edit;
-pub use working_file_edit::{WorkingFileEdit, WorkingFileSave, WorkingFileWriteStatus, open_working_file_edit};
-pub use working_file_text::{DecodedWorkingText, WorkingTextEncoding, MAX_WORKING_TEXT_BYTES, decode_working_text};
+pub use working_file_edit::{
+    WorkingFileEdit, WorkingFileSave, WorkingFileWriteStatus, open_working_file_edit,
+};
+pub use working_file_text::{
+    DecodedWorkingText, MAX_WORKING_TEXT_BYTES, WorkingTextEncoding, decode_working_text,
+};
 mod file_comparison;
 mod file_media;
-mod repository_links;
-mod repository_link_inspection;
 mod no_lazy_fetch;
-pub use no_lazy_fetch::{without_lazy_fetch, without_lazy_fetch_cancellable};
-pub use repository_link_inspection::{RepositoryLinkInspection, RepositoryLinkTargetState, inspect_repository_link};
-pub use repository_links::{RepositoryLink, RepositoryLinkTarget, parse_repository_link, create_repository_link, repository_link_remote_identity};
-pub use file_media::{FileMediaComparison, FileMediaSide, FileMediaState,
-    RasterMetadata, FileLfsPointer, MAX_PREVIEW_DIMENSION, MAX_PREVIEW_PIXELS,
-    read_file_media};
+mod repository_link_inspection;
+mod repository_links;
 pub use file_comparison::{
-    FileComparisonContext, FileComparisonRequest, FileComparisonSide,
-    FileComparisonContent, FileComparisonValue, FileComparisonUnavailable,
-    StashContentLayer, read_file_comparison,
+    FileComparisonContent, FileComparisonContext, FileComparisonRequest, FileComparisonSide,
+    FileComparisonUnavailable, FileComparisonValue, StashContentLayer, read_file_comparison,
 };
-pub use file_content::{FileContentLocation, FileContentKind, FileContent, MAX_FILE_CONTENT_BYTES, read_file_content};
+pub use file_content::{
+    FileContent, FileContentKind, FileContentLocation, MAX_FILE_CONTENT_BYTES, read_file_content,
+};
+pub use file_media::{
+    FileLfsPointer, FileMediaComparison, FileMediaSide, FileMediaState, MAX_PREVIEW_DIMENSION,
+    MAX_PREVIEW_PIXELS, RasterMetadata, read_file_media,
+};
+pub use no_lazy_fetch::{without_lazy_fetch, without_lazy_fetch_cancellable};
+pub use repository_link_inspection::{
+    RepositoryLinkInspection, RepositoryLinkTargetState, inspect_repository_link,
+};
+pub use repository_links::{
+    RepositoryLink, RepositoryLinkTarget, create_repository_link, parse_repository_link,
+    repository_link_remote_identity,
+};
 mod no_commit_replay;
 mod operation_recovery;
 mod operation_storage;
 mod rebase_split;
 pub use rebase_split::{RebaseSplitStatus, begin_rebase_split};
-mod hosting;
 mod branch_workflow;
 mod git_cancellation;
+mod hosting;
 pub use branch_workflow::{
-    BranchWorkflowSettings, BranchWorkflowKind, BranchWorkflowBinding,
-    BranchWorkflowSetup, BranchWorkflowStart, BranchWorkflowTopic, BranchWorkflowState,
-    prepare_branch_workflow_setup, apply_branch_workflow_setup, branch_workflow_state,
-    prepare_branch_workflow_start, start_branch_workflow,
-    prepare_branch_workflow_setup_cancellable, apply_branch_workflow_setup_cancellable,
-    prepare_branch_workflow_start_cancellable, branch_workflow_state_cancellable,
-    prepare_branch_workflow_finish_cancellable, load_branch_workflow_finish_cancellable,
-    BranchWorkflowMergePolicy, BranchWorkflowTagRequest, BranchWorkflowFinishOptions,
-    BranchWorkflowFinishTarget, BranchWorkflowFinishTag, BranchWorkflowHead,
-    BranchWorkflowFinishPlan, BranchWorkflowFinishPhase, BranchWorkflowFinishStatus,
-    prepare_branch_workflow_finish, finish_branch_workflow, load_branch_workflow_finish,
-    resume_branch_workflow_finish, abort_branch_workflow_finish, acknowledge_branch_workflow_finish,
+    BranchWorkflowBinding, BranchWorkflowFinishOptions, BranchWorkflowFinishPhase,
+    BranchWorkflowFinishPlan, BranchWorkflowFinishStatus, BranchWorkflowFinishTag,
+    BranchWorkflowFinishTarget, BranchWorkflowHead, BranchWorkflowKind, BranchWorkflowMergePolicy,
+    BranchWorkflowSettings, BranchWorkflowSetup, BranchWorkflowStart, BranchWorkflowState,
+    BranchWorkflowTagRequest, BranchWorkflowTopic, abort_branch_workflow_finish,
+    acknowledge_branch_workflow_finish, apply_branch_workflow_setup,
+    apply_branch_workflow_setup_cancellable, branch_workflow_state,
+    branch_workflow_state_cancellable, finish_branch_workflow, load_branch_workflow_finish,
+    load_branch_workflow_finish_cancellable, prepare_branch_workflow_finish,
+    prepare_branch_workflow_finish_cancellable, prepare_branch_workflow_setup,
+    prepare_branch_workflow_setup_cancellable, prepare_branch_workflow_start,
+    prepare_branch_workflow_start_cancellable, resume_branch_workflow_finish,
+    start_branch_workflow,
 };
 mod hosted_clone;
 pub use hosted_clone::{
-    HostedCloneTransport, HostedCloneRequest, HostedClonePlan,
-    prepare_hosted_clone, execute_hosted_clone,
+    HostedClonePlan, HostedCloneRequest, HostedCloneTransport, execute_hosted_clone,
+    prepare_hosted_clone,
 };
-mod hosted_repositories;
 mod gitlab_clone;
+mod hosted_repositories;
 pub use gitlab_clone::{
-    GitLabCloneRequest, GitLabClonePlan, GitLabProjectInspection,
-    inspect_gitlab_project_with, prepare_gitlab_clone_with,
-    revalidate_gitlab_clone_with, execute_gitlab_clone_with, clone_gitlab_plan,
+    GitLabClonePlan, GitLabCloneRequest, GitLabProjectInspection, clone_gitlab_plan,
+    execute_gitlab_clone_with, inspect_gitlab_project_with, prepare_gitlab_clone_with,
+    revalidate_gitlab_clone_with,
 };
 mod gitlab_forks;
 pub use gitlab_forks::{
@@ -98,15 +114,17 @@ pub use gitlab_forks::{
     GitLabNamespacePage, GitLabNamespaceQuery, GitLabNamespaceSelection, inspect_gitlab_fork_with,
     inspect_gitlab_namespace_with, load_gitlab_fork_page_with, load_gitlab_namespace_page_with,
 };
+mod gitlab_fork_reconcile;
 mod gitlab_https;
 mod gitlab_project_locator;
-mod gitlab_fork_reconcile;
 pub use gitlab_fork_reconcile::reconcile_gitlab_fork_with;
 pub use gitlab_https::{GitLabForkHttpsTransport, GitLabHttpsTransport};
 mod gitlab_fork_dispatch;
 pub use gitlab_fork_dispatch::{GitLabForkDispatch, GitLabForkPostReply, GitLabForkWriteTransport};
 mod gitlab_fork_record;
-pub use gitlab_fork_record::{GitLabForkFailure, GitLabForkIntent, GitLabForkPhase, GitLabForkRecord};
+pub use gitlab_fork_record::{
+    GitLabForkFailure, GitLabForkIntent, GitLabForkPhase, GitLabForkRecord,
+};
 mod gitlab_fork_plan;
 pub use gitlab_fork_plan::{
     GitLabForkPlan, GitLabForkPrepareRequest, GitLabForkPreview, prepare_gitlab_fork_with,
@@ -116,8 +134,8 @@ pub use gitlab_fork_plan::{
 mod gitlab_fork_journal;
 #[cfg(target_os = "linux")]
 pub use gitlab_fork_journal::{
-    GitLabForkJournal, GitLabForkJournalEntry, GitLabForkJournalInspection,
-    GitLabForkJournalIssue, GitLabForkJournalIssueKind, GitLabForkJournalLease,
+    GitLabForkJournal, GitLabForkJournalEntry, GitLabForkJournalInspection, GitLabForkJournalIssue,
+    GitLabForkJournalIssueKind, GitLabForkJournalLease,
 };
 mod gitlab_projects;
 pub use gitlab_projects::{
@@ -125,39 +143,38 @@ pub use gitlab_projects::{
     GitLabProjectScope, GitLabReadTransport, load_gitlab_account_with,
     load_gitlab_project_page_with,
 };
-mod hosted_forks;
-mod hosted_fork_request;
 mod hosted_fork_remote;
+mod hosted_fork_request;
+mod hosted_forks;
 pub use hosted_fork_remote::{
-    HostedForkRemoteRequest, HostedForkRemotePlan, HostedForkRemoteReceipt,
-    prepare_hosted_fork_remote, execute_hosted_fork_remote,
+    HostedForkRemotePlan, HostedForkRemoteReceipt, HostedForkRemoteRequest,
+    execute_hosted_fork_remote, prepare_hosted_fork_remote,
 };
 pub use hosted_fork_request::{
-    HostedForkRequest, HostedForkPlan, HostedForkIntent, HostedForkOwner,
-    HostedForkOwnerKind, HostedForkPhase, HostedForkStatus, HostedForkRepository,
-    prepare_hosted_fork, execute_hosted_fork, reconcile_hosted_fork,
-    list_hosted_fork_requests, archive_hosted_fork_request,
-    load_hosted_fork_request, acknowledge_hosted_fork_request,
+    HostedForkIntent, HostedForkOwner, HostedForkOwnerKind, HostedForkPhase, HostedForkPlan,
+    HostedForkRepository, HostedForkRequest, HostedForkStatus, acknowledge_hosted_fork_request,
+    archive_hosted_fork_request, execute_hosted_fork, list_hosted_fork_requests,
+    load_hosted_fork_request, prepare_hosted_fork, reconcile_hosted_fork,
 };
 pub use hosted_forks::{
-    HostedForkQuery, HostedForkPage, HostedForkSelection, HostedForkInspection,
-    load_hosted_fork_page, inspect_hosted_fork,
+    HostedForkInspection, HostedForkPage, HostedForkQuery, HostedForkSelection,
+    inspect_hosted_fork, load_hosted_fork_page,
 };
 pub use hosted_repositories::{
-    HostedAccount, HostedRepositoryIdentity, HostedRepository, HostedRepositoryVisibility,
-    HostedRepositoryAffiliation, HostedRepositorySort, HostedRepositoryDirection,
-    HostedRepositoryQuery, HostedRepositoryPage, HostedRepositoryInspection,
-    load_hosted_repository_page, inspect_hosted_repository,
+    HostedAccount, HostedRepository, HostedRepositoryAffiliation, HostedRepositoryDirection,
+    HostedRepositoryIdentity, HostedRepositoryInspection, HostedRepositoryPage,
+    HostedRepositoryQuery, HostedRepositorySort, HostedRepositoryVisibility,
+    inspect_hosted_repository, load_hosted_repository_page,
 };
 mod hosting_writes;
-pub use hosting_writes::{
-    HostedWriteRequest, HostedWritePlan, HostedWriteReceipt, HostedReviewEvent,
-    HostedMergeMethod, prepare_hosted_write, execute_hosted_write,
-};
 pub use hosting::{
     HostedEntry, HostedReview, HostedReviewDecision, HostedReviewFile, HostedReviewQuery,
     HostedReviewSections, HostedReviewStatus, HostingPage, HostingQuery, HostingSection,
     HostingState, load_hosted_review, load_hosting_page,
+};
+pub use hosting_writes::{
+    HostedMergeMethod, HostedReviewEvent, HostedWritePlan, HostedWriteReceipt, HostedWriteRequest,
+    execute_hosted_write, prepare_hosted_write,
 };
 mod merge_preview;
 pub use merge_preview::{MergePreview, MergePreviewRequest, preview_merge};
@@ -246,6 +263,8 @@ pub use stash_options::{
     StashOptions, apply_stash_with_index, create_branch_from_stash, stash_and_checkout,
     stash_with_options,
 };
+#[cfg(all(test, unix))]
+mod literal_file_tests;
 #[cfg(test)]
 mod no_commit_replay_tests;
 #[cfg(test)]
@@ -256,8 +275,6 @@ mod rebase_split_tests;
 mod reference_actions_tests;
 #[cfg(test)]
 mod selected_rebase_tests;
-#[cfg(all(test, unix))]
-mod literal_file_tests;
 #[cfg(all(test, unix))]
 mod transport_stderr_tests;
 pub use reference_actions::{
@@ -274,7 +291,8 @@ pub use discard::{
 
 pub const MINIMUM_GIT_VERSION: &str = "2.39.0";
 const EMPTY_TREE_OID: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-const EMPTY_TREE_SHA256_OID: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
+const EMPTY_TREE_SHA256_OID: &str =
+    "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
 const MAX_REFLOG_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_TAG_DETAILS_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -525,12 +543,23 @@ pub struct CommitHistoryCursor {
     walk: Option<history_walk::HistoryWalk>,
     stashes: Vec<StashEntry>,
     reset_failure: Option<AppError>,
+    show_checkpoints: bool,
 }
 
 impl CommitHistoryCursor {
     pub fn reset(&mut self, path: &Path, initial: &[CommitSummary]) -> Result<(), AppError> {
+        self.reset_with_checkpoint_visibility(path, initial, false)
+    }
+
+    pub fn reset_with_checkpoint_visibility(
+        &mut self,
+        path: &Path,
+        initial: &[CommitSummary],
+        show_checkpoints: bool,
+    ) -> Result<(), AppError> {
         // Reset may clear the old frontier before a metadata read fails. An
         // empty, partially initialized cursor must never mean complete history.
+        self.show_checkpoints = show_checkpoints;
         let result = self.reset_inner(path, initial);
         self.reset_failure = result.as_ref().err().cloned();
         result
@@ -545,19 +574,10 @@ impl CommitHistoryCursor {
         let reusable = self.walk.take().filter(|walk| walk.can_reuse_for(path));
 
         if let Some(mut walk) = reusable.or_else(|| history_walk::HistoryWalk::open(path)) {
-            let tips = read_commits_with_arguments(
-                path,
-                &[
-                    "log",
-                    "--no-walk",
-                    "--decorate=short",
-                    "--decorate-refs-exclude=refs/remotes/*/HEAD",
-                    "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-                    HISTORY_FORMAT,
-                    "--exclude=refs/git-khronos/recovery/*",
-                    "--all",
-                ],
-            )?;
+            let mut args = vec!["log", "--no-walk"];
+            add_history_format_arguments(&mut args, self.show_checkpoints);
+            add_history_ref_arguments(&mut args, self.show_checkpoints);
+            let tips = read_commits_with_arguments(path, &args)?;
             self.stashes = read_stashes(path)?;
             let stash_oids = self
                 .stashes
@@ -570,15 +590,17 @@ impl CommitHistoryCursor {
             }
         }
 
-        let tips = run_git(
-            path,
-            &[
-                "rev-list",
-                "--no-walk",
-                "--exclude=refs/git-khronos/recovery/*",
-                "--all",
-            ],
-        )?;
+        self.reset_git_frontier(path, initial)
+    }
+
+    fn reset_git_frontier(
+        &mut self,
+        path: &Path,
+        initial: &[CommitSummary],
+    ) -> Result<(), AppError> {
+        let mut args = vec!["rev-list", "--no-walk"];
+        add_history_ref_arguments(&mut args, self.show_checkpoints);
+        let tips = run_git(path, &args)?;
         ensure_success("prepare incremental commit history", &tips)?;
         let mut queued = HashSet::new();
         for oid in String::from_utf8_lossy(&tips.stdout)
@@ -613,7 +635,12 @@ impl CommitHistoryCursor {
         let mut commits = Vec::with_capacity(limit);
         while commits.len() < limit && !self.frontier.is_empty() {
             let remaining = limit - commits.len();
-            let batch = read_commits_from_revisions(path, remaining, &self.frontier)?;
+            let batch = read_commits_from_revisions(
+                path,
+                remaining,
+                &self.frontier,
+                self.show_checkpoints,
+            )?;
             if batch.is_empty() {
                 self.frontier.clear();
                 break;
@@ -1221,7 +1248,7 @@ pub fn snapshot_with_limits(
     commit_limit: usize,
     status_limit: usize,
 ) -> Result<RepositoryData, AppError> {
-    snapshot_with_options(path, commit_limit, status_limit, true, true, "all")
+    snapshot_with_options(path, commit_limit, status_limit, true, true, "all", false)
 }
 
 /// Builds the latency-sensitive snapshot used by the desktop shell.
@@ -1235,7 +1262,25 @@ pub fn snapshot_with_limits_fast(
     commit_limit: usize,
     status_limit: usize,
 ) -> Result<RepositoryData, AppError> {
-    snapshot_with_options(path, commit_limit, status_limit, false, false, "no")
+    snapshot_with_limits_fast_and_checkpoint_visibility(path, commit_limit, status_limit, false)
+}
+
+/// Builds a fast snapshot with optional Copilot checkpoint history.
+pub fn snapshot_with_limits_fast_and_checkpoint_visibility(
+    path: &Path,
+    commit_limit: usize,
+    status_limit: usize,
+    show_checkpoints: bool,
+) -> Result<RepositoryData, AppError> {
+    snapshot_with_options(
+        path,
+        commit_limit,
+        status_limit,
+        false,
+        false,
+        "no",
+        show_checkpoints,
+    )
 }
 
 /// Builds the first-frame snapshot without walking the working tree.
@@ -1248,14 +1293,24 @@ pub fn snapshot_with_limits_startup(
     commit_limit: usize,
     status_limit: usize,
 ) -> Result<RepositoryData, AppError> {
+    snapshot_with_limits_startup_and_checkpoint_visibility(path, commit_limit, status_limit, false)
+}
+
+/// Builds a startup snapshot with optional Copilot checkpoint history.
+pub fn snapshot_with_limits_startup_and_checkpoint_visibility(
+    path: &Path,
+    commit_limit: usize,
+    _status_limit: usize,
+    show_checkpoints: bool,
+) -> Result<RepositoryData, AppError> {
     let status = read_head_status(path)?;
     snapshot_with_status(
         path,
         commit_limit,
-        status_limit,
         false,
         false,
         false,
+        show_checkpoints,
         status,
     )
 }
@@ -1267,15 +1322,16 @@ fn snapshot_with_options(
     include_linked_worktree_status: bool,
     include_all_branch_tracking: bool,
     untracked_files: &str,
+    show_checkpoints: bool,
 ) -> Result<RepositoryData, AppError> {
     let status = read_status_with_limit_mode(path, status_limit, untracked_files)?;
     snapshot_with_status(
         path,
         commit_limit,
-        status_limit,
         include_linked_worktree_status,
         include_all_branch_tracking,
         true,
+        show_checkpoints,
         status,
     )
 }
@@ -1283,10 +1339,10 @@ fn snapshot_with_options(
 fn snapshot_with_status(
     path: &Path,
     commit_limit: usize,
-    _status_limit: usize,
     include_linked_worktree_status: bool,
     include_all_branch_tracking: bool,
     include_tags: bool,
+    show_checkpoints: bool,
     status: RepositoryStatus,
 ) -> Result<RepositoryData, AppError> {
     let bare = is_explicit_bare_repository(path);
@@ -1333,22 +1389,32 @@ fn snapshot_with_status(
         let references = if no_lazy_fetch::enabled() {
             None
         } else {
-            thread::Builder::new().name("snapshot-references".into())
-                .spawn_scoped(scope, read_references).ok()
+            thread::Builder::new()
+                .name("snapshot-references".into())
+                .spawn_scoped(scope, read_references)
+                .ok()
         };
         let metadata = if no_lazy_fetch::enabled() {
             None
         } else {
-            thread::Builder::new().name("snapshot-metadata".into())
-                .spawn_scoped(scope, read_metadata).ok()
+            thread::Builder::new()
+                .name("snapshot-metadata".into())
+                .spawn_scoped(scope, read_metadata)
+                .ok()
         };
         let history = (|| {
             let stashes = read_stashes(path)?;
             let history_read_limit = commit_limit
                 .saturating_add(stashes.len().saturating_mul(2))
                 .saturating_add(1);
-            let commits =
-                normalize_stash_history(read_commits(path, history_read_limit)?, &stashes);
+            let commits = normalize_stash_history(
+                read_commits_with_checkpoint_visibility(
+                    path,
+                    history_read_limit,
+                    show_checkpoints,
+                )?,
+                &stashes,
+            );
             let head_oid = run_git(path, &["rev-parse", "--verify", "HEAD"])
                 .ok()
                 .filter(|output| output.status.success())
@@ -1434,6 +1500,69 @@ pub fn commit_history_page(
         commits: commits.into_iter().take(limit).collect(),
         history_truncated,
     })
+}
+
+/// Deletes only the checkpoint ref the user reviewed, provided it has not moved.
+pub fn delete_checkpoint_reference(
+    path: &Path,
+    reference: &str,
+    expected_oid: &str,
+) -> Result<(), AppError> {
+    if !reference.starts_with(CHECKPOINT_REF_PREFIX)
+        || reference.len() == CHECKPOINT_REF_PREFIX.len()
+        || reference.contains(['\0', '\n', '\r'])
+    {
+        return Err(AppError::new(
+            "invalidCheckpointReference",
+            "That is not a valid Copilot checkpoint reference.",
+            Some("Refresh the repository and choose a checkpoint again."),
+        ));
+    }
+    let valid = run_git(path, &["check-ref-format", reference])?;
+    if !valid.status.success() {
+        return Err(AppError::new(
+            "invalidCheckpointReference",
+            "That is not a valid Copilot checkpoint reference.",
+            Some("Refresh the repository and choose a checkpoint again."),
+        ));
+    }
+    validate_commit_oid(expected_oid)?;
+    if expected_oid.bytes().all(|byte| byte == b'0') {
+        return Err(AppError::new(
+            "invalidCommit",
+            "That checkpoint identifier is invalid.",
+            Some("Refresh the repository and choose a checkpoint again."),
+        ));
+    }
+
+    let current = run_git(
+        path,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            reference,
+        ],
+    )?;
+    if current.status.code() == Some(1)
+        || (current.status.success()
+            && !String::from_utf8_lossy(&current.stdout)
+                .trim()
+                .eq_ignore_ascii_case(expected_oid))
+    {
+        return Err(AppError::new(
+            "checkpointChanged",
+            "That checkpoint has moved or no longer exists.",
+            Some("Refresh the repository and review the checkpoint again."),
+        ));
+    }
+    ensure_success("read that checkpoint", &current)?;
+    run_mutation(
+        path,
+        &["update-ref", "--no-deref", "-d", reference, expected_oid],
+        "delete that checkpoint reference",
+    )
 }
 
 pub fn search_tracked_files(
@@ -4448,20 +4577,30 @@ pub fn apply_stash(path: &Path, reference: &str) -> Result<(), AppError> {
     run_mutation(path, &["stash", "apply", reference], "apply that stash")
 }
 
-fn validate_selected_stash(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+fn validate_selected_stash(
+    path: &Path,
+    reference: &str,
+    expected_oid: &str,
+) -> Result<(), AppError> {
     validate_stash_reference(reference)?;
     validate_commit_oid(expected_oid)?;
     if !reference_tip(path, reference).is_some_and(|oid| oid.eq_ignore_ascii_case(expected_oid)) {
         return Err(AppError::new(
             "staleStash",
             "The selected stash changed before the action could start.",
-            Some("Refresh the repository and select the stash again. No saved changes were applied."),
+            Some(
+                "Refresh the repository and select the stash again. No saved changes were applied.",
+            ),
         ));
     }
     Ok(())
 }
 
-pub fn apply_stash_checked(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+pub fn apply_stash_checked(
+    path: &Path,
+    reference: &str,
+    expected_oid: &str,
+) -> Result<(), AppError> {
     validate_selected_stash(path, reference, expected_oid)?;
     // A concurrent push may renumber the stack after validation. Apply the
     // captured object, never resolve the mutable selector a second time.
@@ -4499,7 +4638,17 @@ pub fn stash_details_at_oid(path: &Path, oid: &str) -> Result<CommitDetails, App
     validate_commit_oid(oid)?;
     let (message_output, message_truncated) = run_git_with_stdout_limit(
         path,
-        &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color", "--format=%B", oid, "--"],
+        &[
+            "show",
+            "-s",
+            "--encoding=UTF-8",
+            "--no-notes",
+            "--no-show-signature",
+            "--no-color",
+            "--format=%B",
+            oid,
+            "--",
+        ],
         MAX_COMMIT_MESSAGE_BYTES,
     )?;
     if !message_truncated {
@@ -4555,9 +4704,8 @@ pub fn stash_details_at_oid(path: &Path, oid: &str) -> Result<CommitDetails, App
     }
     // Detect presence without invoking a configured verifier merely to preview
     // a stash. A signed object must not be presented as unsigned.
-    let (object, truncated) = run_git_with_stdout_limit(
-        path, &["cat-file", "commit", oid], MAX_COMMIT_DETAILS_BYTES,
-    )?;
+    let (object, truncated) =
+        run_git_with_stdout_limit(path, &["cat-file", "commit", oid], MAX_COMMIT_DETAILS_BYTES)?;
     if !truncated {
         ensure_success("inspect the stash signature header", &object)?;
     }
@@ -4566,7 +4714,12 @@ pub fn stash_details_at_oid(path: &Path, oid: &str) -> Result<CommitDetails, App
         oid: oid.to_owned(),
         message,
         signature: CommitSignature {
-            status: if has_signature { "unverifiable" } else { "unsigned" }.to_owned(),
+            status: if has_signature {
+                "unverifiable"
+            } else {
+                "unsigned"
+            }
+            .to_owned(),
             signer: None,
             key: None,
             fingerprint: None,
@@ -4586,7 +4739,9 @@ pub fn stash_file_diff(
     validate_stash_reference(reference)?;
     let oid_output = run_git(path, &["rev-parse", "--verify", reference])?;
     ensure_success("resolve that stash", &oid_output)?;
-    let oid = String::from_utf8_lossy(&oid_output.stdout).trim().to_owned();
+    let oid = String::from_utf8_lossy(&oid_output.stdout)
+        .trim()
+        .to_owned();
     stash_file_diff_at_oid(path, &oid, file, previous_file)
 }
 
@@ -4622,7 +4777,12 @@ pub fn stash_file_diff_at_oid(
     let base = if untracked {
         // Both IDs hash the canonical `tree 0\0` object header. The selected
         // full OID identifies which of Git's supported object formats to use.
-        if oid.len() == 64 { EMPTY_TREE_SHA256_OID } else { EMPTY_TREE_OID }.to_owned()
+        if oid.len() == 64 {
+            EMPTY_TREE_SHA256_OID
+        } else {
+            EMPTY_TREE_OID
+        }
+        .to_owned()
     } else {
         format!("{oid}^1")
     };
@@ -4664,12 +4824,20 @@ pub fn drop_stash(path: &Path, reference: &str) -> Result<(), AppError> {
     drop_stash_inner(path, reference, None)
 }
 
-pub fn drop_stash_checked(path: &Path, reference: &str, expected_oid: &str) -> Result<(), AppError> {
+pub fn drop_stash_checked(
+    path: &Path,
+    reference: &str,
+    expected_oid: &str,
+) -> Result<(), AppError> {
     validate_commit_oid(expected_oid)?;
     drop_stash_inner(path, reference, Some(expected_oid))
 }
 
-fn drop_stash_inner(path: &Path, reference: &str, expected_oid: Option<&str>) -> Result<(), AppError> {
+fn drop_stash_inner(
+    path: &Path,
+    reference: &str,
+    expected_oid: Option<&str>,
+) -> Result<(), AppError> {
     validate_stash_reference(reference)?;
     let stale = || {
         AppError::new(
@@ -4686,8 +4854,14 @@ fn drop_stash_inner(path: &Path, reference: &str, expected_oid: Option<&str>) ->
     let (subject, truncated) = run_git_with_stdout_limit(
         path,
         &[
-            "log", "-1", "--encoding=UTF-8", "--no-show-signature", "--no-notes",
-            "--no-color", "--format=%s", &oid,
+            "log",
+            "-1",
+            "--encoding=UTF-8",
+            "--no-show-signature",
+            "--no-notes",
+            "--no-color",
+            "--format=%s",
+            &oid,
         ],
         2048,
     )?;
@@ -4702,7 +4876,13 @@ fn drop_stash_inner(path: &Path, reference: &str, expected_oid: Option<&str>) ->
     let mut subject = characters
         .by_ref()
         .take(512)
-        .map(|character| if character.is_control() { ' ' } else { character })
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
         .collect::<String>();
     if truncated || characters.next().is_some() {
         subject.push('…');
@@ -4723,9 +4903,7 @@ fn drop_stash_inner(path: &Path, reference: &str, expected_oid: Option<&str>) ->
             }
             run_mutation(path, &["stash", "drop", reference], "delete that stash")
         },
-        || {
-            read_stashes(path).is_ok_and(|entries| entries.iter().any(|entry| entry.oid == oid))
-        },
+        || read_stashes(path).is_ok_and(|entries| entries.iter().any(|entry| entry.oid == oid)),
     )
 }
 
@@ -5123,7 +5301,17 @@ pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError>
     let read_message = |format: &str| {
         run_git_with_stdout_limit(
             path,
-            &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color", format, oid, "--"],
+            &[
+                "show",
+                "-s",
+                "--encoding=UTF-8",
+                "--no-notes",
+                "--no-show-signature",
+                "--no-color",
+                format,
+                oid,
+                "--",
+            ],
             MAX_COMMIT_MESSAGE_BYTES,
         )
     };
@@ -5211,12 +5399,18 @@ pub fn commit_details(path: &Path, oid: &str) -> Result<CommitDetails, AppError>
 fn parse_commit_signature(output: &[u8]) -> Result<(CommitSignature, String), AppError> {
     let text = String::from_utf8_lossy(output);
     let fields = text.splitn(6, '\0').collect::<Vec<_>>();
-    let invalid = || AppError::new(
-        "invalidCommitSignatureOutput",
-        "Commit verification metadata is incomplete or invalid.",
-        Some("Refresh the commit details. Incomplete metadata cannot establish a signature status."),
-    );
-    if fields.len() != 6 { return Err(invalid()); }
+    let invalid = || {
+        AppError::new(
+            "invalidCommitSignatureOutput",
+            "Commit verification metadata is incomplete or invalid.",
+            Some(
+                "Refresh the commit details. Incomplete metadata cannot establish a signature status.",
+            ),
+        )
+    };
+    if fields.len() != 6 {
+        return Err(invalid());
+    }
     let status = match fields[0] {
         "G" => "valid",
         "U" => "valid-unknown",
@@ -5566,7 +5760,8 @@ pub fn file_history(
             revision,
             "--",
             file,
-        ].map(str::to_owned),
+        ]
+        .map(str::to_owned),
         &CancellationToken::default(),
         MAX_FILE_HISTORY_BYTES,
     )?;
@@ -5575,21 +5770,29 @@ pub fn file_history(
 }
 
 fn parse_file_history_records(mut bytes: &[u8]) -> Result<Vec<FileHistoryEntry>, AppError> {
-    let invalid = || AppError::new(
-        "invalidFileHistoryOutput",
-        "Git returned incomplete or invalid file-history records.",
-        Some("File history was not replaced with partial results. Check repository integrity and retry the read."),
-    );
+    let invalid = || {
+        AppError::new(
+            "invalidFileHistoryOutput",
+            "Git returned incomplete or invalid file-history records.",
+            Some(
+                "File history was not replaced with partial results. Check repository integrity and retry the read.",
+            ),
+        )
+    };
     let mut history = Vec::new();
     let mut seen = HashSet::new();
     while !bytes.is_empty() {
-        let fields = decode_nul_record::<5>(&mut bytes).ok_or_else(invalid)?.map(String::from_utf8_lossy);
+        let fields = decode_nul_record::<5>(&mut bytes)
+            .ok_or_else(invalid)?
+            .map(String::from_utf8_lossy);
         if validate_commit_oid(&fields[0]).is_err() || !seen.insert(fields[0].to_string()) {
             return Err(invalid());
         }
         history.push(FileHistoryEntry {
-            oid: fields[0].to_string(), author_name: fields[1].to_string(),
-            author_email: fields[2].to_string(), authored_at: fields[3].to_string(),
+            oid: fields[0].to_string(),
+            author_name: fields[1].to_string(),
+            author_email: fields[2].to_string(),
+            authored_at: fields[3].to_string(),
             subject: fields[4].to_string(),
         });
     }
@@ -5609,23 +5812,66 @@ pub fn file_blame(path: &Path, revision: &str, file: &str) -> Result<Vec<FileBla
     parse_blame_porcelain(&String::from_utf8_lossy(&output.stdout))
 }
 
-fn read_blame_output(path: &Path, revision: &str, file: &str, range: Option<&str>, limit: usize) -> Result<Output, AppError> {
-    let mut args = vec!["--literal-pathspecs", "-c", "core.quotePath=true", "-c", "blame.blankBoundary=false", "-c", "blame.coloring=none", "blame",
-        "--line-porcelain", "--encoding=UTF-8", "--no-textconv", "--root"];
-    if let Some(range) = range { args.extend(["-L", range]); }
+fn read_blame_output(
+    path: &Path,
+    revision: &str,
+    file: &str,
+    range: Option<&str>,
+    limit: usize,
+) -> Result<Output, AppError> {
+    let mut args = vec![
+        "--literal-pathspecs",
+        "-c",
+        "core.quotePath=true",
+        "-c",
+        "blame.blankBoundary=false",
+        "-c",
+        "blame.coloring=none",
+        "blame",
+        "--line-porcelain",
+        "--encoding=UTF-8",
+        "--no-textconv",
+        "--root",
+    ];
+    if let Some(range) = range {
+        args.extend(["-L", range]);
+    }
     args.extend([revision, "--", file]);
-    history_search::bounded_git_with_limit(path, &args.into_iter().map(str::to_owned).collect::<Vec<_>>(), &CancellationToken::default(), limit)
+    history_search::bounded_git_with_limit(
+        path,
+        &args.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+        &CancellationToken::default(),
+        limit,
+    )
 }
 
-pub fn file_blame_page(path: &Path, revision: &str, file: &str, first_line: usize) -> Result<FileBlamePage, AppError> {
+pub fn file_blame_page(
+    path: &Path,
+    revision: &str,
+    file: &str,
+    first_line: usize,
+) -> Result<FileBlamePage, AppError> {
     validate_commit_oid(revision)?;
     // This is a single literal argv path, not line-framed input. Whitespace and
     // control characters other than NUL are valid Git filename bytes.
-    if file.is_empty() || file.contains('\0') || !Path::new(file).components().all(|component| matches!(component, Component::Normal(_))) {
-        return Err(AppError::new("invalidPath", "Choose a repository-relative file.", None));
+    if file.is_empty()
+        || file.contains('\0')
+        || !Path::new(file)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err(AppError::new(
+            "invalidPath",
+            "Choose a repository-relative file.",
+            None,
+        ));
     }
     if first_line == 0 || first_line > u32::MAX as usize - 100 {
-        return Err(AppError::new("invalidBlameRange", "Choose a positive whole line number within the file.", None));
+        return Err(AppError::new(
+            "invalidBlameRange",
+            "Choose a positive whole line number within the file.",
+            None,
+        ));
     }
     let range = format!("{first_line},+101");
     let output = match read_blame_output(path, revision, file, Some(&range), 2 * 1024 * 1024) {
@@ -5633,20 +5879,40 @@ pub fn file_blame_page(path: &Path, revision: &str, file: &str, first_line: usiz
         Err(error) => {
             // Git refuses -L on an empty blob. Verify the object, not a localized
             // stderr substring, before treating that failure as an empty file.
-            if first_line == 1 && error.kind != "historyTimeout" && error.kind != "historyOutputLimit" {
+            if first_line == 1
+                && error.kind != "historyTimeout"
+                && error.kind != "historyOutputLimit"
+            {
                 let object = format!("{revision}:{file}");
-                let query = |flag: &str| history_search::bounded_git_with_limit(path,
-                    &["cat-file".into(), flag.into(), object.clone()], &CancellationToken::default(), 1024);
+                let query = |flag: &str| {
+                    history_search::bounded_git_with_limit(
+                        path,
+                        &["cat-file".into(), flag.into(), object.clone()],
+                        &CancellationToken::default(),
+                        1024,
+                    )
+                };
                 if query("-t").is_ok_and(|result| result.stdout == b"blob\n")
-                    && query("-s").is_ok_and(|result| result.stdout == b"0\n") {
-                    return Ok(FileBlamePage { lines: Vec::new(), next_line: None });
+                    && query("-s").is_ok_and(|result| result.stdout == b"0\n")
+                {
+                    return Ok(FileBlamePage {
+                        lines: Vec::new(),
+                        next_line: None,
+                    });
                 }
             }
             return Err(error);
         }
     };
-    let mut lines = parse_blame_porcelain_from(&String::from_utf8_lossy(&output.stdout), first_line)?;
-    if lines.len() > 101 { return Err(AppError::new("invalidBlameOutput", "Git returned lines outside the requested blame page.", None)); }
+    let mut lines =
+        parse_blame_porcelain_from(&String::from_utf8_lossy(&output.stdout), first_line)?;
+    if lines.len() > 101 {
+        return Err(AppError::new(
+            "invalidBlameOutput",
+            "Git returned lines outside the requested blame page.",
+            None,
+        ));
+    }
     let next_line = (lines.len() > 100).then_some(first_line + 100);
     lines.truncate(100);
     Ok(FileBlamePage { lines, next_line })
@@ -6684,21 +6950,39 @@ fn parse_blame_porcelain(output: &str) -> Result<Vec<FileBlameLine>, AppError> {
     parse_blame_porcelain_from(output, 1)
 }
 
-fn parse_blame_porcelain_from(output: &str, first_line: usize) -> Result<Vec<FileBlameLine>, AppError> {
-    let invalid = || AppError::new("invalidBlameOutput", "Git returned incomplete or inconsistent blame information.",
-        Some("No partial blame lines were accepted. Retry the read or inspect the file with Git."));
-    if !output.is_empty() && !output.ends_with('\n') { return Err(invalid()); }
+fn parse_blame_porcelain_from(
+    output: &str,
+    first_line: usize,
+) -> Result<Vec<FileBlameLine>, AppError> {
+    let invalid = || {
+        AppError::new(
+            "invalidBlameOutput",
+            "Git returned incomplete or inconsistent blame information.",
+            Some(
+                "No partial blame lines were accepted. Retry the read or inspect the file with Git.",
+            ),
+        )
+    };
+    if !output.is_empty() && !output.ends_with('\n') {
+        return Err(invalid());
+    }
     let mut lines = output.split_terminator('\n');
     let mut blamed = Vec::new();
     while let Some(header) = lines.next() {
         let fields = header.split_ascii_whitespace().collect::<Vec<_>>();
-        if !(fields.len() == 3 || fields.len() == 4) || validate_commit_oid(fields[0]).is_err()
+        if !(fields.len() == 3 || fields.len() == 4)
+            || validate_commit_oid(fields[0]).is_err()
             || fields[0].bytes().all(|byte| byte == b'0')
-            || fields[1..].iter().any(|field| field.parse::<usize>().map_or(true, |number| number == 0)) {
+            || fields[1..]
+                .iter()
+                .any(|field| field.parse::<usize>().map_or(true, |number| number == 0))
+        {
             return Err(invalid());
         }
         let line_number = fields[2].parse::<usize>().map_err(|_| invalid())?;
-        if Some(line_number) != first_line.checked_add(blamed.len()) { return Err(invalid()); }
+        if Some(line_number) != first_line.checked_add(blamed.len()) {
+            return Err(invalid());
+        }
         let oid = fields[0].to_owned();
         let mut author_name = None;
         let mut author_email = None;
@@ -6712,19 +6996,38 @@ fn parse_blame_porcelain_from(output: &str, first_line: usize) -> Result<Vec<Fil
                 break;
             }
             if let Some(value) = metadata.strip_prefix("author ") {
-                if author_name.replace(value.to_owned()).is_some() { return Err(invalid()); }
+                if author_name.replace(value.to_owned()).is_some() {
+                    return Err(invalid());
+                }
             } else if let Some(value) = metadata.strip_prefix("author-mail ") {
-                let email = value.strip_prefix('<').and_then(|value| value.strip_suffix('>')).ok_or_else(invalid)?;
-                if author_email.replace(email.to_owned()).is_some() { return Err(invalid()); }
+                let email = value
+                    .strip_prefix('<')
+                    .and_then(|value| value.strip_suffix('>'))
+                    .ok_or_else(invalid)?;
+                if author_email.replace(email.to_owned()).is_some() {
+                    return Err(invalid());
+                }
             } else if let Some(value) = metadata.strip_prefix("author-time ") {
                 let time = value.parse::<i64>().map_err(|_| invalid())?;
-                if !(-8_640_000_000_000..=8_640_000_000_000).contains(&time) || authored_at.replace(time).is_some() { return Err(invalid()); }
+                if !(-8_640_000_000_000..=8_640_000_000_000).contains(&time)
+                    || authored_at.replace(time).is_some()
+                {
+                    return Err(invalid());
+                }
             } else if let Some(value) = metadata.strip_prefix("summary ") {
-                if summary.replace(value.to_owned()).is_some() { return Err(invalid()); }
+                if summary.replace(value.to_owned()).is_some() {
+                    return Err(invalid());
+                }
             } else if let Some(value) = metadata.strip_prefix("filename ") {
                 let decoded = history_search::decode_git_path(value)?;
-                if decoded.is_empty() || historical_path.replace(decoded).is_some() { return Err(invalid()); }
-            } else if metadata.split_ascii_whitespace().next().is_some_and(|field| validate_commit_oid(field).is_ok()) {
+                if decoded.is_empty() || historical_path.replace(decoded).is_some() {
+                    return Err(invalid());
+                }
+            } else if metadata
+                .split_ascii_whitespace()
+                .next()
+                .is_some_and(|field| validate_commit_oid(field).is_ok())
+            {
                 return Err(invalid());
             }
         }
@@ -7450,8 +7753,13 @@ fn read_stashes(path: &Path) -> Result<Vec<StashEntry>, AppError> {
     let output = run_git(
         path,
         &[
-            "stash", "list", "--encoding=UTF-8", "--no-color", "--no-notes",
-            "--no-show-signature", "--format=tformat:%gd%x00%H%x00%gs%x00",
+            "stash",
+            "list",
+            "--encoding=UTF-8",
+            "--no-color",
+            "--no-notes",
+            "--no-show-signature",
+            "--format=tformat:%gd%x00%H%x00%gs%x00",
         ],
     )?;
     ensure_success("read stashes", &output)?;
@@ -7463,7 +7771,9 @@ fn parse_stash_records(mut bytes: &[u8]) -> Result<Vec<StashEntry>, AppError> {
         AppError::new(
             "invalidStashOutput",
             "Git returned incomplete or invalid stash records.",
-            Some("The stash list was not replaced with partial results. Check the stash reflog, then refresh. No stash was applied or removed by this read."),
+            Some(
+                "The stash list was not replaced with partial results. Check the stash reflog, then refresh. No stash was applied or removed by this read.",
+            ),
         )
     };
     let mut stashes = Vec::new();
@@ -7639,9 +7949,45 @@ fn validate_stash_message(message: &str) -> Result<&str, AppError> {
 // Explicit tformat also terminates the last record with a newline.
 const HISTORY_FORMAT: &str = "--format=tformat:%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00%D%x00";
 
+const CHECKPOINT_REF_PREFIX: &str = "refs/copilot/checkpoints/";
+
+fn add_history_ref_arguments(args: &mut Vec<&str>, show_checkpoints: bool) {
+    // Excluding decorations alone would still walk checkpoint commits;
+    // --exclude must precede the --all argument it affects.
+    args.push("--exclude=refs/git-khronos/recovery/*");
+    if !show_checkpoints {
+        args.push("--exclude=refs/copilot/checkpoints/*");
+    }
+    args.push("--all");
+}
+
+fn add_history_format_arguments(args: &mut Vec<&str>, show_checkpoints: bool) {
+    args.extend([
+        if show_checkpoints {
+            "--decorate=full"
+        } else {
+            "--decorate=short"
+        },
+        "--decorate-refs-exclude=refs/remotes/*/HEAD",
+        "--decorate-refs-exclude=refs/git-khronos/recovery/*",
+    ]);
+    if !show_checkpoints {
+        args.push("--decorate-refs-exclude=refs/copilot/checkpoints/*");
+    }
+    args.push(HISTORY_FORMAT);
+}
+
 fn read_commits(path: &Path, limit: usize) -> Result<Vec<CommitSummary>, AppError> {
+    read_commits_with_checkpoint_visibility(path, limit, false)
+}
+
+fn read_commits_with_checkpoint_visibility(
+    path: &Path,
+    limit: usize,
+    show_checkpoints: bool,
+) -> Result<Vec<CommitSummary>, AppError> {
     let count = format!("-{limit}");
-    read_commits_with_pagination(path, &count, None)
+    read_commits_with_pagination(path, &count, None, show_checkpoints)
 }
 
 fn read_commit_page(
@@ -7651,26 +7997,21 @@ fn read_commit_page(
 ) -> Result<Vec<CommitSummary>, AppError> {
     let count = format!("-{limit}");
     let skip = format!("--skip={offset}");
-    read_commits_with_pagination(path, &count, Some(&skip))
+    read_commits_with_pagination(path, &count, Some(&skip), false)
 }
 
 fn read_commits_with_pagination(
     path: &Path,
     count: &str,
     skip: Option<&str>,
+    show_checkpoints: bool,
 ) -> Result<Vec<CommitSummary>, AppError> {
     let mut args = vec!["log", count];
     if let Some(skip) = skip {
         args.push(skip);
     }
-    args.extend([
-        "--decorate=short",
-        "--decorate-refs-exclude=refs/remotes/*/HEAD",
-        "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-        HISTORY_FORMAT,
-        "--exclude=refs/git-khronos/recovery/*",
-        "--all",
-    ]);
+    add_history_format_arguments(&mut args, show_checkpoints);
+    add_history_ref_arguments(&mut args, show_checkpoints);
     read_commits_with_arguments(path, &args)
 }
 
@@ -7678,19 +8019,14 @@ fn read_commits_from_revisions(
     path: &Path,
     limit: usize,
     revisions: &[String],
+    show_checkpoints: bool,
 ) -> Result<Vec<CommitSummary>, AppError> {
     if limit == 0 || revisions.is_empty() {
         return Ok(Vec::new());
     }
     let count = format!("-{limit}");
-    let mut args = vec![
-        "log",
-        count.as_str(),
-        "--decorate=short",
-        "--decorate-refs-exclude=refs/remotes/*/HEAD",
-        "--decorate-refs-exclude=refs/git-khronos/recovery/*",
-        HISTORY_FORMAT,
-    ];
+    let mut args = vec!["log", count.as_str()];
+    add_history_format_arguments(&mut args, show_checkpoints);
     args.extend(revisions.iter().map(String::as_str));
     read_commits_with_arguments(path, &args)
 }
@@ -7702,7 +8038,12 @@ fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitS
     // the framed UTF-8 stream.
     arguments.splice(
         1..1,
-        ["--encoding=UTF-8", "--no-notes", "--no-show-signature", "--no-color"],
+        [
+            "--encoding=UTF-8",
+            "--no-notes",
+            "--no-show-signature",
+            "--no-color",
+        ],
     );
     let output = run_git(path, &arguments)?;
     if !output.status.success() {
@@ -7714,7 +8055,44 @@ fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitS
         }
         ensure_success("read commit history", &output)?;
     }
-    parse_history_records(&output.stdout)
+    let mut commits = parse_history_records(&output.stdout)?;
+    let mut full_names = args.contains(&"--decorate=full");
+    // A branch can shorten to the exact spelling of a checkpoint ref.
+    if !full_names
+        && commits.iter().any(|commit| {
+            commit.decorations.iter().any(|decoration| {
+                decoration
+                    .strip_prefix("HEAD -> ")
+                    .unwrap_or(decoration)
+                    .starts_with(CHECKPOINT_REF_PREFIX)
+            })
+        })
+    {
+        let full_arguments = arguments
+            .iter()
+            .map(|arg| {
+                if *arg == "--decorate=short" {
+                    "--decorate=full"
+                } else {
+                    *arg
+                }
+            })
+            .collect::<Vec<_>>();
+        let full = run_git(path, &full_arguments)?;
+        ensure_success("read unambiguous commit references", &full)?;
+        commits = parse_history_records(&full.stdout)?;
+        full_names = true;
+    }
+    if full_names {
+        for commit in &mut commits {
+            for decoration in &mut commit.decorations {
+                if let Some(name) = decoration.strip_prefix("tag: refs/tags/") {
+                    *decoration = format!("tag: {name}");
+                }
+            }
+        }
+    }
+    Ok(commits)
 }
 
 fn decode_nul_record<'a, const N: usize>(bytes: &mut &'a [u8]) -> Option<[&'a [u8]; N]> {
@@ -7734,7 +8112,9 @@ fn parse_history_records(mut bytes: &[u8]) -> Result<Vec<CommitSummary>, AppErro
         AppError::new(
             "invalidHistoryOutput",
             "Git returned incomplete or invalid commit history records.",
-            Some("History was not replaced with partial results. Check repository integrity, then refresh history."),
+            Some(
+                "History was not replaced with partial results. Check repository integrity, then refresh history.",
+            ),
         )
     };
     let valid_oid = |oid: &str| {
@@ -8130,19 +8510,26 @@ fn run_git_with_environment(
     environment: &[(&str, &str)],
 ) -> Result<Output, AppError> {
     let mut command = git_in(path);
-    command.args(args)
+    command
+        .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
         .envs(environment.iter().copied());
     if let Some(cancellation) = git_cancellation::current() {
-        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         configure_process_tree(&mut command);
         return run_cancellable_command(command, &cancellation);
     }
     command.output().map_err(|error| {
-        AppError::new("gitUnavailable", format!("Could not start Git: {error}"),
-            Some("Install Git and ensure it is available on PATH."))
+        AppError::new(
+            "gitUnavailable",
+            format!("Could not start Git: {error}"),
+            Some("Install Git and ensure it is available on PATH."),
+        )
     })
 }
 
@@ -8218,8 +8605,16 @@ fn run_transport_with_stdout_limit(
     } else {
         authentication::validate_repository_urls(path, args, cancellation)?;
     }
-    let CapturedCommand { output, truncated, diagnostics } =
-        capture_cancellable_command(command, cancellation, stdout_limit, StderrCapture::Transport)?;
+    let CapturedCommand {
+        output,
+        truncated,
+        diagnostics,
+    } = capture_cancellable_command(
+        command,
+        cancellation,
+        stdout_limit,
+        StderrCapture::Transport,
+    )?;
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -8230,8 +8625,7 @@ fn run_transport_with_stdout_limit(
         Ok((output, true))
     } else {
         let facts = diagnostics.expect("transport capture always collects diagnostic facts");
-        authentication::check_output_with_facts(output, args, facts)
-            .map(|output| (output, false))
+        authentication::check_output_with_facts(output, args, facts).map(|output| (output, false))
     }
 }
 
@@ -8239,8 +8633,7 @@ fn run_cancellable_command(
     command: Command,
     cancellation: &CancellationToken,
 ) -> Result<Output, AppError> {
-    run_cancellable_command_with_stdout_limit(command, cancellation, None)
-        .map(|(output, _)| output)
+    run_cancellable_command_with_stdout_limit(command, cancellation, None).map(|(output, _)| output)
 }
 
 fn run_cancellable_command_with_stdout_limit(
@@ -8272,10 +8665,22 @@ fn capture_cancellable_command(
     let scoped = git_cancellation::current();
     let deadline = git_cancellation::deadline();
     let timed_out = || deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline);
-    let cancelled = || cancellation.is_cancelled() || scoped.as_ref().is_some_and(CancellationToken::is_cancelled) || timed_out();
-    let cancellation_error = || if timed_out() {
-        AppError::new("gitInspectionTimeout", "Git state inspection exceeded its time limit.", Some("The action may already have applied. Inspect current state before retrying."))
-    } else { operation_cancelled() };
+    let cancelled = || {
+        cancellation.is_cancelled()
+            || scoped.as_ref().is_some_and(CancellationToken::is_cancelled)
+            || timed_out()
+    };
+    let cancellation_error = || {
+        if timed_out() {
+            AppError::new(
+                "gitInspectionTimeout",
+                "Git state inspection exceeded its time limit.",
+                Some("The action may already have applied. Inspect current state before retrying."),
+            )
+        } else {
+            operation_cancelled()
+        }
+    };
     if cancelled() {
         return Err(cancellation_error());
     }
@@ -8340,10 +8745,8 @@ fn capture_cancellable_command(
             let mut stderr = stderr;
             stderr.read_to_end(&mut output).map(|_| (output, None))
         }
-        StderrCapture::Transport => {
-            authentication::diagnostics::read_transport_stderr(stderr)
-                .map(|capture| (capture.retained, Some(capture.diagnostics)))
-        }
+        StderrCapture::Transport => authentication::diagnostics::read_transport_stderr(stderr)
+            .map(|capture| (capture.retained, Some(capture.diagnostics))),
     });
 
     let mut parent_status = None;
@@ -8510,7 +8913,10 @@ fn run_git_with_input_environment(
 ) -> Result<Output, AppError> {
     if let Some(cancellation) = git_cancellation::current() {
         let mut command = git_in(path);
-        command.args(args).env("GIT_TERMINAL_PROMPT", "0").env("LC_ALL", "C")
+        command
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("LC_ALL", "C")
             .envs(environment.iter().copied());
         return git_cancellation::run_input(command, input, &cancellation);
     }
@@ -8557,10 +8963,18 @@ fn run_git_with_input_environment(
             return Ok(output);
         }
         sent.map_err(|_| {
-            AppError::new("gitInputFailed", "Could not finish sending input to Git.", None)
+            AppError::new(
+                "gitInputFailed",
+                "Could not finish sending input to Git.",
+                None,
+            )
         })?
         .map_err(|error| {
-            AppError::new("gitInputFailed", format!("Could not send input to Git: {error}"), None)
+            AppError::new(
+                "gitInputFailed",
+                format!("Could not send input to Git: {error}"),
+                None,
+            )
         })?;
         Ok(output)
     })
@@ -8939,6 +9353,436 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_refs_do_not_enter_commit_history() {
+        let repository = TestRepository::new();
+        for index in 1..=3 {
+            repository.write("history.txt", &format!("revision {index}\n"));
+            repository.git(&["add", "history.txt"]);
+            let date = format!("2020-01-01T00:0{index}:00+0000");
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&repository.path)
+                .args(["commit", "-m", &format!("Revision {index}")])
+                .env("GIT_AUTHOR_DATE", &date)
+                .env("GIT_COMMITTER_DATE", &date)
+                .output()
+                .expect("create dated history commit");
+            ensure_success("create dated history commit", &output).expect("commit created");
+        }
+        let checkpoint = run_git(
+            &repository.path,
+            &[
+                "commit-tree",
+                "HEAD^{tree}",
+                "-p",
+                "HEAD",
+                "-m",
+                "copilot checkpoint: private",
+            ],
+        )
+        .expect("create checkpoint-only commit");
+        ensure_success("create checkpoint-only commit", &checkpoint).expect("commit created");
+        let checkpoint_oid = String::from_utf8(checkpoint.stdout).expect("checkpoint oid");
+        let checkpoint_oid = checkpoint_oid.trim();
+        let private_ref = "refs/copilot/checkpoints/session/00000000000000000001/checkpoint";
+        let shared_ref = "refs/copilot/checkpoints/session/00000000000000000002/checkpoint";
+        repository.git(&["update-ref", private_ref, checkpoint_oid]);
+        repository.git(&["update-ref", shared_ref, "HEAD"]);
+        repository.git(&["update-ref", "refs/custom/marker", "HEAD~1"]);
+        repository.git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        repository.git(&["tag", "-a", "v1", "-m", "Release", "HEAD~1"]);
+
+        let expected = vec!["Revision 3", "Revision 2", "Revision 1"];
+        let check = |commits: &[CommitSummary]| {
+            assert_eq!(
+                commits
+                    .iter()
+                    .map(|commit| commit.subject.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(commits.iter().all(|commit| commit.oid != checkpoint_oid));
+            assert!(
+                commits
+                    .iter()
+                    .flat_map(|commit| &commit.decorations)
+                    .all(|decoration| !decoration.starts_with("refs/copilot/checkpoints/"))
+            );
+            let decorations = commits
+                .iter()
+                .flat_map(|commit| &commit.decorations)
+                .collect::<Vec<_>>();
+            for reference in [
+                "HEAD -> main",
+                "origin/main",
+                "tag: v1",
+                "refs/custom/marker",
+            ] {
+                assert!(
+                    decorations
+                        .iter()
+                        .any(|decoration| *decoration == reference)
+                );
+            }
+        };
+
+        for packed in [false, true] {
+            if packed {
+                repository.git(&["pack-refs", "--all", "--prune"]);
+            }
+            for data in [
+                snapshot_with_commit_limit(&repository.path, 3),
+                snapshot_with_limits_fast(&repository.path, 3, 100),
+                snapshot_with_limits_startup(&repository.path, 3, 100),
+            ] {
+                let data = data.expect("read snapshot without checkpoints");
+                check(&data.commits);
+                assert!(!data.history_truncated);
+            }
+            let initial = read_commits(&repository.path, 1).expect("read first history row");
+            let page = commit_history_page(&repository.path, 1, 2).expect("read remaining history");
+            assert!(!page.history_truncated);
+            let mut paged = initial.clone();
+            paged.extend(page.commits);
+            check(&paged);
+
+            for initial_count in [0, 1] {
+                for use_git in [false, true] {
+                    let mut cursor = CommitHistoryCursor::default();
+                    cursor
+                        .reset(&repository.path, &initial[..initial_count])
+                        .expect("reset incremental history");
+                    if use_git {
+                        cursor.walk = None;
+                        cursor
+                            .reset_git_frontier(&repository.path, &initial[..initial_count])
+                            .expect("prepare Git fallback history");
+                    }
+                    let mut commits = initial[..initial_count].to_vec();
+                    loop {
+                        let page = cursor
+                            .next_page(&repository.path, 1)
+                            .expect("read incremental page");
+                        commits.extend(page.commits);
+                        if !page.history_truncated {
+                            break;
+                        }
+                    }
+                    check(&commits);
+                }
+            }
+            let shown_initial = read_commits_with_checkpoint_visibility(&repository.path, 1, true)
+                .expect("read checkpoints when enabled");
+            assert_eq!(shown_initial[0].oid, checkpoint_oid);
+            for data in [
+                snapshot_with_limits_fast_and_checkpoint_visibility(&repository.path, 4, 100, true),
+                snapshot_with_limits_startup_and_checkpoint_visibility(
+                    &repository.path,
+                    4,
+                    100,
+                    true,
+                ),
+            ] {
+                let data = data.expect("read snapshot with checkpoints");
+                assert_eq!(data.commits.len(), 4);
+                assert!(!data.history_truncated);
+                assert!(data.commits.iter().any(|commit| {
+                    commit.oid == checkpoint_oid
+                        && commit
+                            .decorations
+                            .iter()
+                            .any(|refname| refname == private_ref)
+                }));
+                assert!(data.commits.iter().any(|commit| {
+                    commit.subject == "Revision 3"
+                        && commit
+                            .decorations
+                            .iter()
+                            .any(|refname| refname == shared_ref)
+                }));
+            }
+            for use_git in [false, true] {
+                let mut cursor = CommitHistoryCursor::default();
+                cursor
+                    .reset_with_checkpoint_visibility(&repository.path, &shown_initial, true)
+                    .expect("enable checkpoints in incremental history");
+                if use_git {
+                    cursor.walk = None;
+                    cursor
+                        .reset_git_frontier(&repository.path, &shown_initial)
+                        .expect("prepare enabled Git fallback history");
+                }
+                let mut commits = shown_initial.clone();
+                loop {
+                    let page = cursor
+                        .next_page(&repository.path, 1)
+                        .expect("read visible history");
+                    commits.extend(page.commits);
+                    if !page.history_truncated {
+                        break;
+                    }
+                }
+                assert_eq!(commits.len(), 4);
+                assert!(commits.iter().any(|commit| {
+                    commit.subject == "Revision 3"
+                        && commit
+                            .decorations
+                            .iter()
+                            .any(|refname| refname == shared_ref)
+                }));
+                cursor
+                    .reset(&repository.path, &initial)
+                    .expect("hide checkpoints again");
+                let page = cursor
+                    .next_page(&repository.path, 10)
+                    .expect("read hidden history");
+                let mut commits = initial.clone();
+                commits.extend(page.commits);
+                check(&commits);
+            }
+            // Hidden recovery refs and their objects must remain intact.
+            repository.git(&["rev-parse", "--verify", private_ref]);
+        }
+
+        repository.git(&["branch", "recovered-work", checkpoint_oid]);
+        let recovered = read_commits(&repository.path, 10).expect("read recovered checkpoint");
+        let recovered = recovered
+            .iter()
+            .find(|commit| commit.oid == checkpoint_oid)
+            .expect("branch-reachable checkpoint commit stays visible");
+        assert_eq!(recovered.subject, "copilot checkpoint: private");
+        assert_eq!(recovered.decorations, vec!["recovered-work"]);
+    }
+
+    #[test]
+    fn checkpoint_names_do_not_alias_local_or_remote_branches() {
+        let repository = TestRepository::new();
+        repository.write("history.txt", "root\n");
+        repository.git(&["add", "history.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+
+        let checkpoint = "refs/copilot/checkpoints/session/one";
+        let local = format!("refs/heads/{checkpoint}");
+        let remote = format!("refs/remotes/{checkpoint}");
+        repository.git(&["branch", checkpoint, "HEAD"]);
+        repository.git(&["update-ref", &remote, "HEAD"]);
+
+        let check = |commits: &[CommitSummary], show_checkpoints: bool| {
+            let decorations = &commits
+                .iter()
+                .find(|commit| commit.subject == "Root")
+                .expect("root commit remains visible")
+                .decorations;
+            assert!(decorations.contains(&local));
+            assert!(decorations.contains(&remote));
+            assert_eq!(
+                decorations
+                    .iter()
+                    .filter(|name| *name == checkpoint)
+                    .count(),
+                usize::from(show_checkpoints)
+            );
+        };
+        check(
+            &snapshot_with_limits_fast(&repository.path, 10, 100)
+                .expect("read branch names without a checkpoint")
+                .commits,
+            false,
+        );
+
+        repository.git(&["update-ref", checkpoint, "HEAD"]);
+        for packed in [false, true] {
+            if packed {
+                repository.git(&["pack-refs", "--all", "--prune"]);
+            }
+            for show in [false, true] {
+                let initial = snapshot_with_limits_fast_and_checkpoint_visibility(
+                    &repository.path,
+                    10,
+                    100,
+                    show,
+                )
+                .expect("read unambiguous checkpoint history");
+                check(&initial.commits, show);
+                for use_git in [false, true] {
+                    let mut cursor = CommitHistoryCursor::default();
+                    cursor
+                        .reset_with_checkpoint_visibility(&repository.path, &[], show)
+                        .expect("prepare unambiguous incremental history");
+                    if use_git {
+                        cursor.walk = None;
+                        cursor
+                            .reset_git_frontier(&repository.path, &[])
+                            .expect("prepare unambiguous Git fallback history");
+                    }
+                    let page = cursor
+                        .next_page(&repository.path, 10)
+                        .expect("read unambiguous history page");
+                    check(&page.commits, show);
+                }
+            }
+        }
+
+        repository.git(&["symbolic-ref", "HEAD", &local]);
+        let current = snapshot_with_limits_fast(&repository.path, 10, 100)
+            .expect("read an ambiguous current branch");
+        assert!(
+            current.commits[0]
+                .decorations
+                .contains(&format!("HEAD -> {local}"))
+        );
+        assert!(!current.commits[0].decorations.contains(&checkpoint.into()));
+    }
+
+    #[test]
+    fn deletes_only_reviewed_checkpoint_refs_with_an_exact_lease() {
+        let repository = TestRepository::new();
+        repository.write("history.txt", "root\n");
+        repository.git(&["add", "history.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.write("history.txt", "next\n");
+        repository.git(&["commit", "-am", "Next"]);
+        let oid = |revision: &str| {
+            let output = run_git(&repository.path, &["rev-parse", revision]).expect("read oid");
+            ensure_success("read oid", &output).expect("oid exists");
+            String::from_utf8(output.stdout)
+                .expect("oid as text")
+                .trim()
+                .to_owned()
+        };
+        let old = oid("HEAD~1");
+        let head = oid("HEAD");
+        let checkpoint = "refs/copilot/checkpoints/session/one";
+        let sibling = "refs/copilot/checkpoints/session/two";
+        repository.git(&["update-ref", checkpoint, &old]);
+        repository.git(&["update-ref", sibling, &head]);
+
+        assert_eq!(
+            delete_checkpoint_reference(&repository.path, "refs/heads/main", &head)
+                .expect_err("cannot delete a branch as a checkpoint")
+                .kind,
+            "invalidCheckpointReference"
+        );
+        assert_eq!(
+            delete_checkpoint_reference(
+                &repository.path,
+                "refs/copilot/checkpoints/../main",
+                &head
+            )
+            .expect_err("reject invalid checkpoint names")
+            .kind,
+            "invalidCheckpointReference"
+        );
+        assert_eq!(
+            delete_checkpoint_reference(&repository.path, checkpoint, &"0".repeat(40))
+                .expect_err("reject an empty lease")
+                .kind,
+            "invalidCommit"
+        );
+        assert_eq!(
+            delete_checkpoint_reference(&repository.path, checkpoint, &head)
+                .expect_err("reject a moved checkpoint")
+                .kind,
+            "checkpointChanged"
+        );
+        assert_eq!(oid(checkpoint), old);
+        assert_eq!(oid("refs/heads/main"), head);
+
+        repository.git(&["pack-refs", "--all", "--prune"]);
+        delete_checkpoint_reference(&repository.path, checkpoint, &old)
+            .expect("delete the reviewed packed checkpoint");
+        assert_eq!(
+            delete_checkpoint_reference(&repository.path, checkpoint, &old)
+                .expect_err("a missing checkpoint is not a successful deletion")
+                .kind,
+            "checkpointChanged"
+        );
+        assert_eq!(oid(sibling), head);
+        assert_eq!(oid("refs/heads/main"), head);
+        repository.git(&["cat-file", "-e", &old]);
+
+        let loose = "refs/copilot/checkpoints/session/loose";
+        repository.git(&["update-ref", loose, &head]);
+        delete_checkpoint_reference(&repository.path, loose, &head)
+            .expect("delete the reviewed loose checkpoint");
+        assert_eq!(oid(sibling), head);
+
+        let symbolic = "refs/copilot/checkpoints/session/symbolic";
+        repository.git(&["symbolic-ref", symbolic, "refs/heads/main"]);
+        delete_checkpoint_reference(&repository.path, symbolic, &head)
+            .expect("delete the checkpoint symbolic ref without dereferencing it");
+        let missing = run_git(
+            &repository.path,
+            &["show-ref", "--verify", "--quiet", symbolic],
+        )
+        .expect("check deleted symbolic ref");
+        assert!(!missing.status.success());
+        assert_eq!(oid("refs/heads/main"), head);
+        assert_eq!(oid(sibling), head);
+    }
+
+    #[test]
+    fn deletes_reviewed_checkpoint_in_sha256_repository() {
+        let parent = TestRepository::new();
+        let path = parent.path.join("sha256");
+        fs::create_dir(&path).expect("create SHA-256 fixture directory");
+        let repository = TestRepository { path };
+        repository.git(&["init", "--object-format=sha256", "-b", "main"]);
+        repository.git(&["config", "user.name", "Chronos Tester"]);
+        repository.git(&["config", "user.email", "chronos@example.test"]);
+        repository.write("history.txt", "root\n");
+        repository.git(&["add", "history.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        let output = run_git(&repository.path, &["rev-parse", "HEAD"]).expect("read SHA-256 oid");
+        ensure_success("read SHA-256 oid", &output).expect("oid exists");
+        let oid = String::from_utf8(output.stdout).expect("oid as text");
+        let oid = oid.trim();
+        assert_eq!(oid.len(), 64);
+        let reference = "refs/copilot/checkpoints/sha256/one";
+        repository.git(&["update-ref", reference, oid]);
+        delete_checkpoint_reference(&repository.path, reference, oid)
+            .expect("delete checkpoint with a SHA-256 lease");
+        let missing = run_git(
+            &repository.path,
+            &["show-ref", "--verify", "--quiet", reference],
+        )
+        .expect("check deleted checkpoint");
+        assert!(!missing.status.success());
+        repository.git(&["cat-file", "-e", oid]);
+    }
+
+    #[test]
+    fn history_cursor_reset_drops_deleted_refs_and_unreachable_commits() {
+        let repository = TestRepository::new();
+        repository.write("history.txt", "root\n");
+        repository.git(&["add", "history.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+        repository.git(&["checkout", "-b", "temporary"]);
+        repository.write("history.txt", "temporary\n");
+        repository.git(&["commit", "-am", "Temporary branch work"]);
+        repository.git(&["checkout", "main"]);
+        repository.git(&["pack-refs", "--all", "--prune"]);
+
+        let mut cursor = CommitHistoryCursor::default();
+        cursor
+            .reset(&repository.path, &[])
+            .expect("prepare history before deletion");
+        repository.git(&["branch", "-D", "temporary"]);
+        let initial = read_commits(&repository.path, 1).expect("refresh history after deletion");
+        assert_eq!(initial.len(), 1);
+        assert_eq!(initial[0].subject, "Root");
+        assert_eq!(initial[0].decorations, vec!["HEAD -> main"]);
+        cursor
+            .reset(&repository.path, &initial)
+            .expect("reset history after deletion");
+        let page = cursor
+            .next_page(&repository.path, 10)
+            .expect("read refreshed cursor");
+        assert!(page.commits.is_empty());
+        assert!(!page.history_truncated);
+    }
+
+    #[test]
     fn incrementally_walks_branched_history_without_duplicates() {
         let repository = TestRepository::new();
         for index in 1..=4 {
@@ -8993,7 +9837,11 @@ mod tests {
         }
         let complete = read_commits(&repository.path, 20).unwrap();
         let boundary = &complete[1].oid;
-        fs::write(repository.path.join(".git/shallow"), format!("{boundary}\n")).unwrap();
+        fs::write(
+            repository.path.join(".git/shallow"),
+            format!("{boundary}\n"),
+        )
+        .unwrap();
         repository.git(&["cat-file", "-e", &complete[3].oid]);
         let expected = read_commits(&repository.path, 20).unwrap();
         assert_eq!(expected.len(), 2);
@@ -9005,7 +9853,11 @@ mod tests {
             "Shallow history must retain the in-process walk"
         );
         let page = cursor.next_page(&repository.path, 20).unwrap();
-        assert_eq!(page.commits.len(), 1, "History crossed the shallow boundary");
+        assert_eq!(
+            page.commits.len(),
+            1,
+            "History crossed the shallow boundary"
+        );
         assert_eq!(page.commits[0].oid, *boundary);
         assert!(
             page.commits[0].parents.is_empty(),
@@ -9119,7 +9971,10 @@ mod tests {
         let mut cursor = CommitHistoryCursor::default();
         let result = cursor.reset(&repository.path, &complete[..1]);
         fs::write(&config_path, config).unwrap();
-        assert!(!fast_walk_available, "Fixture did not exercise CLI initialization");
+        assert!(
+            !fast_walk_available,
+            "Fixture did not exercise CLI initialization"
+        );
         let error = result.unwrap_err();
         let page_error = cursor
             .next_page(&repository.path, 20)
@@ -9159,7 +10014,14 @@ mod tests {
                 "decoded" => {
                     let output = run_git_with_input_output(
                         &repository.path,
-                        &["hash-object", "--literally", "-t", "commit", "-w", "--stdin"],
+                        &[
+                            "hash-object",
+                            "--literally",
+                            "-t",
+                            "commit",
+                            "-w",
+                            "--stdin",
+                        ],
                         b"invalid commit\n",
                     )
                     .unwrap();
@@ -9222,35 +10084,73 @@ mod tests {
         ];
         let mut oids = Vec::new();
         for message in messages {
-            repository.git(&["commit", "--allow-empty", "--cleanup=verbatim", "-m", &message]);
+            repository.git(&[
+                "commit",
+                "--allow-empty",
+                "--cleanup=verbatim",
+                "-m",
+                &message,
+            ]);
             let output = run_git(&repository.path, &["rev-parse", "HEAD"]).unwrap();
             oids.push(String::from_utf8(output.stdout).unwrap().trim().to_owned());
         }
         // Read each field independently: this oracle cannot be confused by the
         // combined record framing being tested, or by forged delimiter payloads.
-        let expected = oids.iter().rev().map(|oid| {
-            let field = |token: &str| {
-                let format = format!("--format={token}");
-                let output = run_git(&repository.path, &["show", "-s", "--encoding=UTF-8", "--decorate=short", &format, oid]).unwrap();
-                ensure_success("read owned commit field", &output).unwrap();
-                String::from_utf8(output.stdout).unwrap().strip_suffix('\n').unwrap().to_owned()
-            };
-            CommitSummary {
-                oid: oid.clone(),
-                parents: field("%P").split_ascii_whitespace().map(str::to_owned).collect(),
-                author_name: field("%an"),
-                author_email: field("%ae"),
-                authored_at: field("%aI"),
-                subject: field("%s"),
-                description: field("%b").trim().to_owned(),
-                decorations: field("%D").split(',').map(str::trim)
-                    .filter(|value| !value.is_empty()).map(str::to_owned).collect(),
-            }
-        }).collect::<Vec<_>>();
+        let expected = oids
+            .iter()
+            .rev()
+            .map(|oid| {
+                let field = |token: &str| {
+                    let format = format!("--format={token}");
+                    let output = run_git(
+                        &repository.path,
+                        &[
+                            "show",
+                            "-s",
+                            "--encoding=UTF-8",
+                            "--decorate=short",
+                            &format,
+                            oid,
+                        ],
+                    )
+                    .unwrap();
+                    ensure_success("read owned commit field", &output).unwrap();
+                    String::from_utf8(output.stdout)
+                        .unwrap()
+                        .strip_suffix('\n')
+                        .unwrap()
+                        .to_owned()
+                };
+                CommitSummary {
+                    oid: oid.clone(),
+                    parents: field("%P")
+                        .split_ascii_whitespace()
+                        .map(str::to_owned)
+                        .collect(),
+                    author_name: field("%an"),
+                    author_email: field("%ae"),
+                    authored_at: field("%aI"),
+                    subject: field("%s"),
+                    description: field("%b").trim().to_owned(),
+                    decorations: field("%D")
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                }
+            })
+            .collect::<Vec<_>>();
         let actual = read_commits(&repository.path, 20).unwrap();
-        assert_eq!(serde_json::to_value(&actual).unwrap(), serde_json::to_value(&expected).unwrap());
+        assert_eq!(
+            serde_json::to_value(&actual).unwrap(),
+            serde_json::to_value(&expected).unwrap()
+        );
         let page = read_commit_page(&repository.path, 1, 1).unwrap();
-        assert_eq!(serde_json::to_value(page).unwrap(), serde_json::to_value(&expected[1..2]).unwrap());
+        assert_eq!(
+            serde_json::to_value(page).unwrap(),
+            serde_json::to_value(&expected[1..2]).unwrap()
+        );
         for in_process in [true, false] {
             let mut cursor = CommitHistoryCursor::default();
             cursor.reset(&repository.path, &expected[..1]).unwrap();
@@ -9260,7 +10160,10 @@ mod tests {
                 cursor.frontier = expected[0].parents.clone();
             }
             let page = cursor.next_page(&repository.path, 20).unwrap();
-            assert_eq!(serde_json::to_value(page.commits).unwrap(), serde_json::to_value(&expected[1..]).unwrap());
+            assert_eq!(
+                serde_json::to_value(page.commits).unwrap(),
+                serde_json::to_value(&expected[1..]).unwrap()
+            );
             assert!(!page.history_truncated);
         }
     }
@@ -9277,8 +10180,18 @@ mod tests {
             tree.trim()
         );
         let output = run_git_with_input_output(
-            &repository.path, &["hash-object", "--literally", "-t", "commit", "-w", "--stdin"], raw.as_bytes(),
-        ).unwrap();
+            &repository.path,
+            &[
+                "hash-object",
+                "--literally",
+                "-t",
+                "commit",
+                "-w",
+                "--stdin",
+            ],
+            raw.as_bytes(),
+        )
+        .unwrap();
         ensure_success("create malformed owned NUL fixture", &output).unwrap();
         let oid = String::from_utf8(output.stdout).unwrap();
         let oid = oid.trim();
@@ -9286,13 +10199,21 @@ mod tests {
         match read_commits(&repository.path, 20) {
             Err(error) => assert_eq!(error.kind, "invalidHistoryOutput"),
             Ok(commits) => {
-                assert_eq!(commits.len(), 1, "Malformed NUL message created phantom history");
+                assert_eq!(
+                    commits.len(),
+                    1,
+                    "Malformed NUL message created phantom history"
+                );
                 assert_eq!(commits[0].oid, oid);
                 assert_eq!(commits[0].author_name, "Author");
                 assert_eq!(commits[0].subject, "Original subject");
                 assert_eq!(commits[0].decorations, vec!["HEAD -> main"]);
-                let output = run_git(&repository.path, &["show", "-s", "--format=%b", oid]).unwrap();
-                assert_eq!(commits[0].description, String::from_utf8(output.stdout).unwrap().trim());
+                let output =
+                    run_git(&repository.path, &["show", "-s", "--format=%b", oid]).unwrap();
+                assert_eq!(
+                    commits[0].description,
+                    String::from_utf8(output.stdout).unwrap().trim()
+                );
             }
         }
     }
@@ -9301,14 +10222,25 @@ mod tests {
     fn history_record_decoder_refuses_partial_duplicate_and_invalid_oid_records() {
         let oid = "a".repeat(40);
         let parent = "b".repeat(40);
-        let fields = [oid.as_str(), parent.as_str(), "Author", "mail@example.test",
-            "2020-01-01T00:00:00Z", "Subject\u{1f}field", "Body\u{1e}record", "HEAD -> main"];
+        let fields = [
+            oid.as_str(),
+            parent.as_str(),
+            "Author",
+            "mail@example.test",
+            "2020-01-01T00:00:00Z",
+            "Subject\u{1f}field",
+            "Body\u{1e}record",
+            "HEAD -> main",
+        ];
         let mut bytes = fields.join("\0").into_bytes();
         bytes.extend_from_slice(b"\0\n");
         assert_eq!(parse_history_records(&bytes).unwrap().len(), 1);
         assert!(parse_history_records(b"").unwrap().is_empty());
         for end in 1..bytes.len() {
-            assert!(parse_history_records(&bytes[..end]).is_err(), "Accepted truncated prefix {end}");
+            assert!(
+                parse_history_records(&bytes[..end]).is_err(),
+                "Accepted truncated prefix {end}"
+            );
         }
         let duplicate = [bytes.as_slice(), bytes.as_slice()].concat();
         assert!(parse_history_records(&duplicate).is_err());
@@ -9335,38 +10267,64 @@ mod tests {
             tree.trim()
         );
         let output = run_git_with_input_output(
-            &repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], raw.as_bytes(),
-        ).unwrap();
+            &repository.path,
+            &["hash-object", "-t", "commit", "-w", "--stdin"],
+            raw.as_bytes(),
+        )
+        .unwrap();
         ensure_success("create owned signature fixture", &output).unwrap();
         let oid = String::from_utf8(output.stdout).unwrap();
         let oid = oid.trim();
         repository.git(&["update-ref", "refs/heads/main", oid]);
-        repository.write("signature-helper", "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n");
+        repository.write(
+            "signature-helper",
+            "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n",
+        );
         let helper = repository.path.join("signature-helper");
         fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
         repository.git(&["config", "gpg.program", helper.to_str().unwrap()]);
         repository.git(&["config", "log.showSignature", "true"]);
         let marker = repository.path.join("signature-helper-invoked");
-        let baseline = run_git(&repository.path, &["log", "-1", "--show-signature", "--format=%H"]).unwrap();
+        let baseline = run_git(
+            &repository.path,
+            &["log", "-1", "--show-signature", "--format=%H"],
+        )
+        .unwrap();
         ensure_success("verify owned signature fixture", &baseline).unwrap();
-        assert!(marker.exists(), "Signature fixture did not exercise the configured helper");
+        assert!(
+            marker.exists(),
+            "Signature fixture did not exercise the configured helper"
+        );
         fs::remove_file(&marker).unwrap();
         let commits = read_commits(&repository.path, 20).unwrap();
         assert_eq!(commits.len(), 1);
         assert_eq!(commits[0].oid, oid);
         assert_eq!(commits[0].subject, "Signed-looking subject");
-        assert!(!marker.exists(), "History executed an optional signature presentation helper");
+        assert!(
+            !marker.exists(),
+            "History executed an optional signature presentation helper"
+        );
         let mut cursor = CommitHistoryCursor::default();
         cursor.reset(&repository.path, &commits).unwrap();
-        assert!(!marker.exists(), "History tips executed the presentation helper");
+        assert!(
+            !marker.exists(),
+            "History tips executed the presentation helper"
+        );
         repository.git(&[
-            "update-ref", "--create-reflog", "-m", "Owned signature fixture",
-            "refs/stash", oid,
+            "update-ref",
+            "--create-reflog",
+            "-m",
+            "Owned signature fixture",
+            "refs/stash",
+            oid,
         ]);
         let stashes = read_stashes(&repository.path).unwrap();
         assert_eq!(stashes.len(), 1);
         assert_eq!(stashes[0].oid, oid);
-        assert!(!marker.exists(), "Stash listing executed the presentation helper");
+        assert!(
+            !marker.exists(),
+            "Stash listing executed the presentation helper"
+        );
     }
 
     #[test]
@@ -11364,7 +12322,9 @@ mod tests {
     #[test]
     fn blame_decoder_refuses_incomplete_metadata_and_invalid_line_order() {
         let oid = "a".repeat(40);
-        let record = format!("{oid} 1 1 1\nauthor Name\nauthor-mail <name@example.test>\nauthor-time 1767225600\nsummary Subject\nfilename file.txt\n\tline\n");
+        let record = format!(
+            "{oid} 1 1 1\nauthor Name\nauthor-mail <name@example.test>\nauthor-time 1767225600\nsummary Subject\nfilename file.txt\n\tline\n"
+        );
         assert_eq!(parse_blame_porcelain(&record).unwrap().len(), 1);
         for invalid in [
             format!("{oid} 1 1 1\n"),
@@ -11375,7 +12335,10 @@ mod tests {
             record.replace(" 1 1 1\n", " 1 0 1\n"),
             format!("{record}{record}"),
         ] {
-            assert!(parse_blame_porcelain(&invalid).is_err(), "Incomplete or inconsistent blame must not become valid lines");
+            assert!(
+                parse_blame_porcelain(&invalid).is_err(),
+                "Incomplete or inconsistent blame must not become valid lines"
+            );
         }
     }
 
@@ -11383,7 +12346,9 @@ mod tests {
     fn blame_pages_preserve_unicode_paths_and_cover_exact_boundaries_and_empty_files() {
         let repository = TestRepository::new();
         repository.git(&["config", "user.name", "Élodie😀"]);
-        let contents = (1..=205).map(|number| format!("élève😀 line {number}\r\n")).collect::<String>();
+        let contents = (1..=205)
+            .map(|number| format!("élève😀 line {number}\r\n"))
+            .collect::<String>();
         repository.write("old.txt", &contents);
         repository.write("empty.txt", "");
         repository.git(&["add", "."]);
@@ -11401,19 +12366,41 @@ mod tests {
             assert_eq!(page.lines.len(), length);
             assert_eq!(page.next_line, next);
             assert_eq!(page.lines[0].line_number, first);
-            assert!(page.lines.iter().all(|line| line.oid == original && line.path.as_deref() == Some("old.txt") && line.author_name == "Élodie😀"));
+            assert!(page.lines.iter().all(|line| line.oid == original
+                && line.path.as_deref() == Some("old.txt")
+                && line.author_name == "Élodie😀"));
             all.extend(page.lines);
         }
-        assert_eq!(all.iter().map(|line| format!("{}\n", line.text)).collect::<String>(), contents);
-        assert!(file_blame_page(&repository.path, &revision, "empty.txt", 1).unwrap().lines.is_empty());
+        assert_eq!(
+            all.iter()
+                .map(|line| format!("{}\n", line.text))
+                .collect::<String>(),
+            contents
+        );
+        assert!(
+            file_blame_page(&repository.path, &revision, "empty.txt", 1)
+                .unwrap()
+                .lines
+                .is_empty()
+        );
         assert!(file_blame_page(&repository.path, &revision, "renamed.txt", 206).is_err());
-        assert_eq!(file_blame_page(&repository.path, &revision, "renamed.txt", 0).unwrap_err().kind, "invalidBlameRange");
+        assert_eq!(
+            file_blame_page(&repository.path, &revision, "renamed.txt", 0)
+                .unwrap_err()
+                .kind,
+            "invalidBlameRange"
+        );
     }
 
     #[test]
     fn blame_pages_bound_large_files_and_refuse_oversized_lines() {
         let repository = TestRepository::new();
-        repository.write("large.txt", &(1..=100_000).map(|number| format!("line {number}\n")).collect::<String>());
+        repository.write(
+            "large.txt",
+            &(1..=100_000)
+                .map(|number| format!("line {number}\n"))
+                .collect::<String>(),
+        );
         repository.write("huge-line.txt", &"x".repeat(2 * 1024 * 1024));
         repository.git(&["add", "."]);
         repository.git(&["commit", "-m", "Large blame fixtures"]);
@@ -11422,7 +12409,12 @@ mod tests {
         assert_eq!(page.lines.len(), 100);
         assert!(page.next_line.is_none());
         assert_eq!(page.lines[99].text, "line 100000");
-        assert_eq!(file_blame_page(&repository.path, &revision, "huge-line.txt", 1).unwrap_err().kind, "historyOutputLimit");
+        assert_eq!(
+            file_blame_page(&repository.path, &revision, "huge-line.txt", 1)
+                .unwrap_err()
+                .kind,
+            "historyOutputLimit"
+        );
     }
 
     #[test]
@@ -11433,18 +12425,41 @@ mod tests {
         repository.write("file.txt", "raw owned source\n");
         repository.write(".gitattributes", "*.txt diff=owned\n");
         let helper = repository.path.join(".git/blame-textconv");
-        fs::write(&helper, "#!/bin/sh\nprintf called > .git/blame-converter-called\nprintf converted\\n\n").unwrap();
+        fs::write(
+            &helper,
+            "#!/bin/sh\nprintf called > .git/blame-converter-called\nprintf converted\\n\n",
+        )
+        .unwrap();
         fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
         repository.git(&["config", "diff.owned.textconv", ".git/blame-textconv"]);
         repository.git(&["add", "."]);
         repository.git(&["commit", "-m", "Owned raw source"]);
         let revision = reference_tip(&repository.path, "HEAD").unwrap();
-        repository.git(&["blame", "--textconv", "--line-porcelain", &revision, "--", "file.txt"]);
+        repository.git(&[
+            "blame",
+            "--textconv",
+            "--line-porcelain",
+            &revision,
+            "--",
+            "file.txt",
+        ]);
         let marker = repository.path.join(".git/blame-converter-called");
-        assert!(marker.exists(), "The fixture must prove the converter is executable");
+        assert!(
+            marker.exists(),
+            "The fixture must prove the converter is executable"
+        );
         fs::remove_file(&marker).unwrap();
-        assert_eq!(file_blame(&repository.path, &revision, "file.txt").unwrap()[0].text, "raw owned source");
-        assert_eq!(file_blame_page(&repository.path, &revision, "file.txt", 1).unwrap().lines[0].text, "raw owned source");
+        assert_eq!(
+            file_blame(&repository.path, &revision, "file.txt").unwrap()[0].text,
+            "raw owned source"
+        );
+        assert_eq!(
+            file_blame_page(&repository.path, &revision, "file.txt", 1)
+                .unwrap()
+                .lines[0]
+                .text,
+            "raw owned source"
+        );
         assert!(!marker.exists());
     }
 
@@ -11452,8 +12467,16 @@ mod tests {
     #[cfg(unix)]
     fn blame_pages_accept_literal_control_space_and_quoted_filenames() {
         let repository = TestRepository::new();
-        let files = ["line\nname.txt", " tail ", "quote\"", "bell\u{7}.txt", "*.txt"];
-        for file in files { repository.write(file, "literal file\n"); }
+        let files = [
+            "line\nname.txt",
+            " tail ",
+            "quote\"",
+            "bell\u{7}.txt",
+            "*.txt",
+        ];
+        for file in files {
+            repository.write(file, "literal file\n");
+        }
         repository.git(&["add", "."]);
         repository.git(&["commit", "-m", "Literal filenames"]);
         let revision = reference_tip(&repository.path, "HEAD").unwrap();
@@ -11464,7 +12487,12 @@ mod tests {
             assert_eq!(page.lines[0].text, "literal file");
         }
         for file in ["", "../outside", "/absolute", "bad\0path"] {
-            assert_eq!(file_blame_page(&repository.path, &revision, file, 1).unwrap_err().kind, "invalidPath");
+            assert_eq!(
+                file_blame_page(&repository.path, &revision, file, 1)
+                    .unwrap_err()
+                    .kind,
+                "invalidPath"
+            );
         }
     }
 
@@ -11585,7 +12613,10 @@ mod tests {
         let updated = fs::read(repository.path.join(".gitignore")).unwrap();
         assert!(updated.starts_with(existing));
         assert!(updated.ends_with(b"/secret.log\n"));
-        assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"keep\n");
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"keep\n"
+        );
     }
 
     #[test]
@@ -11596,14 +12627,22 @@ mod tests {
             let repository = TestRepository::new();
             repository.write("secret.log", "keep\n");
             let target = repository.path.join(".git/outside-ignore");
-            if existing { fs::write(&target, b"# preserve outside\n").unwrap(); }
+            if existing {
+                fs::write(&target, b"# preserve outside\n").unwrap();
+            }
             let ignore = repository.path.join(".gitignore");
             symlink(&target, &ignore).unwrap();
             assert!(ignore_path(&repository.path, "secret.log", "file", false).is_err());
             assert!(fs::symlink_metadata(ignore).unwrap().is_symlink());
-            if existing { assert_eq!(fs::read(target).unwrap(), b"# preserve outside\n"); }
-            else { assert!(!target.exists()); }
-            assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"keep\n");
+            if existing {
+                assert_eq!(fs::read(target).unwrap(), b"# preserve outside\n");
+            } else {
+                assert!(!target.exists());
+            }
+            assert_eq!(
+                fs::read(repository.path.join("secret.log")).unwrap(),
+                b"keep\n"
+            );
         }
     }
 
@@ -11617,10 +12656,18 @@ mod tests {
             repository.git(&["commit", "-m", "Literal paths"]);
             repository.write(file, "selected edit\n");
             ignore_path(&repository.path, file, "file", true).unwrap();
-            let retained = run_git(&repository.path, &["ls-files", "-z"]).unwrap().stdout;
+            let retained = run_git(&repository.path, &["ls-files", "-z"])
+                .unwrap()
+                .stdout;
             assert_eq!(retained, b"a.log\0", "untracking {file}");
-            assert_eq!(fs::read(repository.path.join(file)).unwrap(), b"selected edit\n");
-            assert_eq!(fs::read(repository.path.join("a.log")).unwrap(), b"unrelated\n");
+            assert_eq!(
+                fs::read(repository.path.join(file)).unwrap(),
+                b"selected edit\n"
+            );
+            assert_eq!(
+                fs::read(repository.path.join("a.log")).unwrap(),
+                b"unrelated\n"
+            );
         }
     }
 
@@ -11635,8 +12682,14 @@ mod tests {
         repository.write(".gitignore.lock", "another writer\n");
         let index = fs::read(repository.path.join(".git/index")).unwrap();
         assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
-        assert_eq!(fs::read(repository.path.join(".gitignore")).unwrap(), b"# existing\n");
-        assert_eq!(fs::read(repository.path.join(".gitignore.lock")).unwrap(), b"another writer\n");
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"# existing\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore.lock")).unwrap(),
+            b"another writer\n"
+        );
         assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
     }
 
@@ -11652,9 +12705,15 @@ mod tests {
         repository.write(".gitignore", "# existing\n");
         let index = fs::read(repository.path.join(".git/index")).unwrap();
         assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
-        assert_eq!(fs::read(repository.path.join(".gitignore")).unwrap(), b"# existing\n");
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"# existing\n"
+        );
         assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
-        assert_eq!(fs::read(repository.path.join("secret.log")).unwrap(), b"worktree\n");
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"worktree\n"
+        );
     }
 
     #[test]
@@ -11675,12 +12734,20 @@ mod tests {
         repository.write(".git/index.lock", "other Git writer\n");
         assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
         assert_eq!(fs::read(&ignore).unwrap(), existing);
-        assert_eq!(fs::read(repository.path.join(".git/index.lock")).unwrap(), b"other Git writer\n");
+        assert_eq!(
+            fs::read(repository.path.join(".git/index.lock")).unwrap(),
+            b"other Git writer\n"
+        );
         assert!(!repository.path.join(".gitignore.lock").exists());
         fs::remove_file(repository.path.join(".git/index.lock")).unwrap();
         ignore_path(&repository.path, "secret.log", "file", true).unwrap();
         assert_eq!(fs::read(&ignore).unwrap(), existing);
-        assert_eq!(run_git(&repository.path, &["ls-files", "-z"]).unwrap().stdout, b"");
+        assert_eq!(
+            run_git(&repository.path, &["ls-files", "-z"])
+                .unwrap()
+                .stdout,
+            b""
+        );
         assert!(!repository.path.join(".gitignore.lock").exists());
     }
 
@@ -11697,8 +12764,14 @@ mod tests {
         fs::hard_link(&external, &ignore).unwrap();
         ignore_path(&repository.path, "secret.log", "file", false).unwrap();
         assert_eq!(fs::read(&external).unwrap(), b"# no final newline");
-        assert_eq!(fs::read(&ignore).unwrap(), b"# no final newline\n/secret.log\n");
-        assert_eq!(fs::metadata(&ignore).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::read(&ignore).unwrap(),
+            b"# no final newline\n/secret.log\n"
+        );
+        assert_eq!(
+            fs::metadata(&ignore).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         assert!(!repository.path.join(".gitignore.lock").exists());
     }
 
@@ -12432,7 +13505,8 @@ mod tests {
     fn parses_verified_commit_signature_metadata() {
         let (signature, message) = parse_commit_signature(
             b"G\0Maya Chen <maya@example.test>\0A1B2C3D4\0FFEEDDCCBBAA\0ultimate\0Signed work\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(signature.status, "valid");
         assert_eq!(
@@ -12447,8 +13521,17 @@ mod tests {
 
     #[test]
     fn incomplete_signature_metadata_cannot_establish_a_valid_or_unsigned_status() {
-        for output in [b"".as_slice(), b"G", b"G\0Signer", b"G\0Signer\0Key\0Fingerprint\0Trust", b"N"] {
-            assert_eq!(parse_commit_signature(output).unwrap_err().kind, "invalidCommitSignatureOutput");
+        for output in [
+            b"".as_slice(),
+            b"G",
+            b"G\0Signer",
+            b"G\0Signer\0Key\0Fingerprint\0Trust",
+            b"N",
+        ] {
+            assert_eq!(
+                parse_commit_signature(output).unwrap_err().kind,
+                "invalidCommitSignatureOutput"
+            );
         }
         assert!(parse_commit_signature(b"unexpected\0\0\0\0\0body").is_err());
         let (signature, message) = parse_commit_signature(b"N\0\0\0\0\0body\0literal NUL").unwrap();
@@ -12460,18 +13543,29 @@ mod tests {
     fn file_history_decoder_rejects_incomplete_duplicate_and_invalid_frames() {
         let oid = "a".repeat(40);
         let frame = format!("{oid}\0Name\0mail@example.test\02026-01-01T00:00:00Z\0Subject\0\n");
-        assert_eq!(parse_file_history_records(frame.as_bytes()).unwrap().len(), 1);
+        assert_eq!(
+            parse_file_history_records(frame.as_bytes()).unwrap().len(),
+            1
+        );
         for end in 1..frame.len() {
             assert!(parse_file_history_records(&frame.as_bytes()[..end]).is_err());
         }
         assert!(parse_file_history_records(format!("{frame}{frame}").as_bytes()).is_err());
-        assert!(parse_file_history_records(frame.replacen(&oid, "not-an-oid", 1).as_bytes()).is_err());
+        assert!(
+            parse_file_history_records(frame.replacen(&oid, "not-an-oid", 1).as_bytes()).is_err()
+        );
         let sha256 = frame.replacen(&oid, &"a".repeat(64), 1);
-        assert_eq!(parse_file_history_records(sha256.as_bytes()).unwrap()[0].oid.len(), 64);
+        assert_eq!(
+            parse_file_history_records(sha256.as_bytes()).unwrap()[0]
+                .oid
+                .len(),
+            64
+        );
     }
 
     #[test]
-    fn commit_details_preserve_unicode_message_and_unsigned_status_under_log_presentation_settings() {
+    fn commit_details_preserve_unicode_message_and_unsigned_status_under_log_presentation_settings()
+    {
         let repository = TestRepository::new();
         repository.write("file.txt", "base\n");
         repository.git(&["add", "."]);
@@ -12500,7 +13594,10 @@ mod tests {
         let first = reference_tip(&repository.path, "HEAD").unwrap();
         repository.write("file.txt", "updated\n");
         repository.git(&["add", "."]);
-        let subject = format!("élève😀\x1ffield\x1erecord\x1e{}\x1fForged\x1ffake@example.test\x1f2020-01-01T00:00:00Z\x1fInjected", "f".repeat(40));
+        let subject = format!(
+            "élève😀\x1ffield\x1erecord\x1e{}\x1fForged\x1ffake@example.test\x1f2020-01-01T00:00:00Z\x1fInjected",
+            "f".repeat(40)
+        );
         repository.git(&["commit", "-m", &subject]);
         let last = reference_tip(&repository.path, "HEAD").unwrap();
         for encoding in ["UTF-8", "UTF-16"] {
@@ -12519,16 +13616,25 @@ mod tests {
         let repository = TestRepository::new();
         repository.write("file.txt", "owned contents\n");
         repository.git(&["add", "file.txt"]);
-        fs::write(repository.path.join(".git/large-message"), "m".repeat(2 * 1024 * 1024 + 1)).unwrap();
+        fs::write(
+            repository.path.join(".git/large-message"),
+            "m".repeat(2 * 1024 * 1024 + 1),
+        )
+        .unwrap();
         repository.git(&["commit", "-F", ".git/large-message"]);
         let oid = reference_tip(&repository.path, "HEAD").unwrap();
         let index = fs::read(repository.path.join(".git/index")).unwrap();
         let result = file_history(&repository.path, &oid, "file.txt");
-        assert!(matches!(result, Err(ref error) if error.kind == "historyOutputLimit"),
-            "Oversized file-history metadata must fail instead of returning a large or partial result");
+        assert!(
+            matches!(result, Err(ref error) if error.kind == "historyOutputLimit"),
+            "Oversized file-history metadata must fail instead of returning a large or partial result"
+        );
         assert_eq!(reference_tip(&repository.path, "HEAD").unwrap(), oid);
         assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
-        assert_eq!(fs::read(repository.path.join("file.txt")).unwrap(), b"owned contents\n");
+        assert_eq!(
+            fs::read(repository.path.join("file.txt")).unwrap(),
+            b"owned contents\n"
+        );
     }
 
     #[test]
@@ -12554,10 +13660,15 @@ mod tests {
             "commitSignatureHeaderIncomplete"
         );
         assert_eq!(
-            parse_commit_signature(b"?\0\0\0\0\0message").unwrap_err().kind,
+            parse_commit_signature(b"?\0\0\0\0\0message")
+                .unwrap_err()
+                .kind,
             "invalidCommitSignatureOutput"
         );
-        assert_eq!(parse_commit_signature(b"").unwrap_err().kind, "invalidCommitSignatureOutput");
+        assert_eq!(
+            parse_commit_signature(b"").unwrap_err().kind,
+            "invalidCommitSignatureOutput"
+        );
     }
 
     #[test]
@@ -12812,7 +13923,10 @@ mod tests {
             serde_json::to_value(read_stashes(&repository.path).unwrap()).unwrap(),
             serde_json::to_value(&before).unwrap()
         );
-        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "base\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+            "base\n"
+        );
         drop_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
         let after = read_stashes(&repository.path).unwrap();
         assert_eq!(after.len(), 1);
@@ -12833,18 +13947,32 @@ mod tests {
         let newer = reference_tip(&repository.path, "refs/stash").unwrap();
         let index = fs::read(repository.path.join(".git/index")).unwrap();
         for operation in [apply_stash_checked, pop_stash_checked] {
-            assert_eq!(operation(&repository.path, "stash@{0}", &selected).unwrap_err().kind, "staleStash");
+            assert_eq!(
+                operation(&repository.path, "stash@{0}", &selected)
+                    .unwrap_err()
+                    .kind,
+                "staleStash"
+            );
             assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
-            assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "base\n");
+            assert_eq!(
+                fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+                "base\n"
+            );
             assert_eq!(read_stashes(&repository.path).unwrap().len(), 2);
             assert!(operation_recoveries(&repository.path).unwrap().is_empty());
         }
         apply_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
-        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+            "selected\n"
+        );
         assert_eq!(read_stashes(&repository.path).unwrap().len(), 2);
         repository.git(&["restore", "file.txt"]);
         pop_stash_checked(&repository.path, "stash@{1}", &selected).unwrap();
-        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+            "selected\n"
+        );
         let remaining = read_stashes(&repository.path).unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].oid, newer);
@@ -12860,14 +13988,29 @@ mod tests {
         repository.write("*.tmp", "untracked saved\n");
         stash_with_message(&repository.path, Some("élève😀 selected stash")).unwrap();
         let oid = reference_tip(&repository.path, "refs/stash").unwrap();
-        let expected = run_git(&repository.path, &["show", "-s", "--encoding=UTF-8", "--no-notes", "--no-show-signature", "--format=%B", &oid]).unwrap();
+        let expected = run_git(
+            &repository.path,
+            &[
+                "show",
+                "-s",
+                "--encoding=UTF-8",
+                "--no-notes",
+                "--no-show-signature",
+                "--format=%B",
+                &oid,
+            ],
+        )
+        .unwrap();
         repository.git(&["notes", "add", "-m", "Unexpected preview note", &oid]);
         repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
         repository.git(&["config", "log.showNotes", "true"]);
         repository.git(&["config", "color.ui", "always"]);
         let details = stash_details(&repository.path, "stash@{0}").unwrap();
         assert_eq!(details.oid, oid);
-        assert_eq!(details.message, String::from_utf8(expected.stdout).unwrap().trim_end());
+        assert_eq!(
+            details.message,
+            String::from_utf8(expected.stdout).unwrap().trim_end()
+        );
         assert!(!details.message.contains('\0'));
         assert!(details.files.iter().any(|file| file.path == "file.txt"));
         assert!(details.files.iter().any(|file| file.path == "*.tmp"));
@@ -12896,12 +14039,18 @@ mod tests {
         assert_eq!(details.files.len(), 2);
         assert!(details.files.iter().all(|file| file.path != "other.txt"));
         for file in &details.files {
-            let patch = stash_file_diff_at_oid(&repository.path, &selected, &file.path, None).unwrap();
+            let patch =
+                stash_file_diff_at_oid(&repository.path, &selected, &file.path, None).unwrap();
             assert_eq!(patch.oid, selected);
             assert!(patch.patch.contains("selected"));
             assert!(!patch.patch.contains("newer unrelated"));
         }
-        assert!(stash_details(&repository.path, "stash@{0}").unwrap().message.contains("Newer stash"));
+        assert!(
+            stash_details(&repository.path, "stash@{0}")
+                .unwrap()
+                .message
+                .contains("Newer stash")
+        );
         assert!(stash_details_at_oid(&repository.path, "--all").is_err());
         assert!(stash_file_diff_at_oid(&repository.path, "--all", "file.txt", None).is_err());
     }
@@ -12919,11 +14068,19 @@ mod tests {
         let (headers, _) = raw.split_once("\n\n").unwrap();
         for large_header in [false, true] {
             let payload = if large_header {
-                format!("{headers}\ngpgsig signature\n {}\n\nSmall message\n", "x".repeat(MAX_COMMIT_DETAILS_BYTES))
+                format!(
+                    "{headers}\ngpgsig signature\n {}\n\nSmall message\n",
+                    "x".repeat(MAX_COMMIT_DETAILS_BYTES)
+                )
             } else {
                 format!("{headers}\n\n{}\n", "é".repeat(MAX_COMMIT_MESSAGE_BYTES))
             };
-            let output = run_git_with_input_output(&repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], payload.as_bytes()).unwrap();
+            let output = run_git_with_input_output(
+                &repository.path,
+                &["hash-object", "-t", "commit", "-w", "--stdin"],
+                payload.as_bytes(),
+            )
+            .unwrap();
             ensure_success("create owned bounded preview fixture", &output).unwrap();
             let oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
             let result = stash_details_at_oid(&repository.path, &oid);
@@ -12951,23 +14108,40 @@ mod tests {
         let raw = run_git(&repository.path, &["cat-file", "commit", "refs/stash"]).unwrap();
         let raw = String::from_utf8(raw.stdout).unwrap();
         let (headers, body) = raw.split_once("\n\n").unwrap();
-        let signed = format!("{headers}\ngpgsig -----BEGIN PGP SIGNATURE-----\n bogus\n -----END PGP SIGNATURE-----\n\n{body}");
-        let output = run_git_with_input_output(&repository.path, &["hash-object", "-t", "commit", "-w", "--stdin"], signed.as_bytes()).unwrap();
+        let signed = format!(
+            "{headers}\ngpgsig -----BEGIN PGP SIGNATURE-----\n bogus\n -----END PGP SIGNATURE-----\n\n{body}"
+        );
+        let output = run_git_with_input_output(
+            &repository.path,
+            &["hash-object", "-t", "commit", "-w", "--stdin"],
+            signed.as_bytes(),
+        )
+        .unwrap();
         ensure_success("create owned signed-looking stash", &output).unwrap();
         let oid = String::from_utf8(output.stdout).unwrap().trim().to_owned();
         repository.git(&["update-ref", "refs/stash", &oid]);
-        repository.write("signature-helper", "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n");
+        repository.write(
+            "signature-helper",
+            "#!/bin/sh\nprintf invoked > \"${0%/*}/signature-helper-invoked\"\nexit 1\n",
+        );
         let helper = repository.path.join("signature-helper");
         fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
         repository.git(&["config", "gpg.program", helper.to_str().unwrap()]);
         repository.git(&["config", "log.showSignature", "true"]);
-        let baseline = run_git(&repository.path, &["show", "-s", "--show-signature", "--format=%B", &oid]).unwrap();
+        let baseline = run_git(
+            &repository.path,
+            &["show", "-s", "--show-signature", "--format=%B", &oid],
+        )
+        .unwrap();
         ensure_success("exercise owned signature helper", &baseline).unwrap();
         let marker = repository.path.join("signature-helper-invoked");
         assert!(marker.exists());
         fs::remove_file(&marker).unwrap();
         let details = stash_details(&repository.path, "stash@{0}").unwrap();
-        assert!(!marker.exists(), "Stash preview executed a signature presentation helper");
+        assert!(
+            !marker.exists(),
+            "Stash preview executed a signature presentation helper"
+        );
         assert_eq!(details.signature.status, "unverifiable");
         assert_eq!(details.files.len(), 1);
     }
@@ -12987,8 +14161,14 @@ mod tests {
         assert_eq!(error.kind, "stashAppliedButRetained");
         assert!(error.hint.unwrap().contains("Do not apply or pop"));
         assert_eq!(reference_tip(&repository.path, "HEAD"), head);
-        assert_eq!(reference_tip(&repository.path, "refs/stash"), Some(selected.clone()));
-        assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "saved\n");
+        assert_eq!(
+            reference_tip(&repository.path, "refs/stash"),
+            Some(selected.clone())
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+            "saved\n"
+        );
         // Refused removal leaves the original stash reachable; the unused
         // deletion recovery capture is correctly discarded by its owner.
         assert!(operation_recoveries(&repository.path).unwrap().is_empty());
@@ -13009,8 +14189,16 @@ mod tests {
         let error = pop_stash_checked(&repository.path, "stash@{0}", &selected).unwrap_err();
         assert_eq!(error.kind, "gitFailure");
         assert!(error.hint.unwrap().contains("stash was kept"));
-        assert_eq!(reference_tip(&repository.path, "refs/stash"), Some(selected));
-        assert!(!run_git(&repository.path, &["ls-files", "-u"]).unwrap().stdout.is_empty());
+        assert_eq!(
+            reference_tip(&repository.path, "refs/stash"),
+            Some(selected)
+        );
+        assert!(
+            !run_git(&repository.path, &["ls-files", "-u"])
+                .unwrap()
+                .stdout
+                .is_empty()
+        );
         assert!(operation_recoveries(&repository.path).unwrap().is_empty());
     }
 
@@ -13032,9 +14220,11 @@ mod tests {
             repository.write("file.txt", "upstream\n");
             repository.git(&["add", "."]);
             repository.git(&["commit", "-m", "Upstream"]);
-            repository.git(&["config", "merge.owned.driver", &format!(
-                "git stash store -m 'Concurrent owned stash' {newer} && cat '%B' > '%A'"
-            )]);
+            repository.git(&[
+                "config",
+                "merge.owned.driver",
+                &format!("git stash store -m 'Concurrent owned stash' {newer} && cat '%B' > '%A'"),
+            ]);
             let result = if pop {
                 pop_stash_checked(&repository.path, "stash@{0}", &selected)
             } else {
@@ -13045,7 +14235,10 @@ mod tests {
             } else {
                 result.unwrap();
             }
-            assert_eq!(fs::read_to_string(repository.path.join("file.txt")).unwrap(), "selected\n");
+            assert_eq!(
+                fs::read_to_string(repository.path.join("file.txt")).unwrap(),
+                "selected\n"
+            );
             let stashes = read_stashes(&repository.path).unwrap();
             assert_eq!(stashes.len(), 2);
             assert_eq!(stashes[0].oid, newer);
@@ -13064,19 +14257,32 @@ mod tests {
         let message = "élève😀".repeat(1000);
         repository.git(&["stash", "push", "-m", &message]);
         let oid = reference_tip(&repository.path, "refs/stash").unwrap();
-        let original = run_git(&repository.path, &["cat-file", "commit", &oid]).unwrap().stdout;
+        let original = run_git(&repository.path, &["cat-file", "commit", &oid])
+            .unwrap()
+            .stdout;
         repository.git(&["config", "i18n.logOutputEncoding", "UTF-16"]);
         drop_stash(&repository.path, "stash@{0}").unwrap();
         assert!(read_stashes(&repository.path).unwrap().is_empty());
-        let capture = operation_recoveries(&repository.path).unwrap().into_iter()
-            .find(|entry| entry.snapshot_oid.as_deref() == Some(oid.as_str())).unwrap();
+        let capture = operation_recoveries(&repository.path)
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.snapshot_oid.as_deref() == Some(oid.as_str()))
+            .unwrap();
         assert!(capture.label.starts_with("Delete stash: "));
         assert!(capture.label.ends_with('…'));
         assert!(capture.label.len() < 4096);
         assert!(!capture.label.chars().any(char::is_control));
-        assert_eq!(run_git(&repository.path, &["cat-file", "commit", &oid]).unwrap().stdout, original);
+        assert_eq!(
+            run_git(&repository.path, &["cat-file", "commit", &oid])
+                .unwrap()
+                .stdout,
+            original
+        );
         restore_operation_branch(&repository.path, &capture.id, "restored-stash").unwrap();
-        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "complete saved contents\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("story.txt")).unwrap(),
+            "complete saved contents\n"
+        );
     }
 
     #[test]
@@ -13092,13 +14298,21 @@ mod tests {
         assert_eq!(entries[0].oid, entries[1].oid);
         assert_ne!(entries[0].reference, entries[1].reference);
         for end in 1..first.len() {
-            assert!(parse_stash_records(&first[..end]).is_err(), "Accepted truncated stash prefix {end}");
+            assert!(
+                parse_stash_records(&first[..end]).is_err(),
+                "Accepted truncated stash prefix {end}"
+            );
         }
         assert!(parse_stash_records(&[first.as_slice(), first.as_slice()].concat()).is_err());
         assert!(parse_stash_records(&record("stash@{999}", &oid)).is_err());
         assert!(parse_stash_records(&record("HEAD", &oid)).is_err());
         assert!(parse_stash_records(&record("stash@{0}", "invalid")).is_err());
-        assert_eq!(parse_stash_records(&record("stash@{0}", &"b".repeat(64))).unwrap()[0].oid.len(), 64);
+        assert_eq!(
+            parse_stash_records(&record("stash@{0}", &"b".repeat(64))).unwrap()[0]
+                .oid
+                .len(),
+            64
+        );
         assert!(parse_stash_records(b"").unwrap().is_empty());
     }
 
@@ -13110,7 +14324,9 @@ mod tests {
         repository.git(&["commit", "-m", "Root"]);
         let forged = "f".repeat(40);
         let messages = [
-            format!("Older élève\u{1f}field\u{1e}stash@{{999}}\u{1f}{forged}\u{1f}Forged stash\u{1e}After"),
+            format!(
+                "Older élève\u{1f}field\u{1e}stash@{{999}}\u{1f}{forged}\u{1f}Forged stash\u{1e}After"
+            ),
             "Newer élève\u{1e}record\u{1f}field".to_owned(),
         ];
         let mut oids = Vec::new();
@@ -13120,33 +14336,60 @@ mod tests {
             let output = run_git(&repository.path, &["rev-parse", "refs/stash"]).unwrap();
             oids.push(String::from_utf8(output.stdout).unwrap().trim().to_owned());
         }
-        let expected = oids.iter().rev().enumerate().map(|(index, oid)| {
-            let reference = format!("stash@{{{index}}}");
-            let output = run_git(&repository.path, &[
-                "log", "-g", "-1", "--encoding=UTF-8", "--format=%gs", &reference,
-            ]).unwrap();
-            ensure_success("read owned stash label independently", &output).unwrap();
-            StashEntry {
-                reference,
-                oid: oid.clone(),
-                message: String::from_utf8(output.stdout).unwrap().strip_suffix('\n').unwrap().to_owned(),
-            }
-        }).collect::<Vec<_>>();
+        let expected = oids
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(index, oid)| {
+                let reference = format!("stash@{{{index}}}");
+                let output = run_git(
+                    &repository.path,
+                    &[
+                        "log",
+                        "-g",
+                        "-1",
+                        "--encoding=UTF-8",
+                        "--format=%gs",
+                        &reference,
+                    ],
+                )
+                .unwrap();
+                ensure_success("read owned stash label independently", &output).unwrap();
+                StashEntry {
+                    reference,
+                    oid: oid.clone(),
+                    message: String::from_utf8(output.stdout)
+                        .unwrap()
+                        .strip_suffix('\n')
+                        .unwrap()
+                        .to_owned(),
+                }
+            })
+            .collect::<Vec<_>>();
         for encoding in ["UTF-8", "UTF-16"] {
             repository.git(&["config", "i18n.logOutputEncoding", encoding]);
             repository.git(&["config", "log.date", "iso-strict"]);
             let actual = read_stashes(&repository.path).unwrap();
-            assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(&expected).unwrap());
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                serde_json::to_value(&expected).unwrap()
+            );
         }
         repository.git(&["stash", "store", "-m", "Duplicate owned stash", &oids[0]]);
         let duplicate = read_stashes(&repository.path).unwrap();
-        assert_eq!(duplicate.iter().map(|entry| &entry.oid).collect::<Vec<_>>(), vec![&oids[0], &oids[1], &oids[0]]);
+        assert_eq!(
+            duplicate.iter().map(|entry| &entry.oid).collect::<Vec<_>>(),
+            vec![&oids[0], &oids[1], &oids[0]]
+        );
         drop_stash(&repository.path, "stash@{0}").unwrap();
         let renamed = "Renamed élève\u{1f}field\u{1e}record";
         rename_stash(&repository.path, "stash@{1}", &oids[0], renamed).unwrap();
         assert_eq!(read_stashes(&repository.path).unwrap()[1].message, renamed);
         apply_stash(&repository.path, "stash@{1}").unwrap();
-        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "saved 0\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("story.txt")).unwrap(),
+            "saved 0\n"
+        );
         repository.git(&["restore", "--", "story.txt"]);
         drop_stash(&repository.path, "stash@{0}").unwrap();
         let remaining = read_stashes(&repository.path).unwrap();
@@ -13154,7 +14397,10 @@ mod tests {
         assert_eq!(remaining[0].oid, oids[0]);
         pop_stash_entry(&repository.path, "stash@{0}").unwrap();
         assert!(read_stashes(&repository.path).unwrap().is_empty());
-        assert_eq!(fs::read_to_string(repository.path.join("story.txt")).unwrap(), "saved 0\n");
+        assert_eq!(
+            fs::read_to_string(repository.path.join("story.txt")).unwrap(),
+            "saved 0\n"
+        );
     }
 
     #[test]

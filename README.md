@@ -299,6 +299,12 @@ columns → Restore graph defaults** to restore the automatic layout. A heading 
 narrow for its title shows an icon instead (hover it for the full title). The settings
 button is not a commit column.
 
+Copilot checkpoint references are hidden from the graph by default, without
+deleting them. To include their history for the current open repository, turn
+on **Configure graph columns → Show Copilot checkpoints**. Click or right-click
+a checkpoint to delete its individual reference after reviewing the warning.
+Deleting a checkpoint can affect Copilot's ability to recover a session.
+
 Remote-tracking references are refreshed automatically every five minutes while
 the desktop app is open. The active repository is also checked when the window
 regains focus or the machine comes back online. Change the interval—or turn the
