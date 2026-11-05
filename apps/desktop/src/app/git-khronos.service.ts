@@ -629,7 +629,8 @@ export class GitKhronosService {
     const repo = this.repository();
     if (!repo) return;
     await this.run('Refreshing…', async report => {
-      await this.storeRefreshedSnapshot(await ipc.refresh_repository({ repoId: repo.id }));
+      const refreshed = await this.storeRefreshedSnapshot(await ipc.refresh_repository({ repoId: repo.id }));
+      if (!refreshed) throw new Error('Could not refresh repository status. Try again.');
       this.deferredMetadataRefreshes.delete(repo.id);
       report('Repository refreshed');
     }, repo.id);
@@ -680,9 +681,9 @@ export class GitKhronosService {
       const generation = this.statusGeneration(repositoryId);
       const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
       if (generation !== this.statusGeneration(repositoryId)) return true;
-      await this.storeRefreshedSnapshot(snapshot);
-      this.deferredMetadataRefreshes.delete(repositoryId);
-      return true;
+      const refreshed = await this.storeRefreshedSnapshot(snapshot);
+      if (refreshed) this.deferredMetadataRefreshes.delete(repositoryId);
+      return refreshed;
     } catch {
       return false;
     } finally {
@@ -694,6 +695,14 @@ export class GitKhronosService {
   async refreshStatusInBackground(
     repositoryId: string | null = this.activeRepositoryId(),
     force = false,
+  ): Promise<boolean> {
+    return this.refreshStatus(repositoryId, force, true);
+  }
+
+  private async refreshStatus(
+    repositoryId: string | null,
+    force: boolean,
+    refreshChangedBranch: boolean,
   ): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
     if (!repository
@@ -711,6 +720,11 @@ export class GitKhronosService {
       if (generation !== this.statusGeneration(repository.id)
         || this.pendingWorkingTreeMutations.has(repository.id)) return true;
       if (status.branch !== currentRepository.status.branch) {
+        if (!refreshChangedBranch) {
+          // A checkout raced the snapshot; retry later instead of recursively refreshing.
+          this.deferMetadataRefresh(repository.id);
+          return false;
+        }
         const finishHistoryBarrier = this.beginHistoryBarrier();
         try {
           if (this.historyLoadFinished) await this.historyLoadFinished;
@@ -719,7 +733,7 @@ export class GitKhronosService {
           const snapshot = await ipc.refresh_repository({ repoId: repository.id });
           // Branch changes need metadata too, but its fast status omits untracked
           // discovery. Reconcile it just like other metadata refreshes.
-          if (generation === this.statusGeneration(repository.id)) await this.storeRefreshedSnapshot(snapshot);
+          if (generation === this.statusGeneration(repository.id)) return await this.storeRefreshedSnapshot(snapshot);
         } finally {
           finishHistoryBarrier();
         }
@@ -3325,13 +3339,13 @@ export class GitKhronosService {
     }, 1_200);
   }
 
-  private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<void> {
+  private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<boolean> {
     const previous = this.repositories().find((repository) => repository.id === snapshot.id);
-    if (!previous) return;
+    if (!previous) return false;
     // Metadata snapshots omit untracked discovery. Keep known entries visible
     // until the asynchronous status scan can discover additions and removals.
     this.storeSnapshot({ ...snapshot, status: preserveUntrackedEntries(previous.status, snapshot.status) });
-    await this.refreshStatusInBackground(snapshot.id, true);
+    return this.refreshStatus(snapshot.id, true, false);
   }
 
   private storeSnapshot(snapshot: RepositorySnapshot, addIfMissing = false): void {

@@ -96,6 +96,7 @@ import {
   GRAPH_LANE_COLOR_COUNT,
   graphLaneCapacity,
   graphLaneOffset,
+  graphNodeConnectionStemOffset,
   isAppendOnlyCommitHistory,
   isCompactAuthorColumn,
   isDefaultGraphColumnVisible,
@@ -2668,7 +2669,7 @@ export class AppComponent implements OnInit, OnDestroy {
           const connection = fromOffset !== parentOffset ? {
             sourceOffset: fromOffset, parentOffset, nodeRadius: compact ? 10 : 12,
           } : undefined;
-          const boundaryOffset = connection ? (fromOffset + parentOffset) / 2 : fromOffset;
+          const boundaryOffset = connection ? graphNodeConnectionStemOffset(connection) : fromOffset;
           segments.push({
             x1: fromOffset,
             y1: 20,

@@ -25,7 +25,7 @@ for (const compact of [false, true]) {
         ...item, commits, worktrees: [], stashes: [], branches: [],
       } : item));
       app.setCompactGraphColumn(compact);
-      app.graphColumnWidth.set(140);
+      app.graphColumnWidth.set(240);
     }, compact);
     const row = page.locator('[data-commit-oid="shared"]');
     await expect(row).toBeVisible();
@@ -48,20 +48,25 @@ for (const compact of [false, true]) {
       const avatar = element.querySelector('.author-node')!;
       const node = avatar.getBoundingClientRect();
       const offset = Number((avatar as HTMLElement).dataset['laneOffset']);
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const graphRow = app.graphRows().find((candidate: any) => candidate.commit.oid === 'shared');
       let departure: { x: number; y: number } | undefined;
+      let expectedX = NaN;
       let clearance = Infinity;
-      for (const path of element.querySelectorAll<SVGPathElement>('.graph-edges path')) {
+      for (const [index, path] of [...element.querySelectorAll<SVGPathElement>('.graph-edges path')].entries()) {
         if (/[CQLST]/i.test(path.getAttribute('d') ?? '')) {
           throw new Error(`Non-orthogonal graph edge: ${path.getAttribute('d')}`);
         }
         const length = path.getTotalLength();
         const start = path.getPointAtLength(0), end = path.getPointAtLength(length);
         const matrix = path.getScreenCTM()!;
-        if (Math.abs(start.y - 20) < .01 && end.y > 20) {
+        const connection = graphRow.segments[index].nodeConnection;
+        if (connection?.part === 'source') {
           const point = new DOMPoint(start.x, start.y).matrixTransform(matrix);
           departure = { x: point.x, y: point.y };
+          expectedX = connection.sourceOffset < connection.parentOffset ? node.left : node.right;
         }
-        if (start.y === 0 && end.y === 40 && start.x !== end.x) {
+        if (graphRow.segments[index].bypassNode) {
           for (let step = 0; step <= 100; step++) {
             const point = path.getPointAtLength(length * step / 100);
             const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
@@ -70,11 +75,12 @@ for (const compact of [false, true]) {
           }
         }
       }
-      return { departure, clearance, offset, right: node.right, centerY: node.y + node.height / 2 };
+      return { departure, clearance, offset, expectedX, centerY: node.y + node.height / 2 };
     });
+    expect(Number.isFinite(geometry.clearance), JSON.stringify(geometry)).toBe(true);
     expect(geometry.clearance, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0.5);
     expect(geometry.departure).toBeDefined();
-    expect(Math.abs(geometry.departure!.x - geometry.right), JSON.stringify(geometry)).toBeLessThan(0.1);
+    expect(Math.abs(geometry.departure!.x - geometry.expectedX), JSON.stringify(geometry)).toBeLessThan(0.1);
     expect(Math.abs(geometry.departure!.y - geometry.centerY), JSON.stringify(geometry)).toBeLessThan(0.1);
     await test.info().attach('Shared-parent side routing', {
       body: await page.locator('.virtual-commit-rows').screenshot({
@@ -82,6 +88,74 @@ for (const compact of [false, true]) {
       }), contentType: 'image/png',
     });
   });
+
+  for (const direction of ['right-to-left', 'left-to-right'] as const) {
+    test(`connects adjacent avatars outside the source (${direction}, ${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+      await page.goto('/');
+      await expect(page.locator('.author-node').first()).toBeVisible();
+      await page.evaluate(({ compact, direction }) => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const repo = app.git.repository();
+        const template = repo.commits[0];
+        const topology: Array<[string, string[]]> = direction === 'right-to-left'
+          ? [['tip', ['parent']], ['source', ['parent']], ['parent', []]]
+          : [['merge', ['source', 'other']], ['tip', ['parent']], ['source', ['parent']],
+            ['parent', []], ['other', []]];
+        const commits = topology.map(([oid, parents]) => ({ ...template, oid, parents,
+          subject: oid, decorations: [] }));
+        app.hiddenBranches.set([]);
+        app.soloBranches.set([]);
+        app.smartBranchVisibility.set(false);
+        app.pinnedBranch.set(null);
+        app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id ? {
+          ...item, commits, worktrees: [], stashes: [], branches: [],
+        } : item));
+        app.setCompactGraphColumn(compact);
+        app.graphColumnWidth.set(240);
+      }, { compact, direction });
+      await expect(page.locator('[data-commit-oid="source"]')).toBeVisible();
+      await expect(page.locator('[data-commit-oid="parent"]')).toBeVisible();
+      const geometry = await page.evaluate(() => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const rows = app.graphRows();
+        const read = (oid: string, part: 'source' | 'parent') => {
+          const row = rows.find((candidate: any) => candidate.commit.oid === oid);
+          const index = row.segments.findIndex((segment: any) => segment.nodeConnection?.part === part);
+          if (index < 0) throw new Error(`Missing ${part} connection for ${oid}`);
+          const element = document.querySelector(`[data-commit-oid="${oid}"]`)!;
+          const node = element.querySelector('.author-node')!.getBoundingClientRect();
+          const path = element.querySelectorAll<SVGPathElement>('.graph-edges path')[index];
+          const matrix = path.getScreenCTM()!;
+          const screenPoint = (length: number) => {
+            const point = path.getPointAtLength(length);
+            const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+            return { x: screen.x, y: screen.y };
+          };
+          return {
+            node: { left: node.left, right: node.right, centerY: node.y + node.height / 2 },
+            segment: row.segments[index], start: screenPoint(0), end: screenPoint(path.getTotalLength()),
+            strokeWidth: parseFloat(getComputedStyle(path).strokeWidth),
+            linecap: getComputedStyle(path).strokeLinecap,
+          };
+        };
+        return { source: read('source', 'source'), parent: read('parent', 'parent') };
+      });
+      const { source, parent } = geometry;
+      expect(source.node.centerY).toBeLessThan(parent.node.centerY);
+      const sourceIsLeft = source.segment.nodeConnection.sourceOffset < source.segment.nodeConnection.parentOffset;
+      expect(sourceIsLeft).toBe(direction === 'left-to-right');
+      expect(source.segment.x2).toBe(parent.segment.x1);
+      expect(Math.abs(source.start.x - (sourceIsLeft ? source.node.left : source.node.right))).toBeLessThan(0.1);
+      expect(Math.abs(source.start.y - source.node.centerY)).toBeLessThan(0.1);
+      expect(Math.abs(source.end.x - source.start.x)).toBeLessThan(0.1);
+      expect(Math.abs(source.end.x - parent.start.x)).toBeLessThan(0.1);
+      expect([source.linecap, parent.linecap]).toEqual(['round', 'round']);
+      expect(parent.start.y - source.end.y).toBeGreaterThanOrEqual(0);
+      expect(parent.start.y - source.end.y).toBeLessThanOrEqual((source.strokeWidth + parent.strokeWidth) / 2);
+      expect(Math.abs(parent.end.x - (sourceIsLeft ? parent.node.left : parent.node.right))).toBeLessThan(0.1);
+      expect(Math.abs(parent.end.y - parent.node.centerY)).toBeLessThan(0.1);
+    });
+  }
 
   test(`aligns every avatar side connection with its horizontal middle (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/?unmerged-branch-preview');

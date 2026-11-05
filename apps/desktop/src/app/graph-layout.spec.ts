@@ -39,25 +39,38 @@ function inspectRoundedPath(path: string) {
 }
 
 describe('graph column layout', () => {
-  it('uses one rounded right-angle turn per avatar with a shared vertical stem', () => {
+  it('routes cross-lane parent links outside the source avatar into the parent side', () => {
     for (const nodeRadius of [10, 12]) {
       for (const [sourceOffset, parentOffset] of [[14, 46], [46, 14], [16, 56], [56, 16], [16, 136], [136, 16]]) {
         if (Math.abs(parentOffset - sourceOffset) < nodeRadius * 2 + 12) continue;
         const connection = { sourceOffset, parentOffset, nodeRadius };
-        const middle = (sourceOffset + parentOffset) / 2;
-        const sourcePath = buildGraphSegmentPath({ x1: sourceOffset, y1: 20, x2: middle, y2: 40,
+        const direction = Math.sign(parentOffset - sourceOffset);
+        const sourceSide = sourceOffset - direction * nodeRadius;
+        const parentSide = parentOffset - direction * nodeRadius;
+        const sourcePath = buildGraphSegmentPath({ x1: sourceOffset, y1: 20, x2: sourceSide, y2: 40,
           nodeConnection: { ...connection, part: 'source' } });
-        const parentPath = buildGraphSegmentPath({ x1: middle, y1: 0, x2: parentOffset, y2: 20,
+        const parentPath = buildGraphSegmentPath({ x1: sourceSide, y1: 0, x2: parentOffset, y2: 20,
           nodeConnection: { ...connection, part: 'parent' } });
         const source = inspectRoundedPath(sourcePath), parent = inspectRoundedPath(parentPath);
-        const direction = Math.sign(parentOffset - sourceOffset);
-        expect(source.start).toEqual([sourceOffset + direction * nodeRadius, 20]);
-        expect(parent.end).toEqual([parentOffset - direction * nodeRadius, 20]);
-        expect(source.end).toEqual([middle, 40]);
-        expect(parent.start).toEqual([middle, 0]);
-        expect([source.arcs, parent.arcs]).toEqual([1, 1]);
+        expect(source.start).toEqual([sourceSide, 20]);
+        expect(parent.end).toEqual([parentSide, 20]);
+        expect(source.end).toEqual([sourceSide, 40]);
+        expect(parent.start).toEqual([sourceSide, 0]);
+        expect([source.arcs, parent.arcs]).toEqual([0, 1]);
       }
     }
+  });
+
+  it('routes a right-to-left history edge down the source avatar exterior before turning into its parent', () => {
+    const connection = { sourceOffset: 56, parentOffset: 16, nodeRadius: 12 };
+    expect(buildGraphSegmentPath({
+      x1: 56, y1: 20, x2: 68, y2: 40,
+      nodeConnection: { ...connection, part: 'source' },
+    })).toBe('M 68 20 V 40');
+    expect(buildGraphSegmentPath({
+      x1: 68, y1: 0, x2: 16, y2: 20,
+      nodeConnection: { ...connection, part: 'parent' },
+    })).toBe('M 68 0 V 14 A 6 6 0 0 1 62 20 H 28');
   });
 
   it('routes continuing lane changes outside an unrelated avatar', () => {

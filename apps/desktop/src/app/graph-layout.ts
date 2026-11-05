@@ -58,6 +58,13 @@ export function graphColumnLayout(compact: boolean): GraphColumnLayout {
 
 type GraphPoint = readonly [number, number];
 
+export function graphNodeConnectionStemOffset(
+  connection: Pick<GraphNodeConnection, 'sourceOffset' | 'parentOffset' | 'nodeRadius'>,
+): number {
+  return connection.sourceOffset
+    - Math.sign(connection.parentOffset - connection.sourceOffset) * connection.nodeRadius;
+}
+
 // Round only the corners of an orthogonal route, never its straight stems.
 // Sharing short interior segments equally prevents adjacent bends overlapping.
 function roundedGraphRoute(points: readonly GraphPoint[]): string {
@@ -99,19 +106,13 @@ function roundedGraphRoute(points: readonly GraphPoint[]): string {
 
 export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
   if (segment.nodeConnection) {
-    // Wider lanes leave room for a rounded turn into one shared vertical stem.
-    // Keep a minimum horizontal lead for any unusually close side ports.
     const { sourceOffset, parentOffset, nodeRadius, part } = segment.nodeConnection;
     const direction = Math.sign(parentOffset - sourceOffset);
-    const exit = sourceOffset + direction * nodeRadius;
-    const entry = parentOffset - direction * nodeRadius;
-    const middle = (exit + entry) / 2;
-    const lead = Math.max(6, direction * (middle - exit));
-    const sourceTurn = exit + direction * lead;
-    const parentTurn = entry - direction * lead;
+    const sourceSide = graphNodeConnectionStemOffset(segment.nodeConnection);
+    const parentSide = parentOffset - direction * nodeRadius;
     return part === 'source'
-      ? roundedGraphRoute([[exit, 20], [sourceTurn, 20], [sourceTurn, 40], [middle, 40]])
-      : roundedGraphRoute([[middle, 0], [parentTurn, 0], [parentTurn, 20], [entry, 20]]);
+      ? roundedGraphRoute([[sourceSide, 20], [sourceSide, 40]])
+      : roundedGraphRoute([[sourceSide, 0], [sourceSide, 20], [parentSide, 20]]);
   }
   if (segment.x1 === segment.x2) {
     return `M ${segment.x1} ${segment.y1} V ${segment.y2}`;

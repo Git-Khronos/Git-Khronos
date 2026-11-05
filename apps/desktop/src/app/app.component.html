@@ -2594,13 +2594,6 @@
       </section></div>
     }
   }
-  @if (pendingBisectStart(); as bisect) {
-    <div class="confirmation-backdrop" (click)="pendingBisectStart.set(null)">
-      <section class="confirmation-dialog bisect-dialog" role="alertdialog" aria-modal="true" aria-labelledby="bisect-dialog-title" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon"><gc-icon name="history" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Start binary search</span>
-          <h2 id="bisect-dialog-title">Find the commit that introduced a problem</h2>
   @if (pendingCheckpointDelete(); as action) {
     <div class="confirmation-backdrop" (click)="dismissCheckpointConfirmation(true)">
       <section #checkpointConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleCheckpointConfirmationKeydown($event)">
@@ -2616,6 +2609,13 @@
       </section>
     </div>
   }
+  @if (pendingBisectStart(); as bisect) {
+    <div class="confirmation-backdrop" (click)="pendingBisectStart.set(null)">
+      <section class="confirmation-dialog bisect-dialog" role="alertdialog" aria-modal="true" aria-labelledby="bisect-dialog-title" (click)="$event.stopPropagation()">
+        <div class="confirmation-icon"><gc-icon name="history" [size]="19" /></div>
+        <div class="confirmation-copy">
+          <span>Start binary search</span>
+          <h2 id="bisect-dialog-title">Find the commit that introduced a problem</h2>
           <p>Git will temporarily check out commits between these two points. Test each one, then mark it Good, Bad, or Skip.</p>
           <div class="bisect-endpoints">
             <div><small>KNOWN GOOD</small><strong>{{ bisect.goodLabel }}</strong><code>{{ shortOid(bisect.goodOid) }}</code></div>

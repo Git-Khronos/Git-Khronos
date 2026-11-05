@@ -376,7 +376,7 @@ export type RepositorySnapshot = ({ name: string; path: string; identity: GitIde
 /**
  * Bare repositories have no working tree; working-tree actions are unavailable.
  */
-bare: boolean }) & { id: string }
+bare: boolean }) & { id: string; showCheckpoints: boolean }
 export type RepositoryStatus = { branch: string | null; ahead: number; behind: number; staged: number; unstaged: number; untracked: number; conflicted: number; mergeInProgress: boolean; historyOperation: string | null; historyNoCommit: boolean; rebaseInProgress: boolean; rebaseEditStopped: boolean; rebaseSplit: RebaseSplitStatus | null; mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
 export type RetireForkRequest = { recordId: string; expectedRevision: string; acknowledgeUnconfirmed: boolean; operationId: string }
 export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
@@ -542,6 +542,7 @@ export function refresh_repository(args: { repoId: string }): Promise<Repository
 export function refresh_repository_status(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("refresh_repository_status", args); }
 export function diagnose_signing(args: { repoId: string }): Promise<SigningDiagnostic> { return TAURI_INVOKE("diagnose_signing", args); }
 export function load_more_commits(args: { repoId: string }): Promise<CommitHistoryPage> { return TAURI_INVOKE("load_more_commits", args); }
+export function set_checkpoint_visibility(args: { repoId: string; show: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_checkpoint_visibility", args); }
 export function search_tracked_files(args: { repoId: string; query: string; limit: number }): Promise<TrackedFileSearch> { return TAURI_INVOKE("search_tracked_files", args); }
 export function load_reflog(args: { repoId: string }): Promise<ReflogPage> { return TAURI_INVOKE("load_reflog", args); }
 export function load_more_changes(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("load_more_changes", args); }
@@ -598,6 +599,7 @@ export function checkout_commit(args: { repoId: string; oid: string }): Promise<
 export function rename_branch(args: { repoId: string; oldName: string; newName: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_branch", args); }
 export function set_branch_upstream(args: { repoId: string; branch: string; upstream?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_branch_upstream", args); }
 export function delete_branch(args: { repoId: string; name: string; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
+export function delete_checkpoint_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_checkpoint_reference", args); }
 export function integrate_branch(args: { repoId: string; name: string; strategy: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }
 export function continue_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_merge", args); }
 export function abort_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_merge", args); }
@@ -797,6 +799,7 @@ export type CommandMap = {
   refresh_repository_status: typeof refresh_repository_status;
   diagnose_signing: typeof diagnose_signing;
   load_more_commits: typeof load_more_commits;
+  set_checkpoint_visibility: typeof set_checkpoint_visibility;
   search_tracked_files: typeof search_tracked_files;
   load_reflog: typeof load_reflog;
   load_more_changes: typeof load_more_changes;
@@ -853,6 +856,7 @@ export type CommandMap = {
   rename_branch: typeof rename_branch;
   set_branch_upstream: typeof set_branch_upstream;
   delete_branch: typeof delete_branch;
+  delete_checkpoint_reference: typeof delete_checkpoint_reference;
   integrate_branch: typeof integrate_branch;
   continue_merge: typeof continue_merge;
   abort_merge: typeof abort_merge;

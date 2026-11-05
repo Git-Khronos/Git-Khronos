@@ -74,6 +74,8 @@ use git_khronos_git_core::{
     prepare_partial_discard_with_preview, recover_discarded_changes,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+#[cfg(all(test, unix))]
+mod checkpoint_visibility_tests;
 mod reference_commands;
 mod stash_commands;
 mod terminal_io;
@@ -487,6 +489,18 @@ async fn set_checkpoint_visibility(
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
+        set_session_checkpoint_visibility(repo_id, &session, show)
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+fn set_session_checkpoint_visibility(
+    repo_id: String,
+    session: &RepositorySession,
+    show: bool,
+) -> Result<RepositorySnapshot, AppError> {
+    session.with_read_policy(|| {
         let data = snapshot_with_limits_fast_and_checkpoint_visibility(
             &session.path,
             session.history_limit.load(Ordering::Relaxed),
@@ -503,8 +517,6 @@ async fn set_checkpoint_visibility(
             data,
         })
     })
-    .await
-    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]

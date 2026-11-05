@@ -548,7 +548,9 @@ test('waits for history paging before refreshing a changed branch', async ({ pag
   await page.evaluate(() => {
     const state = (window as any).__checkpointTest;
     state.delayHistory = true;
-    state.statusOverride = { ...state.base.status, branch: 'another-branch' };
+    const changedStatus = { ...state.base.status, branch: 'another-branch' };
+    state.statusOverride = changedStatus;
+    state.base.status = changedStatus;
     state.git.repositories.update((repositories: any[]) => repositories.map((repository) =>
       repository.id === 'browser-preview' ? { ...repository, historyTruncated: true } : repository));
     void state.git.loadMoreHistory();
@@ -565,6 +567,8 @@ test('waits for history paging before refreshing a changed branch', async ({ pag
   });
   await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.calls
     .some((call: { command: string }) => call.command === 'refresh_repository'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.git.repository().status.branch))
+    .toBe('another-branch');
 });
 
 test('resumes a requested history page after a background snapshot finishes', async ({ page }) => {
