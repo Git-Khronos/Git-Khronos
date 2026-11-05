@@ -1618,6 +1618,8 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .graph-columns, .commit-row { display: grid; }
 .commit-row { user-select: none; }
 .commit-row input, .commit-row textarea { user-select: text; }
+/* Reserve space for the panel splitter without overlapping the marker or row-action targets. */
+.history-panel > .graph-header, .history-panel > .commit-list-shell { margin-right: 12px; }
 .graph-header { position: relative; min-width: 0; flex: none; }
 .graph-columns { height: 28px; align-items: center; overflow: hidden; padding: 0 calc(42px + var(--graph-scrollbar-gutter, 0px)) 0 6px; scroll-padding-inline-end: calc(48px + var(--graph-scrollbar-gutter, 0px)); border-bottom: 1px solid var(--graph-header-border); background: var(--graph-header); color: var(--graph-header-text); font-size: 12px; font-weight: 800; }
 .commit-list-shell::before, .commit-list-shell::after { content: ''; position: absolute; z-index: 7; top: 0; bottom: 10px; width: 16px; opacity: 0; pointer-events: none; transition: opacity var(--motion-disclosure) var(--ease-out); }

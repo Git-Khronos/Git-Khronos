@@ -44,12 +44,16 @@ const surfaces: Array<{
 
 for (const name of ['unstaged file', 'staged file', 'historical file', 'comparison file']) {
   const pathSurface = surfaces.find((surface) => surface.name === name)!;
+  const treeTrigger = (page: Page) => pathSurface.trigger(page)
+    .and(page.locator('.tree-file .file-name-button, .tree-commit-file'));
   surfaces.push({
     ...pathSurface,
     name: `${name} in Tree view`,
+    trigger: treeTrigger,
     prepare: async (page) => {
       await pathSurface.prepare?.(page);
       await page.locator('.commit-panel [data-file-view-mode="tree"]').click();
+      await expect(treeTrigger(page)).toBeVisible();
     },
   });
 }

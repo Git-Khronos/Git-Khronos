@@ -827,27 +827,68 @@ test('keeps the diff viewer and full splitter hit areas aligned with resized pan
   }
 });
 
-test('keeps graph scroll markers and the commit-panel splitter independently clickable', async ({ page }) => {
-  const search = page.getByLabel('Search loaded commits by message, SHA, or author');
-  await search.fill('lane rendering');
-  const marker = page.getByRole('button', { name: 'Search · Refine graph lane rendering' });
-  const splitter = page.getByRole('separator', { name: 'Resize commit panel', exact: true });
-  await expect(marker).toBeVisible();
-  const markerBox = (await marker.boundingBox())!;
-  const splitterBox = (await splitter.boundingBox())!;
-  expect(markerBox.x).toBeLessThan(splitterBox.x - 8);
-  expect(await marker.evaluate((element, splitterLeft) => {
-    const box = element.getBoundingClientRect();
-    return [1, (splitterLeft - box.x) / 2, splitterLeft - box.x - 1].every((offset) =>
-      element.contains(document.elementFromPoint(box.x + offset, box.y + box.height / 2)));
-  }, splitterBox.x)).toBe(true);
-  expect(await splitter.evaluate((element, y) => {
-    const box = element.getBoundingClientRect();
-    return [1, box.width - 1].every((offset) => document.elementFromPoint(box.x + offset, y) === element);
-  }, markerBox.y + markerBox.height / 2)).toBe(true);
-  await marker.click();
-  await expect(page.locator('.commit-row.selected')).toContainText('Refine graph lane rendering');
-});
+for (const scrollbar of ['overlay', 'reserved'] as const) {
+  test(`keeps graph markers and the commit-panel splitter independently clickable with ${scrollbar} scrollbars`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.addStyleTag({
+      content: scrollbar === 'overlay'
+        ? '.commit-list { scrollbar-width: none !important; } .commit-list::-webkit-scrollbar { display: none !important; }'
+        : '.commit-list { scrollbar-width: thin !important; scrollbar-gutter: stable !important; }',
+    });
+    const list = page.locator('.commit-list');
+    const gutter = () => list.evaluate((element) => element.offsetWidth - element.clientWidth);
+    if (scrollbar === 'overlay') await expect.poll(gutter).toBe(0);
+    else await expect.poll(gutter).toBeGreaterThan(0);
+    await expect.poll(() => page.locator('.commit-list-shell').evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).getPropertyValue('--graph-scrollbar-gutter')))).toBe(await gutter());
+
+    await page.getByLabel('Search loaded commits by message, SHA, or author').fill('lane rendering');
+    const marker = page.getByRole('button', { name: 'Search · Refine graph lane rendering' });
+    const splitter = page.getByRole('separator', { name: 'Resize commit panel', exact: true });
+    await expect(marker).toBeVisible();
+    await list.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+    await expect.poll(() => list.evaluate((element) =>
+      element.scrollWidth - element.clientWidth - element.scrollLeft)).toBeLessThanOrEqual(1);
+    const overlaps = await page.locator('.graph-scroll-markers').evaluate((rail) => {
+      const actions = [...document.querySelectorAll<HTMLElement>('.commit-row .row-menu')]
+        .map((action) => action.getBoundingClientRect());
+      return [...rail.querySelectorAll<HTMLElement>('.graph-scroll-marker')].flatMap((element) => {
+        const box = element.getBoundingClientRect();
+        return actions.some((action) => box.left < action.right && action.left < box.right
+          && box.top < action.bottom && action.top < box.bottom) ? [element.getAttribute('aria-label')] : [];
+      });
+    });
+    expect(overlaps).toEqual([]);
+    const markerBox = (await marker.boundingBox())!;
+    const splitterBox = (await splitter.boundingBox())!;
+    expect(markerBox.width).toBeGreaterThanOrEqual(24);
+    expect(markerBox.height).toBeGreaterThanOrEqual(24);
+    expect(markerBox.x + markerBox.width).toBeLessThanOrEqual(splitterBox.x);
+    expect(await marker.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return [1, box.width / 2, box.width - 1].every((offset) =>
+        element.contains(document.elementFromPoint(box.x + offset, box.y + box.height / 2)));
+    })).toBe(true);
+    expect(await splitter.evaluate((element, y) => {
+      const box = element.getBoundingClientRect();
+      return [1, box.width - 1].every((offset) => document.elementFromPoint(box.x + offset, y) === element);
+    }, markerBox.y + markerBox.height / 2)).toBe(true);
+    await marker.click({ position: { x: 1, y: markerBox.height / 2 } });
+    await expect(page.locator('.commit-row.selected')).toContainText('Refine graph lane rendering');
+    await page.locator('.commit-row[data-commit-oid]').filter({ hasNotText: 'Refine graph lane rendering' }).first().click();
+    await marker.click({ position: { x: markerBox.width - 1, y: markerBox.height / 2 } });
+    await expect(page.locator('.commit-row.selected')).toContainText('Refine graph lane rendering');
+
+    await page.locator('.commit-row[data-commit-oid]').filter({ hasNotText: 'Refine graph lane rendering' }).first().click();
+    await page.getByRole('button', { name: 'Hide Commit Panel' }).click();
+    await expect(splitter).toHaveCount(0);
+    const expandedMarkerBox = (await marker.boundingBox())!;
+    const historyBox = (await page.getByRole('region', { name: 'Commit history' }).boundingBox())!;
+    expect(expandedMarkerBox.x + expandedMarkerBox.width).toBeLessThanOrEqual(historyBox.x + historyBox.width);
+    await marker.click({ position: { x: expandedMarkerBox.width - 1, y: expandedMarkerBox.height / 2 } });
+    await expect(page.locator('.commit-row.selected')).toContainText('Refine graph lane rendering');
+  });
+}
 
 test('remembers only the resized panel and restores compact automatic widths', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 720 });
