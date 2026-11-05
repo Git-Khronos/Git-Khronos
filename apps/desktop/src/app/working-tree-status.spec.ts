@@ -149,6 +149,52 @@ describe('preserveUntrackedEntries', () => {
     expect(preserveUntrackedEntries(previous, next)).toBe(next);
     expect(preserveUntrackedEntries(previous, tracked)).toBe(tracked);
   });
+
+  it('does not count a newly tracked file again among the carried untracked files', () => {
+    const previous = status([entry('existing.ts', ' M'), entry('new-a.ts', '??'), entry('new-b.ts', '??')]);
+    const next = status([entry('existing.ts', ' M'), entry('new-a.ts', 'A ')]);
+
+    const merged = preserveUntrackedEntries(previous, next);
+
+    expect(codes(merged)).toEqual([' M existing.ts', 'A  new-a.ts', '?? new-b.ts']);
+    expect(counters(merged)).toEqual(counters(status(merged.entries)));
+  });
+
+  it('preserves unlisted untracked counts in a truncated status without recounting tracked entries', () => {
+    const previous = { ...status([entry('new-a.ts', '??'), entry('new-b.ts', '??')]),
+      untracked: 5, entryCount: 5, entriesTruncated: true };
+    const next = status([entry('new-a.ts', 'A ')]);
+
+    const merged = preserveUntrackedEntries(previous, next);
+
+    expect(codes(merged)).toEqual(['A  new-a.ts', '?? new-b.ts']);
+    expect(merged.untracked).toBe(4);
+    expect(merged.entryCount).toBe(5);
+    expect(merged.entriesTruncated).toBe(true);
+  });
+
+  it('retains the unlisted count when every visible untracked file is now tracked', () => {
+    const previous = { ...status([entry('new-a.ts', '??')]), untracked: 5, entryCount: 5, entriesTruncated: true };
+    const next = status([entry('new-a.ts', 'A ')]);
+
+    const merged = preserveUntrackedEntries(previous, next);
+
+    expect(codes(merged)).toEqual(['A  new-a.ts']);
+    expect(merged.untracked).toBe(4);
+    expect(merged.entryCount).toBe(5);
+    expect(merged.entriesTruncated).toBe(true);
+  });
+
+  it('retains untracked totals when a truncated status lists no untracked paths', () => {
+    const previous = { ...status([entry('existing.ts', ' M')]), untracked: 5, entryCount: 6, entriesTruncated: true };
+    const next = status([entry('existing.ts', ' M')]);
+
+    const merged = preserveUntrackedEntries(previous, next);
+
+    expect(merged.untracked).toBe(5);
+    expect(merged.entryCount).toBe(6);
+    expect(merged.entriesTruncated).toBe(true);
+  });
 });
 
 describe('describeWorkingTreeStatus', () => {

@@ -125,6 +125,18 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     });
 }
 
+function worktreesWithCurrentStatus(
+  worktrees: RepositorySnapshot['worktrees'],
+  status: RepositoryStatus,
+): RepositorySnapshot['worktrees'] {
+  const needsUpdate = (worktree: RepositorySnapshot['worktrees'][number]) => worktree.current
+    && (worktree.changes !== status.entryCount || worktree.ahead !== status.ahead || worktree.behind !== status.behind);
+  if (!worktrees.some(needsUpdate)) return worktrees;
+  return worktrees.map((worktree) => needsUpdate(worktree)
+    ? { ...worktree, changes: status.entryCount, ahead: status.ahead, behind: status.behind }
+    : worktree);
+}
+
 function createPreviewConflictStatus(
   status: RepositoryStatus,
   operation: Partial<Pick<RepositoryStatus, 'mergeInProgress' | 'historyOperation'>>,
@@ -2928,15 +2940,16 @@ export class GitKhronosService {
   private storeStatus(repoId: string, status: RepositoryStatus): void {
     this.repositories.update((repositories) => {
       const index = repositories.findIndex((candidate) => candidate.id === repoId);
-      if (index < 0 || sameRepositoryStatus(status, repositories[index].status)) return repositories;
+      if (index < 0) return repositories;
       const candidate = repositories[index];
+      const unchanged = sameRepositoryStatus(status, candidate.status);
+      const worktrees = worktreesWithCurrentStatus(candidate.worktrees, status);
+      if (unchanged && worktrees === candidate.worktrees) return repositories;
       const updated = [...repositories];
       updated[index] = {
         ...candidate,
-        status,
-        worktrees: candidate.worktrees.map((worktree) => worktree.current
-          ? { ...worktree, changes: status.entryCount, ahead: status.ahead, behind: status.behind }
-          : worktree),
+        status: unchanged ? candidate.status : status,
+        worktrees,
       };
       return updated;
     });
@@ -3349,6 +3362,8 @@ export class GitKhronosService {
   }
 
   private storeSnapshot(snapshot: RepositorySnapshot, addIfMissing = false): void {
+    const worktrees = worktreesWithCurrentStatus(snapshot.worktrees, snapshot.status);
+    if (worktrees !== snapshot.worktrees) snapshot = { ...snapshot, worktrees };
     if (addIfMissing || this.repositories().some((repository) => repository.id === snapshot.id)) {
       this.historyGenerations.set(snapshot.id, this.historyGeneration(snapshot.id) + 1);
     }

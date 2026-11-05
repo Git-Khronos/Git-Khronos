@@ -125,9 +125,9 @@ export function predictDiscardPath(status: RepositoryStatus, path: string): Repo
 }
 
 /**
- * Fast snapshots omit untracked files to keep mutations cheap. Carry the
- * previously known untracked entries forward until the next status refresh so
- * they do not disappear and reappear after unrelated operations.
+ * Fast snapshots omit untracked files to keep mutations cheap. Retain known
+ * entries and unlisted totals until the next status refresh, without counting
+ * a file again when the snapshot already contains it.
  */
 export function preserveUntrackedEntries(
   previous: RepositoryStatus,
@@ -135,12 +135,15 @@ export function preserveUntrackedEntries(
 ): RepositoryStatus {
   if (next.untracked > 0 || previous.untracked === 0) return next;
   const known = new Set(next.entries.map((entry) => entry.path));
-  const carried = previous.entries.filter((entry) => isUntracked(entry) && !known.has(entry.path));
-  if (!carried.length) return next;
+  const previousUntracked = previous.entries.filter(isUntracked);
+  const carried = previousUntracked.filter((entry) => !known.has(entry.path));
+  const alreadyIncluded = previousUntracked.length - carried.length;
+  const untracked = previous.untracked - alreadyIncluded;
+  if (!untracked) return next;
   return {
     ...next,
-    untracked: previous.untracked,
-    entryCount: next.entryCount + previous.untracked,
+    untracked,
+    entryCount: next.entryCount + untracked,
     entriesTruncated: next.entriesTruncated || previous.entriesTruncated,
     entries: [...next.entries, ...carried],
   };
