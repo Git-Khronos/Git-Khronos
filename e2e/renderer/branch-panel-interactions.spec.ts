@@ -1007,3 +1007,26 @@ test('ends panel, graph, working-tree and terminal gestures when the window lose
     await expect.poll(() => page.evaluate(() => document.documentElement.style.cursor)).toBe('');
   }
 });
+
+test('double-clicking a graph branch checks it out, including collapsed and expanded reference stacks', async ({ page }) => {
+  await installBackend(page);
+  const calls = () => page.evaluate(() => window.__branchCalls);
+  const branchColumn = page.locator('.commit-row .branch-column');
+  await branchColumn.locator('.ref-pill.local', { hasText: 'feature/partial-staging' }).dblclick();
+  await expect.poll(calls).toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
+
+  const releaseStack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'release' }) });
+  await releaseStack.locator('.reference-stack-trigger').click();
+  await expect(releaseStack).toHaveClass(/pointer-expanded/);
+  await releaseStack.locator('.grouped-reference-label', { hasText: 'release' }).dblclick();
+  await expect.poll(calls).toHaveLength(2);
+  expect((await calls())[1]).toEqual({ command: 'checkout_branch', name: 'release' });
+  await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+
+  await releaseStack.locator('.reference-stack-trigger').dblclick();
+  await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+
+  await page.locator('.reference-stack-trigger', { hasText: 'main' }).dblclick();
+  await expect.poll(calls).toHaveLength(3);
+  expect((await calls())[2]).toEqual({ command: 'checkout_remote_branch', name: 'origin/main' });
+});

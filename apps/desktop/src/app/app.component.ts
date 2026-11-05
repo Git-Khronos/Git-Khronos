@@ -127,6 +127,7 @@ import {
   buildCompactReferenceSummary,
   buildReferenceGroups,
   describeReferenceGroups,
+  primaryReferenceGroup,
   type CompactReferenceSummary,
   type ReferenceGroup,
 } from './reference-summary';
@@ -2860,6 +2861,8 @@ export class AppComponent implements OnInit, OnDestroy {
     branchDropTarget: this.branchDropTarget.bind(this),
     branchForDecoration: this.branchForDecoration.bind(this),
     branchForReferenceGroup: this.branchForReferenceGroup.bind(this),
+    checkoutPrimaryReference: this.checkoutPrimaryReference.bind(this),
+    checkoutReferenceGroup: this.checkoutReferenceGroup.bind(this),
     branchTrackingLabel: this.branchTrackingLabel.bind(this),
     changesOpen: this.changesOpen.bind(this),
     checkoutGhostBranch: this.checkoutGhostBranch.bind(this),
@@ -7416,6 +7419,28 @@ export class AppComponent implements OnInit, OnDestroy {
       if (branch) return branch;
     }
     return null;
+  }
+
+  protected checkoutPrimaryReference(event: Event, decorations: readonly string[]): void {
+    this.checkoutReferenceGroup(event, primaryReferenceGroup(this.referenceGroups(decorations)));
+  }
+
+  // Prefer the local branch; fall back to creating a tracking branch from the remote location.
+  protected checkoutReferenceGroup(event: Event, group: ReferenceGroup | null): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!group) return;
+    const branch = this.branchForReferenceGroup(group);
+    const remote = branch ? null : group.locations.find((location) => location.kind === 'remote');
+    if (!branch && !remote) return;
+    this.expandedReferenceStackOid.set(null);
+    this.pinnedReferenceStackOid.set(null);
+    this.upwardReferenceStackOid.set(null);
+    if (branch) {
+      if (!branch.current) void this.git.checkout(branch.name);
+    } else if (remote) {
+      void this.git.checkoutRemote(remote.label);
+    }
   }
 
   protected branchForDecoration(decoration: string): Branch | null {

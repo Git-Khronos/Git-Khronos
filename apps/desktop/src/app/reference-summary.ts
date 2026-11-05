@@ -73,14 +73,19 @@ export function describeReferenceGroups(groups: readonly ReferenceGroup[]): stri
   return `${groupLabel} · ${locationCount} ${locationCount === 1 ? 'location' : 'locations'}`;
 }
 
+export function primaryReferenceGroup(groups: readonly ReferenceGroup[]): ReferenceGroup | null {
+  return groups.find((group) => group.current)
+    ?? groups.find((group) => group.locations.some((location) => location.kind === 'local'))
+    ?? groups.find((group) => group.locations.some((location) => location.kind === 'remote'))
+    ?? groups[0]
+    ?? null;
+}
+
 export function buildCompactReferenceSummary(
   references: readonly GraphReferenceIdentity[],
 ): CompactReferenceSummary {
   const groups = buildReferenceGroups(references);
-  const primary = groups.find((group) => group.current)
-    ?? groups.find((group) => group.locations.some((location) => location.kind === 'local'))
-    ?? groups.find((group) => group.locations.some((location) => location.kind === 'remote'))
-    ?? groups[0];
+  const primary = primaryReferenceGroup(groups);
   if (!primary) {
     return { label: '', locations: [], hiddenCount: 0, ariaLabel: 'Show references' };
   }
