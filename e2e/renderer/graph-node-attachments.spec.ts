@@ -1,6 +1,74 @@
 import { expect, test } from '@playwright/test';
 
 for (const compact of [false, true]) {
+  test(`keeps continuing lanes vertical when neighboring lanes close and reopen (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    await page.evaluate(compact => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = app.git.repository();
+      const template = repo.commits[0];
+      const topology: Array<[string, string[]]> = [
+        ['merge', ['left', 'middle', 'right']],
+        ['left', ['middle']],
+        ['new-tip', ['new-parent']],
+        ['new-parent', []],
+        ['middle', ['base']],
+        ['right', ['base']],
+        ['base', []],
+      ];
+      const commits = topology.map(([oid, parents]) => ({
+        ...template, oid, parents, subject: oid, decorations: [],
+      }));
+      app.hiddenBranches.set([]);
+      app.soloBranches.set([]);
+      app.smartBranchVisibility.set(false);
+      app.pinnedBranch.set(null);
+      app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id ? {
+        ...item, commits: commits.slice(0, 3), worktrees: [], stashes: [], branches: [],
+      } : item));
+      app.setCompactGraphColumn(compact);
+      app.graphColumnWidth.set(240);
+      const initialRows = app.graphRows();
+      (window as any).__straightLanes = { commits, initialRows };
+    }, compact);
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = app.git.repository();
+      app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id
+        ? { ...item, commits: (window as any).__straightLanes.commits } : item));
+    });
+    await expect(page.locator('[data-commit-oid="base"]')).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const rows = app.graphRows();
+      const initial = (window as any).__straightLanes.initialRows;
+      const samples = rows.flatMap((row: any) => {
+        const element = document.querySelector(`[data-commit-oid="${row.commit.oid}"]`)!;
+        const paths = element.querySelectorAll('.graph-edges path');
+        return row.segments.flatMap((segment: any, index: number) => segment.bypassNode ? [{
+          oid: row.commit.oid, x1: segment.x1, x2: segment.x2,
+          path: paths[index].getAttribute('d'),
+        }] : []);
+      });
+      return {
+        samples,
+        initialOffsets: initial.map((row: any) => row.nodeOffset),
+        appendedOffsets: rows.slice(0, initial.length).map((row: any) => row.nodeOffset),
+        offsets: Object.fromEntries(rows.map((row: any) => [row.commit.oid, row.nodeOffset])),
+      };
+    });
+    expect(geometry.samples.length).toBeGreaterThan(0);
+    for (const sample of geometry.samples) {
+      expect(sample.x2, JSON.stringify(sample)).toBe(sample.x1);
+      expect(sample.path, JSON.stringify(sample)).toBe(`M ${sample.x1} 0 V 40`);
+    }
+    expect(geometry.appendedOffsets).toEqual(geometry.initialOffsets);
+    expect(geometry.offsets['new-tip']).toBe(geometry.offsets['left']);
+    expect(geometry.offsets['new-parent']).toBe(geometry.offsets['new-tip']);
+    expect(geometry.offsets['right']).toBe(compact ? 78 : 96);
+  });
+
   test(`keeps a shared-parent bypass clear while the real parent link leaves the side (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();

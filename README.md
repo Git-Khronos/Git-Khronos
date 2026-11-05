@@ -299,6 +299,9 @@ columns → Restore graph defaults** to restore the automatic layout. A heading 
 narrow for its title shows an icon instead (hover it for the full title). The settings
 button is not a commit column.
 
+Continuing graph lanes stay vertical when neighboring lanes end. New branches
+reuse vacant lanes rather than shifting existing paths left and right.
+
 Copilot checkpoint references are hidden from the graph by default, without
 deleting them. To include their history for the current open repository, turn
 on **Configure graph columns → Show Copilot checkpoints**. Click or right-click

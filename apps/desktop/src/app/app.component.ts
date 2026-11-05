@@ -155,7 +155,7 @@ interface GraphLayoutCache {
   key: string;
   commitOids: string[];
   rows: GraphRow[];
-  active: ActiveGraphLane[];
+  active: (ActiveGraphLane | null)[];
   nextColor: number;
 }
 
@@ -2567,8 +2567,8 @@ export class AppComponent implements OnInit, OnDestroy {
       .join('|')}`;
     const cache = this.graphLayoutCache;
     const canExtend = cache?.key === key && isAppendOnlyCommitHistory(cache.commitOids, commits);
-    let active = canExtend
-      ? cache.active.map((lane) => ({ ...lane }))
+    let active: (ActiveGraphLane | null)[] = canExtend
+      ? cache.active.map((lane) => lane ? { ...lane } : null)
       : [...seeded.values()].slice(0, laneCapacity);
     let nextColor = canExtend ? cache.nextColor : active.length;
     // A push or fetch can move decorations without changing topology. Keep the geometry,
@@ -2581,42 +2581,42 @@ export class AppComponent implements OnInit, OnDestroy {
 
     for (let commitIndex = rows.length; commitIndex < commits.length; commitIndex += 1) {
       const commit = commits[commitIndex];
-      let lane = active.findIndex((candidate) => candidate.oid === commit.oid);
+      let lane = active.findIndex((candidate) => candidate?.oid === commit.oid);
       const hasIncomingConnection = lane >= 0;
       if (lane < 0) {
-        if (active.length >= laneCapacity) active.splice(laneCapacity - 1);
-        lane = active.length;
-        active.push({ oid: commit.oid, color: nextColor++ % GRAPH_LANE_COLOR_COUNT });
+        lane = active.indexOf(null);
+        if (lane < 0) lane = Math.min(active.length, laneCapacity - 1);
+        active[lane] = { oid: commit.oid, color: nextColor++ % GRAPH_LANE_COLOR_COUNT };
       }
-      const before = active.map((candidate) => ({ ...candidate }));
-      const current = before[lane];
-      const after = before.filter((_, index) => index !== lane);
+      const before = active.map((candidate) => candidate ? { ...candidate } : null);
+      const current = before[lane]!;
+      // Reuse vacant slots without shifting unrelated, continuing lanes.
+      const after = [...before];
+      after[lane] = null;
       const nodeLane = pinnedHistory.has(commit.oid) ? 0 : lane;
-      const afterIndexByOid = new Map(after.map((candidate, index) => [candidate.oid, index] as const));
+      const afterIndexByOid = new Map(after.flatMap((candidate, index) => candidate ? [[candidate.oid, index] as const] : []));
 
       commit.parents.forEach((parent, parentIndex) => {
         if (afterIndexByOid.has(parent)) return;
-        const insertion = Math.min(nodeLane + Math.min(parentIndex, 1), after.length);
-        after.splice(insertion, 0, {
+        let insertion = parentIndex === 0 && !after[nodeLane] ? nodeLane : after.indexOf(null);
+        if (insertion < 0) insertion = after.length;
+        if (insertion >= laneCapacity) return;
+        after[insertion] = {
           oid: parent,
           color: parentIndex === 0 ? current.color : nextColor++ % GRAPH_LANE_COLOR_COUNT,
-        });
-        for (let index = insertion; index < after.length; index += 1) {
-          afterIndexByOid.set(after[index].oid, index);
-        }
+        };
+        afterIndexByOid.set(parent, insertion);
       });
       if (pinnedHistory.has(commit.oid) && commit.parents[0]) {
         const firstParentLane = afterIndexByOid.get(commit.parents[0]) ?? -1;
         if (firstParentLane > 0) {
-          after.unshift(...after.splice(firstParentLane, 1));
-          after.forEach((candidate, index) => afterIndexByOid.set(candidate.oid, index));
+          [after[0], after[firstParentLane]] = [after[firstParentLane], after[0]];
+          after.forEach((candidate, index) => {
+            if (candidate) afterIndexByOid.set(candidate.oid, index);
+          });
         }
       }
-      if (after.length > laneCapacity) {
-        after.splice(laneCapacity);
-        afterIndexByOid.clear();
-        after.forEach((candidate, index) => afterIndexByOid.set(candidate.oid, index));
-      }
+      while (after.length && !after[after.length - 1]) after.pop();
 
       const firstParentLane = commit.parents[0]
         ? afterIndexByOid.get(commit.parents[0]) ?? -1
@@ -2645,7 +2645,7 @@ export class AppComponent implements OnInit, OnDestroy {
         });
       });
       before.forEach((candidate, beforeIndex) => {
-        if (beforeIndex === lane) return;
+        if (!candidate || beforeIndex === lane) return;
         const afterIndex = afterIndexByOid.get(candidate.oid);
         if (afterIndex !== undefined) {
           segments.push({
@@ -2662,7 +2662,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (parentIndex === 0 && continuesStraight && hasIncomingConnection) return;
         const target = afterIndexByOid.get(parent);
         if (target === undefined) return;
-        const color = parentIndex === 0 ? current.color : after[target].color;
+        const color = parentIndex === 0 ? current.color : after[target]!.color;
         if (target !== nodeLane && commits[commitIndex + 1]?.oid === parent) {
           const fromOffset = laneOffset(nodeLane);
           const parentOffset = laneOffset(pinnedHistory.has(parent) ? 0 : target);
@@ -2706,7 +2706,7 @@ export class AppComponent implements OnInit, OnDestroy {
       key,
       commitOids: commits.map((commit) => commit.oid),
       rows,
-      active: active.map((lane) => ({ ...lane })),
+      active: active.map((lane) => lane ? { ...lane } : null),
       nextColor,
     };
     return rows;
