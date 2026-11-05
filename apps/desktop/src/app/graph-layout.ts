@@ -61,8 +61,7 @@ type GraphPoint = readonly [number, number];
 export function graphNodeConnectionStemOffset(
   connection: Pick<GraphNodeConnection, 'sourceOffset' | 'parentOffset' | 'nodeRadius'>,
 ): number {
-  return connection.sourceOffset
-    - Math.sign(connection.parentOffset - connection.sourceOffset) * connection.nodeRadius;
+  return connection.sourceOffset;
 }
 
 // Round only the corners of an orthogonal route, never its straight stems.
@@ -111,7 +110,7 @@ export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
     const sourceSide = graphNodeConnectionStemOffset(segment.nodeConnection);
     const parentSide = parentOffset - direction * nodeRadius;
     return part === 'source'
-      ? roundedGraphRoute([[sourceSide, 20], [sourceSide, 40]])
+      ? roundedGraphRoute([[sourceSide, 20 + nodeRadius], [sourceSide, 40]])
       : roundedGraphRoute([[sourceSide, 0], [sourceSide, 20], [parentSide, 20]]);
   }
   if (segment.x1 === segment.x2) {

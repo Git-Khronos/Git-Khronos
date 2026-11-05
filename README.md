@@ -301,6 +301,8 @@ button is not a commit column.
 
 Continuing graph lanes stay vertical when neighboring lanes end. New branches
 reuse vacant lanes rather than shifting existing paths left and right.
+Adjacent cross-lane parent links leave the avatar's bottom center before
+turning into the parent avatar's side.
 
 Copilot checkpoint references are hidden from the graph by default, without
 deleting them. To include their history for the current open repository, turn

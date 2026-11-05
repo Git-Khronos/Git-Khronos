@@ -69,7 +69,7 @@ for (const compact of [false, true]) {
     expect(geometry.offsets['right']).toBe(compact ? 78 : 96);
   });
 
-  test(`keeps a shared-parent bypass clear while the real parent link leaves the side (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+  test(`keeps a shared-parent bypass clear while the real parent link leaves the bottom center (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate(compact => {
@@ -132,7 +132,7 @@ for (const compact of [false, true]) {
         if (connection?.part === 'source') {
           const point = new DOMPoint(start.x, start.y).matrixTransform(matrix);
           departure = { x: point.x, y: point.y };
-          expectedX = connection.sourceOffset < connection.parentOffset ? node.left : node.right;
+          expectedX = node.x + node.width / 2;
         }
         if (graphRow.segments[index].bypassNode) {
           for (let step = 0; step <= 100; step++) {
@@ -143,14 +143,15 @@ for (const compact of [false, true]) {
           }
         }
       }
-      return { departure, clearance, offset, expectedX, centerY: node.y + node.height / 2 };
+      return { departure, clearance, offset, expectedX, bottomY: node.bottom };
     });
     expect(Number.isFinite(geometry.clearance), JSON.stringify(geometry)).toBe(true);
     expect(geometry.clearance, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0.5);
     expect(geometry.departure).toBeDefined();
     expect(Math.abs(geometry.departure!.x - geometry.expectedX), JSON.stringify(geometry)).toBeLessThan(0.1);
-    expect(Math.abs(geometry.departure!.y - geometry.centerY), JSON.stringify(geometry)).toBeLessThan(0.1);
-    await test.info().attach('Shared-parent side routing', {
+    // The row divider slightly scales SVG height; the stroke must still touch the circle.
+    expect(Math.abs(geometry.departure!.y - geometry.bottomY), JSON.stringify(geometry)).toBeLessThan(0.5);
+    await test.info().attach('Shared-parent bottom-center routing', {
       body: await page.locator('.virtual-commit-rows').screenshot({
         path: test.info().outputPath('orthogonal-shared-parent.png'),
       }), contentType: 'image/png',
@@ -158,7 +159,7 @@ for (const compact of [false, true]) {
   });
 
   for (const direction of ['right-to-left', 'left-to-right'] as const) {
-    test(`connects adjacent avatars outside the source (${direction}, ${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    test(`connects adjacent avatars from the source bottom center (${direction}, ${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
       await page.goto('/');
       await expect(page.locator('.author-node').first()).toBeVisible();
       await page.evaluate(({ compact, direction }) => {
@@ -200,7 +201,8 @@ for (const compact of [false, true]) {
             return { x: screen.x, y: screen.y };
           };
           return {
-            node: { left: node.left, right: node.right, centerY: node.y + node.height / 2 },
+            node: { left: node.left, right: node.right, centerX: node.x + node.width / 2,
+              centerY: node.y + node.height / 2, bottom: node.bottom },
             segment: row.segments[index], start: screenPoint(0), end: screenPoint(path.getTotalLength()),
             strokeWidth: parseFloat(getComputedStyle(path).strokeWidth),
             linecap: getComputedStyle(path).strokeLinecap,
@@ -213,8 +215,8 @@ for (const compact of [false, true]) {
       const sourceIsLeft = source.segment.nodeConnection.sourceOffset < source.segment.nodeConnection.parentOffset;
       expect(sourceIsLeft).toBe(direction === 'left-to-right');
       expect(source.segment.x2).toBe(parent.segment.x1);
-      expect(Math.abs(source.start.x - (sourceIsLeft ? source.node.left : source.node.right))).toBeLessThan(0.1);
-      expect(Math.abs(source.start.y - source.node.centerY)).toBeLessThan(0.1);
+      expect(Math.abs(source.start.x - source.node.centerX)).toBeLessThan(0.1);
+      expect(Math.abs(source.start.y - source.node.bottom)).toBeLessThan(source.strokeWidth / 2);
       expect(Math.abs(source.end.x - source.start.x)).toBeLessThan(0.1);
       expect(Math.abs(source.end.x - parent.start.x)).toBeLessThan(0.1);
       expect([source.linecap, parent.linecap]).toEqual(['round', 'round']);
@@ -248,7 +250,9 @@ for (const compact of [false, true]) {
           const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!);
           const right = source ? segment.x2 > segment.x1 : segment.x1 > segment.x2;
           return [{ oid: row.commit.oid, x: screen.x, y: screen.y,
-            expectedX: right ? node.right : node.left, expectedY: node.y + node.height / 2 }];
+            expectedX: segment.nodeConnection?.part === 'source' ? node.x + node.width / 2
+              : right ? node.right : node.left,
+            expectedY: segment.nodeConnection?.part === 'source' ? node.bottom : node.y + node.height / 2 }];
         });
         const connector = element.querySelector('.ref-connector')?.getBoundingClientRect();
         return connector ? [...edges, { oid: row.commit.oid, x: node.left,

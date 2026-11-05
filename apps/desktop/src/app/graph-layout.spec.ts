@@ -39,20 +39,20 @@ function inspectRoundedPath(path: string) {
 }
 
 describe('graph column layout', () => {
-  it('routes cross-lane parent links outside the source avatar into the parent side', () => {
+  it('routes cross-lane parent links from the source bottom center into the parent side', () => {
     for (const nodeRadius of [10, 12]) {
       for (const [sourceOffset, parentOffset] of [[14, 46], [46, 14], [16, 56], [56, 16], [16, 136], [136, 16]]) {
         if (Math.abs(parentOffset - sourceOffset) < nodeRadius * 2 + 12) continue;
         const connection = { sourceOffset, parentOffset, nodeRadius };
         const direction = Math.sign(parentOffset - sourceOffset);
-        const sourceSide = sourceOffset - direction * nodeRadius;
+        const sourceSide = sourceOffset;
         const parentSide = parentOffset - direction * nodeRadius;
         const sourcePath = buildGraphSegmentPath({ x1: sourceOffset, y1: 20, x2: sourceSide, y2: 40,
           nodeConnection: { ...connection, part: 'source' } });
         const parentPath = buildGraphSegmentPath({ x1: sourceSide, y1: 0, x2: parentOffset, y2: 20,
           nodeConnection: { ...connection, part: 'parent' } });
         const source = inspectRoundedPath(sourcePath), parent = inspectRoundedPath(parentPath);
-        expect(source.start).toEqual([sourceSide, 20]);
+        expect(source.start).toEqual([sourceSide, 20 + nodeRadius]);
         expect(parent.end).toEqual([parentSide, 20]);
         expect(source.end).toEqual([sourceSide, 40]);
         expect(parent.start).toEqual([sourceSide, 0]);
@@ -61,16 +61,16 @@ describe('graph column layout', () => {
     }
   });
 
-  it('routes a right-to-left history edge down the source avatar exterior before turning into its parent', () => {
+  it('routes a right-to-left history edge down the source bottom center before turning into its parent', () => {
     const connection = { sourceOffset: 56, parentOffset: 16, nodeRadius: 12 };
     expect(buildGraphSegmentPath({
-      x1: 56, y1: 20, x2: 68, y2: 40,
+      x1: 56, y1: 20, x2: 56, y2: 40,
       nodeConnection: { ...connection, part: 'source' },
-    })).toBe('M 68 20 V 40');
+    })).toBe('M 56 32 V 40');
     expect(buildGraphSegmentPath({
-      x1: 68, y1: 0, x2: 16, y2: 20,
+      x1: 56, y1: 0, x2: 16, y2: 20,
       nodeConnection: { ...connection, part: 'parent' },
-    })).toBe('M 68 0 V 14 A 6 6 0 0 1 62 20 H 28');
+    })).toBe('M 56 0 V 14 A 6 6 0 0 1 50 20 H 28');
   });
 
   it('routes continuing lane changes outside an unrelated avatar', () => {
