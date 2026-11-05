@@ -88,9 +88,9 @@
         [attr.aria-expanded]="view.expandedReferenceStackOid() === row.commit.oid"
         [attr.aria-label]="referenceSummary.ariaLabel"
         aria-haspopup="menu"
-        [title]="referenceSummary.ariaLabel"
+        [title]="view.referenceStackTooltip(decorations)"
         (click)="view.openReferenceStackFromTrigger($event, row.commit.oid)"
-        (dblclick)="view.checkoutPrimaryReference($event, decorations)"
+        (dblclick)="view.checkoutPrimaryReference($event, decorations, row.commit.oid)"
         (contextmenu)="view.openReferenceStackFromTrigger($event, row.commit.oid, true)"
         (keydown)="view.handleReferenceStackTriggerKeydown($event, row.commit.oid)"
     ><span class="reference-stack-locations" aria-hidden="true">@for (location of referenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? view.remoteIconForDecoration(location.decoration) : location.kind === 'checkpoint' ? 'archive' : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ referenceSummary.label }}</span>@if (referenceSummary.hiddenCount) { <b>+{{ referenceSummary.hiddenCount }}</b> }<gc-icon class="reference-stack-chevron" name="chevron-down" [size]="10" /></button>
@@ -98,7 +98,7 @@
         @let expandedReferenceGroups = view.referenceGroups(decorations);
         <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ view.referenceGroupHeading(expandedReferenceGroups) }}</span>
         @for (group of expandedReferenceGroups; track group.key) {
-          <span class="grouped-reference-row" [class.current-reference-group]="group.current" (dblclick)="view.checkoutReferenceGroup($event, group)">
+          <span class="grouped-reference-row" [class.current-reference-group]="group.current" [attr.title]="view.referenceCheckoutHint(group) || null" (dblclick)="view.checkoutReferenceGroup($event, group, row.commit.oid)">
             <span class="grouped-reference-locations">
               @for (location of group.locations; track location.decoration) {
                 @if (view.branchForDecoration(location.decoration); as branch) {
@@ -116,6 +116,7 @@
             </span>
             <span class="grouped-reference-label">{{ group.label }}</span>
             @if (view.branchForReferenceGroup(group); as branch) { @if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ view.branchTrackingLabel(branch.tracking) }}</small> } }
+            @if (view.referenceGroupNeedsRemoteChoice(group)) { <small class="remote-choice-hint">Double-click a remote</small> }
           </span>
         }
       </span>

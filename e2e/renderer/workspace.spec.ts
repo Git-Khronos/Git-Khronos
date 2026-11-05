@@ -601,7 +601,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   await expect(sharedTipTrigger).toHaveAttribute(
     'title',
-    'main: remote origin, remote upstream. Show all 2 references.',
+    'main: remote origin, remote upstream. Show all 2 references. Double-click a remote location to create a tracking branch.',
   );
   await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
   await expect(sharedTip.locator('.ref-stack-heading')).toBeHidden();

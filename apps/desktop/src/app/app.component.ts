@@ -2863,6 +2863,9 @@ export class AppComponent implements OnInit, OnDestroy {
     branchForReferenceGroup: this.branchForReferenceGroup.bind(this),
     checkoutPrimaryReference: this.checkoutPrimaryReference.bind(this),
     checkoutReferenceGroup: this.checkoutReferenceGroup.bind(this),
+    referenceCheckoutHint: this.referenceCheckoutHint.bind(this),
+    referenceGroupNeedsRemoteChoice: this.referenceGroupNeedsRemoteChoice.bind(this),
+    referenceStackTooltip: this.referenceStackTooltip.bind(this),
     branchTrackingLabel: this.branchTrackingLabel.bind(this),
     changesOpen: this.changesOpen.bind(this),
     checkoutGhostBranch: this.checkoutGhostBranch.bind(this),
@@ -7421,16 +7424,40 @@ export class AppComponent implements OnInit, OnDestroy {
     return null;
   }
 
-  protected checkoutPrimaryReference(event: Event, decorations: readonly string[]): void {
-    this.checkoutReferenceGroup(event, primaryReferenceGroup(this.referenceGroups(decorations)));
+  protected referenceGroupNeedsRemoteChoice(group: ReferenceGroup): boolean {
+    return !this.branchForReferenceGroup(group)
+      && group.locations.filter((location) => location.kind === 'remote').length > 1;
   }
 
-  // Prefer the local branch; fall back to creating a tracking branch from the remote location.
-  protected checkoutReferenceGroup(event: Event, group: ReferenceGroup | null): void {
+  protected referenceCheckoutHint(group: ReferenceGroup | null): string {
+    if (!group) return '';
+    const branch = this.branchForReferenceGroup(group);
+    if (branch) return branch.current ? 'Current branch.' : `Double-click to check out ${branch.name}.`;
+    const remotes = group.locations.filter((location) => location.kind === 'remote');
+    if (remotes.length > 1) return 'Double-click a remote location to create a tracking branch.';
+    if (remotes.length === 1) return `Double-click to create a tracking branch for ${remotes[0].label}.`;
+    return '';
+  }
+
+  protected referenceStackTooltip(decorations: readonly string[]): string {
+    const presentation = this.referencePresentation(decorations);
+    const hint = this.referenceCheckoutHint(primaryReferenceGroup(presentation.groups));
+    return hint ? `${presentation.summary.ariaLabel} ${hint}` : presentation.summary.ariaLabel;
+  }
+
+  protected checkoutPrimaryReference(event: Event, decorations: readonly string[], oid: string): void {
+    this.checkoutReferenceGroup(event, primaryReferenceGroup(this.referenceGroups(decorations)), oid);
+  }
+
+  protected checkoutReferenceGroup(event: Event, group: ReferenceGroup | null, oid: string): void {
     event.preventDefault();
     event.stopPropagation();
     if (!group) return;
     const branch = this.branchForReferenceGroup(group);
+    if (this.referenceGroupNeedsRemoteChoice(group)) {
+      this.openReferenceStackFromTrigger(event, oid, true);
+      return;
+    }
     const remote = branch ? null : group.locations.find((location) => location.kind === 'remote');
     if (!branch && !remote) return;
     this.expandedReferenceStackOid.set(null);

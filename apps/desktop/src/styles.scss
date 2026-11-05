@@ -1446,6 +1446,7 @@ code, kbd { font-family: var(--font-mono); }
 button.grouped-reference-location:hover, button.grouped-reference-location:focus-visible { border-color: #7771a7; background: #46435f; color: white; }
 .grouped-reference-label { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: normal; }
 .grouped-reference-row > .ref-sync { flex: none; }
+.remote-choice-hint { flex: none; color: #b6b2cf; font-size: 11px; }
 .reference-stack-popover > .grouped-reference-row, .detail-reference-popover > .grouped-reference-row { padding-left: 4px; }
 .branch-list-row.has-aligned-locations { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 .branch-list-row.has-aligned-locations .branch-item { padding-right: 4px; }

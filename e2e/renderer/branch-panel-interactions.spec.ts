@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Signal, WritableSignal } from '@angular/core';
-import type { Branch, RepositorySnapshot } from '@git-chronos/contracts';
+import type { Branch, RepositorySnapshot } from '@git-khronos/contracts';
 
 interface TestApp {
   git: {
@@ -62,14 +62,28 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
           throw new Error('Branch name is invalid. Choose a different name.');
         }
         if (command === 'checkout_commit') return snapshot;
-        const name = args['name'];
-        const branch = snapshot.branches.find((candidate) => candidate.name === name);
+        const remote = command === 'checkout_remote_branch'
+          ? snapshot.branches.find((candidate) => candidate.remote && candidate.name === args['name'])
+          : null;
+        if (command === 'checkout_remote_branch' && !remote) throw new Error('Remote branch no longer exists.');
+        const name = remote ? remote.name.slice(remote.name.indexOf('/') + 1) : args['name'];
+        const branch = snapshot.branches.find((candidate) => !candidate.remote && candidate.name === name);
+        if (remote && branch) throw new Error(`A local branch named '${name}' already exists.`);
         const referenceOnly = command === 'create_branch_reference';
-        const oid = command === 'create_branch_at' || referenceOnly ? args['oid'] : branch?.oid ?? snapshot.headOid!;
+        const oid = command === 'create_branch_at' || referenceOnly ? args['oid'] : remote?.oid ?? branch?.oid ?? snapshot.headOid!;
         const branches = referenceOnly
           ? [...snapshot.branches]
-          : snapshot.branches.map((candidate) => ({ ...candidate, current: candidate.name === name }));
-        if (!branch) branches.push({ ...snapshot.branches.find((candidate) => candidate.current)!, name, fullName: `refs/heads/${name}`, oid, current: !referenceOnly, remote: false } satisfies Branch);
+          : snapshot.branches.map((candidate) => ({ ...candidate, current: !candidate.remote && candidate.name === name }));
+        if (!branch) branches.push({
+          ...snapshot.branches.find((candidate) => candidate.current)!,
+          name,
+          fullName: `refs/heads/${name}`,
+          oid,
+          current: !referenceOnly,
+          remote: false,
+          upstream: remote?.name ?? null,
+          tracking: null,
+        } satisfies Branch);
         snapshot = referenceOnly
           ? { ...snapshot, branches }
           : { ...snapshot, branches, headOid: oid, status: { ...snapshot.status, branch: name } };
@@ -83,6 +97,23 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
+
+async function prepareRemoteDocsStack(page: Page, multiple: boolean): Promise<void> {
+  await page.evaluate((multiple) => {
+    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    const oid = repository.branches.find((branch) => branch.remote && branch.name === 'origin/docs')!.oid;
+    git.repositories.update((repositories) => repositories.map((candidate) => candidate.id !== repository.id ? candidate : {
+      ...candidate,
+      branches: candidate.branches.map((branch) => multiple && branch.name === 'upstream/docs' && branch.remote
+        ? { ...branch, oid }
+        : branch),
+      commits: candidate.commits.map((commit) => commit.oid !== oid ? commit : {
+        ...commit, decorations: [...commit.decorations, 'origin/docs', ...(multiple ? ['upstream/docs'] : [])],
+      }),
+    }));
+  }, multiple);
+}
 
 test('keeps an empty branch draft editable and restores focus on Escape', async ({ page }) => {
   const newBranch = page.getByRole('button', { name: 'New branch', exact: true });
@@ -836,7 +867,10 @@ for (const scrollbar of ['overlay', 'reserved'] as const) {
         : '.commit-list { scrollbar-width: thin !important; scrollbar-gutter: stable !important; }',
     });
     const list = page.locator('.commit-list');
-    const gutter = () => list.evaluate((element) => element.offsetWidth - element.clientWidth);
+    const gutter = () => list.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) throw new Error('The commit list must be an HTML element.');
+      return element.offsetWidth - element.clientWidth;
+    });
     if (scrollbar === 'overlay') await expect.poll(gutter).toBe(0);
     else await expect.poll(gutter).toBeGreaterThan(0);
     await expect.poll(() => page.locator('.commit-list-shell').evaluate((element) =>
@@ -1008,25 +1042,126 @@ test('ends panel, graph, working-tree and terminal gestures when the window lose
   }
 });
 
-test('double-clicking a graph branch checks it out, including collapsed and expanded reference stacks', async ({ page }) => {
+test('double-clicking a single graph branch checks it out without checking out on a single click', async ({ page }) => {
   await installBackend(page);
-  const calls = () => page.evaluate(() => window.__branchCalls);
-  const branchColumn = page.locator('.commit-row .branch-column');
-  await branchColumn.locator('.ref-pill.local', { hasText: 'feature/partial-staging' }).dblclick();
-  await expect.poll(calls).toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
+  const branch = page.locator('.commit-row .branch-column .ref-pill.local', { hasText: 'feature/partial-staging' });
+  await branch.click();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await branch.dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+    .toBe('feature/partial-staging');
+});
 
+test('double-clicking a collapsed graph reference checks out its non-current local branch', async ({ page }) => {
+  await installBackend(page);
+  const releaseStack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'release' }) });
+  await releaseStack.locator('.reference-stack-trigger').click();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await releaseStack.locator('.reference-stack-trigger').dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_branch', name: 'release' }]);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+    .toBe('release');
+  await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+
+  await releaseStack.locator('.reference-stack-trigger').dblclick();
+  expect(await page.evaluate(() => window.__branchCalls)).toHaveLength(1);
+  await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+});
+
+test('double-clicking an expanded graph reference label checks out its local branch', async ({ page }) => {
+  await installBackend(page);
   const releaseStack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'release' }) });
   await releaseStack.locator('.reference-stack-trigger').click();
   await expect(releaseStack).toHaveClass(/pointer-expanded/);
   await releaseStack.locator('.grouped-reference-label', { hasText: 'release' }).dblclick();
-  await expect.poll(calls).toHaveLength(2);
-  expect((await calls())[1]).toEqual({ command: 'checkout_branch', name: 'release' });
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_branch', name: 'release' }]);
   await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+});
 
-  await releaseStack.locator('.reference-stack-trigger').dblclick();
-  await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
+test('double-clicking a local location inside a graph stack checks out exactly once', async ({ page }) => {
+  await installBackend(page);
+  const releaseStack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'release' }) });
+  await releaseStack.locator('.reference-stack-trigger').click();
+  await releaseStack.getByRole('menuitem', { name: 'Local branch release' }).dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_branch', name: 'release' }]);
+});
 
-  await page.locator('.reference-stack-trigger', { hasText: 'main' }).dblclick();
-  await expect.poll(calls).toHaveLength(3);
-  expect((await calls())[2]).toEqual({ command: 'checkout_remote_branch', name: 'origin/main' });
+test('requires a remote selection before checking out a group with multiple remote locations', async ({ page }) => {
+  await installBackend(page);
+  const stack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'main' }) });
+  await stack.locator('.reference-stack-trigger').dblclick();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await expect(stack).toHaveClass(/pointer-expanded/);
+  await expect(stack.getByText('Double-click a remote', { exact: true })).toBeVisible();
+  await expect(stack.getByRole('menuitem', { name: 'Remote branch origin/main' })).toBeVisible();
+  await expect(stack.getByRole('menuitem', { name: 'Remote branch upstream/main' })).toBeVisible();
+
+  await stack.locator('.grouped-reference-label', { hasText: 'main' }).dblclick();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await expect(stack).toHaveClass(/pointer-expanded/);
+  await stack.getByRole('menuitem', { name: 'Remote branch upstream/main' }).dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_remote_branch', name: 'upstream/main' }]);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
+    .toContain("A local branch named 'main' already exists.");
+});
+
+test('checks out an unambiguous remote graph reference as a local tracking branch', async ({ page }) => {
+  await prepareRemoteDocsStack(page, false);
+  await installBackend(page);
+  await page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'docs' }) })
+    .locator('.reference-stack-trigger').dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_remote_branch', name: 'origin/docs' }]);
+  await expect.poll(() => page.evaluate(() => {
+    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
+    const remote = repository.branches.find((branch) => branch.remote && branch.name === 'origin/docs');
+    return [repository.status.branch, local?.current, local?.upstream, repository.headOid === remote?.oid];
+  })).toEqual(['docs', true, 'origin/docs', true]);
+});
+
+test('creates a tracking branch for the explicitly selected remote location', async ({ page }) => {
+  await prepareRemoteDocsStack(page, true);
+  await installBackend(page);
+  const stack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'docs' }) });
+  await stack.locator('.reference-stack-trigger').dblclick();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await stack.getByRole('menuitem', { name: 'Remote branch upstream/docs' }).dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_remote_branch', name: 'upstream/docs' }]);
+  await expect.poll(() => page.evaluate(() => {
+    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
+    const remote = repository.branches.find((branch) => branch.remote && branch.name === 'upstream/docs');
+    return [repository.status.branch, local?.current, local?.upstream, repository.headOid === remote?.oid];
+  })).toEqual(['docs', true, 'upstream/docs', true]);
+});
+
+test('surfaces an existing local branch when a remote tracking checkout cannot be created', async ({ page }) => {
+  await page.evaluate(() => {
+    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    const oid = repository.branches.find((branch) => branch.remote && branch.name === 'origin/main')!.oid;
+    git.repositories.update((repositories) => repositories.map((candidate) => candidate.id !== repository.id ? candidate : {
+      ...candidate,
+      commits: candidate.commits.map((commit) => commit.oid !== oid ? commit : {
+        ...commit, decorations: ['origin/main', 'tag: remote-tip'],
+      }),
+    }));
+  });
+  await installBackend(page);
+  await page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'main' }) })
+    .locator('.reference-stack-trigger').dblclick();
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_remote_branch', name: 'origin/main' }]);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
+    .toContain("A local branch named 'main' already exists.");
+  expect(await page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+    .toBe('main');
 });
