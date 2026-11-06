@@ -67,31 +67,90 @@ test('retains the submitted draft after native validation refuses it', async ({ 
   expect(await page.evaluate(() => localStorage.getItem('git-khronos.tools.v1'))).toBeNull();
 });
 
-test('retries the captured configured program after a launch failure', async ({ page }) => {
-  await prepare(page); const dialog = await preferences(page); await create(page, 'Owned agent');
-  await page.getByRole('combobox', { name: 'Program profile role' }).selectOption('agent');
+test('selects a non-default terminal profile and retries its captured command after a launch failure', async ({ page }) => {
+  await prepare(page); const dialog = await preferences(page); await create(page, 'First shell');
+  await page.getByRole('button', { name: 'Save program profile', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Profile saved.' })).toBeVisible();
+  await create(page, 'Other shell');
+  await expect(page.getByRole('combobox', { name: 'Program profile role' }).locator('option[value="agent"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save program profile', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Profile saved.' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
   const panel = page.locator('gc-terminal-panel');
   await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
-  await panel.getByRole('button', { name: 'New agent session' }).click();
-  const selected = await panel.locator('select option').filter({ hasText: 'Owned agent' }).getAttribute('value');
-  await panel.locator('select').selectOption(selected!);
+  const opener = panel.getByRole('button', { name: 'Choose terminal profile' });
+  await opener.click();
+  await expect(panel.getByLabel('Terminal profile', { exact: true })).toBeFocused();
+  await panel.getByLabel('Terminal profile', { exact: true }).press('Escape');
+  await expect(opener).toBeFocused();
+  await expect(panel.getByRole('button', { name: 'Open terminal', exact: true })).toHaveCount(0);
+  await opener.click();
+  await panel.getByLabel('Terminal profile', { exact: true }).selectOption({ label: 'Other shell' });
+  expect(await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_configured_terminal'))).toEqual([]);
   await page.evaluate(() => { (window as any).failToolStartup = true; });
-  await panel.getByRole('button', { name: 'Start agent', exact: true }).click();
+  await panel.getByRole('button', { name: 'Open terminal', exact: true }).click();
   await expect(panel.getByRole('status')).toContainText('Owned program unavailable');
   const changed = await preferences(page);
-  await changed.locator('.profiles button').filter({ hasText: 'Owned agent' }).click();
+  await changed.locator('.profiles button').filter({ hasText: 'Other shell' }).click();
   await changed.getByRole('textbox', { name: 'Program executable path' }).fill('/owned/replacement-after-failure');
   await changed.getByRole('button', { name: 'Save program profile', exact: true }).click();
   await expect(changed.getByRole('status').filter({ hasText: 'Profile saved.' })).toBeVisible();
   await changed.getByRole('button', { name: 'Close preferences' }).click();
   await panel.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(panel.getByRole('tab', { name: 'Owned agent 2', exact: true })).toBeVisible();
+  await expect(panel.getByRole('tab', { name: 'Other shell 2', exact: true })).toBeVisible();
   const calls = await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_configured_terminal'));
   expect(calls).toHaveLength(2); expect(calls[0].args).toEqual(calls[1].args);
+});
+
+test('shows legacy profiles as terminal profiles without starting or silently defaulting them', async ({ page }) => {
+  const raw = JSON.stringify({
+    version: 2,
+    profiles: [{ version: 1, id: 'legacy', name: 'Saved program', role: 'agent', executable: '/owned/legacy', arguments: ['{repository}'] }],
+    defaultTerminalId: null, defaultEditorId: null, defaultDiffId: null, defaultMergeId: null,
+  });
+  await page.addInitScript((stored) => localStorage.setItem('git-khronos.tools.v1', stored), raw);
+  await prepare(page);
+  const dialog = await preferences(page);
+  await expect(dialog.getByRole('status')).toContainText('Previously saved agent profiles are now terminal profiles');
+  await expect(dialog.locator('.profiles button').filter({ hasText: 'Saved program · terminal' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.tools.v1'))).toBe(raw);
+  expect(await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command.startsWith('open_')))).toEqual([]);
+  await dialog.getByRole('button', { name: 'Close preferences' }).click();
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
+  const panel = page.locator('gc-terminal-panel');
+  await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
+  await panel.getByRole('button', { name: 'Open terminal', exact: true }).click();
+  await expect(panel.getByRole('tab', { name: 'Saved program 2', exact: true })).toBeVisible();
+  const calls = await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_configured_terminal'));
+  expect(calls).toHaveLength(1);
+  expect(calls[0].args.profile).toMatchObject({ id: 'legacy', role: 'terminal', executable: '/owned/legacy', arguments: ['{repository}'] });
+});
+
+test('requires another selection when an open terminal profile is deleted', async ({ page }) => {
+  await prepare(page); const dialog = await preferences(page);
+  for (const name of ['First shell', 'Deleted shell']) {
+    await create(page, name);
+    await page.getByRole('button', { name: 'Save program profile', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Profile saved.' })).toBeVisible();
+  }
+  await dialog.getByRole('button', { name: 'Close preferences' }).click();
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
+  const panel = page.locator('gc-terminal-panel');
+  await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
+  await panel.getByLabel('Terminal profile', { exact: true }).selectOption({ label: 'Deleted shell' });
+  const changed = await preferences(page);
+  await changed.locator('.profiles button').filter({ hasText: 'Deleted shell' }).click();
+  await changed.getByRole('button', { name: 'Delete program profile', exact: true }).click();
+  await changed.getByRole('button', { name: 'Close preferences' }).click();
+  await panel.getByRole('button', { name: 'Open terminal', exact: true }).click();
+  await expect(panel.getByRole('alert')).toContainText('no longer available');
+  expect(await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_configured_terminal'))).toEqual([]);
+  await panel.getByLabel('Terminal profile', { exact: true }).selectOption({ label: 'First shell' });
+  await panel.getByRole('button', { name: 'Open terminal', exact: true }).click();
+  await expect(panel.getByRole('tab', { name: 'First shell 2', exact: true })).toBeVisible();
 });
 
 test('switching to the system shell updates an open profile form and the persisted default', async ({ page }) => {
@@ -116,5 +175,41 @@ for (const width of [320, 700]) {
     const bounds = await dialog.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
     expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
     await page.screenshot({ path: testInfo.outputPath(`configured-tools-${width}.png`) });
+  });
+
+  test(`keeps the terminal profile chooser usable at ${width}px`, async ({ page }, testInfo) => {
+    const name = 'Long-shell-profile-'.repeat(3);
+    await page.addInitScript((profileName) => localStorage.setItem('git-khronos.tools.v1', JSON.stringify({
+      version: 2,
+      profiles: [{ version: 1, id: 'shell', name: profileName, role: 'terminal', executable: '/owned/shell', arguments: [] }],
+      defaultTerminalId: null, defaultEditorId: null, defaultDiffId: null, defaultMergeId: null,
+    })), name);
+    await page.setViewportSize({ width, height: 800 });
+    await prepare(page);
+    await page.keyboard.press('Alt+t');
+    const panel = page.locator('gc-terminal-panel');
+    await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
+    const chooser = panel.locator('.terminal-profile-launcher');
+    const bounds = await chooser.evaluate(el => {
+      const { left, right } = el.getBoundingClientRect();
+      const controls = Array.from(el.querySelectorAll('select, button'), control => {
+        const { left, right } = control.getBoundingClientRect();
+        return { left, right };
+      });
+      return { width: el.clientWidth, scroll: el.scrollWidth, left, right, controls };
+    });
+    expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(width);
+    for (const control of bounds.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(bounds.left);
+      expect(control.right).toBeLessThanOrEqual(bounds.right);
+    }
+    await expect(chooser.getByLabel('Terminal profile', { exact: true })).toBeFocused();
+    await expect(chooser.getByRole('button', { name: 'Open terminal', exact: true })).toBeInViewport();
+    await panel.locator('.terminal-panel').screenshot({ path: testInfo.outputPath(`terminal-profiles-${width}.png`) });
+    await chooser.getByRole('button', { name: 'Open terminal', exact: true }).click();
+    await expect(panel.getByRole('tab', { name: `${name} 2`, exact: true })).toBeVisible();
   });
 }

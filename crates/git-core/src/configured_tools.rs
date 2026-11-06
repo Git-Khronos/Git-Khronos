@@ -14,7 +14,6 @@ pub enum ToolRole {
     Diff,
     Merge,
     Terminal,
-    Agent,
 }
 
 #[derive(Clone, Serialize, Deserialize, specta::Type)]
@@ -216,7 +215,7 @@ impl ToolProfile {
             ToolRole::Editor => &[Placeholder::File],
             ToolRole::Diff => &[Placeholder::Before, Placeholder::After],
             ToolRole::Merge => &[Placeholder::Merged],
-            ToolRole::Terminal | ToolRole::Agent => &[],
+            ToolRole::Terminal => &[],
         };
         if !required.iter().all(|value| used.contains(value)) {
             return Err(invalid(
@@ -307,7 +306,7 @@ mod tests {
                 .is_ok()
         );
         assert!(
-            profile(ToolRole::Agent, &["--project={repository}"])
+            profile(ToolRole::Terminal, &["--project={repository}"])
                 .validate()
                 .is_ok()
         );
@@ -351,7 +350,7 @@ mod tests {
     #[test]
     fn configured_tools_bound_both_templates_and_expanded_bytes() {
         assert!(
-            profile(ToolRole::Agent, &["x"; MAX_ARGUMENTS + 1])
+            profile(ToolRole::Terminal, &["x"; MAX_ARGUMENTS + 1])
                 .validate()
                 .is_err()
         );

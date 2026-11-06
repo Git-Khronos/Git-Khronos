@@ -22,9 +22,10 @@ material. There are no new third-party dependencies or assets.
 Profiles retain payload version 1. Application preference storage moves to version 2
 with independent optional defaults for terminal, editor, comparison and merge roles.
 Existing valid version-1 terminal/agent data is read without writing or launching;
-only a subsequent explicit preference change writes the new envelope. Invalid or
-unknown data remains preserved until explicit clearing. Storage commits before live
-state. The total profile limit remains 16.
+legacy agent profiles are converted in memory to terminal profiles without
+changing the default. Only a subsequent explicit preference change writes the
+new envelope. Invalid or unknown data remains preserved until explicit clearing.
+Storage commits before live state. The total profile limit remains 16.
 
 Native preparation resolves repository and executable identity. File selection,
 repository metadata, exact revisions/index stages and private copy paths are derived
@@ -61,7 +62,7 @@ unreaped root command. No program-name search, descendant sweep or process-group
 is used after a GUI handoff. A zero launcher exit proves neither GUI completion nor a
 saved result. A separate IDE may continue running. Inherited Git repository selectors,
 application askpass bridges and Git/SSH askpass variables are cleared; ordinary user
-Git configuration and agent context remain available.
+Git configuration and SSH agent context remain available.
 
 ## Private files, save, stage and cleanup
 

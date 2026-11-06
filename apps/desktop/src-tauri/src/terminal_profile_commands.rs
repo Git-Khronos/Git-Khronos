@@ -46,7 +46,7 @@ pub fn open_configured_terminal(
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use crate::{AgentProgram, configure_terminal_command, terminal_launch_spec};
+    use crate::{configure_terminal_command, terminal_launch_spec};
     use git_khronos_git_core::ToolRole;
     use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
     use std::path::PathBuf;
@@ -147,7 +147,7 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps({'args': sys.argv[2:], 'cwd': os
             .unwrap();
             assert_eq!(error.kind, "invalidTerminalToolRole");
         }
-        let mut invalid = profile(ToolRole::Agent, vec!["{repository}".into()]);
+        let mut invalid = profile(ToolRole::Terminal, vec!["{repository}".into()]);
         invalid.version = 2;
         assert_eq!(
             terminal_launch_spec(
@@ -162,14 +162,10 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps({'args': sys.argv[2:], 'cwd': os
     }
 
     #[test]
-    fn configured_terminal_keeps_existing_agent_programs_argument_free() {
-        let prepared = terminal_launch_spec(
-            TerminalLaunch::Agent(AgentProgram::Codex),
-            std::path::Path::new("/owned"),
-        )
-        .unwrap();
-        assert_eq!(prepared.executable, "codex");
-        assert_eq!(prepared.label, "codex");
+    fn default_terminal_launch_has_no_implicit_arguments() {
+        let prepared =
+            terminal_launch_spec(TerminalLaunch::Default, std::path::Path::new("/owned")).unwrap();
+        assert_eq!(prepared.executable, crate::default_shell());
         assert!(prepared.arguments.is_empty());
     }
 }

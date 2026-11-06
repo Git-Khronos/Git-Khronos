@@ -10,13 +10,20 @@ interface StoredProfiles {
   defaultDiffId: string | null;
   defaultMergeId: string | null;
 }
+type StoredToolProfile = Omit<ToolProfile, 'role'> & { role: ToolProfile['role'] | 'agent' };
+type LegacyStoredProfiles = Omit<StoredProfiles, 'profiles'> & { profiles: StoredToolProfile[] };
+interface DecodedProfiles { value: StoredProfiles; migratedAgentProfiles: boolean }
 const DEFAULTS = { terminal: 'defaultTerminalId', editor: 'defaultEditorId', diff: 'defaultDiffId', merge: 'defaultMergeId' } as const;
 const DEFAULT_ROLES = ['terminal', 'editor', 'diff', 'merge'] as const;
 const EMPTY: StoredProfiles = { version: 2, profiles: [], defaultTerminalId: null, defaultEditorId: null, defaultDiffId: null, defaultMergeId: null };
 
 /** Storage is data only. Loading or changing a default never launches a program. */
 export function decodeToolProfiles(raw: string | null): StoredProfiles {
-  if (raw === null) return structuredClone(EMPTY);
+  return readToolProfiles(raw).value;
+}
+
+function readToolProfiles(raw: string | null): DecodedProfiles {
+  if (raw === null) return { value: structuredClone(EMPTY), migratedAgentProfiles: false };
   if (raw.length > 131072) throw new Error('Stored tool profiles exceed the size limit.');
   const data = JSON.parse(raw);
   const legacy = data?.version === 1;
@@ -40,26 +47,36 @@ export function decodeToolProfiles(raw: string | null): StoredProfiles {
     }
     ids.add(p.id);
   }
-  const restored: StoredProfiles = legacy ? { ...structuredClone(EMPTY), profiles: data.profiles, defaultTerminalId: data.defaultTerminalId } : data;
+  const restored: LegacyStoredProfiles = legacy ? { ...structuredClone(EMPTY), profiles: data.profiles, defaultTerminalId: data.defaultTerminalId } : data;
   for (const role of DEFAULT_ROLES) {
     const id = restored[DEFAULTS[role]];
     if (id !== null && (typeof id !== 'string' || !restored.profiles.some((p) => p.id === id && p.role === role))) {
       throw new Error('A default program profile is missing or has another role.');
     }
   }
-  return restored;
+  const migratedAgentProfiles = restored.profiles.some((profile) => profile.role === 'agent');
+  const profiles: ToolProfile[] = restored.profiles.map((profile) => ({
+    ...profile,
+    role: profile.role === 'agent' ? 'terminal' : profile.role,
+  }));
+  return { value: { ...restored, profiles }, migratedAgentProfiles };
 }
 
 export class ConfiguredToolsService {
   private readonly state = signal<StoredProfiles>(structuredClone(EMPTY));
   readonly storageError = signal<string | null>(null);
+  readonly legacyProfilesMigrated = signal(false);
   readonly profiles = () => this.state().profiles;
   readonly defaultTerminal = () => this.defaultFor('terminal');
-  readonly defaultFor = (role: ToolProfile['role']) => role === 'agent' ? null
-    : this.state().profiles.find((p) => p.id === this.state()[DEFAULTS[role]] && p.role === role) ?? null;
+  readonly defaultFor = (role: ToolProfile['role']) =>
+    this.state().profiles.find((p) => p.id === this.state()[DEFAULTS[role]] && p.role === role) ?? null;
 
   constructor() {
-    try { this.state.set(decodeToolProfiles(localStorage.getItem(TOOL_PROFILES_STORAGE_KEY))); }
+    try {
+      const decoded = readToolProfiles(localStorage.getItem(TOOL_PROFILES_STORAGE_KEY));
+      this.state.set(decoded.value);
+      this.legacyProfilesMigrated.set(decoded.migratedAgentProfiles);
+    }
     catch { this.storageError.set('Stored tool profiles could not be read. They have been preserved. Clear them explicitly to start again.'); }
   }
 
@@ -91,6 +108,7 @@ export class ConfiguredToolsService {
     localStorage.removeItem(TOOL_PROFILES_STORAGE_KEY);
     this.state.set(structuredClone(EMPTY));
     this.storageError.set(null);
+    this.legacyProfilesMigrated.set(false);
   }
 
   private persist(value: StoredProfiles): void {

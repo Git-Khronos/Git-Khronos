@@ -1,8 +1,9 @@
 # Independently configured external tools
 
-Status: the terminal/agent PTY, versioned preferences and explicit launcher have
-combined Linux renderer and exact-package qualification recorded below.
-External editor, diff and merge program execution remains unimplemented.
+Status: configured terminal profiles and reviewed external editor, diff and merge
+launches are implemented. The dedicated coding-agent launcher and profile role
+were removed. Historical Linux renderer and exact-package qualification below
+predates that removal and does not qualify the current build.
 Inventory: G07, G20 and W05. No complete tool-integration parity claim is made.
 
 ## Capability and sources
@@ -13,14 +14,14 @@ Public sources inspected 2026-11-01:
 - https://git-scm.com/docs/git-difftool
 - https://git-scm.com/docs/git-mergetool
 
-These sources establish configurable editors, terminals, agent commands and
+These sources establish configurable editors, terminals and
 comparison/resolution tools, plus documented Git file roles and exit behavior.
 The profile format, argument model and following implementation design are original.
 No vendor implementation, visual composition, assets or documentation was copied.
 
 ## Initial profile and literal argument model
 
-Version-one application profiles identify an editor, diff, merge, terminal or agent
+Version-one application profiles identify an editor, diff, merge or terminal
 program by stable ID, display name, absolute executable path and separate arguments.
 Saving a profile does not execute a program or change Git configuration. Unsupported
 versions, unknown serialized fields, invalid IDs/names and excessive data refuse.
@@ -29,7 +30,7 @@ Arguments use the closed placeholders `{repository}`, `{file}`, `{line}`, `{befo
 `{after}`, `{base}` and `{merged}`. Doubled braces represent literal braces. Placeholders
 are role-specific: file/line for editors, before/after for diff or merge, base/output
 for merge, repository for all. Editors require a file argument, diffs both before/after,
-and merge profiles an output argument. Terminal/agent profiles can rely on their cwd.
+and merge profiles an output argument. Terminal profiles can rely on their cwd.
 Missing values and invalid one-based lines refuse; no argument is silently omitted.
 
 Rendering preserves each argument boundary, empty arguments, Unicode, quotes and shell
@@ -42,40 +43,43 @@ Limits: 32 arguments, 16 KiB per template/expanded argument and 64 KiB total. ID
 bounded ASCII identifiers; display names and executable/context paths have independent
 bounds. Profile Debug output omits executable paths and argument values.
 
-## Terminal and agent candidate
+## Terminal profiles
 
 Main-window commands validate a profile or open a configured terminal against a registered
-repository session. Terminal and agent profiles expand a captured repository cwd and
+repository session. Terminal profiles expand a captured repository cwd and
 literal argv, then reuse the existing owned PTY registry, I/O, close/retry and exit lifecycle.
-File-tool profiles refuse this endpoint before PTY setup. Existing fixed agent launchers
-and the system-shell fallback remain available. No extra shell is introduced. The same
+File-tool profiles refuse this endpoint before PTY setup. The system-shell fallback
+remains available. No extra shell is introduced. The same
 eight inherited repository selectors are cleared as for existing terminals; ordinary
 user configuration remains available.
 
-Application-local storage contains a version-one list of at most 16 terminal/agent
-profiles and an optional default terminal ID. The preferences form accepts separate
+Application-local storage contains at most 16 profiles with optional per-role
+defaults. The preferences form accepts separate
 argument rows, validates through the native command before saving and commits storage
 before live state. A failed write preserves existing preferences. Invalid stored data is
 preserved until an explicit reviewed clear. Saving, loading, selecting or deleting a
 profile starts no program, changes no Git configuration and does not close existing
-sessions. New terminal actions use the current default; explicit agent-launcher selection
-can start a saved profile. A retry retains the originally submitted profile snapshot.
-These initial focused results are supplemented by the complete combined Linux
-renderer and packaged UI qualification recorded below.
+sessions. New terminal actions use the current default; the terminal's profile
+selector can explicitly start another saved terminal profile. A retry retains
+the originally submitted profile snapshot.
 
-These preferences contain ordinary program paths/arguments, not secret storage. Users
-configure and authenticate installed programs independently. Launching an agent proves
-neither task state nor approval, worktree isolation, resume or provider integration.
+Version-one and version-two stored profiles with the former agent role are
+converted in memory to terminal profiles after the original defaults are
+validated. No stored bytes are changed until a subsequent explicit preference
+edit; the migration neither starts a program nor makes it the default. The
+preferences panel explains the conversion.
+
+These preferences contain ordinary program paths/arguments, not secret storage.
+Users configure and authenticate installed programs independently.
 
 ## External file-tool execution candidate
 
 The independent [reviewed file-tool candidate](external-file-tools.md) now implements
 native preparation, owned direct execution, raw-byte result review, separate saving
-and staging, and checked cleanup. Its original UI has focused renderer and exact
-Linux-package evidence, including normal/compact capture review. All 1,484 current
-renderer cases and 471 broad package executions now pass, alongside 45 optional
-transport source cases. Missing-target save and restart storage management remain
-open. The requirements below remain the acceptance boundary.
+and staging, and checked cleanup. Earlier source and Linux-package qualification
+included focused renderer coverage and normal/compact capture review; it predates
+the current changes. Missing-target save and restart storage management remain open.
+The requirements below remain the acceptance boundary.
 
 ### Required behavior
 
@@ -93,10 +97,13 @@ Cancellation must not terminate an existing IDE or all processes by program name
 
 Dirty editor drafts need save/open-saved/stay choices before handoff. Comparisons need
 fetch-free exact snapshots. Merge results need a fresh explicit review and staging step;
-do not infer resolution from exit status or timestamps. Other platforms and public agent
-status/resume integrations require separate qualification.
+do not infer resolution from exit status or timestamps. Other platforms require
+separate qualification.
 
 ## Evidence gates
+
+The following results describe earlier builds, before the dedicated agent
+launcher was removed; they are retained as historical provenance.
 
 Six focused Unix argument-model tests pass for literal boundaries, escaped/nonrecursive
 placeholders, role requirements, missing values, bounds and strict profile data. These

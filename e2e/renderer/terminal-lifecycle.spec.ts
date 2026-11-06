@@ -612,61 +612,15 @@ test('closes a late native terminal session when its repository panel was destro
   await expect.poll(() => page.evaluate(() => (window as any).closedTerminalSessions)).toContain('late-session');
 });
 
-test('starts an agent only on explicit action and keeps its owned lifecycle separate from the shell', async ({ page }) => {
+test('opens regular terminal tabs without a built-in agent launcher', async ({ page }) => {
   await pendingTerminalInput(page);
-  await page.evaluate(() => {
-    const state = window as any;
-    const original = state.__TAURI_INTERNALS__.invoke;
-    state.agentCalls = [];
-    state.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
-      if (command === 'open_agent_terminal') { state.agentCalls.push(args); return Promise.resolve({ id: 'owned-agent', label: args.program, cwd: '/fixture/worktree' }); }
-      return original(command, args);
-    };
-  });
   const panel = page.locator('gc-terminal-panel');
-  await panel.getByRole('button', { name: 'New agent session', exact: true }).click();
-  const launcher = panel.getByLabel('Start agent session', { exact: true });
-  await expect(launcher).toContainText('normal permissions');
-  expect(await page.evaluate(() => (window as any).agentCalls)).toEqual([]);
-  await launcher.getByLabel('Agent program', { exact: true }).selectOption('claude');
-  await launcher.getByRole('button', { name: 'Start agent', exact: true }).click();
-  await expect(panel.getByRole('tab', { name: 'claude 2 running', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'New agent session', exact: true })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Choose terminal profile', exact: true })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'New terminal tab', exact: true }).click();
+  await expect(panel.getByRole('tab', { name: 'bash 2', exact: true })).toBeVisible();
   await expect(panel.getByRole('tab')).toHaveCount(2);
-  const calls = await page.evaluate(() => (window as any).agentCalls);
-  expect(calls).toHaveLength(1);
-  expect(calls[0]).toMatchObject({ program: 'claude', rows: 24, cols: 80 });
-  expect(Object.keys(calls[0]).sort()).toEqual(['cols', 'program', 'repoId', 'rows']);
-  await panel.getByRole('button', { name: 'Close claude 2', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).terminalCloseRequests)).toEqual(['owned-agent']);
+  await panel.getByRole('button', { name: 'Close bash 2', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).terminalCloseRequests)).toEqual(['input-2']);
   await expect(panel.getByRole('tab', { name: 'bash 1', exact: true })).toBeVisible();
-});
-
-test('agent launcher supports Escape and retries the selected agent after a launch failure', async ({ page }) => {
-  await pendingTerminalInput(page);
-  await page.evaluate(() => {
-    const state = window as any, invoke = state.__TAURI_INTERNALS__.invoke;
-    state.agentAttempts = [];
-    state.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
-      if (command === 'open_agent_terminal') {
-        state.agentAttempts.push(args.program);
-        if (state.agentAttempts.length === 1) return Promise.reject({ message: 'Owned missing program' });
-        return Promise.resolve({ id: 'retry-agent', label: args.program, cwd: '/fixture' });
-      }
-      return invoke(command, args);
-    };
-  });
-  const panel = page.locator('gc-terminal-panel');
-  const opener = panel.getByRole('button', { name: 'New agent session', exact: true });
-  await opener.click();
-  await expect(panel.getByLabel('Agent program', { exact: true })).toBeFocused();
-  await panel.getByLabel('Agent program', { exact: true }).press('Escape');
-  await expect(opener).toBeFocused();
-  await expect(panel.getByRole('button', { name: 'Start agent', exact: true })).toHaveCount(0);
-  await opener.click();
-  await panel.getByLabel('Agent program', { exact: true }).selectOption('opencode');
-  await panel.getByRole('button', { name: 'Start agent', exact: true }).click();
-  await expect(panel.getByRole('status')).toContainText('Owned missing program');
-  await panel.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(panel.getByRole('tab', { name: 'opencode 2 running', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => (window as any).agentAttempts)).toEqual(['opencode', 'opencode']);
 });

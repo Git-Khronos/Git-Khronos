@@ -62,14 +62,15 @@ header { min-width: 0; display: flex; align-items: stretch; border-bottom: 1px s
   .terminal-context { display: none; }
 }
 
-.agent-launcher {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px;
+.terminal-profile-launcher {
+  min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px;
   color: var(--text); background: var(--inspector-list); border-bottom: 1px solid var(--inspector-divider); font-size: 12px;
-  span { flex: 1 1 260px; line-height: 1.5; }
+  span { min-width: 0; flex: 1 1 260px; overflow-wrap: anywhere; line-height: 1.5; }
   button, select { padding: 5px 8px; color: var(--text); background: var(--inspector-row); border: 1px solid var(--inspector-divider); }
+  select { min-width: 0; max-width: 100%; }
   button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 
-.terminal-panel.agent-launcher-open { grid-template-rows: 32px auto minmax(0, 1fr); }
+.terminal-panel.profiles-open { grid-template-rows: 32px auto minmax(0, 1fr); }
 
-header > button.new-agent { width: 48px; flex-basis: 48px; font-size: 12px; }
+header > button.terminal-profiles-button { width: 58px; flex-basis: 58px; font-size: 12px; }

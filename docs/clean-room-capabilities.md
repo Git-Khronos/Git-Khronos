@@ -8,6 +8,8 @@ source maps, UI assets and internal identifiers are excluded.
 The active full-parity requirements and completion audit are tracked in
 [git-feature-parity.md](git-feature-parity.md). The rows below are implementation
 pointers and must not be interpreted as a reduced definition of the objective.
+Basic local Git and file workflows take priority over hosted collaboration; AI
+and coding-agent functionality is outside the product scope.
 
 ## Main capability map
 
@@ -26,30 +28,25 @@ pointers and must not be interpreted as a reduced definition of the objective.
 | Saved commit identities | Named local identity templates; create/edit/delete; explicit per-repository application preview | New profile parser and renderer tests; authentication accounts, signing keys and global Git config are separate |
 | Hosted collaboration | GitHub PR/issue/workflow lists, PR descriptions, file patches, review decisions and head-commit checks through documented REST APIs and installed `gh` | New offline API fixture and renderer tests; explicit loads, paging/state filters, current review decisions, legacy statuses, cancellation and stale head checks; no live account qualification yet |
 | Hosted write operations | Reviewed GitHub PR creation, fork/draft support, review-level comments/approvals/change requests, merge/squash/rebase; account/commit-bound one-use previews and uncertain outcomes | Source checks, all 1247 renderer cases and 305 owned Linux native scenarios pass for package `9a5a8c0badec`; live-provider and other-platform qualification remain outstanding. Inline threads/suggestions, templates/reviewer metadata, issue writes, close/reopen and branch cleanup remain unfinished |
-| Agent tools | Explicit installed Codex/Claude/Gemini/OpenCode CLI launch in the selected checkout, independent PTY tabs and process lifecycle | Fixed program enum, no shell command interpolation or permission bypass flags; existing worktrees provide isolation; no AI task-state inference |
+| Terminal and external tools | System shell and configured terminal profiles; reviewed editor, comparison and merge programs | Saved legacy agent profiles are available as terminal profiles without automatically starting them |
 | Original UX | Khronos components, theme tokens, original wording, keyboard controls and existing icon system | Focus/compact-window regression coverage; no proprietary assets introduced |
 
 ## Remaining capability work
 
-1. Finish qualifying hosted pagination, state filters, per-reviewer decisions and
-   legacy commit statuses. Add provider search and richer filters; qualify real
-   account/rate-limit behavior.
-2. Qualify reviewed GitHub creation/review/merge actions, then extend templates,
-   reviewer metadata, inline review threads/suggestions, issue writes, close/reopen
-   and explicit branch cleanup. Improve provider-specific refusal diagnostics.
-3. Add equivalent hosted adapters for GitLab, Bitbucket, Azure DevOps and
-   enterprise installations. Browser links currently cover common public hosts.
-4. Extend workspace overview to unopened repositories with bounded background
+1. Pin force-push leases to the reviewed remote object rather than a tracking ref
+   that background fetch can advance.
+2. Fill local file management, selective stash restoration, multi-repository
+   actions and the remaining Gitflow workflow gaps identified in the parity
+   inventory.
+3. Extend workspace overview to unopened repositories with bounded background
    scans and clear freshness/error reporting; add hosted data aggregation.
-5. Extend identity templates to isolated account contexts and preference sets
+4. Extend identity templates to isolated account contexts and preference sets
    without silently changing credentials or global Git configuration.
-6. Add optional documented agent status integration, session restoration and
-   prompt/task management. Running/exited describes a process, not whether an
-   agent needs approval or has completed a task.
-7. Implement issue-tracker integrations, Gitflow workflows and independent deep
-   links from neutral specifications. Existing underlying Git operations do not
-   establish parity for these dedicated workflows.
-8. Qualify final packaged artifacts and each supported operating system after
+5. After core workflows, finish qualifying hosted pagination, state filters,
+   per-reviewer decisions, commit statuses and real-account behavior.
+6. Extend hosted review actions, issue-tracker integrations and provider
+   coverage; complete deep-link qualification.
+7. Qualify final packaged artifacts and each supported operating system after
    source and renderer gates. Previous package qualification does not transfer
    to a package containing these additions.
 
@@ -63,9 +60,8 @@ pointers and must not be interpreted as a reduced definition of the objective.
   and numeric identifiers.
 - Profiles store only label/name/email, have bounded validated storage, and do
   not apply when selected, edited, deleted or when a workspace changes.
-- Agent processes start only after choosing a program and pressing Start.
-  Installation, login and tool permissions belong to that CLI. No model or
-  provider access is bundled or implied.
+- Configured terminal programs start only after an explicit terminal action.
+  Migration of legacy profiles does not start them or change the default.
 
 Public references and implementation provenance are recorded in
 [provenance/sources.md](provenance/sources.md) and

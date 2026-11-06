@@ -1415,6 +1415,10 @@ with local-copy selection and clone fallback; provider-specific review search;
 configurable assistance for messages, explanations, conflicts and commit grouping.
 No implementation, visual design, assets, examples or documentation prose copied.
 
+The former coding-agent launcher and the assisted requirements discovered from
+these sources have since been removed from the active product scope. These
+references remain here to record historical provenance.
+
 Further public guides used for the unfinished inventory:
 
 - https://help.gitkraken.com/gitkraken-desktop/profiles/ (separate identities,
@@ -1432,6 +1436,12 @@ These are capability references only, not implementation or visual references.
   distinct save/stage choices, Markdown preview and encoding behavior)
 - https://help.gitkraken.com/gitkraken-desktop/tags/ (tag movement, commit
   navigation, branch creation and local/remote transfer)
+- https://help.gitkraken.com/gitkraken-desktop/adding-and-removing/ (local file
+  creation, deletion and filtering)
+- https://help.gitkraken.com/gitkraken-desktop/stashing/ (partial stash and
+  individual-file restoration)
+- https://help.gitkraken.com/gitkraken-desktop/submodules/ (explicit and optional
+  automatic submodule workflows)
 
 Used to refine remaining behavioral acceptance cases. Public Git manuals remain
 the implementation authority for Git effects. No example code was copied.

@@ -3226,46 +3226,6 @@ fn stop_terminal_child(child: &mut (dyn Child + Send + Sync)) -> Result<(), AppE
     Ok(())
 }
 
-#[derive(Clone, Copy, serde::Deserialize, Serialize, specta::Type)]
-#[serde(rename_all = "lowercase")]
-enum AgentProgram {
-    Codex,
-    Claude,
-    Gemini,
-    Opencode,
-}
-
-impl AgentProgram {
-    fn executable(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Claude => "claude",
-            Self::Gemini => "gemini",
-            Self::Opencode => "opencode",
-        }
-    }
-}
-
-#[tauri::command(rename_all = "camelCase")]
-#[specta::specta]
-fn open_agent_terminal(
-    repo_id: String,
-    program: AgentProgram,
-    rows: u16,
-    cols: u16,
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<TerminalInfo, AppError> {
-    open_terminal_program(
-        repo_id,
-        rows,
-        cols,
-        TerminalLaunch::Agent(program),
-        app,
-        state,
-    )
-}
-
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
 fn open_terminal(
@@ -3280,7 +3240,6 @@ fn open_terminal(
 
 enum TerminalLaunch {
     Default,
-    Agent(AgentProgram),
     Configured(git_khronos_git_core::ToolProfile),
 }
 
@@ -3296,10 +3255,10 @@ fn terminal_launch_spec(
 ) -> Result<TerminalLaunchSpec, AppError> {
     use git_khronos_git_core::{ToolArgumentContext, ToolRole};
     if let TerminalLaunch::Configured(profile) = program {
-        if !matches!(profile.role, ToolRole::Terminal | ToolRole::Agent) {
+        if profile.role != ToolRole::Terminal {
             return Err(AppError {
                 kind: "invalidTerminalToolRole".into(),
-                message: "Choose a terminal or agent profile for a terminal session.".into(),
+                message: "Choose a terminal profile for a terminal session.".into(),
                 hint: Some("No program was started.".into()),
             });
         }
@@ -3315,7 +3274,6 @@ fn terminal_launch_spec(
     }
     let executable = match program {
         TerminalLaunch::Default => default_shell(),
-        TerminalLaunch::Agent(agent) => agent.executable().to_owned(),
         TerminalLaunch::Configured(_) => unreachable!(),
     };
     let label = Path::new(&executable)
@@ -3909,7 +3867,6 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             undo_discard,
             redo_discard,
             open_terminal,
-            open_agent_terminal,
             write_terminal,
             resize_terminal,
             close_terminal,

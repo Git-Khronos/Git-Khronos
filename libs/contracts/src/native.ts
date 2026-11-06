@@ -31,7 +31,6 @@ terminalOutput: "terminal-output"
 
 /** user-defined types **/
 
-export type AgentProgram = "codex" | "claude" | "gemini" | "opencode"
 export type AppError = { kind: string; message: string; hint: string | null }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
@@ -412,7 +411,7 @@ export type TerminalExit = { sessionId: string }
 export type TerminalInfo = { id: string; label: string; cwd: string }
 export type TerminalOutput = { sessionId: string; data: number[] }
 export type ToolProfile = { version: number; id: string; name: string; role: ToolRole; executable: string; arguments: string[] }
-export type ToolRole = "editor" | "diff" | "merge" | "terminal" | "agent"
+export type ToolRole = "editor" | "diff" | "merge" | "terminal"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
 export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
@@ -738,7 +737,6 @@ export function apply_working_tree_lines(args: { repoId: string; path: string; s
 export function undo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("undo_discard", args); }
 export function redo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("redo_discard", args); }
 export function open_terminal(args: { repoId: string; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_terminal", args); }
-export function open_agent_terminal(args: { repoId: string; program: AgentProgram; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_agent_terminal", args); }
 export function write_terminal(args: { sessionId: string; data: number[] }): Promise<null> { return TAURI_INVOKE("write_terminal", args); }
 export function resize_terminal(args: { sessionId: string; rows: number; cols: number }): Promise<null> { return TAURI_INVOKE("resize_terminal", args); }
 export function close_terminal(args: { sessionId: string }): Promise<null> { return TAURI_INVOKE("close_terminal", args); }
@@ -995,7 +993,6 @@ export type CommandMap = {
   undo_discard: typeof undo_discard;
   redo_discard: typeof redo_discard;
   open_terminal: typeof open_terminal;
-  open_agent_terminal: typeof open_agent_terminal;
   write_terminal: typeof write_terminal;
   resize_terminal: typeof resize_terminal;
   close_terminal: typeof close_terminal;

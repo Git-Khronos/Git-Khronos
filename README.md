@@ -12,7 +12,7 @@ Angular, Nx, Rust, and Tauri.
 > prune actions, repository-scoped sparse checkout, interactive rebase,
 > conflict resolution, searchable reflog recovery with safe branch creation,
 > explicitly signed commits with effective repository-signing diagnostics,
-> worktree-backed agent workflows, native submodule management, and a repository-scoped terminal with
+> linked-worktree and native submodule management, and a repository-scoped terminal with
 > multiple independent tabs.
 
 ## Prerequisites
@@ -1088,15 +1088,14 @@ Open the workspace menu (or command palette) and choose **Repository overview**,
   unconfirmed; inspect the result and reload current records before preparing
   another request. Stopping the wait does not undo a remote write.
 
-In a repository terminal, choose **Agent**, select an installed CLI, then
-**Start agent**. The process starts directly in that checkout with the CLI's
-normal configuration and permission prompts. For isolation, create/open a
-worktree first. Agent tabs use the existing terminal input/output and close
-lifecycle; running/exited reports process state. No tool is installed or
-configured automatically.
+In Preferences, configure terminal profiles using an executable and separate
+arguments. New terminal tabs use the chosen default or the system shell. When
+profiles exist, **Profiles** in the terminal selects another saved profile for
+an explicit launch. Profiles from the former agent launcher remain available as
+terminal profiles; migration does not start them or set them as defaults.
 
 See [the capability inventory](docs/clean-room-capabilities.md) for remaining
-provider, account-context, collaboration and agent workflow scope.
+Git, provider, account-context and collaboration workflow scope.
 
 ## Architecture
 

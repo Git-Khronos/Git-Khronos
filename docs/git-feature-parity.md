@@ -1,13 +1,14 @@
 # Full Git feature parity: requirements and evidence
 
-Objective: reach full Git feature parity with GitKraken Desktop through an
-independent implementation. This objective is active. A green subset of tests,
-a capability name, or a browser handoff does not establish full parity.
+Objective: independently reach full non-AI Git feature parity with GitKraken
+Desktop, prioritizing basic local Git and file workflows. A green subset of
+tests, a capability name, or a browser handoff does not establish full parity.
 
 The inventory below preserves the whole objective. It includes local Git,
-hosted collaboration, workspace/account workflows, agent-assisted Git work,
-platform support, and usability. Product identity, protected assets and private
-vendor implementation/protocols are not implementation references. Equivalent
+hosted collaboration, workspace/account workflows, platform support, and
+usability. AI and coding-agent workflows are excluded. Product identity,
+protected assets and private vendor implementation/protocols are not
+implementation references. Equivalent
 capabilities must use public specifications and an original Khronos design.
 
 ## Acceptance method
@@ -31,6 +32,42 @@ No row is currently accepted as fully verified. Broad descriptions in the older
 not completion evidence. Each grouped row must be expanded into its constituent
 behavioral cases during the audit; grouping does not remove any listed action.
 
+## Current priorities
+
+1. **Force-push safety:** the existing `--force-with-lease` uses the current
+   tracking ref rather than an explicitly reviewed expected object ID. A
+   background fetch can advance that ref before a force push, weakening the
+   protection against overwriting an unreviewed remote update. Pin the reviewed
+   remote and object ID; this is a safety defect, not a GitKraken parity claim.
+   The [Git push documentation](https://git-scm.com/docs/git-push) explains the
+   limitation of implicit leases when background fetches run.
+2. **Local files:** Khronos can search tracked paths and edit existing files, but
+   lacks a general all-files view with direct file creation and deletion. The
+   [public file guide](https://help.gitkraken.com/gitkraken-desktop/adding-and-removing/)
+   documents those actions in GitKraken Desktop.
+3. **Partial stash restoration:** Khronos can save selected files and apply or
+   pop a whole stash. It lacks a dedicated action to apply an individual file's
+   stashed changes while retaining the stash; restoring a full file snapshot
+   from a commit is not the same operation. See the
+   [stash guide](https://help.gitkraken.com/gitkraken-desktop/stashing/).
+4. **Local multi-repository actions:** named local tab sets and an overview of
+   open repositories exist, but selected-repository bulk fetch, pull and open
+   workflows are missing. See the
+   [local workspace guide](https://help.gitkraken.com/gitkraken-desktop/workspaces/).
+5. **Gitflow finishing:** feature, release and hotfix setup/start/finish exist,
+   but optional feature rebase is not connected and branch-configuration
+   cleanup/name reuse needs qualification. See the
+   [Gitflow guide](https://help.gitkraken.com/gitkraken-desktop/git-flow/).
+6. **Optional submodule automation:** clone can include submodules and explicit
+   management exists, but global/per-repository automatic updates are not
+   exposed as in the
+   [submodule guide](https://help.gitkraken.com/gitkraken-desktop/submodules/).
+
+Core staging, commits, branches, history, merge/rebase, worktrees, submodules,
+LFS, diff and recovery already have implementations; each **Audit** row below
+still requires case-by-case verification. Hosted collaboration remains available
+and is lower priority than these basics.
+
 ## Local Git and repository interaction
 
 | ID | Required behavior | Current assessment / evidence needed |
@@ -41,21 +78,21 @@ behavioral cases during the audit; grouping does not remove any listed action.
 | G04 | Filter/search loaded and full history by message, author, SHA, date, path and branch/ref scope | Audit full-history search, pagination and zero/many matches; discover remaining documented filters |
 | G05 | Hide/solo/filter refs and remotes; collapse reference groups and preserve these view choices | Audit combinations and inheritance into new worktrees |
 | G06 | Stage/unstage whole files, hunks and lines; represent renames, modes, binaries, new/deleted files and submodules | Audit index/worktree bytes against independent Git CLI fixtures |
-| G07 | Ignore files/patterns, edit tracked files, invoke configured editors and diff/merge tools | Partial: literal file, extension and directory ignore rules are implemented; 10 core cases and five packaged file-ignore scenarios pass. Tracked-file editing and reviewed draft recovery have Linux package evidence. The independent [external file-tool candidate](specifications/external-file-tools.md) now has native preparation/execution/result authority and UI integration, with 29 focused and 471 broad Linux native executions plus reviewed normal/compact captures; optional LFS/signing/SSH gates pass. All 1,484 current renderer cases pass once without retries or skips. Missing-target creation, restart storage management and end-to-end extension/directory ignore coverage remain open. See the [recovery specification](specifications/editor-draft-recovery.md) |
+| G07 | Browse, create, delete and ignore files/patterns, edit tracked files, invoke configured editors and diff/merge tools | Partial: tracked-path search, ignore rules, file editing and reviewed external tools exist. A general all-files view and direct creation/deletion remain open. Earlier Linux package evidence predates the current source; restart storage management and end-to-end extension/directory ignore coverage also remain open. See the [recovery specification](specifications/editor-draft-recovery.md) and [external tool specification](specifications/external-file-tools.md) |
 | G08 | Compare revisions, contiguous commit selections and working trees; offer hunk/inline/split views, word changes, syntax colors, overview navigation, wrapping, whitespace and image/binary handling | Linux checkpoint: independent bounded byte/image previews and direct content entry pass all 1362 renderer cases and 377 native executions on corrected package `47e83c15899a`. SVG/local LFS previews, broader G08 behavior and other platforms remain open; see the [specification](specifications/non-text-diffs.md) |
 | G09 | Navigate file history/blame through renames and parent revisions; copy/reveal/open paths | Audit historical navigation, limits and deleted paths |
 | G10 | Create/amend commits, templates, coauthors, sign-off, empty commits and identity/author options | Audit exact commit metadata, hooks, templates and failure paths |
 | G11 | Sign commits/tags and diagnose effective signing configuration | Audit supported formats and real signed artifacts; verify tag-signing scope |
 | G12 | Create, rename, delete, checkout and publish branches, remote branches and detached commits | Audit exact refs, occupancy, tracking and destructive preconditions |
-| G13 | Fetch/pull/push scoped or all refs; configure remotes/upstreams, publish branches, force with lease, auto-fetch and cancel operations | Audit normal/auth/error/conflict/partial-success cases and inherited environment isolation |
+| G13 | Fetch/pull/push scoped or all refs; configure remotes/upstreams, publish branches, force with lease, auto-fetch and cancel operations | Partial: force-with-lease is not pinned to a reviewed expected object ID and background fetch can advance its implicit lease. Audit normal/auth/error/conflict/partial-success cases and inherited environment isolation |
 | G14 | Merge, fast-forward, rebase and preview conflicts; continue/abort/skip where applicable | Audit topology, dirty-state handling, strategy options and preview/actual outcome equivalence |
 | G15 | Interactive rebase: reorder, squash/fixup, edit/split, drop and preserve merges/root/selected ranges | Audit every edit instruction and recovery state against Git behavior |
 | G16 | Cherry-pick/revert individual or selected commits, including merge-parent selection and conflicts | Audit sequencing, ranges, no-commit options and abort/recovery |
 | G17 | Reset/reflog/undo/redo/discard recovery with clear destructive scope | Audit each supported action, retained recovery bytes and restart behavior |
-| G18 | Stash full/selected work, stage/index options, names, apply/pop/drop and branch from stash | Audit index/worktree/untracked combinations and stale stash preconditions |
+| G18 | Stash full/selected work, stage/index options, names, apply/pop/drop and branch from stash | Partial: selecting files to save exists; applying individual stashed file changes while retaining the stash is missing. Audit index/worktree/untracked combinations and stale stash preconditions |
 | G19 | Create, inspect, delete, rename, move and transfer lightweight/annotated/signed tags; navigate to their commits or branch from them | Audit tag types, peeled targets and remote lease behavior |
 | G20 | Detect/resolve text, binary, rename/delete and submodule conflicts; configure external merge resolution | Audit all conflict types; identify missing resolution modes |
-| G21 | Add/init/update/sync/remove nested submodules and inspect their changes/history | Audit nested, dirty, missing, detached and conflicted submodules |
+| G21 | Add/init/update/sync/remove nested submodules and inspect their changes/history | Partial: explicit management and optional recursive clone exist, but automatic update preferences are not exposed. Audit nested, dirty, missing, detached and conflicted submodules |
 | G22 | Initialize/use Git LFS, track/untrack, transfer/prune objects, and manage locks | Audit provider availability, actual object integrity and lock ownership |
 | G23 | Create/open/lock/move/repair/remove worktrees and branches safely | Audit occupancy, shared configuration, ignored/untracked collisions and recovery |
 | G24 | Configure and run feature/release/hotfix workflows, including finishing into the appropriate branches and tagging releases | Partial desktop: reviewed setup/start/finish and saved conflict recovery have source, renderer and Linux-package evidence; the specification records full-run failures and successful serial rechecks. Branch-configuration cleanup/name reuse, optional feature rebase and further signing/platform/failure cases remain open. The [independent specification](specifications/branch-workflows.md) records transitions, recovery and remaining gates |
@@ -89,7 +126,7 @@ implemented in-app capability.
 | H12 | Inspect CI/workflow status and actionable logs/artifacts for current review/repository context | Partial: GitHub run list and browser links exist; details/log/artifact workflow requires implementation |
 | H13 | Diagnose access, SSO, certificate, authentication, rate-limit and transient network failures | Partial: generic diagnostics and uncertain-write protection exist; provider-specific recovery and live qualification remain |
 
-## Workspaces, identities and assisted workflows
+## Workspaces, identities and external tools
 
 | ID | Required behavior | Current assessment / evidence needed |
 | --- | --- | --- |
@@ -97,13 +134,8 @@ implemented in-app capability.
 | W02 | Show multi-repository changes, divergence, active operations, review/CI/issue context and actionable overview filters | Partial: open-local-repository overview; unopened repositories and hosted aggregation missing |
 | W03 | Save/switch identities, accounts, preferences and tab sets; explicitly choose local/global identity sync without silent Git or credential changes | Partial: named commit identity templates only |
 | W04 | Provide local and shared team/repository collaboration views and discovery | Discovery and implementation required |
-| W05 | Configure terminal/editor/diff/merge/agent programs, repository setup commands and defaults | Partial: terminal/agent profiles have current Linux package evidence for literal PTY arguments, sanitized context, persistence, defaults, explicit launch, close and deletion. The [external file-tool candidate](specifications/external-file-tools.md) adds reviewed editor/comparison/merge launches, direct process ownership and separate merge save/stage/cleanup. Focused source/renderer gates, 29 focused and 471 broad exact-package native executions, all 1,484 renderer cases at that checkpoint, and optional transport gates have evidence; restart storage management and reviewed setup workflows remain open. See the [independent tool specification](specifications/configured-tools.md); integrated `dev` commit `26c0169b` passes remote CI; the new fork candidate has separate CI |
-| W06 | Launch supported agents in isolated worktrees from a chosen base and inherit repository view preferences | Partial: manual worktree creation and agent terminal launch are separate |
-| W07 | Monitor/sort/filter agent sessions, show repository WIP/divergence and documented live task/permission states | Partial: process running/exited only; public CLI status integrations need independent implementation |
-| W08 | Resume/restore agent sessions and respond to supported approval requests through documented integrations | Discovery and implementation required; never infer approval from process activity |
-| W09 | Draft commit messages and review-request descriptions; explain commits/branches and assist conflict resolution using configurable models, providers/endpoints and prompts | Discovery and implementation required; no account, model or provider access is implied |
-| W10 | Propose/review/edit commit groups from staged changes or a contiguous existing range, preserving authorship and adding coauthors where required | Missing assisted composition/recomposition; independent hunk completeness and recovery checks required before application |
-| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Audit every selected-repository action; grouping conversion and independent failure outcomes need implementation evidence |
+| W05 | Configure terminal/editor/diff/merge programs, repository setup commands and defaults | Partial: terminal profiles retain explicit launch and defaults; the former dedicated agent launcher was removed. The [external file-tool candidate](specifications/external-file-tools.md) supports reviewed editor/comparison/merge launches and separate merge save/stage/cleanup. Earlier Linux package evidence predates this removal; restart storage management and reviewed setup workflows remain open. See the [independent tool specification](specifications/configured-tools.md) |
+| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: local overview refreshes open repositories but selected-repository bulk fetch, pull and open workflows are missing. Group conversion and independent failure outcomes need implementation evidence |
 
 ## UX, platform and delivery requirements
 
@@ -123,15 +155,16 @@ implemented in-app capability.
 - [Desktop interface and feature index](https://help.gitkraken.com/gitkraken-desktop/interface/)
 - [Hosted review workflows](https://help.gitkraken.com/gitkraken-desktop/pull-requests/)
 - [Feature/release/hotfix workflows](https://help.gitkraken.com/gitkraken-desktop/git-flow/)
-- [Agent workflows](https://help.gitkraken.com/gitkraken-desktop/agents/)
 - [Profiles](https://help.gitkraken.com/gitkraken-desktop/profiles/)
 - [Fork workflows](https://help.gitkraken.com/gitkraken-desktop/fork/)
 - [Workspace workflows](https://help.gitkraken.com/gitkraken-desktop/workspaces/)
 - [Application link behavior](https://help.gitkraken.com/gitkraken-desktop/linking/)
 - [Review-request filter capabilities](https://help.gitkraken.com/gitkraken-desktop/pull-requests-filter-syntax/)
-- [Assisted Git workflow capabilities](https://help.gitkraken.com/gitkraken-desktop/gkd-gitkraken-ai/)
 - [Diff, history and blame workflows](https://help.gitkraken.com/gitkraken-desktop/diff/)
 - [File editing workflows](https://help.gitkraken.com/gitkraken-desktop/editing-files/)
+- [Local file management](https://help.gitkraken.com/gitkraken-desktop/adding-and-removing/)
+- [Stash workflows](https://help.gitkraken.com/gitkraken-desktop/stashing/)
+- [Submodule workflows](https://help.gitkraken.com/gitkraken-desktop/submodules/)
 - [Tag workflows](https://help.gitkraken.com/gitkraken-desktop/tags/)
 - [Git manuals](https://git-scm.com/docs)
 - [GitHub REST API](https://docs.github.com/en/rest)

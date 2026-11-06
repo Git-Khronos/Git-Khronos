@@ -2070,9 +2070,9 @@ cancellation, and byte-preserving operation on a dirty repository.
   hostname and GET method, validates repository coordinates, builds safe links,
   binds PR checks to a captured head and refuses changed-head review results.
   It does not expose credentials to the renderer or copy provider implementation.
-- Agent sessions launch one explicitly selected installed CLI directly through
-  the existing native PTY lifecycle. No shell command text or bypass flags are
-  generated; tool-specific internal protocols are not inspected or emulated.
+- Earlier builds exposed explicit installed coding-agent CLI launch through the
+  terminal PTY. That dedicated launcher was removed; legacy saved profiles remain
+  available as terminal profiles without automatic launch or a new default.
 
 UI composition, storage design and code are original Khronos implementations.
 See `docs/clean-room-capabilities.md` for precise limits and unfinished scope.

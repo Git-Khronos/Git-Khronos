@@ -82,22 +82,48 @@ describe('version two file program preferences', () => {
   });
   it('reads legacy data without writing or launching, then preserves every profile on the first explicit version two save', async () => {
     const terminal = profile(), agent = { ...profile('agent'), role: 'agent' as const };
+    const migrated = { ...agent, role: 'terminal' as const };
     const raw = JSON.stringify({ version: 1, profiles: [terminal, agent], defaultTerminalId: terminal.id });
     values.set(TOOL_PROFILES_STORAGE_KEY, raw);
     const service = new ConfiguredToolsService();
-    expect(service.profiles()).toEqual([terminal, agent]); expect(service.defaultTerminal()).toEqual(terminal);
+    expect(service.profiles()).toEqual([terminal, migrated]); expect(service.defaultTerminal()).toEqual(terminal);
+    expect(service.legacyProfilesMigrated()).toBe(true);
     expect(service.defaultFor('editor')).toBeNull(); expect(storage.setItem).not.toHaveBeenCalled(); expect(validate).not.toHaveBeenCalled();
     expect(values.get(TOOL_PROFILES_STORAGE_KEY)).toBe(raw);
     await service.save(fileProfile('editor'), true);
     const stored = JSON.parse(values.get(TOOL_PROFILES_STORAGE_KEY)!);
-    expect(stored.version).toBe(2); expect(stored.profiles).toEqual([terminal, agent, fileProfile('editor')]);
-    const restored = new ConfiguredToolsService(); expect(restored.defaultTerminal()).toEqual(terminal); expect(restored.defaultFor('editor')).toEqual(fileProfile('editor')); expect(restored.defaultFor('agent')).toBeNull();
+    expect(stored.version).toBe(2); expect(stored.profiles).toEqual([terminal, migrated, fileProfile('editor')]);
+    const restored = new ConfiguredToolsService(); expect(restored.defaultTerminal()).toEqual(terminal); expect(restored.defaultFor('editor')).toEqual(fileProfile('editor')); expect(restored.legacyProfilesMigrated()).toBe(false);
+  });
+  it('migrates version two legacy profiles without changing defaults or stored bytes until a successful explicit edit', async () => {
+    const agent = { ...profile('old'), role: 'agent' as const };
+    const raw = JSON.stringify({ version: 2, profiles: [agent, fileProfile('editor')], defaultTerminalId: null, defaultEditorId: 'editor', defaultDiffId: null, defaultMergeId: null });
+    values.set(TOOL_PROFILES_STORAGE_KEY, raw);
+    const service = new ConfiguredToolsService();
+    expect(service.profiles()).toEqual([{ ...agent, role: 'terminal' }, fileProfile('editor')]);
+    expect(service.defaultTerminal()).toBeNull(); expect(service.defaultFor('editor')).toEqual(fileProfile('editor'));
+    expect(service.legacyProfilesMigrated()).toBe(true);
+    expect(storage.setItem).not.toHaveBeenCalled(); expect(validate).not.toHaveBeenCalled();
+    storage.setItem.mockImplementationOnce(() => { throw new Error('Storage full'); });
+    await expect(service.save(fileProfile('merge'), true)).rejects.toThrow('Storage full');
+    expect(values.get(TOOL_PROFILES_STORAGE_KEY)).toBe(raw);
+    expect(service.profiles()).toEqual([{ ...agent, role: 'terminal' }, fileProfile('editor')]);
+    await service.save(fileProfile('merge'), true);
+    const stored = JSON.parse(values.get(TOOL_PROFILES_STORAGE_KEY)!);
+    expect(stored.profiles[0]).toEqual({ ...agent, role: 'terminal' }); expect(stored.defaultTerminalId).toBeNull();
+  });
+  it('rejects a legacy agent as a terminal default before converting it', () => {
+    const raw = JSON.stringify({ version: 2, profiles: [{ ...profile('old'), role: 'agent' }], defaultTerminalId: 'old', defaultEditorId: null, defaultDiffId: null, defaultMergeId: null });
+    values.set(TOOL_PROFILES_STORAGE_KEY, raw);
+    const service = new ConfiguredToolsService();
+    expect(service.storageError()).toBeTruthy(); expect(service.profiles()).toEqual([]);
+    expect(values.get(TOOL_PROFILES_STORAGE_KEY)).toBe(raw); expect(storage.setItem).not.toHaveBeenCalled();
   });
   it('keeps defaults role-bound and independent across profile edits, deletion and terminal fallback', async () => {
     const service = new ConfiguredToolsService(); await service.save(profile(), true);
     for (const role of ['editor', 'diff', 'merge'] as const) await service.save(fileProfile(role), true);
     expect(service.defaultFor('editor')).toEqual(fileProfile('editor')); expect(service.defaultFor('diff')).toEqual(fileProfile('diff')); expect(service.defaultFor('merge')).toEqual(fileProfile('merge'));
-    await service.save({ ...fileProfile('editor'), role: 'agent', arguments: [] }, false);
+    await service.save({ ...fileProfile('editor'), role: 'terminal', arguments: [] }, false);
     expect(service.defaultFor('editor')).toBeNull(); expect(service.defaultFor('diff')?.id).toBe('diff');
     service.remove('diff'); expect(service.defaultFor('diff')).toBeNull(); expect(service.defaultFor('merge')?.id).toBe('merge');
     service.useSystemTerminal(); expect(service.defaultTerminal()).toBeNull(); expect(service.defaultFor('merge')?.id).toBe('merge');

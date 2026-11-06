@@ -62,7 +62,7 @@ for line in sys.stdin:
         driver.invoke('close_terminal', sessionId=session['id']); sessions.remove(session['id'])
         report['scenarios'].append('native-configured-program-real-pty-literal-argv-cwd-and-sanitized-git-context')
 
-        for rejected in [dict(profile, role='editor'), dict(profile, version=2), dict(profile, executable='/owned/missing-program')]:
+        for rejected in [dict(profile, role='editor'), dict(profile, role='agent'), dict(profile, version=2), dict(profile, executable='/owned/missing-program')]:
             try:
                 unexpected = driver.invoke('open_configured_terminal', repoId=repo_id, profile=rejected, rows=24, cols=80)
                 sessions.add(unexpected['id'])
@@ -70,7 +70,7 @@ for line in sys.stdin:
             except RuntimeError:
                 pass
         assert len(observed(1)) == 1
-        report['scenarios'].append('native-configured-program-refuses-file-role-invalid-version-and-missing-executable')
+        report['scenarios'].append('native-configured-program-refuses-nonterminal-role-invalid-version-and-missing-executable')
 
         open_ui(driver, repository)
         preferences()

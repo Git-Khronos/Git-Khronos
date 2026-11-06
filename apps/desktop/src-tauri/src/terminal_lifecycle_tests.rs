@@ -225,16 +225,19 @@ fn concurrent_terminal_cleanup_does_not_hold_the_registry_or_announce_exit_twice
 }
 
 #[test]
-fn agent_programs_are_explicit_interactive_commands_without_injected_arguments() {
-    for (value, executable) in [("codex", "codex"), ("claude", "claude"), ("gemini", "gemini"), ("opencode", "opencode")] {
-        let agent: AgentProgram = serde_json::from_str(&format!("\"{value}\"")).unwrap();
-        assert_eq!(agent.executable(), executable);
-        let mut command = CommandBuilder::new(agent.executable());
-        configure_terminal_command(&mut command, Path::new("/owned/worktree"));
-        assert_eq!(command.get_argv(), &[std::ffi::OsString::from(executable)]);
-        assert_eq!(command.get_cwd(), Some(&std::ffi::OsString::from("/owned/worktree")));
+fn tool_roles_are_explicit_and_exclude_the_removed_agent_role() {
+    use git_khronos_git_core::ToolRole;
+
+    for (value, role) in [
+        ("editor", ToolRole::Editor),
+        ("diff", ToolRole::Diff),
+        ("merge", ToolRole::Merge),
+        ("terminal", ToolRole::Terminal),
+    ] {
+        let parsed: ToolRole = serde_json::from_str(&format!("\"{value}\"")).unwrap();
+        assert_eq!(parsed, role);
     }
-    for invalid in ["sh", "codex --yolo", "claude;touch /tmp/injected", "../codex"] {
-        assert!(serde_json::from_str::<AgentProgram>(&format!("\"{invalid}\"")).is_err());
+    for invalid in ["agent", "shell", "terminal --flag", "../terminal"] {
+        assert!(serde_json::from_str::<ToolRole>(&format!("\"{invalid}\"")).is_err());
     }
 }
