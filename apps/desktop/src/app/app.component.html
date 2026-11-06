@@ -1498,6 +1498,7 @@
           @if (!selectedStash() && commit.decorations.length) {
             <div class="commit-detail-refs" aria-label="Commit references">
               <span
+                #detailReferenceStackElement
                 class="commit-detail-ref-stack"
                 [class.multi-ref]="commit.decorations.length > 1"
                 [class.is-open]="detailReferenceStackOpen()"

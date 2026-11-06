@@ -1521,7 +1521,7 @@ button.grouped-reference-location:hover, button.grouped-reference-location:focus
 .commit-detail-ref-stack { position: relative; min-width: 0; max-width: 100%; display: inline-flex; }
 .detail-reference-stack-trigger { width: auto; max-width: 100%; min-width: 112px; }
 .detail-reference-popover { position: absolute; z-index: 24; top: calc(100% + 4px); left: 0; width: max-content; min-width: min(230px, calc(100vw - 48px)); max-width: min(360px, calc(100vw - 48px)); max-height: min(320px, calc(100vh - 120px)); display: none; flex-direction: column; gap: 3px; overflow: auto; padding: 6px 0; border: 1px solid #55536f; border-radius: 5px; background: #222134fa; box-shadow: 0 8px 24px #000a; }
-.commit-detail-ref-stack.multi-ref:not(.escape-collapsed):is(.is-open, :hover, :focus-within) > .detail-reference-popover { display: flex; }
+.commit-detail-ref-stack.multi-ref:not(.escape-collapsed).is-open > .detail-reference-popover { display: flex; }
 .detail-reference-popover > .ref-stack-heading { display: flex; align-items: center; gap: 5px; margin: 0 6px; padding: 1px 3px 5px; border-bottom: 1px solid #45435d; color: #8f8da3; font-size: 11px; font-weight: 750; letter-spacing: .035em; text-transform: uppercase; }
 .detail-reference-popover > .ref-stack-heading gc-icon { color: #a69cf1; }
 .detail-reference-popover > .grouped-reference-row { min-width: 210px; }

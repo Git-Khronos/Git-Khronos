@@ -648,6 +648,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly historySearchToggle = viewChild<ElementRef<HTMLButtonElement>>('historySearchToggle');
   private readonly diffFileMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('diffFileMenuToggle');
+  private readonly detailReferenceStackElement = viewChild<ElementRef<HTMLElement>>('detailReferenceStackElement');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
   private readonly worktreeDialogElement = viewChild<ElementRef<HTMLElement>>('worktreeDialogElement');
   private readonly submoduleDialogElement = viewChild<ElementRef<HTMLElement>>('submoduleDialogElement');
@@ -8444,6 +8445,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.prepareActionMenu('stack');
+    this.detailReferenceStackCollapsed.set(false);
     this.openDetailReferenceStack();
     const stack = (event.currentTarget as HTMLElement).closest<HTMLElement>('.commit-detail-ref-stack');
     this.focusReferenceStackItem(stack, event.key === 'ArrowUp' || event.key === 'End');
@@ -8506,6 +8508,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cancelDetailReferenceStackClose();
     this.detailReferenceStackCloseTimer = setTimeout(() => {
       this.detailReferenceStackCloseTimer = null;
+      if (this.detailReferenceStackElement()?.nativeElement.matches(':hover, :focus-within')) return;
       this.detailReferenceStackOpen.set(false);
     }, 160);
   }
@@ -12551,8 +12554,16 @@ export class AppComponent implements OnInit, OnDestroy {
       this.workingTreeOptionsOpen.set(false);
     }
     if (this.diffFileMenuOpen() && !inside(this.diffFileMenuToggle()?.nativeElement, '#diff-file-menu')) this.diffFileMenuOpen.set(false);
-    // Focus can stay inside the reference list when the pressed surface prevents default focus changes.
-    if (this.detailReferenceStackOpen() && !inside('.commit-detail-ref-stack')) {
+    const expandedReferenceOid = this.expandedReferenceStackOid();
+    if (expandedReferenceOid) {
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      const stack = targetElement?.closest('.commit-ref-stack');
+      if (stack?.closest('[data-commit-oid]')?.getAttribute('data-commit-oid') !== expandedReferenceOid) {
+        this.dismissGraphReferenceStack();
+      }
+    }
+    const detailStack = this.detailReferenceStackElement()?.nativeElement;
+    if (this.detailReferenceStackOpen() && !inside(detailStack)) {
       this.cancelDetailReferenceStackClose();
       this.detailReferenceStackOpen.set(false);
     }
