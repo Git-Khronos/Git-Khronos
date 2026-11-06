@@ -12515,7 +12515,43 @@ export class AppComponent implements OnInit, OnDestroy {
       this.graphSettingsOpen.set(false);
       this.graphSettingsPosition.set(null);
     }
+    this.dismissOutsideDropdowns(target);
   };
+
+  // Many surfaces stop click propagation, so dropdowns cannot rely on the bubbling document click to close.
+  private dismissOutsideDropdowns(target: Node): void {
+    const inside = (...areas: (Element | string | null | undefined)[]): boolean => areas.some((area) => {
+      if (typeof area === 'string') {
+        return target instanceof Element && !!target.closest(area);
+      }
+      return !!area?.contains(target);
+    });
+    if (this.appMenuOpen() && !inside(this.appMenuToggle()?.nativeElement, '.app-menu-popover')) this.appMenuOpen.set(false);
+    if (this.repositoryTabsOpen() && !inside(this.repositoryTabsToggle()?.nativeElement, this.repositoryTabsMenu()?.nativeElement)) {
+      this.repositoryTabsOpen.set(false);
+    }
+    if (this.toolbarRemoteMenuOpen() && !inside(this.toolbarRemoteToggle()?.nativeElement, '.remote-nav-menu')) {
+      this.toolbarRemoteMenuOpen.set(false);
+    }
+    if (this.toolbarCheckoutMenuOpen() && !inside(this.toolbarBranchToggle()?.nativeElement, '#branch-picker')) {
+      this.closeToolbarCheckoutMenu();
+    }
+    const toolbarMenuOpen = this.fetchMenuOpen() || this.pullMenuOpen() || this.pushMenuOpen() || this.branchMenuOpen()
+      || this.stashMenuOpen() || this.lfsMenuOpen() || this.sparseCheckoutMenuOpen() || this.moreActionsMenuOpen();
+    if (toolbarMenuOpen && !inside('.toolbar-menu:not(.panel-options-menu)', '.split-toggle', '.tool-button[aria-haspopup="menu"]')) {
+      this.closeToolbarMenus();
+    }
+    if (this.identityPopoverOpen() && !inside('.identity-popover', '.identity-chip')) {
+      this.identityPopoverOpen.set(false);
+    }
+    if (this.authorFilterOpen() && !inside('.author-filter-menu', '.author-filter-toggle')) this.authorFilterOpen.set(false);
+    if (this.coAuthorPickerOpen() && !inside('.coauthor-picker', '.add-coauthor')) this.coAuthorPickerOpen.set(false);
+    if (this.workingTreeOptionsOpen()
+      && !inside(this.workingTreeOptionsToggle()?.nativeElement, this.workingTreeOptionsMenu()?.nativeElement)) {
+      this.workingTreeOptionsOpen.set(false);
+    }
+    if (this.diffFileMenuOpen() && !inside(this.diffFileMenuToggle()?.nativeElement, '#diff-file-menu')) this.diffFileMenuOpen.set(false);
+  }
 
   private prepareActionMenu(kind: 'graph' | 'file' | 'sidebar' | 'sidebar-context' | 'repository' | 'settings' | 'stack'): void {
     if (kind !== 'graph') this.dismissGraphActionMenu();
