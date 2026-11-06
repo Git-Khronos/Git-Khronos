@@ -104,3 +104,19 @@ test('an outside click closes a dropdown and still acts on its target', async ({
     await expect(row).toHaveClass(/selected/);
   }
 });
+
+test('the commit reference list closes on an outside press that keeps focus inside it', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"]').click();
+  const trigger = page.locator('.commit-detail-ref-stack .detail-reference-stack-trigger');
+  await trigger.focus();
+  await trigger.press('Shift+F10');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.detail-reference-popover [role="menuitem"]:focus')).toBeVisible();
+
+  const statusbar = page.locator('.statusbar');
+  await statusbar.evaluate((element) => element.addEventListener('mousedown', (event) => event.preventDefault()));
+  const bounds = (await statusbar.boundingBox())!;
+  await page.mouse.click(bounds.x + 5, bounds.y + bounds.height / 2);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});

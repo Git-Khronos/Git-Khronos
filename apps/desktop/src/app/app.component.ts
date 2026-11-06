@@ -12551,6 +12551,11 @@ export class AppComponent implements OnInit, OnDestroy {
       this.workingTreeOptionsOpen.set(false);
     }
     if (this.diffFileMenuOpen() && !inside(this.diffFileMenuToggle()?.nativeElement, '#diff-file-menu')) this.diffFileMenuOpen.set(false);
+    // Focus can stay inside the reference list when the pressed surface prevents default focus changes.
+    if (this.detailReferenceStackOpen() && !inside('.commit-detail-ref-stack')) {
+      this.cancelDetailReferenceStackClose();
+      this.detailReferenceStackOpen.set(false);
+    }
   }
 
   private prepareActionMenu(kind: 'graph' | 'file' | 'sidebar' | 'sidebar-context' | 'repository' | 'settings' | 'stack'): void {
