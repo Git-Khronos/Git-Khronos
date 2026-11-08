@@ -5,11 +5,11 @@
 - [Linux `openat2(2)` manual](https://man7.org/linux/man-pages/man2/openat2.2.html)
 - [Linux kernel pathname lookup](https://docs.kernel.org/filesystems/path-lookup.html)
 
-Used to define beneath-root, no-symlink resolution for empty-file creation and
-to validate behavior under concurrent renames. Linux uses one rooted
-`openat2` operation for the final create; this does not establish safety for
-Git-backed deletion or other Unix implementations. No external source code
-was copied.
+These sources informed an earlier independent Linux file-creation approach.
+That implementation was removed after testing showed the selected worktree
+root could still be replaced concurrently. Empty-file creation is now refused
+outside Windows and in Windows subdirectories; no Linux `openat2` create path
+is active. No external source code was copied.
 
 ## Windows repository-file boundaries
 

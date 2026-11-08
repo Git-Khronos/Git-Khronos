@@ -465,13 +465,6 @@ fn update_with_controls(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => return Err(io_error(error)),
         };
-        if !exists && !cfg!(target_os = "linux") {
-            return Err(AppError::new(
-                "unsupportedPlatform",
-                "A new root .gitignore cannot be published safely on this platform.",
-                Some("Create .gitignore manually, then refresh and retry."),
-            ));
-        }
         if stop_tracking {
             // Refuse known index/staging conflicts before adding an ignore rule.
             run_mutation(
@@ -533,6 +526,20 @@ fn update_with_controls(
                 Ok(true) => {}
                 Ok(false) => return Err(lock_changed("the lock name refers to a different file")),
                 Err(error) => return Err(lock_changed(error)),
+            }
+            if !exists {
+                match fs::symlink_metadata(&destination) {
+                    Ok(_) => return Err(ignore_file_changed()),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io_error(error)),
+                }
+                if !cfg!(target_os = "linux") {
+                    return Err(AppError::new(
+                        "unsupportedPlatform",
+                        "A new root .gitignore cannot be published safely on this platform.",
+                        Some("Create .gitignore manually, then refresh and retry."),
+                    ));
+                }
             }
             if exists {
                 // This preserves the existing replacement behavior; concurrent

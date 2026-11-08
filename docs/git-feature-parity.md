@@ -368,7 +368,8 @@ implemented in-app capability.
   a packaged application and its native UI/IPC, terminal, file safety,
   recovery, installation and restart behavior on supported macOS versions and
   architectures. Other Unix file creation is not qualified against Linux's
-  tested parent-move race. The current Tauri pre-bundle command prepares
+  tested parent-move race; file creation is currently refused on non-Windows
+  platforms. The current Tauri pre-bundle command prepares
   Linux-oriented assets unconditionally, so its suitability for a macOS bundle
   must be established rather than assumed. Signing and notarization need their
   own evidence when required by the chosen distribution policy.

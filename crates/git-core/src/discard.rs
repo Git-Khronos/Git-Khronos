@@ -191,7 +191,16 @@ impl DiscardBoundary {
                 if error == rustix::io::Errno::NOENT {
                     missing_recovery_file()
                 } else {
-                    unsafe_discard("The recovery directory could not be opened safely.")
+                    let error: std::io::Error = error.into();
+                    if error.kind() == std::io::ErrorKind::PermissionDenied {
+                        AppError::new(
+                            "discardRecoveryUnavailable",
+                            "The recovery directory could not be accessed.",
+                            Some("Restore access to the Git directory, then refresh discarded-change recovery."),
+                        )
+                    } else {
+                        unsafe_discard("The recovery directory could not be opened safely.")
+                    }
                 }
             })?,
         );
