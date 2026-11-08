@@ -1487,7 +1487,11 @@ mod tests {
             b"outside file must survive\n"
         );
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
-        assert!(discarded_change_recoveries(&repository.0).unwrap().len() >= 1);
+        assert!(
+            !discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
         fs::remove_dir_all(&outside).unwrap();
     }
 

@@ -459,17 +459,20 @@ The earlier Debian candidate
 passed package verification and the complete headless native suite: 228
 scenarios passed, including checkpoint deletion, stale-review refusal, editor
 and file-tool workflows, and eight right clicks delivered only to the owned
-Xvfb/application window. The rebuilt current-source candidate
+Xvfb/application window. The candidate built from the source at `10c2866`
 `1ce7f469980c33600572f8fec7e628a180e8184cfc750d5f59e28f6847befa46`
 passes package verification and the complete headless native suite: 229
 scenarios passed, including eight right clicks delivered only to the owned
-Xvfb/application window. The report records the same package SHA-256.
+Xvfb/application window. The report records the same package SHA-256. A later
+test-only Clippy correction changes a package receipt input without changing
+production code.
 
 A disposable Linux real-Git probe confirmed that replacing a parent directory
 can redirect tracked deletion outside the worktree. Tracked deletion is now
-refused on non-Windows platforms. Windows ancestor-handle protection still
-requires native runtime qualification. A real-Git regression swaps an
-untracked file's reviewed parent for a symlink immediately before
+refused on non-Windows platforms. Focused native Windows CI tests cover
+ancestor-handle rename protection, tracked deletion and working-file previews;
+the complete Windows application remains unqualified. A real-Git regression
+swaps an untracked file's reviewed parent for a symlink immediately before
 reverse-apply and confirms the outside file and index are preserved;
 other-platform qualification remains open. See the capability audit.
 

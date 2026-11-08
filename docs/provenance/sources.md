@@ -19,7 +19,8 @@ was copied.
 
 Used to independently define validation for Windows file names and resolved
 paths, including possible short-name aliases for Git metadata. No external
-source code or assets were copied. Windows runtime qualification remains open.
+source code or assets were copied. Focused native Windows CI tests cover these
+boundaries; broader Windows application qualification remains open.
 
 ## Private discard-recovery snapshots
 
