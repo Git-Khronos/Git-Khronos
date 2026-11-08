@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test';
 
 for (const kind of ['head', 'checkout', 'rename-branch', 'discard', 'saved-discard']) {
   for (const direction of ['undo', 'redo']) {
-    for (const scenario of ['unrelated-error', 'dismissed-failure']) {
+    const discard = kind === 'discard' || kind === 'saved-discard';
+    const scenarios = ['unrelated-error', 'dismissed-failure', ...(discard ? ['dismissed-unknown-failure'] : [])];
+    for (const scenario of scenarios) {
       test(`${direction} ${kind} tracks its own outcome during ${scenario}`, async ({ page }) => {
         await page.goto('/');
         await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -24,13 +26,23 @@ for (const kind of ['head', 'checkout', 'rename-branch', 'discard', 'saved-disca
             state.calls.push({ command, args });
             if (command === 'inspect_commit') return Promise.reject({ message: 'Other inspection failed' });
             if (command === 'refresh_repository' || command === 'refresh_repository_status') {
-              if (scenario === 'dismissed-failure') git.dismissError();
+              if (scenario !== 'unrelated-error') {
+                if (git.error()) state.dismissedError = git.error();
+                git.dismissError();
+              }
               return Promise.resolve(command === 'refresh_repository' ? repository : repository.status);
             }
             return new Promise((resolve, reject) => {
-              state.finish = () => scenario === 'dismissed-failure'
-                ? reject({ message: 'Replay refused' })
-                : resolve(command === 'apply_saved_discard' ? { status: repository.status, affectedToolbar: false } : repository);
+              state.finish = () => {
+                if (scenario === 'unrelated-error') {
+                  resolve(command === 'apply_saved_discard' ? { status: repository.status, affectedToolbar: false } : repository);
+                } else if (scenario === 'dismissed-unknown-failure') {
+                  reject({ message: 'Desktop connection interrupted' });
+                } else {
+                  reject({ ...(kind === 'discard' || kind === 'saved-discard' ? { kind: 'discardRecoveryUnavailable' } : {}),
+                    message: 'Replay refused' });
+                }
+              };
             });
           } };
           state.pending = git[direction]();
@@ -41,10 +53,18 @@ for (const kind of ['head', 'checkout', 'rename-branch', 'discard', 'saved-disca
           if (scenario === 'unrelated-error') await state.git.inspectCommit(state.git.repository().headOid);
           state.finish();
           await state.pending;
-          return { entry: state.git.operationHistory()[state.repository.id], error: state.git.error(),
+          return { entry: state.git.operationHistory()[state.repository.id] ?? null, error: state.git.error(),
+            dismissedError: state.dismissedError,
             repoId: state.repository.id, calls: state.calls, active: state.git.activeRepositoryId() };
         }, scenario);
-        expect(result.entry.undone).toBe(scenario === 'unrelated-error' ? direction === 'undo' : direction === 'redo');
+        if (scenario === 'dismissed-unknown-failure') {
+          expect(result.entry).toBeNull();
+          expect(result.dismissedError).toContain('Desktop connection interrupted');
+          expect(result.dismissedError).toContain('recovery action may have changed files or recovery state');
+        } else {
+          expect(result.entry).toMatchObject({ undone: scenario === 'unrelated-error' ? direction === 'undo' : direction === 'redo' });
+          if (scenario === 'dismissed-failure') expect(result.dismissedError).toContain('Replay refused');
+        }
         expect(result.error).toBe(scenario === 'unrelated-error' ? 'Other inspection failed' : null);
         expect(result.active).toBe('other-replay');
         const mutation = result.calls[0];
