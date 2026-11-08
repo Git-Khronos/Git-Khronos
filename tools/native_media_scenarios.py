@@ -171,13 +171,7 @@ def direct_file_content(driver, fixtures, source, report):
     (repository / path).write_bytes(after)
 
     def preview(selector):
-        driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
-        element = driver.script("const row = document.querySelector(arguments[0]); row.scrollIntoView({block:'nearest'}); return row", selector)
-        driver.request('POST', driver.path('actions'), {'actions': [{
-            'type': 'pointer', 'id': 'direct-content-menu', 'parameters': {'pointerType': 'mouse'},
-            'actions': [{'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
-                        {'type': 'pointerDown', 'button': 2}, {'type': 'pointerUp', 'button': 2}],
-        }]})
+        driver.context_click(selector)
         driver.click_text('[role="menuitem"]', 'Preview file content')
         driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
 

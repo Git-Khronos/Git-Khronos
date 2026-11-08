@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
 async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
@@ -45,6 +49,17 @@ async function open(page: Page): Promise<void> {
 
 test('registration review distinguishes prunable and locked entries and invokes only the read-only native command', async ({ page }) => {
   await setup(page);
+  const actions = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+  await actions.click();
+  await page.getByRole('menuitem', { name: 'Review registrations and prune report…', exact: true }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a worktree menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeRegistrationRequest())).toBeNull();
+  await expect(actions).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls)).toEqual([]);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
   await expect(dialog.getByRole('status')).toContainText('3 registrations reported');
@@ -128,6 +143,9 @@ test('registration review remains keyboard-contained in a compact window and con
 });
 
 test('delayed review chunk can be cancelled without a native query or a late-opened dialog', async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let reviewHeld = false;
   let finished!: () => void;
   const chunkFinished = new Promise<void>(resolve => { finished = resolve; });
   await page.route('**/chunk-*.js', async route => {
@@ -135,24 +153,31 @@ test('delayed review chunk can be cancelled without a native query or a late-ope
     const text = await response.text();
     const reviewChunk = text.includes('Review worktree registrations') && text.includes('data-registration-result');
     if (reviewChunk) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      reviewHeld = true;
+      await gate;
     }
     await route.fulfill({ response, body: text });
     if (reviewChunk) finished();
   });
-  await setup(page);
-  const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
-  await opener.click();
-  await page.getByRole('menuitem', { name: 'Review registrations and prune report…', exact: true }).click();
-  const loading = page.getByRole('dialog', { name: 'Loading review', exact: true });
-  await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(loading).toHaveCount(0);
-  await expect(opener).toBeFocused();
-  await chunkFinished;
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  await expect(page.getByRole('dialog', { name: 'Review worktree registrations', exact: true })).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'worktree_registration_review'))).toBe(false);
+  try {
+    await setup(page);
+    const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+    await opener.click();
+    await page.getByRole('menuitem', { name: 'Review registrations and prune report…', exact: true }).click();
+    const loading = page.getByRole('dialog', { name: 'Loading review', exact: true });
+    await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await expect.poll(() => reviewHeld).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(loading).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    release();
+    await chunkFinished;
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    await expect(page.getByRole('dialog', { name: 'Review worktree registrations', exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'worktree_registration_review'))).toBe(false);
+  } finally {
+    release();
+  }
 });
 
 test('failed registration chunk has an explicit no-command error and a keyboard close route', async ({ page }) => {

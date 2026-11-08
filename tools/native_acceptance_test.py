@@ -16,8 +16,8 @@ from unittest.mock import MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
-    Driver, Fixtures, main, run, start_private_dbus, stop_owned_process_group,
-    terminal_csp_rendering,
+    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, main, run,
+    start_private_dbus, stop_owned_process_group, terminal_csp_rendering,
 )
 
 
@@ -79,6 +79,36 @@ class TerminalCspTests(unittest.TestCase):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_checkpoint_fixture_preserves_only_live_refs_and_repository_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            repository = fixtures.repository(commits=2)
+            head = fixtures.git(repository, "rev-parse", "HEAD")
+            index = (repository / ".git/index").read_bytes()
+            content = (repository / "fixture.txt").read_bytes()
+            checkpoint = checkpoint_fixture(fixtures, repository)
+            names, oids = checkpoint["names"], checkpoint["oids"]
+            live = ("reviewed", "sibling", "moved", "external-packed", "external-loose")
+            self.assertEqual(checkpoint_refs(fixtures, repository),
+                             {names[key]: oids[key] for key in live})
+            packed = (repository / ".git/packed-refs").read_text()
+            for key in ("reviewed", "sibling", "moved", "external-packed"):
+                self.assertIn(f"{oids[key]} {names[key]}\n", packed)
+                self.assertFalse((repository / ".git" / names[key]).exists())
+            self.assertTrue((repository / ".git" / names["external-loose"]).is_file())
+            self.assertNotIn(names["deleted-packed"], packed)
+            self.assertFalse((repository / ".git" / names["deleted-loose"]).exists())
+            reachable = set(fixtures.git(repository, "log", "--all", "--format=%H").splitlines())
+            for key in ("reviewed", "moved", "external-packed", "external-loose"):
+                self.assertIn(oids[key], reachable)
+            for key in ("deleted-packed", "deleted-loose", "replacement"):
+                self.assertNotIn(oids[key], reachable)
+                fixtures.git(repository, "cat-file", "-e", f"{oids[key]}^{{commit}}")
+            self.assertEqual(fixtures.git(repository, "rev-parse", "HEAD"), head)
+            self.assertEqual((repository / ".git/index").read_bytes(), index)
+            self.assertEqual((repository / "fixture.txt").read_bytes(), content)
+            self.assertFalse(fixtures.git(repository, "status", "--porcelain"))
+
     def test_private_session_buses_are_distinct_and_cannot_activate_host_services(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -575,6 +605,7 @@ class FixtureTests(unittest.TestCase):
 
             driver = MagicMock()
             driver.session = "owned"
+            driver.native_pointer_deliveries = []
             driver.start.side_effect = RuntimeError("fixture startup failure")
             driver.screenshot.side_effect = lambda _path: observed.append(("screenshot", cleaned))
             driver.close.side_effect = lambda: observed.append(("close", cleaned))

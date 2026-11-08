@@ -126,7 +126,7 @@
                 <button type="button" role="menuitem" (click)="appMenuOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="14" /><span><strong>Terminal</strong><small>Open repository terminal tabs</small></span><kbd>{{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</kbd></button>
                 <button type="button" role="menuitem" [disabled]="git.busy() || !!fileContentDialog()" (click)="openFileTools()"><gc-icon name="terminal" [size]="14" /><span><strong>External file tools</strong><small>Inspect commands and retained comparison files</small></span></button>
                 <button type="button" role="menuitem" [disabled]="!!fileContentDialog()" (click)="openEditorDraftRecovery()"><gc-icon name="history" [size]="14" /><span><strong>Editor draft recovery</strong><small>Inspect retained unsaved text</small></span></button>
-                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Recover commits from previous reference positions</small></span></button>
+                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Find saved changes and previous commit positions</small></span></button>
               </div>
               <div class="app-menu-section">
                 <span>Edit</span>
@@ -287,7 +287,7 @@
           </div>
           <gc-icon class="toolbar-nav-divider" name="chevron-right" [size]="11" />
           <div class="toolbar-nav-control branch-nav-control">
-            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ repo.status.branch ?? 'detached HEAD' }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ repo.status.branch ?? 'detached HEAD' }}, {{ currentBranchStateLabel() }}" aria-haspopup="dialog" aria-controls="branch-picker" [disabled]="git.busy()" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
+            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ repo.status.branch ?? 'detached HEAD' }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ repo.status.branch ?? 'detached HEAD' }}, {{ currentBranchStateLabel() }}" aria-haspopup="dialog" [attr.aria-controls]="toolbarCheckoutMenuOpen() ? 'branch-picker' : null" [disabled]="git.busy()" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
               <gc-icon class="toolbar-nav-leading-icon" name="branch" [size]="12" />
               <span><small class="branch-state-summary">{{ currentBranchStateLabel() }}</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong></span><gc-icon name="chevron-down" [size]="9" />
             </button>
@@ -397,7 +397,7 @@
               </header>
               <button type="button" role="menuitem" (click)="pushMenuOpen.set(false); pushCurrentBranch()"><gc-icon name="push" [size]="13" /><span><strong>{{ currentBranch()?.upstream ? 'Push' : 'Publish branch' }}</strong><small>{{ pushToolbarLabel() }}</small></span></button>
               <div class="menu-separator"></div>
-              <button class="danger-item" type="button" role="menuitem" [disabled]="!currentRemoteIsUpstream()" (click)="requestForcePush()"><gc-icon name="warning" [size]="13" /><span><strong>Force Push with Lease…</strong><small>Rewrite the selected upstream only if nobody else changed it</small></span></button>
+              <button class="danger-item" type="button" role="menuitem" [disabled]="!currentRemoteIsUpstream()" (click)="requestForcePush()"><gc-icon name="warning" [size]="13" /><span><strong>Force Push with Lease…</strong><small>Rewrite only if the reviewed upstream commit is unchanged</small></span></button>
             </div>
           }
         </div>
@@ -622,7 +622,7 @@
             <span><strong>Bare repository</strong><small>Read-only · no working tree</small></span>
           </div>
         } @else {
-          <button class="wip-nav" type="button" [class.selected]="changesOpen()" (click)="selectWip()">
+          <button class="wip-nav" type="button" [class.selected]="changesOpen()" (click)="openWorkingDirectory()">
             <span class="wip-icon">WIP</span>
             <span><strong>Working Directory</strong><small>{{ repo.status.entryCount }} changed files</small></span>
             <b>{{ repo.status.entryCount }}</b>
@@ -1113,11 +1113,44 @@
         }
         <div class="commit-list-shell" [style.--graph-scrollbar-gutter]="graphScrollbarGutter() + 'px'" [class.can-scroll-left]="graphCanScrollLeft()" [class.can-scroll-right]="graphCanScrollRight()">
         <div #commitList class="commit-list" [class.compact-graph]="compactGraphColumn()" (scroll)="loadMoreHistoryOnScroll($event)" (focusin)="rememberFocusedGraphRow($event)">
-          @for (wip of worktreeWipRows(); track wip.worktree.path) {
-            <gc-worktree-graph-row [presenter]="graphRowView()" [worktreeRow]="wip" />
+          <ng-template #worktreeRowFallback let-failed="failed">
+            @for (wip of worktreeWipRows(); track wip.worktree.path; let first = $first) {
+              <div class="commit-row wip-row graph-row-fallback" [class.linked-worktree]="!wip.worktree.current" [style.width.px]="commitRowWidth()">
+                @if (first) { <span [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'Worktree rows could not load. Restart the application to retry.' : 'Loading worktree changes…' }}</span> }
+              </div>
+            }
+          </ng-template>
+          @defer (when worktreeWipRows().length > 0) {
+            @for (wip of worktreeWipRows(); track wip.worktree.path) {
+              <gc-worktree-graph-row [presenter]="graphRowView()" [worktreeRow]="wip" />
+            }
+          } @placeholder {
+            <ng-container [ngTemplateOutlet]="worktreeRowFallback" />
+          } @loading {
+            <ng-container [ngTemplateOutlet]="worktreeRowFallback" />
+          } @error {
+            <ng-container [ngTemplateOutlet]="worktreeRowFallback" [ngTemplateOutletContext]="{ failed: true }" />
           }
-          <gc-graph-viewport [windowSource]="virtualGraphWindow" [slotsSource]="graphRowSlots"
-            [widthSource]="commitRowWidth" [presenter]="graphRowView()" />
+          <ng-template #commitGraphFallback let-failed="failed">
+            @if (visibleGraphRows().length) {
+              @let window = virtualGraphWindow();
+              <div class="graph-history-fallback"
+                [style.height.px]="window.topPadding + window.items.length * 40 + window.bottomPadding"
+                [style.min-width.px]="commitRowWidth()">
+                <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'Commit history could not load. Restart Git Khronos to retry.' : 'Loading commit history…' }}</p>
+              </div>
+            }
+          </ng-template>
+          @defer (on immediate) {
+            <gc-graph-viewport #graphViewport [windowSource]="virtualGraphWindow" [slotsSource]="graphRowSlots"
+              [widthSource]="commitRowWidth" [presenter]="graphRowView()" />
+          } @placeholder {
+            <ng-container [ngTemplateOutlet]="commitGraphFallback" />
+          } @loading {
+            <ng-container [ngTemplateOutlet]="commitGraphFallback" />
+          } @error {
+            <ng-container [ngTemplateOutlet]="commitGraphFallback" [ngTemplateOutletContext]="{ failed: true }" />
+          }
           @if (!visibleGraphRows().length) {
             <div class="empty-panel"><span><gc-icon name="repo" [size]="32" /></span><strong>No commits yet</strong><p>Stage files and create the first commit.</p></div>
           }
@@ -1661,6 +1694,13 @@
                 <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedCommitFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
                 <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="workingTreeViewMode() === 'path'" [attr.aria-pressed]="workingTreeViewMode() === 'path'" [attr.tabindex]="workingTreeViewMode() === 'path' ? 0 : -1" (click)="setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button></div>
               </div>
+              @if (selectedStash(); as stash) {
+                @if (details.oid === stash.oid && git.inspectedStashReference()) {
+                  <div class="discard-actions">
+                    <button type="button" [disabled]="!selectedStashFile() || git.busy()" title="Select one changed file to apply its saved changes" (click)="requestApplySelectedStashFile($event)">Apply selected stashed file…</button>
+                  </div>
+                }
+              }
               @if (details.filesTruncated) { <div class="commit-files-limit">Showing the first {{ details.files.length }} changed files to keep this commit responsive.</div> }
               <div class="commit-file-list" (scroll)="updateCommitFilesViewport($event)">
                 @if (workingTreeViewMode() === 'path') {
@@ -1884,7 +1924,7 @@
       @if (currentBranchSync().ahead) { <button class="status-sync outgoing" type="button" [disabled]="git.busy()" aria-label="{{ currentBranchSync().ahead }} {{ currentBranchSync().ahead === 1 ? 'commit' : 'commits' }} ahead of {{ currentBranchSync().upstream ?? 'upstream' }}, push now" title="{{ pushToolbarLabel() }}" (click)="pushCurrentBranch()"><gc-icon name="push" [size]="9" />Ahead {{ currentBranchSync().ahead }}</button> }
       @if (currentBranchSync().behind) { <button class="status-sync incoming" type="button" [disabled]="git.busy()" aria-label="{{ currentBranchSync().behind }} {{ currentBranchSync().behind === 1 ? 'commit' : 'commits' }} behind {{ currentBranchSync().upstream ?? 'upstream' }}, pull now" title="{{ pullToolbarLabel() }} · {{ pullStrategyLabel() }}" (click)="git.pull(pullStrategy())"><gc-icon name="pull" [size]="9" />Behind {{ currentBranchSync().behind }}</button> }
       @if (currentBranchSync().gone) { <span class="status-sync missing" title="The configured upstream branch no longer exists"><gc-icon name="warning" [size]="9" />Upstream missing</span> }
-      @if (repo.status.entryCount) { <button class="status-changes" type="button" title="Open working directory changes" aria-label="Open working directory changes ({{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }})" [class.active]="changesOpen()" (click)="selectWip()"><gc-icon name="file" [size]="10" /><span>{{ repo.status.entryCount }}</span><em>{{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</em></button> }
+      @if (repo.status.entryCount) { <button class="status-changes" type="button" title="Open working directory changes" aria-label="Open working directory changes ({{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }})" [class.active]="changesOpen()" (click)="openWorkingDirectory()"><gc-icon name="file" [size]="10" /><span>{{ repo.status.entryCount }}</span><em>{{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</em></button> }
       <span class="status-spacer"></span>
       @if (!git.browserPreview() && autoFetchIntervalMinutes()) {
         <button class="auto-fetch-status" type="button" [class.syncing]="git.backgroundFetchBusy()" [class.failed]="!!git.backgroundFetchErrors()[repo.id]" [disabled]="git.busy() || git.backgroundFetchBusy()" title="{{ autoFetchStatusTitle() }}" (click)="handleAutoFetchStatus()"><gc-icon name="refresh" [size]="10" /><span>{{ autoFetchStatusLabel() }}</span></button>
@@ -1948,6 +1988,7 @@
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceDialog('rename')"><gc-icon name="edit" [size]="12" />Rename current</button>
             <button class="danger" type="button" role="menuitem" [disabled]="git.busy() || git.workspaces().length <= 1" (click)="requestWorkspaceDelete()"><gc-icon name="trash" [size]="12" />Delete current</button>
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('overview')"><gc-icon name="repo" [size]="12" />Repository overview</button>
+            <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository() || git.repository()?.bare" (click)="openWorkspaceCenter('files')"><gc-icon name="folder-git" [size]="12" />Repository files</button>
             <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorkspaceCenter('identities')"><gc-icon name="edit" [size]="12" />Identity profiles</button>
             <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository() || git.repository()?.bare" (click)="openBranchWorkflows()"><gc-icon name="merge" [size]="12" />Branch workflows</button>
             <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()" (click)="openWorkspaceCenter('hosting')"><gc-icon name="repo" [size]="12" />Reviews and checks</button>
@@ -2071,12 +2112,32 @@
       </section>
     </div>
   }
-  @if (pendingRemoteRemoval() || pendingSparseCheckoutAction()) {
+  @if (pendingRemoteRemoval() || pendingSparseCheckoutAction() || pendingWorktreeAction() || pendingForcePush() || pendingPublishBranch()) {
     @defer (on immediate) {
       <gc-repository-confirmations [remote]="pendingRemoteRemoval()"
         [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseCheckoutPathCount()"
+        [forcePush]="pendingForcePush()" [worktree]="pendingWorktreeAction()" [forceWorktreeRemoval]="forceWorktreeRemoval()"
+        [publishBranch]="pendingPublishBranch()?.branch ?? null" [publishRemote]="publishRemote()"
         (remoteClosed)="closeRemoteRemoval()" (remoteConfirmed)="confirmRemoteRemoval()"
-        (sparseClosed)="closeSparseCheckoutConfirmation()" (sparseConfirmed)="confirmSparseCheckoutAction()" />
+        (sparseClosed)="closeSparseCheckoutConfirmation()" (sparseConfirmed)="confirmSparseCheckoutAction()"
+        (worktreeClosed)="closeWorktreeRemoval()" (worktreeConfirmed)="confirmWorktreeRemoval()" (worktreeForceChanged)="forceWorktreeRemoval.set($event)"
+        (forcePushClosed)="closeForcePush()" (forcePushConfirmed)="confirmForcePush()"
+        (publishClosed)="closePublishBranch()" (publishConfirmed)="confirmPublishBranch()"
+        (publishRemoteChanged)="publishRemote.set($event)" (publishAddRemote)="closePublishBranch(false); openAddRemoteDialog()" />
+    } @loading {
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation()">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading confirmation" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event)">
+          <p class="confirmation-loader-copy" role="status">Loading confirmation…</p>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation()">Cancel</button></footer>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation()">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Confirmation unavailable" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event)">
+          <p class="confirmation-loader-copy" role="alert">The confirmation could not load. Restart the app before retrying. No action was run.</p>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation()">Close</button></footer>
+        </section>
+      </div>
     }
   }
   @if (pendingLfsPrune()) {
@@ -2086,24 +2147,24 @@
         (retentionConfirmed)="confirmLfsRetentionPrune()" />
     }
   }
-  @if (pendingWorktreeAction(); as action) {
-    <div class="confirmation-backdrop" (click)="closeWorktreeRemoval()">
-      <section #worktreeRemovalDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-worktree-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
-        <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>{{ action.deleteBranch ? 'Remove worktree and delete branch' : 'Remove worktree' }}</span>
-          <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
-          <p>{{ action.deleteBranch ? 'Remove this working directory and delete its branch. The branch tip is saved in Recovery History first.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
-          @if (action.changes) {
-            <label class="force-delete-option"><input type="checkbox" [checked]="forceWorktreeRemoval()" (change)="forceWorktreeRemoval.set($any($event.target).checked)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
-          }
-        </div>
-        <footer><button type="button" (click)="closeWorktreeRemoval()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="action.changes > 0 && !forceWorktreeRemoval()" (click)="confirmWorktreeRemoval()">{{ action.deleteBranch ? 'Remove and delete branch' : 'Remove worktree' }}</button></footer>
-      </section>
-    </div>
-  }
   @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {
     @defer (on immediate) { <gc-error-toast [error]="error" (logRequested)="openErrorActivityLog()" /> }
+  }
+  @if (!workspaceCenterRequest() && !fileContentDialog() && !repositoryHistorySearch()?.opened() && !git.conflictDetails() && git.backgroundOperationWarnings().length) {
+    @defer (on immediate) {
+      <gc-background-operation-warnings [floating]="true" />
+    } @placeholder {
+      <div class="authentication-load-error background-operation-fallback" role="status">Loading background operation warnings…</div>
+    } @loading {
+      <div class="authentication-load-error background-operation-fallback" role="status">Loading background operation warnings…</div>
+    } @error {
+      <section class="authentication-load-error background-operation-fallback" aria-label="Background operation warnings">
+        <p>Warning controls could not load. Restart the application to retry.</p>
+        @for (warning of git.backgroundOperationWarnings(); track warning.operationId) {
+          <div><p role="alert">{{ warning.message }}</p><button type="button" aria-label="Dismiss background operation warning" (click)="dismissBackgroundOperationWarningFallback(warning.operationId, $event)">Dismiss</button></div>
+        }
+      </section>
+    }
   }
   @if (commandPaletteOpen()) {
     @defer (on immediate) {
@@ -2160,12 +2221,12 @@
     @defer (on immediate) {
       <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" (changed)="fileToolsChanged($event)" />
     } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening file content" (keydown)="handleFileContentLoaderKey($event)">
+      <div class="confirmation-backdrop" style="z-index:170"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening file content" (keydown)="handleFileContentLoaderKey($event)">
         <p role="status">Opening file content…</p>
         <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Cancel</button>
       </section></div>
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="File content unavailable" (keydown)="handleFileContentLoaderKey($event)">
+      <div class="confirmation-backdrop" style="z-index:170"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="File content unavailable" (keydown)="handleFileContentLoaderKey($event)">
         <p role="alert">File content could not open. Preserve drafts and restart to try again.</p>
         <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Close</button>
       </section></div>
@@ -2215,7 +2276,11 @@
       <button type="button" role="menuitem" (click)="viewCommitFileInsight('history')"><span><gc-icon name="history" [size]="13" /></span>View file history</button>
       <button type="button" role="menuitem" (click)="viewCommitFileInsight('blame')"><span><gc-icon name="git-commit" [size]="13" /></span>Blame file</button>
       <div class="context-divider"></div>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestRestoreCommitFile()"><span><gc-icon name="archive-restore" [size]="13" /></span>{{ menu.paths.length === 1 ? 'Restore file' : 'Restore ' + menu.paths.length + ' selected files' }} from this commit…</button>
+      @if (isStashFileMenu(menu)) {
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestApplyStashFileFromMenu()"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply stashed changes for this file…</button>
+      } @else {
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestRestoreCommitFile()"><span><gc-icon name="archive-restore" [size]="13" /></span>{{ menu.paths.length === 1 ? 'Restore file' : 'Restore ' + menu.paths.length + ' selected files' }} from this commit…</button>
+      }
     </div>
   }
   @if (stashContextMenu(); as menu) {
@@ -2480,6 +2545,18 @@
           }
         </header>
         <div class="merge-notices">
+        @if (git.backgroundOperationWarnings().length) {
+          @defer (on immediate) { <gc-background-operation-warnings /> }
+          @placeholder { <p role="status">Loading background operation warnings…</p> }
+          @error {
+            <section aria-label="Background operation warnings">
+              <p>Warning controls could not load. Restart the application to retry.</p>
+              @for (warning of git.backgroundOperationWarnings(); track warning.operationId) {
+                <div><p role="alert">{{ warning.message }}</p><button type="button" aria-label="Dismiss background operation warning" (click)="dismissBackgroundOperationWarningFallback(warning.operationId, $event)">Dismiss</button></div>
+              }
+            </section>
+          }
+        }
         @if (git.repository()?.status?.rebaseInProgress) {
           <p class="merge-warning">During rebase, Current is the destination history plus commits already replayed. Incoming is the commit now being replayed, not the destination branch.</p>
         } @else {
@@ -2529,49 +2606,39 @@
     </div>
   }
   @if (savedDiscards(); as recoveries) {
-    <div class="confirmation-backdrop" (click)="dismissSavedDiscards()">
-      <section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-labelledby="saved-discards-title" (click)="$event.stopPropagation()" (keydown)="$event.key === 'Escape' ? dismissSavedDiscards() : handleSavedDiscardsKeydown($event)">
+    <div class="confirmation-backdrop" [class.over-recovery]="recoveryHistoryOpen()" (click)="dismissSavedDiscards()">
+      <section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-labelledby="saved-discards-title" (click)="$event.stopPropagation()" (keydown)="handleSavedDiscardsKeydown($event)">
         <div class="confirmation-copy">
           <h2 id="saved-discards-title">Discarded-change recovery</h2>
-          <p>Captured bulk discards remain in this worktree's Git directory after restart. Recovery checks the current files before applying; it will not overwrite conflicting edits. Remove captures explicitly when no longer needed.</p>
-          <div class="saved-discard-list">
-            @for (recovery of recoveries; track recovery.id) {
-              <div><span>{{ savedDiscardLabel(recovery.id) }} — {{ recovery.restored ? 'Recovered' : 'Captured' }}</span><button type="button" (click)="requestSavedDiscard(recovery)">{{ recovery.restored ? 'Discard again…' : 'Recover…' }}</button><button type="button" (click)="requestSavedDiscard(recovery, true)">Remove capture…</button></div>
-            } @empty { <p>No saved bulk discards in this worktree.</p> }
-          </div>
+          <p>Captured discarded changes remain in this worktree's Git directory after restart. Recovery checks the current files before applying; it will not overwrite conflicting edits. Remove captures explicitly when no longer needed.</p>
+          @defer (on immediate) {
+            <gc-saved-discard-list [recoveries]="recoveries" (requested)="requestSavedDiscard($event.recovery, $event.remove)" />
+          } @loading {
+            <p role="status">Opening saved captures…</p>
+          } @error {
+            <p role="alert">Saved captures could not be displayed. Restart the application to retry.</p>
+          }
         </div>
-        <footer><button type="button" data-saved-discards-close (click)="dismissSavedDiscards()">Close</button></footer>
+        <footer><button type="button" data-saved-discards-close (click)="dismissSavedDiscards()">{{ recoveryHistoryOpen() ? 'Back to Recovery History' : 'Close' }}</button></footer>
       </section>
     </div>
   }
   @if (pendingFileAction(); as action) {
-    <div class="confirmation-backdrop" (click)="dismissFileConfirmation(true)">
-      <section #fileConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
+    <div class="confirmation-backdrop" [class.over-recovery]="recoveryHistoryOpen() && savedDiscardConfirmation()" (click)="dismissFileConfirmation(true)">
+      <section #fileConfirmationDialog class="confirmation-dialog" [class.discard-recovery-confirmation]="action.recovery" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
         <div class="confirmation-icon" [class.danger]="action.kind !== 'restore-commit'"><gc-icon [name]="action.kind === 'ignore' ? 'file' : action.kind === 'restore-commit' ? 'archive-restore' : 'trash'" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>{{ action.kind === 'discard-bulk' ? 'Discard unstaged changes' : action.kind === 'recover-discard' ? 'Recover discarded changes' : action.kind === 'forget-discard' ? 'Remove recovery capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : 'Ignore and stop tracking' }}</span>
           <h2 id="file-confirmation-title">{{ action.kind === 'restore-commit' && (action.paths?.length ?? 0) > 1 ? (action.paths?.length ?? 0) + ' selected files' : action.path }}</h2>
-          @if (action.kind === 'discard-bulk' && action.preview; as preview) {
-            <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
-            <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
-            @if (preview.skippedPaths.length) { <p>Not discarded: conflicts, submodule working trees or nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }
-          } @else if (action.kind === 'recover-discard') {
-            <p>{{ action.recovery?.restored ? 'Discard these recovered edits again only if the captured patch still matches the working files.' : 'Apply the captured changes to the working files. Git checks the patch first and refuses conflicting edits. Staged contents are unchanged.' }}</p>
-          } @else if (action.kind === 'forget-discard') {
-            <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
-          } @else if (action.kind === 'discard') {
-            <p>{{ action.untracked ? 'Delete this untracked file from disk. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' : 'Replace the working copy with the staged version. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' }}</p>
-          } @else if (action.kind === 'discard-hunk') {
-            <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore the hunk.</p>
-          } @else if (action.kind === 'discard-lines') {
-            <p>Discard {{ action.lineIndices?.length ?? 0 }} selected changed lines from the working copy. Other changes remain intact, and Undo can restore the selection.</p>
-          } @else if (action.kind === 'restore-commit') {
-            <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ shortOid(action.oid || '') }} and stage the result for your next commit.</p>
-          } @else {
-            <p>This adds a rule to the repository’s .gitignore and stages removal of the file from Git’s index. The file stays on disk.</p>
+          @defer (on immediate) {
+            <gc-file-confirmation-details [action]="action" (ready)="markFileConfirmationDetailsReady(action)" />
+          } @loading {
+            <p role="status">Loading file action review…</p>
+          } @error {
+            <p role="alert">The file action review could not load. No changes were made. Restart the application to retry.</p>
           }
         </div>
-        <footer><button type="button" data-file-dialog-cancel (click)="dismissFileConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="git.busy()" (click)="confirmFileAction()">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : 'Ignore and stop tracking' }}</button></footer>
+        <footer><button type="button" data-file-dialog-cancel (click)="dismissFileConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="git.busy() || fileConfirmationDetailsReady() !== action" (click)="confirmFileAction()">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : 'Ignore and stop tracking' }}</button></footer>
       </section>
     </div>
   }
@@ -2652,11 +2719,11 @@
   }
   @if (pendingStashDelete(); as request) {
     @defer (on immediate) {
-      <gc-stash-delete-dialog [request]="request" (closed)="closeStashDelete($event)" />
+      <gc-stash-delete-dialog #stashDeleteDialog [request]="request" (closed)="closeStashDelete($event)" />
     } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="status">Loading stash confirmation…<button type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading stash confirmation"><p role="status">Loading stash confirmation…</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="alert">Stash confirmation could not load. No deletion was started.<button type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Stash confirmation unavailable"><p role="alert">Stash confirmation could not load. No deletion was started.</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Close</button></section></div>
     }
   }
   @if (stashRenameTarget(); as stash) {
@@ -2727,46 +2794,12 @@
       </form>
     </div>
   }
-  @if (pendingPublishBranch(); as pending) {
-    <div class="confirmation-backdrop" (click)="pendingPublishBranch.set(null)">
-      <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ pending.branch }}" (submit)="$event.preventDefault(); confirmPublishBranch()" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon"><gc-icon name="push" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Publish branch</span>
-          <h2>{{ pending.branch }}</h2>
-          <p>Push this branch and remember the selected remote as its upstream for future Pull and Push actions.</p>
-          @if (git.repository()?.remotes?.length) {
-            <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [value]="publishRemote()" (change)="publishRemote.set($any($event.target).value)">
-              @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name" [selected]="publishRemote() === remote.name">{{ remote.name }}</option> }
-            </select></label>
-          } @else {
-            <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" (click)="pendingPublishBranch.set(null); openAddRemoteDialog()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
-          }
-        </div>
-        <footer><span></span><button type="button" (click)="pendingPublishBranch.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!publishRemote() || git.busy()">Publish Branch</button></footer>
-      </form>
-    </div>
-  }
-  @if (pendingForcePush()) {
-    <div class="confirmation-backdrop" (click)="pendingForcePush.set(false)">
-      <section class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="force-push-title" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon danger"><gc-icon name="warning" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Rewrite upstream history</span>
-          <h2 id="force-push-title">Force push {{ currentBranch()?.name }}</h2>
-          <p>Replace {{ currentBranch()?.upstream }} with your local branch only if the remote still matches your last fetched state.</p>
-          <p>This uses <code>--force-with-lease</code>. If another contributor pushed newer work, Git rejects the operation instead of overwriting it.</p>
-        </div>
-        <footer><button type="button" (click)="pendingForcePush.set(false)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmForcePush()">Force Push with Lease</button></footer>
-      </section>
-    </div>
-  }
   @if (recoveryHistoryOpen()) {
-    <div class="recovery-backdrop" (click)="closeRecoveryHistory()">
+    <div class="recovery-backdrop" [inert]="!!savedDiscards() || savedDiscardConfirmation()" (click)="closeRecoveryHistory()">
       <section class="recovery-dialog" role="dialog" aria-modal="true" aria-label="Recovery history" (click)="$event.stopPropagation()" (keydown)="handleRecoveryHistoryKeydown($event)">
         <header>
           <span class="recovery-mark"><gc-icon name="history" [size]="20" /></span>
-          <div><small>LOCAL REPOSITORY</small><h2>Recovery History</h2><p>Find commits recorded before a branch, reset, rebase, or checkout moved a reference.</p></div>
+          <div><small>LOCAL REPOSITORY</small><h2>Recovery History</h2><p>Find saved changes and commits recorded before a reference moved.</p></div>
           <button type="button" aria-label="Close recovery history" title="Close recovery history" (click)="closeRecoveryHistory()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <div class="recovery-toolbar">
@@ -2775,6 +2808,12 @@
         </div>
         <div class="recovery-guidance"><gc-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
         <div class="recovery-list" aria-live="polite">
+          <section class="operation-captures" aria-label="Discarded changes">
+            <h3>Discarded changes</h3>
+            <p>Recover working changes or untracked files saved before discarding.</p>
+            <div class="capture-actions"><button type="button" [disabled]="git.busy() || recoveryCaptureBusy()" (click)="openSavedDiscardsFromHistory($event)">Open discarded-change recovery…</button></div>
+            @if (savedDiscardsLoading()) { <p role="status">Reading discarded-change captures…</p> }
+          </section>
           <section class="operation-captures" aria-label="Saved operation captures">
             <h3>Saved operation captures</h3>
             <p>Restore saved history and any captured changes on a new branch. Captures stay protected until you remove them. Reset captures exclude untracked, ignored and submodule files; deleted stashes keep everything the stash saved.</p>
@@ -2867,7 +2906,7 @@
 
 @if (workspaceCenterRequest(); as request) {
   @defer (on immediate) {
-    <gc-workspace-center [request]="request" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" />
+    <gc-workspace-center [request]="request" [suspended]="!!fileContentDialog()" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" (openFileRequested)="openWorkspaceFile($event)" />
   } @placeholder {
     <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading workspace center" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="status">Loading workspace center…</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
   } @error {

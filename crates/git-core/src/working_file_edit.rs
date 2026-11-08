@@ -395,9 +395,20 @@ mod platform {
         fn new(root: &Path, file: &str) -> Result<Self, AppError> {
             let root = file_content::worktree::absolute(root).map_err(|_| changed())?;
             let relative = Path::new(file);
-            let parent =
-                file_content::worktree::descend(&root, relative.parent().unwrap_or(Path::new("")))
-                    .map_err(|_| changed())?;
+            let parent = file_content::worktree::descend_worktree(
+                &root,
+                relative.parent().unwrap_or(Path::new("")),
+            )
+            .map_err(|error| {
+                if matches!(
+                    error,
+                    file_content::worktree::WorktreeParentError::NestedRepository
+                ) {
+                    refused("Working-file editing cannot cross a nested repository boundary.")
+                } else {
+                    changed()
+                }
+            })?;
             let name = relative.file_name().ok_or_else(changed)?.to_owned();
             Ok(Self { root, parent, name })
         }
@@ -1359,6 +1370,38 @@ mod tests {
             );
         }
         assert!(repo.temporary_files().is_empty());
+    }
+    #[test]
+    fn working_file_edit_refuses_a_nested_repository_created_after_opening() {
+        let repo = Repository::new();
+        fs::create_dir_all(repo.0.join("nested/deep")).unwrap();
+        let file = repo.0.join("nested/deep/file");
+        fs::write(&file, b"inside bytes").unwrap();
+        let edit = repo.open("nested/deep/file", None);
+        fs::write(repo.0.join("nested/.git"), b"gitdir: ../other").unwrap();
+        assert!(
+            open_working_file_edit(
+                &repo.0,
+                "nested/deep/file",
+                None,
+                &CancellationToken::default(),
+            )
+            .is_err()
+        );
+        assert!(
+            edit.save("must not overwrite", &CancellationToken::default())
+                .is_err()
+        );
+        assert_eq!(fs::read(file).unwrap(), b"inside bytes");
+        assert!(
+            fs::read_dir(repo.0.join("nested/deep"))
+                .unwrap()
+                .all(|entry| !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".git-khronos-edit-"))
+        );
     }
     #[test]
     fn working_file_edit_preserves_user_attributes_and_refuses_special_permissions() {

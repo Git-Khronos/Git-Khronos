@@ -1,4 +1,5 @@
 import type { IncomingLinksController } from './incoming-links-controller';
+import type { RepositoryFileActionLifecycle } from './repository-file-actions';
 import { Injectable, computed, signal } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
 import { ipc } from '@git-khronos/contracts';
@@ -76,11 +77,25 @@ const REPOSITORY_ALIASES_KEY = 'git-khronos.repository-aliases.v1';
 const WORKSPACES_KEY = 'git-khronos.workspaces.v1';
 const ACTIVE_WORKSPACE_KEY = 'git-khronos.active-workspace.v1';
 const DEFAULT_WORKSPACE_ID = 'default';
+const SAFE_DISCARD_FAILURES = new Set([
+  'repositoryFileRefused', 'staleWorkingTreeFile', 'staleDiscard', 'emptyDiscard', 'missingRecoveryPatch',
+  'untrackedPartialDiscardUnsupported', 'invalidLineSelection', 'invalidLineAction', 'invalidRecoveryPath',
+  'discardRecoveryUnavailable', 'discardRecoveryMissing', 'discardRecoveryChanged', 'gitInspectionTimeout',
+  'invalidSystemClock', 'gitFailure', 'gitUnavailable', 'internalState', 'operationCancelled',
+]);
+const KNOWN_RECOVERY_FAILURES = new Set([
+  'discardRecoveryRecordFailed', 'discardRecoveryFailedWithRecovery', 'discardRecoveryRefreshFailed',
+  'discardRecoveryStateChanged', 'discardToolbarRecoveryUnavailable', 'discardRecoveryMissing',
+  'discardRecoveryChanged', 'discardRecoveryUnavailable', 'discardRecoveryCaptureRemoved',
+  'invalidRecovery', 'invalidRecoveryPath', 'invalidSystemClock', 'gitFailure', 'gitUnavailable',
+  'gitInspectionTimeout', 'internalState', 'operationCancelled',
+]);
 
 export type ActivityReporter = (message: string) => void;
 
 interface WorkingTreeMutationResult {
   succeeded: boolean;
+  failureKind: string | null;
   // Recheck after awaiting: later navigation must keep its own inspection.
   inspectionRequest: number;
 }
@@ -186,7 +201,13 @@ export interface RepositoryWorkspace {
 interface MutationResult {
   status: 'success' | 'error' | 'cancelled';
   error: string | null;
+  failureKind: string | null;
+  refreshError?: string | null;
 }
+
+type OpenRepositoryResult =
+  | { status: 'success'; repositoryId: string; path: string }
+  | { status: 'error' | 'cancelled'; error: string | null };
 
 interface ClosedRepository {
   path: string;
@@ -263,6 +284,7 @@ export class GitKhronosService {
     return !!operationId && this.cancellingOperationIds().includes(operationId);
   });
   readonly error = signal<string | null>(null);
+  readonly backgroundOperationWarnings = signal<{ operationId: string; message: string }[]>([]);
   private lastFailureKind: string | null = null;
   readonly commitDetails = signal<CommitDetails | null>(null);
   readonly commitFileDiff = signal<CommitFileDiff | null>(null);
@@ -316,7 +338,8 @@ export class GitKhronosService {
   private readonly historyGenerations = new Map<string, number>();
   // Full snapshots reset the native cursor, so page reads wait for those operations.
   private readonly historyBarriers = new Set<Promise<void>>();
-  private historyLoadFinished: Promise<void> | null = null;
+  // Closing a tab can leave its page pending while another tab starts a page.
+  private readonly historyLoadsInFlight = new Set<Promise<void>>();
   private readonly pendingWorkingTreeMutations = new Map<string, number>();
   private readonly deferredMetadataRefreshes = new Set<string>();
   private closedRepositories: ClosedRepository[] = [];
@@ -565,11 +588,19 @@ export class GitKhronosService {
     }
   }
 
-  async openRepository(path: string): Promise<void> {
-    let openedRepositoryId: string | null = null;
-    await this.run('Opening repository…', async report => {
-      const snapshot = await ipc.open_repository({ path });
-      openedRepositoryId = snapshot.id;
+  async openRepository(path: string): Promise<OpenRepositoryResult> {
+    const workspaceId = this.activeWorkspaceId();
+    const opened: { snapshot?: RepositorySnapshot; failure?: string } = {};
+    const status = await this.run('Opening repository…', async report => {
+      let snapshot: RepositorySnapshot;
+      try {
+        snapshot = await ipc.open_repository({ path });
+        if (this.activeWorkspaceId() !== workspaceId) throw new Error('The workspace changed before the repository was opened.');
+      } catch (error: unknown) {
+        opened.failure = this.formatError(error);
+        throw error;
+      }
+      opened.snapshot = snapshot;
       this.storeSnapshot(snapshot, true);
       this.activeRepositoryId.set(snapshot.id);
       this.clearInspection();
@@ -578,7 +609,10 @@ export class GitKhronosService {
       this.forgetClosedRepository(snapshot.path);
       report(`Opened ${snapshot.name}`);
     });
-    if (openedRepositoryId) this.deferMetadataRefresh(openedRepositoryId);
+    if (status !== 'success') return { status, error: opened.failure ?? this.error() };
+    if (!opened.snapshot) return { status: 'error', error: 'The repository did not return a result.' };
+    this.deferMetadataRefresh(opened.snapshot.id);
+    return { status: 'success', repositoryId: opened.snapshot.id, path: opened.snapshot.path };
   }
 
   async cloneRepository(
@@ -688,7 +722,7 @@ export class GitKhronosService {
     this.beginLiveRefresh(repositoryId);
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
-      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (this.busy() || !this.repositories().some((candidate) => candidate.id === repositoryId)) return false;
       const generation = this.statusGeneration(repositoryId);
       const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
@@ -739,7 +773,7 @@ export class GitKhronosService {
         }
         const finishHistoryBarrier = this.beginHistoryBarrier();
         try {
-          if (this.historyLoadFinished) await this.historyLoadFinished;
+          if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
           if (generation !== this.statusGeneration(repository.id)
             || !this.repositories().some((candidate) => candidate.id === repository.id)) return true;
           const snapshot = await ipc.refresh_repository({ repoId: repository.id });
@@ -774,7 +808,7 @@ export class GitKhronosService {
     });
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
-      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (this.busy() || !this.repositories().some((candidate) => candidate.id === repository.id)) return false;
       const generation = this.statusGeneration(repository.id);
       const snapshot = await ipc.sync_repository({ repoId: repository.id });
@@ -853,7 +887,7 @@ export class GitKhronosService {
     const generation = this.historyGeneration(repository.id);
     let finishLoad!: () => void;
     const finished = new Promise<void>((resolve) => { finishLoad = resolve; });
-    this.historyLoadFinished = finished;
+    this.historyLoadsInFlight.add(finished);
     try {
       const page = await ipc.load_more_commits({
         repoId: repository.id,
@@ -880,7 +914,7 @@ export class GitKhronosService {
         this.historyRequest = null;
         this.historyLoading.set(false);
       }
-      if (this.historyLoadFinished === finished) this.historyLoadFinished = null;
+      this.historyLoadsInFlight.delete(finished);
       finishLoad();
     }
   }
@@ -1005,13 +1039,41 @@ export class GitKhronosService {
 
   async discardPath(path: string, untracked: boolean): Promise<void> {
     const repositoryId = this.activeRepositoryId();
+    const previous = repositoryId ? this.operationHistory()[repositoryId] : undefined;
     const result = await this.mutateWorkingTree('discard_path', `Discarding changes in ${path}…`, 'Changes discarded', {
       path,
       untracked,
-    }, (status) => predictDiscardPath(status, path));
+    }, (status) => predictDiscardPath(status, path), 'discard');
     if (repositoryId && result.succeeded) {
       this.recordDiscard(repositoryId, untracked ? 'Discard Untracked File' : 'Discard Changes');
+    } else if (repositoryId && this.discardMayHaveChanged(result.failureKind)) {
+      this.clearHistoryEntry(repositoryId, previous);
     }
+  }
+
+  repositoryFileActionLifecycle(repositoryId: string): RepositoryFileActionLifecycle {
+    const inspection = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
+    const previous = this.operationHistory()[repositoryId];
+    return {
+      begin: () => this.beginHistoryBarrier(),
+      bump: () => this.bumpStatusGeneration(repositoryId),
+      generation: () => this.statusGeneration(repositoryId),
+      store: snapshot => this.storeMutationSnapshot(snapshot),
+      refresh: () => this.refreshMutationSnapshot(repositoryId, inspection),
+      clearInspection: () => this.clearMutationInspection(repositoryId, inspection),
+      recordDiscard: () => this.recordDiscard(repositoryId, 'Discard Untracked File'),
+      recordDiscardFailure: error => {
+        const uncertain = this.discardMayHaveChanged(this.errorKind(error));
+        if (uncertain) this.clearHistoryEntry(repositoryId, previous);
+        return uncertain;
+      },
+      recordTrackedDeleteFailure: error => {
+        const kind = this.errorKind(error);
+        const uncertain = kind !== 'repositoryFileRefused' && kind !== 'gitFailure' && kind !== 'gitUnavailable';
+        if (uncertain) this.clearHistoryEntry(repositoryId, previous);
+        return uncertain;
+      },
+    };
   }
 
     async previewDiscard(paths: string[] | null): Promise<DiscardPreview | null> {
@@ -1038,6 +1100,7 @@ export class GitKhronosService {
 
     async discardPrepared(preview: DiscardPreview, repositoryId: string): Promise<boolean> {
       if (!this.requireRecoveryRepository(repositoryId)) return false;
+      const previous = this.operationHistory()[repositoryId];
       const result = await this.changeWorkingTree('Discarding captured unstaged changes…',
         'Unstaged changes discarded; recovery saved', async repoId => {
           const { id, status } = this.browserPreview()
@@ -1045,32 +1108,66 @@ export class GitKhronosService {
             : await ipc.discard_changes({ repoId, token: preview.token });
           this.recordDiscard(repoId, 'Discard Unstaged Changes', id);
           return status;
-        });
+        }, undefined, 'discard');
+      if (!result.succeeded && this.discardMayHaveChanged(result.failureKind)) this.clearHistoryEntry(repositoryId, previous);
       return result.succeeded;
     }
 
-    async loadDiscardRecoveries(): Promise<DiscardRecovery[]> {
-      const repository = this.repository();
-      if (!repository) return [];
-      let recoveries: DiscardRecovery[] = [];
-      await this.run('Loading discarded-change recovery…', async () => {
+    async loadDiscardRecoveries(repositoryId: string): Promise<DiscardRecovery[] | null> {
+      if (!this.requireRecoveryRepository(repositoryId)) return null;
+      let recoveries: DiscardRecovery[] | null = null;
+      const result = await this.run('Loading discarded-change recovery…', async () => {
         recoveries = this.browserPreview() ? []
-          : await ipc.load_discard_recoveries({ repoId: repository.id });
-      }, repository.id);
-      return recoveries;
+          : await ipc.load_discard_recoveries({ repoId: repositoryId });
+      }, repositoryId, null, false, false);
+      return result === 'success' ? recoveries : null;
     }
 
-    async applySavedDiscard(id: string, reverse = false): Promise<boolean> {
-      const result = await this.mutateWorkingTree('apply_saved_discard', reverse ? 'Discarding recovered changes…' : 'Recovering discarded changes…',
-        reverse ? 'Recovered changes discarded again' : 'Discarded changes recovered', { id, reverse });
+    async applySavedDiscard(id: string, reverse = false, expectedSha256: string | null = null): Promise<boolean> {
+      const repository = this.repository();
+      if (!repository) return false;
+      const entry = this.operationHistory()[repository.id];
+      const result = await this.changeWorkingTree(
+        reverse ? 'Discarding recovered changes…' : 'Recovering discarded changes…',
+        reverse ? 'Recovered changes discarded again' : 'Discarded changes recovered',
+        async repoId => {
+          try {
+            const applied = await ipc.apply_saved_discard({ repoId, id, reverse, expectedSha256 });
+            if (this.matchesDiscardHistory(entry, id, applied.affectedToolbar)) {
+              this.setHistoryUndone(repoId, entry, !reverse);
+            }
+            return applied.status;
+          } catch (error: unknown) {
+            const kind = this.errorKind(error);
+            if (this.recoveryMayInvalidateHistory(kind)
+              && this.matchesDiscardHistory(entry, id, this.errorAffectedToolbar(error) || this.recoveryOutcomeUnknown(kind))) {
+              this.clearHistoryEntry(repoId, entry);
+            }
+            throw error;
+          }
+        },
+        undefined, 'recovery',
+      );
       return result.succeeded;
     }
 
-    async forgetSavedDiscard(id: string): Promise<void> {
+    async forgetSavedDiscard(id: string, expectedSha256: string | null = null): Promise<void> {
       const repository = this.repository();
       if (!repository) return;
+      const entry = this.operationHistory()[repository.id];
       await this.run('Removing saved recovery…', async report => {
-        await ipc.forget_saved_discard({ repoId: repository.id, id });
+        try {
+          const affectedToolbar = await ipc.forget_saved_discard({ repoId: repository.id, id, expectedSha256 });
+          if (this.matchesDiscardHistory(entry, id, affectedToolbar)) this.clearHistoryEntry(repository.id, entry);
+        } catch (error: unknown) {
+          const kind = this.errorKind(error);
+          if ((kind === 'discardRecoveryCaptureRemoved' || kind === 'discardRecoveryMissing'
+            || kind === 'discardRecoveryChanged' || this.recoveryOutcomeUnknown(kind))
+            && this.matchesDiscardHistory(entry, id, this.errorAffectedToolbar(error) || this.recoveryOutcomeUnknown(kind))) {
+            this.clearHistoryEntry(repository.id, entry);
+          }
+          throw this.uncertainRecoveryFailure(error, true);
+        }
         report('Saved recovery removed');
       }, repository.id);
     }
@@ -1128,10 +1225,19 @@ export class GitKhronosService {
     extra: Omit<CommandArgs<K>, 'repoId'> & { action: 'stage' | 'unstage' | 'discard' },
   ): Promise<boolean> {
     const repositoryId = this.activeRepositoryId();
+    const previous = repositoryId ? this.operationHistory()[repositoryId] : undefined;
     const labels = { stage: ['Staging', 'staged'], unstage: ['Unstaging', 'unstaged'], discard: ['Discarding', 'discarded'] };
     const [pending, done] = labels[extra.action];
-    const result = await this.mutateWorkingTree(command, `${pending} ${subject.toLowerCase()}…`, `${subject} ${done}`, extra);
-    if (!result.succeeded) return false;
+    const result = await this.mutateWorkingTree(
+      command, `${pending} ${subject.toLowerCase()}…`, `${subject} ${done}`, extra, undefined,
+      extra.action === 'discard' ? 'discard' : null,
+    );
+    if (!result.succeeded) {
+      if (extra.action === 'discard' && repositoryId && this.discardMayHaveChanged(result.failureKind)) {
+        this.clearHistoryEntry(repositoryId, previous);
+      }
+      return false;
+    }
     if (extra.action === 'discard' && repositoryId) this.recordDiscard(repositoryId, subject === 'Hunk' ? 'Discard Hunk' : 'Discard Selected Lines');
     await this.refreshWorkingTreeSelection(repositoryId, extra.path, extra.staged, result.inspectionRequest);
     return true;
@@ -1204,11 +1310,17 @@ export class GitKhronosService {
     const direction = undone ? 'undo' : 'redo';
     let succeeded: boolean;
     if (entry.kind === 'discard') {
-      succeeded = entry.recoveryId
-        ? await this.applySavedDiscard(entry.recoveryId, !undone)
-        : await this.mutate(undone ? 'undo_discard' : 'redo_discard',
+      if (entry.recoveryId) {
+        succeeded = await this.applySavedDiscard(entry.recoveryId, !undone);
+      } else {
+        const result = await this.mutateWithResult(undone ? 'undo_discard' : 'redo_discard',
           `${undone ? 'Undoing' : 'Redoing'} ${entry.label.toLocaleLowerCase()}…`,
-          undone ? 'Discarded changes restored' : 'Changes discarded again') === 'success';
+          undone ? 'Discarded changes restored' : 'Changes discarded again');
+        succeeded = result?.status === 'success';
+        if (result?.status === 'error' && this.recoveryMayInvalidateHistory(result.failureKind)) {
+          this.clearHistoryEntry(repo.id, entry);
+        }
+      }
     } else if (entry.kind === 'checkout') {
       const branch = checkoutHistoryTarget(entry, direction)!;
       succeeded = await this.runBranchMutation(() => this.mutate('checkout_branch', `Returning to ${branch}…`, `Checked out ${branch}`, {
@@ -1762,7 +1874,12 @@ export class GitKhronosService {
       { options });
   }
 
-  async forcePushWithLease(remote?: string, branch?: string): Promise<void> {
+  async forcePushWithLease(
+    remote: string,
+    branch: string,
+    expectedRemoteOid: string,
+    expectedHeadOid: string,
+  ): Promise<void> {
     if (!this.repository()) return;
     if (this.browserPreview()) {
       this.activity.set('Force push with lease complete');
@@ -1772,7 +1889,7 @@ export class GitKhronosService {
       'force_push_repository',
       'Force pushing with lease…',
       'Force push with lease complete',
-      { remote, branch },
+      { remote, branch, expectedRemoteOid, expectedHeadOid },
     );
   }
 
@@ -1969,6 +2086,14 @@ export class GitKhronosService {
   async applyStashOptions(reference: string, expectedOid: string, restoreIndex: boolean): Promise<void> {
     await this.mutate('apply_stash_options', `Restoring ${reference}…`, `${reference} restored; stash kept`,
       { reference, expectedOid, restoreIndex });
+  }
+
+  async applyStashedFile(stash: StashEntry, file: CommitFile, repositoryId: string): Promise<boolean> {
+    if (!this.requireSelectedStash(stash.reference, stash.oid, repositoryId)) return false;
+    return await this.mutate('apply_stashed_file', `Applying saved changes for ${file.path}…`,
+      `Saved changes applied to ${file.path}; index and stash kept`, {
+        reference: stash.reference, expectedOid: stash.oid, path: file.path, previousPath: file.previousPath,
+      }) === 'success';
   }
 
   async branchFromStash(reference: string, expectedOid: string, name: string): Promise<void> {
@@ -2747,6 +2872,15 @@ export class GitKhronosService {
     this.error.set(null);
   }
 
+  reportBackgroundOperationWarning(operationId: string, message: string): void {
+    this.backgroundOperationWarnings.update(warnings => warnings.some(warning => warning.operationId === operationId)
+      ? warnings : [...warnings, { operationId, message }]);
+  }
+
+  dismissBackgroundOperationWarning(operationId: string): void {
+    this.backgroundOperationWarnings.update(warnings => warnings.filter(warning => warning.operationId !== operationId));
+  }
+
   showWorkingTree(): void {
     this.clearCommitInspection();
   }
@@ -2795,50 +2929,83 @@ export class GitKhronosService {
     done: string | ((snapshot: RepositorySnapshot) => string),
     ...options: MutationOptions<K>
   ): Promise<MutationResult | null> {
-    const [extra = {}, preserveConflictOnFailure = false] = options;
     const repo = this.repository();
     if (!repo) return null;
+    return this.mutateRepositoryWithResult(repo, command, pending, done, ...options);
+  }
+
+  async mutateRepositoryWithResult<K extends SnapshotCommand>(
+    repo: RepositorySnapshot,
+    command: K,
+    pending: string,
+    done: string | ((snapshot: RepositorySnapshot) => string),
+    ...options: MutationOptions<K>
+  ): Promise<MutationResult> {
+    const [extra = {}, preserveConflictOnFailure = false] = options;
     const finishHistoryBarrier = this.beginHistoryBarrier();
+    const workspaceId = this.activeWorkspaceId();
+    const ownsRepository = () => this.activeWorkspaceId() === workspaceId
+      && this.repositories().some(repository => repository.id === repo.id && repository.path === repo.path);
+    let refreshError: string | null = null;
+    let failureKind: string | null = null;
     try {
       const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
       this.bumpStatusGeneration(repo.id);
       const generation = this.statusGeneration(repo.id);
       const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
       const result = await this.run(pending, async report => {
-        const snapshot = await invokeCommand(command, {
-          repoId: repo.id,
-          ...extra,
-          ...(operationId ? { operationId } : {}),
-        } as CommandArgs<K>) as RepositorySnapshot;
-        if (generation === this.statusGeneration(repo.id)) {
+        let snapshot: RepositorySnapshot;
+        try {
+          snapshot = await invokeCommand(command, {
+            repoId: repo.id,
+            ...extra,
+            ...(operationId ? { operationId } : {}),
+          } as CommandArgs<K>) as RepositorySnapshot;
+        } catch (error: unknown) {
+          failureKind = this.errorKind(error);
+          if ((command === 'undo_discard' || command === 'redo_discard') && this.recoveryMayHaveChanged(failureKind)) {
+            if (ownsRepository()) {
+              this.bumpStatusGeneration(repo.id);
+              this.clearMutationInspection(repo.id, inspectionRequest, preserveConflictOnFailure);
+            }
+            throw this.uncertainRecoveryFailure(error, false);
+          }
+          throw error;
+        }
+        if (!ownsRepository()) {
+          this.deferMetadataRefresh(repo.id);
+        } else if (snapshot.id !== repo.id || snapshot.path !== repo.path) {
+          refreshError = 'The returned snapshot belongs to a different repository.';
+          this.deferMetadataRefresh(repo.id);
+        } else if (generation === this.statusGeneration(repo.id)) {
           this.storeMutationSnapshot(snapshot);
-        } else if (this.repositories().some((repository) => repository.id === repo.id)) {
+        } else {
           // Reply order need not match Git's mutation order. Read current state
           // instead of replacing a newer result with this action's snapshot.
           try {
             await this.refreshMutationSnapshot(repo.id, inspectionRequest);
-          } catch {
-            // The mutation succeeded even if reconciliation needs a later retry.
+          } catch (error: unknown) {
+            refreshError = this.formatError(error);
             this.deferMetadataRefresh(repo.id);
           }
         }
-        this.clearMutationInspection(repo.id, inspectionRequest);
+        if (ownsRepository()) this.clearMutationInspection(repo.id, inspectionRequest);
         report(typeof done === 'function' ? done(snapshot) : done);
       }, repo.id, operationId);
       const failure = result === 'success' ? null : this.error();
-      if (result === 'error' && this.repositories().some((repository) => repository.id === repo.id)) {
+      if (result === 'error' && ownsRepository()) {
         try {
-          if (this.historyLoadFinished) await this.historyLoadFinished;
+          if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
           await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
-        } catch {
-          // Keep the original mutation error; a manual refresh can retry the snapshot.
+        } catch (error: unknown) {
+          refreshError = this.formatError(error);
         }
       }
       // Fast snapshots skip untracked discovery; complete the status right away.
-      if (this.repositories().some((repository) => repository.id === repo.id)) {
+      if (ownsRepository()) {
         void this.refreshStatusInBackground(repo.id, true);
       }
-      return { status: result, error: failure };
+      return { status: result, error: failure, failureKind, refreshError };
     } finally {
       finishHistoryBarrier();
     }
@@ -2855,9 +3022,10 @@ export class GitKhronosService {
     done: string,
     extra: Omit<CommandArgs<K>, 'repoId'>,
     predict?: (status: RepositoryStatus) => RepositoryStatus,
+    failureHandling: 'discard' | 'recovery' | null = null,
   ): Promise<WorkingTreeMutationResult> {
     return this.changeWorkingTree(pending, done,
-      repoId => invokeCommand(command, { repoId, ...extra } as CommandArgs<K>) as Promise<RepositoryStatus>, predict);
+      repoId => invokeCommand(command, { repoId, ...extra } as CommandArgs<K>) as Promise<RepositoryStatus>, predict, failureHandling);
   }
 
   private async changeWorkingTree(
@@ -2865,9 +3033,10 @@ export class GitKhronosService {
     done: string,
     change: (repoId: string) => Promise<RepositoryStatus>,
     predict: (status: RepositoryStatus) => RepositoryStatus = status => status,
+    failureHandling: 'discard' | 'recovery' | null = null,
   ): Promise<WorkingTreeMutationResult> {
     const repo = this.repository();
-    if (!repo) return { succeeded: false, inspectionRequest: this.workingTreeRequest };
+    if (!repo) return { succeeded: false, failureKind: null, inspectionRequest: this.workingTreeRequest };
     const repoId = repo.id;
     let inspectionRequest = this.workingTreeRequest;
     const conflictRequest = this.conflictRequest;
@@ -2876,8 +3045,23 @@ export class GitKhronosService {
     this.storeStatus(repoId, predict(repo.status));
     this.pendingWorkingTreeMutations.set(repoId, (this.pendingWorkingTreeMutations.get(repoId) ?? 0) + 1);
     let status: RepositoryStatus | null = null;
+    let failureKind: string | null = null;
     const outcome = await this.run(pending, async report => {
-      status = await change(repoId);
+      try {
+        status = await change(repoId);
+      } catch (error: unknown) {
+        failureKind = this.errorKind(error);
+        const mayHaveChanged = failureHandling === 'discard' ? this.discardMayHaveChanged(failureKind)
+          : failureHandling === 'recovery' && this.recoveryMayHaveChanged(failureKind);
+        if (mayHaveChanged) {
+          if (repoId === this.activeRepositoryId() && inspectionRequest === this.workingTreeRequest) {
+            this.clearWorkingTreeInspection(conflictRequest !== this.conflictRequest);
+            inspectionRequest = this.workingTreeRequest;
+          }
+          throw failureHandling === 'discard' ? this.uncertainDiscardFailure(error) : this.uncertainRecoveryFailure(error, false);
+        }
+        throw error;
+      }
       // Only invalidate the inspection that existed when this change began.
       if (repoId === this.activeRepositoryId() && inspectionRequest === this.workingTreeRequest) {
         this.clearWorkingTreeInspection(conflictRequest !== this.conflictRequest);
@@ -2885,7 +3069,7 @@ export class GitKhronosService {
       }
       report(done);
     }, repoId, null, true, false);
-    const result = { succeeded: outcome === 'success', inspectionRequest };
+    const result = { succeeded: outcome === 'success', failureKind, inspectionRequest };
     const statusIsCurrent = generation === this.statusGeneration(repoId);
     // Every completion invalidates older replies, including overlapping work.
     this.bumpStatusGeneration(repoId);
@@ -3028,7 +3212,7 @@ export class GitKhronosService {
     };
     const finishHistoryBarrier = changesHistory ? this.beginHistoryBarrier() : null;
     try {
-      if (changesHistory && this.historyLoadFinished) await this.historyLoadFinished;
+      if (changesHistory && this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       await action(report);
       this.finishActivity(id, 'success', description, startedAt, null);
       return 'success';
@@ -3039,7 +3223,7 @@ export class GitKhronosService {
       if (cancelled && repositoryId && refreshOnCancel) {
         const finishRecoveryBarrier = changesHistory ? null : this.beginHistoryBarrier();
         try {
-          if (!changesHistory && this.historyLoadFinished) await this.historyLoadFinished;
+          if (!changesHistory && this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
           await this.refreshMutationSnapshot(repositoryId, inspectionRequest);
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
@@ -3089,6 +3273,70 @@ export class GitKhronosService {
       // A late replay must not toggle an entry recorded while it was pending.
       return history[repoId] === entry ? { ...history, [repoId]: { ...entry, undone } } : history;
     });
+  }
+
+  private clearHistoryEntry(repoId: string, entry: OperationHistoryEntry | undefined): void {
+    if (!entry) return;
+    this.operationHistory.update(history => {
+      if (history[repoId] !== entry) return history;
+      const updated = { ...history };
+      delete updated[repoId];
+      return updated;
+    });
+  }
+
+  private matchesDiscardHistory(
+    entry: OperationHistoryEntry | undefined,
+    id: string,
+    affectedToolbar: boolean,
+  ): entry is Extract<OperationHistoryEntry, { kind: 'discard' }> {
+    return entry?.kind === 'discard' && (entry.recoveryId ? entry.recoveryId === id : affectedToolbar);
+  }
+
+  private errorAffectedToolbar(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'affectedToolbar' in error && error.affectedToolbar === true;
+  }
+
+  private recoveryMayInvalidateHistory(kind: string | null): boolean {
+    return kind === 'discardRecoveryRecordFailed' || kind === 'discardRecoveryFailedWithRecovery'
+      || kind === 'discardRecoveryRefreshFailed' || kind === 'discardRecoveryStateChanged'
+      || kind === 'discardToolbarRecoveryUnavailable' || kind === 'discardRecoveryMissing'
+      || kind === 'discardRecoveryChanged' || this.recoveryOutcomeUnknown(kind);
+  }
+
+  private discardMayHaveChanged(kind: string | null): boolean {
+    return kind === null || !SAFE_DISCARD_FAILURES.has(kind);
+  }
+
+  private recoveryOutcomeUnknown(kind: string | null): boolean {
+    return kind === null || !KNOWN_RECOVERY_FAILURES.has(kind);
+  }
+
+  private recoveryMayHaveChanged(kind: string | null): boolean {
+    return kind === 'discardRecoveryRecordFailed' || kind === 'discardRecoveryFailedWithRecovery'
+      || kind === 'discardRecoveryRefreshFailed' || this.recoveryOutcomeUnknown(kind);
+  }
+
+  private uncertainDiscardFailure(error: unknown): unknown {
+    const kind = this.errorKind(error);
+    if (kind === 'discardFailedWithRecovery' || kind === 'discardRefreshFailed') return error;
+    return {
+      kind: kind ?? 'discardOutcomeUncertain',
+      message: this.formatError(error),
+      hint: 'The working tree may have changed. Refresh it and review discarded-change recovery before retrying.',
+    };
+  }
+
+  private uncertainRecoveryFailure(error: unknown, removal: boolean): unknown {
+    const kind = this.errorKind(error);
+    if (!this.recoveryOutcomeUnknown(kind)) return error;
+    return {
+      kind: kind ?? 'discardRecoveryOutcomeUncertain',
+      message: this.formatError(error),
+      hint: removal
+        ? 'The recovery capture may already have been removed. Refresh Recovery History before retrying.'
+        : 'The recovery action may have changed files or recovery state. Refresh the repository and review Recovery History before retrying.',
+    };
   }
 
   private recordDiscard(repoId: string, label: string, recoveryId?: string): void {
@@ -3162,7 +3410,7 @@ export class GitKhronosService {
     this.fileInsightBusy.set(false);
   }
 
-  private formatError(error: unknown): string {
+  formatError(error: unknown): string {
     const payload = error as { message?: string; hint?: string | null };
     return [payload?.message ?? String(error), payload?.hint].filter(Boolean).join(' ');
   }
@@ -3237,7 +3485,7 @@ export class GitKhronosService {
     let restoredPath: string | null = null;
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
-      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (this.activeWorkspaceId() !== workspaceId) return;
       for (const path of ordered) {
         try {
@@ -3289,7 +3537,7 @@ export class GitKhronosService {
     const failedPaths: string[] = [];
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
-      if (this.historyLoadFinished) await this.historyLoadFinished;
+      if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       for (const path of paths) {
         if (this.activeWorkspaceId() !== workspaceId) return;
         try {

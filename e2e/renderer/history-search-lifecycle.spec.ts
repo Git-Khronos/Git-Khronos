@@ -31,6 +31,21 @@ async function prepare(page: Page, file: boolean): Promise<void> {
   }, file);
 }
 
+async function showHistory(page: Page, file: boolean) {
+  if (!file) {
+    await page.getByRole('button', { name: /Search all repository history/ }).click();
+    return page.getByRole('dialog', { name: 'Search repository history' });
+  }
+  await page.evaluate(() => {
+    const { app } = (window as any).__historyLifecycle;
+    app.changesOpen.set(false);
+    app.git.commitFileDiff.set({ oid: 'HEAD', path: 'initial', patch: '+line', truncated: false });
+    app.openDiffViewer();
+    app.diffInsightMode.set('history');
+  });
+  return page.getByRole('region', { name: 'File history', exact: true });
+}
+
 for (const file of [false, true]) {
   for (const change of ['newer-request', 'reset', 'repository-switch', 'repository-switch-immediate']) {
     test(`${file ? 'file history' : 'repository search'} cannot restart obsolete work after ${change}`, async ({ page }) => {
@@ -41,7 +56,7 @@ for (const file of [false, true]) {
         const obsolete = state.start('obsolete');
         if (change === 'newer-request') {
           const newest = state.start('newest');
-          state.cancellations[1].resolve(true);
+          state.cancellations[0].resolve(true);
           await newest;
         } else if (change === 'reset') {
           void history.reset();
@@ -68,9 +83,9 @@ for (const file of [false, true]) {
   }
 
   for (const stale of [false, true]) {
-    test(`${file ? 'file history' : 'repository search'} cancellation failure is ${stale ? 'ignored after replacement' : 'reported for current work'}`, async ({ page }) => {
+    test(`${file ? 'file history' : 'repository search'} cancellation failure is ${stale ? 'ignored after completion' : 'reported for current work'}`, async ({ page }) => {
       await prepare(page, file);
-      const error = await page.evaluate(async stale => {
+      const warnings = await page.evaluate(async stale => {
         const state = (window as any).__historyLifecycle;
         const cancellation = state.file ? state.history.cancelFile() : state.history.cancel();
         if (stale) {
@@ -80,15 +95,15 @@ for (const file of [false, true]) {
         }
         state.cancellations[0].reject({ message: 'Cancellation transport failed' });
         await cancellation;
-        const error = state.file ? state.history.fileError() : state.history.error();
+        const warnings = state.app.git.backgroundOperationWarnings().map((warning: any) => warning.message);
         if (!stale) {
           state.finishInitial({ entries: [], cursor: null, complete: true, scanned: 0 });
           await state.initial;
         }
-        return error;
+        return warnings;
       }, stale);
-      if (stale) expect(error).toBeNull();
-      else expect(error).toContain('Cancellation transport failed');
+      if (stale) expect(warnings).toEqual([]);
+      else expect(warnings).toEqual([expect.stringContaining('Cancellation transport failed')]);
     });
   }
 }
@@ -124,3 +139,123 @@ test('file replacement invalidates the old owner before cancellation completes',
   });
   expect(result).toEqual({oldMatches: false, pendingMatches: false, currentMatches: true, subjects: ['replacement']});
 });
+
+for (const file of [false, true]) {
+  const label = file ? 'file history' : 'repository search';
+
+  test(`${label} retries unacknowledged cancellation and lets the user retry`, async ({ page }) => {
+    await prepare(page, file);
+    if (!file) await page.getByRole('button', { name: /Search all repository history/ }).click();
+    await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      state.firstCancel = state.file ? state.history.cancelFile() : state.history.cancel();
+      state.cancellations[0].resolve(false);
+    });
+    for (const count of [2, 3]) {
+      await expect.poll(() => page.evaluate(() => (window as any).__historyLifecycle.cancellations.length)).toBe(count);
+      await page.evaluate(index => (window as any).__historyLifecycle.cancellations[index].resolve(false), count - 1);
+    }
+    const warning = page.getByRole('region', { name: 'Background operation warnings' });
+    await expect(warning.getByRole('alert')).toContainText(`${label} may still be running`);
+    if (!file) await expect(page.getByRole('dialog', { name: 'Search repository history' }).getByRole('region', { name: 'Background operation warnings' })).toBeVisible();
+    expect(await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      return state.file ? state.history.fileBusy() : state.history.busy();
+    })).toBe(true);
+
+    await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      state.retryCancel = state.file ? state.history.cancelFile() : state.history.cancel();
+      state.cancellations[3].resolve(true);
+    });
+    await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      await state.retryCancel;
+      state.finishInitial({ entries: [{ oid: 'a'.repeat(40), subject: 'discarded late result',
+        authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: '2026-01-01T00:00:00Z',
+        path: 'initial', previousPath: null }], cursor: null, complete: true, scanned: 1 });
+      await state.initial;
+    });
+    expect(await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      return (state.file ? state.history.files() : state.history.entries()).map((entry: any) => entry.subject);
+    })).toEqual([]);
+  });
+
+  test(`${label} replacement is not blocked by a stalled cancellation`, async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await prepare(page, file);
+    if (!file) await page.getByRole('button', { name: /Search all repository history/ }).click();
+    await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      state.replacement = state.start('replacement');
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__historyLifecycle.reads.map((read: any) => read.name)),
+      { timeout: 3500 }).toEqual(['initial', 'replacement']);
+    const warning = page.getByRole('region', { name: 'Background operation warnings' });
+    await expect(warning.getByRole('alert')).toContainText(`${label} may still be running`);
+    if (!file) await expect(page.getByRole('dialog', { name: 'Search repository history' }).getByRole('region', { name: 'Background operation warnings' })).toBeVisible();
+    await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      state.cancellations[0].reject(new Error('Late cancellation rejection'));
+      state.finishInitial({ entries: [{ oid: 'b'.repeat(40), subject: 'stale',
+        authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: '2026-01-01T00:00:00Z',
+        path: 'initial', previousPath: null }], cursor: null, complete: true, scanned: 1 });
+      await Promise.all([state.replacement, state.initial]);
+    });
+    await page.waitForTimeout(100);
+    expect(pageErrors).toEqual([]);
+    expect(await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      return (state.file ? state.history.files() : state.history.entries()).map((entry: any) => entry.subject);
+    })).toEqual(['replacement']);
+  });
+
+  test(`${label} can start again after a cancellation is accepted but the read remains active`, async ({ page }) => {
+    await prepare(page, file);
+    const view = await showHistory(page, file);
+    const cancel = view.getByRole('button', { name: file ? /^(Cancel file history|Stopping…|Retry cancellation)$/ : /^(Cancel history search|Stopping…|Retry cancellation)$/ });
+    await cancel.click();
+    await expect(cancel).toHaveAttribute('aria-disabled', 'true');
+    await page.evaluate(() => (window as any).__historyLifecycle.cancellations[0].resolve(true));
+    const restart = view.getByRole('button', { name: file ? 'Reload file history' : 'Search repository', exact: true });
+    await expect(restart).toBeEnabled();
+    if (!file) await view.getByLabel('Message contains').fill('replacement');
+    await restart.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__historyLifecycle.reads.length)).toBe(2);
+    await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      state.finishInitial({ entries: [{ oid: 'b'.repeat(40), subject: 'stale',
+        authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: '2026-01-01T00:00:00Z',
+        path: 'initial', previousPath: null }], cursor: null, complete: true, scanned: 1 });
+      await state.initial;
+    });
+    expect(await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      return (state.file ? state.history.files() : state.history.entries()).map((entry: any) => entry.subject);
+    })).toEqual([file ? 'initial' : 'replacement']);
+  });
+
+  for (const moveFocus of [false, true]) {
+    test(`${label} ${moveFocus ? 'does not steal focus after the user moves it' : 'restores focus after a cancelled read finishes'}`, async ({ page }) => {
+      await prepare(page, file);
+      const view = await showHistory(page, file);
+      const cancel = view.getByRole('button', { name: file ? /^(Cancel file history|Stopping…|Retry cancellation)$/ : /^(Cancel history search|Stopping…|Retry cancellation)$/ });
+      await cancel.focus();
+      await page.keyboard.press('Enter');
+      await expect(cancel).toBeFocused();
+      await expect(cancel).toHaveAttribute('aria-disabled', 'true');
+      const other = file ? view.getByLabel('File history commits') : view.getByLabel('Message contains');
+      if (moveFocus) await other.focus();
+      await page.evaluate(async () => {
+        const state = (window as any).__historyLifecycle;
+        state.cancellations[0].resolve(true);
+        state.finishInitial({ entries: [], cursor: null, complete: true, scanned: 0 });
+        await state.initial;
+      });
+      const fallback = view.getByRole('button', { name: file ? 'Retry file history page' : 'Search repository', exact: true });
+      await expect(moveFocus ? other : fallback).toBeFocused();
+    });
+  }
+}

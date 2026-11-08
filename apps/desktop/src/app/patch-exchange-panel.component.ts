@@ -118,6 +118,7 @@ export class PatchExchangePanelComponent {
     inject(DestroyRef).onDestroy(() => this.generation++);
     effect(() => {
       this.repositoryId();
+      this.git.activeRepositoryId();
       this.generation++;
       this.review.set(null);
       this.selected.set([]);

@@ -491,12 +491,13 @@ fn scan_process_status<T: Send + 'static>(
     let stdout = child.stdout.take().expect("piped stdout");
     let stop_reader = Arc::new(AtomicBool::new(false));
     #[cfg(unix)]
-    let stdout = crate::process_pipe::InterruptiblePipe::new(stdout, stop_reader.clone())
-        .map_err(|error| {
+    let stdout = crate::process_pipe::InterruptiblePipe::new(stdout, stop_reader.clone()).map_err(
+        |error| {
             terminate_process_tree(&mut child);
             let _ = child.wait();
             prune_io(error)
-        })?;
+        },
+    )?;
     let (send, receive) = std::sync::mpsc::sync_channel(1);
     let reader = thread::Builder::new()
         .name("lfs-reference-reader".to_owned())

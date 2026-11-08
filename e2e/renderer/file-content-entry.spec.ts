@@ -141,13 +141,14 @@ test('View changes still reads a patch only after its explicit menu action', asy
 test('an open comparison menu preserves its original revision pair across a background selection update', async ({ page }) => {
   const row = await prepare(page, 'revisions');
   await row.click({ button: 'right' });
-  await page.evaluate(() => {
+  const action = page.getByRole('menuitem', { name: 'Preview file content', exact: true });
+  await expect(action).toBeVisible();
+  await expect(action).toBeEnabled();
+  await action.evaluate(button => {
     const state = (window as any).__directContent;
     state.git.commitComparison.update((comparison: any) => ({ ...comparison, baseOid: 'e'.repeat(40), targetOid: 'f'.repeat(40) }));
-    const action = [...document.querySelectorAll<HTMLButtonElement>('.commit-file-context-menu button')]
-      .find(button => button.textContent?.trim() === 'Preview file content');
-    if (!action) throw Error('Owned content action missing');
-    action.click();
+    if (!(button instanceof HTMLButtonElement)) throw Error('Expected a file content menu button');
+    button.click();
   });
   await expect(page.getByRole('dialog', { name: path, exact: true })).toBeVisible();
   const selection = await page.evaluate(() => {
@@ -161,13 +162,14 @@ test('an open comparison menu preserves its original revision pair across a back
 test('a stale menu click cannot read the same path from a different repository', async ({ page }) => {
   const row = await prepare(page, 'unstaged');
   await row.click({ button: 'right' });
-  await page.evaluate(() => {
+  const action = page.getByRole('menuitem', { name: 'Preview file content', exact: true });
+  await expect(action).toBeVisible();
+  await expect(action).toBeEnabled();
+  await action.evaluate(button => {
     const state = (window as any).__directContent;
-    const action = [...document.querySelectorAll<HTMLButtonElement>('.file-context-menu button')]
-      .find(button => button.textContent?.trim() === 'Preview file content');
-    if (!action) throw Error('Owned content action missing');
     state.git.activeRepositoryId.set('other-content-repository');
-    action.click();
+    if (!(button instanceof HTMLButtonElement)) throw Error('Expected a file content menu button');
+    button.click();
   });
   await expect(page.locator('gc-file-content-dialog')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__directContent.calls.filter((call: any) => call.command === 'inspect_file_media').length)).toBe(0);

@@ -113,6 +113,61 @@ fn literal_names_and_unstaged_bytes_are_distinct_from_index_and_other_paths() {
 }
 
 #[test]
+fn working_content_refuses_nested_repository_boundaries_but_keeps_historical_blobs() {
+    let repo = Repository::new("sha1");
+    fs::create_dir_all(repo.0.join("nested/deep")).unwrap();
+    fs::write(repo.0.join("nested/deep/file"), b"owned content").unwrap();
+    let oid = repo.commit();
+    let path = "nested/deep/file";
+    assert_eq!(
+        repo.read(&FileContentLocation::WorkingTree, path).bytes,
+        Some(b"owned content".to_vec())
+    );
+
+    let marker = repo.0.join("nested/.git");
+    fs::write(&marker, b"gitdir: ../other").unwrap();
+    assert!(
+        read_file_content(
+            &repo.0,
+            &FileContentLocation::WorkingTree,
+            path,
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+    assert_eq!(
+        repo.read(&FileContentLocation::Revision(oid), path).bytes,
+        Some(b"owned content".to_vec())
+    );
+    fs::remove_file(&marker).unwrap();
+    fs::create_dir(&marker).unwrap();
+    assert!(
+        read_file_content(
+            &repo.0,
+            &FileContentLocation::WorkingTree,
+            path,
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+    fs::remove_dir(&marker).unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("missing-git-directory", &marker).unwrap();
+        assert!(
+            read_file_content(
+                &repo.0,
+                &FileContentLocation::WorkingTree,
+                path,
+                &CancellationToken::default()
+            )
+            .is_err()
+        );
+    }
+    assert_eq!(fs::read(repo.0.join(path)).unwrap(), b"owned content");
+}
+
+#[test]
 fn unborn_index_and_empty_blob_are_not_a_missing_blob_or_failed_read() {
     let repo = Repository::new("sha1");
     assert_eq!(
@@ -149,6 +204,145 @@ fn over_budget_blob_and_working_file_expose_size_without_partial_payload() {
     let exact = repo.read(&FileContentLocation::WorkingTree, "large");
     assert!(!exact.over_limit);
     assert_eq!(exact.bytes.unwrap().len(), MAX_FILE_CONTENT_BYTES);
+}
+
+#[test]
+#[cfg(windows)]
+fn windows_working_content_reads_regular_and_ignored_files_with_bounded_bytes() {
+    let repo = Repository::new("sha1");
+    fs::create_dir(repo.0.join("folder")).unwrap();
+    fs::write(repo.0.join("folder/tracked.txt"), b"committed\n").unwrap();
+    fs::write(repo.0.join(".gitignore"), b"*.log\n").unwrap();
+    repo.commit();
+    fs::write(repo.0.join("folder/tracked.txt"), b"working\0\xff").unwrap();
+    fs::write(repo.0.join("folder/ignored.log"), "private 雪\n").unwrap();
+    assert_eq!(
+        repo.read(&FileContentLocation::WorkingTree, "folder\\tracked.txt")
+            .bytes,
+        Some(b"working\0\xff".to_vec())
+    );
+    assert_eq!(
+        repo.read(&FileContentLocation::WorkingTree, "folder/ignored.log")
+            .bytes,
+        Some("private 雪\n".as_bytes().to_vec())
+    );
+    for path in ["missing.txt", "missing/child.txt"] {
+        assert_eq!(
+            repo.read(&FileContentLocation::WorkingTree, path).kind,
+            FileContentKind::Absent
+        );
+    }
+    let large = fs::File::create(repo.0.join("large")).unwrap();
+    large.set_len(MAX_FILE_CONTENT_BYTES as u64 + 1).unwrap();
+    drop(large);
+    let content = repo.read(&FileContentLocation::WorkingTree, "large");
+    assert_eq!(content.kind, FileContentKind::Regular);
+    assert_eq!(content.size, Some(MAX_FILE_CONTENT_BYTES as u64 + 1));
+    assert!(content.over_limit);
+    assert!(content.bytes.is_none());
+    let large = fs::OpenOptions::new()
+        .write(true)
+        .open(repo.0.join("large"))
+        .unwrap();
+    large.set_len(MAX_FILE_CONTENT_BYTES as u64).unwrap();
+    drop(large);
+    let content = repo.read(&FileContentLocation::WorkingTree, "large");
+    assert!(!content.over_limit);
+    assert_eq!(content.bytes.unwrap().len(), MAX_FILE_CONTENT_BYTES);
+}
+
+#[test]
+#[cfg(windows)]
+fn windows_working_content_rejects_unsafe_paths_links_and_live_writers() {
+    use std::os::windows::fs::symlink_file;
+
+    let repo = Repository::new("sha1");
+    let outside = Repository::new("sha1");
+    fs::create_dir(repo.0.join("folder")).unwrap();
+    fs::write(repo.0.join("folder/file.txt"), b"repository bytes").unwrap();
+    fs::write(outside.0.join("secret"), b"outside bytes").unwrap();
+    for path in [
+        "folder\\..\\secret",
+        "folder\\.GIT\\config",
+        "folder\\.git.\\config",
+        "folder\\file.txt:stream",
+        "folder\\CON.txt",
+        "folder\\trailing.",
+        "C:\\outside.txt",
+        "\\\\server\\share\\outside.txt",
+        "folder",
+    ] {
+        assert!(
+            read_file_content(
+                &repo.0,
+                &FileContentLocation::WorkingTree,
+                path,
+                &CancellationToken::default()
+            )
+            .is_err(),
+            "{path:?}"
+        );
+    }
+
+    let junction = repo.0.join("junction");
+    let output = Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(&junction)
+        .arg(&outside.0)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "junction creation failed: {output:?}"
+    );
+    assert!(
+        read_file_content(
+            &repo.0,
+            &FileContentLocation::WorkingTree,
+            "junction\\secret",
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+    symlink_file(outside.0.join("secret"), repo.0.join("file-link"))
+        .expect("Windows content tests require permission to create file symbolic links");
+    assert!(
+        read_file_content(
+            &repo.0,
+            &FileContentLocation::WorkingTree,
+            "file-link",
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+    assert_eq!(
+        fs::read(outside.0.join("secret")).unwrap(),
+        b"outside bytes"
+    );
+    fs::remove_file(repo.0.join("file-link")).unwrap();
+    fs::remove_dir(junction).unwrap();
+
+    let path = repo.0.join("folder/file.txt");
+    let writer = fs::OpenOptions::new().write(true).open(&path).unwrap();
+    assert!(
+        read_file_content(
+            &repo.0,
+            &FileContentLocation::WorkingTree,
+            "folder/file.txt",
+            &CancellationToken::default()
+        )
+        .is_err()
+    );
+    drop(writer);
+    let reader = worktree::open_file(&path).unwrap().unwrap();
+    assert!(fs::OpenOptions::new().write(true).open(&path).is_err());
+    assert!(fs::rename(&path, repo.0.join("folder/replaced.txt")).is_err());
+    drop(reader);
+    assert_eq!(
+        repo.read(&FileContentLocation::WorkingTree, "folder/file.txt")
+            .bytes,
+        Some(b"repository bytes".to_vec())
+    );
 }
 
 #[test]

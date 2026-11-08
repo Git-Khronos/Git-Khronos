@@ -1,10 +1,14 @@
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
+import { SavedDiscardListComponent } from './saved-discard-list.component';
+import { FileConfirmationDetailsComponent, type PendingFileAction } from './file-confirmation-details.component';
+import { savedDiscardLabel } from './discard-recovery-display';
 import type { FileToolsDialogRequest } from './file-tools-dialog-request';
 import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from './repository-link-dialog.component';
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
+import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
 import {
@@ -36,9 +40,9 @@ import type {
   Branch,
   CommitFile,
   FileComparisonContext,
+  RepositoryFile,
   CommitPolicy,
   CommitSummary,
-  DiscardPreview,
   DiscardRecovery,
   InteractiveRebaseStep,
   LfsPrunePreview,
@@ -71,7 +75,7 @@ import { CommandPaletteComponent } from './command-palette.component';
 import { ActivityLogDrawerComponent, type ActivityLogTab } from './activity-log-drawer.component';
 import { WelcomeLauncherComponent } from './welcome-launcher.component';
 import { LfsPruneDialogComponent } from './lfs-prune-dialog.component';
-import { RepositoryConfirmationsComponent } from './repository-confirmations.component';
+import { RepositoryConfirmationsComponent, type ForcePushReview, type WorktreeRemovalReview } from './repository-confirmations.component';
 import { ErrorToastComponent } from './error-toast.component';
 import { KeyboardShortcutsDialogComponent } from './keyboard-shortcuts-dialog.component';
 import { RepositoryDialogComponent, type RepositoryDialogMode } from './repository-dialog.component';
@@ -372,13 +376,6 @@ interface PendingPublishBranch {
   branch: string;
 }
 
-interface PendingWorktreeAction {
-  path: string;
-  branch: string | null;
-  deleteBranch: boolean;
-  changes: number;
-}
-
 interface FileContextMenuState {
   content: FileMediaSelection | null;
   x: number;
@@ -413,6 +410,7 @@ type DiffFileNavigationTarget =
 
 interface CommitFileContextMenuState {
   content: FileMediaSelection | null;
+  repositoryId: string | null;
   x: number;
   y: number;
   oid: string;
@@ -426,22 +424,6 @@ interface StashContextMenuState {
   y: number;
   stash: StashEntry;
   repositoryId: string;
-}
-
-interface PendingFileAction {
-  kind: 'discard' | 'discard-bulk' | 'recover-discard' | 'forget-discard' | 'discard-hunk' | 'discard-lines' | 'ignore' | 'restore-commit';
-  path: string;
-  untracked: boolean;
-  oid?: string;
-  paths?: string[];
-  patternKind?: 'file' | 'extension' | 'directory';
-  staged?: boolean;
-  hunkIndex?: number;
-  lineIndices?: number[];
-  expectedPatch?: string;
-  preview?: DiscardPreview;
-  repositoryId?: string;
-  recovery?: DiscardRecovery;
 }
 
 interface GhostBranchState {
@@ -633,7 +615,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileToolsDialogComponent, EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -662,6 +644,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly fileContentLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileContentLoaderClose');
   private readonly fileContentLoaderFocus = afterRenderEffect(() => this.fileContentLoaderClose()?.nativeElement.focus());
   private readonly actionLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('actionLoaderClose');
+  private readonly stashDeleteLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('stashDeleteLoaderClose');
+  private readonly stashDeleteLoaderFocus = afterRenderEffect(() => this.stashDeleteLoaderClose()?.nativeElement.focus());
+  private readonly stashDeleteDialog = viewChild<StashDeleteDialogComponent>('stashDeleteDialog');
+  private readonly confirmationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('confirmationLoaderClose');
+  private readonly confirmationLoaderFocus = afterRenderEffect(() => this.confirmationLoaderClose()?.nativeElement.focus());
   private readonly historyLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyLoaderClose');
   private readonly workspaceCenterLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceCenterLoaderClose');
   private readonly workspaceCenterLoaderFocus = afterRenderEffect(() => this.workspaceCenterLoaderClose()?.nativeElement.focus());
@@ -671,7 +658,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly mergePreviewLoaderFocus = afterRenderEffect(() => this.mergePreviewLoaderClose()?.nativeElement.focus());
   private readonly rebaseLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('rebaseLoaderClose');
   private readonly historyReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyReviewLoaderClose');
-  private readonly worktreeRemovalDialog = viewChild<ElementRef<HTMLElement>>('worktreeRemovalDialog');
   private readonly branchSearch = viewChild<ElementRef<HTMLInputElement>>('branchSearch');
   private readonly toolbarBranchToggle = viewChild<ElementRef<HTMLButtonElement>>('toolbarBranchToggle');
   private readonly toolbarBranchSearch = viewChild<ElementRef<HTMLInputElement>>('toolbarBranchSearch');
@@ -745,7 +731,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
   protected readonly historySearchRequested = signal(false);
   private historySearchLoaderOpener: HTMLElement | null = null;
-  private readonly graphViewport = viewChild(GraphViewportComponent);
+  private readonly graphViewport = viewChild<GraphViewportComponent>('graphViewport');
   private readonly injector = inject(Injector);
   // Keep history-dependent computations insulated from status-only repository
   // updates. Angular otherwise invalidates every graph computation whenever the
@@ -975,7 +961,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
   protected readonly lfsPruneReviewing = signal(false);
   protected readonly pendingSparseCheckoutAction = signal<'set' | 'disable' | null>(null);
-  protected readonly pendingWorktreeAction = signal<PendingWorktreeAction | null>(null);
+  protected readonly pendingWorktreeAction = signal<WorktreeRemovalReview | null>(null);
   protected readonly forceWorktreeRemoval = signal(false);
   protected readonly activityLogOpen = signal(false);
   protected readonly recoveryHistoryOpen = signal(false);
@@ -1018,10 +1004,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
   protected readonly publishRemote = signal('');
   protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
+  protected readonly fileConfirmationDetailsReady = signal<PendingFileAction | null>(null);
   protected readonly selectedDiscardPaths = signal<string[]>([]);
   protected readonly discardSelectionMode = signal(false);
   protected readonly savedDiscards = signal<DiscardRecovery[] | null>(null);
   protected readonly savedDiscardsRepositoryId = signal<string | null>(null);
+  protected readonly savedDiscardsLoading = signal(false);
+  protected readonly savedDiscardConfirmation = computed(() => {
+    const kind = this.pendingFileAction()?.kind;
+    return kind === 'recover-discard' || kind === 'forget-discard';
+  });
+  private savedDiscardsReturnFocus: HTMLElement | null = null;
   protected readonly referenceAction = signal<ReferenceActionRequest | null>(null);
   protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
@@ -1123,7 +1116,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly lfsPatternLockable = signal(false);
   protected readonly sparseCheckoutPaths = signal('');
   protected readonly sparseCheckoutIndex = signal(true);
-  protected readonly pendingForcePush = signal(false);
+  protected readonly pendingForcePush = signal<ForcePushReview | null>(null);
   protected readonly terminalFontFamily = signal(this.readTerminalFontFamily());
   protected readonly terminalFontSize = signal(this.readTerminalNumber('font-size', 13, [10, 11, 12, 13, 14, 16, 18]));
   protected readonly terminalLineHeight = signal(this.readTerminalNumber('line-height', 1.25, [1, 1.15, 1.25, 1.4, 1.5]));
@@ -1670,6 +1663,8 @@ export class AppComponent implements OnInit, OnDestroy {
         this.selectedDiscardPaths.set([]);
         this.discardSelectionMode.set(false);
         this.savedDiscards.set(null);
+        this.savedDiscardsRepositoryId.set(null);
+        this.savedDiscardsReturnFocus = null;
         this.referenceAction.set(null);
         this.stashDialog.set(null);
         this.rebaseRequest++;
@@ -1766,6 +1761,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly selectedStash = computed(() => {
     const oid = this.selectedCommit();
     return this.git.repository()?.stashes.find((stash) => stash.oid === oid) ?? null;
+  });
+  protected readonly selectedStashFile = computed(() => {
+    const stash = this.selectedStash();
+    const details = this.git.commitDetails();
+    const selected = this.selectedPanelFiles();
+    if (!stash || details?.oid !== stash.oid || !this.git.inspectedStashReference()
+      || this.git.commitComparison() || this.panelFileSelectionSource() !== 'commit' || selected.length !== 1) return null;
+    return details.files.find(file => file.path === selected[0]) ?? null;
   });
   protected readonly selectedCommitChildren = computed(() => {
     const repository = this.git.repository();
@@ -3340,7 +3343,7 @@ export class AppComponent implements OnInit, OnDestroy {
         enabled: !!this.currentBranch() && !busy,
         icon: 'push',
       },
-      { id: 'force-push', group: 'Remote', label: 'Force Push with Lease', detail: 'Rewrite the upstream only if it still matches the last fetched state', enabled: !!this.currentBranch()?.upstream && !busy, icon: 'warning' },
+      { id: 'force-push', group: 'Remote', label: 'Force Push with Lease', detail: 'Rewrite the upstream only if it still matches the reviewed fetched commit', enabled: !!this.currentBranch()?.upstream && !busy, icon: 'warning' },
       { id: 'branch', group: 'Branch', label: 'Create Branch', detail: 'Create a branch from the current HEAD', enabled: !!repository && !busy, icon: 'branch' },
       { id: 'tag-create', group: 'Branch', label: 'Create Tag', detail: this.selectedCommit() && !this.changesOpen() ? 'Tag the selected commit' : 'Tag the current HEAD', enabled: !!repository?.headOid && !busy, icon: 'tag' },
       { id: 'stage-all', group: 'Working Tree', label: 'Stage All Changes', detail: 'Add every current working-tree change to the index', enabled: !!this.unstagedEntries().length && !busy, icon: 'check' },
@@ -3898,6 +3901,7 @@ export class AppComponent implements OnInit, OnDestroy {
           this.panelFileSelectionAnchor.set(file.path);
           this.commitFileContextMenu.set({
             content: this.commitMediaSelection(file, comparison.targetOid, 'comparison'),
+            repositoryId: this.git.activeRepositoryId(),
             x: Math.max(20, window.innerWidth - 620),
             y: 345,
             oid: comparison.targetOid,
@@ -3991,6 +3995,16 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissCheckpointConfirmation(true);
       return;
     }
+    if (this.savedDiscards()) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.dismissSavedDiscards();
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        document.querySelector<HTMLButtonElement>('[data-saved-discards-close]')?.focus();
+      }
+      return;
+    }
     if (this.fileToolsDialog() || this.fileContentDialog()) return;
     if (this.repositoryLinkDialog()) {
       if (event.key === 'Escape') {
@@ -4027,7 +4041,22 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeDiffViewer();
       return;
     }
-    if (this.pendingStashDelete()) return;
+    const stashDelete = this.pendingStashDelete();
+    if (stashDelete) {
+      const dialog = this.stashDeleteDialog();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (dialog) dialog.close(false);
+        else this.closeStashDelete({ request: stashDelete, deleted: false });
+      } else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-stash-delete-dialog'))) {
+        if (dialog) dialog.handleKey(event);
+        else {
+          event.preventDefault();
+          this.stashDeleteLoaderClose()?.nativeElement.focus();
+        }
+      }
+      return;
+    }
     if (event.key === 'Escape' && this.stashRenameTarget()) {
       event.preventDefault();
       this.stashRenameTarget.set(null);
@@ -4061,7 +4090,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (event.key === 'Escape' && this.pendingForcePush()) {
       event.preventDefault();
-      this.pendingForcePush.set(false);
+      this.closeForcePush();
       return;
     }
     if (event.key === 'Escape' && this.pendingTagTarget()) {
@@ -4176,7 +4205,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (event.key === 'Escape' && this.pendingPublishBranch()) {
       event.preventDefault();
-      this.pendingPublishBranch.set(null);
+      this.closePublishBranch();
       return;
     }
     if (event.key === 'Escape' && this.commandPaletteOpen()) {
@@ -4742,10 +4771,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectCommitWithModifiers(event, oid);
   }
 
-  protected handleWipRowResizerClick(event: MouseEvent): void {
+  protected handleWipRowResizerClick(event: MouseEvent, worktree: Worktree): void {
     event.stopPropagation();
     if (this.consumeColumnResizeClickSuppression()) return;
-    this.selectWip();
+    this.selectWorktreeGraphRow(worktree, event);
   }
 
   @HostListener('document:click')
@@ -5962,7 +5991,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async selectWorktreeWip(worktree: Worktree): Promise<void> {
     if (worktree.current) {
-      this.selectWip();
+      this.openWorkingDirectory();
       return;
     }
     await this.openWorktree(worktree.path);
@@ -5974,7 +6003,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.startWorkingTreeComparison(this.selectedCommits()[0]);
         return;
       }
-      this.selectWip();
+      this.openWorkingDirectory();
       return;
     }
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
@@ -6223,6 +6252,20 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  protected closeRepositoryConfirmation(): void {
+    if (this.pendingRemoteRemoval()) this.closeRemoteRemoval();
+    else if (this.pendingSparseCheckoutAction()) this.closeSparseCheckoutConfirmation();
+    else if (this.pendingWorktreeAction()) this.closeWorktreeRemoval();
+    else if (this.pendingForcePush()) this.closeForcePush();
+    else this.closePublishBranch();
+  }
+
+  protected handleConfirmationLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryConfirmation(); }
+    if (event.key === 'Tab') { event.preventDefault(); this.confirmationLoaderClose()?.nativeElement.focus(); }
+  }
+
   protected handleLfsLoaderKey(event: KeyboardEvent): void {
     if (event.key === 'Escape') { event.preventDefault(); this.closeLfsTrackingLoader(); }
     if (event.key === 'Tab') {
@@ -6457,7 +6500,6 @@ export class AppComponent implements OnInit, OnDestroy {
       deleteBranch,
       changes: worktree.changes,
     });
-    setTimeout(() => this.focusConfirmationCancel(this.worktreeRemovalDialog()));
   }
 
   protected closeWorktreeRemoval(): void {
@@ -6489,6 +6531,7 @@ export class AppComponent implements OnInit, OnDestroy {
       && !visible
       && this.detailsVisible()
       && !!(document.activeElement as HTMLElement | null)?.closest('.detail-panel');
+    const focusBeforeCommitPanelClose = restoreCommitPanelToggle ? document.activeElement : null;
     if (panel === 'left-panel') {
       this.sidebarVisible.set(visible);
       if (!this.responsiveSidebarMode) this.wideViewportSidebarVisible = visible;
@@ -6507,7 +6550,10 @@ export class AppComponent implements OnInit, OnDestroy {
     } else if (focusFullWidthInspector) {
       setTimeout(() => this.commitPanelClose()?.nativeElement.focus({ preventScroll: true }));
     } else if (restoreCommitPanelToggle) {
-      setTimeout(() => this.commitPanelToggle()?.nativeElement.focus({ preventScroll: true }));
+      setTimeout(() => {
+        if (document.activeElement !== focusBeforeCommitPanelClose && document.activeElement !== document.body) return;
+        this.commitPanelToggle()?.nativeElement.focus({ preventScroll: true });
+      });
     }
   }
 
@@ -7821,6 +7867,11 @@ export class AppComponent implements OnInit, OnDestroy {
     if (header.scrollTop !== 0) header.scrollTop = 0;
     const list = this.commitListElement;
     if (!list || Math.abs(header.scrollLeft - list.scrollLeft) < 1) return;
+    // A queued header scroll can arrive after the history has already moved again.
+    if (Math.abs(list.scrollLeft - this.graphHeaderScrollLeft) >= 1) {
+      this.syncGraphHeader(list);
+      return;
+    }
     // Focus moved horizontally into a heading outside the view (for example a resize handle reached
     // with Tab), so scroll the history with it; the list then keeps both aligned within its range.
     if (document.activeElement && header.contains(document.activeElement)) {
@@ -8783,6 +8834,11 @@ export class AppComponent implements OnInit, OnDestroy {
     void this.git.compareCommits(ordered.at(-1)!.commit.oid, ordered[0].commit.oid);
   }
 
+  protected openWorkingDirectory(): void {
+    this.selectWip();
+    this.setPanelVisibility('commit-panel', true);
+  }
+
   protected selectWip(): void {
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
     this.clearPanelFileSelection();
@@ -9690,17 +9746,44 @@ export class AppComponent implements OnInit, OnDestroy {
     setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else this.workspaceToggle()?.nativeElement.focus(); });
   }
 
+  protected dismissBackgroundOperationWarningFallback(operationId: string, event: MouseEvent): void {
+    const button = event.currentTarget;
+    if (button instanceof HTMLButtonElement && document.activeElement === button) {
+      const region = button.closest('[aria-label="Background operation warnings"]');
+      const next = [...(region?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+        .find(candidate => candidate !== button);
+      const fallback = [this.commitSearchToggle()?.nativeElement, this.workspaceToggle()?.nativeElement]
+        .find(candidate => candidate?.isConnected && candidate.getClientRects().length);
+      (next ?? fallback)?.focus();
+    }
+    this.git.dismissBackgroundOperationWarning(operationId);
+  }
+
   protected handleWorkspaceCenterLoaderKey(event: KeyboardEvent): void {
     if (event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); this.workspaceCenterLoaderClose()?.nativeElement.focus(); }
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeWorkspaceCenterLoader(); }
   }
 
-  protected openWorkspaceCenter(panel: 'overview' | 'identities' | 'hosting', returnFocus: HTMLElement | null = null): void {
+  protected openWorkspaceCenter(panel: 'overview' | 'identities' | 'hosting' | 'files', returnFocus: HTMLElement | null = null): void {
     if (this.git.busy()) return;
     const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.workspaceMenuOpen.set(false);
     this.identityPopoverOpen.set(false);
     this.workspaceCenterRequest.set({ workspaceId: this.git.activeWorkspaceId(), panel, returnFocus: opener?.getAttribute('role') === 'menuitem' ? this.workspaceToggle()?.nativeElement ?? null : opener });
+  }
+
+  protected openWorkspaceFile(file: RepositoryFile): void {
+    const repository = this.git.repository();
+    if (!repository || repository.bare || this.git.busy() || this.fileContentDialog()) return;
+    const selection = this.workingMediaSelection(file.path, false);
+    if (!selection) return;
+    this.fileContentDialog.set({
+      selection,
+      returnFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+      editing: signal(false),
+      readOnly: file.ignored,
+      showWorkingText: true,
+    });
   }
 
   protected async selectWorkspace(workspaceId: string): Promise<void> {
@@ -10305,7 +10388,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'pop':
         if (action.stashTarget) await this.runSelectedStash(true, action.stashTarget.stash, action.stashTarget.repositoryId);
         break;
-      case 'working-tree': this.selectWip(); break;
+      case 'working-tree': this.openWorkingDirectory(); break;
       case 'terminal': this.toggleTerminal(); break;
       case 'file-manager': await this.git.openRepositoryInFileManager(); break;
       case 'fullscreen': await this.git.toggleFullscreen(); break;
@@ -10695,6 +10778,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected pushCurrentBranch(): void {
+    const opener = this.captureSecondaryConfirmationOpener();
     this.pushMenuOpen.set(false);
     const branch = this.currentBranch();
     const remote = this.currentRemote();
@@ -10703,6 +10787,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!remote || !targetBranch) {
       if (!branch.upstream) {
         this.publishRemote.set('');
+        this.secondaryConfirmationOpener = opener;
         this.pendingPublishBranch.set({ branch: branch.name });
       }
       return;
@@ -10712,29 +10797,74 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     this.publishRemote.set(remote.name);
+    this.secondaryConfirmationOpener = opener;
     this.pendingPublishBranch.set({ branch: branch.name });
   }
 
   protected requestForcePush(): void {
+    const opener = this.captureSecondaryConfirmationOpener();
     this.pushMenuOpen.set(false);
     if (!this.currentRemoteIsUpstream() || this.git.busy()) return;
-    this.pendingForcePush.set(true);
+    const repository = this.git.repository();
+    const branch = this.currentBranch();
+    const remote = this.currentRemote();
+    const remoteBranch = this.currentRemoteBranch();
+    if (!repository || !branch || !remote || !remoteBranch || !branch.upstream) return;
+    const trackingRef = `refs/remotes/${branch.upstream}`;
+    const tracking = repository.branches.find(candidate => candidate.remote && candidate.fullName === trackingRef);
+    if (!tracking) {
+      this.git.error.set(`Cannot safely force push because ${branch.upstream} has no fetched tracking ref. Fetch the remote, then review the force-push target again.`);
+      return;
+    }
+    this.git.error.set(null);
+    this.secondaryConfirmationOpener = opener;
+    this.pendingForcePush.set({
+      repositoryId: repository.id,
+      branchRef: branch.fullName,
+      branchName: branch.name,
+      remote: remote.name,
+      remoteBranch,
+      expectedRemoteOid: tracking.oid,
+      expectedHeadOid: branch.oid,
+    });
   }
 
   protected async confirmForcePush(): Promise<void> {
-    if (!this.pendingForcePush()) return;
-    this.pendingForcePush.set(false);
-    const remote = this.currentRemote();
-    const branch = this.currentRemoteBranch();
-    if (remote && branch) await this.git.forcePushWithLease(remote.name, branch);
+    const review = this.pendingForcePush();
+    if (!review || this.git.busy()) return;
+    this.closeForcePush();
+    if (this.git.activeRepositoryId() !== review.repositoryId || this.currentBranch()?.fullName !== review.branchRef) {
+      this.git.error.set('The repository or branch changed after force-push review. Reopen the confirmation and review the current target.');
+      return;
+    }
+    if (!this.git.repository()?.remotes.some(candidate => candidate.name === review.remote)) {
+      this.git.error.set('The selected remote is no longer configured. Review the current remote before force-pushing.');
+      return;
+    }
+    await this.git.forcePushWithLease(
+      review.remote,
+      review.remoteBranch,
+      review.expectedRemoteOid,
+      review.expectedHeadOid,
+    );
+  }
+
+  protected closeForcePush(): void {
+    this.pendingForcePush.set(null);
+    this.finishSecondaryConfirmation();
   }
 
   protected async confirmPublishBranch(): Promise<void> {
     const pending = this.pendingPublishBranch();
     const remote = this.publishRemote();
     if (!pending || !this.git.repository()?.remotes.some((candidate) => candidate.name === remote)) return;
-    this.pendingPublishBranch.set(null);
+    this.closePublishBranch();
     await this.git.publishBranch(remote, pending.branch);
+  }
+
+  protected closePublishBranch(restoreFocus = true): void {
+    this.pendingPublishBranch.set(null);
+    this.finishSecondaryConfirmation(restoreFocus);
   }
 
   protected async checkoutFromToolbar(branch: Branch): Promise<void> {
@@ -11085,6 +11215,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleContextMenuKeydown(event: KeyboardEvent): void {
+    // The dismissed menu can receive a key before Angular removes its element.
+    if (!this.contextMenu() && !this.stashContextMenu()) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -11096,6 +11228,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleFileContextMenuKeydown(event: KeyboardEvent): void {
+    if (!this.fileContextMenu() && !this.commitFileContextMenu()) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -11107,6 +11240,17 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleSidebarActionMenuKeydown(event: KeyboardEvent): void {
+    if (!this.worktreeMenuPath() && !this.submoduleMenuPath()) {
+      if (event.key === 'Escape' && (this.worktreeMoveRequest() || this.worktreeRegistrationRequest())) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.git.busy()) {
+          if (this.worktreeMoveRequest()) this.closeDeferredGitAction();
+          else this.closeWorktreeRegistrationLoader();
+        }
+      }
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -11296,7 +11440,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = stash ?? this.stashContextMenu()?.stash ?? this.selectedStash();
     const repositoryId = target ? this.stashActionRepositoryId(target) : null;
     if (!target || !repositoryId || this.pendingStashDelete() || !this.git.requireRecoveryRepository(repositoryId)) return;
-    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnFocus = this.stashContextMenu()
+      ? this.contextMenuReturnFocus
+      : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.stashContextMenu.set(null);
     this.pendingStashDelete.set({ repositoryId, stash: target, returnFocus });
   }
@@ -11438,6 +11584,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const preferredPosition = { x: event.clientX, y: event.clientY };
     this.commitFileContextMenu.set({
       content: this.commitMediaSelection(file, oid, source),
+      repositoryId: this.git.activeRepositoryId(),
       file,
       oid,
       paths: selected,
@@ -11573,6 +11720,39 @@ export class AppComponent implements OnInit, OnDestroy {
     }, returnFocus);
   }
 
+  protected isStashFileMenu(menu: CommitFileContextMenuState): boolean {
+    return menu.source === 'commit' && !!this.git.inspectedStashReference()
+      && this.git.commitDetails()?.oid === menu.oid && this.selectedStash()?.oid === menu.oid;
+  }
+
+  protected requestApplySelectedStashFile(event: MouseEvent): void {
+    const file = this.selectedStashFile();
+    const stash = this.selectedStash();
+    const repositoryId = this.git.activeRepositoryId();
+    if (!file || !stash || !repositoryId) return;
+    this.openStashFileDialog(file, stash.oid, repositoryId,
+      event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
+  }
+
+  protected requestApplyStashFileFromMenu(): void {
+    const menu = this.commitFileContextMenu();
+    if (!menu || !menu.repositoryId || !this.isStashFileMenu(menu)) return;
+    const returnFocus = this.fileContextMenuReturnFocus;
+    this.dismissFileActionMenu();
+    this.openStashFileDialog(menu.file, menu.oid, menu.repositoryId, returnFocus);
+  }
+
+  private openStashFileDialog(file: CommitFile, oid: string, repositoryId: string, returnFocus: HTMLElement | null): void {
+    if (this.git.busy() || !this.git.requireRecoveryRepository(repositoryId)) return;
+    const stash = this.selectedStash();
+    if (!stash || stash.oid !== oid || this.git.commitDetails()?.oid !== oid || !this.git.inspectedStashReference()) {
+      this.git.error.set('The selected stash changed. Refresh and review the file again.');
+      return;
+    }
+    this.git.error.set(null);
+    this.stashDialog.set({ action: 'apply-file', repositoryId, stash, file, returnFocus });
+  }
+
   private async inspectContextCommitFile(): Promise<boolean> {
     const menu = this.commitFileContextMenu();
     if (!menu) return false;
@@ -11636,26 +11816,71 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async openSavedDiscards(): Promise<void> {
     const repositoryId = this.git.activeRepositoryId();
-    const recoveries = await this.git.loadDiscardRecoveries();
-    if (this.git.error() || repositoryId !== this.git.activeRepositoryId()) return;
-    this.savedDiscardsRepositoryId.set(repositoryId);
-    this.savedDiscards.set(recoveries);
-    queueMicrotask(() => requestAnimationFrame(() =>
-      document.querySelector<HTMLButtonElement>('[data-saved-discards-close]')?.focus()));
+    if (!repositoryId || this.git.busy()) return;
+    const returnFocus = this.workingTreeOptionsToggle()?.nativeElement ?? null;
+    const recoveries = await this.git.loadDiscardRecoveries(repositoryId);
+    if (!recoveries || !returnFocus?.isConnected || repositoryId !== this.git.activeRepositoryId()) return;
+    this.showSavedDiscards(repositoryId, recoveries, returnFocus);
   }
 
-  protected savedDiscardLabel(id: string): string {
-    const nanos = Number(id.split('-')[0]);
-    return Number.isFinite(nanos) ? new Date(nanos / 1_000_000).toLocaleString() : id;
+  protected async openSavedDiscardsFromHistory(event: MouseEvent): Promise<void> {
+    const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const repositoryId = this.recoveryRepositoryId;
+    if (!opener || !repositoryId || this.git.busy() || this.recoveryCaptureBusy()) return;
+    if (!this.git.requireRecoveryRepository(repositoryId)) {
+      this.focusRecoveryError(opener);
+      return;
+    }
+    this.savedDiscardsLoading.set(true);
+    try {
+      const recoveries = await this.git.loadDiscardRecoveries(repositoryId);
+      if (!opener.isConnected || !this.recoveryHistoryOpen() || this.recoveryRepositoryId !== repositoryId) return;
+      if (!this.git.requireRecoveryRepository(repositoryId) || !recoveries) {
+        this.focusRecoveryError(opener);
+        return;
+      }
+      this.showSavedDiscards(repositoryId, recoveries, opener);
+    } finally {
+      this.savedDiscardsLoading.set(false);
+    }
+  }
+
+  private focusRecoveryError(opener: HTMLElement | null): void {
+    afterNextRender(() => {
+      if (this.recoveryHistoryOpen() && (!opener || opener.isConnected)) {
+        document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
+      }
+    }, { injector: this.injector });
+  }
+
+  private showSavedDiscards(repositoryId: string, recoveries: DiscardRecovery[], returnFocus: HTMLElement | null): void {
+    this.savedDiscardsReturnFocus = returnFocus;
+    this.savedDiscardsRepositoryId.set(repositoryId);
+    this.savedDiscards.set(recoveries);
+    queueMicrotask(() => requestAnimationFrame(() => {
+      if (this.savedDiscards() === recoveries && this.savedDiscardsRepositoryId() === repositoryId) {
+        document.querySelector<HTMLButtonElement>('[data-saved-discards-close]')?.focus();
+      }
+    }));
+  }
+
+  protected readonly savedDiscardLabel = savedDiscardLabel;
+
+  protected markFileConfirmationDetailsReady(action: PendingFileAction): void {
+    if (this.pendingFileAction() === action) this.fileConfirmationDetailsReady.set(action);
   }
 
   protected requestSavedDiscard(recovery: DiscardRecovery, remove = false): void {
+    if (!remove && recovery.stateBlocked) return;
     const repositoryId = this.savedDiscardsRepositoryId();
+    const returnFocus = this.savedDiscardsReturnFocus;
+    this.savedDiscardsReturnFocus = null;
+    this.savedDiscardsRepositoryId.set(null);
     this.savedDiscards.set(null);
     this.openFileConfirmation({
       kind: remove ? 'forget-discard' : 'recover-discard',
       path: this.savedDiscardLabel(recovery.id), untracked: false, repositoryId: repositoryId ?? undefined, recovery,
-    });
+    }, returnFocus);
   }
 
   protected requestDiscardEntry(entry: WorkingTreeEntry, event: MouseEvent): void {
@@ -11768,8 +11993,12 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async confirmFileAction(): Promise<void> {
     const action = this.pendingFileAction();
     if (!action) return;
+    const returnFocus = this.fileActionReturnFocus;
     this.dismissFileConfirmation(false);
-    if (!action.repositoryId || !this.git.requireRecoveryRepository(action.repositoryId)) return;
+    if (!action.repositoryId || !this.git.requireRecoveryRepository(action.repositoryId)) {
+      if (this.recoveryHistoryOpen()) this.focusRecoveryError(returnFocus);
+      return;
+    }
     if (action.kind === 'discard-bulk' && action.preview) {
       const selection = this.selectedDiscardPaths();
       const succeeded = await this.git.discardPrepared(action.preview, action.repositoryId);
@@ -11778,8 +12007,20 @@ export class AppComponent implements OnInit, OnDestroy {
         this.discardSelectionMode.set(false);
       }
     } else if ((action.kind === 'recover-discard' || action.kind === 'forget-discard') && action.recovery) {
-      if (action.kind === 'forget-discard') await this.git.forgetSavedDiscard(action.recovery.id);
-      else await this.git.applySavedDiscard(action.recovery.id, action.recovery.restored);
+      if (action.kind === 'forget-discard') {
+        await this.git.forgetSavedDiscard(action.recovery.id, action.recovery.contentSha256);
+      } else {
+        await this.git.applySavedDiscard(action.recovery.id, action.recovery.restored, action.recovery.contentSha256);
+      }
+      if (this.git.error() && this.recoveryHistoryOpen()) {
+        this.focusRecoveryError(returnFocus);
+      } else {
+        afterNextRender(() => {
+          if (returnFocus?.isConnected && !returnFocus.closest('[inert]') && !this.pendingFileAction() && !this.savedDiscards()) {
+            returnFocus.focus({ preventScroll: true });
+          }
+        }, { injector: this.injector });
+      }
     } else if (action.kind === 'discard') {
       await this.git.discardPath(action.path, action.untracked);
     } else if (action.kind === 'discard-hunk' && action.hunkIndex !== undefined) {
@@ -12282,20 +12523,34 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleSavedDiscardsKeydown(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.dismissSavedDiscards();
+      return;
+    }
     this.cycleDialogFocus(document.querySelector<HTMLElement>('.saved-discards-dialog') ?? undefined, event);
   }
 
   protected dismissSavedDiscards(): void {
+    const target = this.savedDiscardsReturnFocus;
+    this.savedDiscardsReturnFocus = null;
+    this.savedDiscardsRepositoryId.set(null);
     this.savedDiscards.set(null);
-    queueMicrotask(() => this.workingTreeOptionsToggle()?.nativeElement.focus());
+    afterNextRender(() => {
+      if (target?.isConnected && !target.closest('[inert]')) target.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   protected dismissFileConfirmation(restoreFocus = true): void {
     const target = restoreFocus ? this.fileActionReturnFocus : null;
     this.pendingFileAction.set(null);
+    this.fileConfirmationDetailsReady.set(null);
     this.fileActionReturnFocus = null;
     if (target?.isConnected) {
-      queueMicrotask(() => target.focus({ preventScroll: true }));
+      afterNextRender(() => {
+        if (target.isConnected && !target.closest('[inert]')) target.focus({ preventScroll: true });
+      }, { injector: this.injector });
     }
   }
 
@@ -12308,6 +12563,7 @@ export class AppComponent implements OnInit, OnDestroy {
       ? document.activeElement
       : null;
     this.fileActionReturnFocus = returnFocus ?? activeElement;
+    this.fileConfirmationDetailsReady.set(null);
     this.pendingFileAction.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingFileAction() !== action) return;

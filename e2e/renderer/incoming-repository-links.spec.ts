@@ -175,15 +175,20 @@ test('failed hydration retains the last queue and offers a reconnecting retry', 
   await page.evaluate(() => { (window as any).__incoming.failSnapshot = false; });
   await dialog.getByRole('button', { name: 'Retry incoming links', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).__incoming.listeners.length)).toBe(2);
+  expect(await page.evaluate(() => (window as any).__incoming.listeners
+    .filter((listener: any) => listener.event === 'incoming-repository-links-changed').length)).toBe(2);
 });
 
 test('a listener registration completing after destruction is released without reading or reopening requests', async ({ page }) => {
   await prepare(page, { bootstrap: false, heldListener: true });
   await page.evaluate(() => { const state = (window as any).__incoming; state.connection = state.git.retryIncomingRepositoryLinks(); });
-  await expect.poll(() => page.evaluate(() => (window as any).__incoming.listeners.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as any).__incoming.listeners
+    .filter((listener: any) => listener.event === 'incoming-repository-links-changed').length)).toBe(1);
+  const listenerId = await page.evaluate(() => (window as any).__incoming.listeners
+    .find((listener: any) => listener.event === 'incoming-repository-links-changed').id);
   await page.evaluate(async () => { const state = (window as any).__incoming; state.app.ngOnDestroy(); state.finishListener(); await state.connection; state.emit(); });
-  await expect.poll(() => page.evaluate(() => (window as any).__incoming.unlisteners)).toEqual([1]);
+  await expect.poll(() => page.evaluate(id => (window as any).__incoming.unlisteners
+    .filter((unlistener: number) => unlistener === id), listenerId)).toEqual([listenerId]);
   expect(await calls(page, 'incoming_repository_links')).toHaveLength(0);
   expect(await page.evaluate(() => (window as any).__incoming.git.incomingRepositoryLinks().requests)).toEqual([]);
 });

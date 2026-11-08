@@ -154,14 +154,15 @@ test('signature chunk failure is explicit without changing the selected commit o
     }
   });
   await page.goto('/');
-  await page.getByLabel('Commit summary', { exact: true }).fill('Retain draft on signature view failure');
+  const summary = page.getByRole('textbox', { name: 'Commit summary', exact: true });
+  await summary.fill('Retain draft on signature view failure');
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
   await expect(page.locator('.commit-panel').getByRole('alert')).toContainText('Signature view unavailable');
   await expect(page.locator('.commit-panel')).toContainText('Polish repository activity drawer');
   await expect(page.locator('.commit-panel').getByLabel('Unsigned', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close commit panel', exact: true }).click();
   await page.getByRole('button', { name: /^Open working directory changes/ }).click();
-  await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Retain draft on signature view failure');
+  await expect(summary).toHaveValue('Retain draft on signature view failure');
 });
 
 test('signature trust and failure states have distinct text labels rather than color-only feedback', async ({ page }) => {

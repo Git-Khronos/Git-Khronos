@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 for (const order of ['in-order', 'reversed', 'same-turn']) {
-  test(`overlapping checkouts reconcile current metadata when replies arrive ${order}`, async ({ page }) => {
+  test(`overlapping checkout and fetch reconcile current metadata when replies arrive ${order}`, async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async order => {
@@ -15,22 +15,53 @@ for (const order of ['in-order', 'reversed', 'same-turn']) {
       const finish: Record<string, (value: unknown) => void> = {};
       let metadataReads = 0;
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
-        if (command === 'checkout_branch') return new Promise(resolve => { finish[args.name] = resolve; });
+        if (command === 'checkout_branch') return new Promise(resolve => { finish['checkout'] = resolve; });
+        if (command === 'fetch_repository') return new Promise(resolve => { finish['fetch'] = resolve; });
         if (command === 'refresh_repository') { metadataReads++; return Promise.resolve(fresh); }
         if (command === 'refresh_repository_status') return Promise.resolve(fresh.status);
         return Promise.resolve(null);
       } };
       const one = git.checkout('first-branch');
-      const two = git.checkout('second-branch');
-      if (order === 'in-order') { finish['first-branch'](first); await one; finish['second-branch'](fresh); }
-      else if (order === 'reversed') { finish['second-branch'](fresh); await two; finish['first-branch'](first); }
-      else { finish['second-branch'](fresh); finish['first-branch'](first); }
+      const two = git.remote('fetch_repository');
+      if (order === 'in-order') { finish['checkout'](first); await one; finish['fetch'](fresh); }
+      else if (order === 'reversed') { finish['fetch'](fresh); await two; finish['checkout'](first); }
+      else { finish['fetch'](fresh); finish['checkout'](first); }
       await Promise.all([one, two]);
       return { actual: git.repository().headOid, expected: fresh.headOid, metadataReads };
     }, order);
     expect(result.actual).toBe(result.expected);
   });
 }
+
+test('a pending branch action refuses another branch action until it finishes', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    const calls: string[] = [];
+    let finish!: (value: unknown) => void;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      if (command === 'checkout_branch') {
+        calls.push(command);
+        return new Promise(resolve => { finish = resolve; });
+      }
+      if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+      return Promise.resolve(repository);
+    } };
+    const pending = git.checkout('first-branch');
+    const blocked = await git.checkout('second-branch');
+    finish(repository);
+    await pending;
+    const retry = git.checkout('second-branch');
+    finish(repository);
+    await retry;
+    return { blocked, calls };
+  });
+  expect(result.blocked).toBeNull();
+  expect(result.calls).toEqual(['checkout_branch', 'checkout_branch']);
+});
 
 for (const reopen of [false, true]) {
   test(`a late successful checkout cannot restore a ${reopen ? 'reopened' : 'closed'} session snapshot`, async ({ page }) => {
@@ -77,7 +108,9 @@ for (const reconcile of ['normal', 'newer-change', 'read-failure']) {
       const readStarted = new Promise<void>(resolve => { started = resolve; });
       let metadataReads = 0;
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
-        if (command === 'create_branch') return new Promise(resolve => { finish[args.name] = resolve; });
+        if (command === 'create_branch') return new Promise(resolve => { finish['branch'] = resolve; });
+        if (command === 'fetch_repository') return new Promise(resolve => { finish['fetch'] = resolve; });
+        if (command === 'pull_repository') return new Promise(resolve => { finish['pull'] = resolve; });
         if (command === 'refresh_repository') {
           metadataReads++;
           started();
@@ -89,17 +122,17 @@ for (const reconcile of ['normal', 'newer-change', 'read-failure']) {
       } };
       const one = git.createBranch('first');
       if (reconcile === 'normal') {
-        finish['first'](repository);
+        finish['branch'](repository);
         await one;
       } else {
-        const two = git.createBranch('second');
-        finish['second'](repository);
+        const two = git.remote('fetch_repository');
+        finish['fetch'](repository);
         await two;
-        finish['first'](repository);
+        finish['branch'](repository);
         await Promise.race([readStarted, one]);
         if (reconcile === 'newer-change' && metadataReads) {
-          const three = git.createBranch('third');
-          finish['third'](latest);
+          const three = git.pull();
+          finish['pull'](latest);
           await three;
           finishRead(repository);
         }

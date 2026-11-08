@@ -16,15 +16,22 @@ fn cancelled_history() -> AppError {
 pub(super) fn decode_git_path(value: &str) -> Result<String, AppError> {
     let invalid = || AppError::new("invalidBlameOutput", "Invalid quoted path.", None);
     if !value.starts_with('"') {
-        if value.contains('\0') { return Err(invalid()); }
+        if value.contains('\0') {
+            return Err(invalid());
+        }
         return Ok(value.into());
     }
     let mut decoded = Vec::new();
-    let body = value.strip_prefix('"').and_then(|value| value.strip_suffix('"')).ok_or_else(invalid)?;
+    let body = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .ok_or_else(invalid)?;
     let mut bytes = body.bytes();
     while let Some(byte) = bytes.next() {
         if byte != b'\\' {
-            if byte == b'"' { return Err(invalid()); }
+            if byte == b'"' {
+                return Err(invalid());
+            }
             decoded.push(byte);
             continue;
         }
@@ -66,7 +73,9 @@ pub(super) fn decode_git_path(value: &str) -> Result<String, AppError> {
             }
         });
     }
-    if decoded.is_empty() || decoded.contains(&0) { return Err(invalid()); }
+    if decoded.is_empty() || decoded.contains(&0) {
+        return Err(invalid());
+    }
     String::from_utf8(decoded)
         .map_err(|_| AppError::new("unsupportedPathEncoding", "Blame path is not UTF-8.", None))
 }
@@ -167,7 +176,11 @@ pub(super) fn bounded_git_with_limit(
         .spawn()
         .map_err(|error| AppError::new("gitUnavailable", error.to_string(), None))?;
     let overflow = Arc::new(AtomicBool::new(false));
-    fn read_pipe(mut pipe: impl Read, overflow: Arc<AtomicBool>, limit: usize) -> std::io::Result<Vec<u8>> {
+    fn read_pipe(
+        mut pipe: impl Read,
+        overflow: Arc<AtomicBool>,
+        limit: usize,
+    ) -> std::io::Result<Vec<u8>> {
         let mut bytes = Vec::new();
         let mut buffer = [0; 8192];
         loop {
@@ -204,11 +217,15 @@ pub(super) fn bounded_git_with_limit(
     let err_overflow = overflow.clone();
     let out = thread::spawn(move || read_pipe(stdout, out_overflow, output_limit));
     let err = thread::spawn(move || read_pipe(stderr, err_overflow, output_limit));
-    let limit_error = || AppError::new(
-        "historyOutputLimit",
-        format!("History output exceeded its {output_limit}-byte limit. Narrow the query; no partial results were returned."),
-        None,
-    );
+    let limit_error = || {
+        AppError::new(
+            "historyOutputLimit",
+            format!(
+                "History output exceeded its {output_limit}-byte limit. Narrow the query; no partial results were returned."
+            ),
+            None,
+        )
+    };
     let started = Instant::now();
     let result = loop {
         let failure = if token.is_cancelled() {
@@ -885,8 +902,11 @@ mod tests {
     #[test]
     fn quoted_paths_remove_only_the_enclosing_pair_and_decode_git_control_escapes() {
         assert_eq!(decode_git_path("\"\\\"quoted\\\"\"").unwrap(), "\"quoted\"");
-        assert_eq!(decode_git_path("\"bell\\a-back\\b-tab\\t-line\\n-vtab\\v-form\\f-return\\r\"").unwrap(),
-            "bell\u{7}-back\u{8}-tab\t-line\n-vtab\u{b}-form\u{c}-return\r");
+        assert_eq!(
+            decode_git_path("\"bell\\a-back\\b-tab\\t-line\\n-vtab\\v-form\\f-return\\r\"")
+                .unwrap(),
+            "bell\u{7}-back\u{8}-tab\t-line\n-vtab\u{b}-form\u{c}-return\r"
+        );
         for malformed in ["\"unfinished", "\"inside\"quote\"", "\"bad\\000path\""] {
             assert!(decode_git_path(malformed).is_err());
         }
@@ -895,7 +915,11 @@ mod tests {
     #[test]
     fn external_commit_summary_preserves_utf8_and_excludes_notes_and_colour() {
         let repo = Fixture::new();
-        let oid = repo.commit("file.txt", "saved\n", "élève😀 subject\n\nUnicode élève😀 body");
+        let oid = repo.commit(
+            "file.txt",
+            "saved\n",
+            "élève😀 subject\n\nUnicode élève😀 body",
+        );
         repo.run(&["notes", "add", "-m", "Unexpected summary note", &oid]);
         repo.run(&["config", "i18n.logOutputEncoding", "UTF-16"]);
         repo.run(&["config", "color.ui", "always"]);
@@ -916,9 +940,20 @@ mod tests {
         repo.run(&["config", "i18n.logOutputEncoding", "UTF-16"]);
         repo.run(&["config", "color.ui", "always"]);
         let token = CancellationToken::default();
-        let query = HistoryQuery { message: "élève".into(), scope: "main".into(), ..Default::default() };
+        let query = HistoryQuery {
+            message: "élève".into(),
+            scope: "main".into(),
+            ..Default::default()
+        };
         let search = search_history(&repo.0, query, None, &token).unwrap();
-        assert_eq!(search.entries.iter().map(|entry| entry.oid.as_str()).collect::<Vec<_>>(), [last.as_str(), first.as_str()]);
+        assert_eq!(
+            search
+                .entries
+                .iter()
+                .map(|entry| entry.oid.as_str())
+                .collect::<Vec<_>>(),
+            [last.as_str(), first.as_str()]
+        );
         assert_eq!(search.entries[0].subject, "élève😀 second");
         let history = file_history_page(&repo.0, &last, "file.txt", None, &token).unwrap();
         assert_eq!(history.entries.len(), 2);
@@ -1169,13 +1204,24 @@ mod tests {
         let expected = bounded_git(&repo.0, &args, &token).unwrap().stdout;
         let exact = bounded_git_with_limit(&repo.0, &args, &token, expected.len()).unwrap();
         assert_eq!(exact.stdout, expected);
-        assert_eq!(bounded_git_with_limit(&repo.0, &args, &token, expected.len() - 1).unwrap_err().kind,
-            "historyOutputLimit");
+        assert_eq!(
+            bounded_git_with_limit(&repo.0, &args, &token, expected.len() - 1)
+                .unwrap_err()
+                .kind,
+            "historyOutputLimit"
+        );
         let invalid = ["log".to_owned(), "--not-a-real-history-option".to_owned()];
-        assert_eq!(bounded_git_with_limit(&repo.0, &invalid, &token, 1).unwrap_err().kind,
-            "historyOutputLimit");
+        assert_eq!(
+            bounded_git_with_limit(&repo.0, &invalid, &token, 1)
+                .unwrap_err()
+                .kind,
+            "historyOutputLimit"
+        );
         // An ordinary Git failure that fits must not be mislabeled as overflow.
-        assert_ne!(bounded_git(&repo.0, &invalid, &token).unwrap_err().kind, "historyOutputLimit");
+        assert_ne!(
+            bounded_git(&repo.0, &invalid, &token).unwrap_err().kind,
+            "historyOutputLimit"
+        );
     }
 
     #[cfg(unix)]
@@ -1189,7 +1235,11 @@ mod tests {
             cancel.cancel();
         });
         let started = Instant::now();
-        let result = git(&repo.0, &["-c", "alias.historywait=!sleep 1 &", "historywait"], &token);
+        let result = git(
+            &repo.0,
+            &["-c", "alias.historywait=!sleep 1 &", "historywait"],
+            &token,
+        );
         worker.join().unwrap();
         assert_eq!(result.unwrap_err().kind, "operationCancelled");
         assert!(started.elapsed() < Duration::from_millis(700));

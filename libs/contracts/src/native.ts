@@ -32,6 +32,7 @@ terminalOutput: "terminal-output"
 /** user-defined types **/
 
 export type AppError = { kind: string; message: string; hint: string | null }
+export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
 export type BranchWorkflowBinding = { branch: string; expectedOid: string | null; createAt: string | null }
@@ -69,7 +70,8 @@ export type CommitSummary = { oid: string; parents: string[]; authorName: string
 export type ConflictDetails = { path: string; ancestor: string | null; current: string | null; incoming: string | null; output: string | null; binary: boolean; truncated: boolean; state: string; editable: boolean; currentExists: boolean; incomingExists: boolean; submodule: boolean }
 export type DiscardFileToolReviewRequest = { contextId: string; token: string; purpose: FileToolReviewPurpose }
 export type DiscardFileToolSessionRequest = { contextId: string; token: string; operationId: string; finishedUsingFiles: boolean }
-export type DiscardRecoveryInfo = { id: string; restored: boolean }
+export type DiscardRecoveryActionError = ({ kind: string; message: string; hint: string | null }) & { affectedToolbar: boolean }
+export type DiscardRecoveryInfo = { id: string; restored: boolean; stateWarning: string | null; stateBlocked: boolean; paths: string[]; pathsTruncated: boolean; pathsError: string | null; contentSha256: string | null }
 export type DiscardResult = { id: string; status: RepositoryStatus }
 export type EditorDraftDiscarded = { editorId: string; revision: string }
 export type EditorDraftReview = { editorId: string; revision: string; draft: RecoveryDraftRecord; comparison: RecoveryDraftEditorReview }
@@ -364,6 +366,9 @@ export type ReflogEntry = { oid: string; selector: string; subject: string; auth
 export type ReflogPage = { entries: ReflogEntry[]; truncated: boolean }
 export type Remote = { name: string; fetchUrl: string; pushUrl: string }
 export type RepositoryChanged = { repositoryId: string }
+export type RepositoryFile = { path: string; tracked: boolean; ignored: boolean; symbolicLink: boolean; deletable: boolean }
+export type RepositoryFileMutation = { snapshot: RepositorySnapshot | null; refreshError: AppError | null }
+export type RepositoryFiles = { files: RepositoryFile[]; nextCursor: string | null; incomplete: boolean }
 export type RepositoryLink = { remote: string; target: RepositoryLinkTarget }
 export type RepositoryLinkDiscovery = { link: RepositoryLink; inspectedPaths: number; matches: RepositoryLinkInspection[]; unavailable: RepositoryLinkLocationIssue[] }
 export type RepositoryLinkInspection = { link: RepositoryLink; path: string; bare: boolean; matchedRemotes: string[]; target: RepositoryLinkTargetState }
@@ -543,6 +548,11 @@ export function diagnose_signing(args: { repoId: string }): Promise<SigningDiagn
 export function load_more_commits(args: { repoId: string }): Promise<CommitHistoryPage> { return TAURI_INVOKE("load_more_commits", args); }
 export function set_checkpoint_visibility(args: { repoId: string; show: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_checkpoint_visibility", args); }
 export function search_tracked_files(args: { repoId: string; query: string; limit: number }): Promise<TrackedFileSearch> { return TAURI_INVOKE("search_tracked_files", args); }
+export function list_repository_files(args: { repoId: string; query: string; cursor?: string | null }): Promise<RepositoryFiles> { return TAURI_INVOKE("list_repository_files", args); }
+export function create_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("create_repository_file", args); }
+export function delete_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("delete_repository_file", args); }
+export function delete_untracked_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("delete_untracked_repository_file", args); }
+export function read_repository_file_text(args: { repoId: string; path: string; operationId: string }): Promise<string | null> { return TAURI_INVOKE("read_repository_file_text", args); }
 export function load_reflog(args: { repoId: string }): Promise<ReflogPage> { return TAURI_INVOKE("load_reflog", args); }
 export function load_more_changes(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("load_more_changes", args); }
 export function open_repository_in_file_manager(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("open_repository_in_file_manager", args); }
@@ -559,13 +569,14 @@ export function transport_reference(args: { repoId: string; request: ReferenceTr
 export function preview_remote_tag(args: { repoId: string; remote: string; name: string; operationId: string }): Promise<string> { return TAURI_INVOKE("preview_remote_tag", args); }
 export function stash_selected(args: { repoId: string; options: StashOptions }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_selected", args); }
 export function apply_stash_options(args: { repoId: string; reference: string; expectedOid: string; restoreIndex: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stash_options", args); }
+export function apply_stashed_file(args: { repoId: string; reference: string; expectedOid: string; path: string; previousPath?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stashed_file", args); }
 export function branch_from_stash(args: { repoId: string; reference: string; expectedOid: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("branch_from_stash", args); }
 export function stash_checkout(args: { repoId: string; name: string; expectedHead: string; expectedTarget: string; message: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_checkout", args); }
 export function preview_discard(args: { repoId: string; paths?: string[] | null }): Promise<PreparedDiscard> { return TAURI_INVOKE("preview_discard", args); }
 export function discard_changes(args: { repoId: string; token: string }): Promise<DiscardResult> { return TAURI_INVOKE("discard_changes", args); }
 export function load_discard_recoveries(args: { repoId: string }): Promise<DiscardRecoveryInfo[]> { return TAURI_INVOKE("load_discard_recoveries", args); }
-export function apply_saved_discard(args: { repoId: string; id: string; reverse: boolean }): Promise<RepositoryStatus> { return TAURI_INVOKE("apply_saved_discard", args); }
-export function forget_saved_discard(args: { repoId: string; id: string }): Promise<null> { return TAURI_INVOKE("forget_saved_discard", args); }
+export function apply_saved_discard(args: { repoId: string; id: string; reverse: boolean; expectedSha256?: string | null }): Promise<AppliedDiscardRecovery> { return TAURI_INVOKE("apply_saved_discard", args); }
+export function forget_saved_discard(args: { repoId: string; id: string; expectedSha256?: string | null }): Promise<boolean> { return TAURI_INVOKE("forget_saved_discard", args); }
 export function ignore_path(args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("ignore_path", args); }
 export function commit_changes(args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("commit_changes", args); }
 export function update_head_message(args: { repoId: string; expectedOid: string; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
@@ -677,7 +688,7 @@ export function sparse_checkout_reapply(args: { repoId: string }): Promise<Repos
 export function sparse_checkout_disable(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_disable", args); }
 export function pull_repository(args: { repoId: string; strategy?: string | null; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pull_repository", args); }
 export function push_repository(args: { repoId: string; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("push_repository", args); }
-export function force_push_repository(args: { repoId: string; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }
+export function force_push_repository(args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }
 export function publish_branch(args: { repoId: string; remote: string; branch: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("publish_branch", args); }
 export function add_remote(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("add_remote", args); }
 export function set_remote_url(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_remote_url", args); }
@@ -799,6 +810,11 @@ export type CommandMap = {
   load_more_commits: typeof load_more_commits;
   set_checkpoint_visibility: typeof set_checkpoint_visibility;
   search_tracked_files: typeof search_tracked_files;
+  list_repository_files: typeof list_repository_files;
+  create_repository_file: typeof create_repository_file;
+  delete_repository_file: typeof delete_repository_file;
+  delete_untracked_repository_file: typeof delete_untracked_repository_file;
+  read_repository_file_text: typeof read_repository_file_text;
   load_reflog: typeof load_reflog;
   load_more_changes: typeof load_more_changes;
   open_repository_in_file_manager: typeof open_repository_in_file_manager;
@@ -815,6 +831,7 @@ export type CommandMap = {
   preview_remote_tag: typeof preview_remote_tag;
   stash_selected: typeof stash_selected;
   apply_stash_options: typeof apply_stash_options;
+  apply_stashed_file: typeof apply_stashed_file;
   branch_from_stash: typeof branch_from_stash;
   stash_checkout: typeof stash_checkout;
   preview_discard: typeof preview_discard;

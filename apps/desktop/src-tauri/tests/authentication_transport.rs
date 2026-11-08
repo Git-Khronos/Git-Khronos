@@ -138,18 +138,30 @@ impl Fixture {
 
     fn lfs_endpoint(&self) -> String {
         let remote = Command::new("git")
-            .arg("-C").arg(&self.repository)
+            .arg("-C")
+            .arg(&self.repository)
             .args(["config", "--get", "remote.origin.url"])
-            .output().unwrap();
+            .output()
+            .unwrap();
         assert!(remote.status.success());
-        format!("{}/info/lfs", String::from_utf8(remote.stdout).unwrap().trim())
+        format!(
+            "{}/info/lfs",
+            String::from_utf8(remote.stdout).unwrap().trim()
+        )
     }
 
-    fn locks(&self, path: &Path, interactive: bool) -> Result<git_khronos_git_core::LfsLocks, git_khronos_git_core::AppError> {
+    fn locks(
+        &self,
+        path: &Path,
+        interactive: bool,
+    ) -> Result<git_khronos_git_core::LfsLocks, git_khronos_git_core::AppError> {
         let cancellation = CancellationToken::default();
-        with_authentication(&self.helper, &cancellation, interactive.then(credentials), || {
-            git_khronos_git_core::lfs_locks(path)
-        })
+        with_authentication(
+            &self.helper,
+            &cancellation,
+            interactive.then(credentials),
+            || git_khronos_git_core::lfs_locks(path),
+        )
     }
 }
 
@@ -325,12 +337,9 @@ fn background_failure_is_quiet_and_explicit_retry_succeeds() {
 fn lfs_lock_listing_uses_authenticated_json() {
     let fixture = Fixture::new();
     let cancellation = CancellationToken::default();
-    let locks = with_authentication(
-        &fixture.helper,
-        &cancellation,
-        Some(credentials()),
-        || git_khronos_git_core::lfs_locks(&fixture.repository),
-    )
+    let locks = with_authentication(&fixture.helper, &cancellation, Some(credentials()), || {
+        git_khronos_git_core::lfs_locks(&fixture.repository)
+    })
     .unwrap();
     assert_eq!(
         locks.locks.len(),
@@ -385,12 +394,9 @@ fn lfs_lock_listing_uses_authenticated_json() {
     assert_eq!(error.kind, "operationCancelled");
 
     let cancellation = CancellationToken::default();
-    let retry = with_authentication(
-        &fixture.helper,
-        &cancellation,
-        Some(credentials()),
-        || git_khronos_git_core::lfs_locks(&fixture.repository),
-    )
+    let retry = with_authentication(&fixture.helper, &cancellation, Some(credentials()), || {
+        git_khronos_git_core::lfs_locks(&fixture.repository)
+    })
     .unwrap();
     assert_eq!(retry.locks, locks.locks);
 }
@@ -398,12 +404,22 @@ fn lfs_lock_listing_uses_authenticated_json() {
 #[test]
 #[ignore = "requires Git LFS with locks --json; run with --ignored"]
 fn lfs_endpoint_urls_refuse_embedded_credentials_before_transport() {
-    for key in ["lfs.url", "lfs.pushurl", "remote.origin.lfsurl", "remote.origin.lfspushurl"] {
-        for prefix in ["http://user:fixture-secret@", "http://user@", "ssh://user:fixture-secret@"] {
+    for key in [
+        "lfs.url",
+        "lfs.pushurl",
+        "remote.origin.lfsurl",
+        "remote.origin.lfspushurl",
+    ] {
+        for prefix in [
+            "http://user:fixture-secret@",
+            "http://user@",
+            "ssh://user:fixture-secret@",
+        ] {
             let fixture = Fixture::new();
             let endpoint = fixture.lfs_endpoint().replacen("http://", prefix, 1);
             git(&fixture.repository, &["config", key, &endpoint]);
-            let error = fixture.locks(&fixture.repository, false)
+            let error = fixture
+                .locks(&fixture.repository, false)
                 .expect_err("Embedded endpoint credentials must not authenticate a lock request");
             assert_safe_failure(&error, "credentialsInUrl");
             assert_eq!(fixture.connections.load(Ordering::Relaxed), 0);
@@ -419,23 +435,51 @@ fn lfs_endpoint_file_sources_refuse_credentials_before_transport() {
             let fixture = Fixture::new();
             let endpoint = fixture.lfs_endpoint().replacen("http://", prefix, 1);
             git(&fixture.repository, &["config", "user.name", "Fixture"]);
-            git(&fixture.repository, &["config", "user.email", "fixture@example.test"]);
-            git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &endpoint]);
+            git(
+                &fixture.repository,
+                &["config", "user.email", "fixture@example.test"],
+            );
+            git(
+                &fixture.repository,
+                &["config", "-f", ".lfsconfig", "lfs.url", &endpoint],
+            );
             let mut path = fixture.repository.clone();
             if source != "worktree" {
                 git(&path, &["add", ".lfsconfig"]);
                 if source != "index" {
-                    git(&path, &["-c", "commit.gpgsign=false", "commit", "-m", "Owned LFS configuration"]);
-                    git(&path, &["update-index", "--force-remove", "--", ".lfsconfig"]);
+                    git(
+                        &path,
+                        &[
+                            "-c",
+                            "commit.gpgsign=false",
+                            "commit",
+                            "-m",
+                            "Owned LFS configuration",
+                        ],
+                    );
+                    git(
+                        &path,
+                        &["update-index", "--force-remove", "--", ".lfsconfig"],
+                    );
                 }
                 fs::remove_file(path.join(".lfsconfig")).unwrap();
                 if source == "bare" {
                     let bare = fixture.directory.join("bare-client.git");
-                    git(&fixture.directory, &["clone", "--bare", path.to_str().unwrap(), bare.to_str().unwrap()]);
+                    git(
+                        &fixture.directory,
+                        &[
+                            "clone",
+                            "--bare",
+                            path.to_str().unwrap(),
+                            bare.to_str().unwrap(),
+                        ],
+                    );
                     path = git_khronos_git_core::resolve_repository(&bare).unwrap();
                 }
             }
-            let error = fixture.locks(&path, false).expect_err("A file-sourced credential URL must be refused");
+            let error = fixture
+                .locks(&path, false)
+                .expect_err("A file-sourced credential URL must be refused");
             assert_safe_failure(&error, "credentialsInUrl");
             assert_eq!(fixture.connections.load(Ordering::Relaxed), 0, "{source}");
         }
@@ -449,28 +493,82 @@ fn lfs_endpoint_overrides_preserve_safe_effective_configuration() {
     let safe = fixture.lfs_endpoint();
     let unsafe_url = safe.replacen("http://", "http://user:fixture-secret@", 1);
     git(&fixture.repository, &["config", "user.name", "Fixture"]);
-    git(&fixture.repository, &["config", "user.email", "fixture@example.test"]);
-    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url]);
+    git(
+        &fixture.repository,
+        &["config", "user.email", "fixture@example.test"],
+    );
+    git(
+        &fixture.repository,
+        &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url],
+    );
     git(&fixture.repository, &["add", ".lfsconfig"]);
-    git(&fixture.repository, &["-c", "commit.gpgsign=false", "commit", "-m", "Owned LFS configuration"]);
+    git(
+        &fixture.repository,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "Owned LFS configuration",
+        ],
+    );
     // Working configuration overrides the index/HEAD copy.
-    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &safe]);
-    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    git(
+        &fixture.repository,
+        &["config", "-f", ".lfsconfig", "lfs.url", &safe],
+    );
+    assert_eq!(
+        fixture
+            .locks(&fixture.repository, true)
+            .unwrap()
+            .locks
+            .len(),
+        1
+    );
     // An index copy overrides HEAD when the working file is absent.
     git(&fixture.repository, &["add", ".lfsconfig"]);
     fs::remove_file(fixture.repository.join(".lfsconfig")).unwrap();
-    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    assert_eq!(
+        fixture
+            .locks(&fixture.repository, true)
+            .unwrap()
+            .locks
+            .len(),
+        1
+    );
     // Ordinary config overrides the selected file; its last value wins too.
-    git(&fixture.repository, &["config", "--add", "lfs.url", &unsafe_url]);
+    git(
+        &fixture.repository,
+        &["config", "--add", "lfs.url", &unsafe_url],
+    );
     git(&fixture.repository, &["config", "--add", "lfs.url", &safe]);
-    git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url]);
+    git(
+        &fixture.repository,
+        &["config", "-f", ".lfsconfig", "lfs.url", &unsafe_url],
+    );
     let index = fs::read(fixture.repository.join(".git/index")).unwrap();
     let config = fs::read(fixture.repository.join(".git/config")).unwrap();
     let file = fs::read(fixture.repository.join(".lfsconfig")).unwrap();
-    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
-    assert_eq!(fs::read(fixture.repository.join(".git/index")).unwrap(), index);
-    assert_eq!(fs::read(fixture.repository.join(".git/config")).unwrap(), config);
-    assert_eq!(fs::read(fixture.repository.join(".lfsconfig")).unwrap(), file);
+    assert_eq!(
+        fixture
+            .locks(&fixture.repository, true)
+            .unwrap()
+            .locks
+            .len(),
+        1
+    );
+    assert_eq!(
+        fs::read(fixture.repository.join(".git/index")).unwrap(),
+        index
+    );
+    assert_eq!(
+        fs::read(fixture.repository.join(".git/config")).unwrap(),
+        config
+    );
+    assert_eq!(
+        fs::read(fixture.repository.join(".lfsconfig")).unwrap(),
+        file
+    );
 }
 
 #[cfg(unix)]
@@ -478,13 +576,21 @@ fn lfs_endpoint_overrides_preserve_safe_effective_configuration() {
 #[ignore = "requires Git LFS with locks --json; run with --ignored"]
 fn lfs_endpoint_review_preserves_literal_repository_path_bytes() {
     use std::os::unix::ffi::OsStringExt;
-    for suffix in [b"space newline\n tab\t unicode-\xce\xbb".to_vec(), b"non-utf8-\xff".to_vec()] {
+    for suffix in [
+        b"space newline\n tab\t unicode-\xce\xbb".to_vec(),
+        b"non-utf8-\xff".to_vec(),
+    ] {
         let mut fixture = Fixture::new();
         let renamed = fixture.directory.join(std::ffi::OsString::from_vec(suffix));
         fs::rename(&fixture.repository, &renamed).unwrap();
         fixture.repository = renamed;
-        let endpoint = fixture.lfs_endpoint().replacen("http://", "http://user:fixture-secret@", 1);
-        git(&fixture.repository, &["config", "-f", ".lfsconfig", "lfs.url", &endpoint]);
+        let endpoint = fixture
+            .lfs_endpoint()
+            .replacen("http://", "http://user:fixture-secret@", 1);
+        git(
+            &fixture.repository,
+            &["config", "-f", ".lfsconfig", "lfs.url", &endpoint],
+        );
         let error = fixture.locks(&fixture.repository, false).unwrap_err();
         assert_safe_failure(&error, "credentialsInUrl");
         assert_eq!(fixture.connections.load(Ordering::Relaxed), 0);
@@ -497,7 +603,11 @@ fn lfs_endpoint_invalid_or_oversized_file_is_not_a_safe_configuration() {
     for oversized in [false, true] {
         let fixture = Fixture::new();
         let contents = if oversized {
-            format!("[lfs]\nurl = {}/{}\n", fixture.lfs_endpoint(), "a".repeat(600 * 1024))
+            format!(
+                "[lfs]\nurl = {}/{}\n",
+                fixture.lfs_endpoint(),
+                "a".repeat(600 * 1024)
+            )
         } else {
             "[lfs\nurl = invalid-fixture-config\n".into()
         };
@@ -514,7 +624,14 @@ fn lfs_endpoint_ordinary_configuration_capture_stays_bounded_before_transport() 
     let fixture = Fixture::new();
     let endpoint = fixture.lfs_endpoint();
     git(&fixture.repository, &["config", "lfs.url", &endpoint]);
-    assert_eq!(fixture.locks(&fixture.repository, true).unwrap().locks.len(), 1);
+    assert_eq!(
+        fixture
+            .locks(&fixture.repository, true)
+            .unwrap()
+            .locks
+            .len(),
+        1
+    );
     let connections = fixture.connections.load(Ordering::Relaxed);
     let config_path = fixture.repository.join(".git/config");
     let mut contents = fs::read(&config_path).unwrap();
@@ -526,8 +643,12 @@ fn lfs_endpoint_ordinary_configuration_capture_stays_bounded_before_transport() 
     // Git's complete configuration output, not a huge URL or an unsafe server.
     fs::write(&config_path, &contents).unwrap();
     let index_path = fixture.repository.join(".git/index");
-    let index = index_path.try_exists().unwrap().then(|| fs::read(&index_path).unwrap());
-    let error = fixture.locks(&fixture.repository, true)
+    let index = index_path
+        .try_exists()
+        .unwrap()
+        .then(|| fs::read(&index_path).unwrap());
+    let error = fixture
+        .locks(&fixture.repository, true)
         .expect_err("Oversized ordinary configuration must be refused before opening transport");
     assert_safe_failure(&error, "remoteConfigurationUnavailable");
     assert_eq!(fixture.connections.load(Ordering::Relaxed), connections);
@@ -700,17 +821,31 @@ fn assert_safe_failure(error: &git_khronos_git_core::AppError, kind: &str) {
 #[test]
 fn missing_local_remotes_with_tls_words_are_not_certificate_failures() {
     let fixture = Fixture::new();
-    for name in ["certificate-assets.git", "ssl-assets.git", "SSL certificate problem.git"] {
+    for name in [
+        "certificate-assets.git",
+        "ssl-assets.git",
+        "SSL certificate problem.git",
+    ] {
         let missing = fixture.directory.join(name);
         assert!(!missing.exists());
-        git(&fixture.repository, &["remote", "set-url", "origin", missing.to_str().unwrap()]);
-        let failure = fixture.fetch(Some(Arc::new(|_| {
-            panic!("A missing local repository must not request credentials")
-        }))).unwrap_err();
+        git(
+            &fixture.repository,
+            &["remote", "set-url", "origin", missing.to_str().unwrap()],
+        );
+        let failure = fixture
+            .fetch(Some(Arc::new(|_| {
+                panic!("A missing local repository must not request credentials")
+            })))
+            .unwrap_err();
         assert_safe_failure(&failure, "gitTransportFailure");
         assert!(failure.message.contains("transport failed"));
         assert!(!missing.exists());
-        assert!(!fixture.repository.join(".git/refs/remotes/origin/main").exists());
+        assert!(
+            !fixture
+                .repository
+                .join(".git/refs/remotes/origin/main")
+                .exists()
+        );
     }
 }
 
@@ -725,13 +860,23 @@ fn quoted_targets_in_missing_local_remotes_do_not_impersonate_transport_failures
     ] {
         let missing = fixture.directory.join(name);
         assert!(!missing.exists());
-        git(&fixture.repository, &["remote", "set-url", "origin", missing.to_str().unwrap()]);
-        let failure = fixture.fetch(Some(Arc::new(|_| {
-            panic!("A missing local repository must not request credentials")
-        }))).unwrap_err();
+        git(
+            &fixture.repository,
+            &["remote", "set-url", "origin", missing.to_str().unwrap()],
+        );
+        let failure = fixture
+            .fetch(Some(Arc::new(|_| {
+                panic!("A missing local repository must not request credentials")
+            })))
+            .unwrap_err();
         assert_safe_failure(&failure, "gitTransportFailure");
         assert!(!missing.exists());
-        assert!(!fixture.repository.join(".git/refs/remotes/origin/main").exists());
+        assert!(
+            !fixture
+                .repository
+                .join(".git/refs/remotes/origin/main")
+                .exists()
+        );
     }
 }
 
@@ -754,14 +899,22 @@ fn real_https_smart_git_authentication_rejection_retry_cancel_and_background() {
         .env("LC_ALL", "C")
         .output()
         .unwrap();
-    assert!(!tls_probe.status.success(), "The untrusted TLS fixture unexpectedly succeeded");
+    assert!(
+        !tls_probe.status.success(),
+        "The untrusted TLS fixture unexpectedly succeeded"
+    );
     let failure = fixture
         .fixture
         .fetch(Some(Arc::new(|_| {
             panic!("TLS verification must fail before asking for a credential")
         })))
         .unwrap_err();
-    assert_eq!(failure.kind, "tlsVerificationFailed", "Owned TLS fixture diagnostic: {}", String::from_utf8_lossy(&tls_probe.stderr));
+    assert_eq!(
+        failure.kind,
+        "tlsVerificationFailed",
+        "Owned TLS fixture diagnostic: {}",
+        String::from_utf8_lossy(&tls_probe.stderr)
+    );
     assert_safe_failure(&failure, "tlsVerificationFailed");
     git(
         &fixture.fixture.repository,

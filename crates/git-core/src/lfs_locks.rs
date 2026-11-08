@@ -272,9 +272,15 @@ fn lock_failure(mut error: AppError) -> AppError {
 }
 
 fn locks_unavailable(mut error: AppError) -> AppError {
-    if matches!(error.kind.as_str(),
-        "authenticationRequired" | "operationCancelled" | "credentialsInUrl"
-        | "remoteConfigurationUnavailable" | "tlsVerificationFailed" | "sshHostTrustRequired") {
+    if matches!(
+        error.kind.as_str(),
+        "authenticationRequired"
+            | "operationCancelled"
+            | "credentialsInUrl"
+            | "remoteConfigurationUnavailable"
+            | "tlsVerificationFailed"
+            | "sshHostTrustRequired"
+    ) {
         return error;
     }
     error.kind = "lfsLocksUnavailable".into();
@@ -297,9 +303,19 @@ mod tests {
 
     #[test]
     fn lock_listing_preserves_actionable_transport_refusals() {
-        for kind in ["authenticationRequired", "operationCancelled", "credentialsInUrl",
-            "remoteConfigurationUnavailable", "tlsVerificationFailed", "sshHostTrustRequired"] {
-            let error = locks_unavailable(AppError::new(kind, "Specific refusal", Some("Specific recovery")));
+        for kind in [
+            "authenticationRequired",
+            "operationCancelled",
+            "credentialsInUrl",
+            "remoteConfigurationUnavailable",
+            "tlsVerificationFailed",
+            "sshHostTrustRequired",
+        ] {
+            let error = locks_unavailable(AppError::new(
+                kind,
+                "Specific refusal",
+                Some("Specific recovery"),
+            ));
             assert_eq!(error.kind, kind);
             assert_eq!(error.message, "Specific refusal");
             assert_eq!(error.hint.as_deref(), Some("Specific recovery"));

@@ -38,7 +38,45 @@ async function openRepair(page: Page): Promise<void> {
 }
 
 test('repair missing worktree explains registration-only scope and pins selected identity', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   await setup(page);
+  const actions = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+  const row = actions.locator('..');
+  await expect(row).toHaveClass(/prunable/);
+  await expect(row.locator('.worktree-list-main')).toBeDisabled();
+  await actions.click();
+  const menu = page.locator('.worktree-card-menu.list-menu');
+  const repair = menu.getByRole('menuitem', { name: 'Repair after external move…', exact: true });
+  await expect(menu).toBeVisible();
+  const enabledItems = menu.locator('[role="menuitem"]:not(:disabled)');
+  await expect(enabledItems.first()).toBeFocused();
+  await expect(row).toHaveCSS('opacity', '1');
+  await expect(row.locator('.worktree-list-main')).toHaveCSS('opacity', '0.55');
+  await expect.poll(() => repair.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit !== null && element.contains(hit);
+  })).toBe(true);
+  await enabledItems.first().press('End');
+  await expect(enabledItems.last()).toBeFocused();
+  await enabledItems.last().press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(actions).toBeFocused();
+  await actions.click();
+  await expect(menu).toBeVisible();
+  await page.locator('.statusbar').click({ position: { x: 5, y: 5 } });
+  await expect(menu).toHaveCount(0);
+  await actions.click();
+  await repair.evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a worktree menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeMoveRequest())).toBeNull();
+  await expect(actions).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__worktreeRepair.calls
+    .some((entry: { command: string }) => entry.command === 'repair_worktree'))).toBe(false);
   await openRepair(page);
   const dialog = page.getByRole('dialog', { name: 'Repair moved worktree' });
   await expect(dialog).toContainText('No files are moved or deleted');

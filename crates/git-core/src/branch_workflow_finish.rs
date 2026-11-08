@@ -1668,6 +1668,62 @@ mod tests {
                 recovery.head_oid
             );
         }
+        let restart =
+            prepare_branch_workflow_start(&fixture.repo, BranchWorkflowKind::Feature, "owned")
+                .unwrap();
+        assert_eq!(restart.base_oid, status.completed_targets[0]);
+        start_branch_workflow(&fixture.repo, &restart, &CancellationToken::default()).unwrap();
+        assert_eq!(
+            fixture.git(&["symbolic-ref", "HEAD"]),
+            "refs/heads/feature/owned"
+        );
+        assert_eq!(
+            direct_tip(&fixture.repo, "feature/owned")
+                .unwrap()
+                .as_deref(),
+            Some(status.completed_targets[0].as_str())
+        );
+    }
+
+    #[test]
+    fn rebased_feature_requires_a_fresh_finish_plan() {
+        let fixture = Fixture::new();
+        fixture.setup();
+        topic(&fixture, "feature/rebase", "feature\n");
+        fixture.git(&["checkout", "-q", "develop"]);
+        fs::write(fixture.repo.join("development.txt"), b"development\n").unwrap();
+        fixture.git(&["add", "development.txt"]);
+        fixture.git(&["commit", "-qm", "Development update"]);
+        fixture.git(&["checkout", "-q", "feature/rebase"]);
+
+        let reviewed =
+            prepare_branch_workflow_finish(&fixture.repo, "feature/rebase", Default::default())
+                .unwrap();
+        let reviewed_source = reviewed.source_oid.clone();
+        fixture.git(&["rebase", "develop"]);
+        let rebased_source = direct_tip(&fixture.repo, "feature/rebase")
+            .unwrap()
+            .unwrap();
+        assert_ne!(rebased_source, reviewed_source);
+        assert!(
+            finish_branch_workflow(&fixture.repo, &reviewed, &CancellationToken::default())
+                .is_err()
+        );
+        assert!(!finish_pending(&fixture.repo).unwrap());
+
+        let refreshed =
+            prepare_branch_workflow_finish(&fixture.repo, "feature/rebase", Default::default())
+                .unwrap();
+        assert_eq!(refreshed.source_oid, rebased_source);
+        let status =
+            finish_branch_workflow(&fixture.repo, &refreshed, &CancellationToken::default())
+                .unwrap();
+        assert_eq!(status.phase, BranchWorkflowFinishPhase::Complete);
+        assert!(
+            direct_tip(&fixture.repo, "feature/rebase")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

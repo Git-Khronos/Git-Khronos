@@ -223,25 +223,51 @@ fn repository_links_generation_refuses_invalid_targets_without_reinterpreting_sp
     assert!(create_repository_link(REMOTE, &long).is_err());
 }
 
-
 #[test]
 fn repository_links_preserve_documented_scp_paths_without_inventing_ssh_url_equivalence() {
-    for remote in ["git@EXAMPLE.TEST:Owned/repo.git", "git@example.test:/Owned/repo.git", "git@example.test:~owned/repo.git", "git@[::1]:Owned/雪%2F.git"] {
+    for remote in [
+        "git@EXAMPLE.TEST:Owned/repo.git",
+        "git@example.test:/Owned/repo.git",
+        "git@example.test:~owned/repo.git",
+        "git@[::1]:Owned/雪%2F.git",
+    ] {
         let identity = repository_link_remote_identity(remote).unwrap();
         let link = create_repository_link(remote, &RepositoryLinkTarget::Repository {}).unwrap();
         assert_eq!(parse_repository_link(&link).unwrap().remote(), identity);
     }
-    assert_eq!(repository_link_remote_identity("git@EXAMPLE.TEST:Owned/repo.git").unwrap(), "git@example.test:Owned/repo.git");
-    let identities: std::collections::HashSet<_> = ["git@example.test:Owned/repo.git", "git@example.test:/Owned/repo.git", "ssh://git@example.test/Owned/repo.git", "alice@example.test:Owned/repo.git"].iter().map(|v| repository_link_remote_identity(v).unwrap()).collect();
+    assert_eq!(
+        repository_link_remote_identity("git@EXAMPLE.TEST:Owned/repo.git").unwrap(),
+        "git@example.test:Owned/repo.git"
+    );
+    let identities: std::collections::HashSet<_> = [
+        "git@example.test:Owned/repo.git",
+        "git@example.test:/Owned/repo.git",
+        "ssh://git@example.test/Owned/repo.git",
+        "alice@example.test:Owned/repo.git",
+    ]
+    .iter()
+    .map(|v| repository_link_remote_identity(v).unwrap())
+    .collect();
     assert_eq!(identities.len(), 4);
-    for invalid in ["git@host:", "git@host:-option", "git@host:a/../repo", "git@host/path:repo", "user:password@host:repo", "git@evil@host:repo", "git@host:repo?token=secret"] {
+    for invalid in [
+        "git@host:",
+        "git@host:-option",
+        "git@host:a/../repo",
+        "git@host/path:repo",
+        "user:password@host:repo",
+        "git@evil@host:repo",
+        "git@host:repo?token=secret",
+    ] {
         assert!(repository_link_remote_identity(invalid).is_err());
     }
 }
 
 #[test]
 fn repository_link_target_json_refuses_ambiguous_unknown_fields() {
-    for value in [serde_json::json!({"kind":"repository","oid":"a".repeat(40)}), serde_json::json!({"kind":"commit","oid":"a".repeat(40),"reference":"refs/heads/main"})] {
+    for value in [
+        serde_json::json!({"kind":"repository","oid":"a".repeat(40)}),
+        serde_json::json!({"kind":"commit","oid":"a".repeat(40),"reference":"refs/heads/main"}),
+    ] {
         assert!(serde_json::from_value::<RepositoryLinkTarget>(value).is_err());
     }
 }

@@ -850,15 +850,19 @@ test('keeps compact repository actions available on touch-first desktops', async
   await expect(branchMenu).toBeHidden();
   await expect(branchActions).toBeFocused();
 
-  await page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true }).focus();
+  const branchSeparator = page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true });
+  const minimumWidth = await branchSeparator.getAttribute('aria-valuemin');
+  expect(minimumWidth).not.toBeNull();
+  await branchSeparator.focus();
   await page.keyboard.press('Home');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', minimumWidth!);
   const longReference = page.locator('.commit-row .ref-pill.local')
     .filter({ hasText: 'feature/partial-staging' }).first();
-  expect(await longReference.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await expect.poll(() => longReference.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await longReference.tap();
   await expect(longReference).toBeFocused();
   await expect(longReference).toHaveCSS('position', 'relative');
-  expect(await longReference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect.poll(() => longReference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await context.close();
 });
 
@@ -2675,7 +2679,13 @@ test('opens working-tree and historical file actions from the keyboard', async (
   await expect(menu.getByRole('menuitem', { name: 'Preview file content', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Stage file' })).toBeFocused();
-  await page.keyboard.press('Escape');
+  await menu.getByRole('menuitem', { name: 'Discard changes…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a file menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(workingFile).toBeFocused();
 
   const viewport = page.viewportSize()!;
@@ -2706,11 +2716,22 @@ test('opens working-tree and historical file actions from the keyboard', async (
   await page.keyboard.press('End');
   const restore = menu.getByRole('menuitem', { name: /Restore file from this commit/ });
   await expect(restore).toBeFocused();
-  await restore.press('Enter');
+  await restore.evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a historical file menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
   const confirmation = page.getByRole('alertdialog', { name: /app\.component\.html/ });
+  await expect(confirmation).toHaveCount(0);
+  await expect(historicalFile).toBeFocused();
+  await historicalFile.press('ContextMenu');
+  await expect(restore).toBeVisible();
+  await restore.press('Enter');
   const cancel = confirmation.getByRole('button', { name: 'Cancel' });
   const confirm = confirmation.getByRole('button', { name: /Restore and stage/ });
   await expect(cancel).toBeFocused();
+  await expect(confirm).toBeEnabled();
   await page.keyboard.press('Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Tab');
@@ -2888,6 +2909,15 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
 
   await worktreeActions.click();
   menu = page.locator('.worktree-card-menu.list-menu').filter({ hasText: 'feature/partial-staging' });
+  await menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a worktree menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingWorktreeAction())).toBeNull();
+  await expect(worktreeActions).toBeFocused();
+  await worktreeActions.click();
   await menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
   const removal = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
   const removalCancel = removal.getByRole('button', { name: 'Cancel' });
@@ -2922,6 +2952,26 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await expect(menu.getByRole('menuitem', { name: 'Copy submodule path' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(submoduleActions).toBeFocused();
+});
+
+test('confirms forced worktree removal only after acknowledging changes', async ({ page }) => {
+  const expectedPath = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    (window as any).__worktreeRemovalCalls = [];
+    git.removeWorktree = async (...args: unknown[]) => { (window as any).__worktreeRemovalCalls.push(args); };
+    return git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').path;
+  });
+  await page.locator('.worktree-list-actions').nth(1).click();
+  await page.locator('.worktree-card-menu.list-menu')
+    .getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  const confirm = dialog.getByRole('button', { name: 'Remove worktree', exact: true });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: /Force removal/ }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__worktreeRemovalCalls)).toEqual([[expectedPath, false, true]]);
 });
 
 test('navigates pane and remote-group context menus from the keyboard', async ({ page }) => {
@@ -3159,6 +3209,16 @@ test('exposes tag and stash actions through direct controls', async ({ page }) =
   const stashMenu = page.getByRole('menu', { name: 'Stash actions' });
   await expect(stashMenu.getByRole('menuitem', { name: 'Apply Stash' })).toBeFocused();
   await expect(stashActions).toHaveAttribute('aria-expanded', 'true');
+  await stashMenu.getByRole('menuitem', { name: 'Delete Stash…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a stash menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingStashDelete())).toBeNull();
+  await expect(stashActions).toBeFocused();
+  await stashActions.press('Enter');
+  await expect(stashMenu.getByRole('menuitem', { name: 'Apply Stash' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(stashMenu).toBeHidden();
   await expect(stashActions).toBeFocused();
@@ -4162,13 +4222,92 @@ test('confirms rewritten history before force pushing with a lease', async ({ pa
 
   const confirmation = page.getByRole('alertdialog', { name: 'Force push main' });
   await expect(confirmation).toContainText('origin/main');
+  await expect(confirmation).toContainText('f19b263a8af3');
+  await expect(confirmation).toContainText('83e6d15fb826');
   await expect(confirmation).toContainText('--force-with-lease');
-  await expect(confirmation).toContainText('Git rejects the operation');
+  await expect(confirmation).toContainText('background fetch updates the local tracking ref');
+  const cancel = confirmation.getByRole('button', { name: 'Cancel' });
+  const forcePush = confirmation.getByRole('button', { name: 'Force Push with Lease' });
+  await expect(cancel).toBeFocused();
+  await cancel.press('Tab');
+  await expect(forcePush).toBeFocused();
+  await forcePush.press('Tab');
+  await expect(cancel).toBeFocused();
+  await cancel.press('Escape');
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Push options' })).toBeFocused();
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await pushMenu.getByRole('menuitem', { name: /Force Push with Lease/ }).click();
   await confirmation.getByRole('button', { name: 'Force Push with Lease' }).click();
 
   await expect(confirmation).toHaveCount(0);
   await expect(page.locator('.activity-status')).toContainText('Force push with lease complete');
 });
+
+for (const action of ['force push', 'worktree removal', 'branch publish'] as const) {
+  for (const mode of ['cancel', 'failure'] as const) {
+    test(`${action} confirmation loader ${mode} preserves focus and does not run the action`, async ({ page }) => {
+      let release!: () => void;
+      let finish!: () => void;
+      const finished = new Promise<void>(resolve => { finish = resolve; });
+      if (action === 'branch publish') {
+        await page.goto('/?unpublished-branch');
+        await expect(page.locator('.commit-row').first()).toBeVisible();
+      }
+      await page.evaluate(() => {
+        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const calls: string[] = [];
+        (window as any).__confirmationActionCalls = calls;
+        for (const name of ['forcePushWithLease', 'removeWorktree', 'publishBranch']) {
+          git[name] = async () => { calls.push(name); };
+        }
+      });
+      await page.route('**/chunk-*.js', async route => {
+        const response = await route.fetch();
+        const text = await response.text();
+        const confirmationChunk = text.includes('force-push-title') && text.includes('remove-worktree-title');
+        if (confirmationChunk && mode === 'failure') await route.abort();
+        else {
+          if (confirmationChunk) await new Promise<void>(resolve => { release = resolve; });
+          await route.fulfill({ response, body: text });
+        }
+        if (confirmationChunk) finish();
+      });
+      const opener = action === 'force push'
+        ? page.getByRole('button', { name: 'Push options' })
+        : action === 'worktree removal'
+          ? page.locator('.worktree-list-actions').nth(1)
+          : page.getByRole('button', { name: 'Publish feature/partial-staging to origin' });
+      await opener.click();
+      if (action === 'force push') {
+        await page.locator('.push-menu').getByRole('menuitem', { name: /Force Push with Lease/ }).click();
+      } else if (action === 'worktree removal') {
+        await page.locator('.worktree-card-menu.list-menu')
+          .getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
+      }
+      const loader = page.getByRole('dialog', {
+        name: mode === 'cancel' ? 'Loading confirmation' : 'Confirmation unavailable', exact: true,
+      });
+      const close = loader.getByRole('button', { name: mode === 'cancel' ? 'Cancel' : 'Close', exact: true });
+      await expect(close).toBeFocused();
+      await close.press('Tab');
+      await expect(close).toBeFocused();
+      if (mode === 'cancel') await expect.poll(() => typeof release).toBe('function');
+      await close.press('Escape');
+      await expect(loader).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      if (mode === 'cancel') release();
+      await finished;
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      if (action === 'branch publish') {
+        await expect(page.getByRole('dialog', { name: 'Publish feature/partial-staging' })).toHaveCount(0);
+      } else {
+        await expect(page.getByRole('alertdialog', { name: action === 'force push' ? 'Force push main' : 'feature/partial-staging' })).toHaveCount(0);
+      }
+      expect(await page.evaluate(() => (window as any).__confirmationActionCalls)).toEqual([]);
+    });
+  }
+}
 
 test('keeps conflicted merge recovery visible until it is completed or aborted', async ({ page }) => {
   await page.goto('/?merge-preview');
@@ -4633,7 +4772,8 @@ test('resizes the date column from its right edge without changing columns on it
   const message = page.locator('.message-column-heading');
   await expect(separator).not.toHaveClass(/leading-edge/);
   const box = async (locator: typeof date) => (await locator.boundingBox())!;
-  const left = async () => (await box(date)).x + await page.locator('.graph-columns').evaluate((header) => header.scrollLeft);
+  const left = () => date.evaluate((heading) =>
+    heading.getBoundingClientRect().x + heading.closest<HTMLElement>('.graph-columns')!.scrollLeft);
   const initialLeft = await left();
   const initialAuthor = (await box(author)).width;
   const messageWidth = (await box(message)).width;
@@ -4691,8 +4831,12 @@ test('resizes the date column from its right edge without changing columns on it
   await expectLeftFixed();
 
   // Free space does not silently enlarge the last column.
-  await page.getByRole('separator', { name: 'Resize Author column', exact: true }).focus();
+  const authorSeparator = page.getByRole('separator', { name: 'Resize Author column', exact: true });
+  const authorMinimum = await authorSeparator.getAttribute('aria-valuemin');
+  expect(authorMinimum).not.toBeNull();
+  await authorSeparator.focus();
   await page.keyboard.press('Home');
+  await expect(authorSeparator).toHaveAttribute('aria-valuenow', authorMinimum!);
   await expect(separator).toHaveAttribute('aria-valuenow', '100');
   const newLeft = await left();
   const newAuthor = (await box(author)).width;
@@ -5194,20 +5338,24 @@ test('keeps compact history controls clear of the side-by-side commit inspector'
     await page.goto('/');
 
     const history = page.locator('.history-panel');
+    const header = history.locator('.graph-header');
     const inspector = page.locator('.detail-panel:not(.panel-hidden)');
     const settingsButton = page.getByRole('button', { name: 'Configure graph columns' });
-    const [historyBox, inspectorBox, settingsBox] = await Promise.all([
+    const [historyBox, headerBox, inspectorBox, settingsBox, gutter] = await Promise.all([
       history.boundingBox(),
+      header.boundingBox(),
       inspector.boundingBox(),
       settingsButton.boundingBox(),
+      header.evaluate(element => parseFloat(getComputedStyle(element).getPropertyValue('--graph-scrollbar-gutter')) || 0),
     ]);
     expect(historyBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
     expect(inspectorBox).not.toBeNull();
     expect(settingsBox).not.toBeNull();
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x);
     expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 4);
     expect(Math.abs(settingsBox!.x + settingsBox!.width -
-      (historyBox!.x + historyBox!.width - 22))).toBeLessThanOrEqual(1);
+      (headerBox!.x + headerBox!.width - 22 - gutter))).toBeLessThanOrEqual(1);
 
     await settingsButton.click();
     await expect(page.getByRole('dialog', { name: 'Graph settings' })).toBeVisible();
@@ -6112,8 +6260,11 @@ test('clamps fitting graph paths at the right-hand limit without moving the left
   await page.getByLabel('Horizontal Scrolling').uncheck();
   await page.keyboard.press('Escape');
   const branch = page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true });
+  await expect.poll(async () => Number(await branch.getAttribute('aria-valuemax') ?? Infinity)).toBeLessThan(800);
+  const branchMaximum = await branch.getAttribute('aria-valuemax');
   await branch.focus();
   await page.keyboard.press('End');
+  await expect(branch).toHaveAttribute('aria-valuenow', branchMaximum!);
   const branchWidth = await separatorWidth(page, 'Resize Branch and Tag column');
   expect(branchWidth).toBeLessThan(800);
   const graph = page.getByRole('separator', { name: 'Resize Graph column', exact: true });
@@ -6348,9 +6499,17 @@ test('keeps branch confirmations keyboard-contained and returns to the invoking 
   await localBranch.focus();
   await page.keyboard.press('Shift+F10');
   const menu = page.locator('.context-menu[role="menu"]');
+  const confirmation = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  await menu.getByRole('menuitem', { name: 'Delete branch…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a branch menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect(confirmation).toHaveCount(0);
+  await expect(localBranch).toBeFocused();
+  await page.keyboard.press('Shift+F10');
   await menu.getByRole('menuitem', { name: 'Delete branch…' }).click();
 
-  const confirmation = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
   const cancel = confirmation.getByRole('button', { name: 'Cancel' });
   const forceDelete = confirmation.getByRole('checkbox', { name: /Force delete/ });
   const confirm = confirmation.getByRole('button', { name: 'Delete branch' });
@@ -6791,9 +6950,13 @@ test('configures a local branch upstream from its context menu', async ({ page }
 test('searches local and remote branches from the repository breadcrumb', async ({ page }) => {
   const branchToggle = page.getByRole('button', { name: /Switch branch, current main/ });
   await expect(branchToggle.locator('.toolbar-nav-leading-icon')).toBeVisible();
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await branchToggle.click();
   const picker = page.locator('.branch-nav-menu');
   const search = picker.getByRole('searchbox', { name: 'Filter branches' });
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-picker');
   await expect(search).toBeVisible();
   await expect(search).toBeFocused();
   await expect(search).toHaveAttribute('aria-describedby', 'branch-picker-result-count');
@@ -6843,10 +7006,11 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await expect(picker.getByText('No branches found')).toBeVisible();
 
   await search.fill('');
-  await search.press('ArrowDown');
   const currentBranch = picker.getByRole('button', { name: /main Current branch · origin\/main · ahead 1/ });
   const featureBranch = picker.getByRole('button', { name: /feature\/partial-staging Local branch/ });
   const docsBranch = picker.getByRole('button', { name: /Remote branch docs, create local tracking branch from origin\/docs, 2 locations/ });
+  await expect(currentBranch).toBeVisible();
+  await search.press('ArrowDown');
   await expect(currentBranch).toBeFocused();
   await currentBranch.press('ArrowDown');
   await expect(featureBranch).toBeFocused();
@@ -6856,6 +7020,8 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await expect(currentBranch).toBeFocused();
   await currentBranch.press('Escape');
   await expect(picker).toBeHidden();
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await expect(branchToggle).toBeFocused();
 
   await branchToggle.click();
@@ -8707,9 +8873,13 @@ test('persists automatic remote refresh without implying a pull', async ({ page 
 
 test('guides an unpublished branch through remote selection', async ({ page }) => {
   await page.goto('/?unpublished-branch');
-
   const publish = page.getByRole('button', { name: 'Publish feature/partial-staging to origin' });
   await expect(publish).toContainText('Publish');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    (window as any).__publishCalls = [];
+    git.publishBranch = async (...args: unknown[]) => { (window as any).__publishCalls.push(args); };
+  });
   await publish.click();
 
   const dialog = page.getByRole('dialog', { name: 'Publish feature/partial-staging' });
@@ -8718,9 +8888,20 @@ test('guides an unpublished branch through remote selection', async ({ page }) =
   await expect(remote.locator('option')).toHaveText(['origin', 'upstream']);
   await expect(remote.locator('option:checked')).toHaveText('origin');
   await expect(dialog.getByRole('button', { name: 'Publish Branch' })).toBeEnabled();
+  const cancel = dialog.getByRole('button', { name: 'Cancel' });
+  await expect(cancel).toBeFocused();
+  await cancel.press('Shift+Tab');
+  await expect(remote).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  await expect(publish).toBeFocused();
+  await publish.click();
+  await dialog.getByLabel('Publish remote').selectOption('upstream');
+  await dialog.getByRole('button', { name: 'Publish Branch' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__publishCalls))
+    .toEqual([['upstream', 'feature/partial-staging']]);
 });
 
 test('routes an unpublished branch without remotes into remote setup', async ({ page }) => {

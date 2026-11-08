@@ -145,6 +145,22 @@ test('shows and hides checkpoint history without deleting references', async ({ 
   ]);
 });
 
+test('keeps the inspector closed when hiding a selected checkpoint reconciles the selection', async ({ page }) => {
+  await showCheckpoints(page);
+  await page.locator(`.commit-row[data-commit-oid="${privateOid}"]`).click();
+  const inspector = page.locator('.commit-panel');
+  await expect(inspector).toBeVisible();
+  await inspector.getByRole('button', { name: 'Close commit panel', exact: true }).click();
+  await expect(inspector).toBeHidden();
+
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  await page.getByRole('checkbox', { name: 'Show Copilot checkpoints' }).uncheck();
+
+  await expect(page.locator(`.commit-row[data-commit-oid="${privateOid}"]`)).toHaveCount(0);
+  await expect(page.locator('.wip-row:not(.linked-worktree)').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(inspector).toBeHidden();
+});
+
 test('requires confirmation and deletes only the reviewed checkpoint', async ({ page }) => {
   await showCheckpoints(page);
   const checkpoint = page.locator('.commit-row').getByRole('button', { name: `Copilot checkpoint ${privateRef}` });
@@ -170,6 +186,16 @@ test('requires confirmation and deletes only the reviewed checkpoint', async ({ 
   await expect(page.getByRole('button', { name: 'Close commit panel' })).toBeFocused();
   await page.setViewportSize({ width: 1440, height: 900 });
   await checkpoint.focus();
+  await checkpoint.press('Shift+F10');
+  menu = page.locator('.context-menu[role="menu"]');
+  await menu.getByRole('menuitem', { name: 'Delete checkpoint reference…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a checkpoint menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect(dialog).toHaveCount(0);
+  await expect(checkpoint).toBeFocused();
+
   await checkpoint.press('Shift+F10');
   menu = page.locator('.context-menu[role="menu"]');
   await menu.getByRole('menuitem', { name: 'Delete checkpoint reference…' }).click();

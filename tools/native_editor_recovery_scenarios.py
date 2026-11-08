@@ -78,13 +78,7 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     open_ui(driver, repository)
     driver.click('.wip-nav')
     selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
-    element = driver.wait('return document.querySelector(' + json.dumps(selector) + ')')
-    driver.script("arguments[0].scrollIntoView({block:'nearest'})", element)
-    driver.request('POST', driver.path('actions'), {'actions': [{
-        'type': 'pointer', 'id': 'owned-recovery-editor-menu', 'parameters': {'pointerType': 'mouse'},
-        'actions': [{'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
-                    {'type': 'pointerDown', 'button': 2}, {'type': 'pointerUp', 'button': 2}],
-    }]})
+    driver.context_click(selector)
     driver.click_text('[role=menuitem]', 'Preview file content')
     button('gc-file-content-dialog button', 'Edit working copy')
     driver.wait("return !!document.querySelector('#working-editor-text')&&!document.querySelector('#working-editor-text').readOnly")

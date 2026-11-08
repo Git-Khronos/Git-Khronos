@@ -202,6 +202,40 @@ fn file_tools_editor_refuses_metadata_traversal_links_and_changed_file_identity(
 }
 
 #[test]
+fn file_tools_editor_refuses_a_nested_repository_created_after_review() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.repo.join("nested/deep")).unwrap();
+    let file = f.repo.join("nested/deep/file.txt");
+    fs::write(&file, b"owned content").unwrap();
+    let mut plan = f.prepare(
+        FileToolRequest::Editor {
+            path: "nested/deep/file.txt".into(),
+            line: None,
+        },
+        f.profile(ToolRole::Editor, &["{file}"]),
+    );
+    fs::write(f.repo.join("nested/.git"), b"gitdir: ../other").unwrap();
+    assert!(plan.verify(&CancellationToken::default()).is_err());
+    assert!(
+        prepare_file_tool(
+            &f.repo,
+            FileToolRequest::Editor {
+                path: "nested/deep/file.txt".into(),
+                line: None,
+            },
+            f.profile(ToolRole::Editor, &["{file}"]),
+            &f.parent(),
+            f.uid(),
+            &CancellationToken::default(),
+        )
+        .is_err()
+    );
+    plan.discard().unwrap();
+    assert_eq!(fs::read(file).unwrap(), b"owned content");
+    assert!(!f.parent().exists());
+}
+
+#[test]
 fn file_tools_diff_captures_exact_index_working_bytes_and_preserves_git_until_discard() {
     let f = Fixture::new();
     f.commit("file.txt", b"base\0\n");
@@ -252,6 +286,7 @@ fn file_tools_historical_diff_supports_bare_repositories_and_distinguishes_absen
         f.repo.to_str().unwrap(),
         bare.to_str().unwrap(),
     ]);
+    let bare = crate::resolve_repository(&bare).unwrap();
     let mut plan = prepare_file_tool(
         &bare,
         FileToolRequest::Diff {
@@ -1015,6 +1050,7 @@ fn file_tools_native_comparison_resolves_root_commit_absence_and_exact_history_i
         f.repo.to_str().unwrap(),
         bare.to_str().unwrap(),
     ]);
+    let bare = crate::resolve_repository(&bare).unwrap();
     let mut plan = prepare_file_tool(
         &bare,
         FileToolRequest::Comparison {

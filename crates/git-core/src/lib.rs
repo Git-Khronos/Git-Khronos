@@ -51,6 +51,7 @@ pub use working_file_text::{
 mod file_comparison;
 mod file_media;
 mod no_lazy_fetch;
+mod repository_files;
 mod repository_link_inspection;
 mod repository_links;
 pub use file_comparison::{
@@ -65,6 +66,10 @@ pub use file_media::{
     MAX_PREVIEW_PIXELS, RasterMetadata, read_file_media,
 };
 pub use no_lazy_fetch::{without_lazy_fetch, without_lazy_fetch_cancellable};
+pub use repository_files::{
+    RepositoryFile, RepositoryFiles, create_repository_file, delete_repository_file,
+    repository_files, with_repository_regular_file,
+};
 pub use repository_link_inspection::{
     RepositoryLinkInspection, RepositoryLinkTargetState, inspect_repository_link,
 };
@@ -258,7 +263,9 @@ mod history_walk;
 mod integrity;
 pub use integrity::{IntegrityReport, inspect_integrity};
 mod reference_actions;
+mod stash_file_restore;
 mod stash_options;
+pub use stash_file_restore::apply_stashed_file;
 pub use stash_options::{
     StashOptions, apply_stash_with_index, create_branch_from_stash, stash_and_checkout,
     stash_with_options,
@@ -275,6 +282,8 @@ mod rebase_split_tests;
 mod reference_actions_tests;
 #[cfg(test)]
 mod selected_rebase_tests;
+#[cfg(test)]
+mod stash_file_restore_tests;
 #[cfg(all(test, unix))]
 mod transport_stderr_tests;
 pub use reference_actions::{
@@ -285,8 +294,10 @@ pub mod authentication;
 pub mod history_search;
 pub use discard::{
     DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
-    discarded_change_recoveries, execute_discard, prepare_discard, prepare_partial_discard,
+    delete_discard_recovery_reviewed, discard_plan_fingerprint, discarded_change_recoveries,
+    execute_discard, prepare_discard, prepare_partial_discard,
     prepare_partial_discard_with_preview, recover_discarded_changes,
+    recover_discarded_changes_reviewed,
 };
 
 pub const MINIMUM_GIT_VERSION: &str = "2.39.0";
@@ -2433,7 +2444,7 @@ pub fn ignore_path(
         }
     };
 
-    ignore_rules::update(path, &rule, stop_tracking.then_some(file))
+    ignore_rules::update(path, &rule, file, stop_tracking)
 }
 
 pub fn commit(path: &Path, message: &str) -> Result<(), AppError> {
@@ -3998,39 +4009,20 @@ fn push_to_remote_with_cancellation(
     )
 }
 
-pub fn push_force_with_lease(path: &Path) -> Result<(), AppError> {
-    run_mutation(
-        path,
-        &["push", "--force-with-lease"],
-        "force-push to the remote safely",
-    )
-}
-
-pub fn push_force_with_lease_cancellable(
-    path: &Path,
-    cancellation: &CancellationToken,
-) -> Result<(), AppError> {
-    run_mutation_with_cancellation(
-        path,
-        &["push", "--force-with-lease"],
-        "force-push to the remote safely",
-        Some(cancellation),
-    )
-}
-
 pub fn push_force_with_lease_to_remote(
     path: &Path,
     remote: &str,
     branch: &str,
+    expected_remote_oid: &str,
+    expected_head_oid: &str,
 ) -> Result<(), AppError> {
-    validate_remote_name(path, remote)?;
-    require_remote(path, remote)?;
-    validate_branch_name(path, branch)?;
-    let refspec = format!("HEAD:refs/heads/{branch}");
-    run_mutation(
+    push_force_with_reviewed_lease(
         path,
-        &["push", "--force-with-lease", remote, &refspec],
-        "force-push to the selected remote safely",
+        remote,
+        branch,
+        expected_remote_oid,
+        expected_head_oid,
+        None,
     )
 }
 
@@ -4038,17 +4030,50 @@ pub fn push_force_with_lease_to_remote_cancellable(
     path: &Path,
     remote: &str,
     branch: &str,
+    expected_remote_oid: &str,
+    expected_head_oid: &str,
     cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    push_force_with_reviewed_lease(
+        path,
+        remote,
+        branch,
+        expected_remote_oid,
+        expected_head_oid,
+        Some(cancellation),
+    )
+}
+
+fn push_force_with_reviewed_lease(
+    path: &Path,
+    remote: &str,
+    branch: &str,
+    expected_remote_oid: &str,
+    expected_head_oid: &str,
+    cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
     validate_remote_name(path, remote)?;
     require_remote(path, remote)?;
     validate_branch_name(path, branch)?;
-    let refspec = format!("HEAD:refs/heads/{branch}");
+    validate_commit_oid(expected_remote_oid)?;
+    validate_commit_oid(expected_head_oid)?;
+    validate_commitish(path, expected_remote_oid)?;
+    let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
+    ensure_success("check the local commit before force-pushing", &head)?;
+    if String::from_utf8_lossy(&head.stdout).trim() != expected_head_oid {
+        return Err(AppError::new(
+            "staleForcePush",
+            "The local branch changed after force-push review.",
+            Some("Review the current branch and try again."),
+        ));
+    }
+    let lease = format!("--force-with-lease=refs/heads/{branch}:{expected_remote_oid}");
+    let refspec = format!("{expected_head_oid}:refs/heads/{branch}");
     run_mutation_with_cancellation(
         path,
-        &["push", "--force-with-lease", remote, &refspec],
+        &["push", &lease, remote, &refspec],
         "force-push to the selected remote safely",
-        Some(cancellation),
+        cancellation,
     )
 }
 
@@ -11936,7 +11961,7 @@ mod tests {
     }
 
     #[test]
-    fn force_push_with_lease_rejects_an_unseen_remote_update() {
+    fn force_push_with_lease_rejects_an_update_fetched_after_confirmation() {
         let repository = TestRepository::new();
         repository.write("story.txt", "first\n");
         stage_all(&repository.path).expect("stage first revision");
@@ -11958,6 +11983,10 @@ mod tests {
         let remote_text = remote.to_string_lossy().into_owned();
         repository.git(&["remote", "add", "origin", &remote_text]);
         publish_branch(&repository.path, "origin", "main").expect("publish main");
+        let reviewed_remote_oid = snapshot(&repository.path)
+            .expect("read reviewed remote base")
+            .head_oid
+            .expect("reviewed remote base oid");
 
         repository.write("story.txt", "second\n");
         stage_all(&repository.path).expect("stage second revision");
@@ -11974,6 +12003,19 @@ mod tests {
             .output()
             .expect("advance remote without updating the local tracking ref");
         assert!(output.status.success(), "advance remote main");
+        repository.git(&["fetch", "origin"]);
+        let fetched_oid = run_git(
+            &repository.path,
+            &["rev-parse", "--verify", "refs/remotes/origin/main"],
+        )
+        .expect("read fetched remote-tracking ref");
+        ensure_success("read fetched remote-tracking ref", &fetched_oid)
+            .expect("read fetched remote-tracking ref");
+        assert_eq!(
+            String::from_utf8_lossy(&fetched_oid.stdout).trim(),
+            unseen_oid,
+            "simulate a background fetch advancing the tracking ref"
+        );
 
         repository.write("story.txt", "rewritten\n");
         stage_all(&repository.path).expect("stage rewritten revision");
@@ -11985,9 +12027,19 @@ mod tests {
             Some(false),
         )
         .expect("rewrite local revision");
+        let expected_head_oid = snapshot(&repository.path)
+            .expect("read reviewed local commit")
+            .head_oid
+            .expect("reviewed local commit oid");
 
-        let error = push_force_with_lease(&repository.path)
-            .expect_err("the stale lease must reject the force push");
+        let error = push_force_with_lease_to_remote(
+            &repository.path,
+            "origin",
+            "main",
+            &reviewed_remote_oid,
+            &expected_head_oid,
+        )
+        .expect_err("the stale lease must reject the force push");
         assert_eq!(error.kind, "gitFailure");
         let remote_oid = Command::new("git")
             .arg("--git-dir")
@@ -11999,6 +12051,89 @@ mod tests {
         assert_eq!(
             String::from_utf8_lossy(&remote_oid.stdout).trim(),
             unseen_oid
+        );
+        push_force_with_lease_to_remote(
+            &repository.path,
+            "origin",
+            "main",
+            &unseen_oid,
+            &expected_head_oid,
+        )
+        .expect("the lease should succeed when the reviewed remote commit still matches");
+        let updated_remote_oid = Command::new("git")
+            .arg("--git-dir")
+            .arg(&remote)
+            .args(["rev-parse", "refs/heads/main"])
+            .output()
+            .expect("read force-pushed remote main");
+        assert!(
+            updated_remote_oid.status.success(),
+            "read force-pushed remote main"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&updated_remote_oid.stdout).trim(),
+            expected_head_oid
+        );
+        fs::remove_dir_all(parent).expect("remove force-push fixture directory");
+    }
+
+    #[test]
+    fn force_push_with_lease_rejects_a_local_head_changed_after_confirmation() {
+        let repository = TestRepository::new();
+        repository.write("story.txt", "reviewed\n");
+        stage_all(&repository.path).expect("stage reviewed revision");
+        commit(&repository.path, "Reviewed revision").expect("commit reviewed revision");
+
+        let parent = std::env::temp_dir().join(format!(
+            "git-khronos-force-push-local-{}-{}",
+            std::process::id(),
+            TEST_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&parent).expect("create force-push fixture directory");
+        let remote = parent.join("origin.git");
+        let output = Command::new("git")
+            .args(["init", "--bare"])
+            .arg(&remote)
+            .output()
+            .expect("create bare remote");
+        assert!(output.status.success(), "create bare remote");
+        let remote_text = remote.to_string_lossy().into_owned();
+        repository.git(&["remote", "add", "origin", &remote_text]);
+        publish_branch(&repository.path, "origin", "main").expect("publish main");
+        let reviewed_oid = snapshot(&repository.path)
+            .expect("read reviewed commit")
+            .head_oid
+            .expect("reviewed commit oid");
+
+        repository.write("story.txt", "changed after review\n");
+        stage_all(&repository.path).expect("stage changed revision");
+        commit(&repository.path, "Changed after review").expect("commit changed revision");
+        let current_oid = snapshot(&repository.path)
+            .expect("read changed commit")
+            .head_oid
+            .expect("changed commit oid");
+
+        let error = push_force_with_lease_to_remote(
+            &repository.path,
+            "origin",
+            "main",
+            &reviewed_oid,
+            &reviewed_oid,
+        )
+        .expect_err("the local head change must invalidate the review");
+        assert_eq!(error.kind, "staleForcePush");
+        assert_ne!(reviewed_oid, current_oid);
+
+        let remote_oid = Command::new("git")
+            .arg("--git-dir")
+            .arg(&remote)
+            .args(["rev-parse", "refs/heads/main"])
+            .output()
+            .expect("read protected remote main");
+        assert!(remote_oid.status.success(), "read protected remote main");
+        assert_eq!(
+            String::from_utf8_lossy(&remote_oid.stdout).trim(),
+            reviewed_oid
         );
         fs::remove_dir_all(parent).expect("remove force-push fixture directory");
     }
@@ -12600,6 +12735,211 @@ mod tests {
                 .expect("read updated ignore file")
                 .lines()
                 .any(|line| line == "*.toml")
+        );
+    }
+
+    #[test]
+    fn ignore_extension_reapplies_an_existing_rule_after_a_later_negation() {
+        let repository = TestRepository::new();
+        repository.write(".gitignore", "*.log\n!important.log\n");
+        repository.write("important.log", "selected\n");
+        repository.write("unrelated.txt", "keep\n");
+        let before = run_git(
+            &repository.path,
+            &[
+                "check-ignore",
+                "--no-index",
+                "--quiet",
+                "--",
+                "important.log",
+            ],
+        )
+        .unwrap();
+        assert_eq!(before.status.code(), Some(1));
+
+        ignore_path(&repository.path, "important.log", "extension", false).unwrap();
+
+        let ignored = run_git(
+            &repository.path,
+            &[
+                "check-ignore",
+                "--no-index",
+                "--quiet",
+                "--",
+                "important.log",
+            ],
+        )
+        .unwrap();
+        assert!(ignored.status.success());
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"*.log\n!important.log\n*.log\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("important.log")).unwrap(),
+            b"selected\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("unrelated.txt")).unwrap(),
+            b"keep\n"
+        );
+    }
+
+    #[test]
+    fn ignore_extension_reapplies_a_rule_even_if_only_another_file_is_unignored() {
+        let repository = TestRepository::new();
+        repository.write(".gitignore", "*.log\n!keep.log\n");
+        repository.write("chosen.log", "committed\n");
+        repository.write("keep.log", "untracked\n");
+        repository.git(&["add", ".gitignore"]);
+        repository.git(&["add", "-f", "chosen.log"]);
+        repository.git(&["commit", "-m", "Tracked file with exceptions"]);
+        repository.write("chosen.log", "local edit\n");
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &["check-ignore", "--no-index", "--quiet", "--", "keep.log"],
+            )
+            .unwrap()
+            .status
+            .code(),
+            Some(1)
+        );
+
+        ignore_path(&repository.path, "chosen.log", "extension", true).unwrap();
+
+        assert!(
+            run_git(
+                &repository.path,
+                &["check-ignore", "--no-index", "--quiet", "--", "keep.log"],
+            )
+            .unwrap()
+            .status
+            .success()
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"*.log\n!keep.log\n*.log\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("chosen.log")).unwrap(),
+            b"local edit\n"
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &["ls-files", "--error-unmatch", "--", "chosen.log"],
+            )
+            .unwrap()
+            .status
+            .code(),
+            Some(1)
+        );
+
+        let before_ignore = fs::read(repository.path.join(".gitignore")).unwrap();
+        let before_index = fs::read(repository.path.join(".git/index")).unwrap();
+        fs::create_dir(repository.path.join("folder")).unwrap();
+        repository.write("folder/.gitignore", "!important.log\n");
+        repository.write("folder/important.log", "selected\n");
+        let retry =
+            ignore_path(&repository.path, "folder/important.log", "extension", true).unwrap_err();
+        assert_eq!(retry.kind, "ignoreRuleIneffective");
+        assert!(retry.message.contains("existing rule"));
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            before_ignore
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".git/index")).unwrap(),
+            before_index
+        );
+    }
+
+    #[test]
+    fn ignore_directory_uses_a_literal_root_relative_pattern() {
+        let repository = TestRepository::new();
+        fs::create_dir(repository.path.join("logs [temp]")).unwrap();
+        fs::create_dir(repository.path.join("logs t")).unwrap();
+        repository.write("logs [temp]/selected.txt", "selected\n");
+        repository.write("logs [temp]/other.bin", "other\n");
+        repository.write("logs t/other.bin", "unrelated\n");
+
+        ignore_path(
+            &repository.path,
+            "logs [temp]/selected.txt",
+            "directory",
+            false,
+        )
+        .unwrap();
+
+        for (path, expected) in [
+            ("logs [temp]/selected.txt", 0),
+            ("logs [temp]/other.bin", 0),
+            ("logs t/other.bin", 1),
+        ] {
+            assert_eq!(
+                run_git(
+                    &repository.path,
+                    &["check-ignore", "--no-index", "--quiet", "--", path],
+                )
+                .unwrap()
+                .status
+                .code(),
+                Some(expected),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/logs\\ \\[temp\\]/\n"
+        );
+    }
+
+    #[test]
+    fn ignore_refuses_to_untrack_when_a_nested_rule_overrides_the_root_rule() {
+        let repository = TestRepository::new();
+        fs::create_dir(repository.path.join("folder")).unwrap();
+        repository.write(".gitignore", "# existing\n");
+        repository.write("folder/.gitignore", "!important.log\n");
+        repository.write("folder/important.log", "committed\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Tracked file with nested rules"]);
+        repository.write("folder/important.log", "local edit\n");
+        let before_index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error =
+            ignore_path(&repository.path, "folder/important.log", "extension", true).unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRuleIneffective");
+        assert!(error.message.contains("added"));
+        assert!(error.hint.unwrap().contains("index was not changed"));
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"# existing\n*.log\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".git/index")).unwrap(),
+            before_index
+        );
+        assert_eq!(
+            fs::read(repository.path.join("folder/important.log")).unwrap(),
+            b"local edit\n"
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &[
+                    "check-ignore",
+                    "--no-index",
+                    "--quiet",
+                    "--",
+                    "folder/important.log"
+                ],
+            )
+            .unwrap()
+            .status
+            .code(),
+            Some(1)
         );
     }
 

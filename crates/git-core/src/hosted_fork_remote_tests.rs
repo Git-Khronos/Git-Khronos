@@ -381,6 +381,7 @@ fn fork_remote_empty_and_bare_repositories_need_no_checkout_or_commit() {
         fs::create_dir(&fixture.repo).unwrap();
         if bare {
             fixture.git(&["init", "--bare"]);
+            fixture.repo = resolve_repository(&fixture.repo).unwrap();
         } else {
             fixture.git(&["init"]);
         }

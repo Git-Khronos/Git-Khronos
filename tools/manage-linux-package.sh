@@ -14,6 +14,15 @@ esac
 readonly cargo_target_directory
 readonly package_directory="${cargo_target_directory}/release/bundle/deb"
 
+cleanup_directory=""
+
+cleanup_temporary_directory() {
+  [[ -n "$cleanup_directory" ]] || return 0
+  local directory="$cleanup_directory"
+  cleanup_directory=""
+  rm -rf -- "$directory"
+}
+
 fail() {
   printf 'Git Khronos: %s\n' "$1" >&2
   exit 1
@@ -95,7 +104,7 @@ require_desktop_field() {
 }
 
 verify_package() {
-  local package_file="${1:-}" extracted depends temporary_directory cleanup_command
+  local package_file="${1:-}" extracted depends temporary_directory
   [[ -n "$package_file" ]] || package_file="$(latest_package)"
   [[ -f "$package_file" ]] || fail "package does not exist: ${package_file}"
 
@@ -111,9 +120,8 @@ verify_package() {
   [[ "$depends" == *"libgtk-3-0"* ]] || fail "package does not declare the GTK runtime."
 
   temporary_directory="$(mktemp -d -t git-khronos-package.XXXXXX)"
-  # Preserve the owned path even if a failing extractor unwinds local scope.
-  printf -v cleanup_command 'rm -rf -- %q' "$temporary_directory"
-  trap "$cleanup_command" EXIT
+  cleanup_directory="$temporary_directory"
+  trap cleanup_temporary_directory EXIT
   dpkg-deb --extract "$package_file" "$temporary_directory"
   extracted="${temporary_directory}/usr"
 
@@ -176,7 +184,7 @@ NODE
     || fail "packaged frontend notices differ from the generated notices; rebuild with 'task package:deb'."
 
   trap - EXIT
-  rm -rf -- "$temporary_directory"
+  cleanup_temporary_directory
   printf 'Verified Debian package:\n  %s\n' "$package_file"
 }
 
@@ -189,7 +197,7 @@ print_package() {
 }
 
 install_package() {
-  local package_file legacy_status transition_directory guard cleanup_command
+  local package_file legacy_status transition_directory guard
   package_file="$(latest_package)"
   verify_package "$package_file"
   require_apt
@@ -204,10 +212,8 @@ install_package() {
       # path even when the checkout or TMPDIR contains spaces. The symlink's
       # executable target remains the reviewed repository script.
       transition_directory="$(mktemp -d /tmp/git-khronos-apt-guard.XXXXXX)"
-      # Capture the validated mktemp path now: local variables may no longer
-      # exist when an error unwinds the function before its EXIT trap runs.
-      printf -v cleanup_command 'rm -rf -- %q' "$transition_directory"
-      trap "$cleanup_command" EXIT
+      cleanup_directory="$transition_directory"
+      trap cleanup_temporary_directory EXIT
       guard="${transition_directory}/check"
       ln -s -- "${script_dir}/guard-linux-package-transition.sh" "$guard"
       printf 'Replacing the legacy git-khronos-desktop package. Review APT\047s transaction before confirming.\n'
@@ -218,7 +224,7 @@ install_package() {
         -o "APT::Get::Assume-Yes=false" \
         "$package_file"
       trap - EXIT
-      rm -rf -- "$transition_directory"
+      cleanup_temporary_directory
       ;;
     *) run_as_root apt-get install --reinstall --no-remove "$package_file" ;;
   esac

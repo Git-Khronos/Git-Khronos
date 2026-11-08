@@ -1,15 +1,16 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { StashEntry, StashOptions } from '@git-khronos/contracts';
+import type { CommitFile, StashEntry, StashOptions } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { IconComponent } from './icon.component';
 
 export interface StashDialogRequest {
-  action: 'save' | 'apply' | 'branch' | 'switch';
+  action: 'save' | 'apply' | 'apply-file' | 'branch' | 'switch';
   repositoryId: string;
   message?: string;
   stash?: StashEntry;
+  file?: CommitFile;
   branch?: { name: string; oid: string };
   headOid?: string;
   returnFocus: HTMLElement | null;
@@ -70,6 +71,11 @@ export interface StashDialogRequest {
             <code>{{ target.stash?.reference }} — {{ target.stash?.message }}</code>
             <label class="check"><input type="checkbox" name="restoreStashIndex" [ngModel]="restoreIndex()" (ngModelChange)="restoreIndex.set($event)" />Restore which changes were staged</label>
             <p class="hint">The stash is kept. If applying conflicts, resolve the files before trying again.</p>
+          } @else if (target.action === 'apply-file') {
+            <code>{{ target.stash?.reference }} — {{ target.stash?.message }}</code>
+            <p><strong>File:</strong> <code>@if (target.file; as file) { @if (file.previousPath) { {{ file.previousPath }} → }{{ file.path }} }</code></p>
+            <p class="hint">Apply this file's combined saved changes to the working directory. The index and stash stay unchanged.
+              Overlapping changes are refused; review current work before retrying.</p>
           } @else if (target.action === 'branch') {
             <code>{{ target.stash?.reference }} — {{ target.stash?.message }}</code>
             <label>New branch name<input name="stashBranchName" autocomplete="off" [ngModel]="branchName()" (ngModelChange)="branchName.set($event)" /></label>
@@ -139,14 +145,15 @@ export class StashOptionsDialogComponent {
   readonly branchName = signal('');
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly title = computed(() => ({
-    save: 'Stash with options', apply: 'Apply stash', branch: 'Create branch from stash', switch: 'Stash and switch branch',
+    save: 'Stash with options', apply: 'Apply stash', 'apply-file': 'Apply stashed file', branch: 'Create branch from stash', switch: 'Stash and switch branch',
   })[this.request()?.action ?? 'save']);
   readonly eyebrow = computed(() => ({
-    save: 'Working directory', apply: 'Saved work', branch: 'Saved work', switch: 'Working directory',
+    save: 'Working directory', apply: 'Saved work', 'apply-file': 'Saved work', branch: 'Saved work', switch: 'Working directory',
   })[this.request()?.action ?? 'save']);
   readonly description = computed(() => ({
     save: 'Save work locally without creating a commit. Review what will remain in the working directory.',
     apply: 'Restore saved changes without removing the stash.',
+    'apply-file': 'Apply only the selected file without removing the stash.',
     branch: "Create and check out a new branch at the stash's original base, then restore its staged and unstaged changes.",
     switch: 'Explicitly save your current work in a stash before checking out the selected branch.',
   })[this.request()?.action ?? 'save']);
@@ -156,12 +163,13 @@ export class StashOptionsDialogComponent {
     'staged-only': 'Only the staged changes are saved and removed. Unstaged edits remain; overlapping changes may be refused by Git.',
   })[this.mode()]);
   readonly actionLabel = computed(() => ({
-    save: 'Create stash', apply: 'Apply and keep stash', branch: 'Create branch and restore', switch: 'Stash and checkout',
+    save: 'Create stash', apply: 'Apply and keep stash', 'apply-file': 'Apply file and keep stash', branch: 'Create branch and restore', switch: 'Stash and checkout',
   })[this.request()?.action ?? 'save']);
   readonly canConfirm = computed(() => {
     const target = this.request();
     if (!target || target.repositoryId !== this.git.activeRepositoryId()) return false;
     if (target.action === 'save') return !this.selectedOnly() || this.selectedPaths().length > 0;
+    if (target.action === 'apply-file') return !!target.stash && !!target.file;
     if (target.action === 'branch') return !!this.branchName().trim() && this.git.repository()?.status.entryCount === 0;
     return target.action === 'apply' || !!target.headOid;
   });
@@ -204,6 +212,11 @@ export class StashOptionsDialogComponent {
         if (!target.stash) return;
         await this.git.applyStashOptions(target.stash.reference, target.stash.oid, this.restoreIndex());
         break;
+      case 'apply-file':
+        if (!target.stash || !target.file) return;
+        if (await this.git.applyStashedFile(target.stash, target.file, target.repositoryId)
+          && this.request() === target) this.close();
+        return;
       case 'branch':
         if (!target.stash) return;
         await this.git.branchFromStash(target.stash.reference, target.stash.oid, this.branchName().trim());

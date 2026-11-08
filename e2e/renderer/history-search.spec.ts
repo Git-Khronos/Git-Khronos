@@ -168,7 +168,7 @@ test('retains results and cursor after real operation cancellation, reports inco
   await dialog.getByRole('button', { name: 'Continue searching older history' }).click();
   await expect(dialog.getByRole('button', { name: 'Search repository', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Cancel history search' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('cancelled');
+  await expect(dialog.getByRole('alert')).toContainText('discarded after cancellation was requested');
   await expect(dialog).toContainText('Search incomplete');
   await expect(dialog).toContainText('Older than every loaded graph page');
   await dialog.getByRole('button', { name: 'Retry history page' }).click();

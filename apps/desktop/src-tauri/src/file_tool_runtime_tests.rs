@@ -93,6 +93,17 @@ impl Fixture {
             }),
         })
     }
+    fn add_unexpected_private_file(&self) -> PathBuf {
+        let directory = fs::read_dir(self.root.join("copies"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let unexpected = directory.join("unexpected.txt");
+        fs::write(&unexpected, b"preserve").unwrap();
+        unexpected
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -132,6 +143,78 @@ fn file_tool_runtime_cancelled_publication_discards_only_unlaunched_private_copi
         fs::read(fixture.repo.join("file.txt")).unwrap(),
         b"owned bytes\n"
     );
+}
+
+#[test]
+fn file_tool_runtime_cancelled_publication_reports_private_copies_that_cannot_be_retired() {
+    let fixture = Fixture::new();
+    let state = FileToolState::default();
+    let reservation = Reservation::new(&state, "context", Purpose::Launch).unwrap();
+    let tool = fixture.tool(core::ToolRole::Diff);
+    let unexpected = fixture.add_unexpected_private_file();
+    let cancellation = core::CancellationToken::default();
+    cancellation.cancel();
+    let error = reservation
+        .publish(
+            Payload::Launch {
+                repo_id: "owned".into(),
+                tool: Box::new(tool),
+            },
+            &cancellation,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind, "fileToolSnapshotRefused");
+    assert!(error.message.contains("unexpected files"));
+    assert_eq!(fs::read(unexpected).unwrap(), b"preserve");
+    Reservation::new(&state, "context", Purpose::Launch).unwrap();
+}
+
+#[test]
+fn file_tool_runtime_explicit_retirement_reports_and_preserves_unexpected_private_files() {
+    let fixture = Fixture::new();
+    let state = FileToolState::default();
+    let reservation = Reservation::new(&state, "context", Purpose::Launch).unwrap();
+    let tool = fixture.tool(core::ToolRole::Diff);
+    let unexpected = fixture.add_unexpected_private_file();
+    let token = reservation
+        .publish(
+            Payload::Launch {
+                repo_id: "owned".into(),
+                tool: Box::new(tool),
+            },
+            &core::CancellationToken::default(),
+        )
+        .unwrap();
+    let error = state
+        .discard_review("context", Purpose::Launch, &token)
+        .unwrap_err();
+    assert_eq!(error.kind, "fileToolSnapshotRefused");
+    assert_eq!(fs::read(unexpected).unwrap(), b"preserve");
+    Reservation::new(&state, "context", Purpose::Launch).unwrap();
+}
+
+#[test]
+fn file_tool_runtime_replacing_a_review_reports_cleanup_failure_and_releases_the_new_slot() {
+    let fixture = Fixture::new();
+    let state = FileToolState::default();
+    let old = Reservation::new(&state, "context", Purpose::Launch).unwrap();
+    let tool = fixture.tool(core::ToolRole::Diff);
+    let unexpected = fixture.add_unexpected_private_file();
+    old.publish(
+        Payload::Launch {
+            repo_id: "owned".into(),
+            tool: Box::new(tool),
+        },
+        &core::CancellationToken::default(),
+    )
+    .unwrap();
+    let error = match Reservation::new(&state, "context", Purpose::Launch) {
+        Ok(_) => panic!("a failed cleanup must not produce a new reservation"),
+        Err(error) => error,
+    };
+    assert_eq!(error.kind, "fileToolSnapshotRefused");
+    assert_eq!(fs::read(unexpected).unwrap(), b"preserve");
+    Reservation::new(&state, "context", Purpose::Launch).unwrap();
 }
 #[test]
 fn file_tool_runtime_session_capacity_and_retirement_never_replace_another_owned_session() {

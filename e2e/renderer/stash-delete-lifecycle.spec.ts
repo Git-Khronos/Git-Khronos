@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function prepare(page: Page) {
+async function prepare(page: Page, open = true) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
@@ -28,8 +28,53 @@ async function prepare(page: Page) {
     opener.onclick = () => root.requestStashDelete(stash);
     document.body.append(opener);
   });
-  await page.getByRole('button', { name: 'Owned stash delete opener', exact: true }).click();
+  if (open) await page.getByRole('button', { name: 'Owned stash delete opener', exact: true }).click();
   return page.getByRole('alertdialog', { name: 'Delete stash', exact: true });
+}
+
+for (const mode of ['delay', 'failure'] as const) {
+  test(`stash confirmation ${mode} keeps its loader keyboard-accessible and dismissible`, async ({ page }) => {
+    await prepare(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let held = false;
+    let finish!: () => void;
+    const finished = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const text = await response.text();
+      const chunk = text.includes('stash-delete-description') && text.includes('StashDeleteDialogComponent');
+      if (chunk && mode === 'failure') await route.abort();
+      else {
+        if (chunk) { held = true; await gate; }
+        await route.fulfill({ response, body: text });
+      }
+      if (chunk) finish();
+    });
+    try {
+      const opener = page.getByRole('button', { name: 'Owned stash delete opener', exact: true });
+      await opener.click();
+      const loader = page.getByRole('dialog', { name: mode === 'delay' ? 'Loading stash confirmation' : 'Stash confirmation unavailable', exact: true });
+      const close = loader.getByRole('button', { name: mode === 'delay' ? 'Cancel' : 'Close', exact: true });
+      await expect(close).toBeFocused();
+      if (mode === 'delay') await expect.poll(() => held).toBe(true);
+      else await expect(loader.getByRole('alert')).toContainText('No deletion was started');
+      await page.keyboard.press('Tab');
+      await expect(close).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(loader).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      release();
+      await finished;
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      await expect(page.getByRole('alertdialog', { name: 'Delete stash', exact: true })).toHaveCount(0);
+      expect(await page.evaluate(() => (window as any).__stashDelete.calls
+        .some((call: { command: string }) => call.command === 'drop_stash'))).toBe(false);
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
 }
 
 test('failed stash deletion retains details, inline recovery, and an explicit retry', async ({ page }) => {
@@ -55,6 +100,7 @@ test('stash confirmation traps keyboard focus and restores it on Escape', async 
   await expect(dialog.getByRole('button', { name: 'Delete Stash', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(cancel).toBeFocused();
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', { name: 'Owned stash delete opener', exact: true })).toBeFocused();
@@ -104,6 +150,7 @@ test('pending deletion cannot be repeated or dismissed and late success does not
   await dialog.getByRole('button', { name: 'Delete Stash', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Deleting…', exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
   await page.keyboard.press('Escape');
   await page.keyboard.press('Tab');
   await expect(dialog).toBeVisible();

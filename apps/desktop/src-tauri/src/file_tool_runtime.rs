@@ -80,16 +80,48 @@ fn check(token: &core::CancellationToken) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn retire(value: Payload) {
+fn retire(value: Payload) -> Result<(), AppError> {
     if let Payload::Launch { mut tool, .. } = value {
-        let _ = tool.discard();
+        tool.discard()?;
     }
+    Ok(())
 }
 impl FileToolState {
     fn prune(&self) -> Result<(), AppError> {
         let expired = self.reviews.lock().map_err(state_error)?.prune();
+        let mut failures = Vec::new();
         for value in expired {
-            retire(value);
+            if let Err(error) = retire(value) {
+                failures.push(error);
+            }
+        }
+        if failures.len() == 1 {
+            return Err(failures.remove(0));
+        }
+        if !failures.is_empty() {
+            return Err(AppError {
+                kind: "fileToolCleanupFailed".into(),
+                message: format!(
+                    "Several unused tool reviews could not be retired: {}",
+                    failures
+                        .iter()
+                        .map(|error| error.message.as_str())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ),
+                hint: Some("Inspect the retained private tool files before trying again.".into()),
+            });
+        }
+        Ok(())
+    }
+    fn discard_review(&self, context: &str, purpose: Purpose, token: &str) -> Result<(), AppError> {
+        let value = self
+            .reviews
+            .lock()
+            .map_err(state_error)?
+            .discard(context, purpose, token)?;
+        if let Some(value) = value {
+            retire(value)?;
         }
         Ok(())
     }
@@ -145,16 +177,17 @@ impl<'a> Reservation<'a> {
             .lock()
             .map_err(state_error)?
             .reserve(context, purpose, &token)?;
-        if let Some(old) = old {
-            retire(old);
-        }
-        Ok(Self {
+        let reservation = Self {
             state,
             context: context.into(),
             purpose,
             token,
             published: false,
-        })
+        };
+        if let Some(old) = old {
+            retire(old)?;
+        }
+        Ok(reservation)
     }
     fn publish(
         mut self,
@@ -162,7 +195,7 @@ impl<'a> Reservation<'a> {
         cancellation: &core::CancellationToken,
     ) -> Result<String, AppError> {
         if let Err(error) = check(cancellation) {
-            retire(payload);
+            retire(payload)?;
             return Err(error);
         }
         let outcome = self.state.reviews.lock().map_err(state_error)?.publish(
@@ -172,27 +205,26 @@ impl<'a> Reservation<'a> {
             payload,
         );
         if let Err((error, payload)) = outcome {
-            retire(payload);
+            retire(payload)?;
             return Err(error);
         }
-        check(cancellation)?;
+        if let Err(error) = check(cancellation) {
+            self.state
+                .discard_review(&self.context, self.purpose, &self.token)?;
+            return Err(error);
+        }
         self.published = true;
         Ok(self.token.clone())
     }
 }
 impl Drop for Reservation<'_> {
     fn drop(&mut self) {
-        if !self.published {
-            let removed = self
+        if !self.published
+            && let Err(error) = self
                 .state
-                .reviews
-                .lock()
-                .ok()
-                .and_then(|mut store| store.discard(&self.context, self.purpose, &self.token).ok())
-                .flatten();
-            if let Some(value) = removed {
-                retire(value);
-            }
+                .discard_review(&self.context, self.purpose, &self.token)
+        {
+            eprintln!("Failed to retire an unused tool review: {}", error.message);
         }
     }
 }
@@ -317,7 +349,7 @@ pub(super) async fn prepare_launch(
             core::prepare_file_tool(root, request.request, request.profile, &parent, uid, token)
         })?;
         if let Err(error) = check(token) {
-            let _ = tool.discard();
+            tool.discard()?;
             return Err(error);
         }
         let review = tool.review().clone();
@@ -365,7 +397,7 @@ pub(super) async fn launch(
             }),
         });
         if let Err(error) = state.insert(session.clone()) {
-            let _ = session.value.lock().map_err(state_error)?.tool.discard();
+            session.value.lock().map_err(state_error)?.tool.discard()?;
             return Err(error);
         }
         let mut value = session.value.lock().map_err(state_error)?;
@@ -688,16 +720,8 @@ pub(super) async fn discard_review(
             FileToolReviewPurpose::Stage => Purpose::Stage,
             FileToolReviewPurpose::Cleanup => Purpose::Cleanup,
         };
-        let state = app.state::<FileToolState>();
-        let value = state.reviews.lock().map_err(state_error)?.discard(
-            &request.context_id,
-            purpose,
-            &request.token,
-        )?;
-        if let Some(value) = value {
-            retire(value);
-        }
-        Ok(())
+        app.state::<FileToolState>()
+            .discard_review(&request.context_id, purpose, &request.token)
     })
     .await
     .map_err(background_task_error)?

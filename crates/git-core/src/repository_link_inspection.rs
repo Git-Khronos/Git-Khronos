@@ -161,6 +161,9 @@ pub fn inspect_repository_link(
             return Err(refused());
         }
         let canonical = path.canonicalize().map_err(|_| refused())?;
+        if resolve_repository(&canonical).map_err(|_| refused())? != canonical {
+            return Err(refused());
+        }
         let bare = match metadata(&canonical, &["rev-parse", "--is-bare-repository"])?.as_slice() {
             b"true\n" => true,
             b"false\n" => false,

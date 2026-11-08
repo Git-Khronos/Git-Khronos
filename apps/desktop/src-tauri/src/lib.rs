@@ -41,7 +41,6 @@ use git_khronos_git_core::{
     publish_branch_cancellable as git_publish_branch_cancellable,
     pull_from_remote_with_strategy_cancellable as git_pull_from_remote_cancellable,
     pull_lfs_cancellable as git_pull_lfs_cancellable, push_cancellable as git_push_cancellable,
-    push_force_with_lease_cancellable as git_push_force_cancellable,
     push_force_with_lease_to_remote_cancellable as git_push_force_to_remote_cancellable,
     push_to_remote_cancellable as git_push_to_remote_cancellable,
     reapply_sparse_checkout as git_reapply_sparse_checkout, reflog_entries as git_reflog_entries,
@@ -69,13 +68,15 @@ use git_khronos_git_core::{
     working_tree_file_diff as git_working_tree_file_diff,
 };
 use git_khronos_git_core::{
-    DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery,
-    discarded_change_recoveries, execute_discard, prepare_discard,
-    prepare_partial_discard_with_preview, recover_discarded_changes,
+    DiscardPlan, DiscardPreview, DiscardRecoveryInfo, delete_discard_recovery_reviewed,
+    discard_plan_fingerprint, discarded_change_recoveries, execute_discard, prepare_discard,
+    prepare_partial_discard_with_preview, recover_discarded_changes_reviewed,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 #[cfg(all(test, unix))]
 mod checkpoint_visibility_tests;
+#[cfg(test)]
+mod discard_recovery_tests;
 mod reference_commands;
 mod stash_commands;
 mod terminal_io;
@@ -110,6 +111,7 @@ mod hosted_repository_commands;
 mod hosting_commands;
 mod incoming_repository_links;
 mod recovery_commands;
+mod repository_file_commands;
 mod repository_link_commands;
 mod terminal_profile_commands;
 mod working_file_commands;
@@ -151,6 +153,7 @@ impl Drop for ActiveOperationGuard {
 struct DiscardRecovery {
     id: String,
     undone: bool,
+    content_sha256: String,
 }
 
 #[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
@@ -779,10 +782,10 @@ async fn discard_changes(
         }
         let (_, plan) = plans.remove(&token).expect("validated discard plan");
         drop(plans);
-        let id = execute_discard(&session.path, &plan)?;
+        let id = execute_prepared_discard_with_recovery(&repo_id, &state, &session, &plan)?;
         Ok(DiscardResult {
             id,
-            status: working_tree_status(repo_id, &session)?,
+            status: working_tree_status(repo_id, &session).map_err(discard_refresh_error)?,
         })
     })
     .await
@@ -794,6 +797,30 @@ async fn discard_changes(
 struct DiscardResult {
     id: String,
     status: RepositoryStatus,
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct AppliedDiscardRecovery {
+    status: RepositoryStatus,
+    affected_toolbar: bool,
+}
+
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct DiscardRecoveryActionError {
+    #[serde(flatten)]
+    error: AppError,
+    affected_toolbar: bool,
+}
+
+impl From<AppError> for DiscardRecoveryActionError {
+    fn from(error: AppError) -> Self {
+        Self {
+            error,
+            affected_toolbar: false,
+        }
+    }
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -818,25 +845,57 @@ async fn apply_saved_discard(
     repo_id: String,
     id: String,
     reverse: bool,
+    expected_sha256: Option<String>,
     app: AppHandle,
-) -> Result<RepositoryStatus, AppError> {
-    mutate_working_tree_background(repo_id, app, move |repository| {
-        recover_discarded_changes(repository, &id, reverse)
-    })
-    .await
-}
-
-#[tauri::command(rename_all = "camelCase")]
-#[specta::specta]
-async fn forget_saved_discard(repo_id: String, id: String, app: AppHandle) -> Result<(), AppError> {
+) -> Result<AppliedDiscardRecovery, DiscardRecoveryActionError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let session = repository_session(&repo_id, &state)?;
         let _operation = session.operation.lock().map_err(state_error)?;
-        delete_discard_recovery(&session.path, &id)
+        let affected_toolbar = apply_discard_recovery_record_reviewed(
+            &repo_id,
+            &state,
+            &session,
+            Some(&id),
+            reverse,
+            expected_sha256.as_deref(),
+        )?;
+        let status =
+            working_tree_status(repo_id, &session).map_err(|error| DiscardRecoveryActionError {
+                error: discard_recovery_refresh_error(error, reverse),
+                affected_toolbar,
+            })?;
+        Ok(AppliedDiscardRecovery {
+            status,
+            affected_toolbar,
+        })
     })
     .await
-    .map_err(background_task_error)?
+    .map_err(|error| DiscardRecoveryActionError::from(background_task_error(error)))?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn forget_saved_discard(
+    repo_id: String,
+    id: String,
+    expected_sha256: Option<String>,
+    app: AppHandle,
+) -> Result<bool, DiscardRecoveryActionError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        forget_discard_recovery_record_reviewed(
+            &repo_id,
+            &state,
+            &session,
+            &id,
+            expected_sha256.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| DiscardRecoveryActionError::from(background_task_error(error)))?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2112,8 +2171,10 @@ async fn push_repository(
 #[specta::specta]
 async fn force_push_repository(
     repo_id: String,
-    remote: Option<String>,
-    branch: Option<String>,
+    remote: String,
+    branch: String,
+    expected_remote_oid: String,
+    expected_head_oid: String,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -2121,16 +2182,15 @@ async fn force_push_repository(
         repo_id,
         operation_id,
         app,
-        move |path, cancellation| match (remote.as_deref(), branch.as_deref()) {
-            (Some(remote), Some(branch)) => {
-                git_push_force_to_remote_cancellable(path, remote, branch, cancellation)
-            }
-            (None, None) => git_push_force_cancellable(path, cancellation),
-            _ => Err(AppError {
-                kind: "invalidRemoteTarget".into(),
-                message: "Force push needs both a remote and a branch.".into(),
-                hint: Some("Select a remote and try again.".into()),
-            }),
+        move |path, cancellation| {
+            git_push_force_to_remote_cancellable(
+                path,
+                &remote,
+                &branch,
+                &expected_remote_oid,
+                &expected_head_oid,
+                cancellation,
+            )
         },
     )
     .await
@@ -2876,12 +2936,54 @@ fn mutate_with_discard_recovery<T>(
 ) -> Result<T, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
+    execute_discard_with_recovery(repo_id, state, &session, prepare, finish)
+}
+
+fn execute_discard_with_recovery<T>(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    prepare: impl FnOnce(&Path) -> Result<DiscardPlan, AppError>,
+    finish: impl FnOnce(String, &RepositorySession) -> Result<T, AppError>,
+) -> Result<T, AppError> {
     let plan = prepare(&session.path)?;
-    let id = execute_discard(&session.path, &plan)?;
+    execute_prepared_discard_with_recovery(repo_id, state, session, &plan)?;
+    finish(repo_id.to_owned(), session).map_err(discard_refresh_error)
+}
+
+fn execute_prepared_discard_with_recovery(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    plan: &DiscardPlan,
+) -> Result<String, AppError> {
+    let content_sha256 = discard_plan_fingerprint(plan)?;
+    // Keep recovery bookkeeping available until the filesystem mutation completes.
     let mut recoveries = state.discard_recoveries.lock().map_err(state_error)?;
-    recoveries.insert(repo_id.to_owned(), DiscardRecovery { id, undone: false });
-    drop(recoveries);
-    finish(repo_id.to_owned(), &session)
+    let id = execute_discard(&session.path, plan)?;
+    recoveries.insert(
+        repo_id.to_owned(),
+        DiscardRecovery {
+            id: id.clone(),
+            undone: false,
+            content_sha256,
+        },
+    );
+    Ok(id)
+}
+
+fn discard_refresh_error(error: AppError) -> AppError {
+    AppError {
+        kind: "discardRefreshFailed".into(),
+        message: format!(
+            "Changes were discarded and a recovery was saved, but the repository view could not be refreshed: {}",
+            error.message
+        ),
+        hint: Some(
+            "Do not repeat this action. Refresh the repository and review discarded-change recovery."
+                .into(),
+        ),
+    }
 }
 
 fn apply_discard_recovery(
@@ -2891,32 +2993,199 @@ fn apply_discard_recovery(
 ) -> Result<RepositorySnapshot, AppError> {
     let session = repository_session(repo_id, state)?;
     let _operation = session.operation.lock().map_err(state_error)?;
-    let id = {
-        let recoveries = state.discard_recoveries.lock().map_err(state_error)?;
-        let recovery = recoveries.get(repo_id).ok_or_else(|| AppError {
-            kind: "discardRecoveryUnavailable".into(),
-            message: "There are no discarded changes to recover.".into(),
-            hint: None,
-        })?;
-        if recovery.undone != reverse {
-            return Err(AppError {
-                kind: "discardRecoveryStateChanged".into(),
-                message: "That discard recovery has already been applied.".into(),
-                hint: Some("Refresh the repository and try the available toolbar action.".into()),
-            });
+    apply_discard_recovery_record(repo_id, state, &session, None, reverse)
+        .map_err(|error| error.error)?;
+    build_snapshot(repo_id.to_owned(), &session)
+        .map_err(|error| discard_recovery_refresh_error(error, reverse))
+}
+
+fn apply_discard_recovery_record(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    saved_id: Option<&str>,
+    reverse: bool,
+) -> Result<bool, DiscardRecoveryActionError> {
+    apply_discard_recovery_record_reviewed(repo_id, state, session, saved_id, reverse, None)
+}
+
+fn discard_recovery_fingerprint<'a>(
+    reviewed: Option<&'a str>,
+    toolbar: Option<&'a str>,
+) -> Result<Option<&'a str>, AppError> {
+    if let (Some(reviewed), Some(toolbar)) = (reviewed, toolbar)
+        && reviewed.len() == 64
+        && reviewed
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && reviewed != toolbar
+    {
+        return Err(AppError {
+            kind: "discardRecoveryChanged".into(),
+            message: "The saved capture no longer matches the original discarded changes.".into(),
+            hint: Some(
+                "Nothing was changed. Refresh discarded-change recovery and review it again."
+                    .into(),
+            ),
+        });
+    }
+    Ok(reviewed.or(toolbar))
+}
+
+fn apply_discard_recovery_record_reviewed(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    saved_id: Option<&str>,
+    reverse: bool,
+    expected_sha256: Option<&str>,
+) -> Result<bool, DiscardRecoveryActionError> {
+    let mut recoveries = state.discard_recoveries.lock().map_err(state_error)?;
+    let id = match saved_id {
+        Some(id) => id.to_owned(),
+        None => {
+            let recovery = recoveries.get(repo_id).ok_or_else(|| AppError {
+                kind: "discardToolbarRecoveryUnavailable".into(),
+                message: "There are no discarded changes to recover.".into(),
+                hint: None,
+            })?;
+            if recovery.undone != reverse {
+                return Err(AppError {
+                    kind: "discardRecoveryStateChanged".into(),
+                    message: "That discard recovery has already been applied.".into(),
+                    hint: Some(
+                        "Refresh the repository and try the available toolbar action.".into(),
+                    ),
+                }
+                .into());
+            }
+            recovery.id.clone()
         }
-        recovery.id.clone()
     };
-    recover_discarded_changes(&session.path, &id, reverse)?;
-    if let Some(recovery) = state
-        .discard_recoveries
-        .lock()
-        .map_err(state_error)?
+    let affected_toolbar = recoveries
+        .get(repo_id)
+        .is_some_and(|recovery| recovery.id == id);
+    let toolbar_fingerprint = recoveries
+        .get(repo_id)
+        .filter(|recovery| recovery.id == id)
+        .map(|recovery| recovery.content_sha256.clone());
+    let fingerprint =
+        match discard_recovery_fingerprint(expected_sha256, toolbar_fingerprint.as_deref()) {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                if affected_toolbar {
+                    recoveries.remove(repo_id);
+                }
+                return Err(DiscardRecoveryActionError {
+                    error,
+                    affected_toolbar,
+                });
+            }
+        };
+    if let Err(error) = recover_discarded_changes_reviewed(&session.path, &id, reverse, fingerprint)
+    {
+        if matches!(
+            error.kind.as_str(),
+            "discardRecoveryRecordFailed"
+                | "discardRecoveryFailedWithRecovery"
+                | "discardRecoveryStateChanged"
+                | "discardRecoveryMissing"
+                | "discardRecoveryChanged"
+        ) && affected_toolbar
+        {
+            recoveries.remove(repo_id);
+        }
+        return Err(DiscardRecoveryActionError {
+            error,
+            affected_toolbar,
+        });
+    }
+    if let Some(recovery) = recoveries
         .get_mut(repo_id)
+        .filter(|recovery| recovery.id == id)
     {
         recovery.undone = !reverse;
     }
-    build_snapshot(repo_id.to_owned(), &session)
+    Ok(affected_toolbar)
+}
+
+fn discard_recovery_refresh_error(error: AppError, reverse: bool) -> AppError {
+    let action = if reverse {
+        "Recovered changes were discarded again"
+    } else {
+        "Discarded changes were restored"
+    };
+    AppError {
+        kind: "discardRecoveryRefreshFailed".into(),
+        message: format!(
+            "{action}, but the repository view could not be refreshed: {}",
+            error.message
+        ),
+        hint: Some(
+            "Do not repeat this action. Refresh the repository and review the working files."
+                .into(),
+        ),
+    }
+}
+
+#[cfg(test)]
+fn forget_discard_recovery_record(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    id: &str,
+) -> Result<bool, DiscardRecoveryActionError> {
+    forget_discard_recovery_record_reviewed(repo_id, state, session, id, None)
+}
+
+fn forget_discard_recovery_record_reviewed(
+    repo_id: &str,
+    state: &AppState,
+    session: &RepositorySession,
+    id: &str,
+    expected_sha256: Option<&str>,
+) -> Result<bool, DiscardRecoveryActionError> {
+    let mut recoveries = state.discard_recoveries.lock().map_err(state_error)?;
+    let affected_toolbar = recoveries
+        .get(repo_id)
+        .is_some_and(|recovery| recovery.id == id);
+    let toolbar_fingerprint = recoveries
+        .get(repo_id)
+        .filter(|recovery| recovery.id == id)
+        .map(|recovery| recovery.content_sha256.clone());
+    let fingerprint =
+        match discard_recovery_fingerprint(expected_sha256, toolbar_fingerprint.as_deref()) {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                if affected_toolbar {
+                    recoveries.remove(repo_id);
+                }
+                return Err(DiscardRecoveryActionError {
+                    error,
+                    affected_toolbar,
+                });
+            }
+        };
+    let result = delete_discard_recovery_reviewed(&session.path, id, fingerprint);
+    if (result.is_ok()
+        || result.as_ref().is_err_and(|error| {
+            matches!(
+                error.kind.as_str(),
+                "discardRecoveryCaptureRemoved"
+                    | "discardRecoveryMissing"
+                    | "discardRecoveryChanged"
+            )
+        }))
+        && affected_toolbar
+    {
+        recoveries.remove(repo_id);
+    }
+    result
+        .map(|()| affected_toolbar)
+        .map_err(|error| DiscardRecoveryActionError {
+            error,
+            affected_toolbar,
+        })
 }
 
 fn mutate_and_refresh(
@@ -3673,6 +3942,11 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             load_more_commits,
             set_checkpoint_visibility,
             search_tracked_files,
+            repository_file_commands::list_repository_files,
+            repository_file_commands::create_repository_file,
+            repository_file_commands::delete_repository_file,
+            repository_file_commands::delete_untracked_repository_file,
+            repository_file_commands::read_repository_file_text,
             load_reflog,
             load_more_changes,
             open_repository_in_file_manager,
@@ -3689,6 +3963,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             reference_commands::preview_remote_tag,
             stash_commands::stash_selected,
             stash_commands::apply_stash_options,
+            stash_commands::apply_stashed_file,
             stash_commands::branch_from_stash,
             stash_commands::stash_checkout,
             preview_discard,

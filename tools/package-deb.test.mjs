@@ -379,6 +379,19 @@ exec /usr/bin/dpkg-deb "$@"
   assert.equal(await readFile(join(temporaryRoot, 'unrelated'), 'utf8'), 'preserve');
 });
 
+test('successful package verification cleans only its owned temporary directory', async (t) => {
+  const { root, build, verify } = await packagePayloadFixture(t);
+  build();
+  const temporaryRoot = join(root, "temp storage ' quoted");
+  await mkdir(temporaryRoot);
+  await writeFile(join(temporaryRoot, 'unrelated'), 'preserve');
+
+  const result = verify({ TMPDIR: temporaryRoot });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(await readdir(temporaryRoot), ['unrelated']);
+  assert.equal(await readFile(join(temporaryRoot, 'unrelated'), 'utf8'), 'preserve');
+});
+
 for (const [kind, filename] of [['Rust', 'rust-dependency-notices.json.gz'], ['frontend', 'frontend-dependency-notices.txt.gz']]) {
 test(`package verification rejects missing, corrupt or stale ${kind} notice payloads`, async (t) => {
   const f = await packagePayloadFixture(t);

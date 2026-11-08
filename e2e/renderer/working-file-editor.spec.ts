@@ -12,6 +12,65 @@ test('opens the current working file only after explicit editor selection from h
   expect(call.args.encoding).toBeNull();
 });
 
+test('refreshes a workspace text preview after saving and ignores an older pending read', async ({ page }) => {
+  await prepare(page, 'ready', false);
+  await page.evaluate(() => {
+    const state = (window as any).__editor;
+    state.holdTextPreview = true;
+    state.app.openWorkspaceFile({ path: 'notes.md', tracked: true, ignored: false, symbolicLink: false, deletable: true });
+  });
+  const content = page.getByRole('dialog', { name: 'notes.md', exact: true });
+  await expect(content.getByText('Reading text…')).toBeVisible();
+  await content.getByRole('button', { name: 'Edit working copy' }).click();
+  const editor = page.getByRole('textbox', { name: 'Working file text', exact: true });
+  await expect(editor).toHaveValue('before\n');
+  await editor.fill('saved from editor\n');
+  await page.getByRole('button', { name: 'Save file', exact: true }).click();
+  await expect(page.getByText('File saved.', { exact: true })).toBeVisible();
+  await page.evaluate(() => { (window as any).__editor.holdTextPreview = false; });
+  await page.getByRole('button', { name: 'Back to preview', exact: true }).click();
+  await expect(content.locator('pre')).toHaveText('saved from editor\n');
+  const calls = await page.evaluate(() => (window as any).__editor.calls);
+  const reads = calls.filter((call: any) => call.command === 'read_repository_file_text');
+  expect(reads).toHaveLength(2);
+  expect(calls.some((call: any) => call.command === 'cancel_git_operation' && call.args.operationId === reads[0].args.operationId)).toBe(true);
+  await page.evaluate(() => (window as any).__editor.releaseTextPreview());
+  await expect(content.locator('pre')).toHaveText('saved from editor\n');
+});
+
+test('refreshes an already loaded workspace preview after saving', async ({ page }) => {
+  await prepare(page, 'ready', false);
+  await page.evaluate(() => (window as any).__editor.app.openWorkspaceFile({
+    path: 'notes.md', tracked: true, ignored: false, symbolicLink: false, deletable: true,
+  }));
+  const content = page.getByRole('dialog', { name: 'notes.md', exact: true });
+  await expect(content.locator('pre')).toHaveText('before\n');
+  await content.getByRole('button', { name: 'Edit working copy' }).click();
+  await page.getByRole('textbox', { name: 'Working file text', exact: true }).fill('updated after preview\n');
+  await page.getByRole('button', { name: 'Save file', exact: true }).click();
+  await expect(page.getByText('File saved.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to preview', exact: true }).click();
+  await expect(content.locator('pre')).toHaveText('updated after preview\n');
+});
+
+test('refreshes a workspace preview after an external tool dialog closes', async ({ page }) => {
+  await prepare(page, 'ready', false);
+  await page.evaluate(() => (window as any).__editor.app.openWorkspaceFile({
+    path: 'notes.md', tracked: true, ignored: false, symbolicLink: false, deletable: true,
+  }));
+  const content = page.getByRole('dialog', { name: 'notes.md', exact: true });
+  await expect(content.locator('pre')).toHaveText('before\n');
+  const opener = content.getByRole('button', { name: 'Review external editor for working file' });
+  await opener.click();
+  const tools = page.getByRole('dialog', { name: 'External file tools', exact: true });
+  await expect(tools).toBeVisible();
+  await page.evaluate(() => { (window as any).__editor.disk = 'changed externally\n'; });
+  await tools.getByRole('button', { name: 'Close external file tools' }).click();
+  await expect(content.locator('pre')).toHaveText('changed externally\n');
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__editor.calls.filter((call: any) => call.command === 'inspect_file_media').length)).toBe(2);
+});
+
 test('save-only and stage-saved remain separate while an unsaved draft stays visible', async ({ page }) => {
   await open(page);
   const text = page.getByLabel('Working file text', { exact: true });

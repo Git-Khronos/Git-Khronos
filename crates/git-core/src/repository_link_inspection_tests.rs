@@ -153,7 +153,8 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
         "owned-alias:",
     ]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {})
+            .matched_remotes,
         vec!["origin"]
     );
     f.git(&[
@@ -163,7 +164,8 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
         "https://elsewhere.test/other.git",
     ]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {})
+            .matched_remotes,
         vec!["origin"]
     );
     f.git(&["config", "--unset-all", "remote.origin.url"]);
@@ -171,7 +173,8 @@ fn repository_link_inspection_matches_effective_first_fetch_url_and_owned_includ
     fs::write(&include, format!("[remote \"included\"]\nurl = {REMOTE}\n")).unwrap();
     f.git(&["config", "include.path", include.to_str().unwrap()]);
     assert_eq!(
-        f.inspect(RepositoryLinkTarget::Repository {}).matched_remotes,
+        f.inspect(RepositoryLinkTarget::Repository {})
+            .matched_remotes,
         vec!["included"]
     );
 }
@@ -229,7 +232,17 @@ fn repository_link_inspection_handles_bare_and_linked_roots_but_refuses_nested_p
         f.repo.to_str().unwrap(),
         bare.to_str().unwrap(),
     ]);
-    f.git_at(&bare, &["remote", "set-url", "origin", REMOTE]);
+    f.git_at(
+        &bare,
+        &[
+            "--git-dir",
+            bare.to_str().unwrap(),
+            "remote",
+            "set-url",
+            "origin",
+            REMOTE,
+        ],
+    );
     let result = f.inspect_at(&bare, RepositoryLinkTarget::Commit { oid });
     assert!(result.bare);
     assert!(matches!(
@@ -551,12 +564,20 @@ fn no_lazy_fetch_cancellable_composition_stops_a_blocked_git_reader_without_rele
     );
 }
 
-
 #[test]
 fn repository_link_inspection_matches_scp_addresses_without_contacting_ssh() {
-    let f = Fixture::new(); f.commit();
-    f.git(&["config", "remote.origin.url", "git@EXAMPLE.TEST:Owned/project.git"]);
-    let link = create_repository_link("git@example.test:Owned/project.git", &RepositoryLinkTarget::Repository {}).unwrap();
+    let f = Fixture::new();
+    f.commit();
+    f.git(&[
+        "config",
+        "remote.origin.url",
+        "git@EXAMPLE.TEST:Owned/project.git",
+    ]);
+    let link = create_repository_link(
+        "git@example.test:Owned/project.git",
+        &RepositoryLinkTarget::Repository {},
+    )
+    .unwrap();
     let result = inspect_repository_link(&f.repo, &link, &CancellationToken::default()).unwrap();
     assert_eq!(result.matched_remotes, vec!["origin"]);
 }

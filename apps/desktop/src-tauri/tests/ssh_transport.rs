@@ -397,14 +397,20 @@ fn real_ssh_host_trust_passphrase_rejection_cancel_background_fetch_and_push() {
     // Authentication can succeed before Git discovers divergent history. Keep
     // that rejection actionable instead of asking for the same credentials again.
     let source = fixture.directory.join("source");
-    git(&source, &["fetch", fixture.remote.to_str().unwrap(), "main"]);
+    git(
+        &source,
+        &["fetch", fixture.remote.to_str().unwrap(), "main"],
+    );
     git(&source, &["merge", "--ff-only", "FETCH_HEAD"]);
     fs::write(source.join("file.txt"), b"advanced remote\n").unwrap();
     git(&source, &["commit", "-q", "-am", "remote advance"]);
     git(&source, &["push", fixture.remote.to_str().unwrap(), "main"]);
     let remote = git(&fixture.remote, &["rev-parse", "main"]);
     fs::write(fixture.repository.join("file.txt"), b"divergent local\n").unwrap();
-    git(&fixture.repository, &["commit", "-q", "-am", "local advance"]);
+    git(
+        &fixture.repository,
+        &["commit", "-q", "-am", "local advance"],
+    );
     let local = git(&fixture.repository, &["rev-parse", "HEAD"]);
     let index = fs::read(fixture.repository.join(".git/index")).unwrap();
     let prompts = Arc::new(AtomicU64::new(0));
@@ -420,7 +426,10 @@ fn real_ssh_host_trust_passphrase_rejection_cancel_background_fetch_and_push() {
     assert!(failure.hint.unwrap().contains("Fetch and inspect"));
     assert_eq!(git(&fixture.remote, &["rev-parse", "main"]), remote);
     assert_eq!(git(&fixture.repository, &["rev-parse", "HEAD"]), local);
-    assert_eq!(fs::read(fixture.repository.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read(fixture.repository.join(".git/index")).unwrap(),
+        index
+    );
     assert_eq!(
         fs::read(fixture.repository.join("file.txt")).unwrap(),
         b"divergent local\n"

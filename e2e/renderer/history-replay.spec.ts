@@ -30,7 +30,7 @@ for (const kind of ['head', 'checkout', 'rename-branch', 'discard', 'saved-disca
             return new Promise((resolve, reject) => {
               state.finish = () => scenario === 'dismissed-failure'
                 ? reject({ message: 'Replay refused' })
-                : resolve(command === 'apply_saved_discard' ? repository.status : repository);
+                : resolve(command === 'apply_saved_discard' ? { status: repository.status, affectedToolbar: false } : repository);
             });
           } };
           state.pending = git[direction]();

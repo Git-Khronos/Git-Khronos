@@ -1742,8 +1742,36 @@ def shared_parent_avatar_attachments(driver, fixtures, original_repository, repo
             measurements = avatar_attachment_measurements(driver)
             assert measurements and all(check["dx"] < .1 and check["dy"] < .1
                                         for check in measurements), (compact, measurements)
-            assert any(check.get("oid") == shared and check["kind"] == "departure"
-                       and check["side"] == "right" for check in measurements), measurements
+            attachments = driver.script("""
+              const inspect = oid => {
+                const row = document.querySelector(`[data-commit-oid="${oid}"]`);
+                const avatar = row?.querySelector('.author-node');
+                if (!row || !avatar) return null;
+                const offset = Number(avatar.dataset.laneOffset);
+                const radius = avatar.getBoundingClientRect().height / 2;
+                const paths = [...row.querySelectorAll('.graph-edges path')].map(path => {
+                  const length = path.getTotalLength();
+                  const start = path.getPointAtLength(0), end = path.getPointAtLength(length);
+                  return {start: {x: start.x, y: start.y}, end: {x: end.x, y: end.y}};
+                });
+                return {offset, radius, paths};
+              };
+              const source = inspect(arguments[0]), target = inspect(arguments[1]);
+              if (!source || !target) return {source: false, target: false};
+              const near = (a, b) => Math.abs(a - b) < .01;
+              return {
+                source: source.paths.some(path => near(path.start.x, source.offset)
+                  && near(path.start.y, 20 + source.radius)
+                  && near(path.end.x, source.offset) && near(path.end.y, 40)),
+                target: target.paths.some(path => near(path.start.x, source.offset)
+                  && near(path.start.y, 0)
+                  && near(path.end.x, target.offset - target.radius)
+                  && near(path.end.y, 20)),
+                sourceOffset: source.offset, targetOffset: target.offset,
+              };
+            """, shared, parent)
+            assert attachments["source"] and attachments["target"] \
+                and attachments["sourceOffset"] != attachments["targetOffset"], attachments
             bypass = driver.script("""
               const row = document.querySelector(`[data-commit-oid="${arguments[0]}"]`);
               const node = row.querySelector('.author-node').getBoundingClientRect();
@@ -1756,8 +1784,7 @@ def shared_parent_avatar_attachments(driver, fixtures, original_repository, repo
                 // WebKit's arc-length interpolation can return 40.0000038
                 // for the exact y=40 endpoint of a rounded path. Classify the
                 // row boundary with subpixel tolerance, not exact equality.
-                if (Math.abs(start.y) > .001 || Math.abs(end.y - 40) > .001
-                    || start.x === end.x) continue;
+                if (Math.abs(start.y) > .001 || Math.abs(end.y - 40) > .001) continue;
                 let clearance = Infinity;
                 for (let step = 0; step <= 100; step++) {
                   const point = path.getPointAtLength(length * step / 100);
@@ -3272,7 +3299,8 @@ def terminal_renderer_startup_failure(driver, fixtures, report):
       Element.prototype.appendChild = function(node) {
         if (!state.mountFailed && node instanceof Element && node.classList.contains('xterm')) {
           state.mountFailed = true;
-          state.id = this.dataset.terminalId;
+          state.id = this.closest('[data-terminal-id]')?.dataset.terminalId
+            ?? document.querySelector('.terminal-host.active')?.dataset.terminalId ?? null;
           Element.prototype.appendChild = originalAppend;
           throw new Error('Native acceptance terminal mount failure');
         }
@@ -4219,6 +4247,32 @@ def file_workflows(driver, fixtures, report):
     assert len(captures) == 1
     report["scenarios"].append("native-ui-bulk-discard-and-capture")
 
+    undo = '.toolbar .tool-button[title^="Undo Discard Unstaged Changes ("]:not(:disabled)'
+    redo = '.toolbar .tool-button[title^="Redo Discard Unstaged Changes ("]:not(:disabled)'
+    driver.wait(f"return !!document.querySelector({json.dumps(undo)})")
+    driver.click(undo)
+    driver.wait(f"return !!document.querySelector({json.dumps(redo)})")
+    assert file.read_text() == "unstaged native UI edit\n"
+    driver.click(redo)
+    driver.wait(f"return !!document.querySelector({json.dumps(undo)})")
+    assert file.read_text() == original
+    capture = repository / ".git/git-khronos-recovery" / f"{captures[0]['id']}.patch"
+    saved = capture.read_bytes()
+    replacement = saved.replace(b"unstaged native UI edit", b"unexpected replacement edit")
+    assert replacement != saved
+    capture.write_bytes(replacement)
+    driver.click(undo)
+    driver.wait("""return document.querySelector('.error-toast')?.textContent.includes('capture changed')
+        || !!document.querySelector('[aria-label="Stage fixture.txt"]')""")
+    assert file.read_text() == original, "Toolbar undo applied a replaced recovery capture"
+    assert capture.read_bytes() == replacement
+    assert driver.script("return document.querySelector('.error-toast')?.textContent || ''").find(
+        "capture changed"
+    ) >= 0
+    assert not driver.script("return !!document.querySelector(arguments[0])", undo)
+    capture.write_bytes(saved)
+    report["scenarios"].append("native-ui-bulk-discard-toolbar-pinned-recovery")
+
     file.write_text("partial edit reviewed in native UI\n")
     driver.reload()
     driver.wait("return !!document.querySelector('.wip-nav')")
@@ -4240,7 +4294,7 @@ def file_workflows(driver, fixtures, report):
     assert len(driver.invoke("load_discard_recoveries", repoId=repo_id)) == 1
     report["scenarios"].append("native-ui-partial-discard-refuses-stale-patch")
 
-    driver.click_visible('[aria-label="Reload diff"]:not(:disabled)')
+    driver.click_visible('[title="View changes in fixture.txt"]')
     driver.wait("return document.querySelector('[aria-label=\"Diff viewer\"]')?.textContent.includes('later external native edit')")
     driver.click_visible(added)
     driver.wait("return !!document.querySelector('[aria-label=\"Selected line actions\"]')")

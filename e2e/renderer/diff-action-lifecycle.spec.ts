@@ -23,6 +23,11 @@ async function prepare(page: Page): Promise<void> {
         state.finish = () => state.outcome === 'dismissed-error' || (state.rejectStale && args.expectedPatch !== state.patch)
           ? reject({ kind: 'staleDiff', message: 'Reviewed patch changed; nothing applied' }) : resolve(status);
       });
+      if (command === 'ignore_path' && state.outcome === 'ignore-precedence') return Promise.reject({
+        kind: 'ignoreRuleIneffective',
+        message: 'The rule was added to the root .gitignore, but Git does not ignore the selected file.',
+        hint: 'The index was not changed. Review higher-priority ignore rules and refresh before retrying.',
+      });
       if (command === 'refresh_repository_status') {
         if (state.outcome === 'dismissed-error') git.dismissError();
         return Promise.resolve(status);
@@ -61,6 +66,33 @@ for (const action of ['discard', 'ignore', 'restore-commit']) {
     expect(result.error).toContain('active repository changed');
   });
 }
+
+test('ignore reports an ineffective rule without claiming the file was untracked', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(async () => {
+    const state = (window as any).__diffAction;
+    state.outcome = 'ignore-precedence';
+    state.app.fileContextMenu.set({ path: 'file.txt', staged: false, untracked: false });
+    await state.app.requestIgnoreFile('extension');
+  });
+  const dialog = page.getByRole('alertdialog', { name: 'file.txt' });
+  await dialog.getByRole('button', { name: 'Ignore and stop tracking' }).click();
+  const error = page.getByRole('alert');
+  await expect(error).toContainText('The rule was added to the root .gitignore');
+  await expect(error).toContainText('The index was not changed');
+  expect(await page.evaluate(() => {
+    const state = (window as any).__diffAction;
+    return {
+      calls: state.calls.filter((call: any) => call.command === 'ignore_path'),
+      refreshed: state.calls.some((call: any) => call.command === 'refresh_repository'),
+      activity: state.git.activity(),
+    };
+  })).toEqual({
+    calls: [expect.objectContaining({ args: expect.objectContaining({ path: 'file.txt', patternKind: 'extension', stopTracking: true }) })],
+    refreshed: true,
+    activity: 'Operation failed',
+  });
+});
 
 test('discarding selected lines refuses external edits and retains the reviewed selection', async ({ page }) => {
   await prepare(page);

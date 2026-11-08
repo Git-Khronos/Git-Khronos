@@ -15,5 +15,46 @@
       </div>
       <footer><button type="button" (click)="sparseClosed.emit()">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy()" (click)="sparseConfirmed.emit()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
     </section>
+  } @else if (worktree(); as action) {
+    <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-worktree-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+      <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+      <div class="confirmation-copy">
+        <span>{{ action.deleteBranch ? 'Remove worktree and delete branch' : 'Remove worktree' }}</span>
+        <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
+        <p>{{ action.deleteBranch ? 'Remove this working directory and delete its branch. The branch tip is saved in Recovery History first.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
+        @if (action.changes) {
+          <label class="force-delete-option"><input type="checkbox" [checked]="forceWorktreeRemoval()" (change)="worktreeForceChanged.emit($any($event.target).checked)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
+        }
+      </div>
+      <footer><button type="button" (click)="worktreeClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="action.changes > 0 && !forceWorktreeRemoval()" (click)="worktreeConfirmed.emit()">{{ action.deleteBranch ? 'Remove and delete branch' : 'Remove worktree' }}</button></footer>
+    </section>
+  } @else if (forcePush(); as review) {
+    <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="force-push-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+      <div class="confirmation-icon danger"><gc-icon name="warning" [size]="19" /></div>
+      <div class="confirmation-copy">
+        <span>Rewrite upstream history</span>
+        <h2 id="force-push-title">Force push {{ review.branchName }}</h2>
+        <p>Push local commit <code [title]="review.expectedHeadOid">{{ review.expectedHeadOid.slice(0, 12) }}</code> to <strong>{{ review.remote }}/{{ review.remoteBranch }}</strong> only if it still points to the fetched commit <code [title]="review.expectedRemoteOid">{{ review.expectedRemoteOid.slice(0, 12) }}</code>.</p>
+        <p>Git uses a pinned <code>--force-with-lease</code>. If the remote changed after the fetch, the push is rejected even if a background fetch updates the local tracking ref.</p>
+      </div>
+      <footer><button type="button" (click)="forcePushClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="forcePushConfirmed.emit()">Force Push with Lease</button></footer>
+    </section>
+  } @else if (publishBranch(); as branch) {
+    <form #dialog novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ branch }}" (submit)="$event.preventDefault(); publishConfirmed.emit()" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+      <div class="confirmation-icon"><gc-icon name="push" [size]="19" /></div>
+      <div class="confirmation-copy">
+        <span>Publish branch</span>
+        <h2>{{ branch }}</h2>
+        <p>Push this branch and remember the selected remote as its upstream for future Pull and Push actions.</p>
+        @if (git.repository()?.remotes?.length) {
+          <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [value]="publishRemote()" (change)="publishRemoteChanged.emit($any($event.target).value)">
+            @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name" [selected]="publishRemote() === remote.name">{{ remote.name }}</option> }
+          </select></label>
+        } @else {
+          <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" (click)="publishAddRemote.emit()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
+        }
+      </div>
+      <footer><span></span><button type="button" (click)="publishClosed.emit()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!publishRemote() || git.busy()">Publish Branch</button></footer>
+    </form>
   }
 </div>

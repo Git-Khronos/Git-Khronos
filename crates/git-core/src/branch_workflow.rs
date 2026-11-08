@@ -1368,6 +1368,27 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_blocking_filesystem_monitor_cannot_hold_a_workflow_preview_after_cancel() {
+        const CHILD: &str = "GIT_KHRONOS_FSMONITOR_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            // Inherited command-scope Git settings otherwise override this fixture's hook.
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "branch_workflow::tests::a_blocking_filesystem_monitor_cannot_hold_a_workflow_preview_after_cancel",
+                    "--nocapture",
+                ])
+                .env_remove("GIT_CONFIG_COUNT")
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "isolated fsmonitor fixture failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
         let fixture = Fixture::new();
         fixture.setup();
         let monitor = blocking_hook(&fixture, "owned-fsmonitor", None);

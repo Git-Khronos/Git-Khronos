@@ -11,7 +11,7 @@
                 </svg>
                 <span class="ref-connector wip-ref-connector color-{{ wip.color }}" [style.width.px]="wip.nodeOffset"></span>
                 <span class="node wip-node color-{{ wip.color }}" [attr.data-lane-offset]="wip.nodeOffset" [style.left.px]="wip.nodeOffset - 11">W</span>
-                <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="view.handleWipRowResizerClick($event)" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
+                <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="view.handleWipRowResizerClick($event, wip.worktree)" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
               </span> }
               @if (view.showMessageColumn()) {
                 <span class="commit-main wip-commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" title="{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} in {{ wip.worktree.path }}">

@@ -5,7 +5,7 @@ import { MarkdownPreviewComponent } from './markdown-preview.component';
 import { EditorDraftSnapshots, type DraftSnapshotState } from './editor-draft-snapshots';
 import { discardReviewedEditorDraft, type EditorDraftReference } from './editor-draft-recovery';
 
-export interface ExternalEditorRequest { repoId: string; path: string; line: number; }
+export interface ExternalEditorRequest { repoId: string; path: string; line: number; returnFocus?: HTMLElement | null; }
 
 export interface WorkingFileEditorRequest { repoId: string; path: string; recovery?: EditorDraftReference; }
 
@@ -18,7 +18,7 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
       <div><p>Working copy editor · {{ dirty() ? 'Unsaved draft' : 'Saved text' }}</p>
         <h2 id="working-editor-title" [title]="captured()?.path">{{ captured()?.path }}</h2></div>
       <button type="button" [disabled]="busy() && writing()" (click)="requestClose()">Back to preview</button>
-      <button type="button" [disabled]="!canReviewExternal()" (click)="requestExternalEditor()">Review external editor</button>
+      <button type="button" [disabled]="!canReviewExternal()" (click)="requestExternalEditor($event)">Review external editor</button>
     </header>
     <div class="editor-controls">
       <label for="working-editor-encoding">Read encoding</label>
@@ -176,8 +176,10 @@ export class WorkingFileEditorComponent {
     && !this.windowClosing() && !this.busy() && !this.git.busy() && !this.needsReload());
   readonly canReviewExternal = computed(() => this.sameRepository() && !this.busy() && !this.git.busy()
     && !this.git.browserPreview() && !this.windowClosing() && !this.review());
-  requestExternalEditor(): void {
+  private externalReturnFocus: HTMLElement | null = null;
+  requestExternalEditor(event: Event): void {
     if (!this.canReviewExternal()) return;
+    this.externalReturnFocus = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     if (this.dirty()) this.externalReview.set(true); else this.emitExternalRequest();
   }
   private emitExternalRequest(): void {
@@ -186,7 +188,9 @@ export class WorkingFileEditorComponent {
     const area = this.textArea()?.nativeElement;
     const line = area ? area.value.slice(0, area.selectionStart).split('\n').length : 1;
     this.externalReview.set(false);
-    this.externalRequested.emit({ repoId: request.repoId, path: request.path, line });
+    const returnFocus = this.externalReturnFocus;
+    this.externalReturnFocus = null;
+    this.externalRequested.emit({ repoId: request.repoId, path: request.path, line, returnFocus });
   }
   async saveAndReviewExternal(): Promise<void> {
     if (!this.externalReview() || !this.canSave()) return;

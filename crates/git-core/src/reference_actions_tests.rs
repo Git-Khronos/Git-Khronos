@@ -43,7 +43,9 @@ fn transport_remote_config_read_remains_cancellable_before_fetch_starts() {
         while !writer_done.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
             if let Ok(fd) = rustix::fs::open(
                 &writer_config,
-                rustix::fs::OFlags::WRONLY | rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::OFlags::WRONLY
+                    | rustix::fs::OFlags::NONBLOCK
+                    | rustix::fs::OFlags::CLOEXEC,
                 rustix::fs::Mode::empty(),
             ) {
                 let _ = fs::File::from(fd).write_all(&original);
@@ -5835,9 +5837,16 @@ fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
 
 #[test]
 fn foreign_owner_refusal_keeps_git_detail_and_explains_trust_choice() {
+    #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
+    #[cfg(unix)]
+    let status = std::process::ExitStatus::from_raw(128 << 8);
+    #[cfg(windows)]
+    let status = std::process::ExitStatus::from_raw(128);
     let output = std::process::Output {
-        status: std::process::ExitStatus::from_raw(128 << 8),
+        status,
         stdout: Vec::new(),
         stderr: b"fatal: detected dubious ownership in repository at '/srv/project'\n".to_vec(),
     };

@@ -44,6 +44,32 @@ pub async fn apply_stash_options(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+pub async fn apply_stashed_file(
+    repo_id: String,
+    reference: String,
+    expected_oid: String,
+    path: String,
+    previous_path: Option<String>,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        mutate_and_refresh(&repo_id, &state, |repository| {
+            git_khronos_git_core::apply_stashed_file(
+                repository,
+                &reference,
+                &expected_oid,
+                &path,
+                previous_path.as_deref(),
+            )
+        })
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 pub async fn branch_from_stash(
     repo_id: String,
     reference: String,

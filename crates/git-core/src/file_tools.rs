@@ -262,7 +262,19 @@ impl EditorLease {
         let name = path
             .file_name()
             .ok_or_else(|| refused("Choose a working file."))?;
-        let directory = syscall(file_content::worktree::descend(&root.directory, parent))?;
+        let directory =
+            file_content::worktree::descend_worktree(&root.directory, parent).map_err(|error| {
+                if matches!(
+                    error,
+                    file_content::worktree::WorktreeParentError::NestedRepository
+                ) {
+                    refused("External editors cannot cross a nested repository boundary.")
+                } else {
+                    refused(
+                        "The selected file could not be opened without following repository links.",
+                    )
+                }
+            })?;
         let file = File::from(syscall(openat(
             &directory,
             name,

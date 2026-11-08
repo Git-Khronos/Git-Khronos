@@ -72,6 +72,11 @@ pub struct RecoveryDraftStore {
     path: PathBuf,
     uid: u32,
 }
+impl Drop for RecoveryDraftStore {
+    fn drop(&mut self) {
+        let _ = flock(&self.directory, FlockOperation::Unlock);
+    }
+}
 impl RecoveryDraftStore {
     /// `path` must be a native-selected application-data location, never an IPC
     /// supplied working path. The caller supplies its effective operating UID.
@@ -462,6 +467,7 @@ mod tests {
         let dir = OwnedDirectory::new();
         let mut store = dir.open();
         assert!(RecoveryDraftStore::open(&dir.path(), dir.uid()).is_err());
+        assert!(RecoveryDraftStore::open(&dir.path(), dir.uid()).is_err());
         let record = draft();
         store.persist(&record).unwrap();
         let mut changed = record.clone();
@@ -473,6 +479,16 @@ mod tests {
         assert_eq!(store.load(&record.id).unwrap(), Some((record, false)));
         drop(store);
         assert!(RecoveryDraftStore::open(&dir.path(), dir.uid()).is_ok());
+    }
+    #[test]
+    fn recovery_store_releases_its_lock_even_if_the_directory_descriptor_is_duplicated() {
+        let dir = OwnedDirectory::new();
+        let store = dir.open();
+        let inherited_directory = store.directory.try_clone().unwrap();
+        drop(store);
+
+        assert!(RecoveryDraftStore::open(&dir.path(), dir.uid()).is_ok());
+        drop(inherited_directory);
     }
     #[test]
     fn recovery_store_retains_complete_pending_snapshot_after_interrupted_replacement() {

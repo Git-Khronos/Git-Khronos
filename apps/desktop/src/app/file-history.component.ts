@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, viewChild } from '@angular/core';
 import { HistorySearchService } from './history-search.service';
 
 @Component({
@@ -11,7 +11,9 @@ import { HistorySearchService } from './history-search.service';
       <header><div><strong>File History</strong><small>{{ path() }} · renamed paths followed</small></div>
         <b>{{ owned() ? history.files().length : 0 }} {{ owned() && history.files().length === 1 ? 'commit' : 'commits' }}{{ owned() && history.fileComplete() ? ' · complete' : ' · incomplete' }}</b></header>
       <div class="history-feedback">
-        @if (!owned() || history.fileBusy()) { <small role="status">Reading file history…</small> }
+        @if (!owned() || history.fileBusy()) {
+          <small role="status">{{ owned() && history.fileCancelling() ? 'Stopping file history…' : owned() && history.fileCancellationRequested() ? 'Cancellation not confirmed. Retry, or wait for the read to finish.' : 'Reading file history…' }}</small>
+        }
         @if (owned() && history.fileError()) { <p role="alert">{{ history.fileError() }}</p> }
       </div>
       <div class="history-list" tabindex="0" aria-label="File history commits">
@@ -26,10 +28,11 @@ import { HistorySearchService } from './history-search.service';
         }
       </div>
       <footer>
-        <button type="button" [disabled]="!owned() || history.fileBusy() || history.fileComplete()" (click)="history.nextFile()">{{ owned() && history.fileComplete() ? 'All available file history loaded' : history.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
-        <button type="button" [disabled]="!owned() || history.fileBusy()" title="Read history again from the newest page" (click)="history.openFile(revision(), path())">Reload file history</button>
+        <button #retryButton type="button" [disabled]="!owned() || history.fileBusy() || history.fileComplete()" (click)="history.nextFile()">{{ owned() && history.fileComplete() ? 'All available file history loaded' : history.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
+        <button type="button" [disabled]="!owned() || (history.fileBusy() && !history.fileCancellationRequested())" title="Read history again from the newest page" (click)="history.openFile(revision(), path())">Reload file history</button>
         @if (owned() && history.fileBusy()) {
-          <button type="button" (click)="history.cancelFile()">Cancel file history</button>
+          <button #cancelButton type="button" [attr.aria-disabled]="history.fileCancelling() ? 'true' : null"
+            (click)="!history.fileCancelling() && history.cancelFile()">{{ history.fileCancelling() ? 'Stopping…' : history.fileCancellationRequested() ? 'Retry cancellation' : 'Cancel file history' }}</button>
         }
       </footer>
     </section>
@@ -50,7 +53,7 @@ import { HistorySearchService } from './history-search.service';
     p { margin: 6px 0 0; color: var(--danger); overflow-wrap: anywhere; }
     footer { display: flex; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); }
     footer button { min-height: 28px; padding: 4px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); cursor: pointer; }
-    button:disabled { opacity: .5; cursor: default; }
+    button:disabled, button[aria-disabled=true] { opacity: .5; cursor: default; }
     button:focus-visible, .history-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   `,
 })
@@ -63,4 +66,21 @@ export class FileHistoryComponent {
   readonly navigate = output<{ oid: string; path: string; previousPath?: string | null }>();
   readonly owned = computed(() => this.history.matchesFile(this.revision(), this.path()));
   readonly entries = computed(() => this.owned() ? this.history.files() : []);
+  private readonly injector = inject(Injector);
+  private readonly retryButton = viewChild.required<ElementRef<HTMLButtonElement>>('retryButton');
+  private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
+  private wasBusy = false;
+
+  constructor() {
+    effect(() => {
+      const busy = this.owned() && this.history.fileBusy();
+      if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
+        afterNextRender(() => {
+          const button = this.retryButton().nativeElement;
+          if (document.activeElement === document.body && !button.disabled && button.getClientRects().length) button.focus();
+        }, { injector: this.injector });
+      }
+      this.wasBusy = busy;
+    });
+  }
 }

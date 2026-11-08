@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Exercise an extracted production .deb with W3C WebDriver; no app test hooks.
 
-Requires tauri-driver, WebKitWebDriver, and (with --headless) Xvfb. Tests own
-all repositories/storage under TemporaryDirectory; never install the package.
+Requires tauri-driver, WebKitWebDriver, and (with --headless) Xvfb and libXtst.
+Tests own all repositories/storage under TemporaryDirectory; never install the package.
 """
 import argparse
 import base64
@@ -108,12 +108,14 @@ def port():
 
 
 class Driver:
-    def __init__(self, address, native_address=None, session_bus_address=None):
+    def __init__(self, address, native_address=None, session_bus_address=None, owned_display=None):
         self.address = address
         self.native_address = native_address
         self.session = None
         self.executable = None
         self.session_bus_address = session_bus_address
+        self.owned_display = owned_display
+        self.native_pointer_deliveries = []
 
     def single_instance_bus_call(self, method):
         """Read only the application name on this fixture's private session bus."""
@@ -303,6 +305,71 @@ class Driver:
             "type": "pointer", "id": "native-mouse", "parameters": {"pointerType": "mouse"},
             "actions": [{"type": "pointerUp", "button": 0}],
         }]})
+
+    def context_click(self, selector):
+        """Perform one real right click and verify its trusted press and release."""
+        element = self.wait(f"""return (() => {{
+          const matches = [...document.querySelectorAll({json.dumps(selector)})]
+            .filter(element => element.getClientRects().length
+              && getComputedStyle(element).visibility === 'visible'
+              && !element.matches(':disabled') && !element.closest('[inert]'));
+          return matches.length === 1 ? matches[0] : null;
+        }})()""")
+        geometry = self.request("POST", self.path("execute/async"), {"script": """
+          const element=arguments[0], done=arguments[arguments.length-1];
+          element.scrollIntoView({block:'center',inline:'nearest'});
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            const r=element.getBoundingClientRect();
+            const left=Math.max(0,r.left), right=Math.min(innerWidth,r.right);
+            const top=Math.max(0,r.top), bottom=Math.min(innerHeight,r.bottom);
+            const x=(left+right)/2, y=(top+bottom)/2;
+            const hit=document.elementFromPoint(x,y);
+            const interactable=element.isConnected && right>left && bottom>top
+              && !element.matches(':disabled') && !element.closest('[inert]')
+              && getComputedStyle(element).visibility==='visible' && !!hit && element.contains(hit);
+            const scale=window.devicePixelRatio;
+            done({interactable, x:Math.round((window.screenX+x)*scale),
+              y:Math.round((window.screenY+y)*scale), scale});
+          }));
+        """, "args": [element]})
+        if not isinstance(geometry, dict) or geometry.get('interactable') is not True:
+            raise RuntimeError('The context-menu target is not interactable: ' + json.dumps(geometry))
+        self.script("""
+          if (window.__nativeContextCheck) throw Error('A native context-click is already in progress');
+          const target=arguments[0], state={context:false,release:false};
+          state.onContext=event=>{
+            if (event.isTrusted && event.button===2 && target.contains(event.target)) state.context=true;
+          };
+          state.onRelease=event=>{
+            if (event.isTrusted && event.button===2 && !(event.buttons&2)) state.release=true;
+          };
+          window.__nativeContextCheck=state;
+          document.addEventListener('contextmenu',state.onContext,true);
+          document.addEventListener('mouseup',state.onRelease,true);
+        """, element)
+        try:
+            if self.owned_display:
+                from native_pointer import owned_right_press
+                with owned_right_press(self.owned_display, self.executable, geometry['x'], geometry['y']) as delivery:
+                    self.wait('return window.__nativeContextCheck?.context', 5)
+                self.wait('return window.__nativeContextCheck?.release', 5)
+                self.native_pointer_deliveries.append(delivery)
+            else:
+                self.request('POST', self.path('actions'), {'actions': [{
+                    'type': 'pointer', 'id': 'native-context-mouse', 'parameters': {'pointerType': 'mouse'},
+                    'actions': [{'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
+                                {'type': 'pointerDown', 'button': 2}, {'type': 'pointerUp', 'button': 2}],
+                }]})
+                self.wait('return window.__nativeContextCheck?.context && window.__nativeContextCheck?.release', 5)
+        finally:
+            self.script("""
+              const state=window.__nativeContextCheck;
+              if (state) {
+                document.removeEventListener('contextmenu',state.onContext,true);
+                document.removeEventListener('mouseup',state.onRelease,true);
+                delete window.__nativeContextCheck;
+              }
+            """)
 
     def key(self, value):
         self.request("POST", self.path("actions"), {"actions": [{
@@ -504,6 +571,135 @@ def open_ui(driver, repository):
     return driver.invoke("open_repository", path=str(repository))["id"]
 
 
+def checkpoint_fixture(fixtures, repository):
+    head = fixtures.git(repository, "rev-parse", "HEAD")
+    tree = fixtures.git(repository, "rev-parse", "HEAD^{tree}")
+    names = {
+        key: f"refs/copilot/checkpoints/native/{key}/checkpoint"
+        for key in ("reviewed", "sibling", "moved", "external-packed", "external-loose",
+                    "deleted-packed", "deleted-loose")
+    }
+    oids = {
+        key: fixtures.git(repository, "commit-tree", tree, "-p", head,
+                          input=f"Native checkpoint {key}\n".encode())
+        for key in names if key != "sibling"
+    }
+    oids["sibling"] = head
+    oids["replacement"] = fixtures.git(repository, "commit-tree", tree, "-p", head,
+                                       input=b"Native checkpoint replacement\n")
+    for key in ("reviewed", "sibling", "moved", "external-packed", "deleted-packed"):
+        fixtures.git(repository, "update-ref", names[key], oids[key])
+    fixtures.git(repository, "pack-refs", "--all", "--prune")
+    packed = (repository / ".git/packed-refs").read_text()
+    for key in ("reviewed", "sibling", "moved", "external-packed", "deleted-packed"):
+        assert f"{oids[key]} {names[key]}\n" in packed
+        assert not (repository / ".git" / names[key]).exists()
+    fixtures.git(repository, "update-ref", "-d", names["deleted-packed"], oids["deleted-packed"])
+    for key in ("external-loose", "deleted-loose"):
+        fixtures.git(repository, "update-ref", names[key], oids[key])
+        assert (repository / ".git" / names[key]).is_file()
+    fixtures.git(repository, "update-ref", "-d", names["deleted-loose"], oids["deleted-loose"])
+    return {"names": names, "oids": oids, "head": head}
+
+
+def checkpoint_refs(fixtures, repository):
+    output = fixtures.git(repository, "for-each-ref", "--format=%(refname) %(objectname)",
+                          "refs/copilot/checkpoints/")
+    return dict(line.split(" ", 1) for line in output.splitlines())
+
+
+def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
+    names, oids = checkpoint["names"], checkpoint["oids"]
+    expected = {names[key]: oids[key] for key in
+                ("reviewed", "sibling", "moved", "external-packed", "external-loose")}
+    before_index = (repository / ".git/index").read_bytes()
+    before_worktree = (repository / "fixture.txt").read_bytes()
+    assert checkpoint_refs(fixtures, repository) == expected
+
+    driver.click('[aria-label="Configure graph columns"]')
+    checkbox = '#graph-column-settings label[title="Include Copilot checkpoint references and their history"] input'
+    driver.wait(f"return !!document.querySelector({json.dumps(checkbox)}) && !document.querySelector({json.dumps(checkbox)}).disabled")
+    assert not driver.script("return document.querySelector(arguments[0]).checked", checkbox)
+    driver.click(checkbox)
+    driver.wait(f"return document.querySelector({json.dumps(checkbox)})?.checked && !document.querySelector({json.dumps(checkbox)}).disabled")
+    driver.click('[aria-label="Close graph settings"]')
+
+    def row(key):
+        return f'.commit-row[data-commit-oid="{oids[key]}"]'
+
+    def pill(key):
+        return row(key) + f' [aria-label="Copilot checkpoint {names[key]}"]'
+
+    for key in ("reviewed", "moved", "external-packed", "external-loose"):
+        driver.wait(f"return !!document.querySelector({json.dumps(pill(key))})")
+    for key in ("deleted-packed", "deleted-loose"):
+        assert not driver.script("return !!document.querySelector(arguments[0])", row(key))
+        assert not driver.script("return !!document.querySelector(arguments[0])",
+                                 f'[aria-label="Copilot checkpoint {names[key]}"]')
+
+    for key in ("external-loose", "external-packed"):
+        fixtures.git(repository, "update-ref", "-d", names[key], oids[key])
+        expected.pop(names[key])
+        driver.wait(f"return !document.querySelector({json.dumps(row(key))})")
+        assert checkpoint_refs(fixtures, repository) == expected
+
+    driver.click(pill("moved"))
+    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
+    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
+    confirmation = driver.script("return document.querySelector('.checkpoint-confirmation-dialog').textContent")
+    assert names["moved"] in confirmation and oids["moved"][:7] in confirmation
+    fixtures.git(repository, "update-ref", names["moved"], oids["replacement"], oids["moved"])
+    expected[names["moved"]] = oids["replacement"]
+    driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
+    driver.click_text(".checkpoint-confirmation-dialog button", "Delete checkpoint reference")
+    driver.wait("""return document.querySelector('gc-error-toast [role=alert]')
+      ?.textContent.includes('checkpoint has moved or no longer exists')""")
+    assert checkpoint_refs(fixtures, repository) == expected
+    driver.wait(f"return !!document.querySelector({json.dumps(row('replacement'))})")
+    driver.wait(f"return !document.querySelector({json.dumps(row('moved'))})")
+    driver.click('[aria-label="Dismiss error"]')
+
+    driver.click(pill("reviewed"))
+    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
+    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog[role=alertdialog]')")
+    confirmation = driver.script("return document.querySelector('.checkpoint-confirmation-dialog').textContent")
+    assert names["reviewed"] in confirmation and oids["reviewed"][:7] in confirmation
+    driver.click_text(".checkpoint-confirmation-dialog button", "Cancel")
+    assert checkpoint_refs(fixtures, repository) == expected
+
+    driver.click(pill("reviewed"))
+    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
+    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
+    driver.click_text(".checkpoint-confirmation-dialog button", "Delete checkpoint reference")
+    driver.wait(f"return !document.querySelector({json.dumps(row('reviewed'))})")
+    expected.pop(names["reviewed"])
+    assert checkpoint_refs(fixtures, repository) == expected
+    assert fixtures.git(repository, "rev-parse", "HEAD") == checkpoint["head"]
+    assert (repository / ".git/index").read_bytes() == before_index
+    assert (repository / "fixture.txt").read_bytes() == before_worktree
+    assert not fixtures.git(repository, "status", "--porcelain")
+    for oid in oids.values():
+        fixtures.git(repository, "cat-file", "-e", f"{oid}^{{commit}}")
+    for key, oid in (("sibling", oids["sibling"]), ("moved", oids["replacement"])):
+        fixtures.git(repository, "update-ref", "-d", names[key], oid)
+    assert not checkpoint_refs(fixtures, repository)
+    driver.click('[aria-label="Configure graph columns"]')
+    driver.wait(f"return !!document.querySelector({json.dumps(checkbox)}) && !document.querySelector({json.dumps(checkbox)}).disabled")
+    driver.click(checkbox)
+    driver.wait(f"return !document.querySelector({json.dumps(checkbox)})?.checked && !document.querySelector({json.dumps(checkbox)}).disabled")
+    driver.click('[aria-label="Close graph settings"]')
+    driver.wait("return document.querySelectorAll('.commit-row[data-commit-oid]').length === 12")
+    report["scenarios"].extend([
+        "native-checkpoint-history-excludes-deleted-packed-and-loose-refs",
+        "native-external-checkpoint-deletion-refreshes-packed-and-loose-history",
+        "native-ui-moved-checkpoint-refuses-stale-deletion",
+        "native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository",
+    ])
+
+
 def menu_tab_focus(driver, report):
     for toggle, menu in ((".workspace-toggle", ".workspace-menu"), (".app-menu", ".app-menu-popover")):
         driver.script("document.querySelector(arguments[0]).focus()", toggle)
@@ -572,8 +768,113 @@ def terminal_csp_rendering(driver, report):
     report["scenarios"].append("native-terminal-csp-font-and-colors")
 
 
+def repository_file_discard_recovery(driver, fixtures, repository, repo_id, report):
+    """Use only the packaged UI to delete and recover an owned untracked file."""
+    file = repository / "native-recovery-file.bin"
+    contents = b"owned native recovery\x00\xff\n"
+    before_index = (repository / ".git/index").read_bytes()
+    before_head = fixtures.git(repository, "rev-parse", "HEAD")
+    file.write_bytes(contents)
+    driver.wait('return !!document.querySelector(\'[aria-label="Stage native-recovery-file.bin"]\')')
+
+    driver.click(".workspace-toggle")
+    driver.click_text(".workspace-menu-actions [role=menuitem]", "Repository files")
+    driver.wait("""return [...document.querySelectorAll('gc-workspace-center .file-entry')]
+      .some(row => row.querySelector('code')?.textContent === 'native-recovery-file.bin')""")
+    driver.click_text("gc-workspace-center .file-entry button", "Delete with recovery")
+    driver.wait("return !!document.querySelector('gc-workspace-center [role=alertdialog]')")
+    assert "Recovery History" in driver.script(
+        "return document.querySelector('gc-workspace-center [role=alertdialog]').textContent"
+    )
+    driver.click_text("gc-workspace-center [role=alertdialog] button", "Delete file")
+    driver.wait("""return document.querySelector('gc-workspace-center [role=status]')
+      ?.textContent.includes('Deleted native-recovery-file.bin and saved it to Recovery History')""")
+    assert not file.exists()
+    driver.click_text("gc-workspace-center header button", "Close")
+
+    driver.click('[aria-label="Main menu"]')
+    driver.click_text(".app-menu-popover [role=menuitem] strong", "Recovery History")
+    driver.wait("""return !!document.querySelector(
+      '.recovery-dialog .operation-captures[aria-label="Discarded changes"] button:not(:disabled)')""")
+    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.wait("""return document.querySelector('.saved-discards-dialog [aria-label="Files in this capture"]')
+      ?.textContent.includes('native-recovery-file.bin')""")
+    driver.wait("return document.activeElement?.matches('[data-saved-discards-close]')")
+    records = driver.invoke("load_discard_recoveries", repoId=repo_id)
+    assert len(records) == 1 and records[0]["contentSha256"]
+    capture = repository / ".git/git-khronos-recovery" / (records[0]["id"] + ".patch")
+    original_capture = capture.read_bytes()
+    driver.click_text(".saved-discards-dialog button", "Recover…")
+    driver.wait("""return document.querySelector('[role=alertdialog]')?.textContent
+      .includes('native-recovery-file.bin')""")
+    driver.wait("return document.activeElement?.matches('[data-file-dialog-cancel]')")
+    driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
+    capture.write_bytes(b"externally changed recovery capture")
+    driver.click_text('[role=alertdialog] button', "Recover changes")
+    driver.wait("""return document.querySelector('.recovery-dialog [role=alert]')
+      ?.textContent.includes('changed after it was reviewed')""")
+    assert not file.exists()
+    assert capture.read_bytes() == b"externally changed recovery capture"
+    assert (repository / ".git/index").read_bytes() == before_index
+    capture.write_bytes(original_capture)
+    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.wait("""return document.querySelector('.saved-discards-dialog [aria-label="Files in this capture"]')
+      ?.textContent.includes('native-recovery-file.bin')""")
+    driver.click_text(".saved-discards-dialog button", "Recover…")
+    driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
+    driver.click_text('[role=alertdialog] button', "Recover changes")
+    driver.wait("""return !document.querySelector('[role=alertdialog]')
+      && document.activeElement?.textContent.trim() === 'Open discarded-change recovery…'""")
+    assert file.read_bytes() == contents
+    assert (repository / ".git/index").read_bytes() == before_index
+    assert fixtures.git(repository, "rev-parse", "HEAD") == before_head
+
+    capture.write_bytes(b"externally changed recovery capture")
+    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.wait("""return document.querySelector('.saved-discards-dialog .saved-discard-item')
+      ?.textContent.includes('recovery state cannot be matched')""")
+    driver.wait("""return [...document.querySelectorAll('.saved-discards-dialog button')]
+      .some(button => button.textContent.trim() === 'Discard again…' && button.disabled)""")
+    changed = driver.invoke("load_discard_recoveries", repoId=repo_id)
+    assert changed[0]["stateBlocked"] and changed[0]["stateWarning"]
+    assert file.read_bytes() == contents
+    assert capture.read_bytes() == b"externally changed recovery capture"
+    capture.write_bytes(original_capture)
+    driver.click("[data-saved-discards-close]")
+
+    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.wait("return !!document.querySelector('.saved-discards-dialog')")
+    driver.click_text(".saved-discards-dialog button", "Remove capture…")
+    driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
+    capture.write_bytes(b"externally changed recovery capture")
+    driver.click_text('[role=alertdialog] button', "Remove capture")
+    driver.wait("""return document.querySelector('.recovery-dialog [role=alert]')
+      ?.textContent.includes('changed after it was reviewed')""")
+    assert capture.read_bytes() == b"externally changed recovery capture"
+    assert file.read_bytes() == contents
+    capture.write_bytes(original_capture)
+    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.wait("return !!document.querySelector('.saved-discards-dialog')")
+    driver.click_text(".saved-discards-dialog button", "Remove capture…")
+    driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
+    driver.click_text('[role=alertdialog] button', "Remove capture")
+    driver.wait("return !document.querySelector('[role=alertdialog]')")
+    assert not driver.invoke("load_discard_recoveries", repoId=repo_id)
+    assert file.read_bytes() == contents
+    file.unlink()
+    driver.click('[aria-label="Close recovery history"]')
+    driver.wait('return !document.querySelector(\'[aria-label="Stage native-recovery-file.bin"]\')')
+    assert not fixtures.git(repository, "status", "--porcelain")
+    report["scenarios"].extend([
+        "native-ui-repository-file-delete-and-recovery-history-roundtrip",
+        "native-ui-changed-capture-refuses-reviewed-apply-and-removal",
+        "native-ui-replaced-recovered-capture-blocks-discard-again",
+    ])
+
+
 def smoke(driver, fixtures, report):
     repository = fixtures.repository()
+    checkpoints = checkpoint_fixture(fixtures, repository)
     repo_id = open_ui(driver, repository)
     probe = driver.script(RENDER_PROBE)
     assert probe["workspace"] == "grid" and probe["absolute"] and probe["bounded"], probe
@@ -627,6 +928,8 @@ def smoke(driver, fixtures, report):
     driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
     assert not fixtures.git(repository, "status", "--porcelain")
     report["scenarios"].append("native-external-checkout-and-untracked-discovery")
+    repository_file_discard_recovery(driver, fixtures, repository, repo_id, report)
+    checkpoint_lifecycle(driver, fixtures, repository, checkpoints, report)
     return repository, repo_id
 
 
@@ -716,6 +1019,7 @@ def main():
         fixtures.env["TAURI_WEBVIEW_AUTOMATION"] = "true"
         with (output / "driver.log").open("w") as log:
             report["sessionBus"] = start_private_dbus(fixtures, children, log)
+            owned_display = None
             if args.headless:
                 display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
                                            env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
@@ -727,6 +1031,7 @@ def main():
                     raise RuntimeError("Xvfb failed; see driver.log")
                 fixtures.env["DISPLAY"] = ":" + number
                 fixtures.env["GDK_BACKEND"] = "x11"
+                owned_display = (fixtures.env["DISPLAY"], display)
             listen_port = port()
             native_port = port()
             application_env = fixtures.env.copy()
@@ -750,7 +1055,8 @@ def main():
                                        env=application_env, stdout=log, stderr=log, start_new_session=True)
             children.append(process)
             driver = Driver(f"http://127.0.0.1:{listen_port}", f"http://127.0.0.1:{native_port}",
-                            session_bus_address=fixtures.env.get('DBUS_SESSION_BUS_ADDRESS'))
+                            session_bus_address=fixtures.env.get('DBUS_SESSION_BUS_ADDRESS'),
+                            owned_display=owned_display)
             report["webdriverTransport"] = "tauri-session-creation-native-session-control"
             deadline = time.monotonic() + 20
             while True:
@@ -793,6 +1099,8 @@ def main():
                 pass
     finally:
         if driver:
+            if driver.native_pointer_deliveries:
+                report['nativePointerDeliveries'] = driver.native_pointer_deliveries
             try:
                 driver.close()
             except Exception:

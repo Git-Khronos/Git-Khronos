@@ -925,7 +925,10 @@ fn stash_previews_support_sha256_tracked_and_untracked_objects() {
     assert_eq!(selected.len(), 64);
     let details = stash_details_at_oid(&repository.0, &selected).unwrap();
     assert_eq!(details.files.len(), 2);
-    for (path, expected) in [("tracked.txt", "saved tracked"), ("*.tmp", "saved untracked")] {
+    for (path, expected) in [
+        ("tracked.txt", "saved tracked"),
+        ("*.tmp", "saved untracked"),
+    ] {
         let patch = stash_file_diff_at_oid(&repository.0, &selected, path, None).unwrap();
         assert_eq!(patch.oid, selected);
         assert!(patch.patch.contains(expected));

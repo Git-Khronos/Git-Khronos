@@ -77,8 +77,22 @@ fn read_patch(file: &Path) -> Result<Vec<u8>, AppError> {
 }
 
 fn safe_path(root: &Path, file: &str) -> Result<(), AppError> {
+    safe_path_with_policy(root, file, false, false)
+}
+
+pub(super) fn safe_stash_path(root: &Path, file: &str) -> Result<(), AppError> {
+    safe_path_with_policy(root, file, true, true)
+}
+
+fn safe_path_with_policy(
+    root: &Path,
+    file: &str,
+    native_literal_names: bool,
+    allow_leaf_symlink: bool,
+) -> Result<(), AppError> {
     if file.is_empty()
-        || file.contains(['\0', '\\', ':'])
+        || file.contains('\0')
+        || ((!native_literal_names || cfg!(windows)) && file.contains(['\\', ':']))
         || !Path::new(file)
             .components()
             .all(|part| matches!(part, Component::Normal(_)))
@@ -91,14 +105,34 @@ fn safe_path(root: &Path, file: &str) -> Result<(), AppError> {
         )));
     }
     let mut candidate = root.to_path_buf();
-    for part in Path::new(file).components() {
+    let mut components = Path::new(file).components().peekable();
+    while let Some(part) = components.next() {
         candidate.push(part);
-        if fs::symlink_metadata(&candidate).is_ok_and(|metadata| metadata.is_symlink())
-            || candidate.join(".git").exists()
-        {
-            return Err(failure(format!(
-                "Patch path crosses a symlink or nested repository: {file:?}"
-            )));
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.is_symlink() => {
+                if !allow_leaf_symlink || components.peek().is_some() {
+                    return Err(failure(format!(
+                        "Patch path crosses a symlink or nested repository: {file:?}"
+                    )));
+                }
+            }
+            Ok(metadata) if metadata.is_dir() => {
+                match fs::symlink_metadata(candidate.join(".git")) {
+                    Ok(_) => {
+                        return Err(failure(format!(
+                            "Patch path crosses a symlink or nested repository: {file:?}"
+                        )));
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io_error(error)),
+                }
+            }
+            Ok(_) if components.peek().is_some() => {
+                return Err(failure(format!("A parent of {file:?} is not a directory.")));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(io_error(error)),
         }
     }
     Ok(())

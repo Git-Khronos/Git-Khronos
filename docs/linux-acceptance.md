@@ -12,7 +12,8 @@ development-only application endpoint.
 - `openssl` for the owned GitLab HTTPS test fixture;
 - `fakeroot` for the package regression suite's private dpkg ownership checks
   (not required for normal application use or installation);
-- `tauri-driver 2.0.6`, `WebKitWebDriver`, and Xvfb for headless runs;
+- `tauri-driver 2.0.6`, `WebKitWebDriver`, and Xvfb plus `libXtst` for headless
+  right-click scenarios;
 - `dbus-daemon` and `dbus-send` for the owned private session bus and restart checks;
 - `desktop-file-utils` (`desktop-file-validate`, `update-desktop-database`) and
   `libglib2.0-bin` (`gio`) for full/inherited-environment incoming-link checks;
@@ -20,6 +21,14 @@ development-only application endpoint.
 
 Missing prerequisites are failures. The harness never reports a skipped native
 suite as a pass.
+
+For headless context-menu scenarios, WebKitWebDriver's right-button release can
+produce a spurious primary click. The harness therefore sends one XTEST right
+press and release only to its own live Xvfb display, after checking the exact
+extracted application PID and the visible window under the pointer. It verifies
+both trusted events and never injects into an inherited desktop display. Visible
+runs continue to use WebDriver input and fail if it does not deliver a proper
+right-button release. These checks do not modify application menu behavior.
 
 Application restart checks verify that the private single-instance bus name belongs
 to the owned executable's PID before closing it. They wait for both process exit and
@@ -295,7 +304,14 @@ rendering, graph layout, selection, lazy dialog styles, saved-tab restoration,
 native snapshot transport, workspace-menu outside
 dismissal before mouse-up (without consuming the toolbar action), and asynchronous
 untracked-file discovery and removal in the working-tree UI, including changes
-made alongside an external branch checkout. `native-full`
+made alongside an external branch checkout. It opens an owned repository with
+live and already-deleted loose and packed checkpoint refs, shows checkpoint
+history, and checks that deleted refs and their otherwise-unreachable commits
+are absent. External loose and packed ref deletions must refresh the graph.
+Deleting a reviewed live checkpoint through the UI must preserve a sibling
+ref, HEAD, the index, working-tree contents and all checkpoint commit objects;
+moving a ref after review must refuse the stale deletion.
+`native-full`
 adds disposable Git repositories and verifies the implemented staging,
 history, recovery, reference, worktree, submodule, patch, bundle, mail,
 remote, signing, and LFS workflows, plus retained history pages across metadata
@@ -437,6 +453,26 @@ output through the production UI. Independent Git/file assertions verify those
 results; renderer-only tests separately cover delayed-reply races.
 Packaged IPC checks also verify raw untracked-binary discard/recovery without
 executing a configured text converter.
+
+The earlier Debian candidate
+`1b3c8b5274a25c56e5b52c6ff02bcc7780c209e8875b4be0beb705ef7eb4b180`
+passed package verification and the complete headless native suite: 228
+scenarios passed, including checkpoint deletion, stale-review refusal, editor
+and file-tool workflows, and eight right clicks delivered only to the owned
+Xvfb/application window. The rebuilt current-source candidate
+`1ce7f469980c33600572f8fec7e628a180e8184cfc750d5f59e28f6847befa46`
+passes package verification and the complete headless native suite: 229
+scenarios passed, including eight right clicks delivered only to the owned
+Xvfb/application window. The report records the same package SHA-256.
+
+A disposable Linux real-Git probe confirmed that replacing a parent directory
+can redirect tracked deletion outside the worktree. Tracked deletion is now
+refused on non-Windows platforms. Windows ancestor-handle protection still
+requires native runtime qualification. A real-Git regression swaps an
+untracked file's reviewed parent for a symlink immediately before
+reverse-apply and confirms the outside file and index are preserved;
+other-platform qualification remains open. See the capability audit.
+
 Tracked and untracked working-directory comparisons likewise preserve raw text
 and binary previews without executing converters. Large comparison previews are
 explicitly truncated; the backend bounds collected diff stdout during the read,
@@ -472,6 +508,13 @@ old name, verify keep-index capture and restoration from the original base, and
 check that the explicit restore-index option overrides repository configuration.
 An unselected non-UTF-8 untracked filename remains in place when selected stashing
 includes untracked files; scope exclusions use raw Git filenames, not display text.
+
+The packaged smoke suite also deletes an owned untracked binary file from
+Repository files, locates its filename in Recovery History, restores its exact
+bytes, and removes the capture through the UI. It checks dialog focus, the
+unchanged index and HEAD, and refuses applying or removing a capture changed
+after review, without injecting component state. It also checks that a replaced
+recovered capture is marked for review and cannot be discarded again.
 
 Each run writes a JSON report, screenshots, and driver output below
 `test-results/native/`. Reports include the package and executable SHA-256

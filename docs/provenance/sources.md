@@ -1,5 +1,37 @@
 # Informational sources
 
+## Linux worktree path resolution
+
+- [Linux `openat2(2)` manual](https://man7.org/linux/man-pages/man2/openat2.2.html)
+- [Linux kernel pathname lookup](https://docs.kernel.org/filesystems/path-lookup.html)
+
+Used to define beneath-root, no-symlink resolution for empty-file creation and
+to validate behavior under concurrent renames. Linux uses one rooted
+`openat2` operation for the final create; this does not establish safety for
+Git-backed deletion or other Unix implementations. No external source code
+was copied.
+
+## Windows repository-file boundaries
+
+- [Windows file naming rules and short names](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file)
+- [Rust filesystem canonicalization](https://doc.rust-lang.org/std/fs/fn.canonicalize.html)
+- [Windows final path names](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew)
+
+Used to independently define validation for Windows file names and resolved
+paths, including possible short-name aliases for Git metadata. No external
+source code or assets were copied. Windows runtime qualification remains open.
+
+## Private discard-recovery snapshots
+
+- [Linux renameat2 and no-replace publication](https://man7.org/linux/man-pages/man2/renameat2.2.html)
+- [Windows CreateFileW flags and sharing](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+- [Rust Windows OpenOptions extensions](https://doc.rust-lang.org/std/os/windows/fs/trait.OpenOptionsExt.html)
+
+Used to independently select no-overwrite publication on Linux and exclusive,
+delete-on-close temporary-file behavior for the Windows recovery snapshot.
+Unix unlinks its private temporary file before writing. No external code was
+copied; Windows runtime qualification remains open.
+
 ## Reviewed GitLab cloning
 
 - [GitLab Projects API](https://docs.gitlab.com/api/projects/)
@@ -1743,6 +1775,18 @@ is revalidated immediately before delivery. It does not destroy windows or termi
 implementation, comments or assets were copied. libX11 is a host acceptance-tool
 requirement, not a new bundled application dependency. Protocol constants and API
 field names are used for the required standard interoperability.
+
+## Owned X11 pointer acceptance
+
+- X.Org libXtst releases: https://xorg.freedesktop.org/releases/individual/lib/
+- The installed XTest public ABI header and Debian `libxtst6` copyright metadata.
+
+The public XTEST calls were inspected locally for the original ctypes acceptance
+helper. `libXtst` is a host test requirement, not a bundled application
+dependency; its installed package identifies permissive X.Org licenses. The
+helper limits injection to the harness-owned Xvfb display and checks the
+extracted application's PID and visible X window before a right press. No
+third-party implementation or assets were copied.
 
 ## Linux package cache completion
 

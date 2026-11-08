@@ -54,28 +54,33 @@ for (const outcome of ['error', 'cancelled']) {
         git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
         let finish!: (value: unknown) => void;
         let started!: () => void;
+        let newerMutations = 0;
         const recoveryStarted = new Promise<void>(resolve => { started = resolve; });
         (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
           if (command === 'fetch_repository') return Promise.reject({
             kind: outcome === 'cancelled' ? 'operationCancelled' : 'gitFailure', message: outcome,
           });
           if (command === 'refresh_repository') return new Promise(resolve => { finish = resolve; started(); });
-          if (command === 'open_repository' || command === 'create_branch') return Promise.resolve(newer);
+          if (command === 'pull_repository') { newerMutations++; return Promise.resolve(newer); }
+          if (command === 'open_repository') return Promise.resolve(newer);
           if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
           return Promise.resolve(null);
         } };
         const pending = git.remote('fetch_repository');
         await recoveryStarted;
-        if (change === 'newer-mutation') await git.createBranch('new-branch');
+        if (change === 'newer-mutation') await git.remote('pull_repository');
         if (change === 'reopened') {
           git.closeRepository(repository.id);
           await git.openRepository(repository.path);
         }
         finish(stale);
         await pending;
-        return git.repository().headOid;
+        return { head: git.repository().headOid, newerMutations };
       }, { outcome, change });
-      expect(head).toBe(change === 'unchanged' ? 'recovery-head' : 'newer-head');
+      expect(head).toEqual({
+        head: change === 'unchanged' ? 'recovery-head' : 'newer-head',
+        newerMutations: change === 'newer-mutation' ? 1 : 0,
+      });
     });
   }
 }

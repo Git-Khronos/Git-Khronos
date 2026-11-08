@@ -27,6 +27,35 @@ env:
   NX_ISOLATE_PLUGINS: "false"
 
 jobs:
+  windows-repository-files:
+    name: Windows repository file boundaries
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NX_DAEMON: "false"
+      NX_ISOLATE_PLUGINS: "false"
+      CARGO_BUILD_JOBS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: windows-repository-files-v1
+      - run: pnpm install --frozen-lockfile
+      - name: Verify repository file boundaries on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core repository_files::tests -- --nocapture
+      - name: Verify working-file previews on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core file_content::tests -- --nocapture
+
   checks:
     name: Checks and renderer acceptance
     runs-on: ubuntu-24.04
@@ -114,7 +143,7 @@ jobs:
       - name: Install Linux package and WebDriver prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl dbus-daemon dbus-bin
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl dbus-daemon dbus-bin
       - run: pnpm install --frozen-lockfile
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6

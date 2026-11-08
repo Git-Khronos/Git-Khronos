@@ -50,13 +50,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
         open_ui(driver, repository)
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
-        driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
-        element = driver.script("const row=document.querySelector(arguments[0]);row.scrollIntoView({block:'nearest'});return row", selector)
-        driver.request('POST', driver.path('actions'), {'actions': [{
-            'type': 'pointer', 'id': 'owned-window-editor-menu', 'parameters': {'pointerType': 'mouse'},
-            'actions': [{'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
-                        {'type': 'pointerDown', 'button': 2}, {'type': 'pointerUp', 'button': 2}],
-        }]})
+        driver.context_click(selector)
         driver.click_text('[role="menuitem"]', 'Preview file content')
         driver.wait("return [...document.querySelectorAll('gc-file-content-dialog button')].some(button=>button.textContent.trim()==='Edit working copy' && !button.disabled)")
         driver.click_text('gc-file-content-dialog button', 'Edit working copy')

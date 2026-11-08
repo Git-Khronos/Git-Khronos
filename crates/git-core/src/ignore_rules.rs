@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Seek, Write};
 
 struct ExistingRules {
-    already_present: bool,
+    last_effective_is_rule: bool,
     has_bytes: bool,
     ends_with_newline: bool,
 }
@@ -19,15 +19,29 @@ fn matches_line(rule: &[u8], length: usize, matching: bool, last: Option<u8>) ->
     }
 }
 
+fn record_line(
+    result: &mut ExistingRules,
+    rule: &[u8],
+    length: usize,
+    matching: bool,
+    first: Option<u8>,
+    last: Option<u8>,
+) {
+    if first.is_some_and(|byte| byte != b'#') && (first != Some(b'\r') || length != 0) {
+        result.last_effective_is_rule = matches_line(rule, length, matching, last);
+    }
+}
+
 fn scan_existing_rules(input: &mut impl Read, rule: &[u8]) -> std::io::Result<ExistingRules> {
     let mut result = ExistingRules {
-        already_present: false,
+        last_effective_is_rule: false,
         has_bytes: false,
         ends_with_newline: false,
     };
     let mut buffer = [0_u8; 64 * 1024];
     let mut length = 0_usize;
     let mut matching = true;
+    let mut first = None;
     let mut last = None;
     loop {
         let count = match input.read(&mut buffer) {
@@ -40,19 +54,23 @@ fn scan_existing_rules(input: &mut impl Read, rule: &[u8]) -> std::io::Result<Ex
         result.ends_with_newline = buffer[count - 1] == b'\n';
         for &byte in &buffer[..count] {
             if byte == b'\n' {
-                result.already_present |= matches_line(rule, length, matching, last);
+                record_line(&mut result, rule, length, matching, first, last);
                 length = 0;
                 matching = true;
+                first = None;
                 last = None;
-            } else if let Some(previous) = last.replace(byte) {
-                matching &= rule.get(length) == Some(&previous);
-                // Once a line is too long, retain only a bounded mismatch
-                // state, never the line's contents or an unbounded counter.
-                length = length.saturating_add(1).min(rule.len().saturating_add(1));
+            } else {
+                first.get_or_insert(byte);
+                if let Some(previous) = last.replace(byte) {
+                    matching &= rule.get(length) == Some(&previous);
+                    // Once a line is too long, retain only a bounded mismatch
+                    // state, never the line's contents or an unbounded counter.
+                    length = length.saturating_add(1).min(rule.len().saturating_add(1));
+                }
             }
         }
     }
-    result.already_present |= matches_line(rule, length, matching, last);
+    record_line(&mut result, rule, length, matching, first, last);
     Ok(result)
 }
 
@@ -66,7 +84,26 @@ fn io_error(error: std::io::Error) -> AppError {
     )
 }
 
-pub(super) fn update(path: &Path, rule: &str, stop_tracking: Option<&str>) -> Result<(), AppError> {
+fn is_ignored(path: &Path, file: &str) -> Result<bool, AppError> {
+    // check-ignore rejects pathspec magic, including names beginning with ':'.
+    let literal_file = format!("./{file}");
+    let output = run_git(
+        path,
+        &["check-ignore", "--no-index", "--quiet", "--", &literal_file],
+    )?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(AppError::git_failure("verify the ignore rule", &output)),
+    }
+}
+
+pub(super) fn update(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+) -> Result<(), AppError> {
     let destination = path.join(".gitignore");
     let lock = path.join(".gitignore.lock");
     // A failed acquisition must never remove another writer's lock.
@@ -89,7 +126,7 @@ pub(super) fn update(path: &Path, rule: &str, stop_tracking: Option<&str>) -> Re
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(io_error(error)),
         };
-        if let Some(file) = stop_tracking {
+        if stop_tracking {
             // Refuse known index/staging conflicts before adding an ignore rule.
             run_mutation(
                 path,
@@ -114,15 +151,15 @@ pub(super) fn update(path: &Path, rule: &str, stop_tracking: Option<&str>) -> Re
             scan_existing_rules(input, rule.as_bytes()).map_err(io_error)?
         } else {
             ExistingRules {
-                already_present: false,
+                last_effective_is_rule: false,
                 has_bytes: false,
                 ends_with_newline: false,
             }
         };
-        if !existing.already_present {
-            // A duplicate is a no-op, even when there is no room to copy the
-            // file. For a real update, stream a second pass into the owned lock
-            // instead of retaining or growing a whole-file allocation.
+        let add_rule = !existing.last_effective_is_rule;
+        if add_rule {
+            // Stream the update into the owned lock without retaining the
+            // existing file in memory.
             if let Some(input) = input.as_mut() {
                 input.rewind().map_err(io_error)?;
                 std::io::copy(input, &mut output).map_err(io_error)?;
@@ -146,10 +183,45 @@ pub(super) fn update(path: &Path, rule: &str, stop_tracking: Option<&str>) -> Re
             #[cfg(unix)]
             fs::File::open(path)
                 .and_then(|directory| directory.sync_all())
-                .map_err(io_error)?;
+                .map_err(|error| {
+                    AppError::new(
+                        "ignoreRuleSyncFailed",
+                        format!("The ignore rule was added, but its persistence could not be confirmed: {error}"),
+                        Some("The index was not changed. Review .gitignore and refresh before retrying."),
+                    )
+                })?;
         }
-        if let Some(file) = stop_tracking {
-            run_mutation(
+        let ignored = is_ignored(path, file).map_err(|error| {
+            if add_rule {
+                AppError::new(
+                    "ignoreRuleVerificationFailed",
+                    format!(
+                        "The ignore rule was added, but Git could not verify it: {}",
+                        error.message
+                    ),
+                    Some(
+                        "The index was not changed. Review .gitignore and refresh before retrying.",
+                    ),
+                )
+            } else {
+                error
+            }
+        })?;
+        if !ignored {
+            return Err(AppError::new(
+                "ignoreRuleIneffective",
+                if add_rule {
+                    "The rule was added to the root .gitignore, but Git does not ignore the selected file."
+                } else {
+                    "The existing rule does not ignore the selected file."
+                },
+                Some(
+                    "The index was not changed. Review higher-priority ignore rules and refresh before retrying.",
+                ),
+            ));
+        }
+        if stop_tracking {
+            let result = run_mutation(
                 path,
                 &[
                     "--literal-pathspecs",
@@ -160,7 +232,21 @@ pub(super) fn update(path: &Path, rule: &str, stop_tracking: Option<&str>) -> Re
                     file,
                 ],
                 "stop tracking that file",
-            )?;
+            );
+            if let Err(error) = result {
+                return Err(if add_rule {
+                    AppError::new(
+                        "ignoreRuleAddedButUntrackingFailed",
+                        format!(
+                            "The ignore rule was added, but Git could not confirm untracking: {}",
+                            error.message
+                        ),
+                        Some("Inspect .gitignore and the index before retrying."),
+                    )
+                } else {
+                    error
+                });
+            }
         }
         Ok(())
     })();
@@ -211,6 +297,8 @@ mod tests {
             b"/target\r\r\n".to_vec(),
             b"not/target\n/target-extra\n".to_vec(),
             b"\xff\0\n/target\n".to_vec(),
+            b"/target\n# comment\n\r\n".to_vec(),
+            b"/target\n!/target\n# comment\n".to_vec(),
             b"\r\n\n".to_vec(),
         ];
         let mut boundary = vec![b'x'; 64 * 1024 - 3];
@@ -220,7 +308,9 @@ mod tests {
             for rule in [b"/target".as_slice(), b"/target\r", b"", b"last", b"\xff\0"] {
                 let expected = bytes
                     .split(|byte| *byte == b'\n')
-                    .any(|line| line.strip_suffix(b"\r").unwrap_or(line) == rule);
+                    .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+                    .rfind(|line| !line.is_empty() && line[0] != b'#')
+                    .is_some_and(|line| line == rule);
                 for chunk in [1, 2, 7, 64 * 1024] {
                     let mut input = Chunked {
                         input: Cursor::new(bytes),
@@ -229,7 +319,7 @@ mod tests {
                     };
                     let result = scan_existing_rules(&mut input, rule).unwrap();
                     assert_eq!(
-                        result.already_present, expected,
+                        result.last_effective_is_rule, expected,
                         "rule={rule:?}, chunk={chunk}"
                     );
                     assert_eq!(result.has_bytes, !bytes.is_empty());
@@ -243,7 +333,7 @@ mod tests {
     fn streaming_ignore_scan_never_retains_a_long_unterminated_line() {
         let mut input = std::io::repeat(b'x').take(64 * 1024 * 1024);
         let result = scan_existing_rules(&mut input, b"/target").unwrap();
-        assert!(!result.already_present);
+        assert!(!result.last_effective_is_rule);
         assert!(result.has_bytes);
         assert!(!result.ends_with_newline);
     }

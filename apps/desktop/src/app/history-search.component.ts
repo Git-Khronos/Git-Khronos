@@ -1,17 +1,19 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { HistoryQuery } from '@git-khronos/contracts';
+import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
+import { GitKhronosService } from './git-khronos.service';
 import { HistorySearchService, emptyHistoryQuery } from './history-search.service';
 import { IconComponent } from './icon.component';
 
 @Component({
   selector: 'gc-history-search',
-  imports: [FormsModule, DatePipe, IconComponent],
+  imports: [BackgroundOperationWarningsComponent, FormsModule, DatePipe, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog id="repository-history-dialog" aria-labelledby="history-search-heading" (close)="closed()">
-      <div class="dialog-shell">
+      <div class="dialog-shell" [class.has-warnings]="git.backgroundOperationWarnings().length > 0">
         <header class="dialog-header">
           <span class="heading-icon" aria-hidden="true"><gc-icon name="search" [size]="18" /></span>
           <div class="heading-copy">
@@ -23,6 +25,7 @@ import { IconComponent } from './icon.component';
           </button>
         </header>
 
+        @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
         <div class="dialog-body">
           <section class="search-section" aria-label="Repository history search">
             <form class="search-form" (ngSubmit)="history.search(query)">
@@ -33,8 +36,8 @@ import { IconComponent } from './icon.component';
                   <input #messageInput id="history-message" name="message" [(ngModel)]="query.message"
                     autocomplete="off" placeholder="Commit subject or description" />
                 </div>
-                <button class="primary-action" type="submit" aria-label="Search repository" [disabled]="history.busy()">
-                  @if (history.busy()) { Searching… } @else { Search repository }
+                <button #searchButton class="primary-action" type="submit" aria-label="Search repository" [disabled]="history.busy() && !history.cancellationRequested()">
+                  @if (history.busy() && !history.cancellationRequested()) { Searching… } @else { Search repository }
                 </button>
               </div>
 
@@ -55,7 +58,7 @@ import { IconComponent } from './icon.component';
                 <div class="filter-footer">
                   <p>Text matching is case-insensitive. Dates include their full calendar day.</p>
                   @if (activeFilterCount()) {
-                    <button class="quiet-action" type="button" [disabled]="history.busy()" (click)="clearAdvancedFilters()">Clear filters</button>
+                    <button class="quiet-action" type="button" [disabled]="history.busy() && !history.cancellationRequested()" (click)="clearAdvancedFilters()">Clear filters</button>
                   }
                 </div>
               </details>
@@ -69,7 +72,8 @@ import { IconComponent } from './icon.component';
                 <div class="search-progress" role="status" aria-live="polite">
                   <span class="progress-indicator" aria-hidden="true"></span>
                   <span>{{ history.status() }}</span>
-                  <button class="quiet-action" type="button" (click)="history.cancel()">Cancel history search</button>
+                  <button #cancelButton class="quiet-action" type="button" [attr.aria-disabled]="history.cancelling() ? 'true' : null"
+                    (click)="!history.cancelling() && history.cancel()">{{ history.cancelling() ? 'Stopping…' : history.cancellationRequested() ? 'Retry cancellation' : 'Cancel history search' }}</button>
                 </div>
               } @else if (history.status()) {
                 <p class="search-status" role="status" aria-live="polite">{{ history.status() }}</p>
@@ -165,6 +169,7 @@ import { IconComponent } from './icon.component';
     }
     dialog::backdrop { background: rgb(4 8 16 / .68); backdrop-filter: blur(2px); }
     .dialog-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: inherit; min-height: 0; }
+    .dialog-shell.has-warnings { grid-template-rows: auto auto minmax(0, 1fr); }
     .dialog-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 68px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--overlay-surface) 90%, var(--surface)); }
     .heading-icon, .empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 8px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
     .heading-copy { min-width: 0; }
@@ -183,7 +188,7 @@ import { IconComponent } from './icon.component';
     input::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
     input:hover, select:hover { border-color: color-mix(in srgb, var(--text) 28%, var(--border)); }
     button { border: 0; background: transparent; cursor: pointer; }
-    button:disabled { opacity: .48; cursor: default; }
+    button:disabled, button[aria-disabled=true] { opacity: .48; cursor: default; }
     :is(input, select, button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .primary-action { min-height: 34px; border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border)); border-radius: 6px; padding: 6px 14px; color: var(--on-accent, #fff); background: var(--accent); font-weight: 650; white-space: nowrap; }
     .primary-action:not(:disabled):hover { filter: brightness(1.08); }
@@ -268,13 +273,18 @@ import { IconComponent } from './icon.component';
   `],
 })
 export class HistorySearchComponent {
+  readonly git = inject(GitKhronosService);
   readonly history = inject(HistorySearchService);
   readonly returnFocusFallback = input<HTMLElement | null>(null);
   readonly commitSelected = output<string>();
   readonly comparisonReady = output<void>();
   readonly opened = signal(false);
+  private readonly injector = inject(Injector);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private readonly messageInput = viewChild.required<ElementRef<HTMLInputElement>>('messageInput');
+  private readonly searchButton = viewChild.required<ElementRef<HTMLButtonElement>>('searchButton');
+  private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
+  private wasBusy = false;
   private opener: HTMLElement | null = null;
   readonly comparing = signal(false);
   readonly comparisonError = signal<string | null>(null);
@@ -283,6 +293,21 @@ export class HistorySearchComponent {
   base = 'HEAD~1';
   target = 'HEAD';
   mode: 'direct' | 'mergeBase' = 'direct';
+
+  constructor() {
+    effect(() => {
+      const busy = this.history.busy();
+      if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
+        afterNextRender(() => {
+          if (this.opened() && !this.history.busy()
+            && (document.activeElement === document.body || document.activeElement === this.dialog().nativeElement)) {
+            this.searchButton().nativeElement.focus();
+          }
+        }, { injector: this.injector });
+      }
+      this.wasBusy = busy;
+    });
+  }
 
   open(): void {
     this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;

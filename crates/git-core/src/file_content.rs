@@ -79,7 +79,7 @@ pub(super) fn validate_file(file: &str) -> Result<(), AppError> {
             "Choose a literal repository-relative file outside Git metadata.",
         ));
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     if candidate.components().any(|part| {
         part.as_os_str()
             .to_string_lossy()
@@ -264,6 +264,16 @@ pub fn read_file_content(
     cancellation: &CancellationToken,
 ) -> Result<FileContent, AppError> {
     validate_file(file)?;
+    #[cfg(windows)]
+    if matches!(location, FileContentLocation::WorkingTree)
+        && Path::new(file)
+            .components()
+            .any(|part| repository_files::unsafe_windows_component(part.as_os_str()))
+    {
+        return Err(refused(
+            "Choose a regular Windows file name outside Git metadata.",
+        ));
+    }
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
@@ -297,6 +307,38 @@ pub(super) fn worktree_root(path: &Path) -> Result<PathBuf, AppError> {
     Ok(root_path)
 }
 
+#[cfg(any(unix, windows))]
+fn read_bounded_working_file(
+    input: &mut fs::File,
+    size: u64,
+    cancellation: &CancellationToken,
+) -> Result<Vec<u8>, AppError> {
+    let mut bytes = Vec::with_capacity(size as usize);
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        if cancellation.is_cancelled() {
+            return Err(operation_cancelled());
+        }
+        let count = match input.read(&mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result.map_err(io_error)?,
+        };
+        if count == 0 {
+            break;
+        }
+        if bytes.len() + count > MAX_FILE_CONTENT_BYTES {
+            return Err(refused(
+                "The working file grew beyond its inspection budget.",
+            ));
+        }
+        bytes.extend_from_slice(&buffer[..count]);
+    }
+    if bytes.len() as u64 != size {
+        return Err(refused("The selected working file changed while reading."));
+    }
+    Ok(bytes)
+}
+
 #[cfg(unix)]
 pub(crate) mod worktree {
     use super::*;
@@ -307,15 +349,55 @@ pub(crate) mod worktree {
     fn directories() -> OFlags {
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
+    pub(crate) enum WorktreeParentError {
+        Io(rustix::io::Errno),
+        NestedRepository,
+    }
+    impl From<rustix::io::Errno> for WorktreeParentError {
+        fn from(error: rustix::io::Errno) -> Self {
+            Self::Io(error)
+        }
+    }
     pub(crate) fn descend(root: &OwnedFd, relative: &Path) -> Result<OwnedFd, rustix::io::Errno> {
+        descend_checked(root, relative, false).map_err(|error| match error {
+            WorktreeParentError::Io(error) => error,
+            WorktreeParentError::NestedRepository => rustix::io::Errno::XDEV,
+        })
+    }
+    pub(crate) fn descend_worktree(
+        root: &OwnedFd,
+        relative: &Path,
+    ) -> Result<OwnedFd, WorktreeParentError> {
+        descend_checked(root, relative, true)
+    }
+    fn descend_checked(
+        root: &OwnedFd,
+        relative: &Path,
+        reject_nested_repositories: bool,
+    ) -> Result<OwnedFd, WorktreeParentError> {
         let mut directory = root.try_clone().map_err(|_| rustix::io::Errno::IO)?;
         for part in relative.components() {
             let Component::Normal(name) = part else {
-                return Err(rustix::io::Errno::INVAL);
+                return Err(rustix::io::Errno::INVAL.into());
             };
             directory = openat(&directory, name, directories(), Mode::empty())?;
+            if reject_nested_repositories {
+                match statat(&directory, ".git", AtFlags::SYMLINK_NOFOLLOW) {
+                    Err(rustix::io::Errno::NOENT) => {}
+                    Ok(_) => return Err(WorktreeParentError::NestedRepository),
+                    Err(error) => return Err(error.into()),
+                }
+            }
         }
         Ok(directory)
+    }
+    fn parent_error(error: WorktreeParentError) -> AppError {
+        match error {
+            WorktreeParentError::NestedRepository => {
+                refused("Working-file content cannot cross a nested repository boundary.")
+            }
+            WorktreeParentError::Io(error) => io_error(error),
+        }
     }
     pub(crate) fn absolute(path: &Path) -> Result<OwnedFd, AppError> {
         let root = open("/", directories(), Mode::empty()).map_err(io_error)?;
@@ -357,13 +439,13 @@ pub(crate) mod worktree {
         let name = relative
             .file_name()
             .ok_or_else(|| refused("Choose a file name."))?;
-        let directory = match descend(&root, parent) {
+        let directory = match descend_worktree(&root, parent) {
             Ok(directory) => directory,
-            Err(rustix::io::Errno::NOENT) => {
+            Err(WorktreeParentError::Io(rustix::io::Errno::NOENT)) => {
                 return Ok(FileContent::empty(FileContentKind::Absent));
             }
             // An obstructed parent is not an absent file.
-            Err(error) => return Err(io_error(error)),
+            Err(error) => return Err(parent_error(error)),
         };
         let before = match statat(&directory, name, AtFlags::SYMLINK_NOFOLLOW) {
             Ok(stat) => stat,
@@ -412,29 +494,8 @@ pub(crate) mod worktree {
                 {
                     return Err(refused("The selected working file changed before reading."));
                 }
-                let mut bytes = Vec::with_capacity(size as usize);
-                let mut buffer = [0; 64 * 1024];
-                loop {
-                    if cancellation.is_cancelled() {
-                        return Err(operation_cancelled());
-                    }
-                    let count = match input.read(&mut buffer) {
-                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                        result => result.map_err(io_error)?,
-                    };
-                    if count == 0 {
-                        break;
-                    }
-                    if bytes.len() + count > MAX_FILE_CONTENT_BYTES {
-                        return Err(refused(
-                            "The working file grew beyond its inspection budget.",
-                        ));
-                    }
-                    bytes.extend_from_slice(&buffer[..count]);
-                }
-                if identity(&metadata) != identity(&input.metadata().map_err(io_error)?)
-                    || bytes.len() as u64 != size
-                {
+                let bytes = read_bounded_working_file(&mut input, size, cancellation)?;
+                if identity(&metadata) != identity(&input.metadata().map_err(io_error)?) {
                     return Err(refused("The selected working file changed while reading."));
                 }
                 content.bytes = Some(bytes);
@@ -455,7 +516,7 @@ pub(crate) mod worktree {
         {
             return Err(refused("The worktree directory changed while reading."));
         }
-        let current_parent = descend(&current_root, parent).map_err(io_error)?;
+        let current_parent = descend_worktree(&current_root, parent).map_err(parent_error)?;
         let after = statat(&current_parent, name, AtFlags::SYMLINK_NOFOLLOW).map_err(io_error)?;
         if link_identity(&before) != link_identity(&after) {
             return Err(refused("The selected working path changed while reading."));
@@ -470,7 +531,93 @@ pub(crate) mod worktree {
         Ok(content)
     }
 }
-#[cfg(not(unix))]
+
+#[cfg(windows)]
+mod worktree {
+    use super::*;
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    fn identity(metadata: &fs::Metadata) -> (u32, u64, u64, u64) {
+        (
+            metadata.file_attributes(),
+            metadata.creation_time(),
+            metadata.last_write_time(),
+            metadata.file_size(),
+        )
+    }
+
+    pub(super) fn open_file(path: &Path) -> Result<Option<fs::File>, AppError> {
+        match fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+        {
+            Ok(input) => Ok(Some(input)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(io_error(error)),
+        }
+    }
+
+    pub(super) fn read(
+        path: &Path,
+        file: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<FileContent, AppError> {
+        let root_path = path.canonicalize().map_err(io_error)?;
+        let relative = Path::new(file);
+        let (parent, _guards) =
+            repository_files::locked_windows_parent_if_present(&root_path, relative)
+                .map_err(|error| refused(&error.message))?;
+        if worktree_root(path)? != root_path {
+            return Err(refused("The worktree directory changed while reading."));
+        }
+        let Some(parent) = parent else {
+            return Ok(FileContent::empty(FileContentKind::Absent));
+        };
+        let name = relative
+            .file_name()
+            .ok_or_else(|| refused("Choose a file name."))?;
+        let Some(mut input) = open_file(&parent.join(name))? else {
+            return Ok(FileContent::empty(FileContentKind::Absent));
+        };
+        let before = input.metadata().map_err(io_error)?;
+        if repository_files::is_link_or_reparse_point(&before) {
+            return Err(refused(
+                "Symbolic links and reparse points cannot be opened as working content.",
+            ));
+        }
+        if !before.is_file() {
+            return Err(refused("The selected working path is not a regular file."));
+        }
+        repository_files::validate_windows_resolved_path(&root_path, &parent.join(name))
+            .map_err(|error| refused(&error.message))?;
+        let size = before.file_size();
+        let mut content = FileContent {
+            kind: FileContentKind::Regular,
+            oid: None,
+            size: Some(size),
+            bytes: None,
+            over_limit: size > MAX_FILE_CONTENT_BYTES as u64,
+        };
+        if !content.over_limit {
+            content.bytes = Some(read_bounded_working_file(&mut input, size, cancellation)?);
+        }
+        if cancellation.is_cancelled() {
+            return Err(operation_cancelled());
+        }
+        if identity(&before) != identity(&input.metadata().map_err(io_error)?) {
+            return Err(refused("The selected working file changed while reading."));
+        }
+        Ok(content)
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 mod worktree {
     use super::*;
     pub(super) fn read(_: &Path, _: &str, _: &CancellationToken) -> Result<FileContent, AppError> {

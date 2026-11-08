@@ -165,7 +165,10 @@ fn id(value: &Value) -> Result<String, AppError> {
     super::hosted_repositories::id(value).map_err(|_| response_error())
 }
 
-pub(super) fn validate_query(instance: &GitLabInstance, query: &GitLabProjectQuery) -> Result<(), AppError> {
+pub(super) fn validate_query(
+    instance: &GitLabInstance,
+    query: &GitLabProjectQuery,
+) -> Result<(), AppError> {
     if query.page == 0 || query.page > MAX_PAGE {
         return Err(request_error("Choose a project page from 1 through 1000."));
     }

@@ -1,0 +1,28 @@
+@if (action(); as action) {
+  @if (action.kind === 'discard-bulk' && action.preview; as preview) {
+    <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
+    <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
+    @if (preview.skippedPaths.length) { <p>Not discarded: conflicts, submodule working trees or nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }
+  } @else if (action.kind === 'recover-discard') {
+    <p>{{ action.recovery?.restored ? 'Discard these recovered edits again only if the captured patch still matches the working files.' : 'Apply the captured changes to the working files. Git checks the patch first and refuses conflicting edits. Staged contents are unchanged.' }}</p>
+  } @else if (action.kind === 'forget-discard') {
+    <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
+  } @else if (action.kind === 'discard') {
+    <p>{{ action.untracked ? 'Delete this untracked file from disk. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' : 'Replace the working copy with the staged version. Git Khronos saves a temporary recovery patch so you can restore it with Undo.' }}</p>
+  } @else if (action.kind === 'discard-hunk') {
+    <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore the hunk.</p>
+  } @else if (action.kind === 'discard-lines') {
+    <p>Discard {{ action.lineIndices?.length ?? 0 }} selected changed lines from the working copy. Other changes remain intact, and Undo can restore the selection.</p>
+  } @else if (action.kind === 'restore-commit') {
+    <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ (action.oid || '').slice(0, 8) }} and stage the result for your next commit.</p>
+  } @else {
+    <p>This adds a rule to the repository’s .gitignore and stages removal of the file from Git’s index. The file stays on disk.</p>
+  }
+  @if (action.recovery; as recovery) {
+    @if (recovery.stateWarning) { <p role="alert">{{ recovery.stateWarning }}</p> }
+    @if (recovery.paths.length) { <p>Files in this capture:</p><ul class="discard-preview-paths">@for (path of recovery.paths; track $index) { <li><code>{{ displayRecoveryPath(path) }}</code></li> }</ul> }
+    @if (recovery.pathsTruncated) { <p>Additional files are not shown. This action affects the entire capture.</p> }
+    @if (recovery.pathsError) { <p role="alert">File list unavailable: {{ recovery.pathsError }} {{ action.kind === 'forget-discard' ? 'This capture may contain files not shown here.' : 'This action may affect files not shown here.' }}</p> }
+    @if (!recovery.contentSha256) { <p role="alert">Changes to this capture after review cannot be detected. Inspect the saved patch before continuing.</p> }
+  }
+}

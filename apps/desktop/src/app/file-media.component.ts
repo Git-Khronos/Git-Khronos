@@ -1,7 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, signal, untracked } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, Injector, input, output, signal, untracked, viewChild } from '@angular/core';
 import { ipc, type FileComparisonRequest, type FileMediaComparison, type FileMediaSide } from '@git-khronos/contracts';
+import { CancellableOperation } from './cancellable-operation';
+import { GitKhronosService } from './git-khronos.service';
 
 export interface FileMediaSelection { repoId: string; request: FileComparisonRequest; }
+
+interface MediaOperation {
+  read: CancellableOperation;
+  dismissed: boolean;
+}
 
 @Component({
   selector: 'gc-file-media',
@@ -10,12 +17,17 @@ export interface FileMediaSelection { repoId: string; request: FileComparisonReq
     <section aria-label="Selected file content" [attr.aria-busy]="busy()">
       <header>
         <div><h3>Content comparison</h3><p>Original file bytes · read only</p></div>
-        <button type="button" (click)="reload()" [disabled]="busy() || !selection()">Reload content</button>
+        <button type="button" (click)="requestReload()" [disabled]="busy() || !selection()">Reload content</button>
       </header>
       @if (busy()) {
-        <div class="notice" role="status">Reading selected sides… <button type="button" (click)="cancel()">Cancel content load</button></div>
+        <div class="notice" role="status">
+          {{ cancellationRequested() ? 'Waiting for the content read to stop.' : 'Reading selected sides…' }}
+          <button #cancelControl type="button" (click)="cancel()" [attr.aria-disabled]="cancelling() || cancellationAccepted() ? 'true' : null">
+            {{ cancelling() ? 'Requesting cancellation…' : cancellationAccepted() ? 'Cancellation requested' : cancellationRequested() ? 'Retry cancellation' : 'Cancel content load' }}
+          </button>
+        </div>
       }
-      @if (error()) { <div class="notice error" role="alert">{{ error() }} <button type="button" (click)="reload()">Retry content load</button></div> }
+      @if (error()) { <div class="notice error" role="alert">{{ error() }} @if (!busy()) { <button #retryControl type="button" (click)="requestReload()">Retry content load</button> }</div> }
       @if (content(); as comparison) {
         <div class="controls">
           <div role="group" aria-label="Content sides">
@@ -61,7 +73,7 @@ export interface FileMediaSelection { repoId: string; request: FileComparisonReq
                   @if (imageSizes()[entry.position]; as size) { <p class="caption">Displayed orientation: {{ size.width }} × {{ size.height }} px</p> }
                 }
               } @else if (entry.side.state === 'text') {
-                <p class="notice">Text content is available in the Diff view. SVG remains text.</p>
+                <p class="notice">{{ showWorkingText() && entry.position === 'After' ? 'Working text is shown above when available.' : 'Text content is available in the Diff view. SVG remains text.' }}</p>
               } @else if (entry.side.state === 'binary') {
                 <p class="notice">Binary content. No image preview is available for this format.</p>
               } @else if (entry.side.state === 'absent') {
@@ -86,7 +98,7 @@ export interface FileMediaSelection { repoId: string; request: FileComparisonReq
     header,.controls,.controls>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header{justify-content:space-between;margin-bottom:16px}
     h3{font-size:15px;margin:0}h4{font-size:13px;margin:0 0 8px}p{font-size:13px;line-height:1.5;overflow-wrap:anywhere;margin:6px 0}
     button{font:inherit;font-size:12px;min-height:32px;padding:6px 10px;color:var(--text);background:var(--inspector-row);border:1px solid var(--inspector-divider);cursor:pointer}
-    button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -2px var(--accent)}button:disabled{opacity:.5;cursor:default}
+    button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -2px var(--accent)}button:disabled,button[aria-disabled=true]{opacity:.5;cursor:default}
     button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.controls{justify-content:space-between;margin-bottom:12px}
     output{font-size:12px;min-width:4ch;text-align:center}.sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sides.single{grid-template-columns:minmax(0,1fr)}
     article{min-width:0;padding:12px;border:1px solid var(--inspector-divider)}.path,code{overflow-wrap:anywhere}code{font-size:11px}.identity{display:block}
@@ -99,9 +111,18 @@ export interface FileMediaSelection { repoId: string; request: FileComparisonReq
   `,
 })
 export class FileMediaComponent {
+  private readonly git = inject(GitKhronosService);
+  private readonly injector = inject(Injector);
+  private readonly cancelControl = viewChild<ElementRef<HTMLButtonElement>>('cancelControl');
+  private readonly retryControl = viewChild<ElementRef<HTMLButtonElement>>('retryControl');
   readonly selection = input<FileMediaSelection | null>(null);
+  readonly showWorkingText = input(false);
+  readonly reloadRequested = output<void>();
   readonly content = signal<FileMediaComparison | null>(null);
   readonly busy = signal(false);
+  readonly cancelling = signal(false);
+  readonly cancellationRequested = signal(false);
+  readonly cancellationAccepted = signal(false);
   readonly error = signal('');
   readonly view = signal<'both' | 'before' | 'after'>('both');
   readonly zoom = signal<number | null>(null);
@@ -117,7 +138,7 @@ export class FileMediaComponent {
   });
   readonly hasRaster = computed(() => !!this.content() && [this.content()!.before, this.content()!.after].some(side => side.state === 'raster'));
   private generation = 0;
-  private operation: string | null = null;
+  private operation: MediaOperation | null = null;
 
   constructor() {
     effect(cleanup => {
@@ -128,27 +149,67 @@ export class FileMediaComponent {
   }
   private stop(): void {
     this.generation++;
-    const operationId = this.operation;
+    const operation = this.operation;
     this.operation = null;
-    if (operationId) void ipc.cancel_git_operation({ operationId }).catch(() => {});
+    if (!operation) return;
+    operation.dismissed = true;
+    void operation.read.cancel().then(result => {
+      if (operation.read.settled || result === 'accepted' || result === 'finished') return;
+      const detail = result === 'unacknowledged'
+        ? 'Cancellation was not acknowledged.'
+        : `Cancellation failed: ${this.git.formatError(result.error)}.`;
+      const message = `${detail} A previous content read may still be running.`;
+      this.git.reportBackgroundOperationWarning(operation.read.id, message);
+    });
   }
-  cancel(): void { this.stop(); this.busy.set(false); this.error.set('Content load cancelled.'); }
+  async cancel(): Promise<void> {
+    const operation = this.operation;
+    if (!operation || this.cancelling() || operation.read.accepted) return;
+    operation.dismissed = true;
+    this.cancellationRequested.set(true);
+    this.cancelling.set(true);
+    this.error.set('');
+    const result = await operation.read.cancel();
+    if (this.operation !== operation) return;
+    this.cancelling.set(false);
+    if (result === 'accepted') this.cancellationAccepted.set(true);
+    else if (result !== 'finished') {
+      const detail = result === 'unacknowledged'
+        ? 'Cancellation was not acknowledged.'
+        : `Could not request cancellation: ${this.git.formatError(result.error)}.`;
+      this.error.set(`${detail} The content read may still be running; retry cancellation or wait.`);
+    }
+  }
   reload(): void { void this.load(this.selection()); }
+  requestReload(): void { this.reload(); this.reloadRequested.emit(); }
   private async load(selected: FileMediaSelection | null): Promise<void> {
     this.stop();
     this.content.set(null); this.error.set(''); this.imageErrors.set({}); this.imageSizes.set({});
+    this.cancelling.set(false); this.cancellationRequested.set(false); this.cancellationAccepted.set(false);
     if (!selected) { this.busy.set(false); return; }
     const generation = this.generation;
-    const operationId = `media-${crypto.randomUUID()}`;
-    this.operation = operationId;
+    const operation: MediaOperation = { read: new CancellableOperation(`media-${crypto.randomUUID()}`), dismissed: false };
+    this.operation = operation;
     this.busy.set(true);
     try {
-      const content = await ipc.inspect_file_media({ ...selected, operationId });
-      if (generation === this.generation) this.content.set(content);
+      const content = await ipc.inspect_file_media({ ...selected, operationId: operation.read.id });
+      if (generation === this.generation && !operation.dismissed) this.content.set(content);
     } catch (error: unknown) {
-      if (generation === this.generation) this.error.set(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Selected content could not load.');
+      if (generation === this.generation && !operation.dismissed) this.error.set(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Selected content could not load.');
     } finally {
-      if (generation === this.generation) { this.busy.set(false); this.operation = null; }
+      operation.read.finish();
+      if (this.operation === operation) {
+        const restoreFocus = operation.dismissed && document.activeElement === this.cancelControl()?.nativeElement;
+        this.busy.set(false); this.operation = null; this.cancelling.set(false);
+        if (operation.dismissed) {
+          this.error.set('Content load dismissed.');
+          if (restoreFocus) afterNextRender(() => {
+            if (generation === this.generation && !this.busy() && document.activeElement === document.body) {
+              this.retryControl()?.nativeElement.focus({ preventScroll: true });
+            }
+          }, { injector: this.injector });
+        }
+      }
     }
   }
   changeZoom(direction: number): void { this.zoom.set(Math.max(.25, Math.min(8, (this.zoom() ?? 1) * (direction > 0 ? 2 : .5)))); }

@@ -148,6 +148,12 @@ export async function prepareEditor(page: Page, mode = 'ready', openPreview = tr
           size: '7', raster: null, dataUrl: null, lfs: null, message: null };
         return Promise.resolve({ before: side, after: side });
       }
+      if (command === 'read_repository_file_text') {
+        const text = state.disk;
+        if (state.holdTextPreview) return new Promise(resolve => { state.releaseTextPreview = () => resolve(text); });
+        return Promise.resolve(text);
+      }
+      if (command === 'list_file_tool_sessions') return Promise.resolve([]);
       if (command === 'close_working_file_editor') { if (state.editors[args.editorId]) state.editors[args.editorId].active = false; return Promise.resolve(true); }
       if (command === 'cancel_git_operation') return Promise.resolve(true);
       if (command === 'refresh_repository_status') return Promise.resolve(repo.status);

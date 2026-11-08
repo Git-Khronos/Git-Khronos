@@ -1,16 +1,26 @@
-<div class="tools-backdrop" (click)="closed.emit()">
+<div class="tools-backdrop" (click)="close()">
   <section class="tools-dialog" role="dialog" aria-modal="true" aria-labelledby="file-tools-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-    <header><div><p>Configured programs</p><h2 #heading id="file-tools-title" tabindex="-1">External file tools</h2></div><button type="button" aria-label="Close external file tools" (click)="closed.emit()">Close</button></header>
+    <header><div><p>Configured programs</p><h2 #heading id="file-tools-title" tabindex="-1">External file tools</h2></div><button type="button" aria-label="Close external file tools" (click)="close()">Close</button></header>
     <main>
+      @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
       <p class="scope">Programs start only after you review a launch. Closing this panel retains sessions and private copies; it does not stop a launched program.</p>
       @if (git.browserPreview()) { <p role="status">External programs are available in the desktop app.</p> }
-      @if (busy()) { <div class="actions" role="status"><span>{{ busy() }}</span><button type="button" [disabled]="cancelling()" (click)="cancelRequest()">{{ cancelling() ? 'Requesting cancellation…' : 'Cancel tool request' }}</button></div> }
+      @if (busy()) {
+        <div class="actions" role="status"><span>{{ busy() }}</span>
+          @if (canCancel()) {
+            <button #cancelButton type="button" [attr.aria-disabled]="cancelling()" (click)="cancelRequest()">{{ cancellationAccepted() ? 'Cancellation requested' : cancelling() ? 'Requesting cancellation…' : cancellationAttempted() ? 'Retry cancellation' : 'Cancel tool request' }}</button>
+          }
+        </div>
+      } @else if (actions.pending()) {
+        <p role="status">Another external tool action is still running. Wait for its outcome before starting another action.</p>
+      }
+      @if (cancellationError()) { <p class="error" role="alert">{{ cancellationError() }}</p> }
       @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       @if (notice()) { <p role="status">{{ notice() }}</p> }
-      @if (launchUnknown()) {
-        <section class="review" aria-label="Inspect uncertain launch"><h3>Inspect the earlier launch</h3><p>A reply was not confirmed. Refresh sessions and inspect the program and its files before starting another command.</p>
-          <label class="check"><input type="checkbox" [checked]="inspectedUnknown()" (change)="inspectedUnknown.set($any($event.target).checked)" /> I inspected the earlier launch.</label>
-          <button type="button" [disabled]="!inspectedUnknown() || !!busy()" (click)="acknowledgeUnknown()">Review another launch</button>
+      @if (actions.uncertain(); as uncertain) {
+        <section class="review" aria-label="Inspect uncertain tool action"><h3>Inspect the earlier tool action</h3><p>A reply or result was not confirmed. {{ uncertain.guidance }}</p>
+          <label class="check"><input type="checkbox" [checked]="inspectedUnknown()" (change)="inspectedUnknown.set($any($event.target).checked)" /> I inspected the earlier tool action.</label>
+          <button type="button" [disabled]="!inspectedUnknown() || !!busy() || !!actions.pending()" (click)="acknowledgeUnknown()">Continue after inspection</button>
         </section>
       }
       @if (request().action; as action) {
@@ -42,7 +52,7 @@
           <dl><dt>Requested</dt><dd>{{ requestedLabel(session) }}</dd><dt>Repository</dt><dd><code>{{ session.review.repositoryPath }}</code></dd><dt>Program</dt><dd><code>{{ session.review.executable }}</code></dd><dt>Command state</dt><dd>{{ stateLabel(session) }}@if (session.process?.code !== null && session.process?.code !== undefined) { · exit {{ session.process.code }} }@if (session.process?.signal) { · signal {{ session.process.signal }} }</dd></dl>
           @if (session.error) { <p class="error" role="alert">Last recorded issue: {{ session.error.message }} {{ session.error.hint }}</p> }
           <p>A successful launcher exit does not confirm a save or resolve a conflict. A separate GUI or shared IDE may still be open.</p>
-          @if (session.process?.state === 'running') { <p>Save external work before stopping the owned command.</p><button type="button" [disabled]="!!busy()" (click)="stop()">Stop owned command</button> }
+          @if (session.process?.state === 'running') { <p>Save external work before stopping the owned command.</p><button type="button" [disabled]="unavailable()" (click)="stop()">Stop owned command</button> }
           <div class="actions">
             @if (session.review.role === 'merge') { <button type="button" [disabled]="unavailable() || !!statusError()" (click)="reviewResult()">Inspect current merge output</button> }
             @if (session.canReviewStaging) { <button type="button" [disabled]="unavailable() || !!statusError()" (click)="reviewStage()">Review saved result for staging</button> }

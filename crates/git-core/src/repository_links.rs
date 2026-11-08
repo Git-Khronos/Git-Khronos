@@ -86,15 +86,33 @@ pub fn repository_link_remote_identity(input: &str) -> Result<String, AppError> 
     }
     if !input.contains("://") {
         let (user, host_path) = input.split_once('@').ok_or_else(refused)?;
-        if user.is_empty() || !user.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) { return Err(refused()); }
+        if user.is_empty()
+            || !user
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        {
+            return Err(refused());
+        }
         let (host, path) = if host_path.starts_with('[') {
             let end = host_path.find("]:").ok_or_else(refused)?;
             (&host_path[..end + 1], &host_path[end + 2..])
-        } else { host_path.split_once(':').ok_or_else(refused)? };
-        if host.is_empty() || host.contains(['/', '@', '%']) || path.is_empty() || path.starts_with('-')
-            || path.split('/').any(|part| matches!(part, "." | "..")) { return Err(refused()); }
-        let authority = Url::parse(&format!("ssh://{user}@{host}/owned-validation")).map_err(|_| refused())?;
-        let host = authority.host_str().ok_or_else(refused)?.to_ascii_lowercase();
+        } else {
+            host_path.split_once(':').ok_or_else(refused)?
+        };
+        if host.is_empty()
+            || host.contains(['/', '@', '%'])
+            || path.is_empty()
+            || path.starts_with('-')
+            || path.split('/').any(|part| matches!(part, "." | ".."))
+        {
+            return Err(refused());
+        }
+        let authority =
+            Url::parse(&format!("ssh://{user}@{host}/owned-validation")).map_err(|_| refused())?;
+        let host = authority
+            .host_str()
+            .ok_or_else(refused)?
+            .to_ascii_lowercase();
         // SCP path bytes are literal, not URL escapes; keep relative/absolute and ~ semantics.
         return Ok(format!("{user}@{host}:{path}"));
     }
