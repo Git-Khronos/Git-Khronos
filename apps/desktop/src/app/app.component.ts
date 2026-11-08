@@ -12041,12 +12041,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected fileHasExtension(path: string): boolean {
-    const name = path.split(/[\\/]/).at(-1) ?? '';
+    const name = this.fileName(path);
     return name.lastIndexOf('.') > 0 && name.lastIndexOf('.') < name.length - 1;
   }
 
   protected fileHasParentDirectory(path: string): boolean {
-    return /[\\/]/.test(path);
+    return this.fileDirectory(path) !== '';
   }
 
   protected async copyContextValue(value: string): Promise<void> {

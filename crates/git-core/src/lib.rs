@@ -12896,6 +12896,280 @@ mod tests {
     }
 
     #[test]
+    fn ignore_extension_untracks_only_the_selected_file_and_preserves_other_changes() {
+        let repository = TestRepository::new();
+        fs::create_dir(repository.path.join("nested")).unwrap();
+        repository.write("nested/selected.[x]", "selected base\n");
+        repository.write("nested/tracked.[x]", "tracked base\n");
+        repository.git(&[
+            "--literal-pathspecs",
+            "add",
+            "--",
+            "nested/selected.[x]",
+            "nested/tracked.[x]",
+        ]);
+        repository.git(&["commit", "-m", "Track extension fixtures"]);
+        repository.write("nested/selected.[x]", "selected edit\n");
+        repository.write("nested/tracked.[x]", "staged edit\n");
+        repository.git(&["--literal-pathspecs", "add", "--", "nested/tracked.[x]"]);
+        repository.write("nested/tracked.[x]", "unstaged edit\n");
+        repository.write("match.[x]", "untracked match\n");
+        repository.write("decoy.x", "untracked decoy\n");
+        let tracked_before = run_git(
+            &repository.path,
+            &[
+                "--literal-pathspecs",
+                "ls-files",
+                "--stage",
+                "--",
+                "nested/tracked.[x]",
+            ],
+        )
+        .unwrap()
+        .stdout;
+        assert!(!tracked_before.is_empty());
+        assert!(
+            run_git(
+                &repository.path,
+                &[
+                    "--literal-pathspecs",
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    "nested/selected.[x]"
+                ]
+            )
+            .unwrap()
+            .status
+            .success()
+        );
+
+        ignore_path(&repository.path, "nested/selected.[x]", "extension", true).unwrap();
+
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"*.\\[x\\]\n"
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &[
+                    "--literal-pathspecs",
+                    "ls-files",
+                    "--stage",
+                    "--",
+                    "nested/tracked.[x]"
+                ]
+            )
+            .unwrap()
+            .stdout,
+            tracked_before
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &[
+                    "--literal-pathspecs",
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    "nested/selected.[x]"
+                ]
+            )
+            .unwrap()
+            .status
+            .code(),
+            Some(1)
+        );
+        for (file, expected) in [("match.[x]", 0), ("decoy.x", 1)] {
+            assert_eq!(
+                run_git(
+                    &repository.path,
+                    &["check-ignore", "--no-index", "--quiet", "--", file]
+                )
+                .unwrap()
+                .status
+                .code(),
+                Some(expected),
+                "{file}"
+            );
+        }
+        assert_eq!(
+            fs::read(repository.path.join("nested/selected.[x]")).unwrap(),
+            b"selected edit\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("nested/tracked.[x]")).unwrap(),
+            b"unstaged edit\n"
+        );
+    }
+
+    #[test]
+    fn ignore_directory_untracks_only_the_selected_file_and_preserves_other_changes() {
+        let repository = TestRepository::new();
+        fs::create_dir_all(repository.path.join("folder/nested")).unwrap();
+        repository.write("folder/selected.log", "selected base\n");
+        repository.write("folder/tracked.log", "tracked base\n");
+        repository.git(&["add", "--", "folder/selected.log", "folder/tracked.log"]);
+        repository.git(&["commit", "-m", "Track directory fixtures"]);
+        repository.write("folder/selected.log", "selected edit\n");
+        repository.write("folder/tracked.log", "staged edit\n");
+        repository.git(&["add", "--", "folder/tracked.log"]);
+        repository.write("folder/tracked.log", "unstaged edit\n");
+        repository.write("folder/nested/other.txt", "untracked match\n");
+        repository.write("other.txt", "untracked decoy\n");
+        let tracked_before = run_git(
+            &repository.path,
+            &["ls-files", "--stage", "--", "folder/tracked.log"],
+        )
+        .unwrap()
+        .stdout;
+        assert!(!tracked_before.is_empty());
+        assert!(
+            run_git(
+                &repository.path,
+                &["ls-files", "--error-unmatch", "--", "folder/selected.log"]
+            )
+            .unwrap()
+            .status
+            .success()
+        );
+
+        ignore_path(&repository.path, "folder/selected.log", "directory", true).unwrap();
+
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/folder/\n"
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &["ls-files", "--stage", "--", "folder/tracked.log"]
+            )
+            .unwrap()
+            .stdout,
+            tracked_before
+        );
+        assert_eq!(
+            run_git(
+                &repository.path,
+                &["ls-files", "--error-unmatch", "--", "folder/selected.log"]
+            )
+            .unwrap()
+            .status
+            .code(),
+            Some(1)
+        );
+        for (file, expected) in [("folder/nested/other.txt", 0), ("other.txt", 1)] {
+            assert_eq!(
+                run_git(
+                    &repository.path,
+                    &["check-ignore", "--no-index", "--quiet", "--", file]
+                )
+                .unwrap()
+                .status
+                .code(),
+                Some(expected),
+                "{file}"
+            );
+        }
+        assert_eq!(
+            fs::read(repository.path.join("folder/selected.log")).unwrap(),
+            b"selected edit\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join("folder/tracked.log")).unwrap(),
+            b"unstaged edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ignore_extension_treats_backslashes_as_literal_filename_bytes() {
+        let repository = TestRepository::new();
+        repository.write("report.part\\suffix", "selected\n");
+        repository.write("other.part\\suffix", "matching\n");
+        repository.write("other.part", "decoy\n");
+
+        ignore_path(&repository.path, "report.part\\suffix", "extension", false).unwrap();
+
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"*.part\\\\suffix\n"
+        );
+        for (file, expected) in [
+            ("report.part\\suffix", 0),
+            ("other.part\\suffix", 0),
+            ("other.part", 1),
+        ] {
+            assert_eq!(
+                run_git(
+                    &repository.path,
+                    &["check-ignore", "--no-index", "--quiet", "--", file]
+                )
+                .unwrap()
+                .status
+                .code(),
+                Some(expected),
+                "{file}"
+            );
+        }
+        assert_eq!(
+            fs::read(repository.path.join("report.part\\suffix")).unwrap(),
+            b"selected\n"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ignore_directory_treats_backslashes_as_literal_filename_bytes() {
+        let repository = TestRepository::new();
+        repository.write("root\\file", "root\n");
+        let error = ignore_path(&repository.path, "root\\file", "directory", false).unwrap_err();
+        assert_eq!(error.kind, "missingParentDirectory");
+        assert!(!repository.path.join(".gitignore").exists());
+        fs::create_dir(repository.path.join("folder\\literal")).unwrap();
+        fs::create_dir_all(repository.path.join("folder/literal")).unwrap();
+        repository.write("folder\\literal/selected.txt", "selected\n");
+        repository.write("folder\\literal/other.txt", "matching\n");
+        repository.write("folder/literal/other.txt", "decoy\n");
+
+        ignore_path(
+            &repository.path,
+            "folder\\literal/selected.txt",
+            "directory",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/folder\\\\literal/\n"
+        );
+        for (file, expected) in [
+            ("folder\\literal/selected.txt", 0),
+            ("folder\\literal/other.txt", 0),
+            ("folder/literal/other.txt", 1),
+        ] {
+            assert_eq!(
+                run_git(
+                    &repository.path,
+                    &["check-ignore", "--no-index", "--quiet", "--", file]
+                )
+                .unwrap()
+                .status
+                .code(),
+                Some(expected),
+                "{file}"
+            );
+        }
+        assert_eq!(
+            fs::read(repository.path.join("root\\file")).unwrap(),
+            b"root\n"
+        );
+    }
+
+    #[test]
     fn ignore_refuses_to_untrack_when_a_nested_rule_overrides_the_root_rule() {
         let repository = TestRepository::new();
         fs::create_dir(repository.path.join("folder")).unwrap();

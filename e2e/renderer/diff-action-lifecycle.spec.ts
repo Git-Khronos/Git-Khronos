@@ -132,6 +132,90 @@ test('ignoring an untracked file still succeeds without a confirmation', async (
   expect(result.dialog).toBeNull();
 });
 
+test('ignore options use Git path separators for literal backslashes and extensions', async ({ page }) => {
+  await prepare(page);
+  for (const { path, extension, directory } of [
+    { path: 'report.part\\suffix', extension: true, directory: false },
+    { path: 'folder\\name', extension: false, directory: false },
+    { path: 'folder\\name/report.part\\suffix', extension: true, directory: true },
+    { path: 'nested/Makefile', extension: false, directory: true },
+    { path: 'nested/.env', extension: false, directory: true },
+    { path: 'nested/.env.local', extension: true, directory: true },
+    { path: 'report.', extension: false, directory: false },
+  ]) {
+    await page.evaluate(path => {
+      (window as any).__diffAction.app.fileContextMenu.set({
+        path, x: 20, y: 20, content: null, staged: false, untracked: true, conflicted: false,
+      });
+    }, path);
+    const menu = page.locator('.file-context-menu');
+    await expect(menu.locator('.context-heading')).toContainText(path);
+    const extensionAction = menu.getByRole('menuitem', { name: 'Ignore all with this extension', exact: true });
+    const directoryAction = menu.getByRole('menuitem', { name: 'Ignore directory', exact: true });
+    if (extension) await expect(extensionAction, path).toBeEnabled();
+    else await expect(extensionAction, path).toBeDisabled();
+    if (directory) await expect(directoryAction, path).toBeEnabled();
+    else await expect(directoryAction, path).toBeDisabled();
+  }
+});
+
+test('a literal backslash filename reaches the extension action unchanged', async ({ page }) => {
+  await prepare(page);
+  const path = 'report.part\\suffix';
+  await page.evaluate(path => {
+    const state = (window as any).__diffAction;
+    const status = {
+      ...state.repository.status, staged: 0, unstaged: 0, untracked: 1, entryCount: 1,
+      entries: [{ path, indexStatus: '?', worktreeStatus: '?', conflicted: false }],
+    };
+    state.git.repositories.update((repositories: any[]) => repositories.map(repository =>
+      repository.id === state.repository.id ? { ...repository, status } : repository));
+  }, path);
+
+  await page.getByRole('button', { name: `View changes in ${path}`, exact: true }).click({ button: 'right' });
+  const menu = page.locator('.file-context-menu');
+  await expect(menu.getByRole('menuitem', { name: 'Ignore directory', exact: true })).toBeDisabled();
+  await menu.getByRole('menuitem', { name: 'Ignore all with this extension', exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__diffAction.calls
+    .filter((call: any) => call.command === 'ignore_path')
+    .map((call: any) => call.args))).toEqual([
+    expect.objectContaining({ path, patternKind: 'extension', stopTracking: false }),
+  ]);
+});
+
+for (const { pattern, menuName, scope } of [
+  { pattern: 'file', menuName: 'Ignore file and stop tracking…', scope: null },
+  { pattern: 'extension', menuName: 'Ignore all with this extension and stop tracking…',
+    scope: 'other untracked files and directories with this extension throughout the repository' },
+  { pattern: 'directory', menuName: 'Ignore directory and stop tracking…',
+    scope: 'other untracked files in this directory and its subdirectories' },
+]) {
+  test(`ignore ${pattern} confirmation explains its scope and untracks only the selected file`, async ({ page }) => {
+    await prepare(page);
+    await page.evaluate(() => {
+      (window as any).__diffAction.app.fileContextMenu.set({
+        path: 'nested/file.txt', x: 20, y: 20, content: null, staged: false, untracked: false, conflicted: false,
+      });
+    });
+    await page.locator('.file-context-menu').getByRole('menuitem', { name: menuName, exact: true }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'nested/file.txt' });
+    await expect(dialog).toContainText('stages removal of this file from Git’s index');
+    await expect(dialog).toContainText('The file stays on disk');
+    if (scope) {
+      await expect(dialog).toContainText(scope);
+      await expect(dialog).toContainText('Other tracked files stay tracked');
+    } else {
+      await expect(dialog).not.toContainText('Other tracked files stay tracked');
+    }
+    await dialog.getByRole('button', { name: 'Ignore and stop tracking', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).__diffAction.calls
+      .filter((call: any) => call.command === 'ignore_path')
+      .map((call: any) => call.args))).toEqual([
+      expect.objectContaining({ path: 'nested/file.txt', patternKind: pattern, stopTracking: true }),
+    ]);
+  });
+}
+
 test('ignore warns about an interrupted response even when refresh also fails', async ({ page }) => {
   await prepare(page);
   await page.evaluate(async () => {

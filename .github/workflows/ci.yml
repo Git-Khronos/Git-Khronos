@@ -55,6 +55,8 @@ jobs:
         run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core repository_files::tests -- --nocapture
       - name: Verify working-file previews on Windows
         run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core file_content::tests -- --nocapture
+      - name: Verify ignore-rule scope on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core untracks_only_the_selected_file_and_preserves_other_changes -- --nocapture
 
   checks:
     name: Checks and renderer acceptance

@@ -16,7 +16,12 @@
   } @else if (action.kind === 'restore-commit') {
     <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ (action.oid || '').slice(0, 8) }} and stage the result for your next commit.</p>
   } @else {
-    <p>This adds a rule to the repository’s .gitignore and stages removal of the file from Git’s index. The file stays on disk.</p>
+    <p>This adds or reuses a rule in the repository’s .gitignore and stages removal of this file from Git’s index. The file stays on disk.</p>
+    @if (action.patternKind === 'extension') {
+      <p>The rule may also ignore other untracked files and directories with this extension throughout the repository. Other tracked files stay tracked.</p>
+    } @else if (action.patternKind === 'directory') {
+      <p>The rule may also ignore other untracked files in this directory and its subdirectories. Other tracked files stay tracked.</p>
+    }
   }
   @if (action.recovery; as recovery) {
     @if (recovery.stateWarning) { <p role="alert">{{ recovery.stateWarning }}</p> }
