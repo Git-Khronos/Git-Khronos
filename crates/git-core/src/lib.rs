@@ -12858,6 +12858,8 @@ mod tests {
     #[test]
     fn ignore_directory_uses_a_literal_root_relative_pattern() {
         let repository = TestRepository::new();
+        #[cfg(not(target_os = "linux"))]
+        repository.write(".gitignore", "");
         fs::create_dir(repository.path.join("logs [temp]")).unwrap();
         fs::create_dir(repository.path.join("logs t")).unwrap();
         repository.write("logs [temp]/selected.txt", "selected\n");
@@ -12898,7 +12900,7 @@ mod tests {
     #[test]
     fn ignore_extension_untracks_only_the_selected_file_and_preserves_other_changes() {
         let repository = TestRepository::new();
-        #[cfg(windows)]
+        #[cfg(not(target_os = "linux"))]
         fs::write(repository.path.join(".gitignore"), b"").unwrap();
         fs::create_dir(repository.path.join("nested")).unwrap();
         repository.write("nested/selected.[x]", "selected base\n");
@@ -13009,7 +13011,7 @@ mod tests {
     #[test]
     fn ignore_directory_untracks_only_the_selected_file_and_preserves_other_changes() {
         let repository = TestRepository::new();
-        #[cfg(windows)]
+        #[cfg(not(target_os = "linux"))]
         fs::write(repository.path.join(".gitignore"), b"").unwrap();
         fs::create_dir_all(repository.path.join("folder/nested")).unwrap();
         repository.write("folder/selected.log", "selected base\n");
@@ -13091,6 +13093,8 @@ mod tests {
     #[cfg(unix)]
     fn ignore_extension_treats_backslashes_as_literal_filename_bytes() {
         let repository = TestRepository::new();
+        #[cfg(not(target_os = "linux"))]
+        repository.write(".gitignore", "");
         repository.write("report.part\\suffix", "selected\n");
         repository.write("other.part\\suffix", "matching\n");
         repository.write("other.part", "decoy\n");
@@ -13132,6 +13136,8 @@ mod tests {
         let error = ignore_path(&repository.path, "root\\file", "directory", false).unwrap_err();
         assert_eq!(error.kind, "missingParentDirectory");
         assert!(!repository.path.join(".gitignore").exists());
+        #[cfg(not(target_os = "linux"))]
+        repository.write(".gitignore", "");
         fs::create_dir(repository.path.join("folder\\literal")).unwrap();
         fs::create_dir_all(repository.path.join("folder/literal")).unwrap();
         repository.write("folder\\literal/selected.txt", "selected\n");
@@ -13315,12 +13321,9 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_refuses_new_ignore_file_created_before_publication() {
-        #[cfg(unix)]
         use std::os::unix::fs::symlink as symlink_file;
-        #[cfg(windows)]
-        use std::os::windows::fs::symlink_file;
 
         for create_link in [false, true] {
             let repository = TestRepository::new();
@@ -13533,6 +13536,82 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(not(target_os = "linux"), any(unix, windows)))]
+    fn ignore_refuses_new_rule_before_checking_untracking_on_unsupported_platform() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "staged\n");
+        repository.git(&["add", "secret.log"]);
+        repository.write("secret.log", "worktree\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let dry_run = run_git(
+            &repository.path,
+            &[
+                "--literal-pathspecs",
+                "rm",
+                "--cached",
+                "--ignore-unmatch",
+                "--dry-run",
+                "--",
+                "secret.log",
+            ],
+        )
+        .unwrap();
+        assert!(!dry_run.status.success());
+
+        let error = ignore_rules::update_with_hook(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            || panic!("unsupported publication must refuse before opening the rule"),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "unsupportedPlatform");
+        assert!(!repository.path.join(".gitignore").exists());
+        assert!(!repository.path.join(".gitignore.lock").exists());
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"worktree\n"
+        );
+    }
+
+    #[test]
+    #[cfg(all(not(target_os = "linux"), any(unix, windows)))]
+    fn ignore_reports_unsupported_creation_when_lock_cleanup_fails() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || panic!("unsupported publication must refuse before opening the rule"),
+                || {},
+                || {},
+                |_| Err(std::io::Error::other("injected removal failure")),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreLockCleanupFailed");
+        assert!(error.message.contains("cannot be published safely"));
+        assert!(error.message.contains("injected removal failure"));
+        assert!(!repository.path.join(".gitignore").exists());
+        assert!(repository.path.join(".gitignore.lock").exists());
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+    }
+
+    #[test]
     #[cfg(any(unix, windows))]
     fn ignore_reports_a_replaced_lock_before_publication_without_removing_it() {
         #[cfg(unix)]
@@ -13541,6 +13620,9 @@ mod tests {
         use std::os::windows::fs::symlink_file;
 
         for existing in [false, true] {
+            if !existing && !cfg!(target_os = "linux") {
+                continue;
+            }
             for replacement in ["file", "symlink", "directory"] {
                 let repository = TestRepository::new();
                 repository.write("secret.log", "committed\n");
@@ -13606,7 +13688,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_treats_an_existing_link_to_its_staging_file_as_uncertain() {
         let repository = TestRepository::new();
         repository.write("secret.log", "committed\n");
@@ -13639,7 +13721,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_never_falls_back_to_replacing_after_uncertain_publication() {
         for link_before_error in [false, true] {
             let repository = TestRepository::new();
@@ -13685,7 +13767,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_reports_a_changed_destination_after_new_rule_publication() {
         let repository = TestRepository::new();
         repository.write("secret.log", "committed\n");
@@ -13726,7 +13808,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_reports_new_rule_when_its_publication_lock_cannot_be_removed() {
         let repository = TestRepository::new();
         repository.write("secret.log", "committed\n");
@@ -13769,7 +13851,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_reports_the_original_refusal_when_lock_cleanup_also_fails() {
         let repository = TestRepository::new();
         repository.write("secret.log", "committed\n");
@@ -13856,7 +13938,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(unix, windows))]
+    #[cfg(target_os = "linux")]
     fn ignore_preserves_a_replaced_lock_after_new_rule_publication() {
         let repository = TestRepository::new();
         repository.write("secret.log", "committed\n");
@@ -13996,6 +14078,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn ignore_and_stop_tracking_treats_pattern_looking_filenames_literally() {
         for file in ["*.log", ":(glob)*.log", "[ab].log"] {
             let repository = TestRepository::new();
@@ -14003,6 +14086,8 @@ mod tests {
             repository.write("a.log", "unrelated\n");
             repository.git(&["add", "."]);
             repository.git(&["commit", "-m", "Literal paths"]);
+            #[cfg(not(target_os = "linux"))]
+            repository.write(".gitignore", "");
             repository.write(file, "selected edit\n");
             ignore_path(&repository.path, file, "file", true).unwrap();
             let retained = run_git(&repository.path, &["ls-files", "-z"])

@@ -206,11 +206,15 @@ fn file_tool_snapshots_enforce_role_and_session_limits_and_preserve_foreign_pare
     flock(&lock, FlockOperation::NonBlockingLockExclusive).unwrap();
     assert!(FileToolSnapshots::create(&fixture.parent(), fixture.uid()).is_err());
     assert_eq!(fs::read_dir(fixture.parent()).unwrap().count(), 1);
+    // A forked child can retain this file description after the original is closed.
+    let retained_lock = lock.try_clone().unwrap();
+    flock(&lock, FlockOperation::Unlock).unwrap();
     drop(lock);
     let mut sessions = vec![first];
     for _ in 1..16 {
         sessions.push(fixture.session());
     }
+    drop(retained_lock);
     assert!(FileToolSnapshots::create(&fixture.parent(), fixture.uid()).is_err());
     assert_eq!(fs::read_dir(fixture.parent()).unwrap().count(), 16);
     sessions.pop().unwrap().discard().unwrap();

@@ -488,19 +488,28 @@ later source changes or substitute for the separate inherited-environment,
 GitLab catalogue and performance suites. It does not qualify the later
 descriptor-guarded discard implementation described below.
 
-At approximately 17:54 UTC on 2026-11-08, the read-only snapshot of
+The later completed
 [GitHub run 42504326903](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42504326903)
-for that commit showed the focused Windows source-test job and the Linux
-source-verification step passed. Renderer acceptance was still running; the
-dependent packaged-native job had not yet appeared, and the overall run had no
-conclusion. These are historical observations, not a completed CI result.
-At this commit the Windows ignore selectors shared one PowerShell step, so the
-step's success alone does not establish that each selector succeeded.
+for that commit passed the focused Windows source-test job, Linux checks and
+renderer acceptance, and packaged-native acceptance. At this commit the
+Windows ignore selectors shared one PowerShell step, so the step's success
+alone does not establish that each selector succeeded.
 At this review `nx.json` had neither `nxCloudId` nor `nxCloudAccessToken`;
 Nx Cloud monitoring was unavailable.
 Because the workflow cancels an earlier run on the same ref, wait for that run
 to finish before dispatching another. A new run for a later final commit must
 retain its own package, report and source identity.
+
+The subsequent
+[run 42520781486](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42520781486)
+failed its Windows ignore-publication test and Linux recovery-permission test.
+[Run 42521640442](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42521640442)
+passed the Windows source job and the Linux recovery-permission test, but its
+Linux suite failed an ignore-publication outcome regression; packaged acceptance
+was skipped. The follow-up restores the early unsupported-platform refusal and
+the uncertain outcome for a destination linked to the staging file. A later
+full CI and packaged run must qualify the exact source being released; the
+earlier results do not qualify later commits.
 
 A disposable Linux real-Git probe confirmed that replacing a parent directory
 can redirect tracked deletion outside the worktree. Tracked deletion is now

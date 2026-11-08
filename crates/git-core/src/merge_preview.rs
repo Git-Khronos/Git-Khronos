@@ -364,10 +364,12 @@ mod tests {
             let scratch = Scratch::new().unwrap();
             let f = Self(scratch);
             f.git(&["init", "-q", "-b", "main"]);
+            // The snapshots include .git, so background maintenance must not change it.
             for (key, value) in [
                 ("user.name", "Preview Tester"),
                 ("user.email", "preview@example.test"),
                 ("commit.gpgsign", "false"),
+                ("maintenance.auto", "false"),
             ] {
                 f.git(&["config", key, value]);
             }
@@ -417,7 +419,9 @@ mod tests {
                     } else {
                         rows.push((
                             path.strip_prefix(root).unwrap().to_owned(),
-                            fs::read(path).unwrap(),
+                            fs::read(&path).unwrap_or_else(|error| {
+                                panic!("could not read {}: {error}", path.display())
+                            }),
                         ));
                     }
                 }

@@ -58,7 +58,7 @@ jobs:
       - name: Verify ignore-rule scope on Windows
         run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core untracks_only_the_selected_file_and_preserves_other_changes -- --nocapture
       - name: Verify ignore-file safety on Windows
-        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core ignore_refuses_ -- --nocapture
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core tests::ignore_ -- --nocapture
       - name: Verify discard path boundaries on Windows
         run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core discard_refuses_a_parent_symlink_swapped_after_review -- --nocapture
 
