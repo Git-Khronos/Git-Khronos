@@ -90,6 +90,15 @@ const KNOWN_RECOVERY_FAILURES = new Set([
   'invalidRecovery', 'invalidRecoveryPath', 'invalidSystemClock', 'gitFailure', 'gitUnavailable',
   'gitInspectionTimeout', 'internalState', 'operationCancelled',
 ]);
+const SAFE_IGNORE_FAILURES = new Set([
+  'invalidWorkingTreePath', 'unknownWorkingTreeFile', 'trackedFileRequiresUntracking',
+  'missingFileExtension', 'missingParentDirectory', 'invalidIgnorePattern', 'invalidIgnoreFile',
+  'unknownRepository', 'internalState',
+]);
+const REPORTED_IGNORE_FAILURES = new Set([
+  'ignoreRuleSyncFailed', 'ignoreRuleVerificationFailed', 'ignoreRuleIneffective',
+  'ignoreRuleAddedButUntrackingFailed', 'ignoreRuleRefreshFailed',
+]);
 
 export type ActivityReporter = (message: string) => void;
 
@@ -2947,7 +2956,9 @@ export class GitKhronosService {
     const ownsRepository = () => this.activeWorkspaceId() === workspaceId
       && this.repositories().some(repository => repository.id === repo.id && repository.path === repo.path);
     let refreshError: string | null = null;
+    let recoveryRefreshError: string | null = null;
     let failureKind: string | null = null;
+    let ignoreFailure: string | null = null;
     try {
       const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
       this.bumpStatusGeneration(repo.id);
@@ -2963,6 +2974,15 @@ export class GitKhronosService {
           } as CommandArgs<K>) as RepositorySnapshot;
         } catch (error: unknown) {
           failureKind = this.errorKind(error);
+          if (command === 'ignore_path') {
+            if ((failureKind === null || !SAFE_IGNORE_FAILURES.has(failureKind)) && ownsRepository()) {
+              this.bumpStatusGeneration(repo.id);
+              this.clearMutationInspection(repo.id, inspectionRequest, preserveConflictOnFailure);
+            }
+            const reported = this.uncertainIgnoreFailure(error);
+            ignoreFailure = this.formatError(reported);
+            throw reported;
+          }
           if ((command === 'undo_discard' || command === 'redo_discard') && this.recoveryMayHaveChanged(failureKind)) {
             if (ownsRepository()) {
               this.bumpStatusGeneration(repo.id);
@@ -2990,16 +3010,32 @@ export class GitKhronosService {
           }
         }
         if (ownsRepository()) this.clearMutationInspection(repo.id, inspectionRequest);
+        if (command === 'ignore_path' && refreshError) {
+          const error = {
+            kind: 'ignoreRuleRefreshFailed',
+            message: `The ignore operation completed, but the repository view could not be refreshed: ${refreshError}`,
+            hint: 'Refresh the repository and inspect .gitignore and the index before retrying.',
+          };
+          failureKind = error.kind;
+          ignoreFailure = this.formatError(error);
+          throw error;
+        }
         report(typeof done === 'function' ? done(snapshot) : done);
       }, repo.id, operationId);
-      const failure = result === 'success' ? null : this.error();
+      let failure = result === 'success' ? null : command === 'ignore_path' ? ignoreFailure ?? this.error() : this.error();
       if (result === 'error' && ownsRepository()) {
         try {
           if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
           await this.refreshMutationSnapshot(repo.id, inspectionRequest, preserveConflictOnFailure);
         } catch (error: unknown) {
-          refreshError = this.formatError(error);
+          recoveryRefreshError = this.formatError(error);
+          refreshError = recoveryRefreshError;
         }
+      }
+      if (command === 'ignore_path' && failure && recoveryRefreshError) {
+        const detail = `${failure} Repository refresh also failed: ${recoveryRefreshError}`;
+        if (this.error() === failure) this.error.set(detail);
+        failure = detail;
       }
       // Fast snapshots skip untracked discovery; complete the status right away.
       if (ownsRepository()) {
@@ -3336,6 +3372,16 @@ export class GitKhronosService {
       hint: removal
         ? 'The recovery capture may already have been removed. Refresh Recovery History before retrying.'
         : 'The recovery action may have changed files or recovery state. Refresh the repository and review Recovery History before retrying.',
+    };
+  }
+
+  private uncertainIgnoreFailure(error: unknown): unknown {
+    const kind = this.errorKind(error);
+    if (kind && (SAFE_IGNORE_FAILURES.has(kind) || REPORTED_IGNORE_FAILURES.has(kind))) return error;
+    return {
+      kind: 'ignoreOutcomeUncertain',
+      message: 'The ignore operation could not be confirmed.',
+      hint: `The .gitignore file or Git index may have changed. Refresh the repository and inspect both before retrying. Details: ${this.formatError(error)}`,
     };
   }
 

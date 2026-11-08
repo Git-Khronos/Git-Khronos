@@ -72,7 +72,11 @@ outcome: stale matching undo and diff state are cleared, the working tree is
 refreshed, and the user is directed to review Recovery History before retrying.
 Lost recovery or capture-removal responses also invalidate only undo entries
 that might refer to the affected capture and warn that recovery state may have
-changed. Definite pre-mutation refusals keep the existing undo entry. Paths that
+changed. Definite pre-mutation refusals keep the existing undo entry. If an
+ignore result is lost or unexpected, the original diff is invalidated and the
+user is asked to refresh and inspect `.gitignore` and the index before retrying.
+When the operation completes but snapshot refresh fails, the application reports
+the completed operation rather than implying it was not applied. Paths that
 cannot be inspected safely are reported instead of being presented as a complete
 listing. Linux file creation resolves the full
 path beneath the worktree in one no-symlink `openat2` operation; a regression

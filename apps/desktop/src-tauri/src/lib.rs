@@ -77,6 +77,8 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 mod checkpoint_visibility_tests;
 #[cfg(test)]
 mod discard_recovery_tests;
+#[cfg(test)]
+mod ignore_outcome_tests;
 mod reference_commands;
 mod stash_commands;
 mod terminal_io;
@@ -907,8 +909,35 @@ fn ignore_path(
     stop_tracking: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |repository| {
-        git_ignore_path(repository, &path, &pattern_kind, stop_tracking)
+    let session = repository_session(&repo_id, &state)?;
+    let _operation = session.operation.lock().map_err(state_error)?;
+    execute_ignore_with_refresh(&session.path, &path, &pattern_kind, stop_tracking, || {
+        build_snapshot(repo_id, &session)
+    })
+}
+
+fn execute_ignore_with_refresh<T>(
+    repository: &Path,
+    path: &str,
+    pattern_kind: &str,
+    stop_tracking: bool,
+    refresh: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    git_ignore_path(repository, path, pattern_kind, stop_tracking)?;
+    refresh().map_err(|error| {
+        let guidance = "Refresh the repository and inspect .gitignore and the index before retrying.";
+        let hint = error
+            .hint
+            .map(|detail| format!("{guidance} Refresh details: {detail}"))
+            .unwrap_or_else(|| guidance.into());
+        AppError {
+            kind: "ignoreRuleRefreshFailed".into(),
+            message: format!(
+                "The ignore operation completed, but the repository view could not be refreshed: {}",
+                error.message
+            ),
+            hint: Some(hint),
+        }
     })
 }
 
