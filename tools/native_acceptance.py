@@ -792,6 +792,8 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.click_text("gc-workspace-center header button", "Close")
 
     driver.click('[aria-label="Main menu"]')
+    driver.wait("""return [...document.querySelectorAll('.app-menu-popover [role=menuitem] strong')]
+      .some(element => element.textContent.trim() === 'Recovery History')""")
     driver.click_text(".app-menu-popover [role=menuitem] strong", "Recovery History")
     driver.wait("""return !!document.querySelector(
       '.recovery-dialog .operation-captures[aria-label="Discarded changes"] button:not(:disabled)')""")

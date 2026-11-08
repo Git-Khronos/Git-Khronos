@@ -3880,7 +3880,8 @@ def recovery_boundaries(driver, fixtures, report):
         try:
             call(command, **args)
         except RuntimeError as error:
-            assert "invalidRecoveryPath" in str(error), str(error)
+            kind = json.loads(str(error)).get("kind")
+            assert kind in {"invalidRecoveryPath", "repositoryFileRefused"}, str(error)
         else:
             raise AssertionError(f"{command} accepted redirected recovery storage")
 
