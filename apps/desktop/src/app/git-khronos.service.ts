@@ -93,11 +93,12 @@ const KNOWN_RECOVERY_FAILURES = new Set([
 const SAFE_IGNORE_FAILURES = new Set([
   'invalidWorkingTreePath', 'unknownWorkingTreeFile', 'trackedFileRequiresUntracking',
   'missingFileExtension', 'missingParentDirectory', 'invalidIgnorePattern', 'invalidIgnoreFile',
-  'unknownRepository', 'internalState',
+  'ignoreFileChanged', 'ignoreLockUnavailable', 'unsupportedPlatform', 'unknownRepository', 'internalState',
 ]);
 const REPORTED_IGNORE_FAILURES = new Set([
   'ignoreRuleSyncFailed', 'ignoreRuleVerificationFailed', 'ignoreRuleIneffective',
-  'ignoreRuleAddedButUntrackingFailed', 'ignoreRuleRefreshFailed',
+  'ignoreRuleAddedButUntrackingFailed', 'ignoreRuleRefreshFailed', 'ignoreRulePublicationUncertain',
+  'ignoreRuleLockCleanupFailed', 'ignoreLockChanged', 'ignoreLockCleanupFailed',
 ]);
 
 export type ActivityReporter = (message: string) => void;

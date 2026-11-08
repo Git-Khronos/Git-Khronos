@@ -172,112 +172,6 @@ fn parent_directory(path: &Path, file: &str) -> Result<PathBuf, AppError> {
     Ok(parent)
 }
 
-#[cfg(target_os = "linux")]
-fn create_no_follow_linux(
-    root: &Path,
-    file: &Path,
-    before_open: impl FnOnce(),
-) -> Result<(), AppError> {
-    use rustix::fs::{AtFlags, Mode, OFlags, ResolveFlags, openat, openat2, statat};
-
-    let root =
-        fs::canonicalize(root).map_err(|_| refused("The repository directory is unavailable."))?;
-    let root_directory = file_content::worktree::absolute(&root)
-        .map_err(|_| refused("The repository directory could not be opened safely."))?;
-    let mut directory = root_directory
-        .try_clone()
-        .map_err(|_| refused("The repository directory could not be opened safely."))?;
-    for part in file.parent().unwrap_or(Path::new("")).components() {
-        directory = openat(
-            &directory,
-            part.as_os_str(),
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|_| refused("The file's parent directory changed or is not safe."))?;
-        match statat(&directory, ".git", AtFlags::SYMLINK_NOFOLLOW) {
-            Err(rustix::io::Errno::NOENT) => {}
-            Ok(_) => {
-                return Err(refused(
-                    "File operations cannot cross nested repository boundaries.",
-                ));
-            }
-            Err(_) => {
-                return Err(refused(
-                    "The file's parent directory could not be checked safely.",
-                ));
-            }
-        }
-    }
-
-    before_open();
-    openat2(
-        &root_directory,
-        file,
-        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::from_bits_truncate(0o666),
-        ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
-    )
-    .map(|_| ())
-    .map_err(|_| {
-        refused(
-            "The file could not be created; it may already exist or its parent may have changed.",
-        )
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn create_no_follow(root: &Path, file: &Path) -> Result<(), AppError> {
-    create_no_follow_linux(root, file, || {})
-}
-
-#[cfg(all(unix, not(target_os = "linux")))]
-fn create_no_follow(root: &Path, file: &Path) -> Result<(), AppError> {
-    use rustix::fs::{AtFlags, Mode, OFlags, openat, statat};
-
-    let root =
-        fs::canonicalize(root).map_err(|_| refused("The repository directory is unavailable."))?;
-    let mut directory = file_content::worktree::absolute(&root)
-        .map_err(|_| refused("The repository directory could not be opened safely."))?;
-    for part in file.parent().unwrap_or(Path::new("")).components() {
-        directory = openat(
-            &directory,
-            part.as_os_str(),
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|_| refused("The file's parent directory changed or is not safe."))?;
-        match statat(&directory, ".git", AtFlags::SYMLINK_NOFOLLOW) {
-            Err(rustix::io::Errno::NOENT) => {}
-            Ok(_) => {
-                return Err(refused(
-                    "File operations cannot cross nested repository boundaries.",
-                ));
-            }
-            Err(_) => {
-                return Err(refused(
-                    "The file's parent directory could not be checked safely.",
-                ));
-            }
-        }
-    }
-    let name = file
-        .file_name()
-        .ok_or_else(|| refused("Choose a file name."))?;
-    openat(
-        &directory,
-        name,
-        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::from_bits_truncate(0o666),
-    )
-    .map(|_| ())
-    .map_err(|_| {
-        refused(
-            "The file could not be created; it may already exist or its parent may have changed.",
-        )
-    })
-}
-
 #[cfg(windows)]
 pub(super) fn locked_windows_parent_if_present(
     root: &Path,
@@ -349,24 +243,172 @@ fn locked_windows_parent(root: &Path, file: &Path) -> Result<(PathBuf, Vec<fs::F
 }
 
 #[cfg(windows)]
-fn create_no_follow(root: &Path, file: &Path) -> Result<(), AppError> {
-    let (parent, _guards) = locked_windows_parent(root, file)?;
+fn locked_windows_creation_directory(directory: &Path) -> Result<fs::File, AppError> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    let handle = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(directory)
+        .map_err(|_| refused("The worktree directory could not be protected safely."))?;
+    let metadata = handle
+        .metadata()
+        .map_err(|_| refused("The worktree directory could not be checked safely."))?;
+    if !metadata.is_dir() || is_link_or_reparse_point(&metadata) {
+        return Err(refused(
+            "The worktree path cannot contain symbolic links or reparse points.",
+        ));
+    }
+    Ok(handle)
+}
+
+#[cfg(windows)]
+fn windows_creation_identity(file: &fs::File) -> Result<(u64, [u8; 16]), AppError> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    struct FileIdInfo {
+        volume_serial_number: u64,
+        file_id: [u8; 16],
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandleEx(
+            file: *mut c_void,
+            class: i32,
+            info: *mut c_void,
+            size: u32,
+        ) -> i32;
+    }
+
+    const FILE_ID_INFO: i32 = 18;
+    let mut info = FileIdInfo {
+        volume_serial_number: 0,
+        file_id: [0; 16],
+    };
+    // SAFETY: `file` owns a live handle and `info` is a writable FILE_ID_INFO buffer.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FILE_ID_INFO,
+            std::ptr::from_mut(&mut info).cast(),
+            std::mem::size_of::<FileIdInfo>() as u32,
+        )
+    };
+    if ok == 0 || info.volume_serial_number == 0 || info.file_id == [0; 16] {
+        return Err(AppError::new(
+            "repositoryFileRefused",
+            "The filesystem could not provide a stable worktree directory identity.",
+            Some("Create the file outside the application, then refresh the repository."),
+        ));
+    }
+    Ok((info.volume_serial_number, info.file_id))
+}
+
+#[cfg(windows)]
+fn locked_windows_creation_root(root: &Path) -> Result<Vec<fs::File>, AppError> {
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|part| matches!(part, Component::CurDir | Component::ParentDir))
+    {
+        return Err(refused(
+            "The selected worktree root is not an absolute path.",
+        ));
+    }
+
+    let mut directory = PathBuf::new();
+    let mut guards = Vec::new();
+    for part in root.components() {
+        directory.push(part.as_os_str());
+        if !matches!(part, Component::RootDir | Component::Normal(_)) {
+            continue;
+        }
+        guards.push(locked_windows_creation_directory(&directory)?);
+    }
+    Ok(guards)
+}
+
+#[cfg(windows)]
+fn locked_windows_git_marker(root: &Path) -> Result<fs::File, AppError> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    let handle = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(root.join(".git"))
+        .map_err(|_| refused("The working tree's Git marker could not be protected safely."))?;
+    let metadata = handle
+        .metadata()
+        .map_err(|_| refused("The working tree's Git marker could not be checked safely."))?;
+    if is_link_or_reparse_point(&metadata) || !(metadata.is_dir() || metadata.is_file()) {
+        return Err(refused("The working tree's Git marker is not safe."));
+    }
+    Ok(handle)
+}
+
+#[cfg(windows)]
+fn create_no_follow_windows(
+    root: &Path,
+    file: &Path,
+    before_guard: impl FnOnce(),
+    before_open: impl FnOnce(),
+) -> Result<(), AppError> {
+    // Directory share guards do not prevent another process from adding `.git`.
+    if file
+        .parent()
+        .is_some_and(|parent| !parent.as_os_str().is_empty())
+    {
+        return Err(AppError::new(
+            "repositoryFileRefused",
+            "Creating files in subdirectories is unavailable because a nested repository could appear during creation.",
+            Some("Create the file outside the application, then refresh the repository."),
+        ));
+    }
+
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|part| matches!(part, Component::CurDir | Component::ParentDir))
+    {
+        return Err(refused(
+            "The selected worktree root is not an absolute path.",
+        ));
+    }
+    let initial_root = locked_windows_creation_directory(root)?;
+    before_guard();
+    let _guards = locked_windows_creation_root(root)?;
+    let guarded_root = _guards
+        .last()
+        .ok_or_else(|| refused("The worktree directory could not be protected safely."))?;
+    if windows_creation_identity(&initial_root)? != windows_creation_identity(guarded_root)? {
+        return Err(refused(
+            "The selected worktree root changed during creation.",
+        ));
+    }
+    let _git_marker = locked_windows_git_marker(root)?;
+    file_content::worktree_root(root)
+        .map_err(|_| refused("Files can be created only at the selected working tree root."))?;
     let name = file
         .file_name()
         .ok_or_else(|| refused("Choose a file name."))?;
+    before_open();
     OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(parent.join(name))
+        .open(root.join(name))
         .map(|_| ())
         .map_err(|_| refused("The file could not be created; it may already exist or its parent may have changed."))
-}
-
-#[cfg(not(any(unix, windows)))]
-fn create_no_follow(_: &Path, _: &Path) -> Result<(), AppError> {
-    Err(refused(
-        "Safe repository file creation is not supported on this platform.",
-    ))
 }
 
 fn read_file_record(reader: &mut impl BufRead, record: &mut Vec<u8>) -> Result<bool, AppError> {
@@ -635,9 +677,38 @@ pub fn repository_files(
 }
 
 pub fn create_repository_file(path: &Path, file: &str) -> Result<(), AppError> {
+    create_repository_file_with(path, file, || {})
+}
+
+fn create_repository_file_with(
+    path: &Path,
+    file: &str,
+    before_open: impl FnOnce(),
+) -> Result<(), AppError> {
+    create_repository_file_with_hooks(path, file, || {}, before_open)
+}
+
+fn create_repository_file_with_hooks(
+    path: &Path,
+    file: &str,
+    before_guard: impl FnOnce(),
+    before_open: impl FnOnce(),
+) -> Result<(), AppError> {
     let relative = validate_file_name(file)?;
-    parent_directory(path, file)?;
-    create_no_follow(path, relative)
+    #[cfg(windows)]
+    {
+        create_no_follow_windows(path, relative, before_guard, before_open)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (path, relative, before_guard, before_open);
+        // Unix directory descriptors do not prevent the selected root from moving.
+        Err(AppError::new(
+            "repositoryFileRefused",
+            "Creating files is unavailable on this platform because the selected worktree directory cannot be protected against concurrent replacement.",
+            Some("Create the file outside the application, then refresh the repository."),
+        ))
+    }
 }
 
 pub fn with_repository_regular_file<T>(
@@ -867,20 +938,61 @@ mod tests {
     }
 
     #[test]
-    fn file_creation_requires_an_existing_safe_parent_and_never_overwrites() {
+    fn file_creation_refuses_unsafe_paths_and_never_overwrites() {
         let fixture = Fixture::new();
         fs::create_dir(fixture.0.join("folder")).unwrap();
-        create_repository_file(&fixture.0, "folder/new.txt").unwrap();
-        assert_eq!(fs::read(fixture.0.join("folder/new.txt")).unwrap(), b"");
-        #[cfg(unix)]
+
+        #[cfg(windows)]
         {
-            create_repository_file(&fixture.0, "folder/ name.txt ").unwrap();
-            assert!(fixture.0.join("folder/ name.txt ").is_file());
+            create_repository_file(&fixture.0, "new.txt").unwrap();
+            assert_eq!(fs::read(fixture.0.join("new.txt")).unwrap(), b"");
+            assert!(create_repository_file(&fixture.0, "new.txt").is_err());
         }
+        #[cfg(not(windows))]
+        {
+            let error = create_repository_file(&fixture.0, "new.txt").unwrap_err();
+            assert_eq!(error.kind, "repositoryFileRefused");
+            assert!(error.message.contains("unavailable on this platform"));
+            assert!(error.hint.unwrap().contains("outside the application"));
+            assert!(!fixture.0.join("new.txt").exists());
+        }
+
+        fs::write(fixture.0.join("existing.txt"), b"keep").unwrap();
+        assert!(create_repository_file(&fixture.0, "existing.txt").is_err());
+        assert_eq!(fs::read(fixture.0.join("existing.txt")).unwrap(), b"keep");
         assert!(create_repository_file(&fixture.0, "folder/new.txt").is_err());
+        assert!(!fixture.0.join("folder/new.txt").exists());
+        #[cfg(unix)]
+        assert!(validate_file_name("folder/ name.txt ").is_ok());
         assert!(create_repository_file(&fixture.0, "../outside.txt").is_err());
         assert!(create_repository_file(&fixture.0, ".git/config").is_err());
         assert!(create_repository_file(&fixture.0, "missing/new.txt").is_err());
+    }
+
+    #[test]
+    fn file_creation_requires_the_selected_worktree_root() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("folder")).unwrap();
+
+        assert!(create_repository_file(&fixture.0.join("folder"), "new.txt").is_err());
+        assert!(!fixture.0.join("folder/new.txt").exists());
+    }
+
+    #[test]
+    fn file_creation_refuses_a_git_metadata_directory_as_root() {
+        let fixture = Fixture::new();
+
+        assert!(create_repository_file(&fixture.0.join(".git"), "new.txt").is_err());
+        assert!(!fixture.0.join(".git/new.txt").exists());
+    }
+
+    #[test]
+    fn file_creation_refuses_a_bare_repository_root() {
+        let fixture = Fixture::new();
+        fixture.git(&["init", "--bare", "bare.git"]);
+
+        assert!(create_repository_file(&fixture.0.join("bare.git"), "new.txt").is_err());
+        assert!(!fixture.0.join("bare.git/new.txt").exists());
     }
 
     #[test]
@@ -1145,7 +1257,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn file_creation_rechecks_a_swapped_parent_before_opening() {
+    fn file_creation_refuses_a_parent_swapped_for_a_symlink() {
         use std::os::unix::fs::symlink;
 
         let fixture = Fixture::new();
@@ -1159,12 +1271,12 @@ mod tests {
         parent_directory(&fixture.0, "folder/new.txt").unwrap();
         fs::rename(fixture.0.join("folder"), fixture.0.join("original")).unwrap();
         symlink(&outside, fixture.0.join("folder")).unwrap();
-        assert!(create_no_follow(&fixture.0, Path::new("folder/new.txt")).is_err());
+        assert!(create_repository_file(&fixture.0, "folder/new.txt").is_err());
         assert!(!outside.join("new.txt").exists());
         fs::remove_dir(outside).unwrap();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     #[test]
     fn file_creation_refuses_a_parent_moved_outside_during_resolution() {
         let fixture = Fixture::new();
@@ -1174,15 +1286,95 @@ mod tests {
         ));
         fs::create_dir(fixture.0.join("folder")).unwrap();
 
+        let mut reached_open = false;
         assert!(
-            create_no_follow_linux(&fixture.0, Path::new("folder/new.txt"), || {
+            create_repository_file_with(&fixture.0, "folder/new.txt", || {
+                reached_open = true;
                 fs::rename(fixture.0.join("folder"), &outside).unwrap();
             })
             .is_err()
         );
+        assert!(!reached_open);
         assert!(!outside.join("new.txt").exists());
         assert!(!fixture.0.join("folder/new.txt").exists());
-        fs::remove_dir_all(outside).unwrap();
+        if outside.exists() {
+            fs::remove_dir_all(outside).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_creation_refuses_an_unreviewed_nested_parent_replacement() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("folder")).unwrap();
+        fs::create_dir_all(fixture.0.join("replacement/.git")).unwrap();
+
+        let mut reached_open = false;
+        let result = create_repository_file_with(&fixture.0, "folder/new.txt", || {
+            reached_open = true;
+            fs::rename(fixture.0.join("folder"), fixture.0.join("reviewed")).unwrap();
+            fs::rename(fixture.0.join("replacement"), fixture.0.join("folder")).unwrap();
+        });
+
+        assert!(
+            result.is_err(),
+            "created in unreviewed nested repository: {}",
+            fixture.0.join("folder/new.txt").exists()
+        );
+        assert!(!reached_open);
+        assert!(!fixture.0.join("folder/new.txt").exists());
+        assert!(!fixture.0.join("reviewed/new.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_creation_refuses_a_new_nested_repository_after_validation() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("folder")).unwrap();
+
+        let mut reached_open = false;
+        let result = create_repository_file_with(&fixture.0, "folder/new.txt", || {
+            reached_open = true;
+            fs::create_dir(fixture.0.join("folder/.git")).unwrap();
+        });
+
+        assert!(
+            result.is_err(),
+            "created after parent became a nested repository: {}",
+            fixture.0.join("folder/new.txt").exists()
+        );
+        assert!(!reached_open);
+        assert!(!fixture.0.join("folder/new.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_creation_refuses_a_moved_worktree_root() {
+        let fixture = Fixture::new();
+        let moved = fixture.0.with_file_name(format!(
+            "{}-moved",
+            fixture.0.file_name().unwrap().to_string_lossy()
+        ));
+
+        let mut reached_open = false;
+        let result = create_repository_file_with(&fixture.0, "new.txt", || {
+            reached_open = true;
+            fs::rename(&fixture.0, &moved).unwrap();
+            fs::create_dir(&fixture.0).unwrap();
+        });
+        let created_in_moved_root = moved.join("new.txt").exists();
+        let created_in_replacement = fixture.0.join("new.txt").exists();
+        if moved.exists() {
+            fs::remove_dir_all(&moved).unwrap();
+        }
+
+        assert!(
+            result.is_err(),
+            "created in the moved worktree root: {created_in_moved_root}"
+        );
+        assert!(!reached_open);
+        assert!(!created_in_moved_root);
+        assert!(!created_in_replacement);
     }
 
     #[test]
@@ -1297,12 +1489,17 @@ mod tests {
     fn windows_paths_check_backslash_parents_and_reparse_points() {
         let fixture = Fixture::new();
         fs::create_dir(fixture.0.join("folder")).unwrap();
-        create_repository_file(&fixture.0, "folder\\new.txt").unwrap();
-        create_repository_file(&fixture.0, "folder/other.txt").unwrap();
         fs::create_dir(fixture.0.join("folder/child")).unwrap();
-        create_repository_file(&fixture.0, "folder\\child/mixed.txt").unwrap();
-        assert!(fixture.0.join("folder/new.txt").is_file());
-        assert!(fixture.0.join("folder/other.txt").is_file());
+        for path in [
+            "folder\\new.txt",
+            "folder/other.txt",
+            "folder\\child/mixed.txt",
+        ] {
+            assert!(create_repository_file(&fixture.0, path).is_err());
+        }
+        assert!(!fixture.0.join("folder/new.txt").exists());
+        assert!(!fixture.0.join("folder/other.txt").exists());
+        assert!(!fixture.0.join("folder/child/mixed.txt").exists());
         fixture.commit("folder/tracked.txt", b"tracked");
         delete_repository_file(&fixture.0, "folder\\tracked.txt").unwrap();
         assert!(!fixture.0.join("folder/tracked.txt").exists());
@@ -1355,6 +1552,167 @@ mod tests {
         assert!(!outside.join("new.txt").exists());
         fs::remove_dir(junction).unwrap();
         fs::remove_dir(outside).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_creation_refuses_subdirectories_before_nested_repository_changes() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("folder")).unwrap();
+        let mut reached_open = false;
+
+        let error = create_repository_file_with(&fixture.0, "folder/new.txt", || {
+            reached_open = true;
+            fs::create_dir(fixture.0.join("folder/.git")).unwrap();
+        })
+        .unwrap_err();
+
+        assert_eq!(error.kind, "repositoryFileRefused");
+        assert!(error.message.contains("subdirectories is unavailable"));
+        assert!(!reached_open);
+        assert!(!fixture.0.join("folder/new.txt").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_root_creation_pins_the_worktree_and_git_marker() {
+        let fixture = Fixture::new();
+        let moved = fixture.0.with_file_name(format!(
+            "{}-moved",
+            fixture.0.file_name().unwrap().to_string_lossy()
+        ));
+
+        create_repository_file_with(&fixture.0, "new.txt", || {
+            assert!(fs::rename(&fixture.0, &moved).is_err());
+            assert!(fs::rename(fixture.0.join(".git"), fixture.0.join("moved-git")).is_err());
+        })
+        .unwrap();
+
+        assert_eq!(fs::read(fixture.0.join("new.txt")).unwrap(), b"");
+        assert!(!moved.exists());
+        assert!(!fixture.0.join("moved-git").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_root_creation_pins_worktree_ancestors() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("container")).unwrap();
+        fixture.git(&["init", "container/repository"]);
+        let ancestor = fixture.0.join("container");
+        let root = ancestor.join("repository");
+        let moved = fixture.0.join("moved-container");
+
+        create_repository_file_with(&root, "new.txt", || {
+            assert!(fs::rename(&ancestor, &moved).is_err());
+        })
+        .unwrap();
+
+        assert_eq!(fs::read(root.join("new.txt")).unwrap(), b"");
+        assert!(!moved.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_creation_refuses_a_replaced_worktree_while_locking_ancestors() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("original")).unwrap();
+        fs::create_dir(fixture.0.join("replacement")).unwrap();
+        fixture.git(&["init", "original/repository"]);
+        fixture.git(&["init", "replacement/repository"]);
+        let original_parent = fixture.0.join("original");
+        let replacement_parent = fixture.0.join("replacement");
+        let moved_parent = fixture.0.join("moved");
+        let root = original_parent.join("repository");
+
+        {
+            let first = locked_windows_creation_directory(&root).unwrap();
+            let same = locked_windows_creation_directory(&root).unwrap();
+            let other =
+                locked_windows_creation_directory(&replacement_parent.join("repository")).unwrap();
+            assert_eq!(
+                windows_creation_identity(&first).unwrap(),
+                windows_creation_identity(&same).unwrap()
+            );
+            assert_ne!(
+                windows_creation_identity(&first).unwrap(),
+                windows_creation_identity(&other).unwrap()
+            );
+        }
+
+        let mut replaced = false;
+        let mut reached_open = false;
+        let result = create_repository_file_with_hooks(
+            &root,
+            "new.txt",
+            || {
+                if fs::rename(&original_parent, &moved_parent).is_ok() {
+                    fs::rename(&replacement_parent, &original_parent).unwrap();
+                    replaced = true;
+                }
+            },
+            || reached_open = true,
+        );
+
+        if replaced {
+            let error = result.unwrap_err();
+            assert!(error.message.contains("changed during creation"));
+            assert!(!reached_open);
+            assert!(!root.join("new.txt").exists());
+            assert!(!moved_parent.join("repository/new.txt").exists());
+        } else {
+            result.unwrap();
+            assert!(reached_open);
+            assert_eq!(fs::read(root.join("new.txt")).unwrap(), b"");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_root_creation_supports_linked_worktree_git_files() {
+        let fixture = Fixture::new();
+        fixture.commit("tracked.txt", b"tracked");
+        fixture.git(&["worktree", "add", "--detach", "linked-worktree"]);
+        let linked = fixture.0.join("linked-worktree");
+        let marker = linked.join(".git");
+        let original_marker = fs::read(&marker).unwrap();
+        let writer = OpenOptions::new().write(true).open(&marker).unwrap();
+
+        assert!(create_repository_file(&linked, "busy.txt").is_err());
+        assert!(!linked.join("busy.txt").exists());
+        drop(writer);
+
+        create_repository_file_with(&linked, "new.txt", || {
+            assert!(
+                OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&marker)
+                    .is_err()
+            );
+        })
+        .unwrap();
+
+        assert_eq!(fs::read(linked.join("new.txt")).unwrap(), b"");
+        assert_eq!(fs::read(marker).unwrap(), original_marker);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_creation_refuses_a_reparse_point_as_worktree_root() {
+        use std::os::windows::fs::symlink_dir;
+
+        let fixture = Fixture::new();
+        let alias = fixture.0.with_file_name(format!(
+            "{}-alias",
+            fixture.0.file_name().unwrap().to_string_lossy()
+        ));
+        symlink_dir(&fixture.0, &alias)
+            .expect("Windows path tests require permission to create directory symbolic links");
+
+        assert!(create_repository_file(&alias, "new.txt").is_err());
+        assert!(!fixture.0.join("new.txt").exists());
+        fs::remove_dir(alias).unwrap();
     }
 
     #[cfg(windows)]

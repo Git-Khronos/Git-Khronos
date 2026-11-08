@@ -1,6 +1,6 @@
 use super::*;
 use std::fs::OpenOptions;
-use std::io::{Read, Seek, Write};
+use std::io::{self, Read, Seek, Write};
 
 struct ExistingRules {
     last_effective_is_rule: bool,
@@ -92,6 +92,196 @@ fn invalid_ignore_file() -> AppError {
     )
 }
 
+fn ignore_file_changed() -> AppError {
+    AppError::new(
+        "ignoreFileChanged",
+        "A .gitignore file appeared before the rule could be published. This operation did not add the rule or change the index.",
+        Some("Review the existing .gitignore before retrying."),
+    )
+}
+
+fn lock_changed(detail: impl std::fmt::Display) -> AppError {
+    AppError::new(
+        "ignoreLockChanged",
+        format!("Could not confirm ownership of .gitignore.lock before publication: {detail}"),
+        Some(
+            "This operation did not publish the rule or change the index. Inspect .gitignore, the lock, and any moved staging file before retrying.",
+        ),
+    )
+}
+
+fn publication_uncertain(detail: impl std::fmt::Display, existed: bool) -> AppError {
+    AppError::new(
+        "ignoreRulePublicationUncertain",
+        format!("Could not confirm safe publication of the ignore rule: {detail}"),
+        Some(if existed {
+            "The index was not changed. Inspect .gitignore and .gitignore.lock before retrying."
+        } else {
+            "No overwrite fallback was attempted and the index was not changed. Check hard-link support and, on Linux, /proc/self/fd; inspect .gitignore and .gitignore.lock before retrying."
+        }),
+    )
+}
+
+fn published_lock_cleanup_failed(error: io::Error) -> AppError {
+    AppError::new(
+        "ignoreRuleLockCleanupFailed",
+        format!(
+            "The ignore rule was published, but its .gitignore.lock could not be safely removed: {error}"
+        ),
+        Some("The index was not changed. Inspect .gitignore and its lock before retrying."),
+    )
+}
+
+fn lock_cleanup_failed(result: Result<(), AppError>, error: io::Error) -> AppError {
+    let (message, mut hint) = match result {
+        Ok(()) => (
+            format!(
+                "The ignore operation completed, but its .gitignore.lock could not be safely removed: {error}"
+            ),
+            String::new(),
+        ),
+        Err(previous) => (
+            format!(
+                "{} The .gitignore.lock could not be safely removed: {error}",
+                previous.message
+            ),
+            previous.hint.unwrap_or_default(),
+        ),
+    };
+    if !hint.is_empty() {
+        hint.push(' ');
+    }
+    hint.push_str("Inspect .gitignore, .gitignore.lock, and the index before retrying.");
+    AppError::new("ignoreLockCleanupFailed", message, Some(&hint))
+}
+
+#[cfg(unix)]
+fn matches_open_file(file: &fs::File, path: &Path) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+
+    let opened = file.metadata()?;
+    let entry = fs::symlink_metadata(path)?;
+    Ok(entry.is_file() && opened.dev() == entry.dev() && opened.ino() == entry.ino())
+}
+
+#[cfg(windows)]
+fn matches_open_file(file: &fs::File, path: &Path) -> io::Result<bool> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    #[derive(PartialEq, Eq)]
+    struct FileIdInfo {
+        volume: u64,
+        id: [u8; 16],
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandleEx(
+            file: std::os::windows::io::RawHandle,
+            class: i32,
+            info: *mut std::ffi::c_void,
+            size: u32,
+        ) -> i32;
+    }
+
+    fn identity(file: &fs::File) -> io::Result<FileIdInfo> {
+        const FILE_ID_INFO_CLASS: i32 = 18;
+        let mut info = FileIdInfo {
+            volume: 0,
+            id: [0; 16],
+        };
+        // The live handle and correctly sized FILE_ID_INFO buffer remain valid
+        // for the duration of this call.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FILE_ID_INFO_CLASS,
+                (&mut info as *mut FileIdInfo).cast(),
+                std::mem::size_of::<FileIdInfo>() as u32,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if info.id == [0; 16] {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "the filesystem did not provide a file identity",
+            ));
+        }
+        Ok(info)
+    }
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    let entry = OpenOptions::new()
+        .access_mode(0)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    let metadata = entry.metadata()?;
+    if !metadata.is_file() || repository_files::is_link_or_reparse_point(&metadata) {
+        return Ok(false);
+    }
+    Ok(identity(file)? == identity(&entry)?)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn matches_open_file(_file: &fs::File, _path: &Path) -> io::Result<bool> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "file identity is unavailable on this platform",
+    ))
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn publish_new_ignore(
+    file: &fs::File,
+    _lock: &Path,
+    destination: &Path,
+) -> io::Result<()> {
+    use rustix::fs::{AtFlags, CWD, linkat};
+    use std::os::fd::AsRawFd;
+
+    // Publish the held inode rather than whatever currently occupies the lock
+    // name. Missing procfs or hard-link support is a refusal, not a fallback.
+    let source = format!("/proc/self/fd/{}", file.as_raw_fd());
+    linkat(
+        CWD,
+        source.as_str(),
+        CWD,
+        destination,
+        AtFlags::SYMLINK_FOLLOW,
+    )
+    .map_err(Into::into)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(super) fn publish_new_ignore(
+    _file: &fs::File,
+    _lock: &Path,
+    _destination: &Path,
+) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "publishing a new .gitignore from the held staging file is unavailable on this platform",
+    ))
+}
+
+fn remove_owned_lock(
+    file: &fs::File,
+    lock: &Path,
+    remove: &mut impl FnMut(&Path) -> io::Result<()>,
+) -> io::Result<()> {
+    // This detects an earlier replacement but is not an atomic compare/unlink:
+    // an uncooperative writer can still replace the pathname after the check.
+    if !matches_open_file(file, lock)? {
+        return Err(io::Error::other("the lock name refers to a different file"));
+    }
+    remove(lock)
+}
+
 #[cfg(unix)]
 fn open_ignore_no_follow(path: &Path) -> Result<fs::File, AppError> {
     use rustix::fs::{Mode, OFlags, open};
@@ -164,6 +354,87 @@ pub(super) fn update_with_hook(
     stop_tracking: bool,
     before_open: impl FnOnce(),
 ) -> Result<(), AppError> {
+    update_with_hooks(path, rule, file, stop_tracking, before_open, || {})
+}
+
+pub(super) fn update_with_hooks(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+    before_open: impl FnOnce(),
+    before_publish: impl FnOnce(),
+) -> Result<(), AppError> {
+    update_with_controls(
+        path,
+        rule,
+        file,
+        stop_tracking,
+        (
+            before_open,
+            before_publish,
+            || {},
+            |lock| fs::remove_file(lock),
+        ),
+        publish_new_ignore,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn update_with_test_hooks(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+    hooks: (
+        impl FnOnce(),
+        impl FnOnce(),
+        impl FnOnce(),
+        impl FnMut(&Path) -> io::Result<()>,
+    ),
+) -> Result<(), AppError> {
+    update_with_controls(path, rule, file, stop_tracking, hooks, publish_new_ignore)
+}
+
+#[cfg(test)]
+pub(super) fn update_with_publication_hook(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+    publish: impl FnOnce(&fs::File, &Path, &Path) -> io::Result<()>,
+) -> Result<(), AppError> {
+    update_with_controls(
+        path,
+        rule,
+        file,
+        stop_tracking,
+        (|| {}, || {}, || {}, |lock| fs::remove_file(lock)),
+        publish,
+    )
+}
+
+fn update_with_controls(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+    hooks: (
+        impl FnOnce(),
+        impl FnOnce(),
+        impl FnOnce(),
+        impl FnMut(&Path) -> io::Result<()>,
+    ),
+    publish: impl FnOnce(&fs::File, &Path, &Path) -> io::Result<()>,
+) -> Result<(), AppError> {
+    if !cfg!(any(unix, windows)) {
+        return Err(AppError::new(
+            "unsupportedPlatform",
+            "Ignore rules cannot be published safely on this platform.",
+            Some("Edit .gitignore manually instead."),
+        ));
+    }
+    let (before_open, before_publish, after_publish, mut remove_lock) = hooks;
     let destination = path.join(".gitignore");
     let lock = path.join(".gitignore.lock");
     // A failed acquisition must never remove another writer's lock.
@@ -171,8 +442,18 @@ pub(super) fn update_with_hook(
         .write(true)
         .create_new(true)
         .open(&lock)
-        .map_err(io_error)?;
-    let mut lock_owned = true;
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                AppError::new(
+                    "ignoreLockUnavailable",
+                    "The .gitignore lock already exists. The ignore rule and index were not changed.",
+                    Some("Wait for the other writer or inspect .gitignore.lock before retrying."),
+                )
+            } else {
+                io_error(error)
+            }
+        })?;
+    let mut lock_cleanup_pending = true;
     let result = (|| {
         let exists = match fs::symlink_metadata(&destination) {
             Ok(metadata)
@@ -184,6 +465,13 @@ pub(super) fn update_with_hook(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => return Err(io_error(error)),
         };
+        if !exists && !cfg!(target_os = "linux") {
+            return Err(AppError::new(
+                "unsupportedPlatform",
+                "A new root .gitignore cannot be published safely on this platform.",
+                Some("Create .gitignore manually, then refresh and retry."),
+            ));
+        }
         if stop_tracking {
             // Refuse known index/staging conflicts before adding an ignore rule.
             run_mutation(
@@ -240,10 +528,43 @@ pub(super) fn update_with_hook(
                     .map_err(io_error)?;
             }
             output.sync_all().map_err(io_error)?;
-            drop(output);
-            // Replace only after the complete byte-preserving update is saved.
-            fs::rename(&lock, &destination).map_err(io_error)?;
-            lock_owned = false;
+            before_publish();
+            match matches_open_file(&output, &lock) {
+                Ok(true) => {}
+                Ok(false) => return Err(lock_changed("the lock name refers to a different file")),
+                Err(error) => return Err(lock_changed(error)),
+            }
+            if exists {
+                // This preserves the existing replacement behavior; concurrent
+                // changes to an existing destination are not serialized.
+                fs::rename(&lock, &destination).map_err(io_error)?;
+                lock_cleanup_pending = false;
+            } else if let Err(error) = publish(&output, &lock, &destination) {
+                if error.kind() == io::ErrorKind::AlreadyExists
+                    && matches!(matches_open_file(&output, &destination), Ok(false))
+                {
+                    return Err(ignore_file_changed());
+                }
+                return Err(publication_uncertain(error, false));
+            }
+            after_publish();
+            match matches_open_file(&output, &destination) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Err(publication_uncertain(
+                        "the published entry is not the staged ignore file",
+                        exists,
+                    ));
+                }
+                Err(error) => return Err(publication_uncertain(error, exists)),
+            }
+            if !exists {
+                // A hard link publishes atomically, but removing the source is
+                // a separate operation and must succeed before untracking.
+                lock_cleanup_pending = false;
+                remove_owned_lock(&output, &lock, &mut remove_lock)
+                    .map_err(published_lock_cleanup_failed)?;
+            }
             #[cfg(unix)]
             fs::File::open(path)
                 .and_then(|directory| directory.sync_all())
@@ -314,15 +635,14 @@ pub(super) fn update_with_hook(
         }
         Ok(())
     })();
-    // Once renamed, this pathname is available to another writer. It is no
-    // longer ours to remove, even if a subsequent Git operation fails.
-    if !lock_owned {
+    // After a rename or a cleanup attempt, another writer may own this name;
+    // never make a second removal attempt after a later failure.
+    if !lock_cleanup_pending {
         return result;
     }
-    match fs::remove_file(&lock) {
+    match remove_owned_lock(&output, &lock, &mut remove_lock) {
         Ok(()) => result,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => result,
-        Err(error) => result.and(Err(io_error(error))),
+        Err(error) => Err(lock_cleanup_failed(result, error)),
     }
 }
 

@@ -53,17 +53,27 @@ behavioral cases during the audit; grouping does not remove any listed action.
    unimplemented. Bulk fetch, pull and open report per-repository outcomes.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
-ignored files with bounded pages. It can create empty files in existing
-directories and open supported files. Tracked-file deletion is disabled on
+ignored files with bounded pages. Empty-file creation is currently limited to
+root-level paths on Windows; it is refused on other platforms and in
+subdirectories because the selected worktree and nested-repository boundaries
+cannot be protected against concurrent replacement. Supported files can be
+opened. Tracked-file deletion is disabled on
 non-Windows platforms: a confirmed Linux race lets Git's pathname-based `git
 rm` remove a file outside the worktree after concurrent parent replacement.
 Windows still stages deletion only for clean committed files without index
 flags that hide changes; it uses held parent handles, whose rename protection
-is covered by native Windows tests. Untracked files use the existing recoverable
-discard flow. A Linux real-Git regression now swaps the reviewed parent for a
-symlink immediately before reverse-apply and confirms Git refuses without
-removing the outside file; other platforms remain unqualified. Git
-metadata and nested repositories are excluded; ignored files have read-only
+is covered by native Windows tests. Linux discard now limits mutations to
+root-level entries and uses held worktree and recovery-directory descriptors
+with descriptor-relative renames; nested paths and non-Linux platforms refuse.
+The earlier Git `apply` implementation had a confirmed Linux parent-replacement
+race: a synchronized probe deleted an outside sentinel during both tracked and
+untracked discard. The current source adds a regression that replaces the
+reviewed root entry with links to an outside file or `.git/index` at the
+mutation boundary and verifies refusal and recovery. This source change still
+needs CI and packaged qualification; the earlier probe remains evidence about
+the superseded path-based implementation, not the current guarded path.
+
+Git metadata and nested repositories are excluded; ignored files have read-only
 previews and symbolic links cannot be opened. If Git fails after tracked
 deletion starts, the application reports that the file or index may already
 have changed and refreshes the repository and file list rather than offering an
@@ -84,13 +94,12 @@ separators. Existing root ignore rules are opened without following a final
 symbolic link or Windows reparse point, and Unix opens are nonblocking, so a
 swap to a link or FIFO after the initial check is refused before untracking.
 This does not qualify concurrent replacement of the worktree root or an
-uncooperative writer replacing the ignore file during publication. Paths that
+uncooperative writer replacing an existing ignore file during publication.
+Creating a new root `.gitignore` is currently supported only on Linux, where
+publication links the held staging file; other platforms refuse rather than
+linking a mutable lock pathname. Paths that
 cannot be inspected safely are reported instead of being
-presented as a complete listing. Linux file creation resolves the full path
-beneath the worktree in one no-symlink `openat2` operation; a regression
-test moves the checked parent outside the worktree during the operation and
-verifies that no file is created there. Other Unix creation paths have not been
-qualified against the same parent-move race. Native Windows tests cover
+presented as a complete listing. Native Windows tests cover
 guarded working-file previews, link and junction refusal, and concurrent writer
 and rename protection; reparse-point files are refused. Windows in-app
 working-file editing is still unsupported. The Linux tracked-deletion hazard
@@ -159,7 +168,7 @@ is outside the current work.
 | G04 | Filter/search loaded and full history by message, author, SHA, date, path and branch/ref scope | Audit full-history search, pagination and zero/many matches; discover remaining documented filters |
 | G05 | Hide/solo/filter refs and remotes; collapse reference groups and preserve these view choices | Audit combinations and inheritance into new worktrees |
 | G06 | Stage/unstage whole files, hunks and lines; represent renames, modes, binaries, new/deleted files and submodules | Audit index/worktree bytes against independent Git CLI fixtures |
-| G07 | Browse, create, delete and ignore files/patterns, edit tracked files, invoke configured editors and diff/merge tools | Partial: Repository files filters the full Git-visible path set in bounded pages; creates empty files in existing directories; opens supported files; disables tracked deletion on non-Windows platforms after a confirmed Linux parent-replacement race; and deletes untracked files through recoverable discard. A Linux real-Git regression confirms reverse-apply refuses a symlink-swapped parent after review; other platforms remain unqualified. Focused native Windows tests cover tracked deletion, held ancestor handles and working-file previews. Ignored previews are read-only; symbolic links and Windows reparse points cannot be opened; nested repositories/Git metadata are excluded. Windows in-app editing is unsupported. Extension and directory ignore scope has focused real-Git coverage; broader ignore-rule and Windows packaged UI qualification remain open. Debian package `1ce7f469980c33600572f8fec7e628a180e8184cfc750d5f59e28f6847befa46`, built from the `10c2866` source, passed package verification and all 229 headless native scenarios, including eight owned-window XTEST clicks. See the [recovery specification](specifications/editor-draft-recovery.md) and [external tool specification](specifications/external-file-tools.md) |
+| G07 | Browse, create, delete and ignore files/patterns, edit tracked files, invoke configured editors and diff/merge tools | Partial: Repository files filters the full Git-visible path set in bounded pages; creates empty files only at the worktree root on Windows; opens supported files; disables tracked deletion on non-Windows platforms after a confirmed Linux parent-replacement race; and uses capture-backed, descriptor-relative discard for Linux root-level files. Nested-path discard and discard on other platforms refuse. The current Linux source tests reject link substitution at the mutation boundary; CI and packaged qualification remain pending. Ignored previews are read-only; symbolic links and Windows reparse points cannot be opened; nested repositories/Git metadata are excluded. Windows in-app editing is unsupported. Extension and directory ignore scope has focused real-Git coverage; new root `.gitignore` creation is refused outside Linux; broader ignore-rule and Windows packaged UI qualification remain open. The Debian candidate associated with `4438e93d` predates these changes and does not qualify them. See the [recovery specification](specifications/editor-draft-recovery.md) and [external tool specification](specifications/external-file-tools.md) |
 | G08 | Compare revisions, contiguous commit selections and working trees; offer hunk/inline/split views, word changes, syntax colors, overview navigation, wrapping, whitespace and image/binary handling | Linux checkpoint: independent bounded byte/image previews and direct content entry pass all 1362 renderer cases and 377 native executions on corrected package `47e83c15899a`. SVG/local LFS previews, broader G08 behavior and other platforms remain open; see the [specification](specifications/non-text-diffs.md) |
 | G09 | Navigate file history/blame through renames and parent revisions; copy/reveal/open paths | Audit historical navigation, limits and deleted paths |
 | G10 | Create/amend commits, templates, coauthors, sign-off, empty commits and identity/author options | Audit exact commit metadata, hooks, templates and failure paths |
@@ -169,7 +178,7 @@ is outside the current work.
 | G14 | Merge, fast-forward, rebase and preview conflicts; continue/abort/skip where applicable | Audit topology, dirty-state handling, strategy options and preview/actual outcome equivalence |
 | G15 | Interactive rebase: reorder, squash/fixup, edit/split, drop and preserve merges/root/selected ranges | Audit every edit instruction and recovery state against Git behavior |
 | G16 | Cherry-pick/revert individual or selected commits, including merge-parent selection and conflicts | Audit sequencing, ranges, no-commit options and abort/recovery |
-| G17 | Reset/reflog/undo/redo/discard recovery with clear destructive scope | Audit each supported action, retained recovery bytes and restart behavior |
+| G17 | Reset/reflog/undo/redo/discard recovery with clear destructive scope | Partial: Linux root-level discard now uses descriptor-relative mutation and refuses nested paths; regression coverage checks link substitution at mutation. Requalify the new implementation in CI and a packaged build, then audit retained recovery bytes, restart behavior and other platforms |
 | G18 | Stash full/selected work, stage/index options, names, apply/pop/drop and branch from stash | Partial: selecting files to save and applying an individual reviewed stashed file while retaining the stash and index are implemented. Audit remaining index/worktree/untracked combinations and stale stash preconditions |
 | G19 | Create, inspect, delete, rename, move and transfer lightweight/annotated/signed tags; navigate to their commits or branch from them | Audit tag types, peeled targets and remote lease behavior |
 | G20 | Detect/resolve text, binary, rename/delete and submodule conflicts; configure external merge resolution | Audit all conflict types; identify missing resolution modes |
@@ -185,8 +194,7 @@ is outside the current work.
 
 ### Current source-tree audit
 
-This checkpoint concerns the source tree committed as `10c2866`. Earlier Debian
-candidate
+An earlier source-tree checkpoint concerned commit `10c2866`. Debian candidate
 `1b3c8b5274a25c56e5b52c6ff02bcc7780c209e8875b4be0beb705ef7eb4b180`
 passed package verification and the complete headless native suite: 228
 scenarios passed, including real checkpoint deletion, stale-review refusal,
@@ -222,9 +230,36 @@ deletion preconditions, links and junctions, bounded previews and live-writer
 refusal; they do not qualify the complete Windows application. A Linux probe
 confirmed outside-worktree tracked deletion through parent replacement;
 tracked deletion is now disabled outside Windows. A new Linux regression
-confirms reverse-apply refuses a symlink-swapped parent for untracked deletion.
+confirms reverse-apply refuses an untracked parent swapped before Git starts,
+but the later in-Git unlink probe described above confirms a remaining race.
 The same Actions run failed its Linux strict Clippy step on that regression's
 assertion; the subsequent test-only correction is verified locally.
+
+The later Debian candidate associated with commit
+`4438e93d15c18a18f6f6b5a7a6b3dd4df0857f96` has SHA-256
+`a43736a8008bb57ddee6351361009e4e9a83797c2cf3309172341592337a516a`.
+Its retained full native report records `passed: true`, 229 distinct scenario
+names and eight owned-window XTEST pointer deliveries on
+`Linux-7.0.0-42-generic-x86_64-with-glibc2.43` with Git 2.53.0; it did not
+use the inherited-Git-environment suite. The retained report is
+`files/native-4438e93d/full-1794158458131433925/report.json` in the session
+artifacts. Independent hashes of the `.deb` and its embedded executable
+`3f4d5a293f4ea7f117c9a992a6bb37aa0d76043ca9e1c1ecb08ab6ad9191f1a9`
+match the report. The completed build receipt also matches the package digest
+and records a source-input checksum, but neither it nor the report embeds the
+Git commit ID; commit attribution comes from the session build checkpoint.
+These results do not qualify later source changes, installation, other platforms,
+or the later Linux descriptor-guarded discard implementation.
+
+A read-only snapshot at approximately 17:54 UTC on 2026-11-08 of
+[GitHub run 42504326903](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42504326903)
+showed that it targeted `4438e93d`: its focused Windows source-test job and
+Linux source-verification step had passed, renderer acceptance was running, and
+the dependent packaged-native job had not yet appeared. The overall run had
+no conclusion at that snapshot. At that commit the Windows ignore selectors
+shared one PowerShell step, whose success alone does not prove each selector
+passed. The workflow cancels an earlier run on the same ref, so a subsequent
+run must wait until this one finishes.
 
 | ID | Exercised cases | Remaining qualification or known gap |
 | --- | --- | --- |
@@ -234,7 +269,7 @@ assertion; the subsequent test-only correction is verified locally.
 | G04 | Full-history search filters, pagination, literal paths and renamed history | Every UI filter combination and large-repository performance |
 | G05 | Reference-type filtering, remote hide/solo and checkpoint visibility with a similarly named hidden branch | Other hidden/solo combinations and persisted worktree preferences |
 | G06 | File, hunk and line staging/unstaging, new files, sparse paths and literal names | The complete rename, binary, mode and submodule matrix in the UI |
-| G07 | Paged file search, safe creation, tracked-deletion refusal on Linux, recoverable untracked deletion and ignored read-only previews; native Windows tests for tracked deletion, parent handles and bounded previews | Tracked deletion is disabled on non-Windows platforms after the confirmed Linux parent-replacement hazard. Linux creation refuses the tested parent-move race; other Unix creation paths are not similarly qualified. Linux reverse-apply refuses the tested symlink-swapped untracked parent; other-platform runtime qualification remains open. The Debian package passed all 229 native scenarios; the full Windows UI remains unqualified and editing is unsupported |
+| G07 | Paged file search, platform-limited creation, tracked-deletion refusal on Linux, capture-backed untracked deletion and ignored read-only previews; native Windows tests for tracked deletion, parent handles and bounded previews | Tracked deletion is disabled on non-Windows platforms after the confirmed Linux parent-replacement hazard. Creation is limited to Windows root-level files, and new `.gitignore` creation to Linux. An earlier in-Git unlink probe confirmed outside-file deletion in the superseded Git-based discard path. Current Linux source uses held directory descriptors and descriptor-relative root-level mutation, with tests for substituted links at the mutation boundary; new source and packaged qualification remain pending. Nested discard paths and other platforms refuse; the full Windows UI remains unqualified and editing is unsupported |
 | G08 | Revision/index/worktree byte comparisons, absent content, links, binary previews and external-tool snapshots | All visual diff modes, SVG/LFS preview cases and other platforms |
 | G09 | File history, bounded blame, Unicode/literal paths and rename-aware search | Deleted-path navigation and the complete renderer workflow |
 | G10 | Commit identity, amend, sign-off, empty-commit policy, templates and hook refusals | Complete metadata and hook combinations through the packaged UI |
@@ -244,7 +279,7 @@ assertion; the subsequent test-only correction is verified locally.
 | G14 | Read-only merge previews, fast-forward, conflicts and pull merge/rebase strategies | Complete preview-versus-actual outcome and recovery matrix |
 | G15 | Rebase edit, fixup, split, merge-preserving review and stale-state refusals | Every instruction, root/merge topology and recovery combination |
 | G16 | Ordered revert, cherry-pick/revert mainline selection, no-commit replay and conflict recovery | Full renderer and platform coverage for multi-step failures |
-| G17 | Reset/recovery preconditions, retained discard bytes, restart recovery, recovery-record failures, missing-versus-inaccessible captures and stale-toolbar ownership | Every filesystem failure/restart combination and other platforms |
+| G17 | Reset/recovery preconditions, retained discard bytes, restart recovery, recovery-record failures, missing-versus-inaccessible captures and stale-toolbar ownership | Requalify the new Linux root-level descriptor-relative mutation; other filesystem failure/restart combinations and other platforms |
 | G18 | Selected stash creation, individual-file restoration, stale-state refusals and index/worktree preservation | All untracked, staged, rename and pop/branch combinations |
 | G19 | Lightweight/annotated tag creation, exact names and selected remote transfer/deletion leases | Signed tags and all remote/peeled-target combinations |
 | G20 | Text/binary/rename previews, gitlink selection and reviewed external merge output | Complete conflict-resolution modes and platform-specific tools |
@@ -301,10 +336,47 @@ implemented in-app capability.
 | U02 | Support documented drag/drop Git workflows with equivalent explicit previews and keyboard alternatives | Audit graph drag operations; enumerate any missing actions |
 | U03 | Preserve original identity while supporting themes, scaling, compact layouts, accessibility and large data | Audit all layouts and platforms; fallback-font layout and rapid rebase input fixes passed 1251 local renderer cases and 306 native scenario executions on package `05c1a4c1cd85`; remote verification remains pending |
 | U04 | Persist preferences/drafts/view state and restore context across restarts without replaying mutations | Partial: Linux editor draft recovery survives owned crash/relaunch, with inert review and explicit load/save/discard on the final package. Preferences, multiple workspaces and broader session restoration still require audit |
-| U05 | Provide native Linux, Windows and macOS behavior plus documented Windows/WSL interoperability | Linux is qualified for prior exact artifacts; focused Windows file tests pass, but complete Windows/macOS/WSL application qualification remains open |
+| U05 | Provide native Linux, Windows and macOS behavior plus documented Windows/WSL interoperability | The exact Linux candidate above passed the full headless native suite. Focused Windows file tests pass, but complete Windows/macOS/WSL application qualification remains open; Windows in-app working-file editing is unsupported |
 | U06 | Package/install/update/uninstall with accurate licenses, notices and dependency provenance | Audit current package bytes, supported formats and platforms |
-| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | Latest local Linux checkpoint: all 1,473 renderer cases passed in complete, disjoint partitions with no retries. Exact corrected package `38f876a06ff6` passed 216 normal and 217 inherited-environment native scenarios plus 30 GitLab scenarios (463 total executions, 237 distinct) and viewport checks. The recovery click harness correction also passes against the original failed CI package and fresh full/environment runs. The [GitLab clone specification](specifications/gitlab-reviewed-clone.md) records source/artifact association and retained failed attempts. New-head remote CI and other platforms remain unverified |
+| U07 | Verify local Git outputs, native IPC/PTY behavior, full renderer suite and exact distributable artifacts | The `4438e93d` Linux candidate passed its full local native suite, as detailed above. Separate inherited-environment, GitLab catalogue and performance reports for that artifact, completed remote CI, later source changes, and other platforms remain unverified. An earlier checkpoint passed 1,473 renderer cases and package `38f876a06ff6` passed 216 normal and 217 inherited-environment native scenarios, plus 30 GitLab scenarios (463 executions, 237 distinct); these are historical, not evidence for the later candidate. See the [GitLab clone specification](specifications/gitlab-reviewed-clone.md) for the retained attempts |
 | U08 | Handle cancellation, stale state, partial results and uncertain remote writes without reporting false success | Audit every new operation; extend failure fixtures with each implementation |
+
+### Remaining platform and release gates
+
+- **Linux:** After the active run finishes and the final source is integrated,
+  run the existing full workflow for the final commit if it differs or requires
+  requalification, and retain its package and reports. Re-run the synchronized
+  parent-replacement regression against the descriptor-relative root-level
+  discard implementation and independently verify outside-file and index
+  preservation. The separate
+  `desktop:native-environment`, `desktop:native-performance` and packaged
+  GitLab catalogue suites provide additional evidence; the local full report
+  above is not a result for those suites. Test installation, desktop
+  registration, upgrades and removal separately on the supported distribution
+  baselines.
+- **Windows:** The existing `windows-latest` job exercises selected Git-core
+  tests, not the desktop application or an installer. A feasible first gate is
+  the repository's whole desktop build on that runner:
+  `pnpm exec tauri build --no-bundle --config apps/desktop/src-tauri/tauri.conf.json`.
+  Follow it with packaged-app and installer qualification using an actual
+  Windows desktop and native UI/IPC, terminal, file/recovery, cancellation and
+  restart journeys. The Linux Debian/WebKitGTK harness cannot run unchanged
+  there. Implement and qualify working-file editing and test WSL
+  interoperability separately before claiming those capabilities.
+- **macOS:** The current workflow has no macOS job. Provision a macOS runner,
+  run platform-specific source tests and a whole desktop build, then qualify
+  a packaged application and its native UI/IPC, terminal, file safety,
+  recovery, installation and restart behavior on supported macOS versions and
+  architectures. Other Unix file creation is not qualified against Linux's
+  tested parent-move race. The current Tauri pre-bundle command prepares
+  Linux-oriented assets unconditionally, so its suitability for a macOS bundle
+  must be established rather than assumed. Signing and notarization need their
+  own evidence when required by the chosen distribution policy.
+
+Record the final source revision, clean-source state, platform and exact
+artifact hashes alongside each report. Focused source tests, cross-compilation
+or a Linux extracted-package run are not substitutes for installed native
+application qualification.
 
 ## Public discovery references
 

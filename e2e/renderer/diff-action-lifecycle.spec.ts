@@ -296,25 +296,33 @@ for (const failure of [null, 'IPC disconnected']) {
   });
 }
 
-test('definite ignore refusal retains the original diff if refresh fails', async ({ page }) => {
-  await prepare(page);
-  const result = await page.evaluate(async () => {
-    const state = (window as any).__diffAction;
-    state.ignoreFailure = {
-      kind: 'trackedFileRequiresUntracking',
-      message: 'Git cannot ignore a file that is still tracked.',
-      hint: 'Choose Ignore and stop tracking instead.',
-    };
-    state.refreshFailure = { message: 'Snapshot unavailable.' };
-    const expected = state.git.workingTreeFileDiff();
-    await state.git.ignorePath('file.txt', 'file', false);
-    return { error: state.git.error(), expected, actual: state.git.workingTreeFileDiff() };
+for (const failure of [
+  { kind: 'trackedFileRequiresUntracking', message: 'Git cannot ignore a file that is still tracked.',
+    hint: 'Choose Ignore and stop tracking instead.' },
+  { kind: 'ignoreFileChanged', message: 'A .gitignore file appeared before the rule could be published.',
+    hint: 'Review the existing .gitignore before retrying.' },
+  { kind: 'ignoreLockUnavailable', message: 'The .gitignore lock already exists.',
+    hint: 'Wait for the other writer or inspect .gitignore.lock before retrying.' },
+  { kind: 'unsupportedPlatform', message: 'Ignore rules cannot be published safely on this platform.',
+    hint: 'Edit .gitignore manually instead.' },
+]) {
+  test(`definite ${failure.kind} ignore refusal retains the original diff if refresh fails`, async ({ page }) => {
+    await prepare(page);
+    const result = await page.evaluate(async failure => {
+      const state = (window as any).__diffAction;
+      state.ignoreFailure = failure;
+      state.refreshFailure = { message: 'Snapshot unavailable.' };
+      const expected = state.git.workingTreeFileDiff();
+      await state.git.ignorePath('file.txt', 'file', false);
+      return { error: state.git.error(), expected, actual: state.git.workingTreeFileDiff() };
+    }, failure);
+    expect(result.error).toContain(failure.message);
+    expect(result.error).toContain(failure.hint);
+    expect(result.error).toContain('Repository refresh also failed: Snapshot unavailable');
+    expect(result.error).not.toContain('may have changed');
+    expect(result.actual).toEqual(result.expected);
   });
-  expect(result.error).toContain('Git cannot ignore a file that is still tracked');
-  expect(result.error).toContain('Repository refresh also failed: Snapshot unavailable');
-  expect(result.error).not.toContain('may have changed');
-  expect(result.actual).toEqual(result.expected);
-});
+}
 
 for (const failure of [
   { kind: 'ignoreRuleSyncFailed', message: 'The ignore rule was added, but persistence could not be confirmed.',
@@ -327,6 +335,15 @@ for (const failure of [
     hint: 'Inspect .gitignore and the index before retrying.' },
   { kind: 'ignoreRuleRefreshFailed', message: 'The ignore operation completed, but the repository view could not be refreshed.',
     hint: 'Refresh and inspect .gitignore and the index before retrying.' },
+  { kind: 'ignoreRulePublicationUncertain', message: 'Could not confirm safe publication of the ignore rule.',
+    hint: 'No overwrite fallback was attempted and the index was not changed. Check hard-link support and, on Linux, /proc/self/fd; inspect .gitignore and .gitignore.lock before retrying.' },
+  { kind: 'ignoreRuleLockCleanupFailed', message: 'The ignore rule was published, but its .gitignore.lock could not be safely removed.',
+    hint: 'The index was not changed. Inspect .gitignore and its lock before retrying.' },
+  { kind: 'ignoreLockChanged', message: 'Could not confirm ownership of .gitignore.lock before publication.',
+    hint: 'This operation did not publish the rule or change the index. Inspect .gitignore, the lock, and any moved staging file before retrying.' },
+  { kind: 'ignoreLockCleanupFailed',
+    message: 'A .gitignore file appeared before the rule could be published. The .gitignore.lock could not be safely removed.',
+    hint: 'Review the existing .gitignore. Inspect .gitignore, .gitignore.lock, and the index before retrying.' },
 ]) {
   test(`ignore preserves specific ${failure.kind} details`, async ({ page }) => {
     await prepare(page);

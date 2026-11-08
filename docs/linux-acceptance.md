@@ -469,14 +469,60 @@ Xvfb/application window. The report records the same package SHA-256. A later
 test-only Clippy correction changes a package receipt input without changing
 production code.
 
+The later local Debian candidate associated with commit
+`4438e93d15c18a18f6f6b5a7a6b3dd4df0857f96` has SHA-256
+`a43736a8008bb57ddee6351361009e4e9a83797c2cf3309172341592337a516a`.
+Its full headless report records `passed: true`, 229 distinct scenario names and
+eight owned-window XTEST pointer deliveries on
+`Linux-7.0.0-42-generic-x86_64-with-glibc2.43`, using Git 2.53.0. The report
+sets `inheritedGitEnvironment: false`. Its retained location is
+`files/native-4438e93d/full-1794158458131433925/report.json` in the session
+artifacts, not a repository or CI artifact. At this review the retained `.deb`
+was independently hashed and matches the report and completed Task receipt.
+The packaged `usr/bin/git-khronos` bytes also match the report's executable SHA-256
+`3f4d5a293f4ea7f117c9a992a6bb37aa0d76043ca9e1c1ecb08ab6ad9191f1a9`.
+The session build checkpoint associates the package with the commit; the report
+and receipt themselves contain no Git commit ID. The receipt records an input
+checksum, not a source-revision attestation. This evidence does not qualify
+later source changes or substitute for the separate inherited-environment,
+GitLab catalogue and performance suites. It does not qualify the later
+descriptor-guarded discard implementation described below.
+
+At approximately 17:54 UTC on 2026-11-08, the read-only snapshot of
+[GitHub run 42504326903](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42504326903)
+for that commit showed the focused Windows source-test job and the Linux
+source-verification step passed. Renderer acceptance was still running; the
+dependent packaged-native job had not yet appeared, and the overall run had no
+conclusion. These are historical observations, not a completed CI result.
+At this commit the Windows ignore selectors shared one PowerShell step, so the
+step's success alone does not establish that each selector succeeded.
+At this review `nx.json` had neither `nxCloudId` nor `nxCloudAccessToken`;
+Nx Cloud monitoring was unavailable.
+Because the workflow cancels an earlier run on the same ref, wait for that run
+to finish before dispatching another. A new run for a later final commit must
+retain its own package, report and source identity.
+
 A disposable Linux real-Git probe confirmed that replacing a parent directory
 can redirect tracked deletion outside the worktree. Tracked deletion is now
 refused on non-Windows platforms. Focused native Windows CI tests cover
 ancestor-handle rename protection, tracked deletion and working-file previews;
-the complete Windows application remains unqualified. A real-Git regression
-swaps an untracked file's reviewed parent for a symlink immediately before
-reverse-apply and confirms the outside file and index are preserved;
-other-platform qualification remains open. See the capability audit.
+the complete Windows application remains unqualified. An earlier real-Git
+regression swaps an untracked file's reviewed parent for a symlink before Git
+starts reverse-apply and confirms refusal with the outside file and index
+preserved. That timing is not sufficient to qualify discard safety. In a
+separate disposable Linux/Git 2.53.0 probe, `strace` delayed Git after reading
+the file and immediately before the reverse-apply unlink; the reviewed parent
+was then replaced by a symlink to an outside directory. The untracked-discard
+case deleted an outside sentinel and Git exited 0; the tracked-discard case
+also deleted the outside sentinel and Git exited 128. This is a confirmed race
+in the then-current Git `apply` implementation, not a safe outcome. The current
+Linux source replaces that mutation path for root-level entries with held
+worktree/recovery descriptors and descriptor-relative renames, refuses nested
+paths and refuses discard on other platforms. Source regression tests
+substitute links at the mutation boundary and check the outside file and index.
+The new source is not qualified until final CI and packaged acceptance; the
+probe above remains historical evidence for the superseded implementation.
+See the capability audit.
 
 Tracked and untracked working-directory comparisons likewise preserve raw text
 and binary previews without executing converters. Large comparison previews are

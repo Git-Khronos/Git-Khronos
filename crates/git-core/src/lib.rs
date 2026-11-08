@@ -12898,6 +12898,8 @@ mod tests {
     #[test]
     fn ignore_extension_untracks_only_the_selected_file_and_preserves_other_changes() {
         let repository = TestRepository::new();
+        #[cfg(windows)]
+        fs::write(repository.path.join(".gitignore"), b"").unwrap();
         fs::create_dir(repository.path.join("nested")).unwrap();
         repository.write("nested/selected.[x]", "selected base\n");
         repository.write("nested/tracked.[x]", "tracked base\n");
@@ -13007,6 +13009,8 @@ mod tests {
     #[test]
     fn ignore_directory_untracks_only_the_selected_file_and_preserves_other_changes() {
         let repository = TestRepository::new();
+        #[cfg(windows)]
+        fs::write(repository.path.join(".gitignore"), b"").unwrap();
         fs::create_dir_all(repository.path.join("folder/nested")).unwrap();
         repository.write("folder/selected.log", "selected base\n");
         repository.write("folder/tracked.log", "tracked base\n");
@@ -13311,6 +13315,633 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_refuses_new_ignore_file_created_before_publication() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
+
+        for create_link in [false, true] {
+            let repository = TestRepository::new();
+            repository.write("secret.log", "committed\n");
+            repository.git(&["add", "secret.log"]);
+            repository.git(&["commit", "-m", "Tracked file"]);
+            repository.write("secret.log", "local edit\n");
+            let index = fs::read(repository.path.join(".git/index")).unwrap();
+            let ignore = repository.path.join(".gitignore");
+            let outside_repository = TestRepository::new();
+            let outside = outside_repository.path.join("outside-ignore");
+            fs::write(&outside, b"# outside rules\n").unwrap();
+
+            let error = ignore_rules::update_with_hooks(
+                &repository.path,
+                "/secret.log",
+                "secret.log",
+                true,
+                || {},
+                || {
+                    if create_link {
+                        symlink_file(&outside, &ignore).unwrap();
+                    } else {
+                        fs::write(&ignore, b"# concurrent rules\n").unwrap();
+                    }
+                },
+            )
+            .expect_err("a concurrently created ignore file must not be replaced");
+
+            assert_eq!(error.kind, "ignoreFileChanged");
+            if create_link {
+                assert!(fs::symlink_metadata(&ignore).unwrap().is_symlink());
+            } else {
+                assert_eq!(fs::read(&ignore).unwrap(), b"# concurrent rules\n");
+            }
+            assert_eq!(fs::read(&outside).unwrap(), b"# outside rules\n");
+            assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+            assert_eq!(
+                fs::read(repository.path.join("secret.log")).unwrap(),
+                b"local edit\n"
+            );
+            assert!(!repository.path.join(".gitignore.lock").exists());
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn ignore_no_replace_refuses_entries_created_at_the_publication_call() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
+
+        for entry in ["file", "symlink", "dangling symlink", "directory"] {
+            let repository = TestRepository::new();
+            repository.write("secret.log", "committed\n");
+            repository.git(&["add", "secret.log"]);
+            repository.git(&["commit", "-m", "Tracked file"]);
+            repository.write("secret.log", "local edit\n");
+            let index = fs::read(repository.path.join(".git/index")).unwrap();
+            let ignore = repository.path.join(".gitignore");
+            let outside_repository = TestRepository::new();
+            let outside = outside_repository.path.join("outside-ignore");
+            let missing = outside_repository.path.join("missing-ignore");
+            fs::write(&outside, b"# outside rules\n").unwrap();
+
+            let error = ignore_rules::update_with_publication_hook(
+                &repository.path,
+                "/secret.log",
+                "secret.log",
+                true,
+                |staging, lock, destination| {
+                    match entry {
+                        "file" => fs::write(destination, b"# concurrent rules\n").unwrap(),
+                        "symlink" => symlink_file(&outside, destination).unwrap(),
+                        "dangling symlink" => symlink_file(&missing, destination).unwrap(),
+                        "directory" => fs::create_dir(destination).unwrap(),
+                        _ => unreachable!(),
+                    }
+                    ignore_rules::publish_new_ignore(staging, lock, destination)
+                },
+            )
+            .unwrap_err();
+
+            if cfg!(windows) && entry == "directory" {
+                assert!(
+                    matches!(
+                        error.kind.as_str(),
+                        "ignoreFileChanged" | "ignoreRulePublicationUncertain"
+                    ),
+                    "{entry}: {error:?}"
+                );
+            } else {
+                assert_eq!(error.kind, "ignoreFileChanged", "{entry}");
+            }
+            match entry {
+                "file" => assert_eq!(fs::read(&ignore).unwrap(), b"# concurrent rules\n"),
+                "symlink" | "dangling symlink" => {
+                    assert!(fs::symlink_metadata(&ignore).unwrap().is_symlink());
+                }
+                "directory" => assert!(ignore.is_dir()),
+                _ => unreachable!(),
+            }
+            assert_eq!(fs::read(&outside).unwrap(), b"# outside rules\n");
+            assert!(!missing.exists());
+            assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+            assert_eq!(
+                fs::read(repository.path.join("secret.log")).unwrap(),
+                b"local edit\n"
+            );
+            assert!(!repository.path.join(".gitignore.lock").exists());
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn ignore_new_publication_uses_the_open_staging_file_not_a_replaced_lock_name() {
+        use std::io::Write;
+
+        for keep_original_link in [false, true] {
+            let repository = TestRepository::new();
+            let lock = repository.path.join(".gitignore.lock");
+            let saved = repository.path.join(".git/saved-ignore-lock");
+            let destination = repository.path.join(".gitignore");
+            let mut staging = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+                .unwrap();
+            staging.write_all(b"/secret.log\n").unwrap();
+            if keep_original_link {
+                fs::rename(&lock, &saved).unwrap();
+            } else {
+                fs::remove_file(&lock).unwrap();
+            }
+            fs::write(&lock, b"# another writer\n").unwrap();
+
+            let result = ignore_rules::publish_new_ignore(&staging, &lock, &destination);
+            if keep_original_link {
+                result.unwrap();
+                assert_eq!(fs::read(&destination).unwrap(), b"/secret.log\n");
+                assert_eq!(fs::read(&saved).unwrap(), b"/secret.log\n");
+            } else {
+                assert!(result.is_err());
+                assert!(!destination.exists());
+            }
+            assert_eq!(fs::read(&lock).unwrap(), b"# another writer\n");
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn ignore_reports_lock_replacement_during_new_rule_publication() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let ignore = repository.path.join(".gitignore");
+        let lock = repository.path.join(".gitignore.lock");
+        let saved = repository.path.join(".git/saved-ignore-lock");
+
+        let error = ignore_rules::update_with_publication_hook(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            |staging, source, destination| {
+                fs::rename(source, &saved).unwrap();
+                fs::write(source, b"# another writer\n").unwrap();
+                ignore_rules::publish_new_ignore(staging, source, destination)
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRuleLockCleanupFailed");
+        assert_eq!(fs::read(&ignore).unwrap(), b"/secret.log\n");
+        assert_eq!(fs::read(&saved).unwrap(), b"/secret.log\n");
+        assert_eq!(fs::read(&lock).unwrap(), b"# another writer\n");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(all(not(target_os = "linux"), any(unix, windows)))]
+    fn ignore_refuses_to_create_a_new_ignore_file_when_handle_publication_is_unavailable() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error =
+            ignore_rules::update(&repository.path, "/secret.log", "secret.log", true).unwrap_err();
+
+        assert_eq!(error.kind, "unsupportedPlatform");
+        assert!(error.message.contains("cannot be published safely"));
+        assert!(!repository.path.join(".gitignore").exists());
+        assert!(!repository.path.join(".gitignore.lock").exists());
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_reports_a_replaced_lock_before_publication_without_removing_it() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
+
+        for existing in [false, true] {
+            for replacement in ["file", "symlink", "directory"] {
+                let repository = TestRepository::new();
+                repository.write("secret.log", "committed\n");
+                repository.git(&["add", "secret.log"]);
+                repository.git(&["commit", "-m", "Tracked file"]);
+                repository.write("secret.log", "local edit\n");
+                let ignore = repository.path.join(".gitignore");
+                let lock = repository.path.join(".gitignore.lock");
+                let saved = repository.path.join(".git/saved-ignore-lock");
+                let outside_repository = TestRepository::new();
+                let outside = outside_repository.path.join("outside-lock");
+                fs::write(&outside, b"# outside lock\n").unwrap();
+                if existing {
+                    fs::write(&ignore, b"# original rules\n").unwrap();
+                }
+                let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+                let error = ignore_rules::update_with_hooks(
+                    &repository.path,
+                    "/secret.log",
+                    "secret.log",
+                    true,
+                    || {},
+                    || {
+                        fs::rename(&lock, &saved).unwrap();
+                        match replacement {
+                            "file" => fs::write(&lock, b"# another writer\n").unwrap(),
+                            "symlink" => symlink_file(&outside, &lock).unwrap(),
+                            "directory" => fs::create_dir(&lock).unwrap(),
+                            _ => unreachable!(),
+                        }
+                    },
+                )
+                .unwrap_err();
+
+                assert_eq!(error.kind, "ignoreLockCleanupFailed");
+                assert!(error.message.contains("ownership"));
+                assert!(error.message.contains("could not be safely removed"));
+                if existing {
+                    assert_eq!(fs::read(&ignore).unwrap(), b"# original rules\n");
+                    assert_eq!(
+                        fs::read(&saved).unwrap(),
+                        b"# original rules\n/secret.log\n"
+                    );
+                } else {
+                    assert!(!ignore.exists());
+                    assert_eq!(fs::read(&saved).unwrap(), b"/secret.log\n");
+                }
+                match replacement {
+                    "file" => assert_eq!(fs::read(&lock).unwrap(), b"# another writer\n"),
+                    "symlink" => assert!(fs::symlink_metadata(&lock).unwrap().is_symlink()),
+                    "directory" => assert!(lock.is_dir()),
+                    _ => unreachable!(),
+                }
+                assert_eq!(fs::read(&outside).unwrap(), b"# outside lock\n");
+                assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+                assert_eq!(
+                    fs::read(repository.path.join("secret.log")).unwrap(),
+                    b"local edit\n"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_treats_an_existing_link_to_its_staging_file_as_uncertain() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let ignore = repository.path.join(".gitignore");
+        let lock = repository.path.join(".gitignore.lock");
+
+        let error = ignore_rules::update_with_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            || {},
+            || fs::hard_link(&lock, &ignore).unwrap(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRulePublicationUncertain");
+        assert!(error.hint.unwrap().contains("index was not changed"));
+        assert_eq!(fs::read(&ignore).unwrap(), b"/secret.log\n");
+        assert!(!lock.exists());
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_never_falls_back_to_replacing_after_uncertain_publication() {
+        for link_before_error in [false, true] {
+            let repository = TestRepository::new();
+            repository.write("secret.log", "committed\n");
+            repository.git(&["add", "secret.log"]);
+            repository.git(&["commit", "-m", "Tracked file"]);
+            repository.write("secret.log", "local edit\n");
+            let index = fs::read(repository.path.join(".git/index")).unwrap();
+            let ignore = repository.path.join(".gitignore");
+            let lock = repository.path.join(".gitignore.lock");
+
+            let error = ignore_rules::update_with_publication_hook(
+                &repository.path,
+                "/secret.log",
+                "secret.log",
+                true,
+                |_, source, destination| {
+                    if link_before_error {
+                        fs::hard_link(source, destination).unwrap();
+                    }
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "injected no-replace publication failure",
+                    ))
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(error.kind, "ignoreRulePublicationUncertain");
+            assert!(error.hint.unwrap().contains("No overwrite fallback"));
+            if link_before_error {
+                assert_eq!(fs::read(&ignore).unwrap(), b"/secret.log\n");
+            } else {
+                assert!(!ignore.exists());
+            }
+            assert!(!lock.exists());
+            assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+            assert_eq!(
+                fs::read(repository.path.join("secret.log")).unwrap(),
+                b"local edit\n"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_reports_a_changed_destination_after_new_rule_publication() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let ignore = repository.path.join(".gitignore");
+        let saved = repository.path.join(".git/published-ignore");
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || {},
+                || {
+                    fs::rename(&ignore, &saved).unwrap();
+                    fs::write(&ignore, b"# another writer\n").unwrap();
+                },
+                |path| fs::remove_file(path),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRulePublicationUncertain");
+        assert!(error.message.contains("not the staged ignore file"));
+        assert_eq!(fs::read(&ignore).unwrap(), b"# another writer\n");
+        assert_eq!(fs::read(&saved).unwrap(), b"/secret.log\n");
+        assert!(!repository.path.join(".gitignore.lock").exists());
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_reports_new_rule_when_its_publication_lock_cannot_be_removed() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || {},
+                || {},
+                |_| Err(std::io::Error::other("injected removal failure")),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRuleLockCleanupFailed");
+        assert!(error.message.contains("published"));
+        assert!(error.message.contains("injected removal failure"));
+        assert!(error.hint.unwrap().contains("index was not changed"));
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/secret.log\n"
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore.lock")).unwrap(),
+            b"/secret.log\n"
+        );
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_reports_the_original_refusal_when_lock_cleanup_also_fails() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let ignore = repository.path.join(".gitignore");
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || fs::write(&ignore, b"# concurrent rules\n").unwrap(),
+                || {},
+                |_| Err(std::io::Error::other("injected removal failure")),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreLockCleanupFailed");
+        assert!(error.message.contains("appeared before the rule"));
+        assert!(error.message.contains("injected removal failure"));
+        assert!(error.hint.unwrap().contains(".gitignore.lock"));
+        assert_eq!(fs::read(&ignore).unwrap(), b"# concurrent rules\n");
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore.lock")).unwrap(),
+            b"/secret.log\n"
+        );
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_reports_completed_untracking_when_lock_cleanup_fails() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        repository.write(".gitignore", "/secret.log\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || {},
+                || {},
+                |_| Err(std::io::Error::other("injected removal failure")),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreLockCleanupFailed");
+        assert!(error.message.contains("operation completed"));
+        assert!(error.hint.unwrap().contains("index"));
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/secret.log\n"
+        );
+        assert!(repository.path.join(".gitignore.lock").exists());
+        assert_ne!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert!(
+            run_git(&repository.path, &["ls-files", "-z"])
+                .unwrap()
+                .stdout
+                .is_empty()
+        );
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_preserves_a_replaced_lock_after_new_rule_publication() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let lock = repository.path.join(".gitignore.lock");
+        let saved = repository.path.join(".git/saved-ignore-lock");
+
+        let error = ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || {},
+                || {
+                    fs::rename(&lock, &saved).unwrap();
+                    fs::write(&lock, b"# another writer\n").unwrap();
+                },
+                |path| fs::remove_file(path),
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, "ignoreRuleLockCleanupFailed");
+        assert!(error.hint.unwrap().contains("index was not changed"));
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"/secret.log\n"
+        );
+        assert_eq!(fs::read(&saved).unwrap(), b"/secret.log\n");
+        assert_eq!(fs::read(&lock).unwrap(), b"# another writer\n");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_does_not_remove_a_new_lock_after_existing_file_publication() {
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        repository.write(".gitignore", "# original rules\n");
+        let lock = repository.path.join(".gitignore.lock");
+
+        ignore_rules::update_with_test_hooks(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            (
+                || {},
+                || {},
+                || fs::write(&lock, b"# another writer\n").unwrap(),
+                |path| fs::remove_file(path),
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read(repository.path.join(".gitignore")).unwrap(),
+            b"# original rules\n/secret.log\n"
+        );
+        assert_eq!(fs::read(&lock).unwrap(), b"# another writer\n");
+        assert!(
+            run_git(&repository.path, &["ls-files", "-z"])
+                .unwrap()
+                .stdout
+                .is_empty()
+        );
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn ignore_refuses_ignore_file_swapped_to_fifo_without_blocking() {
         use std::os::unix::fs::FileTypeExt;
@@ -13399,7 +14030,8 @@ mod tests {
         repository.write(".gitignore", "# existing\n");
         repository.write(".gitignore.lock", "another writer\n");
         let index = fs::read(repository.path.join(".git/index")).unwrap();
-        assert!(ignore_path(&repository.path, "secret.log", "file", true).is_err());
+        let error = ignore_path(&repository.path, "secret.log", "file", true).unwrap_err();
+        assert_eq!(error.kind, "ignoreLockUnavailable");
         assert_eq!(
             fs::read(repository.path.join(".gitignore")).unwrap(),
             b"# existing\n"

@@ -57,6 +57,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
         <p>Browse repository files, including ignored files. Git metadata, nested repositories and symbolic-link targets are excluded. Deleting ignored files is disabled because they are not covered by Git recovery. Tracked deletion requires a clean committed file without index flags that hide changes.</p>
         @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
         @if (fileNotice()) { <p role="status">{{ fileNotice() }}</p> }
+        <p>Creating files is currently limited to root-level paths on Windows; other platforms and subdirectories are refused for safety.</p>
         <div class="tools file-tools">
           <label>Filter files<input type="search" [value]="fileQuery()" (input)="changeFileQuery($any($event.target).value)" /></label>
           <form (submit)="$event.preventDefault(); createFile()">

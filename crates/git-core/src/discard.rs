@@ -1,4 +1,5 @@
 use super::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -6,6 +7,28 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_RECOVERY_PATHS: usize = 50;
 const MAX_RECOVERY_PATH_REPORT_BYTES: usize = 1024 * 1024;
 const MAX_RECOVERY_PATCH_INSPECTION_BYTES: u64 = 64 * 1024 * 1024;
+const GUARDED_CAPTURE_PREFIX: &str = "# git-khronos-guard-v1 ";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum GuardedFile {
+    Missing,
+    Regular { data: String, mode: u32 },
+    Symlink { target: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct GuardedChange {
+    path: String,
+    before: GuardedFile,
+    after: GuardedFile,
+}
+
+#[cfg(target_os = "linux")]
+struct DiscardBoundary {
+    root: fs::File,
+    git_directory: fs::File,
+}
 
 #[derive(Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +45,8 @@ pub struct DiscardPlan {
     mutation_patch: Vec<u8>,
     index: Vec<u8>,
     selection_preview: Option<(String, String)>,
+    #[cfg(target_os = "linux")]
+    boundary: DiscardBoundary,
 }
 
 #[derive(Clone, Serialize, specta::Type)]
@@ -95,6 +120,584 @@ pub(super) fn safe_file(path: &Path, file: &str) -> bool {
     !fs::symlink_metadata(path.join(file)).is_ok_and(|metadata| metadata.is_dir())
 }
 
+fn unsafe_discard(message: &str) -> AppError {
+    AppError::new(
+        "repositoryFileRefused",
+        message,
+        Some(
+            "No working files were changed. Preserve any recovery captures and use a trusted Git tool if necessary.",
+        ),
+    )
+}
+
+fn guarded_leaf(file: &str) -> bool {
+    let mut parts = Path::new(file).components();
+    matches!(parts.next(), Some(Component::Normal(_)))
+        && parts.next().is_none()
+        && !file.eq_ignore_ascii_case(".git")
+        && !file.contains('\0')
+}
+
+#[cfg(target_os = "linux")]
+impl DiscardBoundary {
+    fn open(path: &Path) -> Result<Self, AppError> {
+        use rustix::fs::{Mode, OFlags, openat};
+
+        let canonical = fs::canonicalize(path)
+            .map_err(|_| unsafe_discard("The repository directory could not be opened safely."))?;
+        let root = fs::File::from(file_content::worktree::absolute(&canonical).map_err(|_| {
+            unsafe_discard("The repository directory could not be opened without following links.")
+        })?);
+        let git_directory = openat(
+            &root,
+            ".git",
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map(fs::File::from)
+        .map_err(|_| {
+            unsafe_discard(
+                "Safe discard currently requires an ordinary .git directory in the worktree root; linked worktrees and redirected Git directories are not supported.",
+            )
+        })?;
+        Ok(Self {
+            root,
+            git_directory,
+        })
+    }
+
+    fn root_path(&self) -> PathBuf {
+        descriptor_path(&self.root)
+    }
+
+    fn recovery_directory(&self, create: bool) -> Result<(fs::File, PathBuf), AppError> {
+        use rustix::fs::{Mode, OFlags, mkdirat, openat};
+        const NAME: &str = "git-khronos-recovery";
+
+        if create {
+            match mkdirat(&self.git_directory, NAME, Mode::from_bits_truncate(0o700)) {
+                Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+                Err(error) => return Err(io_error(error.into())),
+            }
+        }
+        let directory = fs::File::from(
+            openat(
+                &self.git_directory,
+                NAME,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|error| {
+                if error == rustix::io::Errno::NOENT {
+                    missing_recovery_file()
+                } else {
+                    unsafe_discard("The recovery directory could not be opened safely.")
+                }
+            })?,
+        );
+        let path = descriptor_path(&directory);
+        Ok((directory, path))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn descriptor_path(file: &fs::File) -> PathBuf {
+    use std::os::fd::AsRawFd;
+    PathBuf::from(format!(
+        "/proc/{}/fd/{}",
+        std::process::id(),
+        file.as_raw_fd()
+    ))
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn restrict_git_to_read_only(command: &mut Command) -> Result<(), AppError> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    use std::os::unix::process::CommandExt;
+
+    unsafe extern "C" {
+        fn syscall(number: std::ffi::c_long, ...) -> std::ffi::c_long;
+        fn prctl(option: std::ffi::c_int, ...) -> std::ffi::c_int;
+    }
+    const CREATE_RULESET: std::ffi::c_long = 444;
+    const ADD_RULE: std::ffi::c_long = 445;
+    const RESTRICT_SELF: std::ffi::c_long = 446;
+    const CLOSE_RANGE: std::ffi::c_long = 436;
+    const CLOSE_RANGE_CLOEXEC: u32 = 1 << 2;
+    const VERSION: u32 = 1;
+    const NO_NEW_PRIVS: std::ffi::c_int = 38;
+    const SET_SECCOMP: std::ffi::c_int = 22;
+    const FILTER_MODE: usize = 2;
+    // Handle every filesystem write operation available in ABI 3.
+    const WRITE_RIGHTS: u64 = (1 << 1) | (((1 << 15) - 1) & !((1 << 4) - 1));
+    #[repr(C)]
+    struct Ruleset {
+        handled_access_fs: u64,
+    }
+    #[repr(C, packed)]
+    struct PathBeneath {
+        allowed_access: u64,
+        parent_fd: i32,
+    }
+    #[repr(C)]
+    struct Filter {
+        code: u16,
+        jt: u8,
+        jf: u8,
+        k: u32,
+    }
+    #[repr(C)]
+    struct FilterProgram {
+        len: u16,
+        filter: *const Filter,
+    }
+
+    let abi = unsafe { syscall(CREATE_RULESET, std::ptr::null::<Ruleset>(), 0usize, VERSION) };
+    if abi < 3 {
+        return Err(unsafe_discard(
+            "Safe discard requires Linux Landlock ABI 3 or newer to confine Git inspection.",
+        ));
+    }
+    let rules = Ruleset {
+        handled_access_fs: WRITE_RIGHTS | if abi >= 5 { 1 << 15 } else { 0 },
+    };
+    let descriptor = unsafe {
+        syscall(
+            CREATE_RULESET,
+            &rules as *const Ruleset,
+            std::mem::size_of::<Ruleset>(),
+            0u32,
+        )
+    };
+    if descriptor < 0 {
+        return Err(unsafe_discard(
+            "The read-only Git sandbox could not be created.",
+        ));
+    }
+    let ruleset = unsafe { OwnedFd::from_raw_fd(descriptor as i32) };
+    let null = fs::File::from(
+        rustix::fs::open(
+            "/dev/null",
+            rustix::fs::OFlags::PATH | rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|_| unsafe_discard("The null device could not be opened safely."))?,
+    );
+    let null_metadata = null.metadata().map_err(io_error)?;
+    if !null_metadata.file_type().is_char_device() || null_metadata.rdev() != 0x103 {
+        return Err(unsafe_discard(
+            "The null device could not be verified safely.",
+        ));
+    }
+    let null_rule = PathBeneath {
+        allowed_access: (1 << 1) | if abi >= 5 { 1 << 15 } else { 0 },
+        parent_fd: null.as_raw_fd(),
+    };
+    if unsafe {
+        syscall(
+            ADD_RULE,
+            ruleset.as_raw_fd(),
+            1u32,
+            &null_rule as *const PathBeneath,
+            0u32,
+        )
+    } != 0
+    {
+        return Err(unsafe_discard(
+            "The read-only Git sandbox could not be configured.",
+        ));
+    }
+    // Landlock does not mediate all metadata or IPC operations. Unknown
+    // syscalls fail closed, including future mutation mechanisms.
+    let allowed_syscalls = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 20, 21, 22, 23, 24, 25, 26,
+        27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 56, 57, 58, 59, 60, 61, 63, 73, 74, 75, 78, 79,
+        80, 81, 89, 95, 96, 97, 98, 99, 100, 102, 104, 107, 108, 109, 110, 111, 112, 115, 118, 120,
+        121, 124, 125, 127, 128, 130, 131, 137, 138, 140, 143, 145, 148, 149, 150, 158, 186, 191,
+        192, 193, 194, 195, 196, 201, 202, 204, 217, 218, 219, 221, 222, 223, 224, 225, 226, 228,
+        229, 230, 231, 232, 233, 257, 262, 267, 269, 270, 271, 273, 274, 281, 282, 283, 284, 286,
+        287, 289, 290, 291, 292, 293, 295, 309, 318, 322, 324, 327, 332, 334, 435, 436, 437, 439,
+        441, 449, 451, 453,
+    ];
+    let mut filters = vec![
+        Filter {
+            code: 0x20,
+            jt: 0,
+            jf: 0,
+            k: 4,
+        },
+        Filter {
+            code: 0x15,
+            jt: 1,
+            jf: 0,
+            k: 0xc000_003e,
+        },
+        Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x8000_0000,
+        },
+        Filter {
+            code: 0x20,
+            jt: 0,
+            jf: 0,
+            k: 0,
+        },
+        Filter {
+            code: 0x45,
+            jt: 0,
+            jf: 1,
+            k: 0x4000_0000,
+        },
+        Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x0005_0001,
+        },
+    ];
+    // Permit only descriptor operations that cannot alter file contents or
+    // inode metadata; in particular, reject ownership and write-hint changes.
+    let fcntl_commands = [0, 1, 2, 3, 4, 1030];
+    filters.push(Filter {
+        code: 0x15,
+        jt: 0,
+        jf: (fcntl_commands.len() * 2 + 2) as u8,
+        k: 72,
+    });
+    filters.push(Filter {
+        code: 0x20,
+        jt: 0,
+        jf: 0,
+        k: 24,
+    });
+    for command in fcntl_commands {
+        filters.push(Filter {
+            code: 0x15,
+            jt: 0,
+            jf: 1,
+            k: command,
+        });
+        filters.push(Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x7fff_0000,
+        });
+    }
+    filters.push(Filter {
+        code: 0x06,
+        jt: 0,
+        jf: 0,
+        k: 0x0005_0001,
+    });
+    // A process may inspect or change only its own resource limits.
+    filters.extend([
+        Filter {
+            code: 0x15,
+            jt: 0,
+            jf: 4,
+            k: 302,
+        },
+        Filter {
+            code: 0x20,
+            jt: 0,
+            jf: 0,
+            k: 16,
+        },
+        Filter {
+            code: 0x15,
+            jt: 0,
+            jf: 1,
+            k: 0,
+        },
+        Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x7fff_0000,
+        },
+        Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x0005_0001,
+        },
+    ]);
+    for syscall_number in allowed_syscalls {
+        filters.push(Filter {
+            code: 0x15,
+            jt: 0,
+            jf: 1,
+            k: syscall_number,
+        });
+        filters.push(Filter {
+            code: 0x06,
+            jt: 0,
+            jf: 0,
+            k: 0x7fff_0000,
+        });
+    }
+    filters.push(Filter {
+        code: 0x06,
+        jt: 0,
+        jf: 0,
+        k: 0x0005_0001,
+    });
+    unsafe {
+        command.pre_exec(move || {
+            if prctl(NO_NEW_PRIVS, 1usize, 0usize, 0usize, 0usize) != 0
+                || syscall(RESTRICT_SELF, ruleset.as_raw_fd(), 0u32) != 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            let program = FilterProgram {
+                len: filters.len() as u16,
+                filter: filters.as_ptr(),
+            };
+            if prctl(SET_SECCOMP, FILTER_MODE, &program as *const FilterProgram) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if syscall(CLOSE_RANGE, 3u32, u32::MAX, CLOSE_RANGE_CLOEXEC) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    Ok(())
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+fn restrict_git_to_read_only(_: &mut Command) -> Result<(), AppError> {
+    Err(unsafe_discard(
+        "Safe discard and recovery are not supported on this operating system or architecture.",
+    ))
+}
+
+fn inspect_git(path: &Path, args: &[&str]) -> Result<Output, AppError> {
+    let mut command = git_in(Path::new("."));
+    command
+        .current_dir(path)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    restrict_git_to_read_only(&mut command)?;
+    configure_process_tree(&mut command);
+    run_cancellable_command(command, &CancellationToken::default()).map_err(|error| {
+        if error.kind == "gitUnavailable" {
+            unsafe_discard("Git could not be started in the required read-only sandbox.")
+        } else {
+            error
+        }
+    })
+}
+
+fn inspect_discard_status(path: &Path) -> Result<Vec<WorkingTreeEntry>, AppError> {
+    let output = inspect_git(
+        path,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    ensure_success("read repository status", &output)?;
+    let records = output.stdout.split(|byte| *byte == 0).collect::<Vec<_>>();
+    let mut entries = Vec::new();
+    let mut index = 0;
+    while index < records.len() {
+        let record = records[index];
+        if record.is_empty() {
+            index += 1;
+            continue;
+        }
+        if record.len() < 4 || record[2] != b' ' {
+            return Err(unsafe_discard(
+                "Git returned an incomplete working-tree status.",
+            ));
+        }
+        let x = record[0] as char;
+        let y = record[1] as char;
+        let conflicted = matches!(
+            &record[..2],
+            b"DD" | b"AU" | b"UD" | b"UA" | b"DU" | b"AA" | b"UU"
+        );
+        entries.push(WorkingTreeEntry {
+            path: String::from_utf8_lossy(&record[3..]).into_owned(),
+            index_status: x.to_string(),
+            worktree_status: y.to_string(),
+            conflicted,
+        });
+        index += if matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C') {
+            2
+        } else {
+            1
+        };
+    }
+    Ok(entries)
+}
+
+#[cfg(target_os = "linux")]
+fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppError> {
+    use rustix::fs::{AtFlags, FileType, Mode, OFlags, openat, readlinkat, statat};
+    use std::os::unix::fs::MetadataExt;
+
+    if !guarded_leaf(name) {
+        return Err(unsafe_discard(
+            "Only files directly in the worktree root can be discarded safely.",
+        ));
+    }
+    let metadata = match statat(root, name, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(metadata) => metadata,
+        Err(rustix::io::Errno::NOENT) => return Ok(GuardedFile::Missing),
+        Err(error) => return Err(io_error(error.into())),
+    };
+    match FileType::from_raw_mode(metadata.st_mode) {
+        FileType::RegularFile => {
+            let descriptor = openat(
+                root,
+                name,
+                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|_| unsafe_discard("The selected file changed while it was inspected."))?;
+            let mut file = fs::File::from(descriptor);
+            let before = file.metadata().map_err(io_error)?;
+            if !before.is_file()
+                || before.dev() != metadata.st_dev
+                || before.ino() != metadata.st_ino
+            {
+                return Err(unsafe_discard(
+                    "The selected file changed while it was inspected.",
+                ));
+            }
+            if before.len() > MAX_RECOVERY_PATCH_INSPECTION_BYTES {
+                return Err(unsafe_discard(
+                    "The selected file is too large for a safe recovery capture.",
+                ));
+            }
+            let mut bytes = Vec::new();
+            std::io::Read::take(&mut file, MAX_RECOVERY_PATCH_INSPECTION_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(io_error)?;
+            if bytes.len() as u64 > MAX_RECOVERY_PATCH_INSPECTION_BYTES {
+                return Err(unsafe_discard(
+                    "The selected file is too large for a safe recovery capture.",
+                ));
+            }
+            let after = file.metadata().map_err(io_error)?;
+            if file_content::worktree::identity(&before) != file_content::worktree::identity(&after)
+            {
+                return Err(unsafe_discard(
+                    "The selected file changed while it was inspected.",
+                ));
+            }
+            Ok(GuardedFile::Regular {
+                data: BASE64.encode(bytes),
+                mode: before.mode() & 0o777,
+            })
+        }
+        FileType::Symlink => Ok(GuardedFile::Symlink {
+            target: BASE64.encode(
+                readlinkat(root, name, Vec::new())
+                    .map_err(|_| {
+                        unsafe_discard("The selected link changed while it was inspected.")
+                    })?
+                    .into_bytes(),
+            ),
+        }),
+        _ => Err(unsafe_discard(
+            "Only regular files and symbolic links can be discarded safely.",
+        )),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn indexed_file(
+    path: &Path,
+    index: &[u8],
+    name: &str,
+    before: &GuardedFile,
+) -> Result<GuardedFile, AppError> {
+    let entry = index
+        .split(|byte| *byte == 0)
+        .filter_map(|record| {
+            let separator = record.iter().position(|byte| *byte == b'\t')?;
+            Some((&record[..separator], &record[separator + 1..]))
+        })
+        .find(|(_, file)| *file == name.as_bytes());
+    let Some((header, _)) = entry else {
+        return Ok(GuardedFile::Missing);
+    };
+    let header = std::str::from_utf8(header)
+        .map_err(|_| unsafe_discard("The selected index entry could not be inspected."))?;
+    let mut fields = header.split_whitespace();
+    let mode = fields.next().unwrap_or_default();
+    let oid = fields.next().unwrap_or_default();
+    if fields.next() != Some("0") || fields.next().is_some() {
+        return Err(unsafe_discard(
+            "Conflicted index entries cannot be discarded safely.",
+        ));
+    }
+    let path_arg = format!("--path={name}");
+    let args: Vec<&str> = match mode {
+        "100644" | "100755" => vec!["cat-file", "--filters", &path_arg, oid],
+        "120000" => vec!["cat-file", "blob", oid],
+        _ => {
+            return Err(unsafe_discard(
+                "This index entry type cannot be discarded safely.",
+            ));
+        }
+    };
+    let output = inspect_git(path, &args)?;
+    ensure_success("inspect the indexed file", &output)?;
+    Ok(match mode {
+        "120000" => GuardedFile::Symlink {
+            target: BASE64.encode(output.stdout),
+        },
+        _ => {
+            let permissions = match before {
+                GuardedFile::Regular { mode, .. } => mode & 0o666,
+                _ => 0o600,
+            };
+            GuardedFile::Regular {
+                data: BASE64.encode(output.stdout),
+                mode: permissions
+                    | if mode == "100755" {
+                        (permissions & 0o444) >> 2
+                    } else {
+                        0
+                    },
+            }
+        }
+    })
+}
+
+fn encode_guarded_capture(changes: &[GuardedChange], patch: &[u8]) -> Result<Vec<u8>, AppError> {
+    let json = serde_json::to_vec(changes).map_err(|_| {
+        unsafe_discard("The independent recovery data could not be encoded safely.")
+    })?;
+    let encoded = BASE64.encode(json);
+    if encoded.len() as u64 >= MAX_RECOVERY_PATCH_INSPECTION_BYTES {
+        return Err(unsafe_discard(
+            "The files are too large for a safely inspectable discard capture.",
+        ));
+    }
+    let mut result = format!("{GUARDED_CAPTURE_PREFIX}{encoded}\n").into_bytes();
+    result.extend_from_slice(patch);
+    Ok(result)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn prepare_discard(_: &Path, _: Option<Vec<String>>) -> Result<DiscardPlan, AppError> {
+    Err(unsafe_discard(
+        "Safe discard is not yet available on this operating system.",
+    ))
+}
+
+#[cfg(target_os = "linux")]
 pub fn prepare_discard(
     path: &Path,
     selected: Option<Vec<String>>,
@@ -106,8 +709,11 @@ pub fn prepare_discard(
             None,
         ));
     }
-    let status = read_status(path)?;
-    let index_output = run_git(path, &["ls-files", "--stage", "-z"])?;
+    let boundary = DiscardBoundary::open(path)?;
+    let rooted_path = boundary.root_path();
+    let path = rooted_path.as_path();
+    let status = inspect_discard_status(path)?;
+    let index_output = inspect_git(path, &["ls-files", "--stage", "-z"])?;
     ensure_success("inspect the index before discarding", &index_output)?;
     let gitlinks = index_output
         .stdout
@@ -120,7 +726,7 @@ pub fn prepare_discard(
     let mut skipped_paths = Vec::new();
     let mut patch = Vec::new();
     let mut untracked = 0;
-    for entry in status.entries {
+    for entry in status {
         if selected.as_ref().is_some_and(|selection| {
             !selection.iter().any(|file| {
                 file == &entry.path || (file.ends_with('/') && entry.path.starts_with(file))
@@ -140,7 +746,7 @@ pub fn prepare_discard(
         }
         let output = if entry.index_status == "?" {
             untracked += 1;
-            run_git_allow_diff_exit(
+            let output = inspect_git(
                 path,
                 &[
                     "-c",
@@ -161,9 +767,13 @@ pub fn prepare_discard(
                     "/dev/null",
                     &entry.path,
                 ],
-            )?
+            )?;
+            if !matches!(output.status.code(), Some(0 | 1)) {
+                ensure_success("capture discarded changes", &output)?;
+            }
+            output
         } else {
-            let output = run_git(
+            let output = inspect_git(
                 path,
                 &[
                     "-c",
@@ -204,6 +814,23 @@ pub fn prepare_discard(
             Some("Conflicts, submodule working trees and nested repositories are not discarded."),
         ));
     }
+    let mutation_patch = if paths.iter().all(|file| guarded_leaf(file)) {
+        let changes = paths
+            .iter()
+            .map(|file| {
+                let before = read_guarded_file(&boundary.root, file)?;
+                let after = indexed_file(path, &index_output.stdout, file, &before)?;
+                Ok(GuardedChange {
+                    path: file.clone(),
+                    before,
+                    after,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        encode_guarded_capture(&changes, &patch)?
+    } else {
+        patch.clone()
+    };
     Ok(DiscardPlan {
         preview: DiscardPreview {
             paths,
@@ -211,10 +838,11 @@ pub fn prepare_discard(
             untracked,
         },
         selected,
-        mutation_patch: patch.clone(),
+        mutation_patch,
         patch,
         index: index_output.stdout,
         selection_preview: None,
+        boundary,
     })
 }
 
@@ -234,33 +862,169 @@ pub fn prepare_partial_discard_with_preview(
     lines: Option<&[usize]>,
     expected_patch: Option<&str>,
 ) -> Result<DiscardPlan, AppError> {
-    let mut plan = prepare_discard(path, Some(vec![file.to_owned()]))?;
-    if plan.preview.untracked > 0 {
-        return Err(AppError::new(
-            "untrackedPartialDiscardUnsupported",
-            "Discard an untracked file as a whole, not as individual changes.",
-            None,
-        ));
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (path, file, hunk_index, lines, expected_patch);
+        Err(unsafe_discard(
+            "Safe partial discard is not yet available on this operating system.",
+        ))
     }
-    // Select from the same canonical preview the user saw, not the binary
-    // recovery patch or repository-specific diff presentation settings.
-    let patch = read_selection_patch(path, file, false, "discard", expected_patch)?;
-    plan.mutation_patch = if let Some(lines) = lines {
-        if lines.is_empty() || lines.len() > 10_000 {
+    #[cfg(target_os = "linux")]
+    {
+        let mut plan = prepare_discard(path, Some(vec![file.to_owned()]))?;
+        if plan.preview.untracked > 0 {
             return Err(AppError::new(
-                "invalidLineSelection",
-                "Select at least one changed line.",
+                "untrackedPartialDiscardUnsupported",
+                "Discard an untracked file as a whole, not as individual changes.",
                 None,
             ));
         }
-        select_patch_lines_with_context(&patch, hunk_index, lines, true)?.into_bytes()
-    } else {
-        select_patch_hunk(&patch, hunk_index)?.into_bytes()
-    };
-    plan.selection_preview = Some((file.to_owned(), patch));
-    Ok(plan)
+        if !guarded_leaf(file) {
+            return Err(unsafe_discard(
+                "Partial discard is available only for files directly in the worktree root.",
+            ));
+        }
+        let rooted = plan.boundary.root_path();
+        let patch = safe_selection_patch(&rooted, file, expected_patch)?;
+        let selected = if let Some(lines) = lines {
+            if lines.is_empty() || lines.len() > 10_000 {
+                return Err(AppError::new(
+                    "invalidLineSelection",
+                    "Select at least one changed line.",
+                    None,
+                ));
+            }
+            select_patch_lines_with_context(&patch, hunk_index, lines, true)?
+        } else {
+            select_patch_hunk(&patch, hunk_index)?
+        };
+        let before = read_guarded_file(&plan.boundary.root, file)?;
+        let after = reverse_text_selection(&before, &selected)?;
+        plan.mutation_patch = encode_guarded_capture(
+            &[GuardedChange {
+                path: file.to_owned(),
+                before,
+                after,
+            }],
+            selected.as_bytes(),
+        )?;
+        plan.selection_preview = Some((file.to_owned(), patch));
+        Ok(plan)
+    }
 }
 
+#[cfg(target_os = "linux")]
+fn safe_selection_patch(
+    path: &Path,
+    file: &str,
+    expected: Option<&str>,
+) -> Result<String, AppError> {
+    let output = inspect_git(
+        path,
+        &[
+            "-c",
+            "diff.noprefix=false",
+            "-c",
+            "diff.mnemonicPrefix=false",
+            "--literal-pathspecs",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "--unified=3",
+            "--",
+            file,
+        ],
+    )?;
+    ensure_success("read that file's changes", &output)?;
+    if output.stdout.len() > MAX_FILE_DIFF_BYTES {
+        return Err(unsafe_discard(
+            "This selectable diff is too large to inspect safely.",
+        ));
+    }
+    let patch = String::from_utf8(output.stdout)
+        .map_err(|_| unsafe_discard("Individual changes require a UTF-8 text diff."))?;
+    if expected.is_some_and(|expected| expected != patch) {
+        return Err(AppError::new(
+            "staleDiffSelection",
+            "The file or index changed after this diff was opened.",
+            Some("Nothing was discarded. Reload the diff and review the selection."),
+        ));
+    }
+    Ok(patch)
+}
+
+#[cfg(target_os = "linux")]
+fn reverse_text_selection(before: &GuardedFile, patch: &str) -> Result<GuardedFile, AppError> {
+    let GuardedFile::Regular { data, mode } = before else {
+        return Err(unsafe_discard(
+            "Partial discard requires an ordinary text file.",
+        ));
+    };
+    let bytes = BASE64
+        .decode(data)
+        .map_err(|_| changed_recovery_capture())?;
+    std::str::from_utf8(&bytes)
+        .map_err(|_| unsafe_discard("Partial discard requires a UTF-8 text file."))?;
+    let mut lines = patch.split_inclusive('\n');
+    let header = lines
+        .find(|line| line.starts_with("@@ "))
+        .ok_or_else(|| unsafe_discard("The selected text hunk could not be inspected."))?;
+    let start = header
+        .split_whitespace()
+        .find_map(|field| field.strip_prefix('+'))
+        .and_then(|range| range.split(',').next())
+        .and_then(|start| start.parse::<usize>().ok())
+        .ok_or_else(|| unsafe_discard("The selected text hunk has an invalid range."))?
+        .saturating_sub(1);
+    let mut input: Vec<Vec<u8>> = Vec::new();
+    let mut output: Vec<Vec<u8>> = Vec::new();
+    let mut previous = 0u8;
+    for line in lines {
+        let Some((&prefix, contents)) = line.as_bytes().split_first() else {
+            return Err(unsafe_discard("The selected text hunk is incomplete."));
+        };
+        match prefix {
+            b' ' | b'+' | b'-' => {
+                if prefix != b'-' {
+                    input.push(contents.to_vec());
+                }
+                if prefix != b'+' {
+                    output.push(contents.to_vec());
+                }
+                previous = prefix;
+            }
+            b'\\' if line.starts_with("\\ No newline at end of file") => {
+                if previous != b'-' && input.last_mut().and_then(Vec::pop) != Some(b'\n') {
+                    return Err(unsafe_discard("The selected text hunk is incomplete."));
+                }
+                if previous != b'+' && output.last_mut().and_then(Vec::pop) != Some(b'\n') {
+                    return Err(unsafe_discard("The selected text hunk is incomplete."));
+                }
+            }
+            _ => return Err(unsafe_discard("This text hunk cannot be applied safely.")),
+        }
+    }
+    let mut working = bytes
+        .split_inclusive(|byte| *byte == b'\n')
+        .map(<[u8]>::to_vec)
+        .collect::<Vec<_>>();
+    if start > working.len()
+        || input.len() > working.len() - start
+        || working[start..start + input.len()] != input
+    {
+        return Err(unsafe_discard(
+            "The selected text hunk does not match the working file exactly.",
+        ));
+    }
+    working.splice(start..start + input.len(), output);
+    Ok(GuardedFile::Regular {
+        data: BASE64.encode(working.concat()),
+        mode: *mode,
+    })
+}
 pub(super) fn recovery_directory(path: &Path) -> Result<PathBuf, AppError> {
     // Ask for the owning Git directory, not an absolute --git-path: Git
     // canonicalizes the latter and hides a symlink at the recovery entry.
@@ -509,9 +1273,13 @@ impl RecoverySnapshot {
         stdout_limit: Option<usize>,
     ) -> Result<(Output, bool), AppError> {
         self.file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+        #[cfg(target_os = "linux")]
+        let input = fs::File::open(descriptor_path(&self.file)).map_err(io_error)?;
+        #[cfg(not(target_os = "linux"))]
         let input = self.file.try_clone().map_err(io_error)?;
-        let mut command = git_in(path);
+        let mut command = git_in(Path::new("."));
         command
+            .current_dir(path)
             .args(args)
             .arg("-")
             .env("GIT_TERMINAL_PROMPT", "0")
@@ -520,6 +1288,8 @@ impl RecoverySnapshot {
             .stdin(Stdio::from(input))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(target_os = "linux")]
+        restrict_git_to_read_only(&mut command)?;
         configure_process_tree(&mut command);
         run_cancellable_command_with_stdout_limit(
             command,
@@ -653,14 +1423,265 @@ fn save_snapshot_capture(
     )
 }
 
-fn apply_discard_capture(path: &Path, snapshot: &mut RecoverySnapshot) -> Result<(), AppError> {
-    apply_recovery_snapshot(path, snapshot, true, false).map_err(|error| {
-        AppError::new(
-            "discardFailedWithRecovery",
-            error.message,
-            Some("Discard may have partially changed files. Inspect the working tree and discarded-change recovery before retrying."),
-        )
-    })
+fn guarded_capture(
+    path: &Path,
+    snapshot: &mut RecoverySnapshot,
+) -> Result<Vec<GuardedChange>, AppError> {
+    snapshot.file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let mut header = Vec::new();
+    {
+        let limited = (&mut snapshot.file).take(MAX_RECOVERY_PATCH_INSPECTION_BYTES);
+        BufReader::new(limited)
+            .read_until(b'\n', &mut header)
+            .map_err(io_error)?;
+    }
+    let encoded = header
+        .strip_prefix(GUARDED_CAPTURE_PREFIX.as_bytes())
+        .and_then(|line| line.strip_suffix(b"\n"))
+        .ok_or_else(|| {
+            unsafe_discard(
+                "This older recovery capture cannot be applied safely by the application.",
+            )
+        })?;
+    let json = BASE64
+        .decode(encoded)
+        .map_err(|_| changed_recovery_capture())?;
+    let changes: Vec<GuardedChange> =
+        serde_json::from_slice(&json).map_err(|_| changed_recovery_capture())?;
+    if changes.is_empty() {
+        return Err(changed_recovery_capture());
+    }
+    let mut names = HashSet::new();
+    for change in &changes {
+        if !guarded_leaf(&change.path) || !names.insert(&change.path) {
+            return Err(unsafe_discard(
+                "The recovery capture contains paths that cannot be changed safely.",
+            ));
+        }
+        for state in [&change.before, &change.after] {
+            match state {
+                GuardedFile::Missing => {}
+                GuardedFile::Regular { data, mode } => {
+                    if *mode > 0o777 || BASE64.decode(data).is_err() {
+                        return Err(changed_recovery_capture());
+                    }
+                }
+                GuardedFile::Symlink { target } => {
+                    let target = BASE64
+                        .decode(target)
+                        .map_err(|_| changed_recovery_capture())?;
+                    if target.is_empty() || target.contains(&0) {
+                        return Err(changed_recovery_capture());
+                    }
+                }
+            }
+        }
+    }
+    let (output, truncated) = snapshot.run_git(
+        path,
+        &["apply", "--numstat", "-z"],
+        Some(MAX_RECOVERY_PATH_REPORT_BYTES),
+    )?;
+    ensure_success("inspect discarded-change paths", &output)?;
+    if truncated || !output.stdout.ends_with(&[0]) {
+        return Err(unsafe_discard(
+            "The recovery capture's complete file list could not be verified.",
+        ));
+    }
+    let mut listed = Vec::new();
+    for record in output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|r| !r.is_empty())
+    {
+        let fields = record.splitn(3, |byte| *byte == b'\t').collect::<Vec<_>>();
+        if fields.len() != 3 || fields[2].is_empty() {
+            return Err(changed_recovery_capture());
+        }
+        listed.push(fields[2]);
+    }
+    if listed.len() != changes.len()
+        || listed
+            .iter()
+            .zip(&changes)
+            .any(|(listed, change)| *listed != change.path.as_bytes())
+    {
+        return Err(changed_recovery_capture());
+    }
+    Ok(changes)
+}
+
+#[cfg(target_os = "linux")]
+fn write_guarded_file(
+    root: &fs::File,
+    recovery: &fs::File,
+    capture_id: &str,
+    name: &str,
+    state: &GuardedFile,
+) -> Result<(), AppError> {
+    use rustix::fs::{Mode, OFlags, RenameFlags, openat, renameat_with, symlinkat};
+    use std::os::unix::ffi::OsStringExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    if matches!(state, GuardedFile::Missing) {
+        return Ok(());
+    }
+    let mut random = [0u8; 16];
+    getrandom::fill(&mut random)
+        .map_err(|_| unsafe_discard("A private replacement name could not be allocated."))?;
+    let suffix: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+    let temporary = format!("{capture_id}.original-{suffix}");
+    match state {
+        GuardedFile::Regular { data, mode } => {
+            let bytes = BASE64
+                .decode(data)
+                .map_err(|_| changed_recovery_capture())?;
+            let mut file = fs::File::from(
+                openat(
+                    recovery,
+                    temporary.as_str(),
+                    OFlags::WRONLY
+                        | OFlags::CREATE
+                        | OFlags::EXCL
+                        | OFlags::NOFOLLOW
+                        | OFlags::CLOEXEC,
+                    Mode::from_bits_truncate(0o600),
+                )
+                .map_err(|error| {
+                    unsafe_discard(&format!("A replacement file could not be created: {error}"))
+                })?,
+            );
+            file.write_all(&bytes)
+                .and_then(|_| file.set_permissions(fs::Permissions::from_mode(*mode)))
+                .and_then(|_| file.sync_all())
+                .map_err(io_error)?;
+        }
+        GuardedFile::Symlink { target } => {
+            let target = std::ffi::OsString::from_vec(
+                BASE64
+                    .decode(target)
+                    .map_err(|_| changed_recovery_capture())?,
+            );
+            symlinkat(&target, recovery, temporary.as_str()).map_err(|error| {
+                unsafe_discard(&format!("A replacement link could not be created: {error}"))
+            })?;
+        }
+        GuardedFile::Missing => unreachable!(),
+    }
+    recovery.sync_all().map_err(io_error)?;
+    renameat_with(
+        recovery,
+        temporary.as_str(),
+        root,
+        name,
+        RenameFlags::NOREPLACE,
+    )
+    .map_err(|error| {
+        unsafe_discard(&format!("The selected file could not be replaced: {error}"))
+    })?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn apply_guarded_changes(
+    root: &fs::File,
+    recovery: &fs::File,
+    capture_id: &str,
+    changes: &[GuardedChange],
+    reverse: bool,
+    check: bool,
+    mut before_mutation: impl FnMut(&str),
+) -> Result<(), AppError> {
+    use rustix::fs::{RenameFlags, renameat_with};
+    for change in changes {
+        let (source, target) = if reverse {
+            (&change.before, &change.after)
+        } else {
+            (&change.after, &change.before)
+        };
+        let current = read_guarded_file(root, &change.path)?;
+        if current != *source && current != *target {
+            return Err(unsafe_discard(
+                "A working file changed after the capture was reviewed.",
+            ));
+        }
+    }
+    if check {
+        return Ok(());
+    }
+    for change in changes {
+        if git_cancellation::current().is_some_and(|token| token.is_cancelled()) {
+            return Err(operation_cancelled());
+        }
+        let (source, target) = if reverse {
+            (&change.before, &change.after)
+        } else {
+            (&change.after, &change.before)
+        };
+        let current = read_guarded_file(root, &change.path)?;
+        if current == *target {
+            continue;
+        }
+        if current != *source {
+            return Err(unsafe_discard(
+                "A working file changed during the operation.",
+            ));
+        }
+        before_mutation(&change.path);
+        let displaced = if !matches!(source, GuardedFile::Missing) {
+            let mut random = [0u8; 16];
+            getrandom::fill(&mut random)
+                .map_err(|_| unsafe_discard("A recovery object name could not be allocated."))?;
+            let suffix: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+            let name = format!("{capture_id}.original-{suffix}");
+            renameat_with(
+                root,
+                change.path.as_str(),
+                recovery,
+                name.as_str(),
+                RenameFlags::NOREPLACE,
+            )
+            .map_err(|error| {
+                unsafe_discard(&format!(
+                    "The original file could not be retained safely: {error}"
+                ))
+            })?;
+            root.sync_all().map_err(io_error)?;
+            recovery.sync_all().map_err(io_error)?;
+            if !read_guarded_file(recovery, &name).is_ok_and(|state| state == *source) {
+                let _ = renameat_with(
+                    recovery,
+                    name.as_str(),
+                    root,
+                    change.path.as_str(),
+                    RenameFlags::NOREPLACE,
+                );
+                return Err(unsafe_discard(
+                    "A working file changed while its original was being preserved.",
+                ));
+            }
+            Some(name)
+        } else {
+            None
+        };
+        if let Err(error) = write_guarded_file(root, recovery, capture_id, &change.path, target) {
+            if let Some(displaced) = &displaced {
+                let _ = renameat_with(
+                    recovery,
+                    displaced.as_str(),
+                    root,
+                    change.path.as_str(),
+                    RenameFlags::NOREPLACE,
+                );
+            }
+            return Err(error);
+        }
+        root.sync_all().map_err(io_error)?;
+        if read_guarded_file(root, &change.path)? != *target {
+            return Err(unsafe_discard("A working file changed during replacement."));
+        }
+    }
+    Ok(())
 }
 
 fn discard_recovery_after_mutation(message: &str, error: AppError) -> AppError {
@@ -678,6 +1699,7 @@ enum DiscardStep {
     BeforePublish,
     AfterCheck,
     BeforeApply,
+    BeforeMutation,
 }
 
 pub fn execute_discard(path: &Path, plan: &DiscardPlan) -> Result<String, AppError> {
@@ -689,63 +1711,109 @@ fn execute_discard_with_hook(
     plan: &DiscardPlan,
     mut hook: impl FnMut(DiscardStep, &Path),
 ) -> Result<String, AppError> {
-    let current = prepare_discard(path, plan.selected.clone())?;
-    if current.patch != plan.patch
-        || current.index != plan.index
-        || current.preview.paths != plan.preview.paths
-        || current.preview.skipped_paths != plan.preview.skipped_paths
+    #[cfg(not(target_os = "linux"))]
     {
-        return Err(AppError::new(
-            "staleDiscard",
-            "Files or the index changed after the discard preview.",
-            Some("Nothing was discarded. Review a new preview before continuing."),
+        let _ = (path, plan, &mut hook);
+        return Err(unsafe_discard(
+            "Safe discard is not yet available on this operating system.",
         ));
     }
-    if let Some((file, preview)) = &plan.selection_preview {
-        read_selection_patch(path, file, false, "discard", Some(preview))?;
-    }
-    let directory = recovery_directory(path)?;
-    fs::create_dir_all(&directory).map_err(io_error)?;
-    validate_recovery_directory(&directory)?;
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
-    }
-    let id = next_discard_capture_id()?;
-    let capture = save_discard_capture(
-        &directory,
-        &id,
-        |file| file.write_all(&plan.mutation_patch).map_err(io_error),
-        |pending| hook(DiscardStep::BeforePublish, pending),
-    )?;
-    let mut snapshot = RecoverySnapshot::capture(&capture, None)?;
-    let fingerprint = discard_plan_fingerprint(plan)?;
-    verify_capture_fingerprint(&snapshot, Some(&fingerprint))?;
-    apply_recovery_snapshot(path, &mut snapshot, true, true)?;
-    hook(DiscardStep::AfterCheck, &capture);
-    require_capture_fingerprint(&capture, &fingerprint)?;
+        use std::os::unix::fs::MetadataExt;
+        let _ = path;
+        if !plan.preview.paths.iter().all(|file| guarded_leaf(file)) {
+            return Err(unsafe_discard(
+                "Files in subdirectories cannot yet be discarded safely while their parents may change.",
+            ));
+        }
+        let rooted_path = plan.boundary.root_path();
+        let path = rooted_path.as_path();
+        let current = prepare_discard(path, plan.selected.clone())?;
+        let same_directory = |left: &fs::File, right: &fs::File| -> Result<bool, AppError> {
+            let left = left.metadata().map_err(io_error)?;
+            let right = right.metadata().map_err(io_error)?;
+            Ok(left.dev() == right.dev() && left.ino() == right.ino())
+        };
+        if current.patch != plan.patch
+            || (plan.selection_preview.is_none() && current.mutation_patch != plan.mutation_patch)
+            || current.index != plan.index
+            || current.preview.paths != plan.preview.paths
+            || current.preview.skipped_paths != plan.preview.skipped_paths
+            || !same_directory(&current.boundary.root, &plan.boundary.root)?
+            || !same_directory(
+                &current.boundary.git_directory,
+                &plan.boundary.git_directory,
+            )?
+        {
+            return Err(AppError::new(
+                "staleDiscard",
+                "Files or the index changed after the discard preview.",
+                Some("Nothing was discarded. Review a new preview before continuing."),
+            ));
+        }
+        if let Some((file, preview)) = &plan.selection_preview {
+            safe_selection_patch(path, file, Some(preview))?;
+        }
+        let (directory_guard, directory) = plan.boundary.recovery_directory(true)?;
+        let id = next_discard_capture_id()?;
+        let capture = save_discard_capture(
+            &directory,
+            &id,
+            |file| file.write_all(&plan.mutation_patch).map_err(io_error),
+            |pending| hook(DiscardStep::BeforePublish, pending),
+        )?;
+        let mut snapshot = RecoverySnapshot::capture(&capture, None)?;
+        let fingerprint = discard_plan_fingerprint(plan)?;
+        verify_capture_fingerprint(&snapshot, Some(&fingerprint))?;
+        let changes = guarded_capture(path, &mut snapshot)?;
+        apply_guarded_changes(
+            &plan.boundary.root,
+            &directory_guard,
+            &id,
+            &changes,
+            true,
+            true,
+            |_| {},
+        )?;
+        hook(DiscardStep::AfterCheck, &capture);
+        require_capture_fingerprint(&capture, &fingerprint)?;
 
-    // Keep an independent durable copy until both the mutation and the
-    // original capture have been checked, including after cancellation.
-    let backup_id = format!("{id}-1");
-    let backup = save_discard_capture(
-        &directory,
-        &backup_id,
-        |file| file.write_all(&plan.mutation_patch).map_err(io_error),
-        |_| {},
-    )?;
-    require_capture_fingerprint(&capture, &fingerprint)?;
-    require_capture_fingerprint(&backup, &fingerprint)?;
-    hook(DiscardStep::BeforeApply, &capture);
-    apply_discard_capture(path, &mut snapshot)?;
-    require_capture_fingerprint(&capture, &fingerprint).map_err(|error| {
-        discard_recovery_after_mutation(
-            "Changes were discarded, but the original recovery capture could not be verified",
-            error,
+        // Keep an independent durable copy until both the mutation and the
+        // original capture have been checked, including after cancellation.
+        let backup_id = format!("{id}-1");
+        let backup = save_discard_capture(
+            &directory,
+            &backup_id,
+            |file| file.write_all(&plan.mutation_patch).map_err(io_error),
+            |_| {},
+        )?;
+        require_capture_fingerprint(&capture, &fingerprint)?;
+        require_capture_fingerprint(&backup, &fingerprint)?;
+        hook(DiscardStep::BeforeApply, &capture);
+        apply_guarded_changes(
+        &plan.boundary.root,
+        &directory_guard,
+        &id,
+        &changes,
+        true,
+        false,
+        |file| hook(DiscardStep::BeforeMutation, Path::new(file)),
+    )
+    .map_err(|error| {
+        AppError::new(
+            "discardFailedWithRecovery",
+            error.message,
+            Some("Discard may have partially changed files. Inspect the working tree and discarded-change recovery before retrying."),
         )
     })?;
-    require_capture_fingerprint(&backup, &fingerprint)
+        require_capture_fingerprint(&capture, &fingerprint).map_err(|error| {
+            discard_recovery_after_mutation(
+                "Changes were discarded, but the original recovery capture could not be verified",
+                error,
+            )
+        })?;
+        require_capture_fingerprint(&backup, &fingerprint)
         .and_then(|_| remove_recovery_file(&backup))
         .map_err(|error| {
             discard_recovery_after_mutation(
@@ -753,7 +1821,8 @@ fn execute_discard_with_hook(
                 error,
             )
         })?;
-    Ok(id)
+        Ok(id)
+    }
 }
 
 fn validate_id(id: &str) -> Result<(), AppError> {
@@ -830,9 +1899,13 @@ pub fn discarded_change_recoveries(path: &Path) -> Result<Vec<DiscardRecoveryInf
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(io_error(error)),
     };
+    let entries = entries.collect::<Result<Vec<_>, _>>().map_err(io_error)?;
+    let retained_names = entries
+        .iter()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect::<Vec<_>>();
     let mut recoveries = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(io_error)?;
         let name = entry.file_name();
         let Some(id) = name.to_str().and_then(|name| name.strip_suffix(".patch")) else {
             continue;
@@ -870,8 +1943,20 @@ pub fn discarded_change_recoveries(path: &Path) -> Result<Vec<DiscardRecoveryInf
         };
         let marker = directory.join(format!("{id}.restored"));
         let restored = recovery_file_exists(&marker)?;
-        let (state_warning, state_blocked) =
+        let (mut state_warning, state_blocked) =
             recovery_state_warning(&marker, restored, content_sha256.as_deref())?;
+        if retained_names
+            .iter()
+            .any(|name| name.starts_with(&format!("{id}.original-")))
+        {
+            let warning = format!(
+                "File objects are retained in the recovery directory as {id}.original-*; they may contain edits made by other processes. Inspect them before removing this capture: removal permanently deletes these objects."
+            );
+            state_warning = Some(match state_warning {
+                Some(existing) => format!("{existing} {warning}"),
+                None => warning,
+            });
+        }
         recoveries.push(DiscardRecoveryInfo {
             id: id.to_owned(),
             restored,
@@ -910,28 +1995,35 @@ fn verify_capture_fingerprint(
     Ok(())
 }
 
+#[cfg(test)]
 fn apply_recovery_snapshot(
     path: &Path,
     snapshot: &mut RecoverySnapshot,
     reverse: bool,
     check: bool,
 ) -> Result<(), AppError> {
-    let mut args = vec!["apply", "--binary", "--recount", "--whitespace=nowarn"];
-    if reverse {
-        args.push("--reverse");
+    #[cfg(target_os = "linux")]
+    {
+        let boundary = DiscardBoundary::open(path)?;
+        let (directory, _) = boundary.recovery_directory(false)?;
+        let changes = guarded_capture(&boundary.root_path(), snapshot)?;
+        apply_guarded_changes(
+            &boundary.root,
+            &directory,
+            "0",
+            &changes,
+            reverse,
+            check,
+            |_| {},
+        )
     }
-    if check {
-        args.push("--check");
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (path, snapshot, reverse, check);
+        Err(unsafe_discard(
+            "Safe recovery is not yet available on this operating system.",
+        ))
     }
-    let (output, _) = snapshot.run_git(path, &args, None)?;
-    ensure_success(
-        if reverse {
-            "discard the captured changes"
-        } else {
-            "recover discarded changes"
-        },
-        &output,
-    )
 }
 
 pub fn recover_discarded_changes(path: &Path, id: &str, reverse: bool) -> Result<(), AppError> {
@@ -1166,58 +2258,104 @@ fn recover_discarded_changes_with_hook(
     expected_sha256: Option<&str>,
     before_apply: impl FnOnce(&Path, &Path),
 ) -> Result<(), AppError> {
-    validate_id(id)?;
-    let directory = recovery_directory(path)?;
-    let marker = directory.join(format!("{id}.restored"));
-    require_recovery_state(&marker, reverse)?;
-    let capture = directory.join(format!("{id}.patch"));
-    let mut snapshot = RecoverySnapshot::capture(&capture, None)?;
-    verify_capture_fingerprint(&snapshot, expected_sha256)?;
-    let fingerprint = snapshot.content_sha256.clone();
-    if reverse {
-        bind_legacy_recovery_state(&marker, &fingerprint)?;
-    } else {
-        require_bound_recovery_state(&marker, false, &fingerprint)?;
-    }
-    apply_recovery_snapshot(path, &mut snapshot, reverse, true)?;
+    recover_discarded_changes_with_hooks(
+        path,
+        id,
+        reverse,
+        expected_sha256,
+        before_apply,
+        |_, _| {},
+    )
+}
 
-    let backup_id = next_discard_capture_id()?;
-    let backup = save_snapshot_capture(&directory, &backup_id, &mut snapshot)?;
-    let backup_marker = directory.join(format!("{backup_id}.restored"));
-    if reverse {
-        write_recovery_state(&backup_marker, true, &fingerprint)?;
-        sync_recovery_directory(&directory)?;
+fn recover_discarded_changes_with_hooks(
+    path: &Path,
+    id: &str,
+    reverse: bool,
+    expected_sha256: Option<&str>,
+    before_apply: impl FnOnce(&Path, &Path),
+    after_apply: impl FnOnce(&Path, &Path),
+) -> Result<(), AppError> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (
+            path,
+            id,
+            reverse,
+            expected_sha256,
+            before_apply,
+            after_apply,
+        );
+        return Err(unsafe_discard(
+            "Safe recovery is not yet available on this operating system.",
+        ));
     }
-    require_capture_fingerprint(&capture, &fingerprint)?;
-    require_bound_recovery_state(&marker, reverse, &fingerprint)?;
-    require_capture_fingerprint(&backup, &fingerprint)?;
-    require_bound_recovery_state(&backup_marker, reverse, &fingerprint)?;
-    before_apply(&capture, &backup);
-    apply_recovery_snapshot(path, &mut snapshot, reverse, false).map_err(|error| {
+    #[cfg(target_os = "linux")]
+    {
+        validate_id(id)?;
+        let boundary = DiscardBoundary::open(path)?;
+        let rooted_path = boundary.root_path();
+        let path = rooted_path.as_path();
+        let (directory_guard, directory) = boundary.recovery_directory(false)?;
+        let marker = directory.join(format!("{id}.restored"));
+        require_recovery_state(&marker, reverse)?;
+        let capture = directory.join(format!("{id}.patch"));
+        let mut snapshot = RecoverySnapshot::capture(&capture, None)?;
+        verify_capture_fingerprint(&snapshot, expected_sha256)?;
+        let fingerprint = snapshot.content_sha256.clone();
+        let changes = guarded_capture(path, &mut snapshot)?;
+        apply_guarded_changes(
+            &boundary.root,
+            &directory_guard,
+            id,
+            &changes,
+            reverse,
+            true,
+            |_| {},
+        )?;
+        if reverse {
+            bind_legacy_recovery_state(&marker, &fingerprint)?;
+        } else {
+            require_bound_recovery_state(&marker, false, &fingerprint)?;
+        }
+        let backup_id = next_discard_capture_id()?;
+        let backup = save_snapshot_capture(&directory, &backup_id, &mut snapshot)?;
+        let backup_marker = directory.join(format!("{backup_id}.restored"));
+        if reverse {
+            write_recovery_state(&backup_marker, true, &fingerprint)?;
+            sync_recovery_directory(&directory)?;
+        }
+        require_capture_fingerprint(&capture, &fingerprint)?;
+        require_bound_recovery_state(&marker, reverse, &fingerprint)?;
+        require_capture_fingerprint(&backup, &fingerprint)?;
+        require_bound_recovery_state(&backup_marker, reverse, &fingerprint)?;
+        before_apply(&capture, &backup);
+        apply_guarded_changes(&boundary.root, &directory_guard, id, &changes, reverse, false, |_| {}).map_err(|error| {
         AppError::new(
             "discardRecoveryFailedWithRecovery",
             error.message,
             Some("Recovery may have partially changed files. Inspect the working tree and discarded-change recovery before retrying."),
         )
     })?;
+        after_apply(&capture, &backup);
 
-    // Update either independently verified copy even when the other changed.
-    let original_result = update_recovery_record(&capture, &marker, &fingerprint, reverse);
-    let backup_result = update_recovery_record(&backup, &backup_marker, &fingerprint, reverse);
-    if let Err(mut error) = original_result {
-        if let Err(backup_error) = backup_result {
-            error.message.push_str(&format!(
-                " The independent recovery copy also could not be updated: {}",
-                backup_error.message
-            ));
+        // Update either independently verified copy even when the other changed.
+        let original_result = update_recovery_record(&capture, &marker, &fingerprint, reverse);
+        let backup_result = update_recovery_record(&backup, &backup_marker, &fingerprint, reverse);
+        if let Err(mut error) = original_result {
+            if let Err(backup_error) = backup_result {
+                error.message.push_str(&format!(
+                    " The independent recovery copy also could not be updated: {}",
+                    backup_error.message
+                ));
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
-    backup_result?;
-    sync_recovery_directory(&directory).map_err(|error| {
-        recovery_after_mutation_error("Could not sync the saved recovery state", error)
-    })?;
-    require_capture_fingerprint(&capture, &fingerprint)
+        backup_result?;
+        sync_recovery_directory(&directory).map_err(|error| {
+            recovery_after_mutation_error("Could not sync the saved recovery state", error)
+        })?;
+        require_capture_fingerprint(&capture, &fingerprint)
         .and_then(|_| require_bound_recovery_state(&marker, !reverse, &fingerprint))
         .and_then(|_| require_capture_fingerprint(&backup, &fingerprint))
         .and_then(|_| require_bound_recovery_state(&backup_marker, !reverse, &fingerprint))
@@ -1234,7 +2372,8 @@ fn recover_discarded_changes_with_hook(
                 error,
             )
         })?;
-    Ok(())
+        Ok(())
+    }
 }
 
 pub fn delete_discard_recovery(path: &Path, id: &str) -> Result<(), AppError> {
@@ -1246,22 +2385,44 @@ pub fn delete_discard_recovery_reviewed(
     id: &str,
     expected_sha256: Option<&str>,
 ) -> Result<(), AppError> {
-    validate_id(id)?;
-    let directory = recovery_directory(path)?;
-    let capture = directory.join(format!("{id}.patch"));
-    let marker = directory.join(format!("{id}.restored"));
-    // Validate both paths before removing either: a corrupt marker must not
-    // cause the otherwise usable capture to be deleted on a refused request.
-    require_recovery_file(&capture)?;
-    recovery_file_exists(&marker)?;
-    recovery_file_exists(&recovery_binding_file(&marker))?;
-    recovery_file_exists(&marker.with_extension("restored.pending"))?;
-    if expected_sha256.is_some() {
-        let snapshot = RecoverySnapshot::capture(&capture, None)?;
-        verify_capture_fingerprint(&snapshot, expected_sha256)?;
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (path, id, expected_sha256);
+        return Err(unsafe_discard(
+            "Safe removal of recovery data is not yet available on this operating system.",
+        ));
     }
-    remove_recovery_file(&capture)?;
-    finish_removing_recovery_marker(&marker)
+    #[cfg(target_os = "linux")]
+    {
+        use rustix::fs::{AtFlags, unlinkat};
+        validate_id(id)?;
+        let boundary = DiscardBoundary::open(path)?;
+        let (directory_guard, directory) = boundary.recovery_directory(false)?;
+        let capture = directory.join(format!("{id}.patch"));
+        let marker = directory.join(format!("{id}.restored"));
+        // Validate both paths before removing either: a corrupt marker must not
+        // cause the otherwise usable capture to be deleted on a refused request.
+        require_recovery_file(&capture)?;
+        recovery_file_exists(&marker)?;
+        recovery_file_exists(&recovery_binding_file(&marker))?;
+        recovery_file_exists(&marker.with_extension("restored.pending"))?;
+        if expected_sha256.is_some() {
+            let snapshot = RecoverySnapshot::capture(&capture, None)?;
+            verify_capture_fingerprint(&snapshot, expected_sha256)?;
+        }
+        let prefix = format!("{id}.original-");
+        for entry in fs::read_dir(&directory).map_err(io_error)? {
+            let entry = entry.map_err(io_error)?;
+            let name = entry.file_name();
+            if name.to_str().is_some_and(|name| name.starts_with(&prefix)) {
+                unlinkat(&directory_guard, name.as_os_str(), AtFlags::empty())
+                    .map_err(|error| io_error(error.into()))?;
+            }
+        }
+        remove_recovery_file(&capture)?;
+        finish_removing_recovery_marker(&marker)?;
+        directory_guard.sync_all().map_err(io_error)
+    }
 }
 
 fn finish_removing_recovery_marker(marker: &Path) -> Result<(), AppError> {
@@ -1408,7 +2569,7 @@ mod tests {
         let error = execute_discard_with_hook(&repository.0, &plan, |step, file| {
             if step == DiscardStep::BeforePublish {
                 fs::write(file.with_extension("patch"), b"external capture").unwrap();
-                pending = Some(file.to_owned());
+                pending = Some(fs::canonicalize(file).unwrap());
             }
         })
         .unwrap_err();
@@ -1439,7 +2600,7 @@ mod tests {
         let error = execute_discard_with_hook(&repository.0, &plan, |step, file| {
             if step == DiscardStep::AfterCheck {
                 fs::write(file, &other.mutation_patch).unwrap();
-                capture = Some(file.to_owned());
+                capture = Some(fs::canonicalize(file).unwrap());
             }
         })
         .unwrap_err();
@@ -1456,43 +2617,426 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn untracked_discard_refuses_a_parent_symlink_swapped_after_review() {
+    #[cfg(any(unix, windows))]
+    fn assert_discard_refuses_a_parent_symlink_swapped_after_review(tracked: bool) {
+        #[cfg(unix)]
         use std::os::unix::fs::symlink;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_dir as symlink;
 
         let repository = Repository::new();
         repository.baseline();
-        repository.write("folder/untracked.txt", b"outside file must survive\n");
-        let plan =
-            prepare_discard(&repository.0, Some(vec!["folder/untracked.txt".to_owned()])).unwrap();
-        assert_eq!(plan.preview.untracked, 1);
+        #[cfg(target_os = "linux")]
+        let previous = {
+            repository.write("previous.txt", b"earlier recovery\n");
+            let plan = prepare_discard(&repository.0, Some(vec!["previous.txt".into()])).unwrap();
+            let fingerprint = discard_plan_fingerprint(&plan).unwrap();
+            (execute_discard(&repository.0, &plan).unwrap(), fingerprint)
+        };
+        let file = "folder/selected.txt";
+        if tracked {
+            repository.write(file, b"committed\n");
+            stage_all(&repository.0).unwrap();
+            commit(&repository.0, "Track selected file").unwrap();
+            repository.write(file, b"staged edit\n");
+            stage_all(&repository.0).unwrap();
+        }
+        repository.write(file, b"outside file must survive\n");
         let index = fs::read(repository.0.join(".git/index")).unwrap();
-        let outside = repository.0.with_file_name(format!(
-            "{}-outside",
-            repository.0.file_name().unwrap().to_string_lossy()
-        ));
+        let outside_repository = Repository::new();
+        let outside = outside_repository.0.join("moved-folder");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("selected.txt"), b"outside sentinel\n").unwrap();
 
-        let error = execute_discard_with_hook(&repository.0, &plan, |step, _| {
-            if step == DiscardStep::BeforeApply {
-                fs::rename(repository.0.join("folder"), &outside).unwrap();
-                symlink(&outside, repository.0.join("folder")).unwrap();
-            }
-        })
-        .unwrap_err();
+        #[cfg(not(target_os = "linux"))]
+        {
+            let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
+                .err()
+                .expect("unsupported platform must refuse before mutation");
+            assert_eq!(error.kind, "repositoryFileRefused");
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let plan = prepare_discard(&repository.0, Some(vec![file.to_owned()])).unwrap();
+            assert_eq!(plan.preview.untracked, usize::from(!tracked));
+            let mut mutation_reached = false;
+            let error = execute_discard_with_hook(&repository.0, &plan, |step, _| {
+                if step == DiscardStep::BeforeApply {
+                    mutation_reached = true;
+                    fs::rename(repository.0.join("folder"), outside.join("original")).unwrap();
+                    symlink(&outside, repository.0.join("folder")).unwrap();
+                }
+            })
+            .unwrap_err();
 
-        assert_eq!(error.kind, "discardFailedWithRecovery");
+            assert_eq!(error.kind, "repositoryFileRefused");
+            assert!(!mutation_reached);
+            let recoveries = discarded_change_recoveries(&repository.0).unwrap();
+            assert_eq!(recoveries.len(), 1);
+            assert_eq!(recoveries[0].id, previous.0);
+            assert_eq!(
+                recoveries[0].content_sha256.as_deref(),
+                Some(previous.1.as_str())
+            );
+        }
         assert_eq!(
-            fs::read(outside.join("untracked.txt")).unwrap(),
+            fs::read(repository.0.join(file)).unwrap(),
             b"outside file must survive\n"
         );
-        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
-        assert!(
-            !discarded_change_recoveries(&repository.0)
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            fs::read(outside.join("selected.txt")).unwrap(),
+            b"outside sentinel\n"
         );
-        fs::remove_dir_all(&outside).unwrap();
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn untracked_discard_refuses_a_parent_symlink_swapped_after_review() {
+        assert_discard_refuses_a_parent_symlink_swapped_after_review(false);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn tracked_discard_refuses_a_parent_symlink_swapped_after_review() {
+        assert_discard_refuses_a_parent_symlink_swapped_after_review(true);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn root_discard_never_follows_a_leaf_replaced_at_mutation() {
+        use std::os::unix::fs::symlink;
+        for tracked in [false, true] {
+            for points_to_index in [false, true] {
+                let repository = Repository::new();
+                repository.baseline();
+                if tracked {
+                    repository.write("selected.txt", b"committed\n");
+                    stage_all(&repository.0).unwrap();
+                    commit(&repository.0, "Track selected file").unwrap();
+                    repository.write("selected.txt", b"staged\n");
+                    stage_all(&repository.0).unwrap();
+                }
+                repository.write("selected.txt", b"reviewed work\n");
+                let plan =
+                    prepare_discard(&repository.0, Some(vec!["selected.txt".into()])).unwrap();
+                let index = fs::read(repository.0.join(".git/index")).unwrap();
+                let outside = Repository::new();
+                outside.write("sentinel", b"outside sentinel\n");
+                let target = if points_to_index {
+                    repository.0.join(".git/index")
+                } else {
+                    outside.0.join("sentinel")
+                };
+                let mut reached = false;
+                let mut id = None;
+                let error = execute_discard_with_hook(&repository.0, &plan, |step, file| {
+                    if step == DiscardStep::BeforeApply {
+                        id = Some(file.file_stem().unwrap().to_string_lossy().into_owned());
+                    }
+                    if step == DiscardStep::BeforeMutation && file == Path::new("selected.txt") {
+                        reached = true;
+                        fs::remove_file(repository.0.join("selected.txt")).unwrap();
+                        symlink(&target, repository.0.join("selected.txt")).unwrap();
+                    }
+                })
+                .unwrap_err();
+                assert!(reached);
+                assert_eq!(error.kind, "discardFailedWithRecovery");
+                assert_eq!(
+                    fs::read(outside.0.join("sentinel")).unwrap(),
+                    b"outside sentinel\n"
+                );
+                assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+                assert_eq!(
+                    fs::read_link(repository.0.join("selected.txt")).unwrap(),
+                    target
+                );
+                let recoveries = discarded_change_recoveries(&repository.0).unwrap();
+                assert_eq!(recoveries.len(), 2);
+                for recovery in &recoveries {
+                    assert_eq!(
+                        recovery.content_sha256.as_deref(),
+                        Some(discard_plan_fingerprint(&plan).unwrap().as_str())
+                    );
+                }
+                fs::remove_file(repository.0.join("selected.txt")).unwrap();
+                if tracked {
+                    repository.write("selected.txt", b"staged\n");
+                }
+                recover_discarded_changes(&repository.0, &id.unwrap(), false).unwrap();
+                assert_eq!(
+                    fs::read(repository.0.join("selected.txt")).unwrap(),
+                    b"reviewed work\n"
+                );
+                assert_eq!(
+                    fs::read(outside.0.join("sentinel")).unwrap(),
+                    b"outside sentinel\n"
+                );
+                assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn discard_partial_failure_keeps_both_captures_and_recovers_completed_files() {
+        for tracked in [false, true] {
+            let repository = Repository::new();
+            repository.baseline();
+            if tracked {
+                repository.write("a.txt", b"committed a\n");
+                repository.write("z.txt", b"committed z\n");
+                stage_all(&repository.0).unwrap();
+                commit(&repository.0, "Track both files").unwrap();
+                repository.write("a.txt", b"staged a\n");
+                repository.write("z.txt", b"staged z\n");
+                stage_all(&repository.0).unwrap();
+            }
+            repository.write("a.txt", b"reviewed a\n");
+            repository.write("z.txt", b"reviewed z\n");
+            let plan =
+                prepare_discard(&repository.0, Some(vec!["a.txt".into(), "z.txt".into()])).unwrap();
+            let index = fs::read(repository.0.join(".git/index")).unwrap();
+            let outside = Repository::new();
+            outside.write("sentinel", b"outside sentinel\n");
+            let displaced = outside.0.join("displaced");
+            let mut reached = false;
+            let error = execute_discard_with_hook(&repository.0, &plan, |step, file| {
+                if step == DiscardStep::BeforeMutation && file == Path::new("z.txt") {
+                    reached = true;
+                    fs::rename(repository.0.join("z.txt"), &displaced).unwrap();
+                    fs::create_dir(repository.0.join("z.txt")).unwrap();
+                }
+            })
+            .unwrap_err();
+            assert!(reached);
+            assert_eq!(error.kind, "discardFailedWithRecovery");
+            if tracked {
+                assert_eq!(fs::read(repository.0.join("a.txt")).unwrap(), b"staged a\n");
+            } else {
+                assert!(!repository.0.join("a.txt").exists());
+            }
+            assert_eq!(fs::read(&displaced).unwrap(), b"reviewed z\n");
+            assert_eq!(
+                fs::read(outside.0.join("sentinel")).unwrap(),
+                b"outside sentinel\n"
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            let recoveries = discarded_change_recoveries(&repository.0).unwrap();
+            assert_eq!(recoveries.len(), 2);
+            for recovery in &recoveries {
+                assert_eq!(
+                    recovery.content_sha256.as_deref(),
+                    Some(discard_plan_fingerprint(&plan).unwrap().as_str())
+                );
+            }
+            fs::remove_dir(repository.0.join("z.txt")).unwrap();
+            fs::rename(displaced, repository.0.join("z.txt")).unwrap();
+            let backup = recoveries
+                .iter()
+                .find(|saved| saved.id.ends_with("-1"))
+                .unwrap();
+            recover_discarded_changes(&repository.0, &backup.id, false).unwrap();
+            assert_eq!(
+                fs::read(repository.0.join("a.txt")).unwrap(),
+                b"reviewed a\n"
+            );
+            assert_eq!(
+                fs::read(repository.0.join("z.txt")).unwrap(),
+                b"reviewed z\n"
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn discard_keeps_original_inode_named_for_writes_from_an_already_open_handle() {
+        for tracked in [false, true] {
+            let repository = Repository::new();
+            repository.baseline();
+            if tracked {
+                repository.write("selected.txt", b"committed\n");
+                stage_all(&repository.0).unwrap();
+                commit(&repository.0, "Track selected file").unwrap();
+            }
+            repository.write("selected.txt", b"reviewed work\n");
+            let mut writer = OpenOptions::new()
+                .append(true)
+                .open(repository.0.join("selected.txt"))
+                .unwrap();
+            let plan = prepare_discard(&repository.0, Some(vec!["selected.txt".into()])).unwrap();
+            let index = fs::read(repository.0.join(".git/index")).unwrap();
+            let id = execute_discard(&repository.0, &plan).unwrap();
+            writer.write_all(b"late edit\n").unwrap();
+            drop(writer);
+            let directory = recovery_directory(&repository.0).unwrap();
+            let originals = fs::read_dir(&directory)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| {
+                    path.file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with(&format!("{id}.original-"))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(originals.len(), 1);
+            assert_eq!(
+                fs::read(&originals[0]).unwrap(),
+                b"reviewed work\nlate edit\n"
+            );
+            let saved = discarded_change_recoveries(&repository.0).unwrap();
+            assert!(
+                saved[0]
+                    .state_warning
+                    .as_deref()
+                    .unwrap()
+                    .contains("other processes")
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            delete_discard_recovery(&repository.0, &id).unwrap();
+            assert!(!originals[0].exists());
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn discard_inspection_confines_filter_writes_and_metadata_changes() {
+        use std::os::fd::{AsRawFd, FromRawFd};
+        use std::os::unix::fs::PermissionsExt;
+        unsafe extern "C" {
+            fn fcntl(fd: i32, command: i32, ...) -> i32;
+        }
+        let repository = Repository::new();
+        repository.write(".gitattributes", b"tracked.txt filter=owned\n");
+        repository.write("tracked.txt", b"base\n");
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "Baseline").unwrap();
+        let outside = Repository::new();
+        outside.write("sentinel", b"outside sentinel\n");
+        let sentinel = outside.0.join("sentinel");
+        let mode = fs::metadata(&sentinel).unwrap().permissions().mode();
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let open_sentinel = OpenOptions::new().append(true).open(&sentinel).unwrap();
+        let fd = unsafe { fcntl(open_sentinel.as_raw_fd(), 0, 100) };
+        assert!(fd >= 100);
+        let _inherited_sentinel = unsafe { fs::File::from_raw_fd(fd) };
+        let command = format!(
+            "bash -c 'printf inherited >&{fd}'; printf corrupt > {}; chmod 000 {}; printf corrupt > .git/index; chmod 000 .git/index; cat",
+            shell_quote(sentinel.to_str().unwrap()),
+            shell_quote(sentinel.to_str().unwrap()),
+        );
+        for key in ["filter.owned.clean", "filter.owned.smudge"] {
+            ensure_success(
+                "configure filter",
+                &run_git(&repository.0, &["config", key, &command]).unwrap(),
+            )
+            .unwrap();
+        }
+        repository.write("tracked.txt", b"reviewed work\n");
+        let plan = prepare_discard(&repository.0, Some(vec!["tracked.txt".into()])).unwrap();
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"base\n"
+        );
+        assert_eq!(fs::read(&sentinel).unwrap(), b"outside sentinel\n");
+        assert_eq!(fs::metadata(&sentinel).unwrap().permissions().mode(), mode);
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"reviewed work\n"
+        );
+        assert_eq!(fs::read(&sentinel).unwrap(), b"outside sentinel\n");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn legacy_recovery_patches_are_preserved_and_refused_before_mutation() {
+        for nested in [false, true] {
+            for reverse in [false, true] {
+                let repository = Repository::new();
+                repository.baseline();
+                let file = if nested {
+                    "folder/selected.txt"
+                } else {
+                    "selected.txt"
+                };
+                repository.write(file, b"reviewed work\n");
+                let plan = prepare_discard(&repository.0, Some(vec![file.into()])).unwrap();
+                let directory = recovery_directory(&repository.0).unwrap();
+                fs::create_dir(&directory).unwrap();
+                let capture = directory.join("123.patch");
+                fs::write(&capture, &plan.patch).unwrap();
+                if reverse {
+                    let mut snapshot = RecoverySnapshot::capture(&capture, None).unwrap();
+                    let fingerprint = snapshot.content_sha256.clone();
+                    write_recovery_state(&directory.join("123.restored"), true, &fingerprint)
+                        .unwrap();
+                    // The read-only path report remains usable for older captures.
+                    assert_eq!(
+                        recovery_paths(&repository.0, &mut snapshot).unwrap().0,
+                        [file]
+                    );
+                }
+                let index = fs::read(repository.0.join(".git/index")).unwrap();
+                let error = recover_discarded_changes(&repository.0, "123", reverse).unwrap_err();
+                assert_eq!(error.kind, "repositoryFileRefused");
+                assert_eq!(fs::read(&capture).unwrap(), plan.patch);
+                assert_eq!(
+                    fs::read(repository.0.join(file)).unwrap(),
+                    b"reviewed work\n"
+                );
+                assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+                assert_eq!(discarded_change_recoveries(&repository.0).unwrap().len(), 1);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linked_worktree_discard_is_refused_before_creating_recovery_or_changing_index() {
+        let repository = Repository::new();
+        repository.baseline();
+        let outside = Repository::new();
+        let linked = outside.0.join("linked-worktree");
+        ensure_success(
+            "create linked worktree",
+            &run_git(
+                &repository.0,
+                &["worktree", "add", "-b", "linked", linked.to_str().unwrap()],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(linked.join("tracked.txt"), b"reviewed edit\n").unwrap();
+        let index = run_git(&linked, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout;
+        let error = prepare_discard(&linked, None)
+            .err()
+            .expect("linked worktree must be refused");
+        assert_eq!(error.kind, "repositoryFileRefused");
+        assert_eq!(
+            fs::read(linked.join("tracked.txt")).unwrap(),
+            b"reviewed edit\n"
+        );
+        assert_eq!(
+            run_git(&linked, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            index
+        );
+        assert!(
+            !repository
+                .0
+                .join(".git/worktrees/linked-worktree/git-khronos-recovery")
+                .exists()
+        );
     }
 
     #[test]
@@ -1508,7 +3052,7 @@ mod tests {
         let error = execute_discard_with_hook(&repository.0, &plan, |step, file| {
             if step == DiscardStep::BeforeApply {
                 fs::write(file, &other.mutation_patch).unwrap();
-                capture = Some(file.to_owned());
+                capture = Some(fs::canonicalize(file).unwrap());
             }
         })
         .unwrap_err();
@@ -1560,7 +3104,7 @@ mod tests {
             let result = git_cancellation::with(Some(&token), || {
                 execute_discard_with_hook(&repository.0, &plan, |step, file| {
                     if step == DiscardStep::BeforeApply {
-                        capture = Some(file.to_owned());
+                        capture = Some(fs::canonicalize(file).unwrap());
                         if cancelled {
                             token.cancel();
                         } else {
@@ -1601,8 +3145,8 @@ mod tests {
                 let id = file.file_stem().unwrap().to_string_lossy();
                 let copy = file.with_file_name(format!("{id}-1.patch"));
                 fs::write(&copy, b"external replacement").unwrap();
-                capture = Some(file.to_owned());
-                backup = Some(copy);
+                capture = Some(fs::canonicalize(file).unwrap());
+                backup = Some(fs::canonicalize(copy).unwrap());
             }
         })
         .unwrap_err();
@@ -1908,7 +3452,7 @@ mod tests {
                 None,
                 |_, copy| {
                     fs::write(copy, b"external replacement").unwrap();
-                    backup = Some(copy.to_owned());
+                    backup = Some(fs::canonicalize(copy).unwrap());
                 },
             )
             .unwrap_err();
@@ -1956,7 +3500,7 @@ mod tests {
                         reverse,
                         None,
                         |_, copy| {
-                            backup = Some(copy.to_owned());
+                            backup = Some(fs::canonicalize(copy).unwrap());
                             if cancelled {
                                 token.cancel();
                             } else {
@@ -2006,7 +3550,7 @@ mod tests {
         repository.write("tracked.txt", b"unstaged\n");
         repository.write("binary.dat", &[0, 1, 2, 255]);
         repository.write("empty", b"");
-        repository.write("folder/new.txt", b"new\n");
+        repository.write("new.txt", b"new\n");
         let original_index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
             .unwrap()
             .stdout;
@@ -2030,10 +3574,7 @@ mod tests {
         assert_eq!(recoveries[0].paths, plan.preview.paths);
         let mut paths = recoveries[0].paths.clone();
         paths.sort();
-        assert_eq!(
-            paths,
-            ["binary.dat", "empty", "folder/new.txt", "tracked.txt"]
-        );
+        assert_eq!(paths, ["binary.dat", "empty", "new.txt", "tracked.txt"]);
         assert!(!recoveries[0].paths_truncated);
         assert!(recoveries[0].paths_error.is_none());
         assert_eq!(
@@ -2070,7 +3611,7 @@ mod tests {
     fn recovery_lists_literal_special_paths_from_existing_patch_files() {
         let repository = Repository::new();
         repository.baseline();
-        let file = "folder/a \"quoted\"\t雪\nname.txt";
+        let file = "a \"quoted\"\t雪\nname.txt";
         repository.write(file, b"preserved contents\n");
         let plan = prepare_discard(&repository.0, Some(vec![file.to_owned()])).unwrap();
         let id = execute_discard(&repository.0, &plan).unwrap();
@@ -2258,10 +3799,16 @@ mod tests {
                 return;
             }
             fs::set_permissions(&directory, original.clone()).unwrap();
-            let result =
-                recover_discarded_changes_with_hook(&repository.0, &id, reverse, None, |_, _| {
+            let result = recover_discarded_changes_with_hooks(
+                &repository.0,
+                &id,
+                reverse,
+                None,
+                |_, _| {},
+                |_, _| {
                     fs::set_permissions(&directory, fs::Permissions::from_mode(0o500)).unwrap();
-                });
+                },
+            );
             fs::set_permissions(directory, original).unwrap();
             let error = result.unwrap_err();
 
@@ -2337,8 +3884,11 @@ mod tests {
         )
         .unwrap();
         let plan = prepare_discard(&repository.0, Some(vec!["selected/".into()])).unwrap();
-        execute_discard(&repository.0, &plan).unwrap();
-        assert!(!repository.0.join("selected/new.txt").exists());
+        assert_eq!(
+            execute_discard(&repository.0, &plan).unwrap_err().kind,
+            "repositoryFileRefused"
+        );
+        assert!(repository.0.join("selected/new.txt").exists());
         assert!(repository.0.join("unselected.txt").exists());
         assert!(repository.0.join("ignored/secret").exists());
         let all = prepare_discard(&repository.0, None).unwrap();
@@ -2348,7 +3898,15 @@ mod tests {
                 .iter()
                 .any(|file| file.starts_with("nested"))
         );
-        execute_discard(&repository.0, &all).unwrap();
+        assert_eq!(
+            execute_discard(&repository.0, &all).unwrap_err().kind,
+            "repositoryFileRefused"
+        );
+        assert!(repository.0.join("unselected.txt").exists());
+        let root = prepare_discard(&repository.0, Some(vec!["unselected.txt".into()])).unwrap();
+        execute_discard(&repository.0, &root).unwrap();
+        assert!(!repository.0.join("unselected.txt").exists());
+        assert!(repository.0.join("selected/new.txt").exists());
         assert!(repository.0.join("nested/new.txt").exists());
         assert!(repository.0.join("ignored/secret").exists());
     }
