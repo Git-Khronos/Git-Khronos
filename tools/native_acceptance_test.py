@@ -437,6 +437,22 @@ class FixtureTests(unittest.TestCase):
             self.assertIn("matches.length === 1", wait.call_args.args[0])
             request.assert_called_once_with("POST", "/session/owned/element/visible-button/click", {})
 
+    def test_visible_text_click_waits_for_positioning_and_never_replays(self):
+        driver = Driver("http://127.0.0.1:1")
+        driver.session = "owned"
+        element = {"element-6066-11e4-a52e-4f735466cecf": "delete-button"}
+        text = "Delete checkpoint reference…"
+        with patch.object(driver, "script", side_effect=[None, element]) as script, \
+             patch.object(driver, "request") as request, patch("native_acceptance.time.sleep"):
+            driver.click_visible(".context-menu button.danger-item", text)
+        self.assertEqual(script.call_count, 2)
+        predicate = script.call_args.args[0]
+        self.assertIn("getComputedStyle(element).visibility !== 'visible'", predicate)
+        self.assertIn(f"const expectedText = {json.dumps(text)}", predicate)
+        self.assertIn("element.textContent.trim() !== expectedText", predicate)
+        self.assertIn("element.contains(document.elementFromPoint", predicate)
+        request.assert_called_once_with("POST", "/session/owned/element/delete-button/click", {})
+
     def test_http_failure_response_is_closed_and_preserves_diagnostics(self):
         driver = Driver("http://127.0.0.1:1")
         body = BytesIO(b'element not interactable')

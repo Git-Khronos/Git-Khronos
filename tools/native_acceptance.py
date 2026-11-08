@@ -275,12 +275,14 @@ class Driver:
         self.request("POST", self.path(f"element/{identifier}/click"), {})
         return geometry
 
-    def click_visible(self, selector):
+    def click_visible(self, selector, text=None):
         element = self.wait(f"""return (() => {{
+          const expectedText = {json.dumps(text)};
           const matches = [...document.querySelectorAll({json.dumps(selector)})]
             .filter(element => {{
               if (!element.getClientRects().length || getComputedStyle(element).visibility !== 'visible'
-                || element.matches(':disabled') || element.closest('[inert]')) return false;
+                || element.matches(':disabled') || element.closest('[inert]')
+                || (expectedText !== null && element.textContent.trim() !== expectedText)) return false;
               const rect = element.getBoundingClientRect();
               const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
               const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
@@ -644,8 +646,7 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
         assert checkpoint_refs(fixtures, repository) == expected
 
     driver.click(pill("moved"))
-    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
-    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.click_visible(".context-menu[role=menu] button.danger-item", "Delete checkpoint reference…")
     driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
     confirmation = driver.script("return document.querySelector('.checkpoint-confirmation-dialog').textContent")
     assert names["moved"] in confirmation and oids["moved"][:7] in confirmation
@@ -661,8 +662,7 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
     driver.click('[aria-label="Dismiss error"]')
 
     driver.click(pill("reviewed"))
-    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
-    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.click_visible(".context-menu[role=menu] button.danger-item", "Delete checkpoint reference…")
     driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog[role=alertdialog]')")
     confirmation = driver.script("return document.querySelector('.checkpoint-confirmation-dialog').textContent")
     assert names["reviewed"] in confirmation and oids["reviewed"][:7] in confirmation
@@ -670,8 +670,7 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
     assert checkpoint_refs(fixtures, repository) == expected
 
     driver.click(pill("reviewed"))
-    driver.wait("return !!document.querySelector('.context-menu[role=menu] button.danger-item:not(:disabled)')")
-    driver.click_text(".context-menu[role=menu] button", "Delete checkpoint reference…")
+    driver.click_visible(".context-menu[role=menu] button.danger-item", "Delete checkpoint reference…")
     driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
     driver.click_text(".checkpoint-confirmation-dialog button", "Delete checkpoint reference")
     driver.wait(f"return !document.querySelector({json.dumps(row('reviewed'))})")

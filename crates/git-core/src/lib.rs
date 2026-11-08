@@ -13234,9 +13234,12 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     fn ignore_refuses_existing_and_dangling_ignore_file_symlinks() {
-        use std::os::unix::fs::symlink;
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
         for existing in [false, true] {
             let repository = TestRepository::new();
             repository.write("secret.log", "keep\n");
@@ -13245,7 +13248,7 @@ mod tests {
                 fs::write(&target, b"# preserve outside\n").unwrap();
             }
             let ignore = repository.path.join(".gitignore");
-            symlink(&target, &ignore).unwrap();
+            symlink_file(&target, &ignore).unwrap();
             assert!(ignore_path(&repository.path, "secret.log", "file", false).is_err());
             assert!(fs::symlink_metadata(ignore).unwrap().is_symlink());
             if existing {
@@ -13258,6 +13261,107 @@ mod tests {
                 b"keep\n"
             );
         }
+    }
+
+    #[test]
+    #[cfg(any(unix, windows))]
+    fn ignore_refuses_ignore_file_swapped_to_symlink_before_open() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
+
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        repository.write(".gitignore", "# original rules\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let ignore = repository.path.join(".gitignore");
+        let original = repository.path.join(".git/original-ignore");
+        let outside_repository = TestRepository::new();
+        let outside = outside_repository.path.join("outside-ignore");
+        fs::write(&outside, b"# outside content must not be copied\n").unwrap();
+
+        let result = ignore_rules::update_with_hook(
+            &repository.path,
+            "/secret.log",
+            "secret.log",
+            true,
+            || {
+                fs::rename(&ignore, &original).unwrap();
+                symlink_file(&outside, &ignore).unwrap();
+            },
+        );
+        let error = result.expect_err("a swapped ignore file must be refused");
+        assert_eq!(error.kind, "invalidIgnoreFile");
+        assert!(fs::symlink_metadata(&ignore).unwrap().is_symlink());
+        assert_eq!(
+            fs::read(&outside).unwrap(),
+            b"# outside content must not be copied\n"
+        );
+        assert_eq!(fs::read(&original).unwrap(), b"# original rules\n");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+        assert!(!repository.path.join(".gitignore.lock").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ignore_refuses_ignore_file_swapped_to_fifo_without_blocking() {
+        use std::os::unix::fs::FileTypeExt;
+        use std::time::Duration;
+
+        let repository = TestRepository::new();
+        repository.write("secret.log", "committed\n");
+        repository.git(&["add", "secret.log"]);
+        repository.git(&["commit", "-m", "Tracked file"]);
+        repository.write("secret.log", "local edit\n");
+        repository.write(".gitignore", "# original rules\n");
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let root = repository.path.clone();
+        let ignore = root.join(".gitignore");
+        let original = root.join(".git/original-ignore");
+        let (send, receive) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result =
+                ignore_rules::update_with_hook(&root, "/secret.log", "secret.log", true, || {
+                    fs::rename(&ignore, &original).unwrap();
+                    rustix::fs::mkfifoat(
+                        rustix::fs::CWD,
+                        &ignore,
+                        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+                    )
+                    .unwrap();
+                });
+            send.send(result).unwrap();
+        });
+        let error = receive
+            .recv_timeout(Duration::from_secs(3))
+            .expect("ignore action blocked on a replaced FIFO")
+            .expect_err("a FIFO must be refused");
+        worker.join().unwrap();
+        assert_eq!(error.kind, "invalidIgnoreFile");
+        assert!(
+            fs::symlink_metadata(repository.path.join(".gitignore"))
+                .unwrap()
+                .file_type()
+                .is_fifo()
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".git/original-ignore")).unwrap(),
+            b"# original rules\n"
+        );
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("secret.log")).unwrap(),
+            b"local edit\n"
+        );
+        assert!(!repository.path.join(".gitignore.lock").exists());
     }
 
     #[test]

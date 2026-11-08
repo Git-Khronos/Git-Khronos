@@ -310,7 +310,9 @@ history, and checks that deleted refs and their otherwise-unreachable commits
 are absent. External loose and packed ref deletions must refresh the graph.
 Deleting a reviewed live checkpoint through the UI must preserve a sibling
 ref, HEAD, the index, working-tree contents and all checkpoint commit objects;
-moving a ref after review must refuse the stale deletion.
+moving a ref after review must refuse the stale deletion. The native harness
+waits for the uniquely matching delete control to be visible, enabled and
+hit-testable after menu positioning, then sends one click without replay.
 `native-full`
 adds disposable Git repositories and verifies the implemented staging,
 history, recovery, reference, worktree, submodule, patch, bundle, mail,

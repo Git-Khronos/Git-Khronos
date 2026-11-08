@@ -84,6 +84,56 @@ fn io_error(error: std::io::Error) -> AppError {
     )
 }
 
+fn invalid_ignore_file() -> AppError {
+    AppError::new(
+        "invalidIgnoreFile",
+        "The repository .gitignore must be an ordinary file, not a symbolic link or directory.",
+        Some("Preserve the existing entry and inspect it before retrying."),
+    )
+}
+
+#[cfg(unix)]
+fn open_ignore_no_follow(path: &Path) -> Result<fs::File, AppError> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    let descriptor = open(
+        path,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|error| {
+        if error == rustix::io::Errno::LOOP {
+            invalid_ignore_file()
+        } else {
+            io_error(error.into())
+        }
+    })?;
+    Ok(fs::File::from(descriptor))
+}
+
+#[cfg(windows)]
+fn open_ignore_no_follow(path: &Path) -> Result<fs::File, AppError> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(io_error)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_ignore_no_follow(_path: &Path) -> Result<fs::File, AppError> {
+    Err(AppError::new(
+        "unsupportedPlatform",
+        "Existing ignore rules cannot be opened safely on this platform.",
+        Some("Edit .gitignore manually instead."),
+    ))
+}
+
 fn is_ignored(path: &Path, file: &str) -> Result<bool, AppError> {
     // check-ignore rejects pathspec magic, including names beginning with ':'.
     let literal_file = format!("./{file}");
@@ -104,6 +154,16 @@ pub(super) fn update(
     file: &str,
     stop_tracking: bool,
 ) -> Result<(), AppError> {
+    update_with_hook(path, rule, file, stop_tracking, || {})
+}
+
+pub(super) fn update_with_hook(
+    path: &Path,
+    rule: &str,
+    file: &str,
+    stop_tracking: bool,
+    before_open: impl FnOnce(),
+) -> Result<(), AppError> {
     let destination = path.join(".gitignore");
     let lock = path.join(".gitignore.lock");
     // A failed acquisition must never remove another writer's lock.
@@ -114,16 +174,14 @@ pub(super) fn update(
         .map_err(io_error)?;
     let mut lock_owned = true;
     let result = (|| {
-        let metadata = match fs::symlink_metadata(&destination) {
-            Ok(metadata) if metadata.is_file() && !metadata.is_symlink() => Some(metadata),
-            Ok(_) => {
-                return Err(AppError::new(
-                    "invalidIgnoreFile",
-                    "The repository .gitignore must be an ordinary file, not a symbolic link or directory.",
-                    Some("Preserve the existing entry and inspect it before retrying."),
-                ));
+        let exists = match fs::symlink_metadata(&destination) {
+            Ok(metadata)
+                if metadata.is_file() && !repository_files::is_link_or_reparse_point(&metadata) =>
+            {
+                true
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Ok(_) => return Err(invalid_ignore_file()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => return Err(io_error(error)),
         };
         if stop_tracking {
@@ -142,10 +200,16 @@ pub(super) fn update(
                 "check whether that file can stop being tracked",
             )?;
         }
-        let mut input = if metadata.is_some() {
-            Some(fs::File::open(&destination).map_err(io_error)?)
+        before_open();
+        let (mut input, metadata) = if exists {
+            let input = open_ignore_no_follow(&destination)?;
+            let metadata = input.metadata().map_err(io_error)?;
+            if !metadata.is_file() || repository_files::is_link_or_reparse_point(&metadata) {
+                return Err(invalid_ignore_file());
+            }
+            (Some(input), Some(metadata))
         } else {
-            None
+            (None, None)
         };
         let existing = if let Some(input) = input.as_mut() {
             scan_existing_rules(input, rule.as_bytes()).map_err(io_error)?

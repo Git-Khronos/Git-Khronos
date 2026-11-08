@@ -80,7 +80,12 @@ the completed operation rather than implying it was not applied. Extension and
 directory rules may also ignore other matching untracked paths, but only the
 selected tracked file is removed from the index. The confirmation explains that
 scope; Unix filename backslashes are treated literally rather than as path
-separators. Paths that cannot be inspected safely are reported instead of being
+separators. Existing root ignore rules are opened without following a final
+symbolic link or Windows reparse point, and Unix opens are nonblocking, so a
+swap to a link or FIFO after the initial check is refused before untracking.
+This does not qualify concurrent replacement of the worktree root or an
+uncooperative writer replacing the ignore file during publication. Paths that
+cannot be inspected safely are reported instead of being
 presented as a complete listing. Linux file creation resolves the full path
 beneath the worktree in one no-symlink `openat2` operation; a regression
 test moves the checked parent outside the worktree during the operation and
@@ -191,7 +196,17 @@ package built from that source
 passes Debian package verification and the complete headless native suite:
 229 scenarios passed, including eight owned-window XTEST right clicks. The
 report confirms the same package SHA-256. A later test-only Clippy correction
-changes a package receipt input without changing production code. Chromium passed
+changes a package receipt input without changing production code. The later
+package built from `c3b245da`, SHA-256
+`93ccae5de955fe83f9d343923951fcc5275a93a16801b31f4259d50faf052819`,
+also passed package verification and all 229 headless native scenarios,
+including eight owned-window XTEST clicks; it predates the subsequent
+ignore-file open hardening. The later
+[GitHub run](https://github.com/Git-Khronos/Git-Khronos/actions/runs/42495995748)
+at `f7bf456` passed Windows and renderer checks but failed packaged acceptance
+when the checkpoint action was not yet visible to the test. The harness now
+waits for that positioned control before clicking; the corrected run still
+requires remote qualification. Chromium passed
 1,830 cases across two shards without retries. The first shard preceded the final patch-review
 invalidation change; its complete owning spec passed afterward, so these
 shards are not a single exact-final-source full run. The latest whole Git-core
