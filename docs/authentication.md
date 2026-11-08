@@ -25,10 +25,10 @@ their certificate-verification guidance. Explicit authentication failures still
 take precedence over these diagnostics; unrecognized failures after a prompt
 retain authentication guidance. Raw transport output is never displayed.
 
-TLS guidance requires a recognized failure diagnostic, not just `ssl` or
-`certificate` in a repository name or quoted URL. Unknown transport diagnostics
-retain general remote/network guidance; certificate checks are never disabled as
-a workaround.
+TLS guidance requires a recognized failure diagnostic, including Git's OpenSSL
+verification-result errors, not just `ssl` or `certificate` in a repository name
+or quoted URL. Unknown transport diagnostics retain general remote/network
+guidance; certificate checks are never disabled as a workaround.
 
 For recognized Git message formats, quoted missing-repository names and URL
 targets are excluded from diagnostic matching. A name such as

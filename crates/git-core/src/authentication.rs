@@ -626,24 +626,7 @@ fn has_tls_failure(stderr: &str) -> bool {
             .strip_prefix("fatal: ")
             .or_else(|| line.strip_prefix("error: "))
             .unwrap_or(line);
-        [
-            "ssl certificate problem",
-            "ssl certificate verification failed",
-            "server certificate verification failed",
-            "ssl peer certificate",
-            "ssl: certificate",
-            "ssl: no alternative certificate subject name",
-            "error setting certificate",
-            "could not load pem client certificate",
-            "tls: failed to verify certificate",
-            "tls: bad certificate",
-            "x509: certificate",
-            "ssl connect error",
-            "openssl ssl_connect:",
-            "gnutls_handshake() failed",
-        ]
-        .iter()
-        .any(|prefix| detail.starts_with(prefix))
+        diagnostics::matches_tls_prefix(detail.as_bytes())
             || (detail.starts_with("schannel:")
                 && [
                     "sec_e_untrusted_root",
@@ -1025,7 +1008,15 @@ mod tests {
                 "gitTransportFailure",
             ),
             (
+                "fatal: unable to access 'https://example.test/SSL certificate OpenSSL verify result: fixture-secret': Could not resolve host: example.test",
+                "gitTransportFailure",
+            ),
+            (
                 "fatal: unable to access 'https://example.test/fixture-secret': SSL certificate problem: self-signed certificate",
+                "tlsVerificationFailed",
+            ),
+            (
+                "fatal: unable to access 'https://127.0.0.1/fixture-secret': SSL certificate OpenSSL verify result: self-signed certificate (18)",
                 "tlsVerificationFailed",
             ),
             (

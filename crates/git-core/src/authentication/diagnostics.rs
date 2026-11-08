@@ -76,6 +76,7 @@ const CONTAINS: &[(&str, u16)] = &[
 const TLS_PREFIXES: &[&[u8]] = &[
     b"ssl certificate problem",
     b"ssl certificate verification failed",
+    b"ssl certificate openssl verify result:",
     b"server certificate verification failed",
     b"ssl peer certificate",
     b"ssl: certificate",
@@ -89,6 +90,12 @@ const TLS_PREFIXES: &[&[u8]] = &[
     b"openssl ssl_connect:",
     b"gnutls_handshake() failed",
 ];
+
+pub(super) fn matches_tls_prefix(detail: &[u8]) -> bool {
+    TLS_PREFIXES
+        .iter()
+        .any(|pattern| detail.starts_with(pattern))
+}
 
 fn matcher() -> &'static DFA {
     static MATCHER: OnceLock<DFA> = OnceLock::new();
@@ -280,9 +287,7 @@ impl FactScanner {
             .strip_prefix(b"fatal: ")
             .or_else(|| prefix.strip_prefix(b"error: "))
             .unwrap_or(prefix);
-        if TLS_PREFIXES
-            .iter()
-            .any(|pattern| detail.starts_with(pattern))
+        if matches_tls_prefix(detail)
             || (detail.starts_with(b"schannel:") && self.flags & SCHANNEL_MARKER != 0)
         {
             flags |= TLS;

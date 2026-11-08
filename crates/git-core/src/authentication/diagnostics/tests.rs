@@ -65,6 +65,8 @@ fn streaming_diagnostics_match_full_output_priority_and_framing() {
         "fatal: Authentication failed for 'host key verification failed'",
         "error: failed to push some refs to 'authentication failed'",
         "fatal: unable to access 'host key verification failed': SSL certificate problem",
+        "fatal: unable to access 'fixture-secret': SSL certificate OpenSSL verify result: self-signed certificate (18)",
+        "fatal: unable to access 'SSL certificate OpenSSL verify result: fixture-secret': Could not resolve host",
         "fatal: unable to access 'authentication failed': host key verification failed",
         "fatal: unable to access 'authentication failed without a delimiter",
         "fatal: unable to access '': authentication failed': SSL certificate problem",

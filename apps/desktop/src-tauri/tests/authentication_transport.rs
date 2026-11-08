@@ -882,6 +882,41 @@ fn quoted_targets_in_missing_local_remotes_do_not_impersonate_transport_failures
 
 #[test]
 fn real_https_smart_git_authentication_rejection_retry_cancel_and_background() {
+    const CHILD: &str = "GIT_KHRONOS_HTTPS_TRANSPORT_TEST_CHILD";
+    const COMPLETED: &str = "isolated HTTPS transport fixture completed";
+    if std::env::var_os(CHILD).is_none() {
+        // Isolate Git's TLS and credential settings without mutating the test process environment.
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "real_https_smart_git_authentication_rejection_retry_cancel_and_background",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env_remove("GIT_CONFIG_COUNT")
+            .env_remove("GIT_CONFIG_PARAMETERS")
+            .env_remove("GIT_SSL_CAINFO")
+            .env_remove("GIT_SSL_CAPATH")
+            .env_remove("GIT_SSL_NO_VERIFY")
+            .env_remove("GIT_SSL_CERT")
+            .env_remove("GIT_SSL_KEY")
+            .env_remove("CURL_CA_BUNDLE")
+            .env_remove("SSL_CERT_FILE")
+            .env_remove("SSL_CERT_DIR")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains(COMPLETED),
+            "isolated HTTPS fixture failed:\n{}\n{}",
+            stdout,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
     let fixture = HttpsFixture::new();
     git(
         &fixture.fixture.repository,
@@ -1008,4 +1043,5 @@ fn real_https_smart_git_authentication_rejection_retry_cancel_and_background() {
             .contains("fixture-secret")
     );
     fixture.fixture.fetch(None).unwrap();
+    println!("{COMPLETED}");
 }
