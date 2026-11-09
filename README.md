@@ -89,7 +89,8 @@ bash install.sh --uninstall              # remove; repositories and preferences 
 ```
 
 Downloading requires a published release that provides
-`Git-Khronos_<version>_<arch>.deb` and `SHA256SUMS`. Until one exists, use
+`Git-Khronos_<version>_<arch>.deb` and `SHA256SUMS`; releases also provide a
+CycloneDX SBOM. Until one exists, use
 `--from-source` or `--deb`, or the `task` commands below. Run
 `bash install.sh --help` for every option.
 
