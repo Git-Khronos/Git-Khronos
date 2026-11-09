@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -51,9 +52,23 @@ jobs:
             exit 1
           }
       - run: pnpm install --frozen-lockfile
-      - name: Test and build Debian package
+      - name: Run packaging regressions
         run: |
+          hook=/etc/dpkg/dpkg.cfg.d/needrestart
+          backup="$(mktemp -d)"
+          restore_hook() {
+            status=$?
+            if [ -e "$backup/needrestart" ]; then
+              sudo mv -- "$backup/needrestart" "$hook" || status=1
+            fi
+            rmdir -- "$backup" || status=1
+            exit "$status"
+          }
+          trap restore_hook EXIT
+          if [ -e "$hook" ]; then sudo mv -- "$hook" "$backup/needrestart"; fi
           pnpm nx run desktop:package-test --output-style=static
+      - name: Build Debian package
+        run: |
           pnpm nx run desktop:package-deb --output-style=static
       - name: Install checksum-verified Syft
         run: |
