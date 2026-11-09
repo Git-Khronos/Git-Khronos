@@ -4,7 +4,114 @@
   "projectType": "application",
   "sourceRoot": "apps/desktop/src",
   "targets": {
-    "build": { "executor": "nx:run-commands", "options": { "command": "ng build desktop" } },
+    "graph-test-typecheck": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "tsc --project tsconfig.graph-tests.json" }
+    },
+    "owned-process-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "node --test tools/owned-command.test.mjs tools/run-validation.test.mjs" }
+    },
+    "editor-recovery-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "node --test tools/editor-draft-snapshots.test.mjs" }
+    },
+    "audit": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm audit --audit-level low" }
+    },
+    "package-deb": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "task package:deb" }
+    },
+    "package-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "node --test tools/install-script.test.mjs tools/package-deb.test.mjs tools/collect-rust-notices.test.mjs tools/prepare-rust-notices.test.mjs tools/prepare-frontend-notices.test.mjs" }
+    },
+    "native-smoke": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite smoke --headless" }
+    },
+    "native-full": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite full --headless" }
+    },
+    "native-environment": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite environment --headless" }
+    },
+    "native-performance": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite performance --headless" }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "playwright test" }
+    },
+    "native-harness-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 -m unittest discover -s tools -p 'native_*_test.py'" }
+    },
+    "test-signing": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "cargo test -p git-khronos-git-core signing_ -- --ignored --test-threads=1"
+      }
+    },
+    "test-ssh": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "cargo test -p git-khronos-desktop --test ssh_transport -- --ignored --test-threads=1"
+      }
+    },
+    "test-lfs": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "commands": [
+          "git lfs version",
+          "cargo test -p git-khronos-git-core lfs_ -- --ignored --test-threads=1",
+          "cargo test -p git-khronos-desktop --test authentication_transport lfs_ -- --ignored --test-threads=1"
+        ],
+        "parallel": false
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "defaultConfiguration": "production",
+      "cache": true,
+      "inputs": ["production", "^production", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
+      "outputs": ["{options.output-path}"],
+      "options": {
+        "output-path": "dist/apps/desktop",
+        "commands": [
+          { "command": "ng build desktop", "forwardAllArgs": true },
+          { "command": "node tools/check-production-renderer.mjs \"{args.output-path}/browser\"", "forwardAllArgs": false }
+        ],
+        "parallel": false
+      },
+      "configurations": {
+        "production": {},
+        "development": {
+          "output-path": "dist/development/desktop",
+          "commands": [{ "command": "ng build desktop --configuration development", "forwardAllArgs": true }]
+        }
+      }
+    },
     "serve": { "executor": "nx:run-commands", "options": { "command": "ng serve desktop" } },
     "tauri-dev": {
       "executor": "nx:run-commands",
@@ -15,10 +122,11 @@
       "options": { "command": "tauri build --config apps/desktop/src-tauri/tauri.conf.json" }
     },
     "check": {
+      "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "ng build desktop --configuration development",
+          "ng build desktop --configuration development --output-path=dist/checks/desktop",
           "cargo check --workspace --all-targets",
           "cargo clippy --workspace --all-targets -- -D warnings"
         ],
@@ -26,6 +134,8 @@
       }
     },
     "test": {
+      "dependsOn": ["graph-test-typecheck", "owned-process-test", "editor-recovery-test"],
+      "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [

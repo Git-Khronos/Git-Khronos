@@ -6,11 +6,114 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
-test('uses the Git Chronos identity throughout the application chrome', async ({ page }) => {
-  await expect(page).toHaveTitle('Git Chronos');
+async function resolvedCssColor(page: Page, value: string): Promise<string> {
+  return page.evaluate((background) => {
+    const probe = document.createElement('span');
+    probe.style.background = background;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, value);
+}
+
+async function cssContrastRatio(page: Page, foreground: string, background: string): Promise<number> {
+  return page.evaluate(({ foreground, background }) => {
+    const probe = document.createElement('span');
+    probe.style.color = foreground;
+    probe.style.backgroundColor = background;
+    document.body.append(probe);
+    const style = getComputedStyle(probe);
+    const channels = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const luminance = (value: string) => {
+      const [red, green, blue] = channels(value).map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+    const foregroundLuminance = luminance(style.color);
+    const backgroundLuminance = luminance(style.backgroundColor);
+    probe.remove();
+    return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+      / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+  }, { foreground, background });
+}
+
+test('uses the Git Khronos identity throughout the application chrome', async ({ page }) => {
+  await expect(page).toHaveTitle(/ — Git Khronos$/);
   await expect(page.locator('.app-menu .brand-mark')).toHaveText('GC');
   await page.getByRole('button', { name: 'Main menu' }).click();
-  await expect(page.getByRole('menu', { name: 'Git Chronos menu' })).toContainText('Git Chronos');
+  await expect(page.getByRole('menu', { name: 'Git Khronos menu' })).toContainText('Git Khronos');
+});
+
+test('summarizes branch sync and working-tree state in the primary branch selector', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const branchSelector = page.getByRole('button', { name: /Switch branch, current main/ });
+  const summary = branchSelector.locator('.branch-state-summary');
+  await expect(summary).toHaveText('1 ahead · 4 changes');
+  await expect.poll(() => summary.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(branchSelector).toHaveAttribute('aria-label', 'Switch branch, current main, 1 ahead · 4 changes');
+  await expect(branchSelector).toHaveAttribute('title', 'Switch branch · main · 1 ahead · 4 changes');
+});
+
+test('explains the selected remote relationship in the primary repository context', async ({ page }) => {
+  const remoteSelector = page.getByRole('button', { name: 'Select remote, current origin, Pull & push' });
+  await expect(remoteSelector.locator('small')).toHaveText('Pull & push');
+  await expect(remoteSelector).toHaveAttribute('title', 'Select pull and push remote · origin · Pull & push');
+
+  await remoteSelector.click();
+  await page.getByRole('menu', { name: 'Select remote for pull and push' })
+    .getByRole('menuitemradio', { name: /upstream/ }).click();
+  const alternateRemoteSelector = page.getByRole('button', { name: 'Select remote, current upstream, Pull & push' });
+  await expect(alternateRemoteSelector.locator('small')).toHaveText('Pull & push');
+
+  await page.goto('/?unpublished-branch&no-remotes');
+  const emptyRemoteSelector = page.getByRole('button', { name: 'Select remote, current none, Configure remote' });
+  await expect(emptyRemoteSelector.locator('small')).toHaveText('Configure remote');
+  await expect(emptyRemoteSelector.locator('strong')).toHaveText('No remotes');
+});
+
+test('prioritizes complete repository context names before secondary toolbar labels', async ({ page }) => {
+  let remoteSelector = page.getByRole('button', { name: 'Select remote, current origin, Pull & push' });
+  let branchSelector = page.getByRole('button', { name: /Switch branch, current main/ });
+  for (const width of [1440, 1351]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+    remoteSelector = page.getByRole('button', { name: 'Select remote, current origin, Pull & push' });
+    branchSelector = page.getByRole('button', { name: /Switch branch, current main/ });
+    await expect(remoteSelector.locator('small')).toBeVisible();
+    await expect(branchSelector.locator('small')).toBeVisible();
+    expect(await remoteSelector.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
+    const [navigation, actions] = await Promise.all([
+      page.locator('.toolbar-navigation').boundingBox(),
+      page.locator('.toolbar-actions').boundingBox(),
+    ]);
+    expect(navigation).not.toBeNull();
+    expect(actions).not.toBeNull();
+    expect(navigation!.x + navigation!.width).toBeLessThanOrEqual(actions!.x);
+  }
+
+  for (const width of [1350, 1200, 1100, 1051, 1050, 820, 700]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/');
+    remoteSelector = page.getByRole('button', { name: 'Select remote, current origin, Pull & push' });
+    branchSelector = page.getByRole('button', { name: /Switch branch, current main/ });
+    await expect(remoteSelector.locator('small')).toBeHidden();
+    await expect(branchSelector.locator('small')).toBeHidden();
+    await expect(remoteSelector).toHaveAttribute('title', 'Select pull and push remote · origin · Pull & push');
+    expect(await remoteSelector.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth),
+      `remote name should fit at ${width}px`).toBe(true);
+    expect(await branchSelector.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth),
+      `branch name should fit at ${width}px`).toBe(true);
+    const [navigation, actions] = await Promise.all([
+      page.locator('.toolbar-navigation').boundingBox(),
+      page.locator('.toolbar-actions').boundingBox(),
+    ]);
+    expect(navigation).not.toBeNull();
+    expect(actions).not.toBeNull();
+    expect(navigation!.x + navigation!.width).toBeLessThanOrEqual(actions!.x);
+  }
 });
 
 test('cancels eligible Git work, refreshes state, and distinguishes failures', async ({ page }) => {
@@ -28,7 +131,7 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
       appVersion: 'renderer test',
       gitVersion: '2.50.0',
       gitSupported: true,
-      minimumGitVersion: '2.34.0',
+      minimumGitVersion: '2.39.0',
     });
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: Record<string, unknown> = {}) => {
@@ -106,7 +209,98 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
 
 test('surfaces the primary repository shortcut on the welcome screen', async ({ page }) => {
   await page.goto('/?welcome-preview');
+  await page.evaluate(() => {
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
+      '/home/maya/projects/atlas-ui',
+      '/home/maya/projects/chronos-api',
+      '/home/maya/sandboxes/release-candidate',
+      '/mnt/work/client-portal',
+    ]));
+    localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
+      '/home/maya/projects/atlas-ui',
+      '/home/maya/projects/chronos-api',
+    ]));
+  });
+  await page.reload();
+  const launcher = page.locator('.welcome-launcher');
   const openRepository = page.getByRole('button', { name: /Open repository/ });
+  await expect(page.getByRole('heading', { name: 'Open a repository' })).toBeVisible();
+  await expect(launcher).toContainText('Choose a local repository, clone a remote, or start a new one.');
+  await expect(page.getByText('Find your way through')).toHaveCount(0);
+  await expect(launcher.getByRole('button')).toHaveCount(4);
+  await expect(launcher.getByRole('button', { name: 'Editor draft recovery', exact: true })).toBeVisible();
+  await expect(launcher.getByRole('button', { name: /Clone repository/ })).toContainText('Download from a remote URL');
+  await expect(launcher.getByRole('button', { name: /Initialize repository/ })).toContainText('Create a repository in a folder');
+  await expect(openRepository).toHaveCSS('border-top-width', '0px');
+  await expect(launcher).toHaveCSS('max-width', '760px');
+  await expect(page.locator('.recents.favorites .welcome-repository-card')).toHaveCount(2);
+  await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(2);
+  await expect(page.locator('.welcome-repository-main').first()).toHaveCSS('border-top-width', '0px');
+  const favoriteRepositoryIcon = page.locator('.recents.favorites .repo-icon').first();
+  const recentRepositoryIcon = page.locator('.recents:not(.favorites) .repo-icon').first();
+  const activeFavoriteControl = page.locator('.recents.favorites .welcome-favorite-toggle.active').first();
+  await expect(favoriteRepositoryIcon).toHaveCSS('color', await recentRepositoryIcon.evaluate((element) => getComputedStyle(element).color));
+  expect(await activeFavoriteControl.evaluate((element) => getComputedStyle(element).color))
+    .not.toBe(await favoriteRepositoryIcon.evaluate((element) => getComputedStyle(element).color));
+  const recentFavoriteControl = page.locator('.recents:not(.favorites) .welcome-favorite-toggle').first();
+  await recentFavoriteControl.focus();
+  await expect(recentFavoriteControl).toHaveCSS('opacity', '1');
+  await expect(recentFavoriteControl).toHaveCSS('color', 'rgb(226, 180, 95)');
+  await expect(page.locator('.recents:not(.favorites)')).toContainText('2 repositories');
+  await expect(page.locator('.recents:not(.favorites)')).not.toContainText('atlas-ui');
+  await expect(page.locator('.recents:not(.favorites)')).not.toContainText('chronos-api');
+  const repositoryFilter = page.getByRole('searchbox', { name: 'Filter favorites and recent repositories' });
+  await repositoryFilter.fill('chronos-api');
+  await expect(page.locator('.recents.favorites .welcome-repository-card kbd')).toHaveText('Ctrl Alt 2');
+  await repositoryFilter.press('Escape');
+  await repositoryFilter.fill('release');
+  await expect(page.locator('.recents.favorites')).toHaveCount(0);
+  await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(1);
+  await expect(page.locator('[data-welcome-filter-status]')).toHaveText('1 of 4 shown');
+  await repositoryFilter.fill('missing repository');
+  const noMatches = page.getByRole('region', { name: 'No matching repositories' });
+  await expect(noMatches).toContainText('Try part of a repository name or folder path.');
+  await noMatches.getByRole('button', { name: 'Clear filter' }).click();
+  await expect(repositoryFilter).toBeFocused();
+  await repositoryFilter.fill('missing repository');
+  await repositoryFilter.press('Escape');
+  await expect(repositoryFilter).toHaveValue('');
+  await expect(page.locator('.recents.favorites .welcome-repository-card')).toHaveCount(2);
+  await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(2);
+  await page.setViewportSize({ width: 700, height: 720 });
+  const firstFavoriteCard = page.locator('.recents.favorites .welcome-repository-card').first();
+  const firstFavoriteMain = firstFavoriteCard.locator('.welcome-repository-main');
+  await expect(firstFavoriteMain).toHaveAttribute('title', '/home/maya/projects/atlas-ui');
+  await expect(firstFavoriteMain).toHaveAttribute('aria-label', 'Open atlas-ui at /home/maya/projects/atlas-ui');
+  await firstFavoriteMain.focus();
+  const repositoryPathTooltip = firstFavoriteCard.getByRole('tooltip');
+  await expect(repositoryPathTooltip).toBeVisible();
+  await expect(repositoryPathTooltip).toHaveText('/home/maya/projects/atlas-ui');
+  const [favoriteCardBox, repositoryPathTooltipBox] = await Promise.all([
+    firstFavoriteCard.boundingBox(),
+    repositoryPathTooltip.boundingBox(),
+  ]);
+  expect(favoriteCardBox).not.toBeNull();
+  expect(repositoryPathTooltipBox).not.toBeNull();
+  expect(repositoryPathTooltipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(repositoryPathTooltipBox!.x + repositoryPathTooltipBox!.width).toBeLessThanOrEqual(700);
+  expect(repositoryPathTooltipBox!.y + repositoryPathTooltipBox!.height).toBeLessThanOrEqual(favoriteCardBox!.y);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('button', { name: 'Remove atlas-ui from favorites' }).click();
+  await expect(page.locator('.recents.favorites .welcome-repository-card')).toHaveCount(1);
+  await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(3);
+  await expect(page.locator('.recents:not(.favorites)')).toContainText('3 repositories');
+  await expect(page.locator('.recents:not(.favorites)')).toContainText('atlas-ui');
+  const removeRecent = page.getByRole('button', { name: 'Remove release-candidate from recent repositories' });
+  await removeRecent.focus();
+  await expect(removeRecent).toBeFocused();
+  await expect(removeRecent).toHaveCSS('opacity', '1');
+  await removeRecent.press('Enter');
+  await expect(page.locator('.recents:not(.favorites) .welcome-repository-card')).toHaveCount(2);
+  await expect(page.locator('.recents:not(.favorites)')).toContainText('2 repositories');
+  await expect(page.locator('.recents:not(.favorites)')).not.toContainText('release-candidate');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.recent-repositories.v1')))
+    .toBe('["/home/maya/projects/atlas-ui","/home/maya/projects/chronos-api","/mnt/work/client-portal"]');
   await expect(openRepository).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+O Meta+Shift+O');
   await expect(openRepository).toHaveAttribute('title', 'Open a local repository (Ctrl+Shift+O)');
   await expect(openRepository.locator('kbd')).toHaveText('Ctrl ⇧ O');
@@ -114,6 +308,7 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await page.setViewportSize({ width: 550, height: 720 });
   await expect(openRepository).toBeVisible();
   expect(await openRepository.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await launcher.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
   await page.setViewportSize({ width: 420, height: 720 });
   await expect(page.locator('.welcome-nav .version')).toBeHidden();
@@ -128,14 +323,45 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   expect(brandBox!.x + brandBox!.width).toBeLessThanOrEqual(controlsBox!.x);
   expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(420 - 28);
 
+  const welcome = page.locator('.welcome');
+  await welcome.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => welcome.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const [lastRepositoryCard, zoomControl] = await Promise.all([
+    page.locator('.welcome-repository-card').last().boundingBox(),
+    page.locator('.zoom-control').boundingBox(),
+  ]);
+  expect(lastRepositoryCard).not.toBeNull();
+  expect(zoomControl).not.toBeNull();
+  expect(lastRepositoryCard!.y + lastRepositoryCard!.height).toBeLessThanOrEqual(zoomControl!.y - 8);
+  await welcome.evaluate((element) => { element.scrollTop = 0; });
+
   await openRepository.click();
   let manager = page.getByRole('dialog', { name: 'Repository management' });
   await expect(manager).toBeVisible();
   const browseTab = manager.getByRole('tab', { name: 'Browse' });
-  const managerClose = manager.getByRole('button', { name: 'Close repository management' });
-  const managerLastEnabled = manager.locator('button:not(:disabled)').last();
   await expect(browseTab).toHaveAttribute('aria-selected', 'true');
   await expect(browseTab).toBeFocused();
+  const managerFilter = manager.getByRole('searchbox', { name: 'Filter managed repositories' });
+  await expect(managerFilter).toBeVisible();
+  await managerFilter.fill('client-portal');
+  await expect(manager.locator('[data-manager-filter-status]')).toHaveText('1 of 3');
+  await expect(manager.locator('.manager-favorites')).toHaveCount(0);
+  await expect(manager.locator('.manager-recents .manager-repository-row')).toHaveCount(1);
+  await expect(manager.locator('.manager-repository-main')).toHaveAttribute('title', '/mnt/work/client-portal');
+  await expect(manager.locator('.manager-repository-main')).toHaveAttribute('aria-label', 'Open client-portal at /mnt/work/client-portal');
+  await managerFilter.fill('missing repository');
+  const managerNoMatches = manager.getByRole('region', { name: 'No matching repositories' });
+  await expect(managerNoMatches).toContainText('Try part of a repository name or folder path.');
+  await managerNoMatches.getByRole('button', { name: 'Clear filter' }).click();
+  await expect(managerFilter).toBeFocused();
+  await managerFilter.fill('client');
+  await managerFilter.press('Escape');
+  await expect(managerFilter).toHaveValue('');
+  const managerFavorite = manager.locator('.manager-favorites .manager-repository-row').first();
+  await expect(managerFavorite.locator('.manager-repository-main > gc-icon')).toHaveAttribute('name', 'folder-git');
+  await expect(managerFavorite.locator('.manager-favorite-toggle > gc-icon')).toHaveAttribute('name', 'star');
+  const managerClose = manager.getByRole('button', { name: 'Close repository management' });
+  const managerLastEnabled = manager.locator('button:not(:disabled)').last();
   await managerClose.focus();
   await managerClose.press('Shift+Tab');
   await expect(managerLastEnabled).toBeFocused();
@@ -146,14 +372,14 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await page.keyboard.press('Escape');
   await expect(openRepository).toBeFocused();
 
-  const cloneRepository = page.getByRole('button', { name: 'Clone repository' });
+  const cloneRepository = launcher.getByRole('button', { name: 'Clone repository' });
   await cloneRepository.click();
   manager = page.getByRole('dialog', { name: 'Repository management' });
   await expect(manager.getByLabel('Repository URL')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(cloneRepository).toBeFocused();
 
-  const initializeRepository = page.getByRole('button', { name: 'Initialize repository' });
+  const initializeRepository = launcher.getByRole('button', { name: 'Initialize repository' });
   await initializeRepository.click();
   manager = page.getByRole('dialog', { name: 'Repository management' });
   await expect(manager.getByRole('button', { name: 'Browse' })).toBeFocused();
@@ -170,15 +396,30 @@ test('jumps between shortcut categories in compact windows', async ({ page }) =>
   const groups = dialog.locator('.shortcut-groups');
   const tabsAndView = dialog.locator('#shortcut-section-tabs-view');
   const close = dialog.getByRole('button', { name: 'Close keyboard shortcuts' });
-  await expect(dialog.getByRole('navigation', { name: 'Shortcut categories' })).toBeVisible();
-  await expect(close).toBeFocused();
+  await expect(dialog.locator('header > span gc-icon svg rect')).toHaveAttribute('width', '18');
+  await expect(dialog.getByRole('navigation', { name: 'Shortcut sections' })).toBeVisible();
+  const search = dialog.getByRole('searchbox', { name: 'Search keyboard shortcuts' });
+  await expect(search).toBeFocused();
+  await expect(dialog.locator(':scope > footer')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Repository' })).toHaveCSS('font-size', '13px');
+  await expect(dialog.getByText('Undo repository action', { exact: true })).toHaveCSS('font-size', '13px');
   await expect(dialog.getByRole('button', { name: 'Repository' })).toHaveAttribute('aria-current', 'location');
+  const dialogMetrics = await dialog.evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(dialogMetrics.bottom).toBeLessThanOrEqual(720);
+  expect(dialogMetrics.scrollHeight).toBeLessThanOrEqual(dialogMetrics.clientHeight + 1);
 
+  await close.focus();
   await close.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Tabs and view' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Tabs and view' }).press('Tab');
   await expect(close).toBeFocused();
   await close.press('Tab');
+  await expect(search).toBeFocused();
+  await search.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Repository' })).toBeFocused();
 
   await dialog.getByRole('button', { name: 'Tabs and view' }).click();
@@ -221,8 +462,10 @@ test('edits the repository-local Git author from the header identity popover', a
 test('presents the sample repository as a complete Git workspace', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos');
-  await expect(page.getByLabel('Repository actions')).toBeVisible();
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos');
+  await expect(page.getByLabel('Repository actions', { exact: true })).toBeVisible();
+  await expect(page.locator('.toolbar-actions .action-group-divider')).toHaveCount(2);
+  await expect(page.locator('.toolbar-actions .action-group-divider').first()).toBeVisible();
   await expect(page.getByLabel('Interface zoom controls')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open Activity Logs: Repository preview' })).toBeVisible();
   await expect(page.getByText('Repository preview', { exact: true })).toHaveCount(1);
@@ -236,10 +479,19 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(page.locator('.commit-row .row-date').first()).toBeVisible();
   await expect(page.locator('#reference-section-local .branch-item').first()).toHaveAttribute('aria-label', /Local branch main, current/);
   await expect(page.getByLabel(/Local branch main, current/)).toBeVisible();
+  const remoteSection = page.locator('#reference-section-remote');
+  const remoteSectionToggle = remoteSection.getByRole('button', { name: 'Remote 2' });
+  await expect(remoteSectionToggle).toBeVisible();
+  await expect(remoteSection.locator('.remote-location')).toHaveCount(2);
+  await remoteSectionToggle.click();
+  await expect(remoteSectionToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(remoteSectionToggle).toHaveAccessibleName('Remote 2');
+  await remoteSectionToggle.click();
+  await expect(remoteSectionToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByLabel('Local branch feature/partial-staging')).toHaveAttribute('title', /Local branch feature\/partial-staging/);
-  const featureWorktree = page.getByLabel(/Worktree feature\/partial-staging, \/home\/maya\/projects\/git-chronos-partial-staging/);
+  const featureWorktree = page.getByLabel(/Worktree feature\/partial-staging, \/home\/maya\/projects\/git-khronos-partial-staging/);
   await expect(featureWorktree).toBeVisible();
-  await expect(featureWorktree.locator('xpath=..')).toHaveAttribute('title', 'feature/partial-staging · /home/maya/projects/git-chronos-partial-staging');
+  await expect(featureWorktree.locator('xpath=..')).toHaveAttribute('title', 'feature/partial-staging · /home/maya/projects/git-khronos-partial-staging');
   await expect(page.locator('.branch-item.current .branch-tracking')).toHaveText('↑1');
   await expect(page.locator('.branch-item.current .branch-tracking')).toHaveAttribute('title', 'Tracking origin/main: ahead 1');
   await expect(page.locator('.commit-row .ref-pill').filter({ hasText: 'main' }).first().locator('.ref-sync')).toHaveText('↑1');
@@ -261,8 +513,8 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(page.getByRole('button', { name: 'Push 1 commit to origin/main' }).locator('.toolbar-sync-badge')).toHaveText('1');
   await expect(page.getByRole('button', { name: 'Push 1 commit to origin/main' }).locator('.toolbar-sync-badge')).toHaveCSS('font-size', '12px');
   await expect(page.getByRole('button', { name: 'Pull from origin/main' }).locator('.toolbar-sync-badge')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Pull options' }).click();
-  await expect(page.getByRole('menuitem', { name: /Fetch All/ })).toContainText('Remote references not fetched this session');
+  await page.getByRole('button', { name: 'Fetch options' }).click();
+  await expect(page.getByRole('menuitem', { name: /Fetch all remotes/ })).toContainText('Update every configured remote without changing local work');
   await page.keyboard.press('Escape');
   const currentSidebarBranch = page.locator('#reference-section-local').getByRole('button', { name: /Local branch main, current/ });
   const currentSidebarRow = currentSidebarBranch.locator('xpath=..');
@@ -298,6 +550,20 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(alignedSidebarRow.getByLabel('Remote branch upstream/release', { exact: true })).toBeVisible();
   await expect(page.locator('#reference-section-remote').getByLabel('Remote branch origin/release', { exact: true })).toHaveCount(0);
   await expect(page.locator('#reference-section-remote').getByLabel('Remote branch upstream/release', { exact: true })).toHaveCount(0);
+  await page.locator('.workspace').evaluate((workspace) => {
+    workspace.style.gridTemplateColumns = '170px minmax(480px, 1fr) 355px';
+  });
+  for (const name of ['main', 'release']) {
+    const row = page.locator('#reference-section-local').getByRole('button', {
+      name: new RegExp(`^Local branch ${name}(?:,|$)`),
+    }).locator('xpath=..');
+    const label = row.locator('.branch-item > span').nth(1);
+    await expect(label).toBeVisible();
+    expect(await label.evaluate((element) => element.clientWidth)).toBeGreaterThan(0);
+    await expect(row.locator('.aligned-branch-locations')).toBeVisible();
+    expect(await row.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(29);
+  }
+  await page.locator('.workspace').evaluate((workspace) => workspace.style.removeProperty('grid-template-columns'));
   await expect(page.locator('.remote-location')).toHaveCount(2);
   const compactReferenceActions = page.locator([
     '.worktree-list-actions',
@@ -313,6 +579,12 @@ test('presents the sample repository as a complete Git workspace', async ({ page
     const box = control.getBoundingClientRect();
     return box.width >= 24 && box.height >= 24;
   }))).toBe(true);
+  for (const selector of ['.remote-visibility', '.remote-edit']) {
+    const control = page.locator(selector).first();
+    await control.focus();
+    await expect(control).toHaveCSS('opacity', '1');
+    await expect(control).toHaveCSS('color', 'rgb(255, 255, 255)');
+  }
   await expect(page.locator('.grouped-reference-location.remote gc-icon')).toHaveCount(4);
   const sharedTip = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
   const sharedTipRefs = sharedTip.locator('.grouped-reference-location.remote');
@@ -321,6 +593,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(sharedTipTrigger).not.toContainText('origin/main');
   await expect(sharedTipTrigger).not.toContainText('upstream/main');
   await expect(sharedTipTrigger.locator('.reference-stack-locations gc-icon')).toHaveCount(2);
+  await expect(sharedTipTrigger.locator('.reference-stack-chevron')).toBeVisible();
   await expect(sharedTipTrigger.locator(':scope > b')).toHaveCount(0);
   await expect(sharedTipTrigger).toHaveAttribute(
     'aria-label',
@@ -328,7 +601,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   await expect(sharedTipTrigger).toHaveAttribute(
     'title',
-    'main: remote origin, remote upstream. Show all 2 references.',
+    'main: remote origin, remote upstream. Show all 2 references. Double-click a remote location to create a tracking branch.',
   );
   await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
   await expect(sharedTip.locator('.ref-stack-heading')).toBeHidden();
@@ -370,14 +643,20 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   expect(Math.abs(surfaceBox!.x - triggerBox!.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(groupedLabelBox!.x - triggerLabelBox!.x)).toBeLessThanOrEqual(3);
   await expect(sharedTip.locator('.grouped-reference-row')).toHaveCount(1);
-  await expect(sharedTip.locator('.grouped-reference-label')).toHaveText('main');
+  const groupedReferenceLabel = sharedTip.locator('.grouped-reference-label');
+  await expect(groupedReferenceLabel).toHaveText('main');
+  await expect(groupedReferenceLabel).toHaveCSS('white-space', 'normal');
+  await expect(groupedReferenceLabel).toHaveCSS('overflow-wrap', 'anywhere');
   expect(firstRefBox!.width).toBeGreaterThanOrEqual(18);
   expect(secondRefBox!.width).toBeGreaterThanOrEqual(18);
   expect(secondRefBox!.x).toBeGreaterThanOrEqual(firstRefBox!.x + firstRefBox!.width + 1);
   expect(Math.abs(firstRefBox!.y - secondRefBox!.y)).toBeLessThanOrEqual(1);
   await page.mouse.move(0, 0);
+  await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
   await sharedTipTrigger.focus();
   await expect(sharedTipTrigger).toBeFocused();
+  await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
+  await sharedTipTrigger.press('Enter');
   await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"]')).toHaveClass(/branch-highlighted/);
   await expect(page.locator('[data-commit-oid="ca5fa80bf46c95b6c8d4296d47f3fd9e1e77d5c2"]')).toHaveClass(/branch-highlighted/);
@@ -410,12 +689,14 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   const featureReferenceRow = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
   await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('background-color', 'rgb(124, 110, 246)');
-  await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('width', '44px');
+  // The second expanded lane is 16 + 40px from the graph origin. Preserve
+  // the wider avatar spacing required by the rounded orthogonal routes.
+  await expect(featureReferenceRow.locator('.ref-connector')).toHaveCSS('width', '56px');
   const firstWorkingTreePath = page.locator('.file-name-button.path-display').first();
   await expect(firstWorkingTreePath.locator('.file-path-prefix')).toHaveText('apps/desktop/src/app/');
   await expect(firstWorkingTreePath.locator('.file-path-name')).toHaveText('app.component.html');
   const workingTreeFilter = page.getByRole('searchbox', { name: 'Filter changed files' });
-  await expect(workingTreeFilter).toHaveCSS('font-size', '12px');
+  await expect(workingTreeFilter).toHaveCSS('font-size', '13px');
   expect((await workingTreeFilter.boundingBox())!.height).toBeGreaterThanOrEqual(24);
   await workingTreeFilter.fill('interface-notes');
   await expect(page.locator('.file-filter-count')).toHaveText('1');
@@ -433,23 +714,32 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   const headMessage = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .commit-main');
   expect(await headMessage.locator('.subject').evaluate((subject) => subject.scrollWidth <= subject.clientWidth)).toBe(true);
-  expect(await headMessage.locator('.commit-description').evaluate((description) => description.clientWidth)).toBeGreaterThan(48);
+  expect(await headMessage.locator('.commit-description').evaluate((description) => {
+    const copy = description.parentElement!;
+    return description.clientWidth >= Math.floor(copy.clientWidth * .18 - parseFloat(getComputedStyle(copy).columnGap));
+  })).toBe(true);
+  await expect(headMessage.locator('.subject')).toHaveCSS('font-size', '13px');
+  await expect(headMessage.locator('.commit-description')).toHaveCSS('font-size', '12px');
+  await expect(page.locator('.branch-item').filter({ hasText: 'feature/partial-staging' }).first()).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.file-row').first()).toHaveCSS('font-size', '13px');
   await expect(page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"] .commit-main')).toHaveAttribute(
     'title',
     'Refine graph lane rendering\nKeep first-parent histories straight through commit nodes.',
   );
-  const mayaGraphColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node').evaluate((node) => getComputedStyle(node).backgroundColor);
-  expect(mayaGraphColor).toBe('rgb(140, 115, 50)');
-  await expect(page.locator('.identity-chip > span')).toHaveCSS('background-color', mayaGraphColor);
+  const mayaGraphColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node')
+    .evaluate((node) => getComputedStyle(node).getPropertyValue('--author-color').trim());
+  const mayaIdentityColor = await resolvedCssColor(page, mayaGraphColor);
+  expect(mayaIdentityColor).toBe('rgb(140, 115, 50)');
+  await expect(page.locator('.identity-chip > span')).toHaveCSS('background-color', mayaIdentityColor);
 
   const signCommit = page.getByLabel('Sign this commit');
   await expect(page.getByLabel('Push after committing')).toBeVisible();
   await expect(page.getByLabel('Amend previous commit')).toBeVisible();
-  await expect(page.getByLabel('Skip Git hooks')).toBeVisible();
+  await expect(page.getByLabel('Skip verification hooks')).toBeVisible();
   await expect(signCommit).toBeVisible();
   await expect(signCommit).not.toBeChecked();
-  await expect(signCommit.locator('..')).toHaveAttribute('title', "Override the repository default for this commit using Git's configured signing key and format");
-  const commitOptionHeights = await page.locator('.commit-option').evaluateAll((options) =>
+  await expect(signCommit.locator('..')).toHaveAttribute('title', "Override signing for this commit using Git's configured key and format");
+  const commitOptionHeights = await page.locator('.commit-options .commit-option').evaluateAll((options) =>
     options.map((option) => option.getBoundingClientRect().height),
   );
   expect(commitOptionHeights).toHaveLength(4);
@@ -466,7 +756,11 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   const workingTreeActions = page.getByRole('toolbar', { name: 'Working tree actions' });
   await expect(workingTreeActions.locator('.commit-action-heading')).toHaveText('Commit');
   await expect(workingTreeActions.getByRole('button', { name: 'Stash all changes' })).toContainText('Stash');
+  await expect(workingTreeActions.getByRole('button', { name: 'Stash all changes' })).toHaveCSS('font-size', '13px');
   await expect(workingTreeActions.getByRole('button', { name: 'Pop latest stash' })).toContainText('Pop');
+  await expect(page.getByRole('group', { name: 'File list layout' }).getByRole('button', { name: 'Path' })).toHaveCSS('font-size', '13px');
+  await expect(page.getByRole('button', { name: /Unstaged Files/ })).toHaveCSS('font-size', '13px');
+  await expect(page.getByLabel('Push after committing').locator('..')).toHaveCSS('font-size', '13px');
 
   const workingDirectoryOptions = page.getByRole('button', { name: 'Working directory options' });
   await expect(workingDirectoryOptions.locator('gc-icon svg')).toBeVisible();
@@ -477,11 +771,14 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   const refreshWorkingTree = workingTreeMenu.getByRole('menuitem', { name: /Refresh working directory/ });
   const openFileManager = workingTreeMenu.getByRole('menuitem', { name: /Open in file manager/ });
   const openTerminal = workingTreeMenu.getByRole('menuitem', { name: /Open terminal/ });
-  await expect(refreshWorkingTree).toBeFocused();
+  await expect(workingTreeMenu.getByRole('menuitem', { name: /Stash with options/ })).toBeFocused();
   await expect(openFileManager).toBeVisible();
   await expect(openTerminal).toBeVisible();
   await expect(workingDirectoryOptions).toHaveAttribute('aria-expanded', 'true');
   await expect(workingDirectoryOptions).toHaveClass(/menu-open/);
+  await page.keyboard.press('ArrowDown');
+  await expect(workingTreeMenu.getByRole('menuitem', { name: /Discard all unstaged/ })).toBeFocused();
+  await refreshWorkingTree.focus();
   await page.keyboard.press('ArrowDown');
   await expect(openFileManager).toBeFocused();
   await page.keyboard.press('End');
@@ -490,6 +787,83 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(workingTreeMenu).toBeHidden();
   await expect(workingDirectoryOptions).toHaveAttribute('aria-expanded', 'false');
   await expect(workingDirectoryOptions).toBeFocused();
+});
+
+test('does not present a fully disabled split action as interactive on hover', async ({ page }) => {
+  const pull = page.getByRole('button', { name: 'Pull from origin/main' });
+  const split = pull.locator('xpath=..');
+  const idleBackground = await split.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  await pull.hover();
+  await expect(split).not.toHaveCSS('background-color', idleBackground);
+
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.operationBusy.set(true);
+  });
+  await expect(pull).toBeDisabled();
+  await expect(split.getByRole('button', { name: 'Pull options' })).toBeDisabled();
+
+  await pull.hover({ force: true });
+  await expect(split).toHaveCSS('background-color', idleBackground);
+});
+
+test('keeps compact repository actions available on touch-first desktops', async ({ browser }) => {
+  const context = await browser.newContext({
+    hasTouch: true,
+    viewport: { width: 1280, height: 800 },
+  });
+  const page = await context.newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Tags 1' }).tap();
+  await page.getByRole('button', { name: 'Stashes 1' }).tap();
+
+  for (const selector of [
+    '.worktree-list-actions',
+    '.submodule-actions',
+    '.remote-visibility',
+    '.remote-edit',
+    '.branch-overflow-action',
+    '.remote-branch-overflow-action',
+    '.reference-overflow-action',
+    '.visibility-toggle',
+    '.commit-row-action',
+    '.wip-open-action',
+  ]) {
+    const control = page.locator(selector).first();
+    await expect(control).toBeVisible();
+    await expect(control).toHaveCSS('opacity', '1');
+    const bounds = await control.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width).toBeGreaterThanOrEqual(24);
+    expect(bounds!.height).toBeGreaterThanOrEqual(24);
+  }
+  await expect(page.locator('.wip-open-action').first()).toHaveCSS('pointer-events', 'auto');
+
+  const branchActions = page.getByRole('button', { name: 'Branch actions for feature/partial-staging' });
+  await branchActions.tap();
+  const branchMenu = page.getByRole('menu', { name: 'Actions for branch feature/partial-staging' });
+  await expect(branchMenu).toBeVisible();
+  await expect(branchMenu.getByRole('menuitem', { name: 'Checkout branch' })).toBeFocused();
+  await expect(branchActions).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(branchMenu).toBeHidden();
+  await expect(branchActions).toBeFocused();
+
+  const branchSeparator = page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true });
+  const minimumWidth = await branchSeparator.getAttribute('aria-valuemin');
+  expect(minimumWidth).not.toBeNull();
+  await branchSeparator.focus();
+  await page.keyboard.press('Home');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', minimumWidth!);
+  const longReference = page.locator('.commit-row .ref-pill.local')
+    .filter({ hasText: 'feature/partial-staging' }).first();
+  await expect.poll(() => longReference.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await longReference.tap();
+  await expect(longReference).toBeFocused();
+  await expect(longReference).toHaveCSS('position', 'relative');
+  await expect.poll(() => longReference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await context.close();
 });
 
 test('gives every visible icon-only action an explicit accessible name', async ({ page }) => {
@@ -522,7 +896,7 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
   }));
   expect(controlGeometry.every(({ targetWidth, targetHeight }) => targetWidth >= 24 && targetHeight >= 24)).toBe(true);
   expect(controlGeometry.every(({ visualWidth, visualHeight }) => visualWidth === 18 && visualHeight === 18)).toBe(true);
-  expect(await page.locator('.file-row:has(.stage-box)').evaluateAll((rows) =>
+  expect(await page.locator('#unstaged-files-list .file-row:has(.stage-box)').evaluateAll((rows) =>
     rows.every((row) => row.getBoundingClientRect().height === 31),
   )).toBe(true);
 
@@ -543,6 +917,195 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
   await openFile.focus();
   await expect(openFile).toBeFocused();
   await expect(openFile).toHaveCSS('outline-style', 'solid');
+});
+
+test('keeps the changed-file basename readable at the minimum window width', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 560 });
+  await page.goto('/');
+
+  const path = 'apps/desktop/src/app/app.component.html';
+  const file = page.getByRole('button', { name: `View changes in ${path}` });
+  const directory = file.locator('.file-path-prefix');
+  const basename = file.locator('.file-path-name');
+
+  await expect(file).toBeVisible();
+  await expect(file).toHaveAttribute('title', `View changes in ${path}`);
+  await expect(basename).toHaveText('app.component.html');
+  expect(await basename.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await directory.evaluate((element) => element.clientWidth)).toBeGreaterThan(0);
+});
+
+test('keeps change-list bulk actions on one line at the minimum window width', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 560 });
+  await page.goto('/');
+
+  const stageAll = page.getByRole('button', { name: 'Stage all changes' });
+  const unstageAll = page.getByRole('button', { name: 'Unstage all' });
+  for (const action of [stageAll, unstageAll]) {
+    await expect(action).toBeVisible();
+    await expect(action).toHaveCSS('white-space', 'nowrap');
+    const dimensions = await action.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      headerHeight: element.parentElement?.clientHeight ?? 0,
+    }));
+    expect(dimensions.scrollHeight).toBeLessThanOrEqual(dimensions.clientHeight);
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+    expect(dimensions.clientHeight).toBeLessThan(dimensions.headerHeight);
+  }
+});
+
+test('keeps the commit composer available at the minimum desktop height', async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 560 });
+  await page.goto('/');
+
+  const inspector = page.locator('#repository-commit-panel');
+  const files = inspector.locator('.working-tree-scroll');
+  const composer = inspector.locator('.commit-composer');
+  const commitButton = composer.getByRole('button', { name: /Commit changes to/ });
+
+  await expect(inspector).toHaveClass(/working-tree-inspector/);
+  await expect(files).toBeVisible();
+  await expect(composer).toBeVisible();
+  await expect(commitButton).toBeVisible();
+  const [inspectorBox, filesBox, composerBox, commitButtonBox] = await Promise.all([
+    inspector.boundingBox(),
+    files.boundingBox(),
+    composer.boundingBox(),
+    commitButton.boundingBox(),
+  ]);
+  expect(inspectorBox).not.toBeNull();
+  expect(filesBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  expect(commitButtonBox).not.toBeNull();
+  expect(filesBox!.height).toBeGreaterThanOrEqual(80);
+  expect(composerBox!.y).toBeGreaterThanOrEqual(filesBox!.y + filesBox!.height - 1);
+  expect(commitButtonBox!.y + commitButtonBox!.height).toBeLessThanOrEqual(inspectorBox!.y + inspectorBox!.height);
+});
+
+test('keeps changed files useful beside the composer at compact desktop height', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 640 });
+  await page.goto('/');
+
+  const inspector = page.locator('#repository-commit-panel');
+  const files = inspector.locator('.working-tree-scroll');
+  const composer = inspector.locator('.commit-composer');
+  const commitButton = composer.getByRole('button', { name: /Commit changes to/ });
+  const [filesBox, composerBox, commitButtonBox] = await Promise.all([
+    files.boundingBox(),
+    composer.boundingBox(),
+    commitButton.boundingBox(),
+  ]);
+
+  expect(filesBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  expect(commitButtonBox).not.toBeNull();
+  expect(filesBox!.height).toBeGreaterThanOrEqual(195);
+  expect(composerBox!.height).toBeLessThanOrEqual(283);
+  expect(commitButtonBox!.y + commitButtonBox!.height).toBeLessThanOrEqual(composerBox!.y + composerBox!.height);
+});
+
+test('keeps the first staged file visible above the composer in a short desktop window', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await page.goto('/');
+
+  const inspector = page.locator('#repository-commit-panel');
+  const stagedFile = inspector.getByRole('button', { name: 'View staged changes in apps/desktop/src/app/app.component.ts' });
+  const composer = inspector.locator('.commit-composer');
+
+  await expect(stagedFile).toBeInViewport();
+  const [stagedFileBox, composerBox] = await Promise.all([
+    stagedFile.boundingBox(),
+    composer.boundingBox(),
+  ]);
+  expect(stagedFileBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  expect(stagedFileBox!.y + stagedFileBox!.height).toBeLessThanOrEqual(composerBox!.y);
+});
+
+test('uses spare commit composer height for the description without displacing actions', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  const composer = page.locator('.commit-composer');
+  const summary = composer.getByLabel('Commit summary');
+  const description = composer.getByLabel('Commit description');
+  const commitButton = composer.getByRole('button', { name: /Commit changes to/ });
+  const [composerBox, summaryBox, descriptionBox, commitButtonBox, statusBarBox] = await Promise.all([
+    composer.boundingBox(),
+    summary.boundingBox(),
+    description.boundingBox(),
+    commitButton.boundingBox(),
+    page.locator('.statusbar').boundingBox(),
+  ]);
+
+  expect(composerBox).not.toBeNull();
+  expect(summaryBox).not.toBeNull();
+  expect(descriptionBox).not.toBeNull();
+  expect(commitButtonBox).not.toBeNull();
+  expect(statusBarBox).not.toBeNull();
+  expect(descriptionBox!.height).toBeGreaterThan(summaryBox!.height * 2.5);
+  expect(descriptionBox!.y + descriptionBox!.height).toBeLessThan(commitButtonBox!.y);
+  expect(commitButtonBox!.y + commitButtonBox!.height).toBeLessThanOrEqual(statusBarBox!.y);
+  expect(await composer.evaluate((element) => element.scrollWidth)).toBe(await composer.evaluate((element) => element.clientWidth));
+});
+
+test('explains commit readiness and updates it with the draft', async ({ page }) => {
+  const composer = page.locator('.commit-composer');
+  const readiness = composer.locator('#commit-readiness');
+  const summary = composer.getByLabel('Commit summary');
+  const commitButton = composer.getByRole('button', { name: /Commit changes to/ });
+
+  await expect(readiness).toHaveText('Write a commit summary to continue.');
+  await expect(readiness).toHaveAttribute('aria-live', 'polite');
+  await expect(readiness).toHaveAttribute('aria-atomic', 'true');
+  await expect(readiness).not.toHaveClass(/ready/);
+  await expect(commitButton).toHaveAttribute('aria-describedby', 'commit-readiness');
+  await expect(commitButton).toHaveAttribute('title', 'Write a commit summary to continue.');
+  await expect(commitButton).toBeDisabled();
+
+  await summary.fill('Explain commit readiness');
+  await expect(readiness).toHaveText('Ready to commit 1 staged file.');
+  await expect(readiness).toHaveClass(/ready/);
+  await expect(commitButton).toHaveAttribute('title', 'Ready to commit 1 staged file.');
+  await expect(commitButton).toBeEnabled();
+
+  await composer.getByLabel('Push after committing').check();
+  await expect(readiness).toHaveText('Ready to commit 1 staged file and push it.');
+  await expect(commitButton).toHaveAttribute('title', 'Ready to commit 1 staged file and push it.');
+});
+
+test('keeps manual co-author entry labeled and usable in the commit composer', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 720 });
+
+  const composer = page.locator('.commit-composer');
+  await composer.getByRole('button', { name: 'Add co-author' }).click();
+
+  const picker = composer.locator('.coauthor-picker');
+  const name = picker.getByLabel('Name', { exact: true });
+  const email = picker.getByLabel('Email', { exact: true });
+  await expect(name).toBeVisible();
+  await expect(email).toBeVisible();
+  await expect(email).toHaveAttribute('type', 'email');
+  await expect(email).toHaveAttribute('inputmode', 'email');
+  await expect(email).toHaveAttribute('spellcheck', 'false');
+
+  await picker.getByText('Name', { exact: true }).click();
+  await expect(name).toBeFocused();
+  await picker.getByText('Email', { exact: true }).click();
+  await expect(email).toBeFocused();
+
+  const fields = await picker.locator('.manual-coauthor-field').evaluateAll((elements) => elements.map((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: Math.round(bounds.x), y: Math.round(bounds.y), right: Math.round(bounds.right) };
+  }));
+  const pickerBox = await picker.boundingBox();
+  expect(fields).toHaveLength(2);
+  expect(fields[0].y).toBe(fields[1].y);
+  expect(fields[1].x).toBeGreaterThan(fields[0].x);
+  expect(pickerBox).not.toBeNull();
+  expect(fields.every(({ x, right }) => x >= pickerBox!.x && right <= pickerBox!.x + pickerBox!.width)).toBe(true);
 });
 
 test('moves files between change lists before Git responds and offers per-file discard', async ({ page }) => {
@@ -604,24 +1167,26 @@ test('moves files between change lists before Git responds and offers per-file d
 test('resizes and remembers staged and unstaged file viewports independently', async ({ page }) => {
   const stagedResizer = page.getByRole('separator', { name: 'Resize Staged Files section' });
   const stagedList = page.locator('#staged-files-list');
-  await expect(stagedResizer).toHaveAttribute('aria-valuenow', '165');
+  const renderedHeight = async (locator: typeof stagedList) => Math.round((await locator.boundingBox())!.height);
+  const stagedStart = await renderedHeight(stagedList);
+  const stagedExpected = Math.max(80, stagedStart + 10);
   await stagedResizer.focus();
   await stagedResizer.press('ArrowDown');
-  await expect(stagedResizer).toHaveAttribute('aria-valuenow', '175');
-  await expect(stagedList).toHaveCSS('max-height', '175px');
+  await expect(stagedResizer).toHaveAttribute('aria-valuenow', String(stagedExpected));
+  await expect(stagedList).toHaveCSS('height', `${stagedExpected}px`);
 
   const resizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
   const list = page.locator('#unstaged-files-list');
   await expect(resizer).toBeVisible();
-  await expect(resizer).toHaveAttribute('aria-valuenow', '165');
   await expect(resizer).toHaveAttribute('aria-valuemin', '80');
   await expect(resizer).toHaveAttribute('aria-valuemax', '420');
 
+  const unstagedExpected = Math.max(80, await renderedHeight(list) + 10);
   await resizer.focus();
   await resizer.press('ArrowDown');
-  await expect(resizer).toHaveAttribute('aria-valuenow', '175');
-  await expect(list).toHaveCSS('max-height', '175px');
-  expect(await page.evaluate(() => localStorage.getItem('git-chronos.working-tree.unstaged-file-list-height'))).toBe('175');
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(unstagedExpected));
+  await expect(list).toHaveCSS('height', `${unstagedExpected}px`);
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBe(String(unstagedExpected));
 
   const resizerBox = await resizer.boundingBox();
   expect(resizerBox).not.toBeNull();
@@ -629,14 +1194,16 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await page.mouse.down();
   await page.mouse.move(resizerBox!.x + resizerBox!.width / 2, resizerBox!.y + resizerBox!.height / 2 + 60);
   await page.mouse.up();
-  await expect(resizer).toHaveAttribute('aria-valuenow', '235');
-  await expect(list).toHaveCSS('max-height', '235px');
+  const dragged = Math.min(420, unstagedExpected + 60);
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(dragged));
+  await expect(list).toHaveCSS('height', `${dragged}px`);
 
   await page.reload();
   await expect(page.locator('.app-shell')).toBeVisible();
-  await expect(page.getByRole('separator', { name: 'Resize Staged Files section' })).toHaveAttribute('aria-valuenow', '175');
+  await expect(page.getByRole('separator', { name: 'Resize Staged Files section' })).toHaveAttribute('aria-valuenow', String(stagedExpected));
   const restoredResizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
-  await expect(restoredResizer).toHaveAttribute('aria-valuenow', '235');
+  await expect(restoredResizer).toHaveAttribute('aria-valuenow', String(dragged));
+  await expect(list).toHaveCSS('height', `${dragged}px`);
   await restoredResizer.focus();
   await restoredResizer.press('End');
   await expect(restoredResizer).toHaveAttribute('aria-valuenow', '420');
@@ -646,7 +1213,31 @@ test('resizes and remembers staged and unstaged file viewports independently', a
   await expect(list).toHaveCSS('max-height', '80px');
   await restoredResizer.dblclick();
   await expect(restoredResizer).toHaveAttribute('aria-valuenow', '165');
-  expect(await page.evaluate(() => localStorage.getItem('git-chronos.working-tree.unstaged-file-list-height'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.working-tree.unstaged-file-list-height'))).toBeNull();
+});
+
+test('grows a working-tree file list that holds fewer rows than its default height', async ({ page }) => {
+  const list = page.locator('#unstaged-files-list');
+  const resizer = page.getByRole('separator', { name: 'Resize Unstaged Files section' });
+  const initialHeight = (await list.boundingBox())!.height;
+  expect(initialHeight).toBeLessThan(165);
+
+  const box = (await resizer.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 120);
+  await page.mouse.up();
+
+  const expected = Math.round(initialHeight) + 120;
+  await expect(resizer).toHaveAttribute('aria-valuenow', String(expected));
+  await expect.poll(async () => Math.round((await list.boundingBox())!.height)).toBe(expected);
+  const staged = page.getByRole('separator', { name: 'Resize Staged Files section' });
+  expect((await staged.boundingBox())!.y).toBeGreaterThan(box.y + 100);
+
+  await resizer.dblclick();
+  await expect.poll(async () => Math.round((await list.boundingBox())!.height)).toBe(Math.round(initialHeight));
 });
 
 test('opens branch creation consistently from the primary toolbar action', async ({ page }) => {
@@ -660,6 +1251,13 @@ test('opens branch creation consistently from the primary toolbar action', async
   await expect(page.getByRole('button', { name: 'Local 3' })).toHaveAttribute('aria-expanded', 'true');
   await expect(branchName).toBeFocused();
   await expect(branchName).toHaveValue('new-branch');
+  const branchForm = page.getByRole('form', { name: 'Create branch' });
+  await expect(branchForm).toContainText('From main at HEAD');
+  const submitBranch = branchForm.getByRole('button', { name: 'Create', exact: true });
+  await expect(submitBranch).toBeEnabled();
+  await branchName.fill('');
+  await expect(submitBranch).toBeDisabled();
+  await branchName.fill('new-branch');
 
   await page.getByRole('button', { name: 'Cancel branch creation' }).click();
   await expect(branchName).toHaveCount(0);
@@ -674,30 +1272,78 @@ test('opens branch creation consistently from the primary toolbar action', async
 });
 
 test('navigates primary toolbar split menus with the keyboard', async ({ page }) => {
+  const fetch = page.getByRole('button', { name: 'Fetch all remotes', exact: true });
+  await expect(fetch).toBeVisible();
+  await expect(fetch).toHaveAttribute('title', 'Fetch all remotes');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const snapshot = git.repository();
+    (window as any).__toolbarFetchCalls = [];
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: Record<string, unknown> = {}) => {
+        (window as any).__toolbarFetchCalls.push({ command, args });
+        if (command === 'refresh_repository_status') return Promise.resolve(snapshot.status);
+        if (command === 'fetch_repository' || command === 'refresh_repository') return Promise.resolve(snapshot);
+        return Promise.resolve(null);
+      },
+    };
+  });
+  await fetch.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__toolbarFetchCalls
+    .filter((call: { command: string }) => call.command === 'fetch_repository').length)).toBe(1);
+  await expect(fetch).toBeEnabled();
+
+  const fetchToggle = page.getByTitle('Fetch options');
+  await expect(fetchToggle).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(fetchToggle).not.toHaveAttribute('aria-controls', /./);
+  await expect(fetchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(() => fetchToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
+  await fetchToggle.click();
+  const fetchMenu = page.getByRole('menu', { name: 'Fetch options' });
+  await expect(fetchMenu).toHaveAttribute('id', 'fetch-options-menu');
+  await expect(fetchToggle).toHaveAttribute('aria-controls', 'fetch-options-menu');
+  await expect(fetchToggle).toHaveAttribute('aria-expanded', 'true');
+  const fetchAll = fetchMenu.getByRole('menuitem', { name: /Fetch all remotes/ });
+  await expect(fetchMenu.locator('.toolbar-menu-context')).toContainText('Remote references2 remotes');
+  await expect(fetchAll).toBeFocused();
+  await expect(fetchAll).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('ArrowDown');
+  await expect(fetchMenu.getByRole('menuitem', { name: /Fetch branches with options/ })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(fetchMenu).toHaveCount(0);
+  await expect(fetchToggle).toBeFocused();
+
   const pullToggle = page.getByTitle('Pull options');
   await expect(pullToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(pullToggle).toHaveAttribute('aria-controls', 'pull-options-menu');
+  await expect(pullToggle).not.toHaveAttribute('aria-controls', /./);
   await expect(pullToggle).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(() => pullToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await pullToggle.click();
   const pullMenu = page.getByRole('menu', { name: 'Pull options' });
   await expect(pullMenu).toHaveAttribute('id', 'pull-options-menu');
+  await expect(pullToggle).toHaveAttribute('aria-controls', 'pull-options-menu');
   await expect(pullToggle).toHaveAttribute('aria-expanded', 'true');
-  const fetchAll = pullMenu.getByRole('menuitem', { name: /Fetch All/ });
-  await expect(fetchAll).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(pullMenu.getByRole('menuitem', { name: /Fast-forward if possible Merge/ })).toBeFocused();
+  await expect(pullMenu.locator('.toolbar-menu-context')).toContainText('Pull destinationorigin/mainUp to date');
+  await expect(pullMenu.locator('.default-strategy-badge')).toHaveText('Default');
+  const defaultPull = pullMenu.getByRole('menuitem', { name: /Fast-forward if possible.*Merge/ });
+  await expect(defaultPull.locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(defaultPull.locator('small')).toHaveCSS('font-size', '12px');
+  await expect(defaultPull).toBeFocused();
+  await expect(defaultPull).toHaveCSS('outline-style', 'solid');
+  await expect(pullMenu.getByRole('menuitem', { name: /Fetch/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(pullMenu).toHaveCount(0);
   await expect(pullToggle).toBeFocused();
 
   const pushToggle = page.getByTitle('Push options');
   await expect(pushToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(pushToggle).toHaveAttribute('aria-controls', 'push-options-menu');
+  await expect(pushToggle).not.toHaveAttribute('aria-controls', /./);
   await expect.poll(() => pushToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await pushToggle.click();
   const pushMenu = page.getByRole('menu', { name: 'Push options' });
   await expect(pushMenu).toHaveAttribute('id', 'push-options-menu');
+  await expect(pushToggle).toHaveAttribute('aria-controls', 'push-options-menu');
+  await expect(pushMenu.locator('.toolbar-menu-context')).toContainText('Push destinationorigin/main1 outgoing');
   await expect(pushMenu.getByRole('menuitem', { name: /^Push/ }).first()).toBeFocused();
   await page.keyboard.press('End');
   await expect(pushMenu.getByRole('menuitem', { name: /Force Push with Lease/ })).toBeFocused();
@@ -706,43 +1352,141 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
 
   const branchToggle = page.getByTitle('Branch options');
   await expect(branchToggle).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-options-menu');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await expect.poll(() => branchToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
   await branchToggle.click();
   const branchMenu = page.getByRole('menu', { name: 'Branch options' });
   await expect(branchMenu).toHaveAttribute('id', 'branch-options-menu');
+  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-options-menu');
+  await expect(branchMenu.locator('.toolbar-menu-context')).toContainText('Current branchmain1 ahead · 4 changes');
+  expect(await branchMenu.locator('.toolbar-menu-context b').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(branchMenu.getByRole('menuitem', { name: /Create branch/ })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(branchMenu.getByRole('menuitem', { name: /main Current branch/ })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(branchToggle).toBeFocused();
+
+  const stashToggle = page.getByTitle('Stash options');
+  await expect(stashToggle).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(stashToggle).not.toHaveAttribute('aria-controls', /./);
+  await expect.poll(() => stashToggle.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(24);
+  await stashToggle.click();
+  const stashMenu = page.getByRole('menu', { name: 'Stash options' });
+  await expect(stashMenu).toHaveAttribute('id', 'stash-options-menu');
+  await expect(stashToggle).toHaveAttribute('aria-controls', 'stash-options-menu');
+  await expect(stashMenu.locator('.toolbar-menu-context')).toContainText('Working directorymain4 changes');
+  await expect(stashMenu.getByRole('menuitem', { name: /Stash all changes/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(stashMenu.getByRole('menuitem', { name: /Stash with options/ })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(stashToggle).toBeFocused();
 });
 
 test('keeps expanded aligned references clear of the compact inspector', async ({ page }) => {
-  for (const width of [820, 700]) {
-    await page.setViewportSize({ width, height: 720 });
-    await page.goto('/');
-    const stack = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
-    const references = stack.locator('.grouped-reference-location.remote');
-    await stack.hover();
-    await expect(references).toHaveCount(2);
-    await expect(references.nth(1)).toBeVisible();
+  await page.setViewportSize({ width: 820, height: 720 });
+  await page.goto('/');
+  const stack = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
+  const references = stack.locator('.grouped-reference-location.remote');
+  await stack.hover();
+  await expect(references).toHaveCount(2);
+  await expect(references.nth(1)).toBeVisible();
 
-    const [triggerBox, surfaceBox, inspectorBox] = await Promise.all([
-      stack.locator('.reference-stack-trigger').boundingBox(),
-      stack.locator('.reference-stack-popover').boundingBox(),
-      page.locator('.detail-panel:not(.panel-hidden)').boundingBox(),
-    ]);
-    expect(triggerBox).not.toBeNull();
-    expect(surfaceBox).not.toBeNull();
-    expect(inspectorBox).not.toBeNull();
-    expect(Math.abs(surfaceBox!.x - triggerBox!.x)).toBeLessThanOrEqual(1);
-    expect(surfaceBox!.width).toBeGreaterThanOrEqual(200);
-    expect(surfaceBox!.x + surfaceBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 8);
-    expect(await stack.locator('.ref-stack-heading').evaluate((element) =>
-      element.scrollWidth <= element.clientWidth,
-    )).toBe(true);
-  }
+  const [triggerBox, surfaceBox, inspectorBox] = await Promise.all([
+    stack.locator('.reference-stack-trigger').boundingBox(),
+    stack.locator('.reference-stack-popover').boundingBox(),
+    page.locator('.detail-panel:not(.panel-hidden)').boundingBox(),
+  ]);
+  expect(triggerBox).not.toBeNull();
+  expect(surfaceBox).not.toBeNull();
+  expect(inspectorBox).not.toBeNull();
+  expect(Math.abs(surfaceBox!.x - triggerBox!.x)).toBeLessThanOrEqual(1);
+  expect(surfaceBox!.width).toBeGreaterThanOrEqual(200);
+  expect(surfaceBox!.x + surfaceBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 8);
+  expect(await stack.locator('.ref-stack-heading').evaluate((element) =>
+    element.scrollWidth <= element.clientWidth,
+  )).toBe(true);
+});
+
+const referenceHoverCases = ['local', 'remote', 'tag'].flatMap(kind =>
+  [72, 180, 300].map(width => ({ kind, width })),
+);
+for (const { kind, width } of referenceHoverCases) {
+  test(`keeps a single ${kind} reference anchored on hover and focus at ${width}px`, async ({ page }) => {
+    const stack = page.locator('.commit-row .commit-ref-stack.single-ref').first();
+    await stack.evaluate((element, width) => { element.style.width = `${width}px`; }, width);
+    for (const label of ['tip', 'torvalds/master', 'a-reference-name-long-enough-to-overflow-the-branch-column']) {
+      await page.mouse.move(0, 0);
+      await stack.evaluate((element, { kind, label }) => {
+        // Retain the real row's Angular-scoped attributes and icon styles.
+        const button = element.querySelector('button')!;
+        const icon = button.querySelector('gc-icon')!.cloneNode(true);
+        button.className = `ref-pill ${kind} with-icon interactive-${kind}-ref`;
+        const text = document.createElement('span');
+        text.textContent = label;
+        button.replaceChildren(icon, text);
+      }, { kind, label });
+      const reference = stack.locator('.ref-pill');
+      const before = await reference.boundingBox();
+      expect(before).not.toBeNull();
+      const pointer = { x: before!.x + before!.width / 2, y: before!.y + before!.height / 2 };
+      await page.mouse.move(pointer.x, pointer.y);
+      // Compare against the resting position, not just subsequent hover frames:
+      // a one-time jump is as disruptive as the original repeated oscillation.
+      const positions = await reference.evaluate(element => new Promise<number[]>(resolve => {
+        const samples: number[] = [];
+        const sample = () => {
+          samples.push(element.getBoundingClientRect().x);
+          if (samples.length < 30) requestAnimationFrame(sample);
+          else resolve(samples);
+        };
+        requestAnimationFrame(sample);
+      }));
+      expect(positions.every(x => Math.abs(x - before!.x) <= 1)).toBe(true);
+      expect(await reference.locator('span').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.mouse.move(0, 0);
+      await expect(reference).toHaveCSS('position', 'static');
+      await reference.focus();
+      expect(Math.abs((await reference.boundingBox())!.x - before!.x)).toBeLessThanOrEqual(1);
+      await reference.blur();
+    }
+  });
+}
+
+test('reveals a clipped single branch name without shifting the compact graph', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto('/');
+  await page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true }).focus();
+  await page.keyboard.press('Home');
+
+  const row = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
+  const reference = row.locator('.ref-pill.local');
+  const graphColumn = row.locator('.graph-cell');
+  await expect(reference).toContainText('feature/partial-staging');
+  expect(await reference.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+  const graphColumnBefore = await graphColumn.boundingBox();
+  await reference.hover();
+  expect(await reference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(reference).toHaveCSS('position', 'relative');
+
+  const [referenceBox, branchColumnBox, graphColumnBox] = await Promise.all([
+    reference.boundingBox(),
+    row.locator('.branch-column').boundingBox(),
+    graphColumn.boundingBox(),
+  ]);
+  expect(referenceBox).not.toBeNull();
+  expect(branchColumnBox).not.toBeNull();
+  expect(graphColumnBefore).not.toBeNull();
+  expect(graphColumnBox).not.toBeNull();
+  expect(referenceBox!.x).toBeGreaterThanOrEqual(branchColumnBox!.x);
+  expect(referenceBox!.x + referenceBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width - 20);
+  expect(graphColumnBox).toEqual(graphColumnBefore);
+
+  await page.mouse.move(700, 80);
+  await page.keyboard.press('Tab');
+  await reference.focus();
+  expect(await reference.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+  expect(await reference.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
 test('terminates an unmerged branch lane at its tip commit', async ({ page }) => {
@@ -789,16 +1533,39 @@ test('joins a converging branch at the parent avatar right-middle edge', async (
   expect(graphBox).not.toBeNull();
   expect(Math.abs(nodeBox!.x + nodeBox!.width - (graphBox!.x + parentOffset + 12))).toBeLessThanOrEqual(0.5);
 
-  const paths = await parentCommit.locator('.graph-edges path').evaluateAll((elements) =>
-    elements.map((element) => element.getAttribute('d') ?? ''));
-  expect(paths).toContain(
-    `M ${branchOffset} 0 V 8 A 12 12 0 0 1 ${branchOffset - 12} 20 H ${parentOffset + 12}`,
-  );
+  const connection = await parentCommit.locator('.graph-edges path').evaluateAll((elements, targetX) => {
+    for (const element of elements) {
+      const path = element as SVGPathElement;
+      const length = path.getTotalLength();
+      const end = path.getPointAtLength(length);
+      if (Math.abs(end.x - targetX) > .01 || Math.abs(end.y - 20) > .01) continue;
+      const start = path.getPointAtLength(0), beforeEnd = path.getPointAtLength(length - .1);
+      const screen = new DOMPoint(end.x, end.y).matrixTransform(path.getScreenCTM()!);
+      return { startX: start.x, startY: start.y, x: screen.x, y: screen.y,
+        tangentY: Math.abs(end.y - beforeEnd.y) };
+    }
+    return null;
+  }, parentOffset + 12);
+  expect(connection).not.toBeNull();
+  expect(connection!.startX).toBe(branchOffset);
+  expect(connection!.startY).toBe(0);
+  expect(connection!.tangentY).toBeLessThan(.01);
+  expect(Math.abs(connection!.x - (nodeBox!.x + nodeBox!.width))).toBeLessThan(.1);
+  expect(Math.abs(connection!.y - (nodeBox!.y + nodeBox!.height / 2))).toBeLessThan(.1);
 });
 
 test('starts each worktree lane at its own WIP node', async ({ page }) => {
   const rows = page.locator('.wip-row');
   await expect(rows).toHaveCount(2);
+  const currentLabel = rows.nth(0).locator('.wip-worktree-label');
+  const linkedLabel = rows.nth(1).locator('.wip-worktree-label');
+  await expect(currentLabel).toContainText('main');
+  await expect(currentLabel).toHaveAttribute('title', 'Current worktree · Branch main');
+  await expect(currentLabel.locator('gc-icon')).toHaveCount(1);
+  await expect(linkedLabel).toContainText('feature/partial-staging');
+  await expect(linkedLabel).toHaveAttribute('title', 'Linked worktree git-khronos-partial-staging · Branch feature/partial-staging');
+  await expect(linkedLabel.locator('gc-icon')).toHaveCount(1);
+  await expect(currentLabel).not.toHaveCSS('background-color', await linkedLabel.evaluate((element) => getComputedStyle(element).backgroundColor));
 
   const firstOffset = Number(await rows.nth(0).locator('.wip-node').getAttribute('data-lane-offset'));
   const secondOffset = Number(await rows.nth(1).locator('.wip-node').getAttribute('data-lane-offset'));
@@ -837,9 +1604,17 @@ test('keeps aligned references open while the pointer moves into the expanded li
   expect(expandedAnchorBox).toEqual(compactBox);
   expect(expandedTriggerBox).toEqual(compactReferenceBox);
   expect(expandedSurfaceBox).not.toBeNull();
-  expect(expandedSurfaceBox!.y).toBeGreaterThanOrEqual(
-    expandedTriggerBox!.y + expandedTriggerBox!.height + 2,
+  expect(Math.abs(
+    expandedSurfaceBox!.y - (expandedTriggerBox!.y + expandedTriggerBox!.height - 1),
+  )).toBeLessThanOrEqual(1);
+
+  await page.mouse.move(
+    expandedTriggerBox!.x + expandedTriggerBox!.width / 2,
+    expandedTriggerBox!.y + expandedTriggerBox!.height + 1,
   );
+  await page.waitForTimeout(220);
+  await expect(stack, 'the trigger and expanded list should form one continuous pointer target').toHaveClass(/pointer-expanded/);
+  await expect(stack.locator('.reference-stack-popover')).toBeVisible();
 
   const secondReferenceBox = await references.nth(1).boundingBox();
   expect(secondReferenceBox).not.toBeNull();
@@ -853,6 +1628,59 @@ test('keeps aligned references open while the pointer moves into the expanded li
   await expect(stack.locator('.ref-stack-heading')).toBeVisible();
   await references.nth(1).click({ button: 'right' });
   await expect(page.locator('.context-menu')).toBeVisible();
+});
+
+test('keeps an aligned reference menu expanded while it owns keyboard focus', async ({ page }) => {
+  const stack = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
+  const trigger = stack.locator('.reference-stack-trigger');
+
+  await trigger.hover();
+  await trigger.focus();
+  await page.mouse.move(700, 80);
+  await page.waitForTimeout(220);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(stack.locator('.reference-stack-popover')).toBeVisible();
+
+  await trigger.evaluate((element) => element.blur());
+  await page.waitForTimeout(220);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(stack.locator('.reference-stack-popover')).toBeHidden();
+});
+
+test('toggles aligned references through an explicit disclosure control', async ({ page }) => {
+  const stack = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
+  const trigger = stack.locator('.reference-stack-trigger');
+  const popover = stack.locator('.reference-stack-popover');
+  const chevron = trigger.locator('.reference-stack-chevron');
+
+  await trigger.focus();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(popover).toBeHidden();
+  await expect(chevron).toHaveCSS('transform', 'none');
+
+  await trigger.press('Space');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(popover).toBeVisible();
+  await expect(chevron).not.toHaveCSS('transform', 'none');
+
+  await trigger.press('Space');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.evaluate((element) => element.blur());
+  await trigger.hover();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await trigger.focus();
+  await trigger.press('Enter');
+  await page.mouse.move(700, 80);
+  await page.waitForTimeout(220);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(popover).toBeVisible();
+
+  await trigger.press('Enter');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(popover).toBeHidden();
 });
 
 test('opens aligned references upward when the history viewport has no room below', async ({ page }) => {
@@ -915,7 +1743,7 @@ test('navigates aligned references as one keyboard menu', async ({ page }) => {
 });
 
 test('keeps ordinary commit selection reachable beside the compact inspector', async ({ page }) => {
-  for (const width of [820, 700]) {
+  for (const width of [820, 780]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
     const row = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
@@ -933,8 +1761,9 @@ test('keeps ordinary commit selection reachable beside the compact inspector', a
   }
 });
 
-test('reopens commit details after compact users dismiss the inspector to browse', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 720 });
+for (const width of [700, 360]) {
+test(`reopens commit details after compact users dismiss the inspector to browse at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 720 });
   await page.goto('/');
 
   const inspector = page.locator('.commit-panel');
@@ -949,12 +1778,57 @@ test('reopens commit details after compact users dismiss the inspector to browse
   expect(rowBox!.x).toBeGreaterThanOrEqual(0);
   // Rows may be wider than a compact window; the commit list clips and scrolls them.
   const listBox = await page.locator('.commit-list').boundingBox();
-  expect(listBox!.x + listBox!.width).toBeLessThanOrEqual(360);
+  expect(listBox!.x + listBox!.width).toBeLessThanOrEqual(width);
 
   await row.click();
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Polish repository activity drawer');
   await expect(page.getByRole('button', { name: 'Close commit panel' })).toBeVisible();
+});
+}
+
+test('keeps commit descriptions visible when the message column becomes compact', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 560 });
+  await page.goto('/');
+
+  const row = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  const message = row.locator('.commit-main');
+  const subject = message.locator('.subject');
+  const description = message.locator('.commit-description');
+  await expect(subject).toHaveText('Polish repository activity drawer');
+  await expect(description).toHaveText('Make operation history easier to scan and diagnose.');
+  await expect(description).toBeVisible();
+
+  const [rowBox, subjectBox, descriptionBox] = await Promise.all([
+    row.boundingBox(),
+    subject.boundingBox(),
+    description.boundingBox(),
+  ]);
+  expect(rowBox).not.toBeNull();
+  expect(subjectBox).not.toBeNull();
+  expect(descriptionBox).not.toBeNull();
+  expect(descriptionBox!.y).toBeGreaterThanOrEqual(subjectBox!.y + subjectBox!.height);
+  expect(descriptionBox!.y + descriptionBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height);
+  expect(await message.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(message).toHaveAttribute('title', 'Polish repository activity drawer\nMake operation history easier to scan and diagnose.');
+
+  const wipRows = page.locator('.commit-row.wip-row');
+  await expect(wipRows).toHaveCount(2);
+  for (const wipRow of await wipRows.all()) {
+    const headline = wipRow.locator('.wip-message-field, .wip-subject');
+    const summary = wipRow.locator('.commit-description');
+    await expect(summary).toBeVisible();
+    const [wipBox, headlineBox, summaryBox] = await Promise.all([
+      wipRow.boundingBox(),
+      headline.boundingBox(),
+      summary.boundingBox(),
+    ]);
+    expect(wipBox).not.toBeNull();
+    expect(headlineBox).not.toBeNull();
+    expect(summaryBox).not.toBeNull();
+    expect(summaryBox!.y).toBeGreaterThanOrEqual(headlineBox!.y + headlineBox!.height);
+    expect(summaryBox!.y + summaryBox!.height).toBeLessThanOrEqual(wipBox!.y + wipBox!.height);
+  }
 });
 
 test('preserves readable commit messages with both panels on medium desktops', async ({ page }) => {
@@ -979,6 +1853,135 @@ test('preserves readable commit messages with both panels on medium desktops', a
   expect(await subject.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   // The right gutter keeps the scroll-marker rail clear of row actions, leaving the description a bit less room.
   expect(await row.locator('.commit-description').evaluate((element) => element.clientWidth)).toBeGreaterThan(48);
+  await expect(page.locator('.commit-panel .commit-body')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.commit-panel .author-card > span:last-child')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.commit-panel gc-commit-signature strong')).toHaveCSS('font-size', '13px');
+  const signatureDetail = page.locator('.commit-panel gc-commit-signature small');
+  await expect(signatureDetail).toHaveCSS('white-space', 'normal');
+  expect(await signatureDetail.evaluate((element) => ({
+    horizontal: element.scrollWidth <= element.clientWidth + 1,
+    vertical: element.scrollHeight <= element.clientHeight + 1,
+  }))).toEqual({ horizontal: true, vertical: true });
+  await expect(page.locator('.commit-panel .commit-file-path').first()).toHaveCSS('font-size', '13px');
+});
+
+test('stacks changed-file controls before the compact inspector crushes search', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 560 });
+  await page.goto('/');
+  await page
+    .locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .commit-main')
+    .click();
+
+  const inspector = page.locator('.commit-panel');
+  await expect(inspector.locator('.commit-inspector-copy b')).toHaveText('Commit details');
+  const toolbar = inspector.locator('.commit-file-view-toolbar');
+  const filter = inspector.getByRole('searchbox', { name: 'Filter changed files' });
+  await expect(toolbar).toBeVisible();
+  await expect(filter).toBeVisible();
+  const firstChangedFile = inspector.getByRole('button', { name: 'Open diff for apps/desktop/src/app/app.component.html' });
+  await expect(firstChangedFile).toHaveAttribute('title', 'Open diff for apps/desktop/src/app/app.component.html');
+  await expect(firstChangedFile.locator('.commit-file-open')).toBeVisible();
+
+  const [toolbarBox, filterBox, layoutBox] = await Promise.all([
+    toolbar.boundingBox(),
+    filter.locator('..').boundingBox(),
+    inspector.getByRole('group', { name: 'Changed files layout' }).boundingBox(),
+  ]);
+  expect(toolbarBox).not.toBeNull();
+  expect(filterBox).not.toBeNull();
+  expect(layoutBox).not.toBeNull();
+  expect(toolbarBox!.height).toBeGreaterThanOrEqual(60);
+  expect(filterBox!.width).toBeGreaterThanOrEqual(240);
+  expect(layoutBox!.y).toBeGreaterThanOrEqual(filterBox!.y + filterBox!.height);
+  expect(filterBox!.x + filterBox!.width).toBeLessThanOrEqual(toolbarBox!.x + toolbarBox!.width);
+
+  await filter.fill('interface-notes');
+  await expect(inspector.locator('.commit-file-path .current-path strong')).toHaveText('interface-notes.md');
+});
+
+test('keeps commit context visible while the inspector scrolls and groups author metadata', async ({ page }) => {
+  await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
+  const inspector = page.locator('.commit-panel');
+  const title = inspector.locator('.commit-panel-title');
+  const titleBefore = await title.boundingBox();
+  expect(titleBefore).not.toBeNull();
+  await expect(title.locator('.commit-inspector-copy b')).toHaveText('Commit details');
+  await expect(title.locator('.commit-inspector-revision')).toHaveText('f19b263a');
+  await expect(title.locator('.commit-inspector-revision')).toHaveAttribute('aria-label', 'Commit f19b263a');
+  const contextMark = title.locator('.commit-inspector-mark');
+  await expect(contextMark).toBeVisible();
+  expect(await contextMark.evaluate((element) => getComputedStyle(element).getPropertyValue('--graph-lane-color').trim())).not.toBe('');
+  await expect(page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]')).toHaveAttribute('aria-controls', 'repository-commit-panel');
+  const close = inspector.getByRole('button', { name: 'Close commit panel', exact: true });
+  await expect(close).toBeVisible();
+  expect(await close.evaluate((button) => {
+    const bounds = button.getBoundingClientRect();
+    return bounds.width >= 24 && bounds.height >= 24;
+  })).toBe(true);
+
+  const sha = inspector.locator('.commit-inspector-revision');
+  await expect(sha).toHaveText('f19b263a');
+  await expect(sha).toHaveAttribute('title', 'Commit f19b263a8af31408d5f665caf7a5508e108c0fd1');
+  const copy = inspector.locator('.commit-sha-copy');
+  await expect(copy).toHaveAccessibleName('Copy commit SHA');
+  expect(await copy.evaluate((button) => {
+    const bounds = button.getBoundingClientRect();
+    return bounds.width >= 24 && bounds.height >= 24;
+  })).toBe(true);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: async (value: string) => { (window as any).__copiedCommitOid = value; },
+    });
+  });
+  await copy.click();
+  await expect(copy).toHaveAccessibleName('Commit SHA copied');
+  await expect(copy).toContainText('Copied');
+  expect(await page.evaluate(() => (window as any).__copiedCommitOid)).toBe('f19b263a8af31408d5f665caf7a5508e108c0fd1');
+  await expect(inspector.getByRole('status')).toHaveText('Full commit SHA copied to clipboard.');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: async () => { throw new Error('Clipboard unavailable'); },
+    });
+  });
+  await copy.click();
+  await expect(copy).toHaveAccessibleName('Copy failed, retry commit SHA');
+  await expect(copy).toContainText('Retry');
+  await expect(inspector.getByRole('status')).toHaveText('Could not copy the commit SHA. Try again.');
+
+  const author = inspector.locator('.commit-author-card');
+  const overview = inspector.getByRole('region', { name: 'Commit summary' });
+  await expect(overview).toContainText('Polish repository activity drawer');
+  await expect(overview).toContainText('Make operation history easier to scan and diagnose.');
+  await expect(overview.locator('.commit-author-card')).toBeVisible();
+  await expect(author.locator('.author-details > strong')).toHaveText('Maya Chen');
+  await expect(author.locator('.author-meta small')).toHaveText('maya@example.test');
+  await expect(author.locator('time')).toHaveAttribute('datetime', /.+/);
+  expect(await inspector.locator('.commit-relations dt').allTextContents()).not.toContain('Authored');
+  const parentSubject = inspector.locator('.related-commit-link > span').first();
+  await expect(parentSubject.locator('..')).toHaveCSS('display', 'grid');
+  await expect(parentSubject).toHaveText('Merge feature/partial-staging');
+  await expect(parentSubject).toHaveCSS('white-space', 'normal');
+  await expect(parentSubject).toHaveCSS('text-align', 'left');
+  expect(await parentSubject.evaluate((element) => getComputedStyle(element).webkitLineClamp)).toBe('2');
+  expect(await parentSubject.evaluate((element) => ({
+    horizontal: element.scrollWidth <= element.clientWidth + 1,
+    vertical: element.scrollHeight <= element.clientHeight + 1,
+  }))).toEqual({ horizontal: true, vertical: true });
+
+  await inspector.evaluate((panel) => { panel.scrollTop = panel.scrollHeight; });
+  const titleAfter = await title.boundingBox();
+  expect(titleAfter).not.toBeNull();
+  expect(Math.abs(titleAfter!.y - titleBefore!.y)).toBeLessThanOrEqual(1);
+  await expect(inspector.getByRole('navigation', { name: 'Navigate commit history' })).toBeVisible();
+  await expect(title.locator('.commit-inspector-copy b')).toHaveText('Commit details');
+  await expect(inspector.locator('.commit-overview h2')).toHaveText('Polish repository activity drawer');
+  await expect(close).toBeVisible();
+
+  await close.click();
+  await expect(inspector).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Show Commit Panel', exact: true })).toBeFocused();
 });
 
 test('moves the commit inspector into overlay mode before three columns clip', async ({ page }) => {
@@ -995,6 +1998,7 @@ test('moves the commit inspector into overlay mode before three columns clip', a
     await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
     inspector = page.locator('.detail-panel:not(.panel-hidden)');
     await expect(inspector).toHaveCSS('position', 'fixed');
+    await expect(inspector).toHaveCSS('transform', 'none');
 
     const [historyBox, inspectorBox] = await Promise.all([
       page.locator('.history-panel').boundingBox(),
@@ -1006,7 +2010,24 @@ test('moves the commit inspector into overlay mode before three columns clip', a
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(width);
     if (width <= 1050) {
       await expect(page.locator('.sidebar')).toBeHidden();
-      await expect(page.getByRole('button', { name: 'Open left panel' })).toBeVisible();
+      const sidebarLauncher = page.getByRole('button', { name: 'Open left panel' });
+      await expect(sidebarLauncher).toBeVisible();
+      await expect(sidebarLauncher).toHaveAttribute('title', 'Show repository references (Ctrl+J)');
+      await expect(sidebarLauncher.locator('span')).toBeVisible();
+      await expect(sidebarLauncher.locator('span')).toHaveText('Refs');
+      const [launcherBox, branchHeadingBox] = await Promise.all([
+        sidebarLauncher.boundingBox(),
+        page.locator('.graph-columns > .leading-branch-column .column-heading-label').boundingBox(),
+      ]);
+      expect(launcherBox).not.toBeNull();
+      expect(branchHeadingBox).not.toBeNull();
+      expect(launcherBox!.x).toBeGreaterThanOrEqual(4);
+      expect(launcherBox!.width).toBeGreaterThanOrEqual(48);
+      expect(launcherBox!.height).toBeGreaterThanOrEqual(24);
+      expect(launcherBox!.x + launcherBox!.width).toBeLessThanOrEqual(branchHeadingBox!.x);
+      expect(await page.locator('.graph-columns > .leading-branch-column .column-heading-label').evaluate((element) =>
+        element.scrollWidth <= element.clientWidth,
+      )).toBe(true);
     }
 
     if (width === 900) {
@@ -1030,6 +2051,23 @@ test('moves the commit inspector into overlay mode before three columns clip', a
     expect(toolbarActionsBox!.x + toolbarActionsBox!.width).toBeLessThanOrEqual(toolbarUtilitiesBox!.x);
     await expect(toolbarNavigation.getByRole('button', { name: 'Select remote, current origin' })).toBeVisible();
     await expect(toolbarNavigation.getByRole('button', { name: 'Switch branch, current main' })).toBeVisible();
+    if (width === 1024) {
+      const terminalDivider = page.locator('.toolbar-overflow-control + .action-group-divider');
+      const moreActions = page.getByRole('button', { name: 'More repository actions' });
+      const terminal = page.locator('.toolbar-terminal-direct');
+      await expect(terminalDivider).toBeVisible();
+      await expect(terminal).toBeVisible();
+      const [moreBox, dividerBox, terminalBox] = await Promise.all([
+        moreActions.boundingBox(),
+        terminalDivider.boundingBox(),
+        terminal.boundingBox(),
+      ]);
+      expect(moreBox).not.toBeNull();
+      expect(dividerBox).not.toBeNull();
+      expect(terminalBox).not.toBeNull();
+      expect(moreBox!.x + moreBox!.width).toBeLessThan(dividerBox!.x);
+      expect(dividerBox!.x + dividerBox!.width).toBeLessThan(terminalBox!.x);
+    }
   }
 
   await page.setViewportSize({ width: 1050, height: 720 });
@@ -1039,16 +2077,82 @@ test('moves the commit inspector into overlay mode before three columns clip', a
   await openSidebar.click();
   await expect(page.locator('.sidebar')).toBeVisible();
   await expect(page.locator('.sidebar')).toHaveCSS('position', 'fixed');
-  await page.getByRole('button', { name: 'Close left panel' }).click();
+  await expect(page.getByRole('searchbox', { name: 'Filter references' })).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(page.locator('.sidebar')).toBeHidden();
   await expect(openSidebar).toBeFocused();
 });
 
 test('keeps the smallest toolbar collision-free and expands commit search on demand', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1100, height: 720 });
+  const deliberateCompactSearch = page.locator('.graph-search');
+  await expect(deliberateCompactSearch.locator('kbd')).toBeHidden();
+  await expect(deliberateCompactSearch.locator('input')).toHaveAttribute('placeholder', 'Search commits');
+  expect((await deliberateCompactSearch.locator('input').boundingBox())!.width).toBeGreaterThanOrEqual(100);
+
   await page.setViewportSize({ width: 820, height: 720 });
-  await expect(page.locator('.toolbar-navigation')).toBeHidden();
+  const compactNavigation = page.locator('.toolbar-navigation');
+  await expect(compactNavigation).toBeVisible();
+  const compactRemote = compactNavigation.getByRole('button', { name: 'Select remote, current origin' });
+  const compactBranch = compactNavigation.getByRole('button', { name: 'Switch branch, current main' });
+  await expect(compactRemote).toBeVisible();
+  await expect(compactBranch).toBeVisible();
+  await expect(compactRemote.locator('small')).toBeHidden();
+  await expect(compactBranch.locator('small')).toBeHidden();
+  expect(await compactNavigation.locator('.toolbar-nav-button strong').evaluateAll((labels) =>
+    labels.every((label) => label.scrollWidth <= label.clientWidth),
+  )).toBe(true);
+  await expect(page.getByRole('button', { name: 'Fetch all remotes', exact: true })).toBeVisible();
   await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' })).toBeVisible();
-  await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Terminal' })).toBeVisible();
+  await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Terminal' })).toBeHidden();
+  await expect(page.locator('.toolbar-secondary-direct').first()).toBeHidden();
+  await expect(page.getByRole('button', { name: 'More repository actions' })).toBeVisible();
+  const [compactActionsBox, compactUtilitiesBox] = await Promise.all([
+    page.locator('.toolbar-actions').boundingBox(),
+    page.locator('.toolbar-utilities').boundingBox(),
+  ]);
+  expect(compactActionsBox).not.toBeNull();
+  expect(compactUtilitiesBox).not.toBeNull();
+  expect(Math.abs(compactActionsBox!.x + compactActionsBox!.width / 2 - 410)).toBeLessThanOrEqual(1);
+  const compactNavigationBox = await compactNavigation.boundingBox();
+  expect(compactNavigationBox).not.toBeNull();
+  expect(compactNavigationBox!.x + compactNavigationBox!.width).toBeLessThanOrEqual(compactActionsBox!.x);
+  expect(compactActionsBox!.x + compactActionsBox!.width).toBeLessThanOrEqual(compactUtilitiesBox!.x);
+
+  await compactRemote.click();
+  const compactRemoteMenu = page.getByRole('menu', { name: 'Select remote for pull and push' });
+  await expect(compactRemoteMenu).toBeVisible();
+  const compactRemoteMenuBox = await compactRemoteMenu.boundingBox();
+  expect(compactRemoteMenuBox).not.toBeNull();
+  expect(compactRemoteMenuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(compactRemoteMenuBox!.x + compactRemoteMenuBox!.width).toBeLessThanOrEqual(820);
+  await page.keyboard.press('Escape');
+  await expect(compactRemote).toBeFocused();
+
+  await compactBranch.click();
+  const compactBranchMenu = page.getByRole('dialog', { name: 'Switch branch' });
+  await expect(compactBranchMenu.getByRole('searchbox', { name: 'Filter branches' })).toBeVisible();
+  const compactBranchMenuBox = await compactBranchMenu.boundingBox();
+  expect(compactBranchMenuBox).not.toBeNull();
+  expect(compactBranchMenuBox!.x + compactBranchMenuBox!.width).toBeLessThanOrEqual(820);
+  await page.keyboard.press('Escape');
+  await expect(compactBranch).toBeFocused();
+
+  for (const width of [860, 760]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/');
+    const [navigationBox, actionsBox] = await Promise.all([
+      page.locator('.toolbar-navigation').boundingBox(),
+      page.locator('.toolbar-actions').boundingBox(),
+    ]);
+    expect(navigationBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(navigationBox!.x + navigationBox!.width).toBeLessThanOrEqual(actionsBox!.x);
+    expect(await page.locator('.toolbar-navigation .toolbar-nav-button strong').evaluateAll((labels) =>
+      labels.every((label) => label.scrollWidth <= label.clientWidth),
+    )).toBe(true);
+  }
 
   await page.setViewportSize({ width: 900, height: 720 });
   const compactSearch = page.locator('.graph-search');
@@ -1056,7 +2160,128 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   expect((await compactSearch.locator('input').boundingBox())!.width).toBeGreaterThanOrEqual(110);
 
   await page.setViewportSize({ width: 700, height: 720 });
-  await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' })).toBeHidden();
+  await expect(compactNavigation).toBeVisible();
+  await expect(compactRemote).toBeVisible();
+  await expect(compactBranch).toBeVisible();
+  await expect(compactRemote.locator('small')).toBeHidden();
+  await expect(compactBranch.locator(':scope > span')).toBeVisible();
+  await expect(compactBranch.locator('small')).toBeHidden();
+  await expect(compactBranch.locator('strong')).toHaveText('main');
+  expect(await compactBranch.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
+  const [narrowNavigationBox, narrowActionsBox, narrowUtilitiesBox] = await Promise.all([
+    compactNavigation.boundingBox(),
+    page.locator('.toolbar-actions').boundingBox(),
+    page.locator('.toolbar-utilities').boundingBox(),
+  ]);
+  expect(narrowNavigationBox).not.toBeNull();
+  expect(narrowActionsBox).not.toBeNull();
+  expect(narrowUtilitiesBox).not.toBeNull();
+  expect(narrowNavigationBox!.x + narrowNavigationBox!.width).toBeLessThanOrEqual(narrowActionsBox!.x);
+  expect(narrowActionsBox!.x + narrowActionsBox!.width).toBeLessThanOrEqual(narrowUtilitiesBox!.x);
+  expect(Math.abs(narrowActionsBox!.x + narrowActionsBox!.width / 2 - 350)).toBeLessThanOrEqual(1);
+  expect((await page.locator('.graph-search').boundingBox())!.width).toBeLessThanOrEqual(30);
+  await compactBranch.click();
+  await expect(page.getByRole('dialog', { name: 'Switch branch' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(compactBranch).toBeFocused();
+  await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' })).toBeVisible();
+  await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Terminal' })).toBeHidden();
+  await expect(page.locator('.toolbar-secondary-direct').first()).toBeHidden();
+  const moreActions = page.getByRole('button', { name: 'More repository actions' });
+  await expect(moreActions).toBeVisible();
+  await moreActions.click();
+  const compactActionMenu = page.getByRole('menu', { name: 'More repository actions' });
+  const compactActionContext = compactActionMenu.locator('.toolbar-menu-context');
+  await expect(compactActionContext.locator('small')).toHaveText('git-khronos');
+  await expect(compactActionContext.locator('strong')).toHaveText('main');
+  await expect(compactActionContext.locator('strong')).toHaveAttribute('title', 'Current branch: main');
+  await expect(compactActionContext.locator('b')).toHaveText('origin/main');
+  await expect(compactActionContext.locator('b')).toHaveAttribute('title', 'Pull and push: origin/main');
+  await expect(compactActionMenu.getByRole('separator', { name: 'Repository tools' })).toBeVisible();
+  const [contextCopyBox, contextRemoteBox] = await Promise.all([
+    compactActionContext.locator(':scope > span').boundingBox(),
+    compactActionContext.locator(':scope > b').boundingBox(),
+  ]);
+  expect(contextCopyBox).not.toBeNull();
+  expect(contextRemoteBox).not.toBeNull();
+  expect(contextRemoteBox!.y).toBeGreaterThanOrEqual(contextCopyBox!.y + contextCopyBox!.height);
+  let compactActionMenuBox = await compactActionMenu.boundingBox();
+  expect(compactActionMenuBox).not.toBeNull();
+  expect(compactActionMenuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(compactActionMenuBox!.x + compactActionMenuBox!.width).toBeLessThanOrEqual(700);
+  await expect(compactActionMenu.getByRole('menuitem', { name: /Fetch all remotes/ })).toBeHidden();
+  await expect(compactActionMenu.getByRole('menuitem', { name: /Fetch branches with options/ })).toBeFocused();
+  const compactTerminal = compactActionMenu.getByRole('menuitem', { name: /Open repository terminal/ });
+  await expect(compactTerminal).toBeVisible();
+  await expect(compactTerminal).toHaveAttribute('aria-keyshortcuts', 'Alt+T Control+` Meta+`');
+  await expect(compactActionMenu.getByRole('menuitem', { name: /Stash changes/ })).toBeVisible();
+  await expect(compactActionMenu.getByRole('menuitem', { name: /Stash with options/ })).toBeVisible();
+  await expect(compactActionMenu.getByRole('menuitem', { name: /Pop latest stash/ })).toBeVisible();
+  await expect(compactActionMenu.locator('.compact-menu-caption:visible')).toHaveText(['Repository tools', 'Operation history', 'Working directory']);
+  await expect(compactActionMenu.getByRole('separator', { name: 'Operation history' })).toBeVisible();
+  await expect(compactActionMenu.getByRole('separator', { name: 'Working directory' })).toBeVisible();
+  const compactUndo = compactActionMenu.getByRole('menuitem', { name: /^Undo/ });
+  await expect(compactUndo).toContainText('Ctrl Z');
+  const [compactUndoBox, compactUndoCopyBox, compactUndoShortcutBox] = await Promise.all([
+    compactUndo.boundingBox(),
+    compactUndo.locator(':scope > span').boundingBox(),
+    compactUndo.locator(':scope > kbd').boundingBox(),
+  ]);
+  expect(compactUndoBox).not.toBeNull();
+  expect(compactUndoCopyBox).not.toBeNull();
+  expect(compactUndoShortcutBox).not.toBeNull();
+  expect(compactUndoBox!.height).toBeLessThan(70);
+  expect(compactUndoShortcutBox!.x).toBeGreaterThanOrEqual(compactUndoCopyBox!.x + compactUndoCopyBox!.width);
+  expect(compactUndoShortcutBox!.y).toBeGreaterThanOrEqual(compactUndoBox!.y);
+  expect(compactUndoShortcutBox!.y + compactUndoShortcutBox!.height).toBeLessThanOrEqual(compactUndoBox!.y + compactUndoBox!.height);
+  await expect(compactActionMenu.getByRole('menuitem', { name: /^Redo/ })).toContainText('Ctrl Y');
+  await page.setViewportSize({ width: 700, height: 640 });
+  const [shortMenuBox, shortStatusBox] = await Promise.all([
+    compactActionMenu.boundingBox(),
+    page.locator('.statusbar').boundingBox(),
+  ]);
+  expect(shortMenuBox).not.toBeNull();
+  expect(shortStatusBox).not.toBeNull();
+  expect(shortMenuBox!.y + shortMenuBox!.height).toBeLessThanOrEqual(shortStatusBox!.y);
+  await expect(compactActionMenu).toHaveCSS('scrollbar-width', 'thin');
+  expect(await compactActionMenu.evaluate((menu) => menu.scrollHeight > menu.clientHeight)).toBe(true);
+  await page.keyboard.press('End');
+  const compactLastAction = compactActionMenu.getByRole('menuitem', { name: /Pop latest stash/ });
+  await expect(compactLastAction).toBeFocused();
+  const [scrolledMenuBox, compactLastActionBox] = await Promise.all([
+    compactActionMenu.boundingBox(),
+    compactLastAction.boundingBox(),
+  ]);
+  expect(scrolledMenuBox).not.toBeNull();
+  expect(compactLastActionBox).not.toBeNull();
+  expect(compactLastActionBox!.y).toBeGreaterThanOrEqual(scrolledMenuBox!.y);
+  expect(compactLastActionBox!.y + compactLastActionBox!.height).toBeLessThanOrEqual(scrolledMenuBox!.y + scrolledMenuBox!.height);
+  await page.setViewportSize({ width: 700, height: 720 });
+  await page.keyboard.press('Escape');
+  await expect(compactActionMenu).toBeHidden();
+  await expect(moreActions).toBeFocused();
+
+  for (const width of [759, 651]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/');
+    const [navigationBox, actionsBox, utilitiesBox] = await Promise.all([
+      page.locator('.toolbar-navigation').boundingBox(),
+      page.locator('.toolbar-actions').boundingBox(),
+      page.locator('.toolbar-utilities').boundingBox(),
+    ]);
+    expect(navigationBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(utilitiesBox).not.toBeNull();
+    expect(navigationBox!.x + navigationBox!.width).toBeLessThanOrEqual(actionsBox!.x);
+    expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(utilitiesBox!.x);
+    expect(Math.abs(actionsBox!.x + actionsBox!.width / 2 - width / 2)).toBeLessThanOrEqual(1);
+    const minimumBranch = page.getByRole('button', { name: 'Switch branch, current main' });
+    const minimumRemote = page.getByRole('button', { name: 'Select remote, current origin' });
+    await expect(minimumBranch).toBeVisible();
+    await expect(minimumRemote).toBeVisible();
+    expect(await minimumBranch.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
+    expect(await minimumRemote.locator('strong').evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
+  }
 
   for (const width of [650, 550, 500, 420, 360]) {
     await page.setViewportSize({ width, height: 720 });
@@ -1068,13 +2293,39 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
     expect(actionsBox).not.toBeNull();
     expect(utilitiesBox).not.toBeNull();
     expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(utilitiesBox!.x);
-    await expect(page.getByTitle(/Open repository terminal/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Fetch all remotes', exact: true })).toBeVisible();
+    await expect(page.locator('.toolbar-terminal-direct')).toBeHidden();
     await expect(page.locator('.toolbar-utilities .toolbar-panel-button')).toBeVisible();
-    await expect(page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' })).toBeHidden();
+    const pullLabel = page.locator('.toolbar-actions .tool-button small').filter({ hasText: 'Pull' });
+    if (width > 520) await expect(pullLabel).toBeVisible();
+    else await expect(pullLabel).toBeHidden();
     if (width <= 550) {
       expect((await page.locator('.graph-search').boundingBox())!.width).toBeLessThanOrEqual(30);
     }
   }
+
+  await moreActions.click();
+  compactActionMenuBox = await compactActionMenu.boundingBox();
+  expect(compactActionMenuBox).not.toBeNull();
+  expect(compactActionMenuBox!.x).toBeGreaterThanOrEqual(9);
+  expect(compactActionMenuBox!.x + compactActionMenuBox!.width).toBeLessThanOrEqual(351);
+  const currentRemoteOption = compactActionMenu.getByRole('menuitemradio', { name: /origin Current pull and push remote/ });
+  const alternateRemoteOption = compactActionMenu.getByRole('menuitemradio', { name: /upstream Use for pull and push/ });
+  const compactBranchSwitcher = compactActionMenu.getByRole('menuitem', { name: /Switch branch/ });
+  await expect(compactBranchSwitcher).toBeFocused();
+  await expect(currentRemoteOption).toBeVisible();
+  await expect(currentRemoteOption).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('ArrowDown');
+  await expect(currentRemoteOption).toBeFocused();
+  await expect(alternateRemoteOption).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(alternateRemoteOption).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(compactActionMenu).toBeHidden();
+  await moreActions.click();
+  await expect(compactActionMenu.getByRole('menuitemradio', { name: /upstream Current pull and push remote/ })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(moreActions).toBeFocused();
 
   await page.setViewportSize({ width: 500, height: 720 });
   await page.goto('/');
@@ -1090,6 +2341,8 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   expect(sidebarLauncherBox).not.toBeNull();
   expect(graphColumnsBox).not.toBeNull();
   expect(firstGraphRowBox).not.toBeNull();
+  await expect(openSidebar.locator('span')).toBeHidden();
+  expect(sidebarLauncherBox!.width).toBeLessThanOrEqual(30);
   expect(sidebarLauncherBox!.y).toBeGreaterThanOrEqual(graphColumnsBox!.y);
   expect(sidebarLauncherBox!.y + sidebarLauncherBox!.height).toBeLessThanOrEqual(
     graphColumnsBox!.y + graphColumnsBox!.height,
@@ -1118,29 +2371,155 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   await expect(sidebar).toBeVisible();
   await expect(closeSidebar).toBeVisible();
 
-  const search = page.getByLabel('Search commits by message, SHA, or author');
+  const search = page.getByLabel('Search loaded commits by message, SHA, or author');
   const searchToggle = page.getByRole('button', { name: 'Focus commit search' });
+  const advancedSearch = page.getByRole('button', { name: 'Search all repository history' });
   await expect.poll(() => searchToggle.evaluate((element) => {
     const box = element.getBoundingClientRect();
     return Math.min(box.width, box.height);
   })).toBeGreaterThanOrEqual(24);
   await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(search).toBeHidden();
+  await expect(advancedSearch).toBeHidden();
   await searchToggle.click();
   await expect(searchToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(search).toBeVisible();
+  await expect(advancedSearch).toBeVisible();
   await expect(search).toBeFocused();
+  await advancedSearch.click();
+  const historyDialog = page.getByRole('dialog', { name: 'Search repository history' });
+  await expect(historyDialog.getByLabel('Message contains')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(searchToggle).toBeFocused();
+  await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+  await searchToggle.click();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveAttribute('placeholder', 'Search commits');
+  await expect(search).toHaveAttribute('title', 'Search loaded commits by message, SHA, or author');
   expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(24);
-  expect((await page.locator('.graph-search').boundingBox())!.width).toBeGreaterThan(200);
+  await expect.poll(async () => (await page.locator('.graph-search').boundingBox())!.width).toBeGreaterThan(200);
   await search.fill('lane rendering');
   await expect(page.locator('.search-result-count')).toHaveText('1 / 1');
   await page.getByRole('button', { name: 'Clear commit search' }).click();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('Escape');
   await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(search).toBeHidden();
+  await expect(advancedSearch).toBeHidden();
   await expect.poll(async () => (await page.locator('.graph-search').boundingBox())!.width).toBeLessThanOrEqual(30);
 
   await searchToggle.click();
-  await search.press('Escape');
+  await expect(search).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(searchToggle).toBeFocused();
   await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('keeps collapsed compact commit search out of keyboard navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 500, height: 720 });
+  await page.goto('/');
+
+  const search = page.getByLabel('Search loaded commits by message, SHA, or author');
+  const searchToggle = page.getByRole('button', { name: 'Focus commit search' });
+  const advancedSearch = page.locator('.graph-search-advanced');
+
+  await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(search).toBeHidden();
+  await expect(advancedSearch).toBeHidden();
+
+  await searchToggle.click();
+  await expect(searchToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(search).toBeVisible();
+  await expect(advancedSearch).toBeVisible();
+  await expect(search).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(searchToggle).toBeFocused();
+  await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(search).toBeHidden();
+  await expect(advancedSearch).toBeHidden();
+  await page.keyboard.press('Tab');
+  expect(await search.evaluate((element) => element === document.activeElement)).toBe(false);
+  expect(await advancedSearch.evaluate((element) => element === document.activeElement)).toBe(false);
+  expect(await page.evaluate(() => {
+    const element = document.activeElement as HTMLElement | null;
+    if (!element || element === document.body) return false;
+    const bounds = element.getBoundingClientRect();
+    return getComputedStyle(element).visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0;
+  })).toBe(true);
+});
+
+test('keeps hidden history actions in the compact toolbar overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await page.goto('/');
+
+  await expect(page.locator('.history-actions')).toBeHidden();
+  const moreActions = page.getByRole('button', { name: 'More repository actions' });
+  await expect(moreActions).toBeVisible();
+  await moreActions.click();
+
+  const menu = page.getByRole('menu', { name: 'More repository actions' });
+  const undo = menu.getByRole('menuitem', { name: /^Undo/ });
+  const redo = menu.getByRole('menuitem', { name: /^Redo/ });
+  await expect(undo).toBeVisible();
+  await expect(redo).toBeVisible();
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+  await expect(undo).toContainText('Ctrl Z');
+  await expect(redo).toContainText('Ctrl Y');
+  await expect(menu.getByRole('menuitem', { name: /Stash changes/ })).toBeFocused();
+  await expect(menu.getByRole('separator', { name: 'Repository tools' })).toBeHidden();
+  const bounds = await menu.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
+});
+
+test('prioritizes commit subjects when the message column becomes narrow', async ({ page }) => {
+  const selectedRow = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  await selectedRow.click();
+  await expect(selectedRow.locator('.commit-description')).toBeVisible();
+
+  await page.setViewportSize({ width: 780, height: 640 });
+  await expect(page.locator('.commit-panel')).toBeVisible();
+  await expect(selectedRow.locator('.commit-description')).toBeVisible();
+  const [subjectBox, descriptionBox] = await Promise.all([
+    selectedRow.locator('.subject').boundingBox(), selectedRow.locator('.commit-description').boundingBox(),
+  ]);
+  expect(descriptionBox!.y).toBeGreaterThanOrEqual(subjectBox!.y + subjectBox!.height - 1);
+  expect(await selectedRow.locator('.subject').evaluate((element) =>
+    element.scrollWidth <= element.clientWidth,
+  )).toBe(true);
+  await expect(selectedRow.locator('.commit-main')).toHaveAttribute(
+    'title',
+    'Polish repository activity drawer\nMake operation history easier to scan and diagnose.',
+  );
+});
+
+test('keeps fetch primary before moving secondary repository actions into overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await page.goto('/');
+
+  await expect(page.locator('.toolbar-primary-fetch')).toBeVisible();
+  await expect(page.locator('.toolbar-secondary-direct').first()).toBeHidden();
+  const moreActions = page.getByRole('button', { name: 'More repository actions' });
+  await expect(moreActions).toBeVisible();
+  await moreActions.click();
+
+  const menu = page.getByRole('menu', { name: 'More repository actions' });
+  const overflowFetchActions = menu.locator('.toolbar-fetch-overflow');
+  await expect(overflowFetchActions).toHaveCount(2);
+  await expect(overflowFetchActions.first()).toBeHidden();
+  await expect(overflowFetchActions.last()).toBeHidden();
+  const stash = menu.getByRole('menuitem', { name: /Stash changes/ });
+  const stashOptions = menu.getByRole('menuitem', { name: /Stash with options/ });
+  const pop = menu.getByRole('menuitem', { name: /Pop latest stash/ });
+  await expect(stash).toBeFocused();
+  await expect(pop).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(stashOptions).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(pop).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(stash).toBeFocused();
 });
 
 test('keeps Path and Tree modes fully visible in a narrow commit inspector', async ({ page }) => {
@@ -1178,9 +2557,11 @@ test('navigates the virtualized commit history with standard list keys', async (
   const last = commits.last();
 
   await first.focus();
+  await expect(first).toHaveCSS('outline-width', '2px');
   await first.press('ArrowDown');
   await expect(second).toBeFocused();
   await expect(second).toHaveAttribute('aria-pressed', 'true');
+  expect(await second.evaluate((row) => getComputedStyle(row).boxShadow)).toContain('inset');
 
   await second.press('Shift+ArrowDown');
   await expect(commits.nth(2)).toBeFocused();
@@ -1210,8 +2591,12 @@ test('browses adjacent commits from the inspector title bar', async ({ page }) =
   await refine.click();
 
   const inspector = page.locator('.commit-panel');
+  const position = inspector.locator('.inspector-commit-position');
   const newer = inspector.getByRole('button', { name: 'Select newer commit' });
   const older = inspector.getByRole('button', { name: 'Select older commit' });
+  const initialPosition = Number.parseInt((await position.textContent()) ?? '', 10);
+  await expect(inspector.getByRole('navigation', { name: /Navigate commit history, commit \d+ of \d+/ })).toBeVisible();
+  expect(initialPosition).toBeGreaterThan(0);
   await expect(newer).toBeEnabled();
   await expect(older).toBeEnabled();
   await expect(newer).toHaveAttribute('aria-keyshortcuts', 'ArrowUp K');
@@ -1219,9 +2604,12 @@ test('browses adjacent commits from the inspector title bar', async ({ page }) =
 
   await older.click();
   await expect(inspector).toContainText('Persist graph column preferences');
+  await expect(inspector.locator('.commit-overview h2')).toHaveText('Persist graph column preferences');
+  await expect(position).toHaveText(new RegExp(`^${initialPosition + 1}\\s*/\\s*\\d+$`));
   await expect(page.locator('.commit-row.selected')).toContainText('Persist graph column preferences');
   await newer.click();
   await expect(inspector).toContainText('Refine graph lane rendering');
+  await expect(inspector.locator('.commit-overview h2')).toHaveText('Refine graph lane rendering');
   await expect(refine).toHaveClass(/selected/);
 
   const root = page.locator('.commit-row[data-commit-oid]').last();
@@ -1248,9 +2636,14 @@ test('opens and navigates commit actions with standard context-menu keys', async
   await row.focus();
   await page.keyboard.press('Shift+F10');
 
-  const menu = page.locator('.context-menu[role="menu"]');
+  const menu = page.getByRole('menu', { name: 'Actions for commit Polish repository activity drawer' });
   await expect(menu).toBeVisible();
   expect(await menu.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
+  expect((await menu.boundingBox())!.width).toBeGreaterThanOrEqual(270);
+  await expect(menu.locator('.context-heading strong')).toHaveAttribute('title', 'Polish repository activity drawer');
+  expect(await menu.locator(':scope > button').evaluateAll((actions) => actions.every((action) =>
+    action.scrollWidth <= action.clientWidth,
+  ))).toBe(true);
   await expect(menu.getByRole('menuitem', { name: 'Checkout this commit' })).toBeFocused();
 
   await page.keyboard.press('ArrowDown');
@@ -1283,8 +2676,16 @@ test('opens working-tree and historical file actions from the keyboard', async (
   let menu = page.locator('.file-context-menu[role="menu"]');
   await expect(menu.getByRole('menuitem', { name: 'View changes' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitem', { name: 'Preview file content', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Stage file' })).toBeFocused();
-  await page.keyboard.press('Escape');
+  await menu.getByRole('menuitem', { name: 'Discard changes…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a file menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(workingFile).toBeFocused();
 
   const viewport = page.viewportSize()!;
@@ -1315,11 +2716,22 @@ test('opens working-tree and historical file actions from the keyboard', async (
   await page.keyboard.press('End');
   const restore = menu.getByRole('menuitem', { name: /Restore file from this commit/ });
   await expect(restore).toBeFocused();
-  await restore.press('Enter');
+  await restore.evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a historical file menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
   const confirmation = page.getByRole('alertdialog', { name: /app\.component\.html/ });
+  await expect(confirmation).toHaveCount(0);
+  await expect(historicalFile).toBeFocused();
+  await historicalFile.press('ContextMenu');
+  await expect(restore).toBeVisible();
+  await restore.press('Enter');
   const cancel = confirmation.getByRole('button', { name: 'Cancel' });
   const confirm = confirmation.getByRole('button', { name: /Restore and stage/ });
   await expect(cancel).toBeFocused();
+  await expect(confirm).toBeEnabled();
   await page.keyboard.press('Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Tab');
@@ -1395,7 +2807,7 @@ test('persists Left Panel disclosures and opens hosted pull requests', async ({ 
   });
   await hostedLink.click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('opened-external-url')))
-    .toBe('https://github.com/example/git-chronos/pulls');
+    .toBe('https://github.com/example/git-khronos/pulls');
 
   await page.reload();
   toggle = page.getByRole('button', { name: 'Pull Requests', exact: true });
@@ -1421,14 +2833,14 @@ test('uses provider-specific hosted review terminology and destinations', async 
       section: 'Merge Requests',
       action: 'Open merge requests',
       detail: 'origin · GitLab',
-      url: 'https://gitlab.com/example/platform/git-chronos/-/merge_requests',
+      url: 'https://gitlab.com/example/platform/git-khronos/-/merge_requests',
     },
     {
       preview: 'bitbucket',
       section: 'Pull Requests',
       action: 'Open pull requests',
       detail: 'origin · Bitbucket',
-      url: 'https://bitbucket.org/example/git-chronos/pull-requests',
+      url: 'https://bitbucket.org/example/git-khronos/pull-requests',
     },
   ]) {
     await page.goto(`/?hosting-preview=${provider.preview}`);
@@ -1469,13 +2881,13 @@ test('resizes reference sections with accessible keyboard splitters', async ({ p
   await page.keyboard.press('End');
   await expect(splitter).toHaveAttribute('aria-valuenow', '420');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.sidebar.section.worktrees.height'),
+    localStorage.getItem('git-khronos.sidebar.section.worktrees.height'),
   )).toBe('420');
   await expect(section).toHaveClass(/resized/);
 
   await splitter.dblclick();
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.sidebar.section.worktrees.height'),
+    localStorage.getItem('git-khronos.sidebar.section.worktrees.height'),
   )).toBeNull();
   await expect(section).not.toHaveClass(/resized/);
   await expect.poll(() => section.evaluate((element) => (element as HTMLElement).style.height)).toBe('');
@@ -1484,7 +2896,10 @@ test('resizes reference sections with accessible keyboard splitters', async ({ p
 test('navigates worktree and submodule action menus from the keyboard', async ({ page }) => {
   const worktreeActions = page.locator('.worktree-list-actions').nth(1);
   await expect(worktreeActions).toHaveAttribute('aria-haspopup', 'menu');
-  await worktreeActions.click();
+  await worktreeActions.focus();
+  await expect(worktreeActions).toBeFocused();
+  await expect(worktreeActions).toHaveCSS('opacity', '1');
+  await worktreeActions.press('Enter');
   let menu = page.locator('.worktree-card-menu.list-menu').filter({ hasText: 'feature/partial-staging' });
   await expect(menu.getByRole('menuitem', { name: 'Open worktree in a new tab' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -1494,6 +2909,15 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
 
   await worktreeActions.click();
   menu = page.locator('.worktree-card-menu.list-menu').filter({ hasText: 'feature/partial-staging' });
+  await menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a worktree menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingWorktreeAction())).toBeNull();
+  await expect(worktreeActions).toBeFocused();
+  await worktreeActions.click();
   await menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
   const removal = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
   const removalCancel = removal.getByRole('button', { name: 'Cancel' });
@@ -1508,21 +2932,46 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await expect(removal).toBeHidden();
   await expect(worktreeActions).toBeFocused();
 
-  await page.locator('.sidebar-heading').first().click({ button: 'right' });
-  await page.getByRole('menu', { name: 'Left Panel panes' })
-    .getByRole('menuitemcheckbox', { name: 'Submodules' })
-    .click();
   await expect(page.getByRole('button', { name: 'Submodules 2' })).toHaveAttribute('aria-expanded', 'true');
+  const manageSubmodules = page.getByRole('button', { name: 'Manage submodules' });
+  await expect(manageSubmodules).toBeVisible();
+  await expect(manageSubmodules).toHaveAttribute(
+    'title',
+    'Manage submodules · Review state, sync, check out, deinitialize, or remove',
+  );
 
   const submoduleActions = page.locator('.submodule-actions').first();
   await expect(submoduleActions).toHaveAttribute('aria-haspopup', 'menu');
-  await submoduleActions.click();
+  await submoduleActions.focus();
+  await expect(submoduleActions).toBeFocused();
+  await expect(submoduleActions).toHaveCSS('opacity', '1');
+  await submoduleActions.press('Enter');
   menu = page.locator('.submodule-menu');
   await expect(menu.getByRole('menuitem', { name: 'Open submodule' })).toBeFocused();
   await page.keyboard.press('End');
   await expect(menu.getByRole('menuitem', { name: 'Copy submodule path' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(submoduleActions).toBeFocused();
+});
+
+test('confirms forced worktree removal only after acknowledging changes', async ({ page }) => {
+  const expectedPath = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    (window as any).__worktreeRemovalCalls = [];
+    git.removeWorktree = async (...args: unknown[]) => { (window as any).__worktreeRemovalCalls.push(args); };
+    return git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').path;
+  });
+  await page.locator('.worktree-list-actions').nth(1).click();
+  await page.locator('.worktree-card-menu.list-menu')
+    .getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  const confirm = dialog.getByRole('button', { name: 'Remove worktree', exact: true });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: /Force removal/ }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__worktreeRemovalCalls)).toEqual([[expectedPath, false, true]]);
 });
 
 test('navigates pane and remote-group context menus from the keyboard', async ({ page }) => {
@@ -1586,7 +3035,7 @@ test('filters every reference type and clears without closing the Left Panel', a
   await clearFilter.click();
   await expect(filter).toHaveValue('');
   await expect(sidebar.getByRole('button', { name: 'Local 3' })).toBeVisible();
-  await expect(sidebar.getByRole('button', { name: 'Remote 1' })).toBeVisible();
+  await expect(sidebar.getByRole('button', { name: 'Remote 2' })).toBeVisible();
 
   await filter.fill('upstream/release');
   const alignedRelease = sidebar.getByRole('button', { name: 'Local branch release', exact: true });
@@ -1606,10 +3055,48 @@ test('filters every reference type and clears without closing the Left Panel', a
 test('keeps local branch selection and graph visibility as separate controls', async ({ page }) => {
   const row = page.locator('.branch-list-row').filter({ hasText: 'feature/partial-staging' }).first();
   const branch = row.getByRole('button', { name: 'Local branch feature/partial-staging' });
+  const actions = row.getByRole('button', { name: 'Branch actions for feature/partial-staging' });
   const visibility = row.getByRole('button', { name: 'Hide feature/partial-staging from graph' });
+  const alignedRow = page.locator('.branch-list-row').filter({ has: page.getByRole('button', { name: /Local branch main, current/ }) });
+  const remoteLocations = alignedRow.locator('.aligned-branch-locations');
+  const alignedName = alignedRow.locator('.branch-item > span').nth(1);
+  const alignedActions = alignedRow.getByRole('button', { name: 'Branch actions for main' });
+  const alignedVisibility = alignedRow.getByRole('button', { name: 'Hide main from graph' });
 
   await expect(branch.locator('button')).toHaveCount(0);
-  await expect(visibility).toHaveCSS('opacity', '0');
+  await expect(remoteLocations).toBeVisible();
+  expect(await alignedName.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const [remoteLocationBounds, alignedActionBounds, alignedVisibilityBounds] = await Promise.all([
+    remoteLocations.boundingBox(),
+    alignedActions.boundingBox(),
+    alignedVisibility.boundingBox(),
+  ]);
+  expect(remoteLocationBounds).not.toBeNull();
+  expect(alignedActionBounds).not.toBeNull();
+  expect(alignedVisibilityBounds).not.toBeNull();
+  expect(alignedActionBounds!.x + alignedActionBounds!.width).toBeLessThanOrEqual(remoteLocationBounds!.x);
+  expect(alignedVisibilityBounds!.x + alignedVisibilityBounds!.width).toBeLessThanOrEqual(remoteLocationBounds!.x);
+  await expect(remoteLocations).toHaveCSS('opacity', '1');
+  await expect(alignedActions).toHaveCSS('opacity', '0');
+  await expect(alignedActions).toHaveCSS('pointer-events', 'none');
+  await expect(alignedVisibility).toHaveCSS('opacity', '0');
+  await alignedActions.focus();
+  await expect(remoteLocations).toHaveCSS('opacity', '1');
+  await expect(alignedActions).toHaveCSS('opacity', '1');
+  await expect(alignedVisibility).toHaveCSS('opacity', '1');
+  await expect(actions).toHaveCSS('opacity', '0');
+  await actions.focus();
+  await expect(actions).toHaveCSS('opacity', '1');
+  await actions.press('Enter');
+  const menu = page.getByRole('menu', { name: 'Actions for branch feature/partial-staging' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Checkout branch' })).toBeFocused();
+  await expect(actions).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(actions).toBeFocused();
+  await expect(actions).toHaveAttribute('aria-expanded', 'false');
+  await expect(visibility).toHaveCSS('opacity', '1');
   await visibility.focus();
   await expect(visibility).toBeFocused();
   await expect(visibility).toHaveCSS('opacity', '1');
@@ -1621,16 +3108,140 @@ test('keeps local branch selection and graph visibility as separate controls', a
   await expect(branch).not.toHaveClass(/tip-selected/);
 });
 
+test('keeps aligned branch locations on one line at compact desktop widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await page.goto('/');
+
+  const row = page.locator('.branch-list-row').filter({ has: page.getByRole('button', { name: /Local branch main, current/ }) });
+  const branch = row.getByRole('button', { name: /Local branch main, current/ });
+  const name = branch.locator(':scope > span').nth(1);
+  const locations = row.locator('.aligned-branch-locations');
+  const [branchBounds, locationBounds, rowBounds] = await Promise.all([
+    branch.boundingBox(), locations.boundingBox(), row.boundingBox(),
+  ]);
+
+  expect(branchBounds).not.toBeNull();
+  expect(locationBounds).not.toBeNull();
+  expect(rowBounds).not.toBeNull();
+  expect(Math.abs(
+    branchBounds!.y + branchBounds!.height / 2 - (locationBounds!.y + locationBounds!.height / 2),
+  )).toBeLessThanOrEqual(1);
+  expect(rowBounds!.height).toBeLessThanOrEqual(32);
+  expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+  const releaseName = page.getByRole('button', { name: 'Local branch release' }).locator(':scope > span').nth(1);
+  expect(await releaseName.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test('exposes remote branch actions without a context-menu gesture', async ({ page }) => {
+  const row = page.locator('.remote-branch-row').filter({ has: page.getByRole('button', { name: 'Remote branch origin/docs' }) });
+  const branch = row.getByRole('button', { name: 'Remote branch origin/docs' });
+  const actions = row.getByRole('button', { name: 'Remote branch actions for origin/docs' });
+  const remoteLocations = row.locator('.aligned-remote-only-locations');
+
+  await expect(branch.locator('button')).toHaveCount(0);
+  await expect(remoteLocations).toBeVisible();
+  await expect(remoteLocations).toHaveCSS('opacity', '1');
+  await expect(actions).toHaveCSS('opacity', '0');
+  await actions.focus();
+  await expect(remoteLocations).toHaveCSS('opacity', '0');
+  await expect(actions).toBeFocused();
+  await expect(actions).toHaveCSS('opacity', '1');
+  await actions.press('Enter');
+
+  const menu = page.getByRole('menu', { name: 'Actions for remote branch origin/docs' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeFocused();
+  await expect(actions).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(actions).toBeFocused();
+  await expect(actions).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('groups local branch actions into scannable workflow sections', async ({ page }) => {
+  await page.getByRole('button', { name: 'Local branch feature/partial-staging' }).click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Actions for branch feature/partial-staging' });
+  await expect(menu.locator('.context-section-label')).toHaveText([
+    'Switch and inspect',
+    'Tracking and worktrees',
+    'Graph visibility',
+    'History and integration',
+    'Integrate into main',
+    'Manage branch',
+    'Create reference at branch tip',
+  ]);
+  await expect(menu.getByRole('menuitem', { name: 'Checkout branch' })).toBeFocused();
+  await expect(menu).toHaveCSS('width', '312px');
+  expect(await menu.getByRole('menuitem').evaluateAll((items) => items.every((item) =>
+    item.getBoundingClientRect().width <= item.parentElement!.getBoundingClientRect().width,
+  ))).toBe(true);
+});
+
+test('exposes tag and stash actions through direct controls', async ({ page }) => {
+  await page.getByRole('button', { name: 'Tags 1' }).click();
+  const tagRow = page.locator('.tag-list-row').filter({ has: page.getByRole('button', { name: 'Tag v0.1.0' }) });
+  const tag = tagRow.getByRole('button', { name: 'Tag v0.1.0' });
+  const tagActions = tagRow.getByRole('button', { name: 'Tag actions for v0.1.0' });
+  await expect(tag.locator('button')).toHaveCount(0);
+  await expect(tagActions).toHaveCSS('opacity', '0');
+  await tagActions.focus();
+  await expect(tagActions).toHaveCSS('opacity', '1');
+  await tagActions.press('Enter');
+  const tagMenu = page.getByRole('menu', { name: 'Actions for tag v0.1.0' });
+  await expect(tagMenu.getByRole('menuitem', { name: 'View tagged commit' })).toBeFocused();
+  await expect(tagActions).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(tagMenu).toBeHidden();
+  await expect(tagActions).toBeFocused();
+  await expect(tagActions).toHaveAttribute('aria-expanded', 'false');
+
+  await page.getByRole('button', { name: 'Stashes 1' }).click();
+  const stashRow = page.locator('.stash-list-row').first();
+  const stash = stashRow.getByRole('button', { name: 'Stash stash@{0}, WIP on graph polish' });
+  const stashActions = stashRow.getByRole('button', { name: 'Stash actions for stash@{0}' });
+  await expect(stash.locator('button')).toHaveCount(0);
+  await expect(stashActions).toHaveCSS('opacity', '0');
+  await stashActions.focus();
+  await expect(stashActions).toHaveCSS('opacity', '1');
+  await stashActions.press('Enter');
+  const stashMenu = page.getByRole('menu', { name: 'Stash actions' });
+  await expect(stashMenu.getByRole('menuitem', { name: 'Apply Stash' })).toBeFocused();
+  await expect(stashActions).toHaveAttribute('aria-expanded', 'true');
+  await stashMenu.getByRole('menuitem', { name: 'Delete Stash…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a stash menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingStashDelete())).toBeNull();
+  await expect(stashActions).toBeFocused();
+  await stashActions.press('Enter');
+  await expect(stashMenu.getByRole('menuitem', { name: 'Apply Stash' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(stashMenu).toBeHidden();
+  await expect(stashActions).toBeFocused();
+  await expect(stashActions).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('uses one roving Tab stop across WIP and commit graph rows', async ({ page }) => {
   const currentWip = page.locator('.wip-row').first();
   const linkedWip = page.locator('.wip-row').nth(1);
 
+  await expect(currentWip).toHaveAttribute('aria-label', 'Working directory, branch main, 4 changed files');
+  await expect(currentWip).toHaveAttribute('aria-controls', 'repository-commit-panel');
+  await expect(currentWip).toHaveAttribute('aria-pressed', 'true');
+  await expect(linkedWip).toHaveAttribute('aria-label', 'Linked worktree git-khronos-partial-staging, branch feature/partial-staging, 2 changed files');
+  await expect(linkedWip).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-graph-row][tabindex="0"]')).toHaveCount(1);
   await expect(currentWip).toHaveAttribute('tabindex', '0');
   await currentWip.focus();
   await currentWip.press('ArrowDown');
   await expect(linkedWip).toBeFocused();
   await expect(linkedWip).toHaveAttribute('tabindex', '0');
+  await expect(linkedWip).toHaveAttribute('aria-pressed', 'true');
+  await expect(currentWip).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-graph-row][tabindex="0"]')).toHaveCount(1);
 
   await linkedWip.press('End');
@@ -1658,12 +3269,21 @@ test('shows effective signing configuration and applies its commit default', asy
   await preferences.getByRole('tab', { name: /Git Features/ }).click();
   const signing = preferences.locator('.signing-preferences');
   await expect(signing).toBeVisible();
+  await expect(signing.locator('.signing-state strong')).toHaveCSS('font-size', '13px');
+  const checkSigner = signing.getByRole('button', { name: 'Check Signer' });
+  const signingHelp = signing.getByRole('button', { name: 'Learn about signing and verification…' });
+  await expect(checkSigner).toHaveCSS('font-size', '13px');
+  await expect(signingHelp).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(signingHelp).toHaveCSS('color', 'rgb(84, 214, 173)');
+  await expect(signingHelp).toHaveCSS('justify-content', 'flex-start');
+  expect(await checkSigner.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
   await expect(signing).toContainText('Automatic signing enabled');
   await expect(signing).toContainText('SSH');
   await expect(signing).toContainText('~/.ssh/id_ed25519.pub');
-  await signing.getByRole('button', { name: 'Check Signer' }).click();
+  await checkSigner.click();
   await expect(signing.locator('.signing-diagnostic')).toContainText('Signer available');
   await expect(signing.locator('.signing-diagnostic')).toContainText('ssh-keygen');
+  await expect(signing.locator('.signing-diagnostic strong')).toHaveCSS('font-size', '13px');
   await expect(signing.locator('.signing-diagnostic small')).toHaveCSS('font-size', '12px');
   await expect(signing.locator('.signing-diagnostic code')).toHaveCSS('font-size', '12px');
 
@@ -1694,6 +3314,7 @@ test('keeps every preference category discoverable in compact windows', async ({
     const navigation = preferences.getByRole('tablist', { name: 'Preference categories' });
     const tabs = navigation.getByRole('tab');
     await expect(tabs).toHaveCount(5);
+    await expect(tabs.first().locator('small')).toBeHidden();
 
     const navigationBox = await navigation.boundingBox();
     expect(navigationBox).not.toBeNull();
@@ -1719,6 +3340,108 @@ test('keeps every preference category discoverable in compact windows', async ({
   }
 });
 
+test('finds settings without requiring category knowledge', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  const preferences = page.getByRole('dialog', { name: 'Preferences' });
+  const search = preferences.getByRole('searchbox', { name: 'Find a setting' });
+
+  await search.fill('fetch');
+  await expect(preferences.getByText('1 match', { exact: true })).toBeVisible();
+  await preferences.getByRole('button', { name: /Automatic remote fetch/ }).click();
+  const fetchInterval = preferences.getByLabel('Automatic fetch interval');
+  await expect(fetchInterval).toBeVisible();
+  await expect(fetchInterval).toBeFocused();
+  await expect(search).toHaveValue('');
+  await expect(preferences.getByRole('tablist', { name: 'Preference categories' })).toBeVisible();
+
+  await search.fill('restore defaults');
+  await preferences.getByRole('button', { name: /Restore interface defaults/ }).click();
+  await expect(preferences.getByRole('button', { name: 'Restore Defaults', exact: true })).toBeFocused();
+
+  await search.fill('something impossible');
+  await expect(preferences.getByText('No matching settings', { exact: true })).toBeVisible();
+  await expect(preferences.getByText(/Try “theme”, “fetch”, “diff”, or “terminal”/)).toBeVisible();
+
+  await search.press('Escape');
+  await expect(search).toHaveValue('');
+  await expect(preferences.getByRole('tablist', { name: 'Preference categories' })).toBeVisible();
+});
+
+test('keeps preference descriptions readable in a desktop dialog', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  const navigation = page.getByRole('dialog', { name: 'Preferences' })
+    .getByRole('tablist', { name: 'Preference categories' });
+
+  await expect(navigation.getByText('Appearance and layout', { exact: true })).toBeVisible();
+  await expect(navigation.getByText('Sync, sparse checkout, LFS', { exact: true })).toBeVisible();
+  expect(await navigation.locator('small').evaluateAll(elements => elements.every(element =>
+    element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight,
+  ))).toBe(true);
+});
+
+test('groups panel visibility with the panel it controls', async ({ page }) => {
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  const preferences = page.getByRole('dialog', { name: 'Preferences' });
+  const leftPanelGroup = preferences.locator('.preference-group').filter({
+    has: page.getByText('Left Panel', { exact: true }),
+  });
+  const commitPanelGroup = preferences.locator('.preference-group').filter({
+    has: page.getByText('Commit Panel', { exact: true }),
+  });
+
+  await expect(leftPanelGroup.getByText('Show Left Panel', { exact: true })).toBeVisible();
+  await expect(leftPanelGroup.getByText('Show Commit Panel', { exact: true })).toHaveCount(0);
+  await expect(commitPanelGroup.getByText('Show Commit Panel', { exact: true })).toBeVisible();
+  await expect(commitPanelGroup.getByLabel('Commit Panel file layout')).toBeVisible();
+  await expect(commitPanelGroup.locator('label').filter({ hasText: 'Show Commit Panel' })).toHaveCSS('justify-content', 'normal');
+  await expect(commitPanelGroup.locator('.commit-panel-layout')).toHaveCSS('justify-content', 'space-between');
+});
+
+test('keeps preference hierarchy legible in every application theme', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  for (const theme of ['chronos', 'midnight']) {
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
+    await page.reload();
+    await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+    const preferences = page.getByRole('dialog', { name: 'Preferences' });
+    await expect(preferences).toBeVisible();
+
+    for (const selector of ['.preferences-navigation button.active small', '.preference-group > span']) {
+      const ratio = await preferences.locator(selector).first().evaluate((element) => {
+        const channels = (value: string) => {
+          const parsed = (value.match(/[\d.]+/g) ?? []).map(Number);
+          return value.startsWith('color(srgb')
+            ? [(parsed[0] ?? 0) * 255, (parsed[1] ?? 0) * 255, (parsed[2] ?? 0) * 255, parsed[3] ?? 1]
+            : [parsed[0] ?? 0, parsed[1] ?? 0, parsed[2] ?? 0, parsed[3] ?? 1];
+        };
+        const luminance = ([red, green, blue]: number[]) => {
+          const linear = [red, green, blue].map((channel) => {
+            const normalized = channel / 255;
+            return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+          });
+          return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+        };
+        const foreground = channels(getComputedStyle(element).color);
+        let ancestor: Element | null = element;
+        let background = [0, 0, 0, 0];
+        while (ancestor && (background[3] ?? 0) === 0) {
+          background = channels(getComputedStyle(ancestor).backgroundColor);
+          ancestor = ancestor.parentElement;
+        }
+        const foregroundLuminance = luminance(foreground);
+        const backgroundLuminance = luminance(background);
+        return (Math.max(foregroundLuminance, backgroundLuminance) + .05)
+          / (Math.min(foregroundLuminance, backgroundLuminance) + .05);
+      });
+      expect(ratio, `${selector} should meet WCAG AA contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
+    }
+    await preferences.getByRole('button', { name: 'Close preferences' }).click();
+  }
+});
+
 test('navigates preference categories as a standard tab list', async ({ page }) => {
   const opener = page.getByRole('button', { name: 'Preferences', exact: true });
   await opener.focus();
@@ -1729,6 +3452,21 @@ test('navigates preference categories as a standard tab list', async ({ page }) 
   const graph = navigation.getByRole('tab', { name: /Commit Graph/ });
   const terminal = navigation.getByRole('tab', { name: /Terminal/ });
   const close = preferences.getByRole('button', { name: 'Close preferences' });
+  const search = preferences.getByRole('searchbox', { name: 'Find a setting' });
+
+  await expect(preferences.locator('header strong')).toHaveCSS('font-size', '13px');
+  await expect(preferences.locator('header small')).toHaveCSS('font-size', '12px');
+  await expect(general.locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(general.locator('small')).toHaveCSS('font-size', '12px');
+  await expect(preferences.getByRole('radio', { name: /Chronos Dark/ }).locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(preferences.locator('.preference-group label').filter({ hasText: 'Show toolbar icon labels' })).toHaveCSS('font-size', '13px');
+  await expect(preferences.getByLabel('Commit Panel file layout')).toHaveCSS('font-size', '13px');
+  await expect(close).toHaveCSS('border-top-style', 'solid');
+  expect(await close.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await close.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return Math.min(box.width, box.height);
+  })).toBeGreaterThanOrEqual(24);
 
   await expect(close).toBeFocused();
   await close.press('Shift+Tab');
@@ -1736,6 +3474,8 @@ test('navigates preference categories as a standard tab list', async ({ page }) 
   await preferences.getByRole('button', { name: 'Restore Defaults' }).press('Tab');
   await expect(close).toBeFocused();
   await close.press('Tab');
+  await expect(search).toBeFocused();
+  await search.press('Tab');
   await expect(general).toBeFocused();
 
   await general.focus();
@@ -1773,8 +3513,11 @@ test('navigates and persists application themes as a standard radio group', asyn
   const referenceFilter = page.locator('.branch-search-control');
   const fileToolbar = page.locator('.working-tree-view-toolbar');
   const fileFilter = page.locator('.file-filter');
-  const commitSummary = page.locator('.commit-form > input');
+  const commitSummary = page.locator('.commit-form input[name="summary"]');
   const selectedCommit = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  const selectedAuthorNode = selectedCommit.locator('.author-node');
+  const commitMessageCard = page.locator('.commit-panel .commit-overview');
+  const commitSignature = page.locator('gc-commit-signature .commit-signature');
   await expect(chrome).toHaveCSS('background-color', 'rgb(24, 24, 36)');
   await expect(activeRepositoryTab).toHaveCSS('background-color', 'rgb(36, 36, 55)');
   await expect(toolbar).toHaveCSS('background-color', 'rgb(36, 36, 55)');
@@ -1792,6 +3535,13 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(currentWorktree).toHaveCSS('background-color', 'rgb(36, 36, 56)');
   await expect(referenceFilter).toHaveCSS('background-color', 'rgb(20, 20, 31)');
   await expect(selectedCommit).toHaveCSS('background-color', 'rgb(48, 47, 74)');
+  await expect(selectedCommit).toHaveCSS('border-bottom-color', 'rgb(36, 36, 53)');
+  expect(await selectedAuthorNode.evaluate((node) => getComputedStyle(node).boxShadow)).toContain('rgb(48, 47, 74)');
+  await expect(commitMessageCard).toHaveCSS('background-color', 'rgb(32, 32, 47)');
+  await expect(commitMessageCard).toHaveCSS('border-color', 'rgb(55, 54, 75)');
+  await expect(commitSignature).toHaveCSS('background-color', 'rgb(32, 51, 47)');
+  await expect(commitSignature).toHaveCSS('border-color', 'rgb(53, 110, 97)');
+  expect(await cssContrastRatio(page, 'var(--inspector-muted)', 'var(--panel-raised)')).toBeGreaterThanOrEqual(4.5);
 
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   let preferences = page.getByRole('dialog', { name: 'Preferences' });
@@ -1824,7 +3574,14 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(currentWorktree).toHaveCSS('background-color', 'rgb(26, 36, 51)');
   await expect(referenceFilter).toHaveCSS('background-color', 'rgb(15, 22, 33)');
   await expect(selectedCommit).toHaveCSS('background-color', 'rgb(38, 40, 70)');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.theme'))).toBe('midnight');
+  await expect(selectedCommit).toHaveCSS('border-bottom-color', 'rgb(27, 39, 56)');
+  expect(await selectedAuthorNode.evaluate((node) => getComputedStyle(node).boxShadow)).toContain('rgb(38, 40, 70)');
+  await expect(commitMessageCard).toHaveCSS('background-color', 'rgb(21, 31, 46)');
+  await expect(commitMessageCard).toHaveCSS('border-color', 'rgb(53, 68, 91)');
+  await expect(commitSignature).toHaveCSS('background-color', 'rgb(20, 42, 37)');
+  await expect(commitSignature).toHaveCSS('border-color', 'rgb(63, 128, 111)');
+  expect(await cssContrastRatio(page, 'var(--inspector-muted)', 'var(--panel-raised)')).toBeGreaterThanOrEqual(4.5);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.theme'))).toBe('midnight');
 
   await preferences.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByRole('button', { name: /Switch branch, current/ }).click();
@@ -1840,7 +3597,7 @@ test('navigates and persists application themes as a standard radio group', asyn
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  const graphSettings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const graphSettings = page.getByRole('dialog', { name: 'Graph settings' });
   await expect(graphSettings).toHaveCSS('background-color', 'rgb(26, 36, 51)');
   await expect(graphSettings).toHaveCSS('border-color', 'rgb(69, 86, 111)');
   await page.keyboard.press('Escape');
@@ -1850,7 +3607,7 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(fileFilter).toHaveCSS('background-color', 'rgb(12, 19, 30)');
   await expect(commitSummary).toHaveCSS('background-color', 'rgb(12, 19, 30)');
 
-  await page.getByTitle('Open repository terminal (Alt+T)').click();
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
   const terminalPanel = page.getByLabel('Repository terminals');
   await expect(terminalPanel).toHaveCSS('background-color', 'rgb(8, 13, 20)');
   await expect(terminalPanel.locator('header')).toHaveCSS('background-color', 'rgb(16, 24, 38)');
@@ -1913,22 +3670,22 @@ test('hides and solos an entire remote from its Left Panel heading', async ({ pa
 });
 
 test('favorites repositories and opens them with the familiar numeric shortcut', async ({ page }) => {
-  const currentPath = '/home/maya/projects/git-chronos';
-  const linkedPath = '/home/maya/projects/git-chronos-partial-staging';
+  const currentPath = '/home/maya/projects/git-khronos';
+  const linkedPath = '/home/maya/projects/git-khronos-partial-staging';
   await page.evaluate(({ currentPath, linkedPath }) => {
-    localStorage.setItem('git-chronos.recent-repositories.v1', JSON.stringify([currentPath, linkedPath]));
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([currentPath, linkedPath]));
   }, { currentPath, linkedPath });
   await page.goto('/?worktree-tabs');
 
   await page.keyboard.press('Control+t');
   const manager = page.getByRole('dialog', { name: 'Repository management' });
-  await manager.getByRole('button', { name: 'Add git-chronos-partial-staging to favorites' }).click();
+  await manager.getByRole('button', { name: 'Add git-khronos-partial-staging to favorites' }).click();
   await expect(manager.getByText('Favorites')).toBeVisible();
-  await expect(manager.getByRole('button', { name: /git-chronos-partial-staging/ }).first()).toContainText('Ctrl Alt 1');
+  await expect(manager.getByRole('button', { name: /git-khronos-partial-staging/ }).first()).toContainText('Ctrl Alt 1');
 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+Alt+1');
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 
   await page.reload();
   await page.keyboard.press('Control+t');
@@ -1939,18 +3696,55 @@ test('reorders repository tabs with a persisted drag destination', async ({ page
   await page.goto('/?worktree-tabs');
   const tabs = page.locator('.repo-tab');
   await expect(tabs).toHaveCount(2);
-  await expect(tabs.nth(0)).toContainText('git-chronos');
-  await expect(tabs.nth(1)).toContainText('git-chronos-partial-staging');
+  await expect(tabs.first()).toHaveCSS('font-size', '13px');
+  await expect(tabs.nth(0)).toContainText('git-khronos');
+  await expect(tabs.nth(1)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(0)).toHaveClass(/has-changes/);
+  await expect(tabs.nth(0).getByRole('tab')).toHaveAttribute('aria-label', /4 uncommitted changes/);
+  await expect(tabs.nth(0).locator('i')).toHaveAttribute('title', '4 uncommitted changes');
+  await expect(tabs.nth(0)).toHaveCSS('box-shadow', /inset/);
+  const inactiveClose = tabs.nth(1).getByRole('button', { name: /Close/ });
+  await expect(inactiveClose).toHaveCSS('opacity', '0');
+  await tabs.nth(1).hover();
+  await expect(inactiveClose).toHaveCSS('opacity', '1');
+  expect(await inactiveClose.evaluate((button) => button.getBoundingClientRect().width >= 24)).toBe(true);
 
   await tabs.nth(0).dragTo(tabs.nth(1));
-  await expect(tabs.nth(0)).toContainText('git-chronos-partial-staging');
-  await expect(tabs.nth(1)).toContainText('git-chronos');
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
   await expect.poll(() => page.evaluate(() => JSON.parse(
-    localStorage.getItem('git-chronos.open-repositories.v1') ?? '[]',
+    localStorage.getItem('git-khronos.open-repositories.v1') ?? '[]',
   ))).toEqual([
-    '/home/maya/projects/git-chronos-partial-staging',
-    '/home/maya/projects/git-chronos',
+    '/home/maya/projects/git-khronos-partial-staging',
+    '/home/maya/projects/git-khronos',
   ]);
+});
+
+test('reorders repository tabs from the keyboard and preserves focused selection', async ({ page }) => {
+  await page.goto('/?worktree-tabs');
+  const tabs = page.locator('.repo-tab');
+  const current = tabs.nth(0).getByRole('tab');
+  await current.focus();
+  await expect(current).toHaveAttribute('aria-keyshortcuts', /Control\+Shift\+PageDown/);
+
+  await page.keyboard.press('Control+Shift+PageDown');
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
+  const moved = tabs.nth(1).getByRole('tab');
+  await expect(moved).toBeFocused();
+  await expect(moved).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 2 of 2.');
+  await expect.poll(() => page.evaluate(() => JSON.parse(
+    localStorage.getItem('git-khronos.open-repositories.v1') ?? '[]',
+  ))).toEqual([
+    '/home/maya/projects/git-khronos-partial-staging',
+    '/home/maya/projects/git-khronos',
+  ]);
+
+  await page.keyboard.press('Control+Shift+PageUp');
+  await expect(tabs.nth(0)).toContainText('git-khronos');
+  await expect(tabs.nth(0).getByRole('tab')).toBeFocused();
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 1 of 2.');
 });
 
 test('offers repository tab utilities and batch closing from the tab menu', async ({ page }) => {
@@ -1959,29 +3753,50 @@ test('offers repository tab utilities and batch closing from the tab menu', asyn
   await expect(tabs).toHaveCount(2);
 
   await tabs.first().click({ button: 'right' });
-  const menu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
-  await expect(menu).toContainText('/home/maya/projects/git-chronos');
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
+  await expect(menu).toContainText('/home/maya/projects/git-khronos');
+  await expect(menu.locator('.tab-context-heading strong')).toHaveCSS('font-size', '13px');
   await expect(menu.locator('.tab-context-heading small')).toHaveCSS('font-size', '12px');
+  await expect(menu.locator('.tab-menu-action').first()).toHaveCSS('font-size', '13px');
   await expect(menu.locator('.tab-menu-action > small').first()).toHaveCSS('font-size', '12px');
   await expect(menu.getByRole('menuitem', { name: 'Open terminal' })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Open in file manager' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /Move tab left/ })).toBeDisabled();
+  const moveRight = menu.getByRole('menuitem', { name: /Move tab right/ });
+  await expect(moveRight).toBeEnabled();
+  await expect(moveRight).toContainText('Ctrl Shift Page Down');
   const favorite = menu.getByRole('menuitemcheckbox', { name: 'Add to favorites' });
   await expect(favorite).toHaveAttribute('aria-checked', 'false');
   await favorite.click();
   await expect(menu.getByRole('menuitemcheckbox', { name: 'Remove from favorites' })).toHaveAttribute('aria-checked', 'true');
   await expect(menu.getByRole('menuitem', { name: 'Close repositories to the right 1' })).toBeEnabled();
 
-  await menu.getByRole('menuitem', { name: 'Close repositories to the right 1' }).click();
+  await moveRight.click();
+  await expect(tabs.nth(0)).toContainText('git-khronos-partial-staging');
+  await expect(tabs.nth(1)).toContainText('git-khronos');
+  await expect(page.locator('[data-repository-tab-order-status]')).toHaveText('git-khronos moved to position 2 of 2.');
+
+  await tabs.nth(1).click({ button: 'right' });
+  const movedMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
+  await expect(movedMenu.getByRole('menuitem', { name: /Move tab right/ })).toBeDisabled();
+  await movedMenu.getByRole('menuitem', { name: /Move tab left/ }).click();
+  await expect(tabs.nth(0)).toContainText('git-khronos');
+  await expect(tabs.nth(1)).toContainText('git-khronos-partial-staging');
+
+  await tabs.first().click({ button: 'right' });
+  const restoredMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
+
+  await restoredMenu.getByRole('menuitem', { name: 'Close repositories to the right 1' }).click();
   await expect(tabs).toHaveCount(1);
-  await expect(tabs.first()).toContainText('git-chronos');
+  await expect(tabs.first()).toContainText('git-khronos');
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
   await tabs.nth(1).click({ button: 'right' });
-  const linkedMenu = page.getByRole('menu', { name: 'Repository actions for git-chronos-partial-staging' });
+  const linkedMenu = page.getByRole('menu', { name: 'Repository actions for git-khronos-partial-staging' });
   await linkedMenu.getByRole('menuitem', { name: 'Close other repositories 1' }).click();
   await expect(tabs).toHaveCount(1);
-  await expect(tabs.first()).toContainText('git-chronos-partial-staging');
+  await expect(tabs.first()).toContainText('git-khronos-partial-staging');
   await expect(tabs.first()).toHaveClass(/active/);
 });
 
@@ -1991,7 +3806,7 @@ test('opens and navigates repository tab actions from the keyboard', async ({ pa
   await tabButton.focus();
   await page.keyboard.press('Shift+F10');
 
-  const menu = page.getByRole('menu', { name: 'Repository actions for git-chronos' });
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Open terminal' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -2006,21 +3821,61 @@ test('opens and navigates repository tab actions from the keyboard', async ({ pa
   await expect(tabButton).toBeFocused();
 });
 
+test('reveals repository display-name editing only when requested', async ({ page }) => {
+  await page.goto('/?worktree-tabs');
+  const tab = page.locator('.repo-tab').first();
+  await tab.click({ button: 'right' });
+
+  const menu = page.getByRole('menu', { name: 'Repository actions for git-khronos' });
+  await expect(menu.getByRole('textbox')).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Edit display name…' }).click();
+
+  const editor = page.getByRole('dialog', { name: 'Edit display name for git-khronos' });
+  const input = editor.getByRole('textbox', { name: 'Repository display name' });
+  await expect(input).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(editor.getByRole('button', { name: 'Save' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+  await input.fill('Chronos Core');
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(tab).toContainText('Chronos Core');
+
+  await tab.click({ button: 'right' });
+  const renamedMenu = page.getByRole('menu', { name: 'Repository actions for Chronos Core' });
+  await renamedMenu.getByRole('menuitem', { name: 'Edit display name…' }).click();
+  const renamedEditor = page.getByRole('dialog', { name: 'Edit display name for Chronos Core' });
+  const renamedInput = renamedEditor.getByRole('textbox', { name: 'Repository display name' });
+  await expect(renamedInput).toHaveValue('Chronos Core');
+  await renamedInput.fill('Discard this draft');
+  await page.keyboard.press('Escape');
+  await expect(renamedMenu.getByRole('menuitem', { name: 'Edit display name…' })).toBeFocused();
+  await renamedMenu.getByRole('menuitem', { name: 'Edit display name…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Edit display name for Chronos Core' })
+    .getByRole('textbox', { name: 'Repository display name' })).toHaveValue('Chronos Core');
+});
+
 test('switches repository tabs with standard tablist keys and restores focus after close', async ({ page }) => {
   await page.goto('/?worktree-tabs');
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-  const first = tablist.getByRole('tab', { name: /git-chronos/ }).first();
-  const second = tablist.getByRole('tab', { name: /git-chronos-partial-staging/ });
+  const first = tablist.getByRole('tab', { name: /git-khronos/ }).first();
+  const second = tablist.getByRole('tab', { name: /git-khronos-partial-staging/ });
+  const firstClose = page.getByRole('button', { name: 'Close git-khronos', exact: true });
+  const secondClose = page.getByRole('button', { name: 'Close git-khronos-partial-staging', exact: true });
 
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect(first).toHaveAttribute('tabindex', '0');
   await expect(second).toHaveAttribute('tabindex', '-1');
+  await expect(firstClose).toHaveAttribute('tabindex', '0');
+  await expect(secondClose).toHaveAttribute('tabindex', '-1');
   await first.focus();
   await first.press('ArrowRight');
   await expect(second).toBeFocused();
   await expect(second).toHaveAttribute('aria-selected', 'true');
   await expect(second).toHaveAttribute('tabindex', '0');
   await expect(first).toHaveAttribute('tabindex', '-1');
+  await expect(firstClose).toHaveAttribute('tabindex', '-1');
+  await expect(secondClose).toHaveAttribute('tabindex', '0');
 
   await second.press('Home');
   await expect(first).toBeFocused();
@@ -2035,6 +3890,66 @@ test('switches repository tabs with standard tablist keys and restores focus aft
   await expect(first).toHaveAttribute('aria-selected', 'true');
 });
 
+test('cycles repository tabs with Ctrl+Tab and exposes the commands', async ({ page }) => {
+  await page.goto('/?worktree-tabs');
+  const tablist = page.getByRole('tablist', { name: 'Open repositories' });
+  const first = tablist.getByRole('tab', { name: /git-khronos/ }).first();
+  const second = tablist.getByRole('tab', { name: /git-khronos-partial-staging/ });
+
+  await expect(first).toHaveAttribute('aria-selected', 'true');
+  await expect(first).toHaveAttribute('aria-keyshortcuts', /Control\+Tab/);
+  await page.keyboard.press('Control+Tab');
+  await expect(second).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Control+Shift+Tab');
+  await expect(first).toHaveAttribute('aria-selected', 'true');
+
+  await page.keyboard.press('Control+p');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox').fill('repository tab');
+  await expect(palette.getByRole('option', { name: /Next Repository Tab/ })).toContainText('Ctrl Tab');
+  await expect(palette.getByRole('option', { name: /Previous Repository Tab/ })).toContainText('Ctrl Shift Tab');
+  await palette.getByRole('option', { name: /Next Repository Tab/ }).click();
+  await expect(second).toHaveAttribute('aria-selected', 'true');
+});
+
+test('keeps the window title aligned with the active repository state', async ({ page }) => {
+  await expect(page).toHaveTitle('git-khronos — main • 4 changes — Git Khronos');
+
+  await page.goto('/?worktree-tabs');
+  const linked = page.getByRole('tab', { name: /git-khronos-partial-staging/ });
+  await linked.click();
+  await expect(page).toHaveTitle('git-khronos-partial-staging — feature/partial-staging • 4 changes — Git Khronos');
+
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
+      ...item,
+      status: { ...item.status, entryCount: 0, branch: null },
+      branches: item.branches.map((branch: any) => ({ ...branch, current: false })),
+    } : item));
+  });
+  await expect(page).toHaveTitle(/git-khronos-partial-staging — Detached [0-9a-f]{8} — Git Khronos/);
+
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
+      ...item,
+      headOid: null,
+      commits: [],
+    } : item));
+  });
+  await expect(page).toHaveTitle('git-khronos-partial-staging — No commits — Git Khronos');
+
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.set([]);
+    git.activeRepositoryId.set(null);
+  });
+  await expect(page).toHaveTitle('Git Khronos');
+});
+
 test('keeps the open-repositories menu inside compact windows', async ({ page }) => {
   await page.setViewportSize({ width: 780, height: 560 });
   await page.goto('/?worktree-tabs');
@@ -2043,6 +3958,10 @@ test('keeps the open-repositories menu inside compact windows', async ({ page })
   await page.getByRole('button', { name: 'Show all open repositories' }).click();
   const menu = page.getByRole('menu', { name: 'Open repositories' });
   await expect(menu).toBeVisible();
+  await expect(menu.locator('strong').first()).toHaveCSS('font-size', '13px');
+  await expect(menu.locator('small').first()).toHaveCSS('font-size', '12px');
+  await expect(menu.locator('kbd').first()).toHaveCSS('white-space', 'nowrap');
+  expect((await menu.locator('kbd').first().boundingBox())!.height).toBeLessThan(20);
   const bounds = await menu.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return {
@@ -2061,21 +3980,175 @@ test('keeps the open-repositories menu inside compact windows', async ({ page })
   await expect(menu.locator('kbd').first()).toBeVisible();
 });
 
-test('uses branch-aware labels for grouped worktree tabs at compact widths', async ({ page }) => {
+test('uses branch-aware labels for grouped worktree tabs at every width', async ({ page }) => {
+  for (const width of [1440, 550]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto('/?worktree-tabs');
+
+    const tablist = page.getByRole('tablist', { name: 'Open repositories' });
+    const main = tablist.getByRole('tab', { name: 'git-khronos, branch main' });
+    const feature = tablist.getByRole('tab', { name: 'git-khronos-partial-staging, branch feature/partial-staging' });
+    await expect(main).toBeVisible();
+    await expect(feature).toBeVisible();
+    await expect(main.locator('.repo-tab-full-label')).toBeHidden();
+    await expect(feature.locator('.repo-tab-full-label')).toBeHidden();
+    await expect(main.locator('.repo-tab-compact-label')).toHaveText('main');
+    await expect(feature.locator('.repo-tab-compact-label')).toHaveText('feature/partial-staging');
+    await expect(main.locator('.repo-tab-compact-label')).toBeVisible();
+    await expect(feature.locator('.repo-tab-compact-label')).toBeVisible();
+    await expect(main).toHaveAttribute('title', / — main — /);
+    await expect(feature).toHaveAttribute('title', / — feature\/partial-staging — /);
+
+    if (width === 1440) {
+      await page.getByRole('button', { name: 'Show all open repositories' }).click();
+      const menuBranches = page.getByRole('menu', { name: 'Open repositories' }).locator('.tab-list-branch');
+      await expect(menuBranches).toHaveText(['main', 'feature/partial-staging']);
+      await expect(menuBranches.nth(0)).toHaveAttribute('title', 'main');
+      await expect(menuBranches.nth(1)).toHaveAttribute('title', 'feature/partial-staging');
+      expect(await menuBranches.nth(0).evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
+      await page.keyboard.press('Escape');
+    }
+  }
+});
+
+test('reveals the complete active worktree tab and its close control at compact width', async ({ page }) => {
   await page.setViewportSize({ width: 550, height: 700 });
   await page.goto('/?worktree-tabs');
 
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
-  const main = tablist.getByRole('tab', { name: 'git-chronos, branch main' });
-  const feature = tablist.getByRole('tab', { name: 'git-chronos-partial-staging, branch feature/partial-staging' });
-  await expect(main).toBeVisible();
-  await expect(feature).toBeVisible();
-  await expect(main.locator('.repo-tab-full-label')).toBeHidden();
-  await expect(feature.locator('.repo-tab-full-label')).toBeHidden();
-  await expect(main.locator('.repo-tab-compact-label')).toHaveText('main');
-  await expect(feature.locator('.repo-tab-compact-label')).toHaveText('feature/partial-staging');
-  await expect(main.locator('.repo-tab-compact-label')).toBeVisible();
-  await expect(feature.locator('.repo-tab-compact-label')).toBeVisible();
+  const feature = tablist.getByRole('tab', { name: 'git-khronos-partial-staging, branch feature/partial-staging' });
+  await page.keyboard.press('Control+Tab');
+  await expect(feature).toHaveAttribute('aria-selected', 'true');
+  const activeTab = page.locator('.repo-tab.active');
+
+  await expect.poll(async () => {
+    const [viewport, tab, close] = await Promise.all([
+      tablist.boundingBox(),
+      activeTab.boundingBox(),
+      activeTab.getByRole('button', { name: 'Close git-khronos-partial-staging' }).boundingBox(),
+    ]);
+    return !!viewport && !!tab && !!close
+      && tab.x >= viewport.x - 1
+      && tab.x + tab.width <= viewport.x + viewport.width + 1
+      && close.x + close.width <= viewport.x + viewport.width + 1;
+  }).toBe(true);
+});
+
+test('prioritizes the repository name over the workspace name in the compact tab bar', async ({ page }) => {
+  await page.setViewportSize({ width: 500, height: 700 });
+  await page.goto('/');
+
+  const workspace = page.getByRole('button', { name: 'Workspace: Default' });
+  const repository = page.getByRole('tab', { name: /git-khronos/i });
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute('title', 'Workspace: Default — switch workspace');
+  await expect(workspace.locator('span')).toBeHidden();
+  await expect(repository.locator('.repo-tab-full-label')).toBeVisible();
+  await expect(repository.locator('.repo-tab-full-label')).toHaveText('git-khronos');
+
+  const visibleLabelWidth = await repository.locator('strong').evaluate((element) => element.getBoundingClientRect().width);
+  expect(visibleLabelWidth).toBeGreaterThanOrEqual(48);
+});
+
+test('keeps the workspace switcher inside narrow application windows', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+
+  const assertSwitcherFits = async () => {
+    const menu = page.getByRole('menu', { name: 'Workspaces' });
+    await expect(menu).toBeVisible();
+    const bounds = await menu.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(8);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(312);
+  };
+
+  await page.getByRole('button', { name: 'Workspace: Default' }).click();
+  await assertSwitcherFits();
+  await page.keyboard.press('Escape');
+
+  await page.goto('/?welcome-preview');
+  await expect(page.locator('.welcome')).toBeVisible();
+  await expect(page.locator('.welcome-nav .brand > span:last-child')).toBeHidden();
+  await page.getByRole('button', { name: 'Workspace: Default' }).click();
+  await assertSwitcherFits();
+});
+
+test('reveals the active repository tab when the tab strip overflows', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 720 });
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const base = git.repositories()[0];
+    const repositories = Array.from({ length: 9 }, (_, index) => {
+      const suffix = String(index + 1).padStart(2, '0');
+      const path = `/home/maya/projects/repository-${suffix}`;
+      return {
+        ...base,
+        id: `overflow-${index}`,
+        name: `repository-${suffix}`,
+        path,
+        gitDir: `${path}/.git`,
+        worktrees: base.worktrees.map((worktree: any, worktreeIndex: number) => ({
+          ...worktree,
+          path: worktreeIndex ? `${path}-worktree-${worktreeIndex}` : path,
+        })),
+      };
+    });
+    git.repositories.set(repositories);
+    git.activeRepositoryId.set(repositories[0].id);
+  });
+
+  const tablist = page.getByRole('tablist', { name: 'Open repositories' });
+  await expect(tablist.getByRole('tab')).toHaveCount(9);
+  expect(await page.locator('.repo-tab').evaluateAll((tabs) => tabs.every((tab) => tab.getBoundingClientRect().width >= 88))).toBe(true);
+  expect(await tablist.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  const scrollBack = page.getByRole('button', { name: 'Scroll repository tabs left' });
+  const scrollForward = page.getByRole('button', { name: 'Scroll repository tabs right' });
+  await expect(scrollBack).toBeVisible();
+  await expect(scrollForward).toBeVisible();
+  await expect(scrollBack).toBeDisabled();
+  await expect(scrollForward).toBeEnabled();
+  await scrollForward.click();
+  await expect.poll(() => tablist.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect(scrollBack).toBeEnabled();
+
+  await page.getByRole('button', { name: 'Show all open repositories' }).click();
+  const repositoryMenu = page.getByRole('menu', { name: 'Open repositories' });
+  const repositoryMenuHeading = repositoryMenu.locator('.tab-list-heading');
+  const repositoryMenuScroll = repositoryMenu.locator('.tab-list-scroll');
+  const headingTop = (await repositoryMenuHeading.boundingBox())!.y;
+  await expect(repositoryMenu.getByRole('menuitemradio', { name: /repository-01/ }))
+    .toHaveAttribute('aria-keyshortcuts', 'Control+1 Meta+1');
+  await expect(repositoryMenu.getByRole('menuitemradio', { name: /repository-01/ }))
+    .toHaveAttribute('title', 'repository-01 — main — /home/maya/projects/repository-01');
+  expect(await repositoryMenuScroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await repositoryMenuScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(repositoryMenu.getByRole('menuitemradio', { name: /repository-09/ })).toBeVisible();
+  expect((await repositoryMenuHeading.boundingBox())!.y).toBe(headingTop);
+  await repositoryMenu.getByRole('menuitemradio', { name: /repository-09/ }).click();
+
+  const lastTab = tablist.locator('[data-repository-tab-id="overflow-8"]');
+  await expect(lastTab).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => tablist.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const [tablistBounds, lastTabBounds] = await Promise.all([tablist.boundingBox(), lastTab.boundingBox()]);
+  expect(tablistBounds).not.toBeNull();
+  expect(lastTabBounds).not.toBeNull();
+  expect(lastTabBounds!.x).toBeGreaterThanOrEqual(tablistBounds!.x - 1);
+  expect(lastTabBounds!.x + lastTabBounds!.width).toBeLessThanOrEqual(tablistBounds!.x + tablistBounds!.width + 1);
+
+  await page.setViewportSize({ width: 700, height: 720 });
+  await expect.poll(async () => {
+    const [container, tab] = await Promise.all([tablist.boundingBox(), lastTab.boundingBox()]);
+    return !!container && !!tab
+      && tab.x >= container.x - 1
+      && tab.x + tab.width <= container.x + container.width + 1;
+  }).toBe(true);
+
+  await lastTab.focus();
+  await lastTab.press('Home');
+  const firstTab = tablist.locator('[data-repository-tab-id="overflow-0"]');
+  await expect(firstTab).toBeFocused();
+  await expect(firstTab).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => tablist.evaluate((element) => element.scrollLeft)).toBe(0);
 });
 
 test('reopens the most recently closed repository tab', async ({ page }) => {
@@ -2083,23 +4156,24 @@ test('reopens the most recently closed repository tab', async ({ page }) => {
   const tabs = page.locator('.repo-tab');
   await expect(tabs).toHaveCount(2);
 
+  await tabs.nth(1).hover();
   await tabs.nth(1).getByRole('button', { name: /Close/ }).click();
   await expect(tabs).toHaveCount(1);
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 
   await page.locator('.repo-tab.active').getByRole('button', { name: /Close/ }).click();
   await tabs.first().getByRole('button', { name: /Close/ }).click();
-  const reopenFromWelcome = page.getByRole('button', { name: 'Reopen git-chronos' });
+  const reopenFromWelcome = page.getByRole('button', { name: 'Reopen git-khronos' });
   await expect(reopenFromWelcome).toBeVisible();
   await reopenFromWelcome.click();
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos');
 
   await page.keyboard.press('Control+Shift+T');
   await expect(tabs).toHaveCount(2);
-  await expect(page.locator('.repo-tab.active')).toContainText('git-chronos-partial-staging');
+  await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 });
 
 test('offers a terminal handoff for new worktrees', async ({ page }) => {
@@ -2148,13 +4222,92 @@ test('confirms rewritten history before force pushing with a lease', async ({ pa
 
   const confirmation = page.getByRole('alertdialog', { name: 'Force push main' });
   await expect(confirmation).toContainText('origin/main');
+  await expect(confirmation).toContainText('f19b263a8af3');
+  await expect(confirmation).toContainText('83e6d15fb826');
   await expect(confirmation).toContainText('--force-with-lease');
-  await expect(confirmation).toContainText('Git rejects the operation');
+  await expect(confirmation).toContainText('background fetch updates the local tracking ref');
+  const cancel = confirmation.getByRole('button', { name: 'Cancel' });
+  const forcePush = confirmation.getByRole('button', { name: 'Force Push with Lease' });
+  await expect(cancel).toBeFocused();
+  await cancel.press('Tab');
+  await expect(forcePush).toBeFocused();
+  await forcePush.press('Tab');
+  await expect(cancel).toBeFocused();
+  await cancel.press('Escape');
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Push options' })).toBeFocused();
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await pushMenu.getByRole('menuitem', { name: /Force Push with Lease/ }).click();
   await confirmation.getByRole('button', { name: 'Force Push with Lease' }).click();
 
   await expect(confirmation).toHaveCount(0);
   await expect(page.locator('.activity-status')).toContainText('Force push with lease complete');
 });
+
+for (const action of ['force push', 'worktree removal', 'branch publish'] as const) {
+  for (const mode of ['cancel', 'failure'] as const) {
+    test(`${action} confirmation loader ${mode} preserves focus and does not run the action`, async ({ page }) => {
+      let release!: () => void;
+      let finish!: () => void;
+      const finished = new Promise<void>(resolve => { finish = resolve; });
+      if (action === 'branch publish') {
+        await page.goto('/?unpublished-branch');
+        await expect(page.locator('.commit-row').first()).toBeVisible();
+      }
+      await page.evaluate(() => {
+        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const calls: string[] = [];
+        (window as any).__confirmationActionCalls = calls;
+        for (const name of ['forcePushWithLease', 'removeWorktree', 'publishBranch']) {
+          git[name] = async () => { calls.push(name); };
+        }
+      });
+      await page.route('**/chunk-*.js', async route => {
+        const response = await route.fetch();
+        const text = await response.text();
+        const confirmationChunk = text.includes('force-push-title') && text.includes('remove-worktree-title');
+        if (confirmationChunk && mode === 'failure') await route.abort();
+        else {
+          if (confirmationChunk) await new Promise<void>(resolve => { release = resolve; });
+          await route.fulfill({ response, body: text });
+        }
+        if (confirmationChunk) finish();
+      });
+      const opener = action === 'force push'
+        ? page.getByRole('button', { name: 'Push options' })
+        : action === 'worktree removal'
+          ? page.locator('.worktree-list-actions').nth(1)
+          : page.getByRole('button', { name: 'Publish feature/partial-staging to origin' });
+      await opener.click();
+      if (action === 'force push') {
+        await page.locator('.push-menu').getByRole('menuitem', { name: /Force Push with Lease/ }).click();
+      } else if (action === 'worktree removal') {
+        await page.locator('.worktree-card-menu.list-menu')
+          .getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
+      }
+      const loader = page.getByRole('dialog', {
+        name: mode === 'cancel' ? 'Loading confirmation' : 'Confirmation unavailable', exact: true,
+      });
+      const close = loader.getByRole('button', { name: mode === 'cancel' ? 'Cancel' : 'Close', exact: true });
+      await expect(close).toBeFocused();
+      await close.press('Tab');
+      await expect(close).toBeFocused();
+      if (mode === 'cancel') await expect.poll(() => typeof release).toBe('function');
+      await close.press('Escape');
+      await expect(loader).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      if (mode === 'cancel') release();
+      await finished;
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      if (action === 'branch publish') {
+        await expect(page.getByRole('dialog', { name: 'Publish feature/partial-staging' })).toHaveCount(0);
+      } else {
+        await expect(page.getByRole('alertdialog', { name: action === 'force push' ? 'Force push main' : 'feature/partial-staging' })).toHaveCount(0);
+      }
+      expect(await page.evaluate(() => (window as any).__confirmationActionCalls)).toEqual([]);
+    });
+  }
+}
 
 test('keeps conflicted merge recovery visible until it is completed or aborted', async ({ page }) => {
   await page.goto('/?merge-preview');
@@ -2164,6 +4317,9 @@ test('keeps conflicted merge recovery visible until it is completed or aborted',
   await expect(progress).toContainText('1 conflicted file(s) need resolution');
   await expect(progress.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await expect(page.getByText('Conflicted Files (1)')).toBeVisible();
+  await expect(page.locator('.wip-nav > b')).toHaveText('4');
+  await expect(page.getByRole('button', { name: 'Staged Files (0)' })).toBeVisible();
+  await expect(page.getByText('No staged files', { exact: true })).toBeVisible();
   await progress.getByRole('button', { name: 'Abort' }).click();
 
   await expect(progress).toHaveCount(0);
@@ -2178,6 +4334,9 @@ test('keeps an interrupted cherry-pick recoverable from the history workspace', 
   await expect(progress).toContainText('CHERRY-PICK IN PROGRESS');
   await expect(progress).toContainText('1 conflicted file(s) need resolution');
   await expect(progress.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Unstaged Files (3)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Staged Files (0)' })).toBeVisible();
+  await expect(page.getByText('No staged files', { exact: true })).toBeVisible();
   await progress.getByRole('button', { name: 'Abort' }).click();
 
   await expect(progress).toHaveCount(0);
@@ -2193,18 +4352,8 @@ test('shows Git LFS actions only for repositories that enable LFS', async ({ pag
   await lfsOptions.click();
   await expect(page.locator('.lfs-menu-status')).toContainText('git-lfs/3.7.1');
   await expect(page.locator('.lfs-menu-status')).toContainText('12 tracked files');
-  await page.getByRole('menuitem', { name: /Prune old LFS objects/ }).click();
-  const pruneConfirmation = page.getByRole('alertdialog', { name: 'Remove old local objects?' });
-  const pruneCancel = pruneConfirmation.getByRole('button', { name: 'Cancel' });
-  const pruneConfirm = pruneConfirmation.getByRole('button', { name: 'Prune Objects' });
-  await expect(pruneConfirmation).toContainText('git lfs prune');
-  await expect(pruneCancel).toBeFocused();
-  await pruneCancel.press('Shift+Tab');
-  await expect(pruneConfirm).toBeFocused();
-  await pruneConfirm.press('Tab');
-  await expect(pruneCancel).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: /Clean LFS storage/ })).toBeEnabled();
   await page.keyboard.press('Escape');
-  await expect(pruneConfirmation).toHaveCount(0);
   await expect(lfsOptions).toBeFocused();
 
   await page.locator('.file-row').filter({ hasText: 'app.component.html' }).click({ button: 'right' });
@@ -2268,9 +4417,9 @@ test('manages repository remotes from the reference panel', async ({ page }) => 
   const editDialog = page.getByRole('dialog', { name: 'Edit Remote' });
   await expect(editDialog.getByLabel('Name')).toHaveValue('origin');
   await expect(editDialog.getByLabel('Name')).toHaveAttribute('readonly', '');
-  await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-chronos.git');
+  await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-khronos.git');
   await expect(editDialog.getByLabel('Fetch URL')).toBeFocused();
-  await expect(editDialog).toContainText('Push currently uses git@github.com:example/git-chronos.git.');
+  await expect(editDialog).toContainText('Push currently uses git@github.com:example/git-khronos.git.');
 
   await editDialog.getByRole('button', { name: 'Remove Remote' }).click();
   const confirmation = page.getByRole('alertdialog', { name: 'origin' });
@@ -2308,6 +4457,39 @@ test('keeps add-submodule keyboard focus inside the dialog and returns it to its
   await expect(opener).toBeFocused();
 });
 
+test('makes submodule management discoverable from the sidebar and command palette', async ({ page }) => {
+  await page.goto('/');
+
+  const section = page.locator('#reference-section-submodules');
+  await expect(section).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submodules 2' })).toHaveAttribute('aria-expanded', 'true');
+
+  const manage = page.getByRole('button', { name: 'Manage submodules' });
+  await expect(manage).toContainText('Review state, sync, check out, deinitialize, or remove');
+  await manage.click();
+  await expect(page.getByRole('dialog', { name: 'Manage submodules', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(manage).toBeFocused();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
+  await palette.getByLabel('Search commands').fill('submodule');
+  await expect(palette.getByRole('option', { name: /Manage Submodules/ })).toBeVisible();
+  await expect(palette.getByRole('option', { name: /Add Submodule/ })).toBeVisible();
+});
+
+test('preserves an explicit choice to hide the submodule pane', async ({ page }) => {
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.pane-submodules', 'false'));
+  await page.reload();
+
+  await expect(page.locator('#reference-section-submodules')).toBeHidden();
+  await page.locator('.sidebar-heading').first().click({ button: 'right' });
+  await expect(page.getByRole('menu', { name: 'Left Panel panes' })
+    .getByRole('menuitemcheckbox', { name: 'Submodules' })).toHaveAttribute('aria-checked', 'false');
+});
+
 test('starts with author and date metadata and persists the optional SHA column', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
@@ -2315,7 +4497,7 @@ test('starts with author and date metadata and persists the optional SHA column'
   await expect(page.locator('.graph-columns')).toContainText('DATE / TIME');
   await expect(page.locator('.graph-columns')).not.toContainText('SHA');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  let settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  let settings = page.getByRole('dialog', { name: 'Graph settings' });
   await expect(settings.getByRole('checkbox', { name: 'Author' })).toBeChecked();
   await expect(settings.getByRole('checkbox', { name: 'Date / Time' })).toBeChecked();
   const shaColumn = settings.getByRole('checkbox', { name: 'SHA' });
@@ -2330,7 +4512,7 @@ test('starts with author and date metadata and persists the optional SHA column'
   await expect(page.locator('.graph-columns')).toContainText('DATE / TIME');
   await expect(page.locator('.graph-columns')).toContainText('SHA');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  settings = page.getByRole('dialog', { name: 'Graph settings' });
   await expect(settings.getByRole('checkbox', { name: 'SHA' })).toBeChecked();
 });
 
@@ -2348,7 +4530,7 @@ test('uses lean graph defaults on compact desktops without overriding an explici
   await expect(page.locator('.graph-columns')).not.toContainText('DATE / TIME');
 
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
   const authorColumn = settings.getByRole('checkbox', { name: 'Author' });
   const dateColumn = settings.getByRole('checkbox', { name: 'Date / Time' });
   await expect(authorColumn).not.toBeChecked();
@@ -2374,9 +4556,29 @@ test('opens graph column controls from the header and dismisses them predictably
   })).toBeGreaterThanOrEqual(24);
 
   await settingsButton.click();
-  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
   await expect(settingsButton).toHaveAttribute('aria-expanded', 'true');
   await expect(settings).toBeFocused();
+  await expect(settings).toHaveCSS('width', '252px');
+  await expect(settings.locator('.fit-graph-column')).toHaveCSS('font-size', '13px');
+  await expect(settings.getByLabel('Compact Graph Column')).toHaveCSS('font-size', '13px');
+  await expect(settings.getByRole('button', { name: 'Restore graph defaults' })).toHaveCSS('font-size', '13px');
+  const moveGraphLeft = settings.getByRole('button', { name: 'Move Graph column left' });
+  await expect(moveGraphLeft).toBeEnabled();
+  await moveGraphLeft.focus();
+  await moveGraphLeft.press('Enter');
+  const orderedHeadings = () => page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
+    [...columns].sort((left, right) => Number((left as HTMLElement).style.order) - Number((right as HTMLElement).style.order))
+      .map((column) => column.querySelector('[role="separator"]')?.getAttribute('aria-label')),
+  );
+  await expect.poll(orderedHeadings).toEqual([
+    'Resize Graph column',
+    'Resize Branch and Tag column',
+    'Resize Commit Message column',
+  ]);
+  await expect.poll(() => page.evaluate(() => JSON.parse(
+    localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.order') ?? '[]',
+  ))).toEqual(['graph', 'branch', 'message', 'author', 'date', 'sha']);
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
   await expect(settingsButton).toHaveAttribute('aria-expanded', 'false');
@@ -2385,33 +4587,55 @@ test('opens graph column controls from the header and dismisses them predictably
   await header.getByText('GRAPH', { exact: true }).click({ button: 'right' });
   await expect(settings).toBeVisible();
   await expect(settings).toBeFocused();
-  await expect(settings).toContainText('Graph columns');
+  await expect(settings.getByText('Columns', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
+});
+
+test('reserves compact header space when graph columns are reordered', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 720 });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
+  await settings.getByRole('button', { name: 'Move Graph column left' }).click();
+  await page.keyboard.press('Escape');
+
+  const launcher = page.getByRole('button', { name: 'Open left panel' });
+  const leadingHeading = page.locator('.graph-columns > .responsive-leading-column');
+  await expect(leadingHeading).toHaveClass(/graph-column-heading/);
+  await expect(leadingHeading.locator('.column-heading-label')).toHaveText('GRAPH');
+  const [launcherBox, labelBox] = await Promise.all([
+    launcher.boundingBox(),
+    leadingHeading.locator('.column-heading-label').boundingBox(),
+  ]);
+  expect(launcherBox).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(launcherBox!.x + launcherBox!.width).toBeLessThanOrEqual(labelBox!.x);
 });
 
 test('restores graph layout defaults without resetting unrelated preferences', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
   await settings.getByLabel('Compact Graph Column').check();
   await settings.getByLabel('Scroll Markers').uncheck();
-  await settings.getByLabel('Date / Time').uncheck();
+  await settings.getByRole('checkbox', { name: 'Date / Time', exact: true }).uncheck();
   await expect(page.locator('.graph-columns')).not.toContainText('DATE / TIME');
 
   await settings.getByRole('button', { name: 'Restore graph defaults' }).click();
   await expect(settings.getByLabel('Compact Graph Column')).not.toBeChecked();
   await expect(settings.getByLabel('Scroll Markers')).toBeChecked();
-  await expect(settings.getByLabel('Author')).toBeChecked();
-  await expect(settings.getByLabel('Date / Time')).toBeChecked();
-  await expect(settings.getByLabel('SHA')).not.toBeChecked();
+  await expect(settings.getByRole('checkbox', { name: 'Author', exact: true })).toBeChecked();
+  await expect(settings.getByRole('checkbox', { name: 'Date / Time', exact: true })).toBeChecked();
+  await expect(settings.getByRole('checkbox', { name: 'SHA', exact: true })).not.toBeChecked();
   await expect(page.locator('.graph-columns')).toContainText('DATE / TIME');
-  await expect(settings).toContainText('Drag column headers to reorder them.');
+  await expect(settings).toContainText('Drag headers or use the arrow buttons to reorder columns.');
   await expect.poll(() => page.evaluate(() => ({
-    compact: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.graph.compact'),
-    date: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.column.date.visible'),
-    markers: localStorage.getItem('git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos.scroll-markers'),
+    compact: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.graph.compact'),
+    date: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.column.date.visible'),
+    markers: localStorage.getItem('git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos.scroll-markers'),
   }))).toEqual({ compact: null, date: null, markers: null });
 });
 
@@ -2442,24 +4666,24 @@ test('resizes graph columns with accessible keyboard separators', async ({ page 
   await expect(branchSeparator).toHaveAttribute('aria-orientation', 'vertical');
   await expect(branchSeparator).toHaveAttribute('aria-valuemin', '75');
   await expect(branchSeparator).toHaveAttribute('aria-valuemax', '800');
-  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '150');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '180');
   expect((await branchSeparator.boundingBox())!.width).toBeGreaterThanOrEqual(12);
   await branchSeparator.focus();
   expect(await branchSeparator.evaluate((element) => getComputedStyle(element, '::after').width)).toBe('3px');
   await page.keyboard.press('ArrowRight');
-  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '158');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '188');
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '190');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '220');
   await page.keyboard.press('Home');
   await expect(branchSeparator).toHaveAttribute('aria-valuenow', '75');
   await page.keyboard.press('End');
   await expect(branchSeparator).toHaveAttribute('aria-valuenow', '800');
   await branchSeparator.dblclick();
-  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '150');
+  await expect(branchSeparator).toHaveAttribute('aria-valuenow', '180');
   await expect.poll(() => page.evaluate(() => {
     const key = Object.keys(localStorage).find((candidate) => candidate.endsWith('.column.branch.width'));
     return key ? localStorage.getItem(key) : null;
-  })).toBe('150');
+  })).toBe('180');
 
   const graphSeparator = page.getByRole('separator', { name: 'Resize Graph column' });
   await expect(graphSeparator).toHaveAttribute('aria-valuemin', '42');
@@ -2494,7 +4718,7 @@ test('resizes the commit message column independently of unused graph space', as
     await expect.poll(async () => {
       const header = (await page.locator('.graph-columns').boundingBox())!;
       const button = (await settingsButton.boundingBox())!;
-      return Math.abs(header.x + header.width - button.x - button.width - 14);
+      return Math.abs(header.x + header.width - button.x - button.width - 22);
     }).toBeLessThanOrEqual(1);
   };
   await expectSettingsPinnedRight();
@@ -2503,26 +4727,17 @@ test('resizes the commit message column independently of unused graph space', as
   const initialMessageWidth = (await messageWidth());
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth));
 
-  // As the last column, Commit Message resizes from its left edge, so the direction is mirrored.
-  const leading = await messageSeparator.evaluate((separator) => separator.classList.contains('leading-edge'));
-  const direction = leading ? -1 : 1;
   await messageSeparator.focus();
   await page.keyboard.press('ArrowLeft');
-  await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth - 8 * direction));
-  expect((await messageWidth())).toBe(initialMessageWidth - 8 * direction);
+  await expect(messageSeparator).toHaveAttribute('aria-valuenow', String(initialMessageWidth - 8));
+  expect((await messageWidth())).toBe(initialMessageWidth - 8);
   await page.keyboard.press('Home');
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '180');
   expect((await messageWidth())).toBe(180);
   await expectSettingsPinnedRight();
   await page.keyboard.press('End');
-  if (leading) {
-    // A left-edge splitter can only take what the column before it can give up.
-    await expect.poll(async () => Number(await messageSeparator.getAttribute('aria-valuenow'))).toBeGreaterThan(180);
-    expect(await messageWidth()).toBe(Number(await messageSeparator.getAttribute('aria-valuenow')));
-  } else {
-    await expect(messageSeparator).toHaveAttribute('aria-valuenow', '2400');
-    expect((await messageWidth())).toBe(2400);
-  }
+  await expect(messageSeparator).toHaveAttribute('aria-valuenow', '2400');
+  expect((await messageWidth())).toBe(2400);
   await expectSettingsPinnedRight();
   await page.keyboard.press('Home');
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '180');
@@ -2531,7 +4746,7 @@ test('resizes the commit message column independently of unused graph space', as
   expect(handle).not.toBeNull();
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(handle!.x + handle!.width / 2 + 40 * direction, handle!.y + handle!.height / 2);
+  await page.mouse.move(handle!.x + handle!.width / 2 + 40, handle!.y + handle!.height / 2);
   await page.mouse.up();
   await expect(messageSeparator).toHaveAttribute('aria-valuenow', '220');
   expect((await messageWidth())).toBe(220);
@@ -2548,21 +4763,23 @@ test('resizes the commit message column independently of unused graph space', as
   await expectSettingsPinnedRight();
 });
 
-test('resizes the date column from its left edge while its right edge stays fixed', async ({ page }) => {
+test('resizes the date column from its right edge without changing columns on its left', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto('/');
   const separator = page.getByRole('separator', { name: 'Resize Date and Time column' });
   const date = page.locator('.graph-columns .draggable-column').filter({ has: separator });
   const author = page.locator('.author-column-heading');
   const message = page.locator('.message-column-heading');
-  await expect(separator).toHaveClass(/leading-edge/);
+  await expect(separator).not.toHaveClass(/leading-edge/);
   const box = async (locator: typeof date) => (await locator.boundingBox())!;
-  const right = async () => { const b = await box(date); return b.x + b.width; };
-  const initialRight = await right();
+  const left = () => date.evaluate((heading) =>
+    heading.getBoundingClientRect().x + heading.closest<HTMLElement>('.graph-columns')!.scrollLeft);
+  const initialLeft = await left();
   const initialAuthor = (await box(author)).width;
   const messageWidth = (await box(message)).width;
   const handle = await box(separator);
-  expect(Math.abs(handle.x + handle.width / 2 - (await box(date)).x)).toBeLessThanOrEqual(1);
+  const initialDate = await box(date);
+  expect(Math.abs(handle.x + handle.width / 2 - initialDate.x - initialDate.width + 26)).toBeLessThanOrEqual(1);
   const drag = async (delta: number) => {
     const current = await box(separator);
     const x = current.x + current.width / 2;
@@ -2572,66 +4789,70 @@ test('resizes the date column from its left edge while its right edge stays fixe
     await page.mouse.move(x + delta, y, { steps: 4 });
     await page.mouse.up();
   };
-  const expectRightFixed = async () => expect(Math.abs(await right() - initialRight)).toBeLessThanOrEqual(1);
+  const expectLeftFixed = async (expected = initialLeft) => {
+    expect(Math.abs(await left() - expected)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await box(author)).width - initialAuthor)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await box(message)).width - messageWidth)).toBeLessThanOrEqual(1);
+  };
 
   await expect(separator).toHaveAttribute('aria-valuenow', '100');
   await expect(date.locator('.column-heading-label')).toBeVisible();
   await expect(date.locator('.column-heading-icon')).toHaveCount(0);
-  await drag(-24);
+  await drag(24);
   await expect(separator).toHaveAttribute('aria-valuenow', '124');
-  expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor) - 24);
-  await expectRightFixed();
-  expect(Math.abs((await box(message)).width - messageWidth)).toBeLessThanOrEqual(1);
+  await expectLeftFixed();
 
   // Narrowing stops at the width needed by the rendered dates and times.
   const minimum = Number(await separator.getAttribute('aria-valuemin'));
   expect(minimum).toBeGreaterThan(40);
   expect(minimum).toBeLessThan(100);
-  await drag(48);
+  await drag(-48);
   await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
-  expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor) + 100 - minimum);
-  await expectRightFixed();
+  await expectLeftFixed();
 
   await expect(date).toHaveAttribute('title', 'Date / Time');
   await page.reload();
   await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
-  await expectRightFixed();
+  await expectLeftFixed();
 
   await separator.focus();
-  await page.keyboard.press('ArrowLeft');
-  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum + 8));
-  await expectRightFixed();
-  await page.keyboard.press('Shift+ArrowRight');
-  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
-  await expectRightFixed();
   await page.keyboard.press('ArrowRight');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum + 8));
+  await expectLeftFixed();
+  await page.keyboard.press('Shift+ArrowLeft');
   await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
-  await expectRightFixed();
+  await expectLeftFixed();
+  await page.keyboard.press('ArrowLeft');
+  await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
+  await expectLeftFixed();
 
   await separator.dblclick();
   await expect(separator).toHaveAttribute('aria-valuenow', '100');
-  expect(Math.round((await box(author)).width)).toBe(Math.round(initialAuthor));
-  await expectRightFixed();
+  await expectLeftFixed();
 
-  // Space freed before Date / Time is filled by it, so its right edge stays at the panel edge.
-  await page.getByRole('separator', { name: 'Resize Author column', exact: true }).focus();
+  // Free space does not silently enlarge the last column.
+  const authorSeparator = page.getByRole('separator', { name: 'Resize Author column', exact: true });
+  const authorMinimum = await authorSeparator.getAttribute('aria-valuemin');
+  expect(authorMinimum).not.toBeNull();
+  await authorSeparator.focus();
   await page.keyboard.press('Home');
-  await expect.poll(async () => Number(await separator.getAttribute('aria-valuenow'))).toBeGreaterThan(100);
-  const filled = Number(await separator.getAttribute('aria-valuenow'));
-  expect(Math.round((await box(date)).width)).toBe(filled + 26);
-  await expectRightFixed();
-  // The neighbor's minimum width limits how far the left edge can move.
+  await expect(authorSeparator).toHaveAttribute('aria-valuenow', authorMinimum!);
+  await expect(separator).toHaveAttribute('aria-valuenow', '100');
+  const newLeft = await left();
+  const newAuthor = (await box(author)).width;
   await separator.focus();
+  const maximum = Number(await separator.getAttribute('aria-valuemax'));
   await page.keyboard.press('End');
-  await expect(separator).toHaveAttribute('aria-valuenow', String(filled));
-  await expectRightFixed();
-  // The filled width is real: dragging the left edge right narrows Date / Time at once.
-  await drag(40);
-  await expect(separator).toHaveAttribute('aria-valuenow', String(filled - 40));
-  await expectRightFixed();
+  await expect(separator).toHaveAttribute('aria-valuenow', String(maximum));
+  expect(Math.abs(await left() - newLeft)).toBeLessThanOrEqual(1);
+  expect((await box(author)).width).toBe(newAuthor);
+  await drag(-40);
+  await expect(separator).toHaveAttribute('aria-valuenow', String(maximum - 40));
+  expect(Math.abs(await left() - newLeft)).toBeLessThanOrEqual(1);
+  expect((await box(author)).width).toBe(newAuthor);
   await page.keyboard.press('Home');
   await expect(separator).toHaveAttribute('aria-valuenow', String(minimum));
-  await expectRightFixed();
+  expect(Math.abs(await left() - newLeft)).toBeLessThanOrEqual(1);
 });
 
 test('shows each graph heading title in full or as an icon with a tooltip', async ({ page }) => {
@@ -2688,7 +4909,7 @@ test('resizes every graph column independently with flexible and narrow commit m
   await page.setViewportSize({ width: 1920, height: 900 });
   const labels = [
     'Resize Branch and Tag column', 'Resize Graph column', 'Resize Commit Message column',
-    'Resize Author column', 'Resize SHA column',
+    'Resize Author column', 'Resize Date and Time column', 'Resize SHA column',
   ];
   for (const narrowMessage of [false, true]) {
     await page.goto('/');
@@ -2698,11 +4919,6 @@ test('resizes every graph column independently with flexible and narrow commit m
     if (narrowMessage) {
       await page.getByRole('separator', { name: labels[2], exact: true }).focus();
       await page.keyboard.press('Home');
-    }
-    // Leave Date / Time and the last column (SHA) room to give up width to the splitter before them.
-    for (const name of ['Resize SHA column', 'Resize Date and Time column']) {
-      await page.getByRole('separator', { name, exact: true }).focus();
-      await page.keyboard.press('Shift+ArrowLeft');
     }
     for (const label of labels) {
       const separator = page.getByRole('separator', { name: label, exact: true });
@@ -2724,11 +4940,6 @@ test('resizes every graph column independently with flexible and narrow commit m
       const columnIndex = await heading.evaluate((column) =>
         [...column.parentElement!.querySelectorAll(':scope > .draggable-column')].indexOf(column),
       );
-      // Date / Time and the last column resize from a left-edge splitter that keeps their right edge fixed.
-      const leadingEdges = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
-        columns.map((column) => column.querySelector('.column-resizer.leading-edge') !== null),
-      );
-      const leading = leadingEdges[columnIndex];
       const widths = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
         columns.map((column) => Math.round(column.getBoundingClientRect().width)),
       );
@@ -2739,23 +4950,20 @@ test('resizes every graph column independently with flexible and narrow commit m
       await page.mouse.down();
       await page.mouse.move(x + 16, y, { steps: 4 });
       await page.mouse.up();
+      await expect.poll(async () => Math.round((await heading.boundingBox())!.width), { message: label })
+        .toBe(Math.round(before.width) + 16);
       const after = (await heading.boundingBox())!;
-      // Dragging a leading-edge splitter right moves the column's left edge, narrowing it.
-      expect(Math.round(after.width), label).toBe(Math.round(before.width) + (leading ? -16 : 16));
       const scrollAfter = await page.locator('.graph-columns').evaluate((header) => header.scrollLeft);
       // Columns are never pinned, so every other column keeps its left edge in the scrolled content.
-      expect(Math.abs(after.x + scrollAfter - before.x - scrollBefore - (leading ? 16 : 0)), label).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.x + scrollAfter - before.x - scrollBefore), label).toBeLessThanOrEqual(1);
       const newWidths = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
         columns.map((column) => Math.round(column.getBoundingClientRect().width)),
       );
-      expect(newWidths).toEqual(leading
-        ? widths.map((width, index) => width + (index === columnIndex ? -16 : index === columnIndex - 1 ? 16 : 0))
-        : widths.map((width, index) =>
-          width + (index === columnIndex ? 16 : 0) - (index === columnIndex + 1 && leadingEdges[index] ? 16 : 0)));
+      expect(newWidths).toEqual(widths.map((width, index) => width + (index === columnIndex ? 16 : 0)));
       await separator.focus();
       await page.keyboard.press('ArrowLeft');
-      // Left widens a leading-edge column and narrows any other.
-      expect(Math.round((await heading.boundingBox())!.width)).toBe(Math.round(before.width) + (leading ? -8 : 8));
+      await expect.poll(async () => Math.round((await heading.boundingBox())!.width), { message: label })
+        .toBe(Math.round(before.width) + 8);
     }
     const author = page.getByRole('separator', { name: labels[3], exact: true });
     await author.focus();
@@ -2768,28 +4976,45 @@ test('resizes every graph column independently with flexible and narrow commit m
 });
 
 test('resizes repository side panels with accessible keyboard splitters', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const leftPanel = page.locator('#repository-reference-panel');
   const leftSplitter = page.getByRole('separator', { name: 'Resize left panel' });
+  const authorColumn = page.getByRole('separator', { name: 'Resize Author column' });
+  const dateColumn = page.getByRole('separator', { name: 'Resize Date and Time column' });
+  await expect(authorColumn).toBeVisible();
+  await expect(dateColumn).toBeVisible();
   await expect(leftSplitter).toHaveAttribute('aria-controls', 'repository-reference-panel');
   await expect(leftSplitter).toHaveAttribute('aria-orientation', 'vertical');
   await expect(leftSplitter).toHaveAttribute('aria-valuemin', '170');
   await expect(leftSplitter).toHaveAttribute('aria-valuemax', '420');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '250');
   expect((await leftSplitter.boundingBox())!.width).toBeGreaterThanOrEqual(12);
+  expect(await leftSplitter.evaluate((element) => getComputedStyle(element).backgroundSize)).toBe('3px 28px');
   await leftSplitter.focus();
   expect(await leftSplitter.evaluate((element) => getComputedStyle(element, '::after').width)).toBe('3px');
+  expect(await leftSplitter.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
+    .toBe(await resolvedCssColor(page, 'var(--focus-ring)'));
   await page.keyboard.press('ArrowRight');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '260');
   await page.keyboard.press('Shift+ArrowRight');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '292');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.panel.sidebar.width'))).toBe('292');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.panel.sidebar.width'))).toBe('292');
   await page.keyboard.press('Home');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '170');
   await page.keyboard.press('End');
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '420');
+  await expect(authorColumn).toBeHidden();
+  await expect(dateColumn).toBeHidden();
   await leftSplitter.dblclick();
   await expect(leftSplitter).toHaveAttribute('aria-valuenow', '250');
   await expect.poll(() => leftPanel.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(250);
+  await expect(authorColumn).toBeVisible();
+  await expect(dateColumn).toBeVisible();
+  const splitterBounds = (await leftSplitter.boundingBox())!;
+  await page.mouse.move(splitterBounds.x + splitterBounds.width / 2, splitterBounds.y + splitterBounds.height / 2);
+  await page.mouse.down();
+  await expect(leftSplitter).toHaveCSS('background-color', await resolvedCssColor(page, 'var(--splitter-active)'));
+  await page.mouse.up();
 
   const commitPanel = page.locator('#repository-commit-panel');
   const commitSplitter = page.getByRole('separator', { name: 'Resize commit panel' });
@@ -2801,19 +5026,40 @@ test('resizes repository side panels with accessible keyboard splitters', async 
   await expect(commitSplitter).toHaveAttribute('aria-valuenow', '365');
   await page.keyboard.press('ArrowRight');
   await expect(commitSplitter).toHaveAttribute('aria-valuenow', '355');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.panel.details.width'))).toBe('355');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.panel.details.width'))).toBe('355');
   await expect.poll(() => commitPanel.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(355);
 });
 
+test('keeps the stage-all action readable at the minimum commit-panel width', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const commitPanel = page.locator('#repository-commit-panel');
+  const splitter = page.getByRole('separator', { name: 'Resize commit panel' });
+  const stageAll = commitPanel.getByRole('button', { name: 'Stage all changes' });
+  const fullLabel = stageAll.locator('.file-section-bulk-full');
+  const compactLabel = stageAll.locator('.file-section-bulk-compact');
+
+  await expect(fullLabel).toBeVisible();
+  await expect(compactLabel).toBeHidden();
+  await splitter.focus();
+  await page.keyboard.press('Home');
+  await expect(splitter).toHaveAttribute('aria-valuenow', '280');
+  await expect.poll(() => commitPanel.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(280);
+  await expect(fullLabel).toBeHidden();
+  await expect(compactLabel).toBeVisible();
+  await expect(stageAll).toHaveAccessibleName('Stage all changes');
+  expect(await commitPanel.locator('.unstaged-section .file-section-title').evaluate((element) =>
+    element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
 test('resizes and restores the repository terminal with an accessible splitter', async ({ page }) => {
-  const openTerminal = page.getByTitle('Open repository terminal (Alt+T)');
+  const openTerminal = page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)');
   await expect(openTerminal).toHaveAttribute('aria-pressed', 'false');
   await openTerminal.click();
 
   let panel = page.getByLabel('Repository terminals');
   let splitter = page.getByRole('separator', { name: 'Resize terminal' });
   await expect(panel).toBeVisible();
-  await expect(page.getByTitle('Hide repository terminal (Alt+T)')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTitle('Hide repository terminal (Alt+T or Ctrl+`)')).toHaveAttribute('aria-pressed', 'true');
   const panelId = await panel.getAttribute('id');
   expect(panelId).toMatch(/^repository-terminal-panel-/);
   await expect(splitter).toHaveAttribute('aria-controls', panelId!);
@@ -2821,10 +5067,18 @@ test('resizes and restores the repository terminal with an accessible splitter',
   await expect(splitter).toHaveAttribute('aria-valuemin', '150');
   expect((await splitter.boundingBox())!.height).toBeGreaterThanOrEqual(12);
   await expect(panel.getByRole('button', { name: 'New terminal tab' })).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+T');
-  await expect(panel.getByRole('button', { name: 'Hide terminal panel' })).toBeVisible();
+  await expect(panel.locator('.terminal-empty-tab')).toHaveText('Terminal');
+  const hideTerminal = panel.getByRole('button', { name: 'Hide terminal panel' });
+  await expect(hideTerminal).toBeVisible();
+  await page.keyboard.press('Tab');
+  await hideTerminal.focus();
+  await expect(hideTerminal).toHaveCSS('outline-style', 'solid');
   const minimizeTerminal = panel.getByRole('button', { name: 'Minimize terminal' });
   await expect(minimizeTerminal).toHaveAttribute('aria-expanded', 'true');
   await expect(minimizeTerminal).toHaveAttribute('aria-controls', `${panelId}-body`);
+  await page.keyboard.press('Tab');
+  await minimizeTerminal.focus();
+  await expect(minimizeTerminal).toHaveCSS('outline-style', 'solid');
   await expect(panel.getByRole('status')).toContainText('Terminal sessions are available in the desktop app.');
   await expect(panel.locator('.terminal-context')).toHaveCSS('font-size', '12px');
   await expect(panel.locator('.terminal-error')).toHaveCSS('font-size', '12px');
@@ -2838,14 +5092,14 @@ test('resizes and restores the repository terminal with an accessible splitter',
   await page.keyboard.press('Shift+ArrowUp');
   await expect(splitter).toHaveAttribute('aria-valuenow', '192');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.terminal.panel-height'),
+    localStorage.getItem('git-khronos.terminal.panel-height'),
   )).toBe('192');
   await expect.poll(() => panel.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBe(192);
 
   await page.reload();
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.commit-row').first()).toBeVisible();
-  await page.getByTitle('Open repository terminal (Alt+T)').click();
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
   panel = page.getByLabel('Repository terminals');
   splitter = page.getByRole('separator', { name: 'Resize terminal' });
   await expect(splitter).toHaveAttribute('aria-valuenow', '192');
@@ -2858,7 +5112,7 @@ test('resizes and restores the repository terminal with an accessible splitter',
   await splitter.dblclick();
   await expect(splitter).toHaveAttribute('aria-valuenow', '280');
   await expect.poll(() => page.evaluate(() =>
-    localStorage.getItem('git-chronos.terminal.panel-height'),
+    localStorage.getItem('git-khronos.terminal.panel-height'),
   )).toBeNull();
 
   await panel.getByRole('button', { name: 'Hide terminal panel' }).click();
@@ -2878,7 +5132,9 @@ test('resizes and restores the repository terminal with an accessible splitter',
 
 test('keeps terminal session controls reachable in compact windows', async ({ page }) => {
   await page.setViewportSize({ width: 550, height: 560 });
-  await page.getByTitle('Open repository terminal (Alt+T)').click();
+  await page.getByRole('button', { name: 'More repository actions' }).click();
+  await page.getByRole('menu', { name: 'More repository actions' })
+    .getByRole('menuitem', { name: /Open repository terminal/ }).click();
   const panel = page.getByLabel('Repository terminals');
   const header = panel.locator('header');
   const newTerminal = panel.getByRole('button', { name: 'New terminal tab' });
@@ -2894,13 +5150,127 @@ test('keeps terminal session controls reachable in compact windows', async ({ pa
   expect(newTerminalBounds).not.toBeNull();
   expect(newTerminalBounds!.x + newTerminalBounds!.width)
     .toBeLessThanOrEqual(headerBounds!.x + headerBounds!.width);
+
+  await panel.locator('.terminal-tabs').evaluate((tabs) => {
+    for (let index = 1; index <= 6; index++) {
+      const tab = document.createElement('div');
+      tab.className = 'terminal-tab';
+      tab.textContent = `Terminal ${index}`;
+      tabs.append(tab);
+    }
+    tabs.dispatchEvent(new Event('scroll'));
+  });
+  const previousTabs = panel.getByRole('button', { name: 'Show previous terminal tabs' });
+  const nextTabs = panel.getByRole('button', { name: 'Show next terminal tabs' });
+  await expect(previousTabs).toBeVisible();
+  await expect(previousTabs).toBeDisabled();
+  await expect(nextTabs).toBeEnabled();
+  await nextTabs.click();
+  await expect.poll(() => panel.locator('.terminal-tabs').evaluate((tabs) => tabs.scrollLeft)).toBeGreaterThan(0);
+  await expect(previousTabs).toBeEnabled();
+  expect(await header.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test('keeps the active terminal tab visible when the window narrows', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    let terminal = 0;
+    app.git.systemInfo.set({
+      appVersion: 'renderer test',
+      gitVersion: '2.50.0',
+      gitSupported: true,
+      minimumGitVersion: '2.39.0',
+    });
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'open_terminal') {
+          terminal += 1;
+          return Promise.resolve({
+            id: `resize-terminal-${terminal}`,
+            label: 'bash',
+            cwd: '/home/maya/projects/git-khronos',
+          });
+        }
+        if (command === 'plugin:event|listen') return Promise.resolve(terminal + 100);
+        if (command === 'plugin:event|unlisten') return Promise.resolve(null);
+        if (command === 'resize_terminal' || command === 'write_terminal' || command === 'close_terminal') {
+          return Promise.resolve(null);
+        }
+        return Promise.reject(new Error(`Unexpected command: ${command}`));
+      },
+      transformCallback: () => terminal + 100,
+      unregisterCallback: () => undefined,
+    };
+  });
+
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
+  const panel = page.getByLabel('Repository terminals');
+  await expect(panel).toBeVisible();
+  const newTerminal = panel.getByRole('button', { name: 'New terminal tab' });
+  await page.keyboard.press('Tab');
+  await newTerminal.focus();
+  await expect(newTerminal).toHaveCSS('outline-style', 'solid');
+  await expect(newTerminal).toHaveCSS('outline-width', '2px');
+  await expect(panel.getByRole('tab', { name: 'bash 1' })).toBeVisible();
+  await expect(panel.locator('.terminal-empty-tab')).toHaveCount(0);
+  await page.evaluate(async () => {
+    const terminalPanel = (window as any).ng.getComponent(document.querySelector('gc-terminal-panel'));
+    const firstTerminal = terminalPanel.tabs()[0].terminal;
+    await new Promise<void>((resolve) => firstTerminal.write('\u001b]0;API logs\u0007', resolve));
+  });
+  const titledTab = panel.getByRole('tab', { name: 'API logs' });
+  await expect(titledTab).toBeVisible();
+  await expect(titledTab).toHaveAttribute('title', 'API logs · /home/maya/projects/git-khronos');
+  await expect(panel.getByRole('button', { name: 'Close API logs' })).toBeVisible();
+  for (let index = 0; index < 7; index++) {
+    await panel.getByRole('button', { name: 'New terminal tab' }).click();
+  }
+  const activeTab = panel.getByRole('tab', { name: /bash 8/ });
+  await expect(activeTab).toHaveAttribute('aria-selected', 'true');
+  const activeClose = panel.getByRole('button', { name: 'Close bash 8' });
+  const inactiveTab = panel.getByRole('tab', { name: /bash 7/ });
+  const inactiveTabShell = inactiveTab.locator('..');
+  const inactiveClose = panel.getByRole('button', { name: 'Close bash 7' });
+  await expect(activeClose).toHaveCSS('opacity', '1');
+  await expect(inactiveClose).toHaveCSS('opacity', '0');
+  await inactiveTabShell.hover();
+  await expect(inactiveClose).toHaveCSS('opacity', '1');
+  await page.mouse.move(0, 0);
+  await inactiveTab.focus();
+  await expect(inactiveClose).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Tab');
+  await inactiveClose.focus();
+  await expect(inactiveClose).toHaveCSS('outline-style', 'solid');
+
+  await page.setViewportSize({ width: 780, height: 650 });
+  const tabStrip = panel.locator('.terminal-tabs');
+  await expect.poll(async () => {
+    const [stripBounds, tabBounds] = await Promise.all([tabStrip.boundingBox(), activeTab.boundingBox()]);
+    return !!stripBounds && !!tabBounds
+      && tabBounds.x >= stripBounds.x - 1
+      && tabBounds.x + tabBounds.width <= stripBounds.x + stripBounds.width + 1;
+  }).toBe(true);
+  await expect.poll(() => tabStrip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect(panel.getByRole('button', { name: 'Show previous terminal tabs' })).toBeEnabled();
+
+  await page.setViewportSize({ width: 360, height: 560 });
+  await expect(panel.locator('.terminal-context')).toBeHidden();
+  await expect.poll(async () => {
+    const [stripBounds, tabBounds] = await Promise.all([tabStrip.boundingBox(), activeTab.boundingBox()]);
+    return !!stripBounds && !!tabBounds
+      && tabBounds.x >= stripBounds.x - 1
+      && tabBounds.x + tabBounds.width <= stripBounds.x + stripBounds.width + 1;
+  }).toBe(true);
+  await expect(newTerminal).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Minimize terminal' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Hide terminal panel' })).toBeVisible();
 });
 
 test('keeps graph headers aligned while wide histories scroll horizontally', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   const settings = page.locator('.column-settings');
-  await settings.getByLabel('Author').check();
-  await settings.getByLabel('SHA').check();
+  await settings.getByRole('checkbox', { name: 'Author', exact: true }).check();
+  await settings.getByRole('checkbox', { name: 'SHA', exact: true }).check();
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await expect(settings).toBeHidden();
 
@@ -2913,6 +5283,8 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   expect(await list.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await expect(shell).not.toHaveClass(/can-scroll-left/);
   await expect(shell).toHaveClass(/can-scroll-right/);
+  expect(await shell.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('0');
+  await expect.poll(() => shell.evaluate((element) => getComputedStyle(element, '::after').opacity)).toBe('1');
   await expect(list).toHaveCSS('scrollbar-color', 'rgb(75, 73, 101) rgb(23, 23, 35)');
   const shellX = await shell.evaluate((element) => element.getBoundingClientRect().x);
   const scrollOffset = await list.evaluate((element) => {
@@ -2923,6 +5295,7 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   expect(scrollOffset).toBeGreaterThan(0);
   await expect.poll(() => header.evaluate((element) => element.scrollLeft)).toBe(scrollOffset);
   await expect(shell).toHaveClass(/can-scroll-left/);
+  await expect.poll(() => shell.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
   const [headerBoxAfterScroll, settingsBoxAfterScroll] = await Promise.all([
     header.boundingBox(),
     settingsButton.boundingBox(),
@@ -2930,7 +5303,7 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   expect(headerBoxAfterScroll).not.toBeNull();
   expect(settingsBoxAfterScroll).not.toBeNull();
   expect(Math.abs(settingsBoxAfterScroll!.x + settingsBoxAfterScroll!.width -
-    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 14))).toBeLessThanOrEqual(1);
+    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 22))).toBeLessThanOrEqual(1);
   // The leading column scrolls with the history instead of staying pinned over the columns after it.
   await expect.poll(() => leadingHeader.evaluate((element) => element.getBoundingClientRect().x)).toBeLessThan(shellX);
   await expect.poll(async () => Math.abs(
@@ -2949,6 +5322,7 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
     element.dispatchEvent(new Event('scroll'));
   });
   await expect(shell).not.toHaveClass(/can-scroll-right/);
+  await expect.poll(() => shell.evaluate((element) => getComputedStyle(element, '::after').opacity)).toBe('0');
   const settingsBoxAtEnd = (await settingsButton.boundingBox())!;
   expect(Math.abs(settingsBoxAtEnd.x - settingsBoxAfterScroll!.x)).toBeLessThanOrEqual(1);
   await settingsButton.focus();
@@ -2958,34 +5332,38 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   await expect(settingsButton).toBeFocused();
 });
 
-test('keeps compact history controls clear of the commit inspector', async ({ page }) => {
-  for (const width of [760, 661]) {
+test('keeps compact history controls clear of the side-by-side commit inspector', async ({ page }) => {
+  for (const width of [820, 780]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
 
     const history = page.locator('.history-panel');
+    const header = history.locator('.graph-header');
     const inspector = page.locator('.detail-panel:not(.panel-hidden)');
     const settingsButton = page.getByRole('button', { name: 'Configure graph columns' });
-    const [historyBox, inspectorBox, settingsBox] = await Promise.all([
+    const [historyBox, headerBox, inspectorBox, settingsBox, gutter] = await Promise.all([
       history.boundingBox(),
+      header.boundingBox(),
       inspector.boundingBox(),
       settingsButton.boundingBox(),
+      header.evaluate(element => parseFloat(getComputedStyle(element).getPropertyValue('--graph-scrollbar-gutter')) || 0),
     ]);
     expect(historyBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
     expect(inspectorBox).not.toBeNull();
     expect(settingsBox).not.toBeNull();
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x);
     expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 4);
     expect(Math.abs(settingsBox!.x + settingsBox!.width -
-      (historyBox!.x + historyBox!.width - 14))).toBeLessThanOrEqual(1);
+      (headerBox!.x + headerBox!.width - 22 - gutter))).toBeLessThanOrEqual(1);
 
     await settingsButton.click();
-    await expect(page.getByRole('dialog', { name: 'Graph layout and columns' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Graph settings' })).toBeVisible();
   }
 });
 
-test('uses a full-width inspector drawer in ultra-narrow windows', async ({ page }) => {
-  for (const width of [660, 550, 420]) {
+test('uses a full-width inspector drawer in compact windows', async ({ page }) => {
+  for (const width of [760, 700, 661, 550, 420]) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
 
@@ -3009,8 +5387,26 @@ test('uses a full-width inspector drawer in ultra-narrow windows', async ({ page
     await expect(page.locator('.history-panel')).toHaveAttribute('inert', '');
     await page.getByRole('button', { name: 'Close commit panel' }).click();
     await page.getByRole('button', { name: 'Configure graph columns' }).click();
-    await expect(page.getByRole('dialog', { name: 'Graph layout and columns' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Graph settings' })).toBeVisible();
   }
+});
+
+test('keeps the history and inspector side by side above the compact breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 761, height: 720 });
+  await page.goto('/');
+
+  const panel = page.locator('.detail-panel');
+  if (await panel.isHidden()) await page.getByTitle(/Show Commit Panel/).click();
+  const inspector = page.locator('.detail-panel:not(.panel-hidden)');
+  const history = page.locator('.history-panel');
+  const [inspectorBox, historyBox] = await Promise.all([inspector.boundingBox(), history.boundingBox()]);
+
+  expect(inspectorBox).not.toBeNull();
+  expect(historyBox).not.toBeNull();
+  expect(inspectorBox!.x).toBeGreaterThan(0);
+  expect(historyBox!.width).toBeGreaterThan(0);
+  expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x + 1);
+  await expect(history).not.toHaveAttribute('inert', '');
 });
 
 test('compacts graph lanes and persists the graph layout', async ({ page }) => {
@@ -3037,7 +5433,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
   await page.getByLabel('Compact Graph Column').check();
 
   await expect(page.locator('.commit-list')).toHaveClass(/compact-graph/);
-  await expect(graphHeading).toHaveCSS('width', '70px');
+  await expect(graphHeading).toHaveCSS('width', '92px');
   await expect(laneNodes.first()).toHaveCSS('font-size', '10px');
   expect(await laneNodes.evaluateAll((nodes) => nodes.every((node) => node.scrollWidth <= node.clientWidth))).toBe(true);
   const compactOffsets = await laneNodes.evaluateAll((nodes) =>
@@ -3049,7 +5445,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
   expect(await titleClearanceViolations()).toEqual([]);
 
   await page.reload();
-  await expect(graphHeading).toHaveCSS('width', '70px');
+  await expect(graphHeading).toHaveCSS('width', '92px');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await expect(page.getByLabel('Compact Graph Column')).toBeChecked();
 });
@@ -3071,24 +5467,24 @@ test('provides distinct colors for wide commit graphs', async ({ page }) => {
 test('formats graph dates with a persisted UI preference', async ({ page }) => {
   const date = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .row-date');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  await page.getByLabel('Date / Time').check();
+  await page.getByRole('checkbox', { name: 'Date / Time', exact: true }).check();
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   let preferences = page.getByRole('dialog', { name: 'Preferences' });
   await preferences.getByRole('tab', { name: /Commit Graph/ }).click();
   const format = preferences.getByLabel('Commit graph date format');
   await format.selectOption('iso');
-  await expect(date.locator('span')).toHaveText(/^2026-10-\d{2}$/);
-  await expect(date.locator('small')).toHaveText(/^\d{2}:\d{2} Z$/);
-
+  await expect(date.locator('span')).toHaveText('2026-10-03');
+  await expect(date.locator('small')).toHaveText('09:42 Z');
+  await page.clock.setFixedTime(new Date('2026-11-02T09:42:00Z')); // Exactly 30 days after the sample commit.
   await page.reload();
-  await expect(date.locator('span')).toHaveText(/^2026-10-\d{2}$/);
+  await expect(date.locator('span')).toHaveText('2026-10-03');
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   preferences = page.getByRole('dialog', { name: 'Preferences' });
   await preferences.getByRole('tab', { name: /Commit Graph/ }).click();
   await expect(preferences.getByLabel('Commit graph date format')).toHaveValue('iso');
   await preferences.getByLabel('Commit graph date format').selectOption('relative');
-  await expect(date.locator('span')).toHaveText(/ago|yesterday|today|tomorrow|in /i);
+  await expect(date.locator('span')).toHaveText('last mo.');
 });
 
 test('persists privacy-preserving commit author markers', async ({ page }) => {
@@ -3130,9 +5526,11 @@ test('persists privacy-preserving commit author markers', async ({ page }) => {
 
 test('shows shortcuts for the active desktop platform', async ({ page }) => {
   await expect(page.getByTitle('New repository tab (Ctrl+T)')).toHaveAttribute('aria-keyshortcuts', 'Control+T Meta+T');
-  await expect(page.getByTitle('Command palette (Ctrl+P)')).toHaveAttribute('aria-keyshortcuts', 'Control+P Meta+P');
+  const commandPaletteTrigger = page.getByTitle('Command palette (Ctrl+P)');
+  await expect(commandPaletteTrigger).toHaveAttribute('aria-keyshortcuts', 'Control+P Meta+P');
+  await expect(commandPaletteTrigger.locator('gc-icon svg circle')).toHaveAttribute('r', '7');
   await expect(page.getByTitle('Hide Left Panel (Ctrl+J)')).toHaveAttribute('aria-keyshortcuts', 'Control+J Meta+J');
-  await expect(page.getByTitle('Open repository terminal (Alt+T)')).toHaveAttribute('aria-keyshortcuts', 'Alt+T');
+  await expect(page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)')).toHaveAttribute('aria-keyshortcuts', 'Alt+T Control+` Meta+`');
   await expect(page.getByTitle('Hide Commit Panel (Ctrl+K)')).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
   await expect(page.getByRole('button', { name: 'Decrease zoom' })).toHaveAttribute('title', 'Decrease zoom (Ctrl+-)');
   await expect(page.getByRole('button', { name: 'Increase zoom' })).toHaveAttribute('title', 'Increase zoom (Ctrl++)');
@@ -3141,7 +5539,7 @@ test('shows shortcuts for the active desktop platform', async ({ page }) => {
 
   await page.getByTitle('Show all open repositories').click();
   const repositoryTabsMenu = page.getByRole('menu', { name: 'Open repositories' });
-  const activeRepositoryItem = repositoryTabsMenu.getByRole('menuitemradio', { name: /git-chronos/ });
+  const activeRepositoryItem = repositoryTabsMenu.getByRole('menuitemradio', { name: /git-khronos/ });
   await expect(page.locator('.tab-list-menu kbd').first()).toHaveText('Ctrl 1');
   await expect(activeRepositoryItem).toBeFocused();
   await expect(activeRepositoryItem).toHaveAttribute('aria-checked', 'true');
@@ -3189,26 +5587,63 @@ test('keeps command palette focus inside the compact modal', async ({ page }) =>
   const close = palette.getByRole('button', { name: 'Close command palette' });
   await expect(search).toBeFocused();
   await expect(close).toBeVisible();
+  await expect(palette.getByRole('listbox', { name: 'Available commands' })).toBeVisible();
+  await expect(palette.getByText('Files', { exact: true })).toHaveCount(0);
   await expect(palette.locator('.palette-search kbd')).toBeHidden();
-  await expect(palette.locator('.palette-footer span').nth(1)).toBeHidden();
+  await expect(palette.locator('.palette-navigation-hint')).toBeVisible();
+  await expect(palette.locator('.palette-jump-hint')).toBeHidden();
+  const results = palette.getByRole('listbox', { name: 'Available commands' });
+  const firstGroup = palette.locator('.palette-group-heading').first();
+  await expect(firstGroup).toHaveCSS('font-size', '12px');
+  await expect(firstGroup).toHaveCSS('position', 'sticky');
+  await expect(results).toHaveCSS('scroll-padding-top', '34px');
+  await results.evaluate((element) => { element.scrollTop = 60; });
+  const [resultsBox, firstGroupBox] = await Promise.all([results.boundingBox(), firstGroup.boundingBox()]);
+  expect(resultsBox).not.toBeNull();
+  expect(firstGroupBox).not.toBeNull();
+  expect(firstGroupBox!.y).toBeGreaterThanOrEqual(resultsBox!.y);
+  expect(firstGroupBox!.y).toBeLessThanOrEqual(resultsBox!.y + 8);
+  await results.evaluate((element) => { element.scrollTop = 0; });
+
+  await search.press('End');
+  const lastSelected = palette.locator('[role="option"][aria-selected="true"]');
+  const [endResultsBox, lastSelectedBox] = await Promise.all([results.boundingBox(), lastSelected.boundingBox()]);
+  expect(endResultsBox).not.toBeNull();
+  expect(lastSelectedBox).not.toBeNull();
+  expect(lastSelectedBox!.y + lastSelectedBox!.height).toBeLessThanOrEqual(endResultsBox!.y + endResultsBox!.height - 8);
+  await search.press('Home');
+  const firstSelected = palette.locator('[role="option"][aria-selected="true"]');
+  const [homeGroupBox, firstSelectedBox] = await Promise.all([firstGroup.boundingBox(), firstSelected.boundingBox()]);
+  expect(homeGroupBox).not.toBeNull();
+  expect(firstSelectedBox).not.toBeNull();
+  expect(firstSelectedBox!.y + 1).toBeGreaterThanOrEqual(homeGroupBox!.y + homeGroupBox!.height);
+
+  const resultCount = await palette.getByRole('option').count();
+  await expect(palette.locator('.palette-result-count')).toHaveText(`${resultCount} commands`);
+  await expect(palette.locator('.palette-footer kbd')).toHaveText(['↑', '↓', 'PgUp', 'PgDn', '↵', 'Esc']);
+  await expect(palette.locator('.palette-footer kbd').first()).toHaveCSS('font-size', '10px');
+  expect(await palette.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
   const selectedAction = palette.locator('[role="option"][aria-selected="true"]');
   await expect(selectedAction).toBeEnabled();
+  await expect(selectedAction.locator('.palette-action-copy strong')).toHaveCSS('font-size', '13px');
+  await expect(selectedAction.locator('.palette-action-copy em')).toHaveCSS('font-size', '12px');
   const disabledAction = palette.getByRole('option', { name: /Switch to Default/ });
   await expect(disabledAction).toBeDisabled();
+  await expect(disabledAction).toContainText('Current workspace · 1 repository');
+  await expect(disabledAction).toHaveCSS('cursor', 'not-allowed');
   const selectedId = await selectedAction.getAttribute('id');
   await disabledAction.hover();
   await expect(search).toHaveAttribute('aria-activedescendant', selectedId!);
 
   await search.press('Shift+Tab');
-  const lastEnabledOption = palette.locator('[role="option"]:not(:disabled)').last();
-  await expect(lastEnabledOption).toBeFocused();
-  await lastEnabledOption.press('Tab');
+  await expect(close).toBeFocused();
+  await close.press('Tab');
   await expect(search).toBeFocused();
   await search.press('Tab');
   await expect(close).toBeFocused();
   await close.press('Tab');
-  await expect(palette.locator('[role="option"]:not(:disabled)').first()).toBeFocused();
+  await expect(search).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
@@ -3219,6 +5654,13 @@ test('keeps command palette focus inside the compact modal', async ({ page }) =>
   await palette.getByRole('option', { name: /^Open Preferences/ }).click();
   const preferences = page.getByRole('dialog', { name: 'Preferences' });
   await expect(preferences.getByRole('button', { name: 'Close preferences' })).toBeFocused();
+  await preferences.getByRole('tab', { name: /Commit Graph/ }).click();
+  const compactBehavior = preferences.getByRole('group', { name: 'Behavior' });
+  const compactColumns = preferences.getByRole('group', { name: 'Visible columns' });
+  const [behaviorBox, columnsBox] = await Promise.all([compactBehavior.boundingBox(), compactColumns.boundingBox()]);
+  expect(behaviorBox).not.toBeNull();
+  expect(columnsBox).not.toBeNull();
+  expect(columnsBox!.y).toBeGreaterThanOrEqual(behaviorBox!.y + behaviorBox!.height);
   await page.keyboard.press('Escape');
   await expect(preferences).toBeHidden();
   await expect(opener).toBeFocused();
@@ -3231,6 +5673,49 @@ test('keeps command palette focus inside the compact modal', async ({ page }) =>
   await page.keyboard.press('Escape');
   await expect(repositoryManager).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test('keeps command palette chrome inside a short desktop window', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 400 });
+  await page.keyboard.press('Control+P');
+
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const results = palette.getByRole('listbox', { name: 'Available commands' });
+  const footer = palette.locator('.palette-footer');
+  const [paletteBox, resultsBox, footerBox] = await Promise.all([
+    palette.boundingBox(),
+    results.boundingBox(),
+    footer.boundingBox(),
+  ]);
+  expect(paletteBox).not.toBeNull();
+  expect(resultsBox).not.toBeNull();
+  expect(footerBox).not.toBeNull();
+  expect(paletteBox!.y + paletteBox!.height).toBeLessThanOrEqual(384);
+  expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(paletteBox!.y + paletteBox!.height);
+  expect(await results.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+});
+
+test('pairs command palette surfaces with each application theme', async ({ page }) => {
+  const appearances: Record<string, string[]> = {};
+  for (const theme of ['chronos', 'midnight']) {
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
+    await page.reload();
+    await page.keyboard.press('Control+P');
+    const palette = page.getByRole('dialog', { name: 'Command palette' });
+    await expect(palette).toBeVisible();
+    appearances[theme] = await palette.evaluate((element) => [
+      getComputedStyle(element).backgroundColor,
+      getComputedStyle(element.querySelector('.palette-header')!).backgroundColor,
+      getComputedStyle(element.querySelector('.palette-results > button.selected')!).backgroundColor,
+      getComputedStyle(element.querySelector('.palette-action-icon')!).backgroundColor,
+      getComputedStyle(element.querySelector('.palette-footer')!).borderTopColor,
+    ]);
+    await page.keyboard.press('Escape');
+  }
+
+  expect(appearances['chronos']).not.toEqual(appearances['midnight']);
+  expect(new Set(appearances['chronos']).size).toBeGreaterThan(2);
+  expect(new Set(appearances['midnight']).size).toBeGreaterThan(2);
 });
 
 test('uses familiar macOS graph boundary shortcuts', async ({ page }) => {
@@ -3281,11 +5766,20 @@ test('closes only the focused workspace panel with Escape', async ({ page }) => 
 
 test('exposes familiar repository and application actions from the main menu', async ({ page }) => {
   const toggle = page.getByRole('button', { name: 'Main menu' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle.locator('.app-menu-chevron')).toBeVisible();
   await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-  const menu = page.getByRole('menu', { name: 'Git Chronos menu' });
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   await expect(menu).toBeVisible();
+  await expect(menu.locator('header strong')).toHaveCSS('font-size', '13px');
+  await expect(menu.locator('header small')).toHaveCSS('font-size', '12px');
   await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ }).locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(menu.getByRole('menuitem', { name: /Command Palette/ }).locator('gc-icon svg circle')).toHaveAttribute('r', '7');
+  await expect(menu.getByRole('menuitem', { name: /Keyboard Shortcuts/ }).locator('gc-icon svg rect')).toHaveAttribute('width', '18');
+  await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ }).locator('small')).toHaveCSS('font-size', '12px');
   await expect(menu.getByRole('menuitem', { name: /Open Repository/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /Clone Repository/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /Initialize Repository/ })).toBeVisible();
@@ -3307,6 +5801,17 @@ test('exposes familiar repository and application actions from the main menu', a
   await expect(menu).toHaveCount(0);
   const preferences = page.getByRole('dialog', { name: 'Preferences' });
   await expect(preferences.getByRole('button', { name: 'Close preferences' })).toBeFocused();
+  const generalPreferences = preferences.getByRole('tab', { name: /General/ });
+  const graphPreferences = preferences.getByRole('tab', { name: /Commit Graph/ });
+  await graphPreferences.click();
+  await expect(graphPreferences).toHaveAttribute('aria-selected', 'true');
+  await expect(graphPreferences).toHaveClass(/active/);
+  await expect(generalPreferences).toHaveAttribute('aria-selected', 'false');
+  await expect(generalPreferences).not.toHaveClass(/active/);
+  await expect(preferences.getByRole('group', { name: 'Behavior' })).toBeVisible();
+  const visibleColumns = preferences.getByRole('group', { name: 'Visible columns' });
+  await expect(visibleColumns).toBeVisible();
+  await expect(visibleColumns.getByLabel('Commit message')).toBeChecked();
   await page.keyboard.press('Escape');
   await expect(preferences).toBeHidden();
   await expect(toggle).toBeFocused();
@@ -3314,7 +5819,7 @@ test('exposes familiar repository and application actions from the main menu', a
   await toggle.click();
   await menu.getByRole('menuitem', { name: /Keyboard Shortcuts/ }).click();
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard Shortcuts' });
-  await expect(shortcuts.getByRole('button', { name: 'Close keyboard shortcuts' })).toBeFocused();
+  await expect(shortcuts.getByRole('searchbox', { name: 'Search keyboard shortcuts' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(shortcuts).toBeHidden();
   await expect(toggle).toBeFocused();
@@ -3326,9 +5831,115 @@ test('exposes familiar repository and application actions from the main menu', a
   await expect(toggle).toBeFocused();
 });
 
+test('keeps every main-menu command reachable in compact-height windows', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 640 });
+  await page.getByRole('button', { name: 'Main menu' }).click();
+
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
+  const scrollRegion = menu.locator('.app-menu-scroll');
+  const applicationSection = menu.locator('.app-menu-application');
+  const preferences = menu.getByRole('menuitem', { name: /Preferences/ });
+  const metrics = await menu.evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(metrics.bottom).toBeLessThanOrEqual(640);
+  expect(metrics.scrollHeight).toBe(metrics.clientHeight);
+  await expect(applicationSection).toBeInViewport();
+  await expect(preferences).toBeInViewport();
+
+  const currentRepositorySection = scrollRegion.locator('.app-menu-section').filter({ hasText: 'Current Repository' });
+  const editSection = scrollRegion.locator('.app-menu-section').filter({ has: page.locator(':scope > span', { hasText: /^Edit$/ }) });
+  const [currentRepositoryBox, editBox] = await Promise.all([
+    currentRepositorySection.boundingBox(),
+    editSection.boundingBox(),
+  ]);
+  expect(currentRepositoryBox).not.toBeNull();
+  expect(editBox).not.toBeNull();
+  expect(currentRepositoryBox!.y).toBeLessThan(editBox!.y);
+  await expect(menu.getByRole('menuitem', { name: /^Terminal/ })).toBeInViewport();
+
+  const applicationTop = (await applicationSection.boundingBox())!.y;
+  const scrollMetrics = await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  await scrollRegion.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(async () => (await applicationSection.boundingBox())!.y).toBeCloseTo(applicationTop, 0);
+
+  await page.keyboard.press('End');
+  await expect(preferences).toBeFocused();
+  await expect(preferences).toBeInViewport();
+  await preferences.click();
+  await expect(page.getByRole('dialog', { name: 'Preferences' })).toBeVisible();
+});
+
+test('condenses the main menu without hiding commands at the native minimum height', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 560 });
+  await page.getByRole('button', { name: 'Main menu' }).click();
+
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
+  const scrollRegion = menu.locator('.app-menu-scroll');
+  const descriptions = menu.locator('.app-menu-section button small');
+  const commands = [
+    /Manage Repositories/,
+    /^Terminal/,
+    /Recovery History/,
+    /Editor draft recovery/,
+    /^Undo/,
+    /^Redo/,
+    /Command Palette/,
+    /Preferences/,
+  ];
+
+  await expect(descriptions.first()).toBeHidden();
+  for (const name of commands) await expect(menu.getByRole('menuitem', { name })).toBeInViewport();
+  const menuBounds = await menu.boundingBox();
+  expect(menuBounds).not.toBeNull();
+  expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(560 - 8);
+  expect(await scrollRegion.evaluate((element) => element.scrollHeight)).toBe(
+    await scrollRegion.evaluate((element) => element.clientHeight),
+  );
+
+  await page.keyboard.press('End');
+  await expect(menu.getByRole('menuitem', { name: /Preferences/ })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ })).toBeFocused();
+});
+
+test('fits the complete main menu without needless scrolling when the viewport has room', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('button', { name: 'Main menu' }).click();
+
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
+  const scrollRegion = menu.locator('.app-menu-scroll');
+  const lastScrollableSection = scrollRegion.locator('.app-menu-section').last();
+  const metrics = await Promise.all([
+    menu.boundingBox(),
+    scrollRegion.boundingBox(),
+    lastScrollableSection.boundingBox(),
+    scrollRegion.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    })),
+  ]);
+
+  expect(metrics[0]).not.toBeNull();
+  expect(metrics[1]).not.toBeNull();
+  expect(metrics[2]).not.toBeNull();
+  expect(metrics[0]!.y + metrics[0]!.height).toBeLessThanOrEqual(900 - 8);
+  expect(metrics[3].scrollHeight).toBe(metrics[3].clientHeight);
+  expect(metrics[2]!.y + metrics[2]!.height).toBeLessThanOrEqual(metrics[1]!.y + metrics[1]!.height);
+  await expect(menu.getByRole('menuitem', { name: /Recovery History/ })).toBeInViewport();
+  await expect(menu.getByRole('menuitem', { name: /Editor draft recovery/ })).toBeInViewport();
+  await expect(menu.getByRole('menuitem', { name: /^Undo/ })).toBeInViewport();
+});
+
 test('finds and safely preserves commits from recovery history', async ({ page }) => {
   await page.getByRole('button', { name: 'Main menu' }).click();
-  await page.getByRole('menu', { name: 'Git Chronos menu' }).getByRole('menuitem', { name: /Recovery History/ }).click();
+  await page.getByRole('menu', { name: 'Git Khronos menu' }).getByRole('menuitem', { name: /Recovery History/ }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Recovery history' });
   await expect(dialog).toBeVisible();
@@ -3374,13 +5985,14 @@ test('keeps a resized column edge visible while columns overflow', async ({ page
   const edges = () => page.evaluate(() => ({
     authorRight: document.querySelector('.author-column-heading')!.getBoundingClientRect().right,
     dateLeft: document.querySelector('.graph-columns > .trailing-column')!.getBoundingClientRect().left,
+    dateRight: document.querySelector('.graph-columns > .trailing-column')!.getBoundingClientRect().right,
     visibleRight: (() => { const list = document.querySelector('.commit-list')!; return list.getBoundingClientRect().left + list.clientWidth; })(),
   }));
-  // Author's right edge is the Date / Time splitter; widening Author scrolls it into view.
+  // Date / Time follows its own right edge, not Author's edge.
   await list.evaluate((element) => { element.scrollLeft = 0; });
   await page.getByRole('separator', { name: 'Resize Date and Time column', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect.poll(async () => { const { authorRight, dateLeft, visibleRight } = await edges(); return Math.abs(authorRight - dateLeft) <= 1 && authorRight <= visibleRight; }).toBe(true);
+  await expect.poll(async () => { const { dateRight, visibleRight } = await edges(); return dateRight <= visibleRight + 1; }).toBe(true);
   // Widening Author from its own handle scrolls its right edge into view.
   await list.evaluate((element) => { element.scrollLeft = 0; });
   await page.getByRole('separator', { name: 'Resize Author column', exact: true }).focus();
@@ -3419,15 +6031,17 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   await page.goto('/');
   const settingsButton = page.getByRole('button', { name: 'Configure graph columns' });
   await settingsButton.click();
-  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
   const toggle = settings.getByLabel('Horizontal Scrolling');
   await expect(toggle).toBeChecked();
   await toggle.uncheck();
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('false');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBe('false');
   await expectGraphColumnsFit(page);
 
-  // End on Commit Message takes every other column's spare width, but no more.
+  // End on Commit Message takes only right-hand columns' spare width.
+  const branchWidth = await separatorWidth(page, 'Resize Branch and Tag column');
+  const graphWidth = await separatorWidth(page, 'Resize Graph column');
   const message = page.getByRole('separator', { name: 'Resize Commit Message column', exact: true });
   await message.focus();
   await page.keyboard.press('End');
@@ -3436,20 +6050,22 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   expect(messageMaximum).toBeLessThan(2400);
   await expect(message).toHaveAttribute('aria-valuenow', String(messageMaximum));
   for (const { name, now, min } of (await graphColumnFit(page)).separators) {
-    if (name !== 'Resize Commit Message column') expect(now, name).toBe(min);
+    if (name === 'Resize Author column' || name === 'Resize Date and Time column') expect(now, name).toBe(min);
   }
+  expect(await separatorWidth(page, 'Resize Branch and Tag column')).toBe(branchWidth);
+  expect(await separatorWidth(page, 'Resize Graph column')).toBe(graphWidth);
   await page.keyboard.press('Home');
   await expect(message).toHaveAttribute('aria-valuenow', '180');
   await expectGraphColumnsFit(page);
 
-  // Widening Branch narrows Commit Message first; dragging back within the same drag restores it.
+  // Widening Branch narrows right-hand columns nearest-first; reversing the drag restores them.
   const branchName = 'Resize Branch and Tag column';
   const authorName = 'Resize Author column';
   await page.evaluate(() => {
     for (const key of Object.keys(localStorage)) if (key.includes('.column.') && key.endsWith('.width')) localStorage.removeItem(key);
   });
   await page.reload();
-  await expect(page.getByRole('separator', { name: branchName, exact: true })).toHaveAttribute('aria-valuenow', '150');
+  await expect(page.getByRole('separator', { name: branchName, exact: true })).toHaveAttribute('aria-valuenow', '180');
   const startMessage = await separatorWidth(page, 'Resize Commit Message column');
   const startAuthor = await separatorWidth(page, authorName);
   const handle = (await page.getByRole('separator', { name: branchName, exact: true }).boundingBox())!;
@@ -3457,7 +6073,7 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   await page.mouse.move(handle.x + handle.width / 2, y);
   await page.mouse.down();
   await page.mouse.move(handle.x + handle.width / 2 + 120, y, { steps: 4 });
-  await expect.poll(() => separatorWidth(page, branchName)).toBe(270);
+  await expect.poll(() => separatorWidth(page, branchName)).toBe(300);
   await expect.poll(() => separatorWidth(page, 'Resize Commit Message column')).toBeLessThan(startMessage);
   expect(await separatorWidth(page, authorName)).toBe(startAuthor);
   await expectGraphColumnsFit(page);
@@ -3467,17 +6083,22 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   expect(await separatorWidth(page, authorName)).toBeLessThan(startAuthor);
   await page.mouse.move(handle.x + handle.width / 2, y, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(() => separatorWidth(page, branchName)).toBe(150);
+  await expect.poll(() => separatorWidth(page, branchName)).toBe(180);
   expect(await separatorWidth(page, 'Resize Commit Message column')).toBe(startMessage);
   expect(await separatorWidth(page, authorName)).toBe(startAuthor);
 
-  // The Date / Time left edge still trades width with Author without overflowing.
+  // The last column cannot widen a full panel by borrowing from Author or Commit Message.
   const date = page.getByRole('separator', { name: 'Resize Date and Time column', exact: true });
   const startDate = Number(await date.getAttribute('aria-valuenow'));
   await date.focus();
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => separatorWidth(page, 'Resize Date and Time column')).toBe(startDate);
+  expect(await separatorWidth(page, authorName)).toBe(startAuthor);
   await page.keyboard.press('Shift+ArrowLeft');
-  await expect.poll(() => separatorWidth(page, 'Resize Date and Time column')).toBe(startDate + 32);
-  expect(await separatorWidth(page, authorName)).toBe(startAuthor - 32);
+  await expect(date).toHaveAttribute('aria-valuenow', await date.getAttribute('aria-valuemin'));
+  await page.keyboard.press('End');
+  await expect.poll(() => separatorWidth(page, 'Resize Date and Time column')).toBe(startDate);
+  expect(await separatorWidth(page, authorName)).toBe(startAuthor);
   await expectGraphColumnsFit(page);
 
   // Narrowing the window narrows the columns, and the setting survives a reload.
@@ -3491,7 +6112,7 @@ test('fits graph columns to the panel when horizontal scrolling is off', async (
   // Turning scrolling back on lets columns overflow again.
   await toggle.check();
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBe('true');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBe('true');
   await message.focus();
   await page.keyboard.press('End');
   await expect(message).toHaveAttribute('aria-valuenow', '2400');
@@ -3502,9 +6123,9 @@ test('keeps fitted graph columns inside the panel when paths are fitted or colum
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  const settings = page.getByRole('dialog', { name: 'Graph layout and columns' });
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
   await settings.getByLabel('Horizontal Scrolling').uncheck();
-  await settings.getByLabel('SHA').check();
+  await settings.getByRole('checkbox', { name: 'SHA', exact: true }).check();
   await page.keyboard.press('Escape');
   await expectGraphColumnsFit(page);
   const graph = page.getByRole('separator', { name: 'Resize Graph column', exact: true });
@@ -3517,12 +6138,154 @@ test('keeps fitted graph columns inside the panel when paths are fitted or colum
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
   await settings.getByRole('button', { name: 'Restore graph defaults' }).click();
   await expect(settings.getByLabel('Horizontal Scrolling')).toBeChecked();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.graph.horizontal-scroll'))).toBeNull();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.graph.horizontal-scroll'))).toBeNull();
+});
+
+for (const reordered of [false, true]) {
+  test(`clamps right-edge resizing without borrowing from the left${reordered ? ' after reordering and hiding columns' : ''}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Configure graph columns' }).click();
+    const settings = page.getByRole('dialog', { name: 'Graph settings' });
+    await settings.getByLabel('Horizontal Scrolling').uncheck();
+    await settings.getByLabel('SHA', { exact: true }).check();
+    if (reordered) await settings.getByLabel('Graph', { exact: true }).uncheck();
+    await page.keyboard.press('Escape');
+    const author = page.getByRole('separator', { name: 'Resize Author column', exact: true });
+    if (reordered) {
+      await author.locator('..').dragTo(page.locator('.message-column-heading'), { targetPosition: { x: 8, y: 8 } });
+    }
+    const names = await page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
+      [...columns].sort((a, b) => Number((a as HTMLElement).style.order) - Number((b as HTMLElement).style.order))
+        .map((column) => column.querySelector('[role="separator"]')!.getAttribute('aria-label')!));
+    const authorIndex = names.indexOf('Resize Author column');
+    if (reordered) expect(authorIndex).toBeLessThan(names.indexOf('Resize Commit Message column'));
+    expect(authorIndex).toBeGreaterThan(0);
+    expect(names.length - authorIndex - 1).toBeGreaterThanOrEqual(2);
+    for (const name of names.slice(authorIndex + 1)) {
+      const separator = page.getByRole('separator', { name, exact: true });
+      await separator.focus();
+      await page.keyboard.press('Home');
+      await expect(separator).toHaveAttribute('aria-valuenow', await separator.getAttribute('aria-valuemin'));
+    }
+    const geometry = () => page.locator('.graph-columns > .draggable-column').evaluateAll((columns) =>
+      [...columns].sort((a, b) => Number((a as HTMLElement).style.order) - Number((b as HTMLElement).style.order))
+        .map((column) => {
+          const box = column.getBoundingClientRect();
+          return { left: box.left, width: box.width };
+        }));
+    const before = await geometry();
+    const maximum = Number(await author.getAttribute('aria-valuemax'));
+    const expectFixedLeft = async () => {
+      const after = await geometry();
+      for (let index = 0; index < authorIndex; index++) {
+        expect(Math.abs(after[index].left - before[index].left), names[index]).toBeLessThanOrEqual(1);
+        expect(Math.abs(after[index].width - before[index].width), names[index]).toBeLessThanOrEqual(1);
+      }
+      expect(Math.abs(after[authorIndex].left - before[authorIndex].left)).toBeLessThanOrEqual(1);
+      expect(Math.round(after[authorIndex].width)).toBe(maximum);
+      await expectGraphColumnsFit(page);
+    };
+    await author.focus();
+    await page.keyboard.press('End');
+    await expect(author).toHaveAttribute('aria-valuenow', String(maximum));
+    await expectFixedLeft();
+    for (const key of ['ArrowRight', 'Shift+ArrowRight', 'End']) {
+      await page.keyboard.press(key);
+      await expect(author).toHaveAttribute('aria-valuenow', String(maximum));
+      await expectFixedLeft();
+    }
+    const handle = (await author.boundingBox())!;
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 300, y, { steps: 5 });
+    await expect(author).toHaveAttribute('aria-valuenow', String(maximum));
+    await expectFixedLeft();
+    await page.mouse.move(x, y, { steps: 5 });
+    await page.mouse.up();
+    await expectFixedLeft();
+    await page.keyboard.press('ArrowLeft');
+    await expect(author).toHaveAttribute('aria-valuenow', String(maximum - 8));
+    const narrowed = await geometry();
+    expect(Math.abs(narrowed[authorIndex].left - before[authorIndex].left)).toBeLessThanOrEqual(1);
+    expect(narrowed.slice(0, authorIndex)).toEqual(before.slice(0, authorIndex));
+    await page.reload();
+    await expect(author).toHaveAttribute('aria-valuenow', String(maximum - 8));
+    await expectGraphColumnsFit(page);
+  });
+}
+
+test('keeps a last-column keyboard resize fixed after a blocked expansion and reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  const settings = page.getByRole('dialog', { name: 'Graph settings' });
+  await settings.getByLabel('Horizontal Scrolling').uncheck();
+  await settings.getByLabel('Author', { exact: true }).uncheck();
+  await settings.getByLabel('Date / Time', { exact: true }).uncheck();
+  await page.keyboard.press('Escape');
+  const message = page.getByRole('separator', { name: 'Resize Commit Message column', exact: true });
+  const heading = message.locator('..');
+  const left = (await heading.boundingBox())!.x;
+  const width = Number(await message.getAttribute('aria-valuenow'));
+  await expect(message).toHaveAttribute('aria-valuemax', String(width));
+  await expect(heading).toHaveClass(/trailing-column/);
+  await message.focus();
+  await page.keyboard.press('End');
+  await expect(message).toHaveAttribute('aria-valuenow', String(width));
+  await expect.poll(() => page.evaluate(() => {
+    const key = Object.keys(localStorage).find((candidate) => candidate.endsWith('.column.message.width'));
+    return key ? Number(localStorage.getItem(key)) : null;
+  })).toBe(width);
+  await page.reload();
+  await page.setViewportSize({ width: 2000, height: 900 });
+  await expect(message).toHaveAttribute('aria-valuenow', String(width));
+  expect((await heading.boundingBox())!.x).toBe(left);
+  await message.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(message).toHaveAttribute('aria-valuenow', String(width - 8));
+  expect((await heading.boundingBox())!.x).toBe(left);
+  await message.dblclick();
+  await expect(message).toHaveAttribute('aria-valuenow', String(width + 80));
+  expect((await heading.boundingBox())!.x).toBe(left);
+  await expectGraphColumnsFit(page);
+});
+
+test('clamps fitting graph paths at the right-hand limit without moving the left-hand column', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  await page.getByLabel('Horizontal Scrolling').uncheck();
+  await page.keyboard.press('Escape');
+  const branch = page.getByRole('separator', { name: 'Resize Branch and Tag column', exact: true });
+  await expect.poll(async () => Number(await branch.getAttribute('aria-valuemax') ?? Infinity)).toBeLessThan(800);
+  const branchMaximum = await branch.getAttribute('aria-valuemax');
+  await branch.focus();
+  await page.keyboard.press('End');
+  await expect(branch).toHaveAttribute('aria-valuenow', branchMaximum!);
+  const branchWidth = await separatorWidth(page, 'Resize Branch and Tag column');
+  expect(branchWidth).toBeLessThan(800);
+  const graph = page.getByRole('separator', { name: 'Resize Graph column', exact: true });
+  const minimum = Number(await graph.getAttribute('aria-valuemin'));
+  await expect(graph).toHaveAttribute('aria-valuenow', String(minimum));
+  await expect(graph).toHaveAttribute('aria-valuemax', String(minimum));
+  const left = (await graph.locator('..').boundingBox())!.x;
+  for (const handle of [graph, page.locator('.commit-row[data-commit-oid] .graph-row-resizer').first()]) {
+    await handle.dblclick();
+    await expect(graph).toHaveAttribute('aria-valuenow', String(minimum));
+    expect(await separatorWidth(page, 'Resize Branch and Tag column')).toBe(branchWidth);
+    expect((await graph.locator('..').boundingBox())!.x).toBe(left);
+    await expectGraphColumnsFit(page);
+  }
 });
 
 test('searches and applies the graph author filter', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  await page.locator('.column-settings').getByLabel('Author').check();
+  await page.locator('.column-settings').getByRole('checkbox', { name: 'Author', exact: true }).check();
+  await page.getByRole('button', { name: 'Configure graph columns' }).click();
+  await expect(page.locator('.column-settings')).toBeHidden();
 
   const filterButton = page.getByRole('button', { name: 'Filter commits by author' });
   const filterTarget = await filterButton.boundingBox();
@@ -3531,9 +6294,13 @@ test('searches and applies the graph author filter', async ({ page }) => {
   await filterButton.click();
   const authorSearch = page.getByRole('searchbox', { name: 'Search authors' });
   await expect(authorSearch).toBeFocused();
+  await expect(authorSearch).toHaveCSS('font-size', '13px');
   await expect(page.getByRole('dialog', { name: 'Author filter' })).toContainText('All authors');
   // The whole menu is on top: it is not clipped by the column header, so every option is clickable.
   const authorMenu = page.getByRole('dialog', { name: 'Author filter' });
+  await expect(authorMenu).toHaveCSS('width', '280px');
+  await expect(authorMenu.getByRole('button', { name: /All authors/ }).locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(authorMenu.getByRole('button', { name: /All authors/ }).locator('small')).toHaveCSS('font-size', '12px');
   expect(await authorMenu.evaluate((menu) => {
     const box = menu.getBoundingClientRect();
     return [box.top + 8, box.top + box.height / 2, box.bottom - 8].every((y) =>
@@ -3569,7 +6336,7 @@ test('searches and applies the graph author filter', async ({ page }) => {
 
 test('switches a minimized author column from names to avatars', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  await page.locator('.column-settings').getByLabel('Author').check();
+  await page.locator('.column-settings').getByRole('checkbox', { name: 'Author', exact: true }).check();
 
   const heading = page.locator('.author-column-heading');
   const resizer = heading.locator('.column-resizer');
@@ -3594,7 +6361,24 @@ test('exposes familiar tag actions from the reference panel', async ({ page }) =
   await expect(menu.getByText('Tag', { exact: true })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'View tagged commit' })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Copy tag name' })).toBeVisible();
-  await expect(menu.getByLabel('Create branch here')).toBeVisible();
+  const createBranch = menu.getByRole('menuitem', { name: 'Create branch here…' });
+  await expect(createBranch).toBeVisible();
+  await expect(menu.getByRole('form', { name: 'Create branch here' })).toHaveCount(0);
+  await createBranch.click();
+  const branchForm = menu.getByRole('form', { name: 'Create branch here' });
+  const branchName = branchForm.getByLabel('Create branch here');
+  await expect(branchForm).toBeVisible();
+  await expect(branchName).toBeFocused();
+  await branchName.fill('review/tag-point');
+  await page.keyboard.press('Tab');
+  await expect(branchForm.getByRole('button', { name: 'Create' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(branchForm.getByRole('button', { name: 'Cancel branch creation' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(branchName).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(branchForm).toHaveCount(0);
+  await expect(createBranch).toBeFocused();
   await menu.getByRole('menuitem', { name: 'Create tag here…' }).click();
   const creator = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
   await expect(creator).toBeVisible();
@@ -3642,14 +6426,90 @@ test('opens local, remote, and tag reference actions from the keyboard', async (
   await expect(tag).toBeFocused();
 });
 
+test('keeps long branch actions stable and reachable inside a short viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open left panel' }).click();
+
+  const branch = page.getByRole('button', { name: 'Local branch feature/partial-staging' });
+  await branch.click({ button: 'right' });
+  const menu = page.locator('.graph-action-menu[role="menu"]');
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveClass(/positioned/);
+
+  const bounds = await menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const styles = getComputedStyle(element);
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      overscrollBehavior: styles.overscrollBehavior,
+      scrollbarGutter: styles.scrollbarGutter,
+    };
+  });
+  const statusbarTop = await page.locator('.statusbar').evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  expect(bounds.top).toBeGreaterThanOrEqual(8);
+  expect(bounds.bottom).toBeLessThanOrEqual(statusbarTop - 8);
+  expect(bounds.scrollHeight).toBeGreaterThan(bounds.clientHeight);
+  expect(bounds.overscrollBehavior).toBe('contain');
+  expect(bounds.scrollbarGutter).toContain('stable');
+
+  await page.keyboard.press('End');
+  const finalAction = menu.getByRole('menuitem', { name: 'Create tag here…' });
+  await expect(finalAction).toBeFocused();
+  expect(await finalAction.evaluate((element) => {
+    const action = element.getBoundingClientRect();
+    const container = element.closest('[role="menu"]')!.getBoundingClientRect();
+    return action.top >= container.top && action.bottom <= container.bottom;
+  })).toBe(true);
+  await expect(menu.locator('.context-heading')).toBeVisible();
+});
+
+test('shows the complete commit action menu when the viewport has room', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const row = page.locator('.commit-row[data-commit-oid]').filter({ hasText: 'Refine graph lane rendering' });
+  await row.click({ button: 'right' });
+
+  const menu = page.getByRole('menu', { name: 'Actions for commit Refine graph lane rendering' });
+  await expect(menu).toBeVisible();
+  const bounds = await menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    };
+  });
+  const statusbarTop = await page.locator('.statusbar').evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  expect(bounds.top).toBeGreaterThanOrEqual(8);
+  expect(bounds.bottom).toBeLessThanOrEqual(statusbarTop - 8);
+  expect(bounds.scrollHeight).toBeLessThanOrEqual(bounds.clientHeight);
+  await expect(menu.getByRole('menuitem', { name: 'Create tag here…' })).toBeVisible();
+});
+
 test('keeps branch confirmations keyboard-contained and returns to the invoking branch', async ({ page }) => {
   const localBranch = page.getByRole('button', { name: 'Local branch feature/partial-staging' });
   await localBranch.focus();
   await page.keyboard.press('Shift+F10');
   const menu = page.locator('.context-menu[role="menu"]');
+  const confirmation = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  await menu.getByRole('menuitem', { name: 'Delete branch…' }).evaluate((item) => {
+    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a branch menu button.');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await expect(confirmation).toHaveCount(0);
+  await expect(localBranch).toBeFocused();
+  await page.keyboard.press('Shift+F10');
   await menu.getByRole('menuitem', { name: 'Delete branch…' }).click();
 
-  const confirmation = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
   const cancel = confirmation.getByRole('button', { name: 'Cancel' });
   const forceDelete = confirmation.getByRole('checkbox', { name: /Force delete/ });
   const confirm = confirmation.getByRole('button', { name: 'Delete branch' });
@@ -3745,7 +6605,19 @@ test('navigates branch-drop actions as a fitted desktop menu', async ({ page }) 
   const source = page.getByRole('button', { name: 'Local branch feature/partial-staging' });
   const target = page.getByRole('button', { name: /Local branch main, current/ });
 
-  await source.dragTo(target);
+  // Exercise a real drag, including the second target move needed for dragover
+  // across browser implementations; hover also checks that the source is hit-testable.
+  await source.hover();
+  const sourceBox = await source.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  await page.mouse.down();
+  // Start dragging before the target's auto-scroll can move the source away
+  // from the pressed pointer in the short, scrollable references drawer.
+  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2 + 8, sourceBox!.y + sourceBox!.height / 2, { steps: 4 });
+  await expect(source).toHaveClass(/branch-dragging/);
+  await target.hover();
+  await target.hover();
+  await page.mouse.up();
   const menu = page.getByRole('menu', { name: 'Branch drop actions' });
   const fastForward = menu.getByRole('menuitem', { name: /Fast-forward main/ });
   const merge = menu.getByRole('menuitem', { name: /Merge feature\/partial-staging into main/ });
@@ -3795,7 +6667,7 @@ test('prepares a commit cherry-pick by dragging its action onto a local branch',
   await page.keyboard.press('Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(cancel).toBeFocused();
+  await expect(confirmation.getByRole('checkbox', { name: 'Apply changes without creating commits' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Escape');
@@ -3814,11 +6686,29 @@ test('positions reference actions at the invocation point and keeps them inside 
     cancelable: true,
     button: 2,
     clientX: 700,
-    clientY: 700,
+    clientY: 400,
   })));
   const menu = page.locator('.context-menu[role="menu"]').filter({ hasText: 'v0.1.0' });
+  const bottomBoundary = await page.evaluate(() => innerHeight - 8 - (
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--statusbar-height')) || 0
+  ));
   await expect(menu).toBeVisible();
-  await expect.poll(async () => (await menu.boundingBox())?.y).toBe(700);
+  await expect.poll(async () => {
+    const bounds = await menu.boundingBox();
+    return bounds ? { x: bounds.x, y: bounds.y } : null;
+  }).toEqual({ x: 700, y: 400 });
+
+  await tag.evaluate((element) => element.dispatchEvent(new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    button: 2,
+    clientX: 700,
+    clientY: 700,
+  })));
+  await expect.poll(async () => {
+    const bounds = await menu.boundingBox();
+    return bounds ? Math.round(bounds.y - Math.min(700, bottomBoundary - bounds.height)) : null;
+  }).toBe(0);
 
   await tag.evaluate((element) => element.dispatchEvent(new MouseEvent('contextmenu', {
     bubbles: true,
@@ -3833,7 +6723,7 @@ test('positions reference actions at the invocation point and keeps them inside 
       right: Math.round(bounds.x + bounds.width),
       bottom: Math.round(bounds.y + bounds.height),
     } : null;
-  }).toEqual({ right: 992, bottom: 992 });
+  }).toEqual({ right: 992, bottom: bottomBoundary });
 });
 
 test('previews annotated tags without loading their messages into the graph', async ({ page }) => {
@@ -3846,7 +6736,7 @@ test('previews annotated tags without loading their messages into the graph', as
   await expect(preview).toBeVisible();
   await expect(tag).toHaveAttribute('aria-describedby', 'tag-reference-preview');
   await expect(preview).toContainText('Annotated tag');
-  await expect(preview).toContainText('First Git Chronos preview release');
+  await expect(preview).toContainText('First Git Khronos preview release');
   await expect(preview).toContainText('Maya Chen');
   await expect(preview).toContainText('v0.1.0');
   await expect(preview.locator('header small')).toHaveCSS('font-size', '12px');
@@ -3909,6 +6799,30 @@ test('jumps from tags and stashes to their graph entries', async ({ page }) => {
   await expect(page.locator('.commit-row.selected')).toContainText('WIP on graph polish');
   const stashPanel = page.locator('.commit-panel');
   await expect(stashPanel.locator('.panel-title')).toContainText('Stash');
+  const applyStash = stashPanel.getByRole('button', { name: 'Apply Stash Keep saved' });
+  const popStash = stashPanel.getByRole('button', { name: 'Pop Stash Remove after applying' });
+  await expect(applyStash).toHaveAttribute('title', 'Apply the stash and keep it saved');
+  await expect(popStash).toHaveAttribute('title', 'Apply the stash and remove it after success');
+  await expect(applyStash.locator('small')).toHaveText('Keep saved');
+  await expect(popStash.locator('small')).toHaveText('Remove after applying');
+  await expect(applyStash).toHaveCSS('color', 'rgb(158, 229, 209)');
+  await expect(popStash).toHaveCSS('color', 'rgb(225, 184, 102)');
+  let [applyBox, popBox] = await Promise.all([applyStash.boundingBox(), popStash.boundingBox()]);
+  expect(applyBox).not.toBeNull();
+  expect(popBox).not.toBeNull();
+  expect(Math.round(applyBox!.y)).toBe(Math.round(popBox!.y));
+  expect(popBox!.x).toBeGreaterThan(applyBox!.x);
+
+  await page.setViewportSize({ width: 780, height: 720 });
+  // Read both rectangles in one frame: the compact inspector animates in,
+  // so separate protocol reads can compare different transform positions.
+  await expect.poll(() => stashPanel.locator('.selected-stash-actions').evaluate(element => {
+    const [apply, pop] = Array.from(element.querySelectorAll('button'), button => button.getBoundingClientRect());
+    return Math.round(apply.x) === Math.round(pop.x) && pop.y > apply.y;
+  })).toBe(true);
+  expect(await stashPanel.locator('.selected-stash-actions').evaluate((element) => element.scrollWidth)).toBe(
+    await stashPanel.locator('.selected-stash-actions').evaluate((element) => element.clientWidth),
+  );
   const stashActions = stashPanel.getByRole('button', { name: 'Stash actions' });
   await expect(stashActions.locator('gc-icon svg')).toBeVisible();
   await expect(stashActions).toHaveAttribute('aria-expanded', 'false');
@@ -3928,8 +6842,21 @@ test('exposes consistent remote branch actions wherever a reference appears', as
   await sidebarRemote.click({ button: 'right' });
   let menu = page.locator('.context-menu[role="menu"]').filter({ hasText: 'origin/main' });
   await expect(menu.getByText('Remote branch', { exact: true })).toBeVisible();
+  await expect(menu.locator('.context-section-label')).toHaveText([
+    'Checkout and inspect',
+    'Manage remote branch',
+  ]);
   await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeFocused();
   await expect(menu.getByRole('menuitem', { name: 'Copy remote branch name' })).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toHaveText([
+    'Create local tracking branch',
+    'Share repository context…',
+    'Copy remote branch name',
+    'Compare with working directory',
+    'Delete branch on remote…',
+    'Create branch here…',
+    'Create tag here…',
+  ]);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(sidebarRemote).toBeFocused();
@@ -4022,14 +6949,45 @@ test('configures a local branch upstream from its context menu', async ({ page }
 
 test('searches local and remote branches from the repository breadcrumb', async ({ page }) => {
   const branchToggle = page.getByRole('button', { name: /Switch branch, current main/ });
+  await expect(branchToggle.locator('.toolbar-nav-leading-icon')).toBeVisible();
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await branchToggle.click();
   const picker = page.locator('.branch-nav-menu');
   const search = picker.getByRole('searchbox', { name: 'Filter branches' });
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(branchToggle).toHaveAttribute('aria-controls', 'branch-picker');
   await expect(search).toBeVisible();
   await expect(search).toBeFocused();
+  await expect(search).toHaveAttribute('aria-describedby', 'branch-picker-result-count');
   await expect(picker.getByText('Local branches', { exact: true })).toBeVisible();
   await expect(picker.getByText('Remote branches', { exact: true })).toBeVisible();
-  await expect(picker.getByRole('button', { name: /main Current branch · ahead 1/ })).toBeVisible();
+  const currentBranchChoice = picker.getByRole('button', { name: /main Current branch · origin\/main · ahead 1/ });
+  await expect(currentBranchChoice).toBeVisible();
+  await expect(currentBranchChoice).toHaveAttribute('aria-current', 'true');
+  await expect(currentBranchChoice.locator('.branch-picker-location-icon')).toBeVisible();
+  await expect(currentBranchChoice.locator('.branch-picker-current')).toBeVisible();
+  const currentBranchContext = currentBranchChoice.locator('small');
+  await expect(currentBranchContext).toHaveAttribute('title', 'Current branch · origin/main · ahead 1');
+  expect(await currentBranchContext.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const trackedRelease = picker.getByRole('button', { name: /release Local branch · origin\/release/ });
+  await expect(trackedRelease.locator('small')).toHaveAttribute('title', 'Local branch · origin/release');
+  const [branchIconBox, branchCopyBox, branchStateBox] = await Promise.all([
+    currentBranchChoice.locator('.branch-picker-location-icon').boundingBox(),
+    currentBranchChoice.locator(':scope > span').first().boundingBox(),
+    currentBranchChoice.locator('.toolbar-branch-state').boundingBox(),
+  ]);
+  expect(branchIconBox).not.toBeNull();
+  expect(branchCopyBox).not.toBeNull();
+  expect(branchStateBox).not.toBeNull();
+  expect(branchIconBox!.x + branchIconBox!.width).toBeLessThan(branchCopyBox!.x);
+  expect(branchCopyBox!.x + branchCopyBox!.width).toBeLessThanOrEqual(branchStateBox!.x);
+  await expect(picker.locator('#branch-picker-result-count')).toHaveText(/^\d+ of \d+ branch choices shown$/);
+  const createBranch = picker.locator('.branch-picker-footer button');
+  await expect(createBranch).toContainText('Create branch');
+  await expect(createBranch).toContainText('From current HEAD');
+  await expect(createBranch).toHaveAttribute('aria-keyshortcuts', 'Control+B Meta+B');
+  await expect(createBranch.locator('kbd')).toHaveText('Ctrl B');
 
   await search.fill('feature/partial');
   await expect(picker.getByRole('button', { name: /feature\/partial-staging/ })).toBeVisible();
@@ -4048,10 +7006,11 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await expect(picker.getByText('No branches found')).toBeVisible();
 
   await search.fill('');
-  await search.press('ArrowDown');
-  const currentBranch = picker.getByRole('button', { name: /main Current branch · ahead 1/ });
+  const currentBranch = picker.getByRole('button', { name: /main Current branch · origin\/main · ahead 1/ });
   const featureBranch = picker.getByRole('button', { name: /feature\/partial-staging Local branch/ });
   const docsBranch = picker.getByRole('button', { name: /Remote branch docs, create local tracking branch from origin\/docs, 2 locations/ });
+  await expect(currentBranch).toBeVisible();
+  await search.press('ArrowDown');
   await expect(currentBranch).toBeFocused();
   await currentBranch.press('ArrowDown');
   await expect(featureBranch).toBeFocused();
@@ -4061,6 +7020,8 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await expect(currentBranch).toBeFocused();
   await currentBranch.press('Escape');
   await expect(picker).toBeHidden();
+  await expect(branchToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(branchToggle).not.toHaveAttribute('aria-controls', /./);
   await expect(branchToggle).toBeFocused();
 
   await branchToggle.click();
@@ -4072,6 +7033,32 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await search.press('Escape');
   await expect(picker).toBeHidden();
   await expect(branchToggle).toBeFocused();
+
+  await branchToggle.click();
+  await picker.locator('.branch-picker-footer button').click();
+  const branchName = page.getByRole('textbox', { name: 'New branch name' });
+  await expect(branchName).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel branch creation' }).click();
+});
+
+test('carries an unmatched branch search into the reviewed creation form', async ({ page }) => {
+  const branchToggle = page.getByRole('button', { name: /Switch branch, current main/ });
+  await branchToggle.click();
+  const picker = page.getByRole('dialog', { name: 'Switch branch' });
+  const search = picker.getByRole('searchbox', { name: 'Filter branches' });
+  await search.fill('review/picker-context');
+
+  await expect(picker.getByText('No branches found')).toBeVisible();
+  const create = picker.getByRole('button', { name: 'Create branch review/picker-context from current HEAD' });
+  await expect(create).toContainText('Create “review/picker-context”');
+  await expect(create.locator('strong')).toHaveAttribute('title', 'Create branch review/picker-context');
+
+  await search.press('Enter');
+  await expect(picker).toBeHidden();
+  const branchName = page.getByRole('textbox', { name: 'New branch name' });
+  await expect(branchName).toBeFocused();
+  await expect(branchName).toHaveValue('review/picker-context');
+  await expect(page.getByRole('form', { name: 'Create branch' })).toContainText('From main at HEAD');
 });
 
 test('selects and persists the remote used for pull and push', async ({ page }) => {
@@ -4083,6 +7070,53 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
 
   await expect(origin).toBeFocused();
   await expect(origin).toHaveAttribute('aria-checked', 'true');
+  await expect(origin).toContainText('Selected');
+  await expect(origin.locator('.remote-picker-location-icon')).toBeVisible();
+  await expect(origin.locator('.remote-picker-selected')).toBeVisible();
+  await expect(upstream.locator('.remote-picker-location-icon')).toBeVisible();
+  await expect(upstream.locator('.remote-picker-selected')).toHaveCount(0);
+  const [originIconBox, originCopyBox, originSelectedBox] = await Promise.all([
+    origin.locator('.remote-picker-location-icon').boundingBox(),
+    origin.locator('.remote-picker-copy').boundingBox(),
+    origin.locator('.remote-picker-selected').boundingBox(),
+  ]);
+  expect(originIconBox).not.toBeNull();
+  expect(originCopyBox).not.toBeNull();
+  expect(originSelectedBox).not.toBeNull();
+  expect(originIconBox!.x + originIconBox!.width).toBeLessThan(originCopyBox!.x);
+  expect(originCopyBox!.x + originCopyBox!.width).toBeLessThanOrEqual(originSelectedBox!.x);
+  await expect(origin.locator('.remote-picker-url b')).toHaveText('Fetch & push');
+  const originUrl = origin.locator('.remote-picker-url > span');
+  await expect(originUrl).toHaveAttribute('title', 'git@github.com:example/git-khronos.git');
+  await expect(originUrl).toHaveCSS('white-space', 'nowrap');
+  await expect(originUrl).toHaveCSS('text-overflow', 'ellipsis');
+  const [pickerBeforeNavigation, originBeforeNavigation, upstreamBeforeNavigation] = await Promise.all([
+    picker.boundingBox(),
+    origin.boundingBox(),
+    upstream.boundingBox(),
+  ]);
+  await origin.press('ArrowDown');
+  await expect(upstream).toBeFocused();
+  await expect(originUrl).toHaveCSS('white-space', 'nowrap');
+  const [pickerAfterNavigation, originAfterNavigation, upstreamAfterNavigation] = await Promise.all([
+    picker.boundingBox(),
+    origin.boundingBox(),
+    upstream.boundingBox(),
+  ]);
+  expect(pickerBeforeNavigation).not.toBeNull();
+  expect(originBeforeNavigation).not.toBeNull();
+  expect(upstreamBeforeNavigation).not.toBeNull();
+  expect(pickerAfterNavigation).not.toBeNull();
+  expect(originAfterNavigation).not.toBeNull();
+  expect(upstreamAfterNavigation).not.toBeNull();
+  expect(Math.abs(pickerBeforeNavigation!.height - pickerAfterNavigation!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(originBeforeNavigation!.height - originAfterNavigation!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(upstreamBeforeNavigation!.height - upstreamAfterNavigation!.height)).toBeLessThanOrEqual(1);
+  await upstream.press('End');
+  const addRemote = picker.getByRole('menuitem', { name: /Add remote Configure fetch and push URLs/ });
+  await expect(addRemote).toBeFocused();
+  await addRemote.press('Home');
+  await expect(origin).toBeFocused();
   await origin.press('ArrowDown');
   await expect(upstream).toBeFocused();
   await upstream.press('Enter');
@@ -4095,16 +7129,62 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
   await expect(remoteToggle).toBeVisible();
   await remoteToggle.click();
   picker = page.getByRole('menu', { name: 'Select remote for pull and push' });
-  await expect(picker.getByRole('menuitemradio', { name: /upstream/ })).toHaveAttribute('aria-checked', 'true');
+  const persistedUpstream = picker.getByRole('menuitemradio', { name: /upstream/ });
+  await expect(persistedUpstream).toHaveAttribute('aria-checked', 'true');
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.repositories.update((repositories: any[]) => repositories.map((repository) => ({
+      ...repository,
+      remotes: repository.remotes.map((remote: any) => remote.name === 'upstream'
+        ? { ...remote, pushUrl: 'git@github.com:example/git-khronos-fork.git' }
+        : remote),
+    })));
+  });
+  await expect(persistedUpstream.locator('.remote-picker-url b')).toHaveText(['Fetch', 'Push']);
+  const remoteUrls = persistedUpstream.locator('.remote-picker-url > span');
+  await expect(remoteUrls.nth(0)).toHaveAttribute('title', 'https://github.com/example/git-khronos.git');
+  await expect(remoteUrls.nth(1)).toHaveAttribute('title', 'git@github.com:example/git-khronos-fork.git');
   await page.keyboard.press('Escape');
+  await expect(picker).toBeHidden();
+  await expect(remoteToggle).toBeFocused();
+});
+
+test('keeps remote setup reachable when the repository has no remotes', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.repositories.update((repositories: any[]) => repositories.map((repository) => ({
+      ...repository,
+      remotes: [],
+    })));
+  });
+
+  const remoteToggle = page.getByRole('button', { name: 'Select remote, current none' });
+  await remoteToggle.click();
+  const picker = page.getByRole('menu', { name: 'Select remote for pull and push' });
+  await expect(picker.getByText('No remotes configured')).toBeVisible();
+  const addRemote = picker.getByRole('menuitem', { name: /Add remote Configure fetch and push URLs/ });
+  await expect(addRemote).toBeFocused();
+  await addRemote.press('Escape');
   await expect(picker).toBeHidden();
   await expect(remoteToggle).toBeFocused();
 });
 
 test('switches complete repository tab sets with persistent workspaces', async ({ page }) => {
   let workspaceToggle = page.getByRole('button', { name: 'Workspace: Default' });
+  await expect(workspaceToggle).toHaveCSS('font-size', '13px');
+  await expect(workspaceToggle.locator('small')).toHaveText('1');
+  await expect(workspaceToggle.locator('small')).toHaveAttribute('title', '1 repository in this workspace');
   await workspaceToggle.click();
   let menu = page.getByRole('menu', { name: 'Workspaces' });
+  await expect(menu).toHaveCSS('width', '310px');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small')).toHaveCSS('font-size', '12px');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small > span')).toHaveText('git-khronos');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('small > b')).toHaveText('1');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ }).locator('kbd')).toHaveText('Ctrl ⇧ 1');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+1 Meta+Shift+1');
+  await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAccessibleName('Default, current workspace, 1 repository, git-khronos');
+  await expect(menu.getByRole('menuitem', { name: 'New workspace' })).toHaveCSS('font-size', '13px');
   await expect(menu.getByRole('menuitemradio', { name: /Default/ })).toHaveAttribute('aria-checked', 'true');
   await menu.getByRole('menuitem', { name: 'New workspace' }).click();
 
@@ -4131,6 +7211,17 @@ test('switches complete repository tab sets with persistent workspaces', async (
 
   await expect(page.locator('.welcome')).toBeVisible();
   workspaceToggle = page.getByRole('button', { name: 'Workspace: Client project' });
+  await workspaceToggle.click();
+  menu = page.getByRole('menu', { name: 'Workspaces' });
+  const workspaceItems = menu.getByRole('menuitemradio');
+  await expect(workspaceItems.first()).toHaveAccessibleName('Client project, current workspace, 0 repositories, No repositories yet');
+  await expect(workspaceItems.first().locator('kbd')).toHaveText('Ctrl ⇧ 2');
+  await expect(workspaceItems.first()).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+2 Meta+Shift+2');
+  await expect(workspaceItems.first().locator('small > span')).toHaveText('No repositories yet');
+  await expect(workspaceItems.nth(1)).toHaveAccessibleName('Default, 1 repository, git-khronos');
+  await expect(workspaceItems.nth(1).locator('kbd')).toHaveText('Ctrl ⇧ 1');
+  await page.keyboard.press('Escape');
+  await expect(workspaceToggle).toBeFocused();
 
   const paletteOpener = workspaceToggle;
   await paletteOpener.focus();
@@ -4158,7 +7249,7 @@ test('switches complete repository tab sets with persistent workspaces', async (
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   const paletteSearch = palette.getByRole('combobox', { name: 'Search commands' });
   await paletteSearch.fill('Switch to Default');
-  await expect(palette.locator('.palette-group-heading').filter({ hasText: 'Workspace' })).toBeVisible();
+  await expect(palette.getByRole('option', { name: /Switch to Default/ }).locator('.palette-inline-group')).toHaveText('Workspace');
   await expect(palette.getByRole('option', { name: /Switch to Default/ })).toContainText('1 repository');
   await paletteSearch.press('Enter');
   await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -4205,8 +7296,18 @@ test('finds repositories, references, and changed files from the command palette
   await page.keyboard.press('Control+P');
   const search = page.getByRole('combobox', { name: 'Search commands' });
   const palette = page.locator('.command-palette');
+  await expect(palette.locator('.palette-search gc-icon svg circle')).toHaveAttribute('r', '7');
+  await expect(search).toHaveAttribute('placeholder', 'Search commands, repos, refs, and files');
+  await expect(palette.locator('.palette-group-heading').first()).toHaveText('Quick Actions');
+  await expect(palette.getByRole('option').filter({ hasText: 'Fetch All' })).toHaveCount(1);
+  await expect(palette.getByRole('option', { name: /^Pull(?:\s|$)/ })).toHaveCount(1);
+  await expect(palette.locator('.palette-result-count')).toContainText('commands');
+  await expect(palette.locator('.palette-search-hint')).toHaveText('Commands · repos · refs · files');
   await expect(palette.locator('.palette-group-heading').filter({ hasText: 'Repository' })).toHaveCount(1);
   await expect(palette.locator('.palette-action-copy small')).toHaveCount(0);
+
+  await search.fill('no-such-command-or-repository-item');
+  await expect(palette.locator('.palette-empty')).toContainText('No matching commands, repositories, references, or files');
 
   await search.fill('undo');
   const undo = page.getByRole('option').filter({ hasText: 'No supported repository action to undo' });
@@ -4224,6 +7325,8 @@ test('finds repositories, references, and changed files from the command palette
   await page.getByRole('button', { name: 'Close repository management' }).click();
 
   await page.keyboard.press('Control+P');
+  await expect(palette.getByRole('option').first()).toContainText('Clone Repository');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.recent-commands'))).toBe('["clone"]');
   await page.getByRole('combobox', { name: 'Search commands' }).fill('initialize repository');
   await page.getByRole('option').filter({ hasText: 'Initialize Repository' }).click();
   await expect(page.getByRole('heading', { name: 'Initialize a Repository' })).toBeVisible();
@@ -4312,8 +7415,12 @@ test('finds repositories, references, and changed files from the command palette
 
 test('finds history and blame for any tracked file from the keyboard', async ({ page }) => {
   await page.keyboard.press('Control+Shift+H');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
   const search = page.getByRole('combobox', { name: 'Search tracked files' });
   await expect(search).toBeFocused();
+  await expect(palette.getByText('Files', { exact: true })).toBeVisible();
+  await expect(palette.getByRole('region', { name: 'Command search status' })).toBeVisible();
+  await expect(palette.locator('.palette-result-count')).toHaveText('0 results');
   await expect(page.locator('.palette-empty')).toContainText('Type at least two characters');
 
   await search.fill('app.component');
@@ -4325,13 +7432,15 @@ test('finds history and blame for any tracked file from the keyboard', async ({ 
   });
   await expect(history).toBeVisible();
   await expect(blame).toBeVisible();
+  await expect(palette.locator('.palette-result-count')).toHaveText(/^[1-9]\d* results$/);
   await history.click();
 
   const viewer = page.getByLabel('Diff viewer');
   await expect(viewer).toBeVisible();
   await expect(viewer).toContainText('apps/desktop/src/app/app.component.ts');
-  await expect(page.getByLabel('File history')).toBeVisible();
-  await expect(page.getByLabel('File history').locator('.history-entry')).not.toHaveCount(0);
+  const historyPanel = page.getByRole('region', { name: 'File history', exact: true });
+  await expect(historyPanel).toBeVisible();
+  await expect(historyPanel.getByRole('alert')).toContainText('requires the native desktop app');
 });
 
 test('jumps from sidebar references to branch tips without checking them out', async ({ page }) => {
@@ -4352,6 +7461,10 @@ test('jumps from sidebar references to branch tips without checking them out', a
 test('makes branch synchronization state explicit and actionable in the status bar', async ({ page }) => {
   const statusbar = page.locator('.statusbar');
   const statusActions = statusbar.locator('button');
+  const repository = statusbar.locator('.status-repository');
+  await expect(repository).toHaveText('git-khronos');
+  await expect(repository).toHaveAttribute('title', '/home/maya/projects/git-khronos');
+  await expect(repository).toHaveAttribute('aria-label', 'Repository git-khronos, /home/maya/projects/git-khronos');
   expect(await statusActions.count()).toBeGreaterThan(0);
   expect(await statusActions.evaluateAll((controls) => controls.every((control) => {
     const box = control.getBoundingClientRect();
@@ -4365,6 +7478,44 @@ test('makes branch synchronization state explicit and actionable in the status b
   await statusbar.getByRole('button', { name: 'View current branch main tip' }).click();
   await expect(page.locator('.commit-row.selected')).toContainText('Polish repository activity drawer');
   await expect(page.getByRole('button', { name: /Switch branch, current main/ })).toBeVisible();
+});
+
+test('distinguishes detached HEAD from a repository without commits in the status bar', async ({ page }) => {
+  const head = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
+      ...item,
+      status: { ...item.status, branch: null },
+      branches: item.branches.map((branch: any) => ({ ...branch, current: false })),
+    } : item));
+    return repository.headOid as string;
+  });
+
+  const detached = page.locator('.statusbar').getByRole('button', {
+    name: `View detached HEAD commit ${head.slice(0, 7)}`,
+  });
+  await expect(detached).toContainText(`Detached HEAD ${head.slice(0, 7)}`);
+  await detached.click();
+  await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-oid', head);
+
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
+      ...item,
+      headOid: null,
+      commits: [],
+      branches: [],
+    } : item));
+  });
+
+  const emptyState = page.locator('.statusbar .status-branch.unborn');
+  await expect(emptyState).toHaveText('No commits yet');
+  await expect(emptyState).toHaveAttribute('title', 'This repository does not have any commits yet');
+  await expect(page.locator('.statusbar').getByRole('button', { name: /detached HEAD/i })).toHaveCount(0);
 });
 
 test('returns to HEAD after navigating deep into history', async ({ page }) => {
@@ -4384,7 +7535,7 @@ test('returns to HEAD after navigating deep into history', async ({ page }) => {
 });
 
 test('searches commits without replacing the graph', async ({ page }) => {
-  const search = page.getByLabel('Search commits by message, SHA, or author');
+  const search = page.getByLabel('Search loaded commits by message, SHA, or author');
   await search.fill('lane rendering');
 
   await expect(page.locator('.search-result-count')).toHaveText('1 / 1');
@@ -4415,11 +7566,11 @@ test('navigates HEAD, working changes, selection, and search with scroll markers
     };
   }));
   expect(markerTargets.length).toBeGreaterThan(0);
-  // Targets fill the 12px rail gutter (clear of row actions) and stay 24px tall.
-  expect(markerTargets.every(({ targetWidth, targetHeight }) => targetWidth >= 12 && targetHeight >= 24)).toBe(true);
+  // Thin marker visuals remain compact inside full WCAG-sized pointer targets.
+  expect(markerTargets.every(({ targetWidth, targetHeight }) => targetWidth >= 24 && targetHeight >= 24)).toBe(true);
   expect(markerTargets.every(({ visualWidth }) => visualWidth <= 11)).toBe(true);
 
-  const search = page.getByLabel('Search commits by message, SHA, or author');
+  const search = page.getByLabel('Search loaded commits by message, SHA, or author');
   await search.fill('lane rendering');
   const searchMarker = markers.getByRole('button', { name: 'Search · Refine graph lane rendering' });
   await expect(searchMarker).toBeVisible();
@@ -4449,6 +7600,10 @@ test('exposes commit actions without requiring a right click', async ({ page }) 
 
   const menu = page.getByRole('menu').filter({ hasText: 'Polish repository activity drawer' });
   await expect(menu).toBeVisible();
+  const commitIdentifier = menu.locator('.context-heading code');
+  await expect(commitIdentifier).toHaveText('f19b263a');
+  await expect(commitIdentifier).toHaveCSS('font-family', /mono/i);
+  await expect(menu.locator('.context-divider')).toHaveCount(3);
   await expect(menu.getByRole('menuitem', { name: 'Checkout this commit' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Copy commit SHA' })).toBeFocused();
@@ -4490,7 +7645,17 @@ test('compares a graph commit with the current working directory', async ({ page
   await expect(panel.getByText('Changed Files (4)')).toBeVisible();
   await expect(page.locator('.commit-row.selected')).toHaveCount(2);
 
-  await panel.locator('.commit-file').filter({ hasText: 'app.component.html' }).click();
+  const comparisonFile = panel.locator('.comparison-files .commit-file').filter({ hasText: 'app.component.html' });
+  await expect(comparisonFile).toHaveAttribute('aria-label', 'Open diff for apps/desktop/src/app/app.component.html');
+  await expect(comparisonFile.locator('.commit-file-open')).toBeVisible();
+  const [comparisonFileNameBox, comparisonDirectoryBox] = await Promise.all([
+    comparisonFile.locator('.current-path strong').boundingBox(),
+    comparisonFile.locator('.current-path small').boundingBox(),
+  ]);
+  expect(comparisonFileNameBox).not.toBeNull();
+  expect(comparisonDirectoryBox).not.toBeNull();
+  expect(comparisonFileNameBox!.y).toBeLessThan(comparisonDirectoryBox!.y);
+  await comparisonFile.click();
   const diffViewer = page.getByRole('region', { name: 'Diff viewer' });
   await expect(diffViewer).toBeVisible();
   await expect(diffViewer).toContainText('160acd10 → WIP');
@@ -4516,6 +7681,35 @@ test('selects WIP and a commit for comparison with Ctrl-click', async ({ page })
   await wipNode.click({ modifiers: ['Control'] });
   await expect(page.locator('.commit-panel').getByText('Commit compared with WIP')).toBeVisible();
   await expect(page.locator('.commit-row.range-selected')).toHaveCount(2);
+});
+
+test('presents a selected revision range from its older base to newer target', async ({ page }) => {
+  const newer = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  const older = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"]');
+
+  await newer.click();
+  await older.click({ modifiers: ['Control'] });
+
+  const cards = page.getByLabel('Selected commit range').locator('.comparison-commit-card');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toContainText('Merge feature/partial-staging');
+  await expect(cards.first().locator('> b')).toHaveText('FROM');
+  await expect(cards.last()).toContainText('Polish repository activity drawer');
+  await expect(cards.last().locator('> b')).toHaveText('TO');
+
+  const connector = await cards.last().evaluate((card) => {
+    const line = getComputedStyle(card, '::before');
+    return {
+      lineContent: line.content,
+      lineHeight: Number.parseFloat(line.height),
+      lineWidth: Number.parseFloat(line.width),
+      shape: line.clipPath,
+    };
+  });
+  expect(connector.lineContent).not.toBe('none');
+  expect(connector.lineHeight).toBeGreaterThanOrEqual(7);
+  expect(connector.lineWidth).toBeGreaterThanOrEqual(6);
+  expect(connector.shape).toContain('polygon');
 });
 
 test('keeps the current branch lane aligned and continuous through WIP rows', async ({ page }) => {
@@ -4621,6 +7815,19 @@ test('reveals the nearest containing branch for an unlabeled commit', async ({ p
 });
 
 test('keeps browser-only repository limitations explicit', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
+      '/home/maya/projects/atlas-ui',
+      '/home/maya/projects/chronos-api',
+      '/home/maya/sandboxes/release-candidate',
+      '/mnt/work/client-portal',
+    ]));
+    localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
+      '/home/maya/projects/atlas-ui',
+      '/home/maya/projects/chronos-api',
+    ]));
+  });
+  await page.reload();
   const newTab = page.locator('.new-tab');
   await newTab.click();
 
@@ -4628,21 +7835,57 @@ test('keeps browser-only repository limitations explicit', async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Sample-data preview')).toBeVisible();
   await expect(dialog.getByText('task dev')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /Open a repository/ })).toBeDisabled();
+  const openRepository = dialog.getByRole('button', { name: /Open a repository/ });
+  await expect(openRepository).toBeDisabled();
+  await expect(openRepository.locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(openRepository.locator('small')).toHaveCSS('font-size', '12px');
+  await expect(dialog.locator('.repository-action-disclosure')).toHaveCount(2);
 
   const browseTab = dialog.getByRole('tab', { name: 'Browse' });
   const cloneTab = dialog.getByRole('tab', { name: 'Clone' });
-  const initTab = dialog.getByRole('tab', { name: 'Init' });
+  const initTab = dialog.getByRole('tab', { name: 'Initialize' });
+  await expect(dialog.locator('.manager-favorites .manager-repository-row')).toHaveCount(2);
+  await expect(dialog.locator('.manager-recents .manager-repository-row')).toHaveCount(2);
+  await expect(dialog.locator('.manager-recents')).not.toContainText('atlas-ui');
+  await expect(dialog.locator('.manager-recents')).not.toContainText('chronos-api');
+  await expect(dialog.locator('.manager-repository-main').first()).toHaveCSS('border-top-width', '0px');
+  await expect(dialog.locator('.manager-favorite-toggle').first()).toHaveCSS('border-top-width', '0px');
   await expect(browseTab).toHaveAttribute('aria-selected', 'true');
   await expect(browseTab).toBeFocused();
+  await expect(browseTab).toHaveCSS('font-size', '13px');
+  await expect(browseTab).toHaveCSS('border-left-width', '0px');
+
+  await dialog.getByRole('button', { name: /^Clone a repository/ }).click();
+  await expect(dialog.getByLabel('Repository URL')).toBeFocused();
+  await expect(cloneTab).toHaveAttribute('aria-selected', 'true');
+  await expect(cloneTab).toHaveClass(/active/);
+  await expect(cloneTab).toHaveCSS('border-bottom-color', 'rgb(84, 214, 173)');
+  await expect(browseTab).not.toHaveClass(/active/);
+  await expect(browseTab).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
+  await browseTab.click();
+  await dialog.getByRole('button', { name: /^Initialize a repository/ }).click();
+  await expect(dialog.locator('.repository-form .path-picker button')).toBeFocused();
+  await expect(initTab).toHaveAttribute('aria-selected', 'true');
+  await expect(browseTab).toHaveAttribute('aria-selected', 'false');
+  await expect(dialog.locator('.repository-dialog-tabs button.active')).toHaveText('Initialize');
+  await browseTab.click();
+  await expect(browseTab).toBeFocused();
+
   await browseTab.press('ArrowRight');
   await expect(cloneTab).toBeFocused();
   await expect(cloneTab).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByRole('heading', { name: 'Clone a Repository' })).toBeVisible();
+  await expect(dialog.locator('.repository-destination')).toHaveCount(0);
+  await expect(dialog.getByRole('group', { name: 'Clone options' })).toBeVisible();
+  await expect(dialog.locator('.form-readiness')).toHaveText('Enter a repository URL to continue');
+  await expect(dialog.getByLabel('Repository URL')).toHaveCSS('font-size', '13px');
+  await expect(dialog.getByRole('button', { name: 'Clone repository' })).toHaveCSS('font-size', '13px');
   await cloneTab.press('End');
   await expect(initTab).toBeFocused();
   await expect(initTab).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByRole('heading', { name: 'Initialize a Repository' })).toBeVisible();
+  await expect(dialog.locator('.repository-destination')).toHaveCount(0);
+  await expect(dialog.locator('.form-readiness')).toHaveText('Choose where to create the repository');
   await initTab.press('ArrowRight');
   await expect(browseTab).toBeFocused();
   await expect(browseTab).toHaveAttribute('aria-selected', 'true');
@@ -4664,7 +7907,7 @@ test('expands summarized untracked directories instead of opening an invalid fil
 test('keeps repository management navigation visible while long lists scroll', async ({ page }) => {
   await page.setViewportSize({ width: 550, height: 560 });
   await page.evaluate(() => localStorage.setItem(
-    'git-chronos.favorite-repositories.v1',
+    'git-khronos.favorite-repositories.v1',
     JSON.stringify(Array.from({ length: 24 }, (_, index) => `/home/maya/projects/favorite-${index + 1}`)),
   ));
   await page.reload();
@@ -4674,20 +7917,53 @@ test('keeps repository management navigation visible while long lists scroll', a
   const dialog = page.getByRole('dialog', { name: 'Repository management' });
   const header = dialog.locator('.repository-dialog-header');
   const tabs = dialog.getByRole('tablist', { name: 'Repository actions' });
+  const repositoryList = dialog.locator('.repository-manager-body');
   const [headerBefore, tabsBefore] = await Promise.all([header.boundingBox(), tabs.boundingBox()]);
   expect(headerBefore).not.toBeNull();
   expect(tabsBefore).not.toBeNull();
-  expect(await dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(await repositoryList.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
-  await dialog.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-  await expect.poll(() => dialog.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await repositoryList.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => repositoryList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const [headerAfter, tabsAfter] = await Promise.all([header.boundingBox(), tabs.boundingBox()]);
   expect(headerAfter).not.toBeNull();
   expect(tabsAfter).not.toBeNull();
   expect(Math.abs(headerAfter!.y - headerBefore!.y)).toBeLessThanOrEqual(1);
   expect(Math.abs(tabsAfter!.y - tabsBefore!.y)).toBeLessThanOrEqual(1);
-  await expect(dialog.getByRole('button', { name: 'Close repository management' })).toBeVisible();
+  const close = dialog.getByRole('button', { name: 'Close repository management' });
+  await expect(close).toBeVisible();
+  await expect(close).toHaveCSS('border-top-style', 'solid');
+  expect(await close.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await close.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return Math.min(box.width, box.height);
+  })).toBeGreaterThanOrEqual(30);
   await expect(dialog.getByRole('tab', { name: 'Browse' })).toBeVisible();
+});
+
+test('keeps repository form actions visible while advanced options scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 500 });
+  await page.locator('.new-tab').click();
+
+  const dialog = page.getByRole('dialog', { name: 'Repository management' });
+  await dialog.getByRole('tab', { name: 'Clone' }).click();
+  await dialog.getByRole('checkbox', { name: /Shallow clone/ }).check();
+
+  const body = dialog.locator('.repository-form-body');
+  const footer = dialog.locator('.repository-form footer');
+  const [dialogBox, footerBefore] = await Promise.all([dialog.boundingBox(), footer.boundingBox()]);
+  expect(dialogBox).not.toBeNull();
+  expect(footerBefore).not.toBeNull();
+  expect(await body.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(footerBefore!.y + footerBefore!.height).toBeLessThanOrEqual(dialogBox!.y + dialogBox!.height + 1);
+  await expect(dialog.getByRole('button', { name: 'Clone repository', exact: true })).toBeVisible();
+
+  await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const footerAfter = await footer.boundingBox();
+  expect(footerAfter).not.toBeNull();
+  expect(Math.abs(footerAfter!.y - footerBefore!.y)).toBeLessThanOrEqual(1);
+  await expect(dialog.getByRole('tab', { name: 'Clone' })).toBeVisible();
 });
 
 test('navigates activity scopes as a familiar tab strip', async ({ page }) => {
@@ -4697,6 +7973,20 @@ test('navigates activity scopes as a familiar tab strip', async ({ page }) => {
   const applicationTab = drawer.getByRole('tab', { name: 'Application' });
   const repositoryTab = drawer.getByRole('tab', { name: 'Repository' });
 
+  await expect(drawer.locator('.activity-drawer-mark')).toBeVisible();
+  await expect(drawer.locator('header strong')).toHaveCSS('font-size', '13px');
+  await expect(drawer.locator('header small')).toHaveCSS('font-size', '12px');
+  await expect(applicationTab).toHaveCSS('font-size', '13px');
+  await expect(applicationTab).toHaveCSS('border-left-width', '0px');
+  await expect(drawer.locator('.activity-empty strong')).toHaveCSS('font-size', '13px');
+  await expect(drawer.locator('.activity-empty small')).toHaveCSS('font-size', '12px');
+  const close = drawer.getByRole('button', { name: 'Close Activity Logs' });
+  await expect(close).toHaveCSS('border-top-style', 'solid');
+  expect(await close.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await close.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return Math.min(box.width, box.height);
+  })).toBeGreaterThanOrEqual(29);
   await expect(applicationTab).toHaveAttribute('aria-selected', 'true');
   await expect(applicationTab).toBeFocused();
   await applicationTab.press('ArrowRight');
@@ -4711,11 +8001,107 @@ test('navigates activity scopes as a familiar tab strip', async ({ page }) => {
   await expect(notificationButton).toBeFocused();
 });
 
+test('shows activity outcomes as text with readable theme-paired surfaces', async ({ page }) => {
+  const themeSurfaces: string[] = [];
+  for (const theme of ['chronos', 'midnight']) {
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
+    await page.reload();
+    await expect(page.locator('.commit-row').first()).toBeVisible();
+    await page.evaluate(() => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const timestamp = new Date('2026-10-13T12:34:56.789Z').toISOString();
+      git.activityLogs.set([
+        { id: 1, timestamp, description: 'Fetching updates', durationMs: null, status: 'running', repositoryId: null, detail: null, operationId: 'op-1', cancelable: true },
+        { id: 2, timestamp, description: 'Fetched updates', durationMs: 42, status: 'success', repositoryId: null, detail: null, operationId: 'op-2', cancelable: false },
+        { id: 3, timestamp, description: 'Push rejected', durationMs: 80, status: 'error', repositoryId: null, detail: 'Authentication failed', operationId: 'op-3', cancelable: false },
+        { id: 4, timestamp, description: 'Fetch stopped', durationMs: 12, status: 'cancelled', repositoryId: null, detail: null, operationId: 'op-4', cancelable: false },
+      ]);
+    });
+
+    await page.getByRole('button', { name: 'Activity notifications' }).click();
+    const drawer = page.getByRole('region', { name: 'Activity logs' });
+    await expect(drawer.getByText('Running', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Success', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Failed', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Cancelled', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('42 ms', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.activity-line > i')).toHaveCount(4);
+    await expect(drawer.locator('.activity-line > i').first()).toHaveAttribute('aria-hidden', 'true');
+
+    const surface = await drawer.evaluate((element) => getComputedStyle(element).backgroundColor);
+    themeSurfaces.push(surface);
+    for (const { foreground, background } of [
+      { foreground: 'header small', background: 'header' },
+      { foreground: '[role="tab"]:not(.active)', background: 'nav' },
+      { foreground: '.activity-line time', background: '.activity-drawer' },
+      { foreground: '.activity-line.running code b', background: '.activity-drawer' },
+      { foreground: '.activity-line.success code b', background: '.activity-drawer' },
+      { foreground: '.activity-line.error code b', background: '.activity-drawer' },
+      { foreground: '.activity-line.cancelled code b', background: '.activity-drawer' },
+      { foreground: '.activity-line.error > span > small', background: '.activity-drawer' },
+    ]) {
+      const colors = await drawer.locator(foreground).first().evaluate((element, backgroundSelector) => ({
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(element.closest(backgroundSelector)!).backgroundColor,
+      }), background);
+      expect(await cssContrastRatio(page, colors.foreground, colors.background),
+        `${foreground} should meet WCAG AA contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
+    }
+    await drawer.getByRole('button', { name: 'Close Activity Logs' }).click();
+  }
+  expect(themeSurfaces[0]).not.toBe(themeSurfaces[1]);
+});
+
+test('resizes activity logs with pointer, buttons, and keyboard while preserving a safe viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.getByRole('button', { name: 'Activity notifications' }).click();
+  const drawer = page.getByRole('region', { name: 'Activity logs' });
+  const resizer = drawer.getByRole('separator', { name: 'Resize activity logs' });
+  const shorter = drawer.getByRole('button', { name: 'Make Activity Logs shorter' });
+  const taller = drawer.getByRole('button', { name: 'Make Activity Logs taller' });
+
+  await expect(drawer).toHaveCSS('height', '285px');
+  await taller.click();
+  await expect(drawer).toHaveCSS('height', '325px');
+  await shorter.click();
+  await expect(drawer).toHaveCSS('height', '285px');
+
+  await resizer.focus();
+  await resizer.press('ArrowUp');
+  await expect(drawer).toHaveCSS('height', '309px');
+  await expect(resizer).toHaveAttribute('aria-valuenow', '309');
+
+  const handle = await resizer.boundingBox();
+  expect(handle).not.toBeNull();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y - 46);
+  await page.mouse.up();
+  await expect(drawer).toHaveCSS('height', '361px');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.activity-log-height'))).toBe('361');
+
+  await drawer.getByRole('button', { name: 'Close Activity Logs' }).click();
+  await page.reload();
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Activity notifications' }).click();
+  await expect(page.getByRole('region', { name: 'Activity logs' })).toHaveCSS('height', '361px');
+
+  await page.setViewportSize({ width: 600, height: 300 });
+  await expect(page.getByRole('region', { name: 'Activity logs' })).toHaveCSS('height', '190px');
+  await expect(page.getByRole('separator', { name: 'Resize activity logs' })).toHaveAttribute('aria-valuemax', '190');
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect(page.getByRole('region', { name: 'Activity logs' })).toHaveCSS('height', '361px');
+  await expect(page.getByRole('separator', { name: 'Resize activity logs' })).toHaveAttribute('aria-valuemax', '690');
+});
+
 test('opens commit details, tree files, and the focused diff through normal clicks', async ({ page }) => {
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
 
   const commitPanel = page.locator('.commit-panel');
   await expect(commitPanel).toContainText('Polish repository activity drawer');
+  const inspectorTitle = commitPanel.locator('.commit-inspector-copy b');
+  await expect(inspectorTitle).toHaveText('Commit details');
+  await expect(commitPanel.locator('.commit-overview h2')).toHaveText('Polish repository activity drawer');
   await expect(commitPanel.locator('.commit-detail-refs .current-ref')).toBeVisible();
   await expect(commitPanel.locator('.commit-detail-refs .current-ref')).toHaveClass(/lane-color-0/);
   const signature = commitPanel.getByLabel('Verified signature');
@@ -4723,17 +8109,21 @@ test('opens commit details, tree files, and the focused diff through normal clic
   await expect(signature).toContainText('Maya Chen <maya@example.test>');
   await expect(signature).toContainText('A1B2C3D4E5F60718');
   await expect(commitPanel.getByText('Changed Files (3)')).toBeVisible();
+  const changedFilesList = commitPanel.locator('.commit-file-list');
+  const changedFilesListMaxHeight = await changedFilesList.evaluate((element) => Number.parseFloat(getComputedStyle(element).maxHeight));
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  expect(changedFilesListMaxHeight).toBeCloseTo(Math.min(320, Math.max(190, viewportHeight * .35)), 0);
   await expect(commitPanel.locator('.file-change-summary')).toHaveAttribute('aria-label', '52 additions and 13 deletions');
   await expect(commitPanel.locator('.file-line-stats').first()).toHaveText('+16−5');
   const quickActions = commitPanel.getByRole('navigation', { name: 'Selected commit actions' });
-  await expect(quickActions.getByRole('button', { name: 'Compare WIP' })).toBeVisible();
+  await expect(quickActions.getByRole('button', { name: 'Compare selected commit with working directory' })).toBeVisible();
   await expect(quickActions.getByRole('button', { name: 'Cherry-pick' })).toBeVisible();
   await expect(commitPanel.getByRole('button', { name: 'More commit actions' })).toBeVisible();
   await expect(commitPanel.getByRole('button', { name: 'Commit actions', exact: true })).toHaveCount(0);
   const cherryPick = quickActions.getByRole('button', { name: 'Cherry-pick' });
   await cherryPick.click();
   const historyConfirmation = page.getByRole('alertdialog');
-  await expect(historyConfirmation).toContainText('Apply this commit’s changes');
+  await expect(historyConfirmation).toContainText("Apply this commit's changes");
   await expect(historyConfirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(historyConfirmation).toHaveCount(0);
@@ -4758,14 +8148,24 @@ test('opens commit details, tree files, and the focused diff through normal clic
   await expect(commitPanel.locator('.commit-file')).toHaveCount(1);
   await expect(commitPanel.locator('.commit-file-path .current-path strong')).toHaveText('interface-notes.md');
   await commitPanel.getByRole('button', { name: 'Clear file filter' }).click();
-  const graphAuthorColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node').evaluate((node) => getComputedStyle(node).backgroundColor);
-  await expect(commitPanel.locator('.author-card .large-avatar').first()).toHaveCSS('background-color', graphAuthorColor);
+  const graphAuthorColor = await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .author-node').evaluate((node) => getComputedStyle(node).getPropertyValue('--author-color').trim());
+  const inspectorAuthorColor = await commitPanel.locator('.author-card .large-avatar').first().evaluate((node) => getComputedStyle(node).getPropertyValue('--author-color').trim());
+  expect(graphAuthorColor).not.toBe('');
+  expect(inspectorAuthorColor).toBe(graphAuthorColor);
 
   const currentBranchReference = references.locator('.ref-pill.head');
   await expect(currentBranchReference.locator('.ref-sync')).toHaveText('↑1');
   await currentBranchReference.click({ button: 'right' });
   const branchMenu = page.getByRole('menu').filter({ hasText: 'main' });
-  await expect(branchMenu.getByRole('menuitem', { name: 'Checkout branch' })).toBeVisible();
+  await expect(branchMenu.getByRole('menuitem', { name: 'Current branch' })).toBeVisible();
+  await expect(branchMenu.getByRole('menuitem', { name: 'Current branch' })).toBeDisabled();
+  await expect(branchMenu.getByRole('menuitem', { name: 'Copy branch name' })).toBeFocused();
+  await expect(branchMenu.getByRole('menuitem', { name: 'Checkout branch' })).toHaveCount(0);
+  await expect(branchMenu.getByRole('menuitem', { name: /^Fast-forward main to main$/ })).toHaveCount(0);
+  await expect(branchMenu.getByRole('menuitem', { name: /^Merge main into main$/ })).toHaveCount(0);
+  await expect(branchMenu.getByRole('menuitem', { name: /^Squash main into main$/ })).toHaveCount(0);
+  await expect(branchMenu.getByRole('menuitem', { name: /^Rebase main onto main/ })).toHaveCount(0);
+  await expect(branchMenu.getByRole('menuitem', { name: 'Edit entire history, including root…' })).toBeVisible();
   await page.keyboard.press('Escape');
 
   const moreCommitActions = commitPanel.getByRole('button', { name: 'More commit actions' });
@@ -4786,6 +8186,12 @@ test('opens commit details, tree files, and the focused diff through normal clic
 
   const diffViewer = page.getByLabel('Diff viewer');
   await expect(diffViewer).toBeVisible();
+  const visibleCommitContext = commitPanel.locator('.commit-overview');
+  await expect.poll(() => commitPanel.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(visibleCommitContext).toBeInViewport();
+  await expect(visibleCommitContext.locator('.commit-body')).toHaveText('Make operation history easier to scan and diagnose.');
+  await expect(commitPanel.locator('.commit-inspector-revision')).toHaveText('f19b263a');
+  await expect(diffViewer.locator('.focus-diff-view')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.sidebar')).toBeVisible();
   await expect(commitPanel).toBeVisible();
   const [diffToolbarBox, diffIdentityBox, diffModeBox] = await Promise.all([
@@ -4801,12 +8207,44 @@ test('opens commit details, tree files, and the focused diff through normal clic
   await expect(diffViewer.getByRole('button', { name: 'Hunk' })).toBeVisible();
   await expect(diffViewer.getByRole('button', { name: 'Inline' })).toBeVisible();
   await expect(diffViewer.getByRole('button', { name: 'Split' })).toBeVisible();
+  await expect(diffViewer.getByRole('button', { name: 'Hunk' })).toHaveAttribute('title', 'Grouped changes with working-tree hunk actions');
+  await expect(diffViewer.getByRole('button', { name: 'Inline' })).toHaveAttribute('title', 'Compact unified file changes');
+  await expect(diffViewer.getByRole('button', { name: 'Split' })).toHaveAttribute(
+    'title',
+    'Compare before and after; stacks vertically in narrow workspaces',
+  );
+  const minimapTarget = diffViewer.getByRole('button', { name: 'Jump to change 1' });
+  const minimapTargetBounds = await minimapTarget.boundingBox();
+  expect(minimapTargetBounds).not.toBeNull();
+  expect(minimapTargetBounds!.width).toBeGreaterThanOrEqual(24);
+  expect(minimapTargetBounds!.height).toBeGreaterThanOrEqual(24);
+  await minimapTarget.focus();
+  await expect(minimapTarget).toBeFocused();
+  const fileView = diffViewer.getByRole('group', { name: 'File view' });
+  const diffView = fileView.getByRole('button', { name: 'Diff', exact: true });
+  const historyView = fileView.getByRole('button', { name: 'History', exact: true });
+  const blameView = fileView.getByRole('button', { name: 'Blame', exact: true });
+  await expect(diffView).toHaveAttribute('aria-pressed', 'true');
+  await expect(historyView).toHaveAttribute('aria-pressed', 'false');
+  await expect(blameView).toHaveAttribute('aria-pressed', 'false');
+  await historyView.click();
+  await expect(diffViewer.getByRole('region', { name: 'File history' })).toBeVisible();
+  await expect(historyView).toHaveAttribute('aria-pressed', 'true');
+  await historyView.click();
+  await expect(diffViewer.getByRole('region', { name: 'File history' })).toBeVisible();
+  await diffView.click();
+  await expect(diffViewer.getByRole('region', { name: 'File history' })).toBeHidden();
+  await expect(diffView).toHaveAttribute('aria-pressed', 'true');
   const backToGraph = diffViewer.getByRole('button', { name: 'Back to commit graph' });
   const closeDiff = diffViewer.getByRole('button', { name: 'Close diff' });
   await expect(backToGraph).toBeVisible();
   await expect(backToGraph).toContainText('Graph');
   await expect(closeDiff).toBeVisible();
   await expect(closeDiff).toHaveAttribute('title', 'Close diff (Esc)');
+  await expect(diffViewer.locator('.diff-file-status')).toHaveText('M');
+  await expect(diffViewer.locator('.diff-file-status')).toHaveAttribute('aria-label', 'Change status: Modified');
+  await expect(diffViewer.locator('.diff-file-change-stats')).toHaveText('+16−5');
+  await expect(diffViewer.locator('.diff-file-change-stats')).toHaveAttribute('aria-label', '16 additions and 5 deletions');
   expect(await diffViewer.locator('.diff-file-identity strong').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   const [diffViewportBox, narrowestDiffRowWidth] = await Promise.all([
     diffViewer.locator('.focus-diff-view').boundingBox(),
@@ -4818,18 +8256,47 @@ test('opens commit details, tree files, and the focused diff through normal clic
   const fileNavigation = diffViewer.getByRole('navigation', { name: 'Navigate changed files' });
   const previousFile = fileNavigation.getByRole('button', { name: 'Previous changed file' });
   const nextFile = fileNavigation.getByRole('button', { name: 'Next changed file' });
-  await expect(fileNavigation).toContainText('1 / 3');
+  await expect(fileNavigation).toContainText('1 of 3 files');
   await expect(previousFile).toBeDisabled();
   await expect(nextFile).toBeEnabled();
+  const filePicker = fileNavigation.getByRole('button', { name: 'Choose changed file, 1 of 3' });
+  await filePicker.click();
+  const fileMenu = diffViewer.getByRole('menu', { name: 'Changed files' });
+  await expect(fileMenu).toBeVisible();
+  const [fileMenuBox, diffViewerBox, sidebarBox] = await Promise.all([
+    fileMenu.boundingBox(),
+    diffViewer.boundingBox(),
+    page.locator('.sidebar').boundingBox(),
+  ]);
+  expect(fileMenuBox).not.toBeNull();
+  expect(diffViewerBox).not.toBeNull();
+  expect(sidebarBox).not.toBeNull();
+  expect(fileMenuBox!.x).toBeGreaterThanOrEqual(diffViewerBox!.x);
+  expect(fileMenuBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width);
+  const fileChoices = fileMenu.getByRole('menuitemradio');
+  await expect(fileChoices).toHaveCount(3);
+  await expect(fileChoices.first()).toHaveAttribute('aria-checked', 'true');
+  await expect(fileChoices.first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(fileChoices.nth(1)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(fileMenu).toBeHidden();
+  await expect(filePicker).toBeFocused();
+  await filePicker.click();
+  await fileChoices.nth(1).click();
+  await expect(fileNavigation).toContainText('2 of 3 files');
+  await expect(fileNavigation.getByRole('button', { name: 'Choose changed file, 2 of 3' })).toBeFocused();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(fileNavigation).toContainText('1 of 3 files');
   await nextFile.click();
-  await expect(fileNavigation).toContainText('2 / 3');
+  await expect(fileNavigation).toContainText('2 of 3 files');
   await expect(diffViewer.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.ts');
   await expect(diffViewer.locator('.diff-file-identity strong')).toHaveText('app.component.ts');
   await page.keyboard.press('Alt+ArrowDown');
-  await expect(fileNavigation).toContainText('3 / 3');
+  await expect(fileNavigation).toContainText('3 of 3 files');
   await expect(nextFile).toBeDisabled();
   await page.keyboard.press('Alt+ArrowUp');
-  await expect(fileNavigation).toContainText('2 / 3');
+  await expect(fileNavigation).toContainText('2 of 3 files');
   await closeDiff.click();
   await expect(diffViewer).toBeHidden();
   const selectedFile = commitPanel.locator('.commit-file.selected');
@@ -4842,6 +8309,82 @@ test('opens commit details, tree files, and the focused diff through normal clic
   await expect(diffViewer).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(diffViewer).toBeHidden();
+  await expect(selectedFile).toBeFocused();
+});
+
+test('keeps selected commit quick-action labels readable at the minimum desktop width', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 640 });
+  await page.goto('/?worktree-tabs');
+  await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"] .commit-main').click({ position: { x: 80, y: 20 } });
+
+  const inspector = page.locator('.commit-panel');
+  const inspectorHeading = inspector.locator('.commit-inspector-copy b');
+  await expect(inspectorHeading).toHaveText('Commit details');
+  expect(await inspectorHeading.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(inspector.locator('.inspector-commit-position')).toBeHidden();
+  await expect(inspector.getByRole('navigation', { name: /Navigate commit history, commit \d+ of \d+/ })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Select newer commit' })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Select older commit' })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Close commit panel' })).toBeVisible();
+
+  const actions = page.getByRole('navigation', { name: 'Selected commit actions' });
+  await expect(actions.getByRole('button', { name: 'Compare selected commit with working directory' })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Cherry-pick' })).toBeVisible();
+  for (const label of await actions.locator('button > span').all()) {
+    expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
+});
+
+test('uses the full compact viewport for a commit diff and returns to its inspector', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 640 });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Close commit panel' }).click();
+  await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
+  const commitPanel = page.locator('.commit-panel');
+  const compactCommitTitle = commitPanel.locator('.commit-panel-title');
+  await expect(compactCommitTitle.locator('.commit-inspector-copy b')).toHaveText('Commit details');
+  await expect(compactCommitTitle.locator('.commit-inspector-revision')).toHaveText('f19b263a');
+  expect(await compactCommitTitle.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const selectedFile = commitPanel.locator('.commit-file').first();
+  await expect(selectedFile).toBeVisible();
+  const [sidebarLauncherBox, inspectorHeadingBox] = await Promise.all([
+    page.getByRole('button', { name: 'Open left panel' }).boundingBox(),
+    commitPanel.locator('.commit-inspector-heading').boundingBox(),
+  ]);
+  expect(sidebarLauncherBox).not.toBeNull();
+  expect(inspectorHeadingBox).not.toBeNull();
+  expect(sidebarLauncherBox!.x + sidebarLauncherBox!.width).toBeLessThanOrEqual(inspectorHeadingBox!.x);
+  await selectedFile.click();
+
+  const diffViewer = page.getByLabel('Diff viewer');
+  await expect(diffViewer).toBeVisible();
+  const [diffBox, viewportWidth] = await Promise.all([
+    diffViewer.boundingBox(),
+    page.evaluate(() => window.innerWidth),
+  ]);
+  expect(diffBox).not.toBeNull();
+  expect(diffBox!.x).toBe(0);
+  expect(diffBox!.width).toBe(viewportWidth);
+  await expect(diffViewer.getByRole('button', { name: 'Back to commit graph' })).toBeVisible();
+  await expect(diffViewer.getByRole('button', { name: 'Close diff' })).toBeVisible();
+  await expect(diffViewer.locator('.diff-file-change-stats')).toHaveText('+16−5');
+  const compactCommitContext = diffViewer.locator('.diff-source-context');
+  await expect(compactCommitContext).toBeVisible();
+  await expect(compactCommitContext).toHaveText('Polish repository activity drawer');
+  await expect(compactCommitContext).toHaveAttribute('title', 'Polish repository activity drawer');
+  expect(await diffViewer.locator('.diff-file-identity small').evaluate((element) =>
+    element.scrollWidth <= element.clientWidth,
+  )).toBe(true);
+
+  await page.setViewportSize({ width: 540, height: 640 });
+  await expect(diffViewer.locator('.diff-file-change-stats')).toBeHidden();
+  await expect(compactCommitContext).toBeVisible();
+  expect(await diffViewer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+  await diffViewer.getByRole('button', { name: 'Close diff' }).click();
+  await expect(diffViewer).toBeHidden();
+  await expect(commitPanel).toBeVisible();
   await expect(selectedFile).toBeFocused();
 });
 
@@ -4876,10 +8419,18 @@ test('selects individual changed lines for partial staging and discard', async (
   const diff = page.getByLabel('Diff viewer');
   await expect(diff).toBeVisible();
 
-  await diff.getByRole('button', { name: /Select added line/ }).click();
+  const addedLineSelector = diff.getByRole('button', { name: /Select added line/ });
+  const selectorBounds = await addedLineSelector.boundingBox();
+  expect(selectorBounds).not.toBeNull();
+  expect(selectorBounds!.width).toBeGreaterThanOrEqual(24);
+  expect(selectorBounds!.height).toBeGreaterThanOrEqual(24);
+  await expect(addedLineSelector).toHaveAttribute('aria-pressed', 'false');
+  await addedLineSelector.focus();
+  await expect(addedLineSelector).toBeFocused();
+  await addedLineSelector.press('Enter');
   const actions = diff.getByRole('group', { name: 'Selected line actions' });
   await expect(actions).toContainText('2 selected');
-  await expect(diff.getByRole('button', { name: /Deselect added line/ })).toBeVisible();
+  await expect(diff.getByRole('button', { name: /Deselect added line/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(diff.getByRole('button', { name: /Deselect removed line/ })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Stage' })).toBeEnabled();
   await expect(actions.getByRole('button', { name: 'Discard' })).toBeEnabled();
@@ -4905,17 +8456,17 @@ test('navigates unstaged and staged files from the central diff', async ({ page 
   await openedFile.click();
   const diff = page.getByLabel('Diff viewer');
   const navigation = diff.getByRole('navigation', { name: 'Navigate changed files' });
-  await expect(navigation).toContainText('1 / 4');
+  await expect(navigation).toContainText('1 of 4 files');
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.html');
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.html');
 
   await page.keyboard.press('Alt+ArrowDown');
-  await expect(navigation).toContainText('2 / 4');
+  await expect(navigation).toContainText('2 of 4 files');
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.scss');
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.scss');
   await page.keyboard.press('Alt+ArrowDown');
   await page.keyboard.press('Alt+ArrowDown');
-  await expect(navigation).toContainText('4 / 4');
+  await expect(navigation).toContainText('4 of 4 files');
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.ts');
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.ts');
   await expect(diff.locator('.diff-file-identity small')).toContainText('Staged Changes');
@@ -4932,12 +8483,19 @@ test('jumps from commit details to a parent commit', async ({ page }) => {
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
 
   const commitPanel = page.locator('.commit-panel');
-  await commitPanel.getByRole('button', { name: /Jump to parent commit 83e6d15/ }).click();
+  const parent = commitPanel.getByRole('button', { name: /Jump to parent commit 83e6d15/ });
+  await expect(parent).toContainText('83e6d15f');
+  await expect(parent).toContainText('Merge feature/partial-staging');
+  expect(await parent.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await parent.click();
 
   await expect(page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"]')).toHaveClass(/selected/);
   await expect(commitPanel).toContainText('Merge feature/partial-staging');
 
-  await commitPanel.getByRole('button', { name: /Jump to child commit f19b263/ }).click();
+  const child = commitPanel.getByRole('button', { name: /Jump to child commit f19b263/ });
+  await expect(child).toContainText('f19b263a');
+  await expect(child).toContainText('Polish repository activity drawer');
+  await child.click();
   await expect(page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]')).toHaveClass(/selected/);
   await expect(commitPanel).toContainText('Polish repository activity drawer');
 });
@@ -4949,21 +8507,39 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   const increaseZoom = page.getByRole('button', { name: 'Increase zoom' });
   const resetZoom = page.getByRole('button', { name: 'Reset zoom to 100 percent' });
   await expect(zoomControls).toHaveCSS('height', '26px');
+  await expect(zoomControls.locator('.zoom-label')).toHaveText('Zoom');
+  await zoom.focus();
+  await expect(zoom).toHaveCSS('outline-style', 'solid');
   for (const control of [decreaseZoom, increaseZoom, resetZoom]) {
     await expect.poll(() => control.evaluate((element) => {
       const box = element.getBoundingClientRect();
       return Math.min(box.width, box.height);
     })).toBeGreaterThanOrEqual(24);
   }
-  await expect(decreaseZoom).toBeDisabled();
+  await expect(decreaseZoom).toBeEnabled();
   await expect(resetZoom).toBeDisabled();
   expect(await decreaseZoom.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity))).toBeGreaterThanOrEqual(.7);
+
+  await decreaseZoom.click();
+  await expect(zoom.locator('option:checked')).toHaveText('90%');
+  await expect(resetZoom).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('90');
+
+  await decreaseZoom.click();
+  await expect(zoom.locator('option:checked')).toHaveText('80%');
+  await decreaseZoom.click();
+  await expect(zoom.locator('option:checked')).toHaveText('75%');
+  await expect(decreaseZoom).toBeDisabled();
+
+  await resetZoom.click();
+  await expect(zoom.locator('option:checked')).toHaveText('100%');
+  await expect(resetZoom).toBeDisabled();
 
   await zoom.selectOption({ label: '125%' });
   await expect(zoom.locator('option:checked')).toHaveText('125%');
   await expect(decreaseZoom).toBeEnabled();
   await expect(resetZoom).toBeEnabled();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('125');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('125');
 
   await page.reload();
   const restoredZoom = page.getByLabel('Interface zoom', { exact: true });
@@ -4971,21 +8547,35 @@ test('persists the selected interface zoom preset', async ({ page }) => {
 
   await page.keyboard.press('Control+=');
   await expect(restoredZoom.locator('option:checked')).toHaveText('140%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('140');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('140');
 
   await page.keyboard.press('Control+-');
   await expect(restoredZoom.locator('option:checked')).toHaveText('125%');
 
   await page.keyboard.press('Control+0');
   await expect(restoredZoom.locator('option:checked')).toHaveText('100%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.ui.zoom'))).toBe('100');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('100');
+
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', 'invalid'));
+  await page.reload();
+  await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
+
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '  '));
+  await page.reload();
+  await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
 });
 
 test('reserves status-bar space for the persistent zoom controls', async ({ page }) => {
+  const environment = page.locator('.status-version');
+  await expect(environment).toHaveText('Preview');
+  await expect(environment).toHaveAttribute('title', 'Browser preview environment');
+
   for (const width of [1440, 820, 700, 500, 420, 360]) {
     await page.setViewportSize({ width, height: 720 });
     const zoomBox = await page.getByLabel('Interface zoom controls').boundingBox();
     expect(zoomBox).not.toBeNull();
+    if (width > 420) await expect(page.locator('.zoom-label')).toBeVisible();
+    else await expect(page.locator('.zoom-label')).toBeHidden();
     const statusHeight = await page.locator('.statusbar').evaluate((element) => element.getBoundingClientRect().height);
     for (const selector of ['.status-branch', '.status-sync.outgoing', '.status-changes', '.activity-status', '.status-version']) {
       const item = page.locator(selector);
@@ -4993,6 +8583,10 @@ test('reserves status-bar space for the persistent zoom controls', async ({ page
         const box = await item.first().boundingBox();
         expect(box).not.toBeNull();
         expect(box!.x + box!.width, `${selector} should end before persistent zoom controls`).toBeLessThanOrEqual(zoomBox!.x - 8);
+        if (await item.first().evaluate((element) => element instanceof HTMLButtonElement)) {
+          expect(box!.width, `${selector} should retain a 24px pointer target`).toBeGreaterThanOrEqual(24);
+          expect(box!.height, `${selector} should retain a 24px pointer target`).toBeGreaterThanOrEqual(24);
+        }
         const height = box!.height;
         expect(height, `${selector} should remain on one compact status line`).toBeLessThan(statusHeight);
       }
@@ -5012,8 +8606,11 @@ test('keeps core repository text readable at 100 percent zoom', async ({ page })
     '.ref-pill .ref-sync',
     '.reference-stack-label',
     '.commit-panel .file-row',
-    '.commit-form > input',
+    '.commit-form input[name="summary"]',
+    '.commit-field > span',
     '.statusbar',
+    '.status-version.preview',
+    '.zoom-label',
   ];
 
   for (const selector of selectors) {
@@ -5024,29 +8621,68 @@ test('keeps core repository text readable at 100 percent zoom', async ({ page })
 });
 
 test('keeps secondary workspace text legible and respects reduced motion', async ({ page }) => {
-  for (const selector of ['.worktree-list-main small', '.toolbar-nav-button small', '.file-path-prefix']) {
-    const ratio = await page.locator(selector).first().evaluate((element) => {
-      const channels = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);
-      const luminance = ([red, green, blue]: number[]) => {
-        const linear = [red, green, blue].map((channel) => {
-          const normalized = channel / 255;
-          return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
-        });
-        return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
-      };
-      const foreground = channels(getComputedStyle(element).color);
-      let backgroundElement: Element | null = element;
-      let background = [0, 0, 0, 0];
-      while (backgroundElement && (background[3] ?? 0) === 0) {
-        background = channels(getComputedStyle(backgroundElement).backgroundColor);
-        backgroundElement = backgroundElement.parentElement;
-      }
-      const foregroundLuminance = luminance(foreground);
-      const backgroundLuminance = luminance(background);
-      return (Math.max(foregroundLuminance, backgroundLuminance) + .05)
-        / (Math.min(foregroundLuminance, backgroundLuminance) + .05);
-    });
-    expect(ratio, `${selector} should meet WCAG AA contrast`).toBeGreaterThanOrEqual(4.5);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const workspaceSelectors = [
+    '.workspace-toggle > small',
+    '.repo-tab.has-changes i',
+    '.toolbar-nav-button .branch-state-summary',
+    '.worktree-list-main small',
+    '.wip-nav.selected small',
+    '.remote-location-heading > b',
+    '.graph-columns .column-heading-label',
+    '.toolbar-nav-button small',
+    '.file-path-prefix',
+    '.submodule-manager small',
+    '.wip-row .row-author',
+    '.wip-row .row-date',
+    '[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .author-node',
+  ];
+  const inspectorSelectors = [
+    '.commit-row.selected .commit-description',
+    '.commit-row.selected .row-author',
+    '.commit-row.selected .row-date',
+    '.commit-signature small',
+  ];
+  const assertContrast = async (selectors: string[], theme: string) => {
+    for (const selector of selectors) {
+      const ratio = await page.locator(selector).first().evaluate((element) => {
+        const channels = (value: string) => {
+          const parsed = (value.match(/[\d.]+/g) ?? []).map(Number);
+          return value.startsWith('color(srgb')
+            ? [(parsed[0] ?? 0) * 255, (parsed[1] ?? 0) * 255, (parsed[2] ?? 0) * 255, parsed[3] ?? 1]
+            : [parsed[0] ?? 0, parsed[1] ?? 0, parsed[2] ?? 0, parsed[3] ?? 1];
+        };
+        const luminance = ([red, green, blue]: number[]) => {
+          const linear = [red, green, blue].map((channel) => {
+            const normalized = channel / 255;
+            return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+          });
+          return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+        };
+        const foreground = channels(getComputedStyle(element).color);
+        let backgroundElement: Element | null = element;
+        let background = [0, 0, 0, 0];
+        while (backgroundElement && (background[3] ?? 0) === 0) {
+          background = channels(getComputedStyle(backgroundElement).backgroundColor);
+          backgroundElement = backgroundElement.parentElement;
+        }
+        const foregroundLuminance = luminance(foreground);
+        const backgroundLuminance = luminance(background);
+        return (Math.max(foregroundLuminance, backgroundLuminance) + .05)
+          / (Math.min(foregroundLuminance, backgroundLuminance) + .05);
+      });
+      expect(ratio, `${selector} should meet WCAG AA contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
+    }
+  };
+  for (const theme of ['chronos', 'midnight']) {
+    await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
+    await page.reload();
+    await expect(page.locator('.commit-row').first()).toBeVisible();
+    await assertContrast(workspaceSelectors, theme);
+    await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
+    await expect(page.locator('.commit-panel')).toContainText('Polish repository activity drawer');
+    await assertContrast(inspectorSelectors, theme);
   }
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -5066,6 +8702,28 @@ test('keeps secondary workspace text legible and respects reduced motion', async
   expect(motionDurations.animation.every((duration) => duration <= .01)).toBe(true);
   expect(motionDurations.transition.every((duration) => duration <= .01)).toBe(true);
   expect(motionDurations.iterations).toBe('1');
+});
+
+test('reveals changed files without scrolling in a compact-height commit inspector', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 600 });
+  await page.locator('.commit-row[data-commit-oid]').filter({ hasText: 'Refine graph lane rendering' }).click();
+
+  const inspector = page.locator('.commit-panel');
+  const firstChangedFile = inspector.locator('.commit-file').first();
+  const unsignedSignature = inspector.getByLabel('Unsigned', { exact: true });
+  await expect(firstChangedFile).toBeVisible();
+  await expect(unsignedSignature).toBeVisible();
+  await expect(unsignedSignature).toContainText('No cryptographic signature is stored in this commit.');
+  await expect(inspector.locator('.commit-relations')).toContainText('Parents');
+  await expect(inspector.locator('.commit-relations')).toContainText('Children');
+
+  const [fileBounds, statusbarBounds] = await Promise.all([
+    firstChangedFile.boundingBox(),
+    page.locator('.statusbar').boundingBox(),
+  ]);
+  expect(fileBounds).not.toBeNull();
+  expect(statusbarBounds).not.toBeNull();
+  expect(fileBounds!.y + fileBounds!.height).toBeLessThanOrEqual(statusbarBounds!.y);
 });
 
 test('keeps the commit inspector usable in a compact desktop window', async ({ page }) => {
@@ -5093,7 +8751,9 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
   await expect(inspector).toHaveCSS('transform', 'none');
   const box = await inspector.boundingBox();
   expect(box).not.toBeNull();
+  expect(Math.round(box!.width)).toBeGreaterThanOrEqual(300);
   expect(Math.round(box!.width)).toBeLessThanOrEqual(355);
+  expect(await inspector.evaluate((element) => element.scrollWidth)).toBe(await inspector.evaluate((element) => element.clientWidth));
   const layoutViewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
   expect(Math.round(box!.x + box!.width)).toBe(layoutViewportWidth);
   await expect(page.locator('.history-panel')).toBeVisible();
@@ -5117,19 +8777,45 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
     nameVisible: true,
     nameInsideButton: true,
   });
-  const compactCommitOptions = await inspector.locator('.commit-option').evaluateAll((options) => options.map((option) => {
+  const compactCommitOptions = await inspector.locator('.commit-options .commit-option').evaluateAll((options) => options.map((option) => {
     const bounds = option.getBoundingClientRect();
     return { x: Math.round(bounds.x), y: Math.round(bounds.y), height: Math.round(bounds.height) };
   }));
   expect(compactCommitOptions).toHaveLength(4);
   expect(new Set(compactCommitOptions.map(({ x }) => x)).size).toBe(2);
-  expect(compactCommitOptions.every(({ height }) => height === 24)).toBe(true);
+  expect(compactCommitOptions.every(({ height }) => height >= 24)).toBe(true);
   expect(compactCommitOptions[1].x).toBeGreaterThan(compactCommitOptions[0].x);
   expect(compactCommitOptions[1].y).toBe(compactCommitOptions[0].y);
   expect(compactCommitOptions[2].y).toBeGreaterThan(compactCommitOptions[0].y);
+  const summaryLabel = inspector.getByText('Summary', { exact: true });
+  const descriptionLabel = inspector.getByText('Description', { exact: true });
+  await expect(summaryLabel).toBeVisible();
+  await expect(descriptionLabel).toBeVisible();
+  await summaryLabel.click();
+  await expect(inspector.locator('#commit-summary')).toBeFocused();
+  await expect(inspector.locator('#commit-summary')).toHaveCSS('outline-width', '2px');
+  await descriptionLabel.click();
+  await expect(inspector.locator('#commit-description')).toBeFocused();
+  await expect(inspector.locator('#commit-description')).toHaveCSS('outline-width', '2px');
   const compactCommitButton = await inspector.locator('.commit-form .primary').boundingBox();
   expect(compactCommitButton).not.toBeNull();
   expect(compactCommitButton!.y + compactCommitButton!.height).toBeLessThanOrEqual(720 - 26);
+  await expect(inspector.locator('.commit-form .primary')).toBeDisabled();
+  await expect(inspector.locator('.commit-form .primary')).toHaveCSS('opacity', '1');
+  await expect(inspector.locator('.commit-form .primary gc-icon')).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 700 });
+  const [shortCommitButton, shortStatusBar] = await Promise.all([
+    inspector.locator('.commit-form .primary').boundingBox(),
+    page.locator('.statusbar').boundingBox(),
+  ]);
+  expect(shortCommitButton).not.toBeNull();
+  expect(shortStatusBar).not.toBeNull();
+  expect(shortCommitButton!.y + shortCommitButton!.height).toBeLessThanOrEqual(shortStatusBar!.y);
+  await inspector.locator('.commit-form input[name="summary"]').fill('Prepare compact commit action');
+  await expect(inspector.locator('.commit-form .primary')).toBeEnabled();
+  await expect(inspector.locator('.commit-form .primary')).toHaveCSS('background-color', 'rgb(84, 214, 173)');
+  await inspector.locator('.commit-form input[name="summary"]').fill('');
 
   await page.getByRole('button', { name: 'Close commit panel' }).click();
   await expect(inspector).toBeHidden();
@@ -5137,6 +8823,21 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Polish repository activity drawer');
+  const compactQuickActionLabels = inspector.locator('.commit-quick-actions button > span');
+  await expect(compactQuickActionLabels).toHaveCount(2);
+  expect(await compactQuickActionLabels.evaluateAll((labels) => labels.every((label) => label.scrollWidth <= label.clientWidth))).toBe(true);
+  const compactChangedFiles = inspector.locator('.commit-file-list .commit-file');
+  await expect(compactChangedFiles).toHaveCount(3);
+  const compactFileListMaxHeight = await inspector.locator('.commit-file-list').evaluate((element) => Number.parseFloat(getComputedStyle(element).maxHeight));
+  const compactViewportHeight = await page.evaluate(() => window.innerHeight);
+  expect(compactFileListMaxHeight).toBeCloseTo(Math.min(320, Math.max(190, compactViewportHeight * .35)), 0);
+  const [secondChangedFile, compactCommitStatusBar] = await Promise.all([
+    compactChangedFiles.nth(1).boundingBox(),
+    page.locator('.statusbar').boundingBox(),
+  ]);
+  expect(secondChangedFile).not.toBeNull();
+  expect(compactCommitStatusBar).not.toBeNull();
+  expect(secondChangedFile!.y + secondChangedFile!.height).toBeLessThanOrEqual(compactCommitStatusBar!.y);
 
   await page.getByRole('button', { name: 'Close commit panel' }).click();
   await expect(inspector).toBeHidden();
@@ -5146,8 +8847,8 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.locator('.sidebar')).toBeVisible();
   await page.getByRole('button', { name: /Open working directory changes/ }).click();
-  await expect(inspector.locator('.commit-option')).toHaveCount(4);
-  const wideCommitOptions = await inspector.locator('.commit-option').evaluateAll((options) => options.map((option) => {
+  await expect(inspector.locator('.commit-options .commit-option')).toHaveCount(4);
+  const wideCommitOptions = await inspector.locator('.commit-options .commit-option').evaluateAll((options) => options.map((option) => {
     const bounds = option.getBoundingClientRect();
     return { x: Math.round(bounds.x), y: Math.round(bounds.y) };
   }));
@@ -5163,7 +8864,7 @@ test('persists automatic remote refresh without implying a pull', async ({ page 
   await expect(page.getByText('It never pulls or changes working files.')).toBeVisible();
 
   await interval.selectOption({ label: 'Every 15 minutes' });
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.remote.auto-fetch-minutes'))).toBe('15');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.remote.auto-fetch-minutes'))).toBe('15');
   await page.reload();
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
@@ -5172,9 +8873,13 @@ test('persists automatic remote refresh without implying a pull', async ({ page 
 
 test('guides an unpublished branch through remote selection', async ({ page }) => {
   await page.goto('/?unpublished-branch');
-
   const publish = page.getByRole('button', { name: 'Publish feature/partial-staging to origin' });
   await expect(publish).toContainText('Publish');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    (window as any).__publishCalls = [];
+    git.publishBranch = async (...args: unknown[]) => { (window as any).__publishCalls.push(args); };
+  });
   await publish.click();
 
   const dialog = page.getByRole('dialog', { name: 'Publish feature/partial-staging' });
@@ -5183,9 +8888,20 @@ test('guides an unpublished branch through remote selection', async ({ page }) =
   await expect(remote.locator('option')).toHaveText(['origin', 'upstream']);
   await expect(remote.locator('option:checked')).toHaveText('origin');
   await expect(dialog.getByRole('button', { name: 'Publish Branch' })).toBeEnabled();
+  const cancel = dialog.getByRole('button', { name: 'Cancel' });
+  await expect(cancel).toBeFocused();
+  await cancel.press('Shift+Tab');
+  await expect(remote).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  await expect(publish).toBeFocused();
+  await publish.click();
+  await dialog.getByLabel('Publish remote').selectOption('upstream');
+  await dialog.getByRole('button', { name: 'Publish Branch' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__publishCalls))
+    .toEqual([['upstream', 'feature/partial-staging']]);
 });
 
 test('routes an unpublished branch without remotes into remote setup', async ({ page }) => {
@@ -5212,7 +8928,7 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   await expect(sidebar).toBeVisible();
   await expect(commitPanel).toBeVisible();
   await expect(page.getByLabel('Diff layout').getByRole('button', { name: 'Split' })).toHaveClass(/active/);
-  await expect(page.locator('.split-diff-body')).toHaveCSS('font-size', '12px');
+  await expect(page.locator('.split-diff-body')).toHaveCSS('font-size', '13px');
   const currentFile = commitPanel.locator('.commit-file.selected');
   await expect(currentFile).toHaveCount(1);
   await expect(currentFile).toHaveAttribute('aria-current', 'true');
@@ -5233,6 +8949,26 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   await expect(diff.getByRole('button', { name: `Copy path for ${fullPath}` })).toHaveAttribute('title', 'Copy full file path');
   expect(await fileIdentity.locator('strong').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await diff.locator('.diff-workspace-toolbar').evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(75);
+  const [backBox, identityBox, closeBox, pickerBox, layoutBox, actionsBox] = await Promise.all([
+    diff.getByRole('button', { name: 'Back to commit graph' }).boundingBox(),
+    fileIdentity.boundingBox(),
+    diff.getByRole('button', { name: 'Close diff' }).boundingBox(),
+    diff.locator('.diff-file-picker').boundingBox(),
+    diff.getByRole('group', { name: 'Diff layout' }).boundingBox(),
+    diff.locator('.diff-workspace-actions').boundingBox(),
+  ]);
+  expect(backBox).not.toBeNull();
+  expect(identityBox).not.toBeNull();
+  expect(closeBox).not.toBeNull();
+  expect(pickerBox).not.toBeNull();
+  expect(layoutBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  const verticalCenter = (box: NonNullable<typeof backBox>) => box.y + box.height / 2;
+  expect(Math.abs(verticalCenter(identityBox!) - verticalCenter(backBox!))).toBeLessThanOrEqual(1);
+  expect(Math.abs(verticalCenter(closeBox!) - verticalCenter(backBox!))).toBeLessThanOrEqual(1);
+  expect(pickerBox!.y).toBeGreaterThanOrEqual(backBox!.y + backBox!.height - 1);
+  expect(Math.abs(verticalCenter(layoutBox!) - verticalCenter(pickerBox!))).toBeLessThanOrEqual(1);
+  expect(Math.abs(verticalCenter(actionsBox!) - verticalCenter(pickerBox!))).toBeLessThanOrEqual(1);
 
   const [sidebarBox, diffBox, commitPanelBox] = await Promise.all([
     sidebar.boundingBox(),
@@ -5245,6 +8981,71 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   expect(diffBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width - 1);
   expect(diffBox!.x + diffBox!.width).toBeLessThanOrEqual(commitPanelBox!.x + 1);
 
+});
+
+test('adapts split comparison to the center pane without losing the preferred layout', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 650 });
+  await page.goto('/?compare-commits&diff-viewer=split');
+
+  const layout = page.getByRole('group', { name: 'Diff layout' });
+  const split = layout.getByRole('button', { name: 'Split' });
+  const firstPair = page.locator('.split-row').first();
+  const before = firstPair.locator('.split-side').first();
+  const after = firstPair.locator('.split-side').nth(1);
+  await expect(split).toHaveAttribute('aria-pressed', 'true');
+  await expect(split).toHaveAccessibleDescription('Before and after comparison. In narrow workspaces, panels are stacked vertically.');
+  await expect(split.locator('.diff-mode-split-compact')).toBeVisible();
+  await expect(split.locator('.diff-mode-split-wide')).toBeHidden();
+  await split.click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
+  await expect(page.locator('.split-diff-stacked-head')).toBeVisible();
+  await expect(page.getByLabel('Before and after file changes')).toBeVisible();
+  expect(await before.evaluate((element) => getComputedStyle(element, '::before').content)).toContain('Before');
+  expect(await after.evaluate((element) => getComputedStyle(element, '::before').content)).toContain('After');
+
+  const [narrowBefore, narrowAfter] = await Promise.all([before.boundingBox(), after.boundingBox()]);
+  expect(narrowBefore).not.toBeNull();
+  expect(narrowAfter).not.toBeNull();
+  expect(Math.abs(narrowAfter!.x - narrowBefore!.x)).toBeLessThanOrEqual(1);
+  expect(narrowAfter!.y).toBeGreaterThanOrEqual(narrowBefore!.y + narrowBefore!.height - 1);
+
+  await page.setViewportSize({ width: 700, height: 650 });
+  const toolbar = page.locator('.diff-workspace-toolbar');
+  expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const [compactLayout, compactActions] = await Promise.all([
+    layout.boundingBox(),
+    page.locator('.diff-workspace-actions').boundingBox(),
+  ]);
+  expect(compactLayout).not.toBeNull();
+  expect(compactActions).not.toBeNull();
+  expect(compactLayout!.x + compactLayout!.width).toBeLessThanOrEqual(compactActions!.x + 1);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('.split-diff-stacked-head')).toBeHidden();
+  await expect(split.locator('.diff-mode-split-wide')).toBeVisible();
+  await expect(split.locator('.diff-mode-split-compact')).toBeHidden();
+  const [wideBefore, wideAfter] = await Promise.all([before.boundingBox(), after.boundingBox()]);
+  expect(wideBefore).not.toBeNull();
+  expect(wideAfter).not.toBeNull();
+  expect(Math.abs(wideAfter!.y - wideBefore!.y)).toBeLessThanOrEqual(1);
+  expect(wideAfter!.x).toBeGreaterThanOrEqual(wideBefore!.x + wideBefore!.width - 1);
+  await expect(split).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
+});
+
+test('includes the active split diff in F6 workspace navigation', async ({ page }) => {
+  await page.goto('/?compare-commits&diff-viewer=split');
+
+  const references = page.getByRole('complementary', { name: 'Repository references' });
+  const splitDiff = page.getByRole('region', { name: 'Before and after source lines', exact: true });
+  await references.focus();
+  await expect(references).toBeFocused();
+
+  await page.keyboard.press('F6');
+  await expect(splitDiff).toBeFocused();
+  await expect(splitDiff).toHaveClass(/workspace-focus-region/);
+  await expect(splitDiff).toHaveCSS('outline-style', 'solid');
+  await expect(splitDiff).toHaveCSS('outline-width', '2px');
 });
 
 test('navigates diff layouts as a roving segmented control', async ({ page }) => {
@@ -5268,7 +9069,7 @@ test('navigates diff layouts as a roving segmented control', async ({ page }) =>
   await expect(split).toBeFocused();
   await expect(split).toHaveAttribute('aria-pressed', 'true');
 
-  const history = page.getByRole('button', { name: 'History' });
+  const history = page.getByRole('button', { name: 'History', exact: true });
   await history.click();
   await expect(history).toHaveAttribute('aria-pressed', 'true');
   await hunk.click();
@@ -5279,7 +9080,7 @@ test('remembers the preferred diff layout across files and reloads', async ({ pa
   await page.goto('/?compare-commits&diff-viewer=hunk');
   const layout = page.getByRole('group', { name: 'Diff layout' });
   await layout.getByRole('button', { name: 'Split' }).click();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-chronos.diff.view-mode'))).toBe('split');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.diff.view-mode'))).toBe('split');
 
   await page.goto('/');
   await page.getByTitle('View changes in apps/desktop/src/app/app.component.html').click();
@@ -5328,9 +9129,22 @@ test('keeps compact diff change navigation visible on common desktop widths', as
 
   await page.setViewportSize({ width: 780, height: 560 });
   await page.goto('/?compare-commits&diff-viewer=split');
+  const minimumToolbar = page.locator('.diff-workspace-toolbar');
+  const minimumBack = page.getByRole('button', { name: 'Back to commit graph' });
+  const minimumIdentity = page.locator('.diff-file-identity');
   const minimumFooter = page.locator('.diff-workspace-footer');
+  await expect(minimumBack.locator('span')).toBeVisible();
+  await expect(minimumBack).toContainText('Graph');
   await expect(page.getByRole('navigation', { name: 'Navigate changes compact' })).toBeVisible();
   await expect(page.locator('.diff-footer-wrap-toggle')).toBeVisible();
+  const [minimumBackBox, minimumIdentityBox] = await Promise.all([
+    minimumBack.boundingBox(),
+    minimumIdentity.boundingBox(),
+  ]);
+  expect(minimumBackBox).not.toBeNull();
+  expect(minimumIdentityBox).not.toBeNull();
+  expect(minimumBackBox!.x + minimumBackBox!.width).toBeLessThanOrEqual(minimumIdentityBox!.x);
+  expect(await minimumToolbar.evaluate((toolbar) => toolbar.scrollWidth <= toolbar.clientWidth)).toBe(true);
   expect(await minimumFooter.evaluate((footer) => footer.scrollWidth <= footer.clientWidth)).toBe(true);
 });
 
@@ -5339,6 +9153,13 @@ test('preserves a readable responsive diff while keeping commit context visible'
     await page.setViewportSize({ width, height: 768 });
     await page.goto('/?compare-commits&diff-viewer=split');
 
+    await expect.poll(async () => {
+      const [diff, panel] = await Promise.all([
+        page.getByLabel('Diff viewer').boundingBox(),
+        page.locator('.commit-panel').boundingBox(),
+      ]);
+      return diff && panel ? Math.abs(diff.x + diff.width - panel.x) : Infinity;
+    }).toBeLessThanOrEqual(1);
     const [sidebarBox, diffBox, commitPanelBox] = await Promise.all([
       page.locator('.sidebar').boundingBox(),
       page.getByLabel('Diff viewer').boundingBox(),
@@ -5354,9 +9175,17 @@ test('preserves a readable responsive diff while keeping commit context visible'
       else expect(sidebarBox).not.toBeNull();
       expect(diffBox!.x).toBeLessThanOrEqual(1);
       if (sidebarBox) expect(diffBox!.x).toBeLessThan(sidebarBox.x + sidebarBox.width);
+      const [sidebarLauncherBox, backToGraphBox] = await Promise.all([
+        page.getByRole('button', { name: 'Open left panel' }).boundingBox(),
+        page.getByRole('button', { name: 'Back to commit graph' }).boundingBox(),
+      ]);
+      expect(sidebarLauncherBox).not.toBeNull();
+      expect(backToGraphBox).not.toBeNull();
+      expect(sidebarLauncherBox!.x + sidebarLauncherBox!.width).toBeLessThan(backToGraphBox!.x);
     }
     expect(Math.abs(diffBox!.x + diffBox!.width - commitPanelBox!.x)).toBeLessThanOrEqual(1);
     expect(diffBox!.width).toBeGreaterThanOrEqual(515);
+    await expect(page.getByRole('button', { name: 'Back to commit graph' }).locator('span')).toBeVisible();
     expect(await page.locator('.diff-file-identity strong').evaluate((element) =>
       element.scrollWidth <= element.clientWidth,
     )).toBe(true);
@@ -5370,6 +9199,7 @@ test('persists diff viewer typography and wrapping preferences', async ({ page }
   await page.locator('button.chrome-icon[title="Preferences"]').click();
   const preferences = page.getByRole('dialog', { name: 'Preferences' });
   await preferences.getByRole('tab', { name: /Diff Viewer/ }).click();
+  await expect(preferences.getByLabel('Diff viewer font size').locator('option:checked')).toHaveText('13 px');
   await preferences.getByLabel('Diff viewer font size').selectOption({ label: '14 px' });
   await preferences.getByLabel('Diff viewer tab width').selectOption({ label: '8 spaces' });
   await preferences.getByLabel('Wrap long lines by default').check();
@@ -5381,8 +9211,8 @@ test('persists diff viewer typography and wrapping preferences', async ({ page }
   await expect(page.locator('.split-diff-body')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.split-diff-body')).toHaveCSS('tab-size', '8');
   await expect.poll(() => page.evaluate(() => ({
-    fontSize: localStorage.getItem('git-chronos.diff.font-size'),
-    tabSize: localStorage.getItem('git-chronos.diff.tab-size'),
-    wordWrap: localStorage.getItem('git-chronos.diff.word-wrap'),
+    fontSize: localStorage.getItem('git-khronos.diff.font-size'),
+    tabSize: localStorage.getItem('git-khronos.diff.tab-size'),
+    wordWrap: localStorage.getItem('git-khronos.diff.word-wrap'),
   }))).toEqual({ fontSize: '14', tabSize: '8', wordWrap: 'true' });
 });

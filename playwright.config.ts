@@ -1,14 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const port = 4201;
+const port = Number(process.env['PLAYWRIGHT_PORT'] ?? 4201);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PLAYWRIGHT_PORT');
 
 export default defineConfig({
   testDir: './e2e/renderer',
+  // Playwright clears this directory at startup. Never clear native evidence
+  // or another named audit stored alongside the renderer results.
+  outputDir: process.env['GIT_KHRONOS_RENDERER_OUTPUT_DIR'] ?? './test-results/renderer',
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
-  retries: process.env['CI'] ? 2 : 0,
-  workers: process.env['CI'] ? 1 : undefined,
-  reporter: process.env['CI'] ? [['line'], ['html', { open: 'never' }]] : 'line',
+  retries: 0,
+  workers: process.env['CI'] ? 1 : 2,
+  reporter: process.env['CI'] ? [['line'], ['html', { open: 'never', outputFolder: process.env['GIT_KHRONOS_RENDERER_REPORT_DIR'] ?? 'playwright-report' }]] : 'line',
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     colorScheme: 'dark',
@@ -24,7 +28,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec ng serve desktop --host 127.0.0.1 --port ${port}`,
+    command: `pnpm exec ng serve desktop --no-hmr --live-reload=false --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,

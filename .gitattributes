@@ -1,0 +1,3 @@
+# Retained upstream notices must match their reviewed byte hashes exactly.
+# Do not normalize their line endings or rewrite upstream whitespace.
+packaging/licenses/*LICENSE* -text -whitespace

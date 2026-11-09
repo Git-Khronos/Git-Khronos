@@ -10,6 +10,12 @@
       "default",
       "!{projectRoot}/**/*.spec.ts"
     ],
+    "rust": [
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/.cargo/**/*",
+      "{workspaceRoot}/crates/**/*"
+    ],
     "sharedGlobals": [
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/rust-toolchain.toml"

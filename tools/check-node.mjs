@@ -5,7 +5,7 @@ if (!supported) {
   console.error(
     [
       `Unsupported Node.js ${process.versions.node}.`,
-      'Git Chronos requires Node.js 24.15 or newer in the 24.x LTS line, or Node.js 26.x.',
+      'Git Khronos requires Node.js 24.15 or newer in the 24.x LTS line, or Node.js 26.x.',
       'If you use nvm, run: nvm install && nvm use',
     ].join('\n'),
   );

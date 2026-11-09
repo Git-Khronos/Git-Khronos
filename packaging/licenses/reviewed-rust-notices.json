@@ -1,0 +1,287 @@
+[
+  {
+    "name": "alloc-stdlib",
+    "version": "0.3.0",
+    "license": "BSD-3-Clause",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+    "revision": "0a81fd6928ea3b33c8cd484aa4575d50ffb98012",
+    "pathInVcs": "alloc-stdlib",
+    "notices": [
+      {
+        "file": "alloc-stdlib-workspace-LICENSE",
+        "upstream": "https://github.com/dropbox/rust-alloc-no-stdlib/blob/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
+        "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+        "gitBlob": "cd496ba72eb37e83a44958358d1f89a8a28cbc15"
+      }
+    ]
+  },
+  {
+    "name": "defmt",
+    "version": "0.3.100",
+    "license": "MIT OR Apache-2.0",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/knurling-rs/defmt",
+    "revision": "f6decae6e09d1216aff052aa0733a6b5e632a100",
+    "pathInVcs": "defmt-03",
+    "notices": [
+      {
+        "file": "defmt-workspace-LICENSE-MIT",
+        "upstream": "https://github.com/knurling-rs/defmt/blob/f6decae6e09d1216aff052aa0733a6b5e632a100/LICENSE-MIT",
+        "sha256": "2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50",
+        "gitBlob": "e68a7ab37c8accca023db5f1505d48e4375d4324"
+      },
+      {
+        "file": "defmt-workspace-LICENSE-APACHE",
+        "upstream": "https://github.com/knurling-rs/defmt/blob/f6decae6e09d1216aff052aa0733a6b5e632a100/LICENSE-APACHE",
+        "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+        "gitBlob": "11069edd79019f7dafbe3138841cf289209270dd"
+      }
+    ]
+  },
+  {
+    "name": "defmt-parser",
+    "version": "1.0.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/knurling-rs/defmt",
+    "revision": "4a8cdb44891ed57b8ff5a023b6bec7137c48708f",
+    "pathInVcs": "parser",
+    "notices": [
+      {
+        "file": "defmt-workspace-LICENSE-MIT",
+        "upstream": "https://github.com/knurling-rs/defmt/blob/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT",
+        "sha256": "2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50",
+        "gitBlob": "e68a7ab37c8accca023db5f1505d48e4375d4324"
+      },
+      {
+        "file": "defmt-workspace-LICENSE-APACHE",
+        "upstream": "https://github.com/knurling-rs/defmt/blob/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE",
+        "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+        "gitBlob": "11069edd79019f7dafbe3138841cf289209270dd"
+      }
+    ]
+  },
+  {
+    "name": "dlopen2",
+    "version": "0.8.2",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/OpenByteDev/dlopen2",
+    "revision": "cc80e4a0a90d499b677fdf7743699b4b3a43a989",
+    "pathInVcs": "dlopen2",
+    "notices": [
+      {
+        "file": "dlopen2-workspace-LICENSE",
+        "upstream": "https://github.com/OpenByteDev/dlopen2/blob/cc80e4a0a90d499b677fdf7743699b4b3a43a989/LICENSE",
+        "sha256": "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2",
+        "gitBlob": "d38093a7a564c64ad15e459f2e0a1f86a443c8b3"
+      }
+    ]
+  },
+  {
+    "name": "dlopen2_derive",
+    "version": "0.4.3",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/OpenByteDev/dlopen2",
+    "revision": "cc80e4a0a90d499b677fdf7743699b4b3a43a989",
+    "pathInVcs": "dlopen2-derive",
+    "notices": [
+      {
+        "file": "dlopen2-workspace-LICENSE",
+        "upstream": "https://github.com/OpenByteDev/dlopen2/blob/cc80e4a0a90d499b677fdf7743699b4b3a43a989/LICENSE",
+        "sha256": "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2",
+        "gitBlob": "d38093a7a564c64ad15e459f2e0a1f86a443c8b3"
+      }
+    ]
+  },
+  {
+    "name": "Inflector",
+    "version": "0.11.4",
+    "license": "BSD-2-Clause",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/whatisinternet/inflector",
+    "revision": "a4a95eac75043f4bffb127c7c8ec886b5b106053",
+    "pathInVcs": "",
+    "notices": [
+      {
+        "file": "Inflector-0.11.4-LICENSE.md",
+        "upstream": "https://github.com/whatisinternet/inflector/blob/a4a95eac75043f4bffb127c7c8ec886b5b106053/LICENSE.md",
+        "sha256": "03d1bd5bfbee8d44651e7f57faf9e5b4eda4233f0d4eda36a716f2f0533d230b",
+        "gitBlob": "937b1bd1716746367b4d8703f49b10fd714c62db"
+      }
+    ]
+  },
+  {
+    "name": "libappindicator-sys",
+    "version": "0.9.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": null,
+    "upstreamRepository": "https://github.com/tauri-apps/libappindicator-rs",
+    "revision": "eafd1e3682a1247f595410266091e9684021cb6f",
+    "pathInVcs": "sys",
+    "notices": [
+      {
+        "file": "libappindicator-workspace-LICENSE-MIT",
+        "upstream": "https://github.com/tauri-apps/libappindicator-rs/blob/eafd1e3682a1247f595410266091e9684021cb6f/LICENSE-MIT",
+        "sha256": "eb227437252b2a7a9c1fc342c93ade1f3d7ce38cc6dd754f613db07d53ceff0b",
+        "gitBlob": "50e79e21ccd1454f00695108ae01eaff9569689a"
+      },
+      {
+        "file": "libappindicator-workspace-LICENSE-APACHE",
+        "upstream": "https://github.com/tauri-apps/libappindicator-rs/blob/eafd1e3682a1247f595410266091e9684021cb6f/LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+        "gitBlob": "16fe87b06e802f094b3fbb0894b137bca2b16ef1"
+      }
+    ]
+  },
+  {
+    "name": "specta",
+    "version": "2.0.0-rc.22",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/specta",
+    "revision": "42ca9e89216848f3582e90bf961b12be4a33685e",
+    "pathInVcs": "specta",
+    "notices": [
+      {
+        "file": "specta-workspace-LICENSE",
+        "upstream": "https://github.com/oscartbeaumont/specta/blob/42ca9e89216848f3582e90bf961b12be4a33685e/LICENSE",
+        "sha256": "9ec86f39e235fcd35e6d91ef3fd4d6b88e5763f3ce1e296c222969986b6f6475",
+        "gitBlob": "0e2d089a22e904de248a0d7dd2dc6d67f69c5478"
+      }
+    ]
+  },
+  {
+    "name": "specta-macros",
+    "version": "2.0.0-rc.18",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/specta",
+    "revision": "60ffc274e4d83134d4f57ea6df7dec8f5d72ecb6",
+    "pathInVcs": "specta-macros",
+    "notices": [
+      {
+        "file": "specta-workspace-LICENSE",
+        "upstream": "https://github.com/oscartbeaumont/specta/blob/60ffc274e4d83134d4f57ea6df7dec8f5d72ecb6/LICENSE",
+        "sha256": "9ec86f39e235fcd35e6d91ef3fd4d6b88e5763f3ce1e296c222969986b6f6475",
+        "gitBlob": "0e2d089a22e904de248a0d7dd2dc6d67f69c5478"
+      }
+    ]
+  },
+  {
+    "name": "specta-serde",
+    "version": "0.0.9",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/specta",
+    "revision": "42ca9e89216848f3582e90bf961b12be4a33685e",
+    "pathInVcs": "specta-serde",
+    "notices": [
+      {
+        "file": "specta-workspace-LICENSE",
+        "upstream": "https://github.com/oscartbeaumont/specta/blob/42ca9e89216848f3582e90bf961b12be4a33685e/LICENSE",
+        "sha256": "9ec86f39e235fcd35e6d91ef3fd4d6b88e5763f3ce1e296c222969986b6f6475",
+        "gitBlob": "0e2d089a22e904de248a0d7dd2dc6d67f69c5478"
+      }
+    ]
+  },
+  {
+    "name": "specta-typescript",
+    "version": "0.0.9",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/specta",
+    "revision": "42ca9e89216848f3582e90bf961b12be4a33685e",
+    "pathInVcs": "specta-typescript",
+    "notices": [
+      {
+        "file": "specta-workspace-LICENSE",
+        "upstream": "https://github.com/oscartbeaumont/specta/blob/42ca9e89216848f3582e90bf961b12be4a33685e/LICENSE",
+        "sha256": "9ec86f39e235fcd35e6d91ef3fd4d6b88e5763f3ce1e296c222969986b6f6475",
+        "gitBlob": "0e2d089a22e904de248a0d7dd2dc6d67f69c5478"
+      }
+    ]
+  },
+  {
+    "name": "tauri-plugin",
+    "version": "2.7.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/tauri-apps/tauri",
+    "revision": "30da1fd6e17de6107ecc850c95dfb16b5729f2dd",
+    "pathInVcs": "crates/tauri-plugin",
+    "notices": [
+      {
+        "file": "tauri-workspace-LICENSE-MIT",
+        "upstream": "https://github.com/tauri-apps/tauri/blob/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT",
+        "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+        "gitBlob": "b08530d59433b3060f4fad8751ac2610c0b0aff3"
+      },
+      {
+        "file": "tauri-workspace-LICENSE-APACHE-2.0",
+        "upstream": "https://github.com/tauri-apps/tauri/blob/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0",
+        "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+        "gitBlob": "f433b1a53f5b830a205fd2df78e2b34974656c7b"
+      },
+      {
+        "file": "tauri-workspace-LICENSE.spdx",
+        "upstream": "https://github.com/tauri-apps/tauri/blob/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE.spdx",
+        "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
+        "gitBlob": "4080281f12fc44a831babb7bb4f531aeb070078b"
+      }
+    ]
+  },
+  {
+    "name": "tauri-specta",
+    "version": "2.0.0-rc.21",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/tauri-specta",
+    "revision": "5cd56fe8a8d681ba5b649dc7fd4e2e2b001e4e57",
+    "pathInVcs": "",
+    "upstream": "https://github.com/oscartbeaumont/tauri-specta/blob/5cd56fe8a8d681ba5b649dc7fd4e2e2b001e4e57/LICENSE",
+    "file": "tauri-specta-2.0.0-rc.21-LICENSE",
+    "sha256": "79b0c7d284efc4c2dc8da73c01a6d10c19caf61e70fca813e642dc010049eee7",
+    "gitBlob": "6d135f35f014e78278507b868d6617018e16b488"
+  },
+  {
+    "name": "selectors",
+    "version": "0.38.0",
+    "license": "MPL-2.0",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/servo/stylo",
+    "revision": "572ecba2d1600e7c3d490586692a209faf703baa",
+    "pathInVcs": "selectors",
+    "kind": "mpl-source-availability",
+    "file": "selectors-0.38.0-SOURCE-NOTICE.txt",
+    "sha256": "74f1500759d113960e0c3c9724f9de23acac7cc7c1b99e26025ece179ae16ea2",
+    "licenseUrl": "https://www.mozilla.org/en-US/MPL/2.0/",
+    "sourceArchive": "https://static.crates.io/crates/selectors/selectors-0.38.0.crate",
+    "sourceEvidence": {
+      "file": "lib.rs",
+      "sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9",
+      "gitBlob": "e60fe5be257f03091569b56a149e7c95ab186bfb",
+      "upstream": "https://github.com/servo/stylo/blob/572ecba2d1600e7c3d490586692a209faf703baa/selectors/lib.rs"
+    }
+  },
+  {
+    "name": "tauri-specta-macros",
+    "version": "2.0.0-rc.16",
+    "license": "MIT",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "repository": "https://github.com/oscartbeaumont/tauri-specta",
+    "revision": "6cb4dfbb7d58ff72c83f1b4bdc8471ffd4609c24",
+    "pathInVcs": "macros",
+    "notices": [
+      {
+        "file": "tauri-specta-2.0.0-rc.21-LICENSE",
+        "upstream": "https://github.com/oscartbeaumont/tauri-specta/blob/6cb4dfbb7d58ff72c83f1b4bdc8471ffd4609c24/LICENSE",
+        "sha256": "79b0c7d284efc4c2dc8da73c01a6d10c19caf61e70fca813e642dc010049eee7",
+        "gitBlob": "6d135f35f014e78278507b868d6617018e16b488"
+      }
+    ]
+  }
+]

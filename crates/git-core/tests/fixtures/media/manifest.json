@@ -1,0 +1,70 @@
+{
+  "provenance": "Original project-created pixel values; no external images or assets.",
+  "generator": "tools/generate-media-fixtures.py",
+  "pillow": "12.1.1",
+  "images": [
+    {
+      "file": "rotated.jpg",
+      "bytes": 757,
+      "sha256": "3f77f4c1f6068f379d1ac13c548b67472cf8b1787208c9c35d1a3498f3c996d2",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 1,
+      "exifOrientation": 6
+    },
+    {
+      "file": "tiles.bmp",
+      "bytes": 78,
+      "sha256": "cdc825dd885e926ea99e3311704ae168277fd1d813d9a8791b558bcac56a5143",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 1,
+      "exifOrientation": 1
+    },
+    {
+      "file": "tiles.gif",
+      "bytes": 141,
+      "sha256": "86df225d3d4f35c61a4a7cf2b5f1cf72985cd60f2f034fb587d0cf2a878285ea",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 2,
+      "exifOrientation": 1
+    },
+    {
+      "file": "tiles.ico",
+      "bytes": 127,
+      "sha256": "ba4831047e32c0330277dd8bd72bea6ecb84a90ced907bc0196b1e35c57bb29c",
+      "encodedWidth": 16,
+      "encodedHeight": 16,
+      "frames": 1,
+      "exifOrientation": 1
+    },
+    {
+      "file": "tiles.jpg",
+      "bytes": 721,
+      "sha256": "8f1ab6067238ff52fae5896b7a136747fc34f399b864b01b6de9943205e40656",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 1,
+      "exifOrientation": 1
+    },
+    {
+      "file": "tiles.png",
+      "bytes": 92,
+      "sha256": "00406cdc5ea75dbd42d13aad7eb8f01e6c9c1f91adff704aaaef079490234592",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 1,
+      "exifOrientation": 1
+    },
+    {
+      "file": "tiles.webp",
+      "bytes": 84,
+      "sha256": "b3ceee72147d3d70f1879d8da648ab7968d1f0229892542ea9f8b0bee0862a6a",
+      "encodedWidth": 3,
+      "encodedHeight": 2,
+      "frames": 1,
+      "exifOrientation": 1
+    }
+  ]
+}

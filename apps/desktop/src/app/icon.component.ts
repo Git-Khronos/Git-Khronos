@@ -12,14 +12,16 @@ export type IconName =
   | 'chevron-up'
   | 'chevron-right'
   | 'clock'
+  | 'columns'
   | 'cherry-pick'
-  | 'command'
   | 'copy'
   | 'file'
+  | 'filter'
   | 'folder-git'
   | 'git-commit'
   | 'globe'
   | 'history'
+  | 'keyboard'
   | 'link'
   | 'merge'
   | 'maximize'
@@ -78,6 +80,8 @@ export type IconName =
         @case ('activity') { <path d="M3 12h4l2-6 4 12 2-6h6"/> }
         @case ('bell') { <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/> }
         @case ('clock') { <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/> }
+        @case ('columns') { <rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M9 5v14M15 5v14"/> }
+        @case ('filter') { <path d="M4 5h16l-6.5 7.2V19l-3 1v-7.8z"/> }
         @case ('history') { <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/> }
         @case ('user') { <circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/> }
         @case ('globe') { <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/> }
@@ -88,7 +92,7 @@ export type IconName =
         @case ('server') { <rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/> }
         @case ('settings') { <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/> }
         @case ('star') { <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/> }
-        @case ('command') { <path d="M9 6V5a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v14a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3Z"/> }
+        @case ('keyboard') { <rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M10 9h.01M13 9h.01M16 9h.01M7 13h.01M10 13h.01M13 13h4M7 16h10"/> }
         @case ('minus') { <path d="M5 12h14"/> }
         @case ('plus') { <path d="M12 5v14M5 12h14"/> }
         @case ('x') { <path d="m6 6 12 12M18 6 6 18"/> }

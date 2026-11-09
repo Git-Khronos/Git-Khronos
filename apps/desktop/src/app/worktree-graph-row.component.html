@@ -1,0 +1,38 @@
+@let view = presenter();
+@let wip = worktreeRow();
+@let repo = view.git.repository()!;
+            <div class="commit-row wip-row" data-graph-row [class.linked-worktree]="!wip.worktree.current" [style.grid-template-columns]="view.commitRowGridColumns()" [style.width.px]="view.commitRowWidth()" [class.selected]="wip.worktree.current ? view.changesOpen() || !!view.git.commitComparison()?.workingTree : view.selectedWorktreePath() === wip.worktree.path" [class.range-selected]="wip.worktree.current && !!view.git.commitComparison()?.workingTree" role="button" aria-controls="repository-commit-panel" [attr.aria-label]="(wip.worktree.current ? 'Working directory' : 'Linked worktree ' + view.git.pathLabel(wip.worktree.path)) + ', ' + (wip.worktree.branch ? 'branch ' + wip.worktree.branch : 'detached HEAD') + ', ' + wip.worktree.changes + ' changed ' + (wip.worktree.changes === 1 ? 'file' : 'files')" [attr.aria-pressed]="wip.worktree.current ? view.changesOpen() || !!view.git.commitComparison()?.workingTree : view.selectedWorktreePath() === wip.worktree.path" [attr.tabindex]="wip.worktree.current ? (view.changesOpen() ? 0 : -1) : (view.selectedWorktreePath() === wip.worktree.path ? 0 : -1)" (click)="view.selectWorktreeGraphRow(wip.worktree, $event)" (keydown)="view.handleWorktreeGraphRowKeydown($event, wip.worktree)" title="{{ wip.worktree.current ? 'Open working directory changes · ' + view.primaryShortcutKey + '-click with a commit selected to compare' : 'Select worktree changes' }}">
+              @if (view.showBranchColumn()) { <span class="branch-column" [class.leading-branch-column]="view.graphColumnPosition('branch') === 0" [style.order]="view.graphColumnPosition('branch')" [class.trailing-cell]="view.trailingGraphColumn() === 'branch'"><span class="head-label wip-worktree-label" [class.linked]="!wip.worktree.current" [attr.title]="(wip.worktree.current ? 'Current worktree' : 'Linked worktree ' + view.git.pathLabel(wip.worktree.path)) + ' · ' + (wip.worktree.branch ? 'Branch ' + wip.worktree.branch : 'Detached HEAD')"><gc-icon name="folder-git" [size]="9" aria-hidden="true" /><span>{{ wip.worktree.branch ?? 'HEAD' }}</span></span></span> }
+              @if (view.showGraphColumn()) { <span class="graph-cell multi-lane" [style.order]="view.graphColumnPosition('graph')" [class.trailing-cell]="view.trailingGraphColumn() === 'graph'" aria-hidden="true">
+                <svg class="graph-edges wip-edges" [attr.viewBox]="'0 0 ' + view.graphColumnWidth() + ' 44'" preserveAspectRatio="none">
+                  @for (segment of wip.segments; track segment.offset) {
+                    <path class="color-{{ segment.color }}" [attr.data-lane-offset]="segment.offset" [attr.d]="'M ' + segment.offset + ' ' + segment.startY + ' L ' + segment.offset + ' ' + segment.endY" />
+                  }
+                </svg>
+                <span class="ref-connector wip-ref-connector color-{{ wip.color }}" [style.width.px]="wip.nodeOffset"></span>
+                <span class="node wip-node color-{{ wip.color }}" [attr.data-lane-offset]="wip.nodeOffset" [style.left.px]="wip.nodeOffset - 11">W</span>
+                <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="view.handleWipRowResizerClick($event, wip.worktree)" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
+              </span> }
+              @if (view.showMessageColumn()) {
+                <span class="commit-main wip-commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" title="{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} in {{ wip.worktree.path }}">
+                  <span class="commit-copy">
+                    @if (wip.worktree.current) {
+                      <span class="wip-message-field"><b>//</b><input aria-label="Stash message" maxlength="500" placeholder="WIP" [gcTextValue]="view.stashMessage()" (gcTextValueChange)="view.stashMessage.set($event)" (click)="$event.stopPropagation()" (keydown.enter)="$event.preventDefault(); view.stashCurrentChanges()" (keydown)="$event.stopPropagation()" /></span>
+                    } @else {
+                      <span class="subject wip-subject"><b>//</b> WIP</span>
+                    }
+                    <span class="commit-description">{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} · {{ view.git.pathLabel(wip.worktree.path) }}</span>
+                  </span>
+                </span>
+              }
+              @if (view.showAuthorColumn()) {
+                <span class="row-author" [class.compact]="view.compactAuthorColumn()" [style.order]="view.graphColumnPosition('author')" [class.trailing-cell]="view.trailingGraphColumn() === 'author'" title="Current Git identity">
+                  @if (view.compactAuthorColumn()) { <span class="compact-author-avatar" [class.color-marker]="view.authorMarkerStyle() === 'color'" [style.--author-color]="view.authorColor(repo.identity.name || 'You', repo.identity.email || '')">@if (view.authorMarkerStyle() === 'initials') { {{ view.initials(repo.identity.name || 'You') }} }</span> }
+                  @else { You }
+                </span>
+              }
+              @if (view.showDateColumn()) { <span class="row-date" [style.order]="view.graphColumnPosition('date')" [class.trailing-cell]="view.trailingGraphColumn() === 'date'" title="Working directory">Now</span> }
+              @if (view.showShaColumn()) { <code [style.order]="view.graphColumnPosition('sha')" [class.trailing-cell]="view.trailingGraphColumn() === 'sha'">—</code> }
+              <span class="row-menu">@if (!wip.worktree.current) { <gc-icon name="folder-git" [size]="11" /> }</span>
+              @if (!wip.worktree.current) { <button class="wip-open-action" type="button" (click)="$event.stopPropagation(); view.openWorktree(wip.worktree.path)"><gc-icon name="folder-git" [size]="11" />Open Worktree</button> }
+            </div>

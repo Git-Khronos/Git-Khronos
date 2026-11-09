@@ -1,0 +1,190 @@
+import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSettings, type HostedForkRemotePlan } from './index';
+
+// Compiled, never executed. Widened bindings make expect-error directives fail.
+function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
+  void ipc.parse_repository_link({ rawLink: 'git-khronos://repository?v=1&remote=https%3A%2F%2Fexample.test%2Fowned.git' });
+  void ipc.create_repository_link({ remote: 'git@example.test:owned/project.git', target: { kind: 'reference', reference: 'refs/heads/main' } });
+  void ipc.discover_repository_link({ rawLink: 'owned-link', knownPaths: ['/owned/repository'], operationId: 'owned-discovery' });
+  void ipc.open_repository_link({ rawLink: 'owned-link', path: '/owned/repository', expectedOid: 'a'.repeat(40), operationId: 'owned-open' });
+  void ipc.repository_link_read_policies();
+  void ipc.resume_repository_link_auto_fetch({ repoId: 'owned-repository' });
+  // @ts-expect-error known locations are explicit and lookup has a cancellable operation
+  void ipc.discover_repository_link({ rawLink: 'owned-link', root: '/scan-everything' });
+  // @ts-expect-error link creation has no checkout or mutation request
+  void ipc.create_repository_link({ remote: 'owned', target: { kind: 'commit', oid: 'a'.repeat(40) }, checkout: true });
+  // @ts-expect-error repository targets do not contain an ambiguous object selector
+  void ipc.create_repository_link({ remote: 'owned', target: { kind: 'repository', oid: 'a'.repeat(40) } });
+  // @ts-expect-error exact IPC camelCase arguments are required
+  void ipc.open_repository_link({ raw_link: 'owned-link', path: '/owned/repository', operation_id: 'owned-open' });
+
+  const privateAttachmentFieldsAbsent: Extract<keyof HostedForkRemotePlan, 'snapshot' | 'request' | 'created'> extends never ? true : never = true;
+  void privateAttachmentFieldsAbsent;
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: {
+    context: { kind: 'revisions', baseOid: 'a'.repeat(40), targetOid: 'b'.repeat(40) }, path: 'image', previousPath: null,
+  } });
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-stash-media', request: {
+    context: { kind: 'stash', oid: 'a'.repeat(40), layer: 'untracked' }, path: 'image', previousPath: null,
+  } });
+  // @ts-expect-error media selection requires a registered repository session
+  void ipc.inspect_file_media({ operationId: 'owned-media', request: { context: { kind: 'commit', oid: 'a'.repeat(40) }, path: 'image', previousPath: null } });
+  // @ts-expect-error comparison fields follow native camelCase and do not accept Git expressions as an alternate field
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: { context: { kind: 'commit', revision: 'HEAD~1' }, path: 'image', previousPath: null } });
+  // @ts-expect-error a comparison has no arbitrary filesystem root
+  void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: { context: { kind: 'workingTree', staged: false }, path: 'image', previousPath: null }, root: '/outside' });
+  void ipc.open_repository({ path: '/owned/fixture' });
+  void ipc.inspect_stash({ repoId: 'fixture', oid: 'a'.repeat(40) });
+  void ipc.inspect_stash_file({ repoId: 'fixture', oid: 'a'.repeat(40), path: 'fixture.txt' });
+  // @ts-expect-error stash previews must use the selected immutable object
+  void ipc.inspect_stash({ repoId: 'fixture', reference: 'stash@{0}' });
+  // @ts-expect-error later file inspection must not resolve a moved selector
+  void ipc.inspect_stash_file({ repoId: 'fixture', reference: 'stash@{0}', path: 'fixture.txt' });
+  void ipc.drop_stash({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40) });
+  void ipc.apply_stash({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40) });
+  void ipc.apply_stashed_file({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40), path: 'fixture.txt', previousPath: null });
+  // @ts-expect-error a selected-file restore must identify the reviewed stash object
+  void ipc.apply_stashed_file({ repoId: 'fixture', reference: 'stash@{0}', path: 'fixture.txt' });
+  void ipc.pop_stash_entry({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40) });
+  void ipc.pop_stash({ repoId: 'fixture', expectedOid: 'a'.repeat(40) });
+  // @ts-expect-error apply must identify the displayed stash object
+  void ipc.apply_stash({ repoId: 'fixture', reference: 'stash@{0}' });
+  // @ts-expect-error pop must identify the displayed stash object
+  void ipc.pop_stash_entry({ repoId: 'fixture', reference: 'stash@{0}' });
+  // @ts-expect-error latest-pop must identify the displayed stash object
+  void ipc.pop_stash({ repoId: 'fixture' });
+  // @ts-expect-error deletion must identify the selected object, not only its mutable ordinal
+  void ipc.drop_stash({ repoId: 'fixture', reference: 'stash@{0}' });
+  void invokeCommand('refresh_repository', { repoId: 'fixture' });
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview',
+    request: { action: 'setup', settings, initialOid: 'a'.repeat(40) } });
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview',
+    request: { action: 'start', kind: 'feature', suffix: 'owned-topic' } });
+  void ipc.execute_branch_workflow({ repoId: 'fixture', operationId: 'owned-execute', token: 'owned-token' });
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue',
+    id: 'owned-finish', revision: 1, control: { action: 'continue', retry: false } });
+  // @ts-expect-error execution accepts only the server's one-use preview token
+  void ipc.execute_branch_workflow({ repoId: 'fixture', operationId: 'owned-execute', plan: {} });
+  // @ts-expect-error the setup commit field must match the native camelCase schema
+  void ipc.prepare_branch_workflow({ repoId: 'fixture', operationId: 'owned-preview', request: { action: 'setup', settings, initial_oid: 'a'.repeat(40) } });
+  // @ts-expect-error a continuation must identify the saved action revision
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-continue', id: 'owned-finish', control: { action: 'continue', retry: false } });
+  // @ts-expect-error only Continue can request a retry
+  void ipc.control_branch_workflow_finish({ repoId: 'fixture', operationId: 'owned-abort', id: 'owned-finish', revision: 1, control: { action: 'abort', retry: true } });
+  void ipc.execute_hosted_fork({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-fork' });
+  void ipc.prepare_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', operationId: 'owned-preview', request: { sourceRemote: 'origin', remoteName: 'fork', transport: 'https', selection: { sourceFullName: 'team/source', sourceRepositoryId: '101', accountId: '7', forkFullName: 'owned/fork', forkRepositoryId: '9007199254740993', forkOwnerId: '7' } } });
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment' });
+  void ipc.discard_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token' });
+  // @ts-expect-error attachment execution cannot accept a client-authored plan
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', plan: {}, operationId: 'owned-attachment' });
+  // @ts-expect-error attachment execution must identify its original repository session
+  void ipc.execute_hosted_fork_remote({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment' });
+  // @ts-expect-error clients cannot choose a configuration path
+  void ipc.execute_hosted_fork_remote({ repoId: 'owned-repository', contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-attachment', configurationPath: '/elsewhere/config' });
+  // @ts-expect-error discard cannot address another dialog's review without its context
+  void ipc.discard_hosted_fork_remote({ repoId: 'owned-repository', token: 'owned-token' });
+  void ipc.execute_hosted_fork_acknowledgement({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-acknowledgement' });
+  // @ts-expect-error fork execution cannot accept a client-authored plan
+  void ipc.execute_hosted_fork({ contextId: 'owned-dialog', plan: {}, operationId: 'owned-fork' });
+  // @ts-expect-error a fork review is bound to its original dialog context
+  void ipc.execute_hosted_fork({ token: 'owned-token', operationId: 'owned-fork' });
+  // @ts-expect-error acknowledgement uses a server-held snapshot, not a client replacement
+  void ipc.execute_hosted_fork_acknowledgement({ contextId: 'owned-dialog', status: {}, operationId: 'owned-acknowledgement' });
+  // @ts-expect-error clients cannot choose the request storage directory
+  void ipc.list_hosted_fork_requests({ operationId: 'owned-read', directory: '/elsewhere' });
+  // @ts-expect-error fork IDs must preserve decimal precision across JavaScript
+  void ipc.inspect_hosted_fork({ operationId: 'owned-inspect', selection: { sourceFullName: 'team/source', sourceRepositoryId: '101', accountId: '7', forkFullName: 'owned/forked', forkRepositoryId: 9007199254740993, forkOwnerId: '7' } });
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error execution cannot accept a client-replaced URL or plan
+  void ipc.execute_hosted_clone({ contextId: 'owned-dialog', plan: { url: 'https://elsewhere.test/owned.git' }, operationId: 'owned-clone' });
+  // @ts-expect-error a clone execution must remain bound to its review context
+  void ipc.execute_hosted_clone({ token: 'owned-token', operationId: 'owned-clone' });
+  // @ts-expect-error repository IDs must not cross the JavaScript precision boundary as numbers
+  void ipc.inspect_hosted_repository({ fullName: 'team/owned', repositoryId: 9007199254740993, accountId: '7', operationId: 'owned-inspection' });
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: '9007199254740993', operationId: 'owned-inspection' } });
+  void ipc.execute_gitlab_clone({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-clone' } });
+  void ipc.discard_gitlab_clone_plan({ contextId: 'owned-context', token: 'owned-token' });
+  // @ts-expect-error stable GitLab IDs must retain decimal precision across JavaScript
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: 9007199254740993, operationId: 'owned-inspection' } });
+  // @ts-expect-error execution accepts only a native-held review token, not a replacement plan
+  void ipc.execute_gitlab_clone({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-clone', plan: { url: 'https://other.test/project.git' } } });
+  // @ts-expect-error execution must remain bound to its original review context
+  void ipc.execute_gitlab_clone({ request: { token: 'owned-token', operationId: 'owned-clone' } });
+  // @ts-expect-error a renderer cannot replace the instance bound to a native connection
+  void ipc.inspect_gitlab_project({ request: { connectionId: 'owned-connection', projectId: '1', operationId: 'owned-inspection', origin: 'https://other.test' } });
+  // @ts-expect-error discarding a clone review must identify its owned context
+  void ipc.discard_gitlab_clone_plan({ token: 'owned-token' });
+  void ipc.prepare_file_tool_launch({ request: { repoId: 'owned-repository', contextId: 'owned-context', operationId: 'owned-review', request: { kind: 'editor', path: 'file.txt', line: 1 }, profile: { version: 1, id: 'editor', name: 'Owned editor', role: 'editor', executable: '/owned/editor', arguments: ['{file}'] } } });
+  void ipc.prepare_file_tool_launch({ request: { repoId: 'owned-repository', contextId: 'owned-context', operationId: 'owned-review', request: { kind: 'comparison', request: { context: { kind: 'workingTree', staged: false }, path: 'file.txt', previousPath: null } }, profile: { version: 1, id: 'diff', name: 'Owned comparison', role: 'diff', executable: '/owned/diff', arguments: ['{before}', '{after}'] } } });
+  void ipc.launch_reviewed_file_tool({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-launch' } });
+  // @ts-expect-error launch authority is a native token, never renderer-authored argv or plan
+  void ipc.launch_reviewed_file_tool({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-launch', plan: { executable: '/other', arguments: [] } } });
+  // @ts-expect-error launch must remain bound to its review context
+  void ipc.launch_reviewed_file_tool({ request: { token: 'owned-token', operationId: 'owned-launch' } });
+  // @ts-expect-error the renderer cannot supply replacement result bytes
+  void ipc.save_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-save', finishedEditing: true, bytes: [1, 2, 3] } });
+  // @ts-expect-error saving requires an explicit editing-finished acknowledgement
+  void ipc.save_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-save' } });
+  // @ts-expect-error staging cannot replace the captured working path
+  void ipc.stage_reviewed_file_tool_result({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-stage', path: 'other.txt' } });
+  // @ts-expect-error cleanup must acknowledge the completed GUI handoff
+  void ipc.discard_reviewed_file_tool_session({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-cleanup' } });
+  // @ts-expect-error cleanup never accepts a renderer-selected directory
+  void ipc.discard_reviewed_file_tool_session({ request: { contextId: 'owned-context', token: 'owned-token', operationId: 'owned-cleanup', finishedUsingFiles: true, directory: '/other' } });
+  // @ts-expect-error review purposes are a closed set
+  void ipc.discard_file_tool_review({ request: { contextId: 'owned-context', token: 'owned-token', purpose: 'unknown' } });
+
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', query: { page: 1, search: 'team & literal', ownedOnly: false } } });
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: '9007199254740993', fullPath: 'team/nested', kind: 'group' } } });
+  // @ts-expect-error A namespace read cannot receive or grant project creation permission.
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: '9', fullPath: 'team/nested', kind: 'group', canCreateProject: true } } });
+  // @ts-expect-error Namespace identifiers must not lose precision through JavaScript numbers.
+  void ipc.inspect_gitlab_namespace({ request: { connectionId: 'owned-connection', operationId: 'owned-namespace', selection: { id: 9007199254740993, fullPath: 'team/nested', kind: 'group' } } });
+  void ipc.load_gitlab_forks({ request: { connectionId: 'owned-connection', operationId: 'owned-forks', query: { sourceProjectId: '10', sourceFullPath: 'team/upstream', page: 1, search: '' } } });
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-fork-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: '9007199254740993', forkFullPath: 'group/nested/fork' } } });
+  // @ts-expect-error namespace reads use a native connection, not renderer credentials
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', token: 'forged', query: { page: 1, search: '', ownedOnly: false } } });
+  // @ts-expect-error fork reads cannot replace the account-bound instance
+  void ipc.load_gitlab_forks({ request: { connectionId: 'owned-connection', operationId: 'owned-forks', origin: 'https://other.test', query: { sourceProjectId: '10', sourceFullPath: 'team/upstream', page: 1, search: '' } } });
+  // @ts-expect-error a reported upstream relation cannot be supplied by the renderer
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: '20', forkFullPath: 'group/fork', forkedFromProject: { id: '10' } } } });
+  // @ts-expect-error stable fork IDs must not lose decimal precision
+  void ipc.inspect_gitlab_fork({ request: { connectionId: 'owned-connection', operationId: 'owned-inspection', selection: { sourceProjectId: '10', sourceFullPath: 'team/upstream', forkProjectId: 9007199254740993, forkFullPath: 'group/fork' } } });
+  // @ts-expect-error namespace discovery does not confer write authority
+  void ipc.load_gitlab_namespaces({ request: { connectionId: 'owned-connection', operationId: 'owned-namespaces', query: { page: 1, search: '', ownedOnly: false, canWrite: true } } });
+  void ipc.connect_gitlab_fork_account({ request: { origin: 'https://gitlab.example.test', token: 'owned-token', operationId: 'owned-connect' } });
+  void ipc.prepare_gitlab_fork({ request: { connectionId: 'owned-connection', context: 'owned-review', operationId: 'owned-prepare', selection: { sourceId: '101', sourceFullPath: 'team/source', namespace: { id: '9007199254740993', fullPath: 'team/destination', kind: 'group' }, projectPath: 'forked', projectName: null } } });
+  void ipc.execute_gitlab_fork({ request: { context: 'owned-review', token: 'owned-token', operationId: 'owned-submit' } });
+  void ipc.discard_gitlab_fork({ context: 'owned-review', token: 'owned-token' });
+  // @ts-expect-error an existing read connection cannot be upgraded by a renderer flag
+  void ipc.connect_gitlab_account({ request: { origin: 'https://gitlab.example.test', token: 'owned-token', operationId: 'owned-connect', canCreateFork: true } });
+  // @ts-expect-error fork execution accepts no replacement plan or connection
+  void ipc.execute_gitlab_fork({ request: { context: 'owned-review', token: 'owned-token', operationId: 'owned-submit', connectionId: 'replacement' } });
+  // @ts-expect-error fork execution requires its original context
+  void ipc.execute_gitlab_fork({ request: { token: 'owned-token', operationId: 'owned-submit' } });
+  // @ts-expect-error fork IDs retain decimal precision
+  void ipc.prepare_gitlab_fork({ request: { connectionId: 'owned-connection', context: 'owned-review', operationId: 'owned-prepare', selection: { sourceId: 9007199254740993, sourceFullPath: 'team/source', namespace: { id: '202', fullPath: 'team/destination', kind: 'group' }, projectPath: 'forked', projectName: null } } });
+  void ipc.list_gitlab_fork_records({ request: { operationId: 'owned-list' } });
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: '9007199254740993', operationId: 'owned-reconcile' } });
+  void ipc.retire_gitlab_fork_record({ request: { recordId: 'owned-record', expectedRevision: '1', acknowledgeUnconfirmed: true, operationId: 'owned-retire' } });
+  // @ts-expect-error saved-record inspection cannot replace private storage
+  void ipc.list_gitlab_fork_records({ request: { operationId: 'owned-list', directory: '/elsewhere' } });
+  // @ts-expect-error reconciliation accepts no replacement plan or submission token
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: '1', operationId: 'owned-reconcile', token: 'old-submit-token' } });
+  // @ts-expect-error revisions must retain exact decimal precision
+  void ipc.reconcile_gitlab_fork_record({ request: { connectionId: 'owned-read-connection', recordId: 'owned-record', expectedRevision: 9007199254740993, operationId: 'owned-reconcile' } });
+  // @ts-expect-error retiring an uncertain outcome requires an explicit acknowledgement value
+  void ipc.retire_gitlab_fork_record({ request: { recordId: 'owned-record', expectedRevision: '1', operationId: 'owned-retire' } });
+  const id: string = prompt.requestId;
+  void id;
+  // @ts-expect-error native command names are exhaustive
+  void invokeCommand('missing_command', {});
+  // @ts-expect-error required path cannot be omitted
+  void ipc.open_repository({});
+  // @ts-expect-error unknown argument must not be silently accepted
+  void ipc.refresh_repository({ repositoryId: 'fixture' });
+  // @ts-expect-error nested request payloads are generated too
+  void ipc.import_git_bundle({ repoId: 'fixture', request: { file: 123 } });
+  // @ts-expect-error results cannot be chosen by the caller
+  const wrong: Promise<string> = ipc.system_info();
+  void wrong;
+}
+void typeAssertions;

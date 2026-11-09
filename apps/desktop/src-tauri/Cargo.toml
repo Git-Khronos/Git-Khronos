@@ -1,22 +1,43 @@
 [package]
-name = "git-chronos-desktop"
+name = "git-khronos-desktop"
+default-run = "git-khronos"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Git Chronos desktop application"
+description = "Git Khronos desktop application"
+authors = ["Maurizio Casciano <mauriziocasciano7@gmail.com>"]
+homepage = "https://github.com/Git-Khronos/Git-Khronos"
+repository = "https://github.com/Git-Khronos/Git-Khronos.git"
+
+[[bin]]
+name = "git-khronos"
+path = "src/main.rs"
 
 [lib]
-name = "git_chronos_desktop"
+name = "git_khronos_desktop"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-git-chronos-git-core.workspace = true
+git-khronos-git-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+specta-typescript = "=0.0.9"
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 portable-pty = "0.9.0"
 notify = "8.2.0"
+getrandom = "=0.3.4"
+tokio = { version = "=1.53.3", default-features = false, features = ["rt", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.190"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-deep-link = "=2.6.3"
+tauri-plugin-single-instance = { version = "=2.5.5", features = ["deep-link"] }

@@ -1,1 +1,1 @@
-{"main-window":{"identifier":"main-window","description":"Minimal capabilities for the Git Chronos main window","local":true,"windows":["main"],"permissions":["core:default","core:webview:allow-set-webview-zoom","dialog:allow-open"]}}
+{"main-window":{"identifier":"main-window","description":"Minimal capabilities for the Git Khronos main window","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-set-title","core:window:allow-destroy","core:webview:allow-set-webview-zoom","dialog:allow-open","dialog:allow-save"]}}

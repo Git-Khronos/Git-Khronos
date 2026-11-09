@@ -1,0 +1,56 @@
+:host { display: contents; }
+.rebase-scope { flex-shrink: 0; padding: 8px 12px; color: #b9b7c7; font-size: 12px; overflow-wrap: anywhere; }
+.rebase-scope p { margin: 0 0 4px; }
+.rebase-scope label { display: grid; gap: 4px; margin: 8px 0; }
+.rebase-scope select { width: 100%; min-width: 0; min-height: 28px; padding: 5px 8px; border: 1px solid #54526e; border-radius: 3px; background: #1a1a28; color: #c6c5d2; font: inherit; }
+.rebase-scope select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.autosquash-review { padding: 8px 12px; color: #b9b7c7; font-size: 12px; overflow-wrap: anywhere; }
+.autosquash-review button { margin-right: 8px; padding: 6px 8px; border: 1px solid #54526e; border-radius: 3px; background: #302f45; color: #eee; }
+.autosquash-review p { margin: 6px 0 0; }
+.autosquash-review [role=alert] { color: var(--danger); }
+.rebase-backdrop { position: fixed; z-index: 52; inset: 0; display: grid; place-items: center; padding: 22px; background: #080811c9; backdrop-filter: blur(4px); }
+.interactive-rebase { width: min(780px, 100%); max-height: min(760px, calc(100vh - 44px)); display: flex; flex-direction: column; overflow: auto; border: 1px solid #54526e; border-radius: 7px; background: #202031; box-shadow: 0 30px 100px #000e; animation: palette-in var(--motion-disclosure) var(--ease-out); }
+.interactive-rebase > header { display: grid; grid-template-columns: 40px minmax(0, 1fr) 26px; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #3a394e; background: #252438; }
+.interactive-rebase > header .rebase-mark { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: #403c68; color: #b7abff; }
+.interactive-rebase > header div { min-width: 0; }
+.interactive-rebase > header small { color: var(--muted); font-size: 12px; font-weight: 850; letter-spacing: .1em; }
+.interactive-rebase > header h2 { margin: 2px 0 3px; color: #f1f0f6; font-size: 16px; font-weight: 650; }
+.interactive-rebase > header h2 i { margin: 0 5px; color: var(--muted); font-size: 12px; font-style: normal; font-weight: 500; }
+.interactive-rebase > header p { margin: 0; color: var(--muted); font-size: 12px; }
+.interactive-rebase > header > button { align-self: start; background: transparent; color: #8e8d9f; }
+.rebase-column-head { display: grid; grid-template-columns: 128px 1fr; padding: 7px 42px; border-bottom: 1px solid #343347; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.rebase-steps { min-height: 80px; overflow: auto; padding: 7px; }
+.rebase-step { display: grid; grid-template-columns: 18px 92px 28px minmax(0, 1fr) 28px; align-items: center; gap: 8px; min-height: 49px; margin-bottom: 3px; padding: 6px 9px; border: 1px solid transparent; border-radius: 4px; background: #272638; cursor: grab; }
+.rebase-reorder-help { margin: 6px 12px; color: #b9b7c7; font-size: 12px; }
+.rebase-reorder-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.rebase-move-controls { display: grid; gap: 4px; }
+.rebase-move-controls button { display: grid; place-items: center; width: 28px; height: 24px; padding: 0; border: 1px solid #54526e; border-radius: 3px; background: #302f45; color: #eee; cursor: pointer; }
+.rebase-move-controls button:disabled { opacity: .4; cursor: default; }
+.rebase-step:focus-visible, .interactive-rebase button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rebase-step:hover { background: #2d2c41; }
+.rebase-step.selected { border-color: #5a567d; background: #302f47; }
+.rebase-step.dragging { opacity: .4; }
+.rebase-step.action-drop { opacity: .55; }
+.rebase-step.action-drop .rebase-commit-copy strong { text-decoration: line-through; }
+.rebase-step.action-reword, .rebase-step.action-edit { border-left: 2px solid #67b8ff; }
+.rebase-step.action-squash, .rebase-step.action-fixup { border-left: 2px solid #f1a25d; }
+.rebase-grip { color: #aaa9bc; font-size: 16px; cursor: grab; }
+.rebase-step select { width: 92px; padding: 5px 20px 5px 7px; border: 1px solid #45445b; border-radius: 3px; background: #1a1a28; color: #c6c5d2; font-size: 12px; text-transform: uppercase; }
+.rebase-step.action-pick select { color: #6fd4b7; }
+.rebase-step.action-reword select, .rebase-step.action-edit select { color: #67b8ff; }
+.rebase-step.action-squash select, .rebase-step.action-fixup select { color: #f1a25d; }
+.rebase-step.action-drop select { color: #e07f94; }
+.rebase-step > .avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #3e7969; color: white; font-size: 12px; }
+.rebase-commit-copy { display: grid; gap: 3px; min-width: 0; }
+.rebase-commit-copy strong { overflow: hidden; color: #dddce7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.rebase-commit-copy small { color: #aaa9bc; font-family: var(--mono); font-size: 12px; }
+.rebase-step > textarea { grid-column: 4; width: 100%; padding: 6px 7px; resize: vertical; border: 1px solid #4b5570; border-radius: 3px; background: #181824; color: #e5e4ec; font: 12px/1.35 var(--sans); }
+.interactive-rebase > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 9px 12px; border-top: 1px solid #39384d; background: #252438; }
+.rebase-shortcuts { display: flex; flex-wrap: wrap; gap: 11px; margin-right: auto; color: var(--muted); font-size: 12px; }
+.rebase-shortcuts span { display: flex; align-items: center; gap: 4px; }
+.rebase-shortcuts kbd { min-width: 17px; padding: 2px 4px; border: 1px solid #49485e; border-radius: 3px; background: #1c1c2a; color: #aaa8b9; text-align: center; }
+.interactive-rebase > footer > button { padding: 7px 12px; border: 1px solid #48475d; border-radius: 3px; background: #302f45; color: #bbb9c9; font-size: 12px; }
+.interactive-rebase > footer > button.primary { border-color: #4c8e7c; background: var(--accent); color: #10201a; font-weight: 750; }
+.interactive-rebase > footer > button:disabled { opacity: .4; }
+@media (prefers-reduced-motion: reduce) { .interactive-rebase { animation: none; } }
+@keyframes palette-in { from { opacity: 0; transform: translateY(-7px) scale(.99); } }

@@ -1,12 +1,13 @@
 //! In-process, date-ordered commit history walk backed by gitoxide (`gix`).
 //!
 //! The walk reproduces the observable output of
-//! `git log --decorate=short --format=%H %P %an %ae %aI %s %b %D` for the
-//! fields the desktop renders, without spawning a Git process per page.
-//! Reference tips and decorations are taken from the Git CLI once per reset
-//! so `--all` and `%D` keep Git's exact semantics.
+//! `git log --format=%H %P %an %ae %aI %s %b %D` for the fields the desktop
+//! renders, without spawning a Git process per page. Reference names stay
+//! unambiguous when a branch resembles a private checkpoint reference.
+//! Reference tips and decorations are taken from the Git CLI once per reset,
+//! using the same checkpoint visibility as the initial history snapshot.
 
-use crate::CommitSummary;
+use crate::{AppError, CommitSummary};
 use gix::ObjectId;
 use gix::bstr::{BStr, ByteSlice};
 use std::cmp::{Ordering, Reverse};
@@ -55,6 +56,8 @@ pub(crate) struct HistoryWalk {
     seen: HashSet<ObjectId>,
     decorations: HashMap<ObjectId, Vec<String>>,
     stash_oids: HashSet<ObjectId>,
+    shallow_oids: HashSet<ObjectId>,
+    failure: Option<AppError>,
 }
 
 impl HistoryWalk {
@@ -71,11 +74,15 @@ impl HistoryWalk {
             seen: HashSet::new(),
             decorations: HashMap::new(),
             stash_oids: HashSet::new(),
+            shallow_oids: HashSet::new(),
+            failure: None,
         })
     }
 
-    pub(crate) fn opened_from(&self, path: &Path) -> bool {
-        self.path == path
+    pub(crate) fn can_reuse_for(&self, path: &Path) -> bool {
+        // A failed decode may have cached damaged bytes. A refresh after an
+        // external repair must reopen the object database, not reuse that cache.
+        self.path == path && self.failure.is_none()
     }
 
     /// Starts a walk from `tips`, excluding commits already shown in `initial`.
@@ -84,8 +91,17 @@ impl HistoryWalk {
         tips: &[CommitSummary],
         initial: &[CommitSummary],
         stash_oids: &[String],
-    ) {
+    ) -> gix::Result<()> {
+        // Raw commit objects retain their parents at a shallow boundary, even
+        // when those objects happen to be present locally. Refresh the shared
+        // metadata on every reset so deepen/unshallow also affects cached walks.
+        self.shallow_oids = self
+            .repository
+            .shallow_commits()?
+            .map(|commits| commits.iter().copied().collect())
+            .unwrap_or_default();
         self.queue.clear();
+        self.failure = None;
         self.sequence = 0;
         self.seen = initial
             .iter()
@@ -114,13 +130,17 @@ impl HistoryWalk {
         for oid in frontier {
             self.enqueue(oid);
         }
+        Ok(())
     }
 
     pub(crate) fn has_more(&self) -> bool {
-        !self.queue.is_empty()
+        !self.queue.is_empty() || self.failure.is_some()
     }
 
-    pub(crate) fn next_page(&mut self, limit: usize) -> Vec<CommitSummary> {
+    pub(crate) fn next_page(&mut self, limit: usize) -> Result<Vec<CommitSummary>, AppError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
         let mut commits = Vec::with_capacity(limit.min(1024));
         while commits.len() < limit {
             let Some(next) = self.queue.pop() else {
@@ -129,9 +149,14 @@ impl HistoryWalk {
             for parent in next.parents {
                 self.enqueue(parent);
             }
+            // Never publish a partial page as success. Keep the failure latched
+            // until reset: traversal has advanced past an unreturned prefix.
+            if let Some(error) = &self.failure {
+                return Err(error.clone());
+            }
             commits.push(next.summary);
         }
-        commits
+        Ok(commits)
     }
 
     fn is_stash(&self, oid: &str) -> bool {
@@ -139,26 +164,42 @@ impl HistoryWalk {
     }
 
     fn enqueue(&mut self, oid: ObjectId) {
-        if !self.seen.insert(oid) {
+        if self.failure.is_some() || !self.seen.insert(oid) {
             return;
         }
-        // Missing objects (for example beyond a shallow boundary) end that
-        // line of history, matching how Git stops at grafted parents.
-        let Some(queued) = self.load(oid) else {
-            return;
-        };
-        self.queue.push(queued);
+        match self.load(oid) {
+            Ok(queued) => self.queue.push(queued),
+            Err(error) => self.failure = Some(error),
+        }
     }
 
-    fn load(&mut self, oid: ObjectId) -> Option<Queued> {
+    fn load(&mut self, oid: ObjectId) -> Result<Queued, AppError> {
         let sequence = Reverse(self.sequence);
         self.sequence += 1;
-        let commit = self.repository.find_commit(oid).ok()?;
-        let decoded = commit.decode().ok()?;
+        let failure = |error: &dyn std::fmt::Display| {
+            AppError::new(
+                "historyObjectFailure",
+                format!(
+                    "Could not read commit {oid}: {}",
+                    crate::redact_url_credentials(&error.to_string())
+                ),
+                Some(
+                    "History is incomplete. Check repository integrity and restore missing or damaged objects, then refresh history. No repair or download was attempted.",
+                ),
+            )
+        };
+        let commit = self
+            .repository
+            .find_commit(oid)
+            .map_err(|error| failure(&error))?;
+        let decoded = commit.decode().map_err(|error| failure(&error))?;
         let latin1 = decoded.encoding.is_some_and(is_latin1_encoding);
         let text = |value: &BStr| decode_text(value, latin1);
 
         let mut parents = decoded.parents().collect::<Vec<_>>();
+        if self.shallow_oids.contains(&oid) {
+            parents.clear();
+        }
         if self.stash_oids.contains(&oid) {
             parents.truncate(1);
         }
@@ -182,8 +223,14 @@ impl HistoryWalk {
             };
         let message = text(decoded.message);
         let (subject, description) = split_message(&message);
+        let mut decorations = self.decorations.get(&oid).cloned().unwrap_or_default();
+        // The CLI tip list already carries this marker when a shallow commit
+        // is a ref tip. Boundaries reached only by traversal need it as well.
+        if self.shallow_oids.contains(&oid) && decorations.is_empty() {
+            decorations.push("grafted".to_owned());
+        }
 
-        Some(Queued {
+        Ok(Queued {
             committer_seconds,
             sequence,
             summary: CommitSummary {
@@ -194,7 +241,7 @@ impl HistoryWalk {
                 authored_at,
                 subject,
                 description,
-                decorations: self.decorations.get(&oid).cloned().unwrap_or_default(),
+                decorations,
             },
             parents,
         })

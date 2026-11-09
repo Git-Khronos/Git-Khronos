@@ -14,6 +14,7 @@
           "options": {
             "browser": "apps/desktop/src/main.ts",
             "tsConfig": "apps/desktop/tsconfig.app.json",
+            "webWorkerTsConfig": "apps/desktop/tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
             "assets": [{ "glob": "**/*", "input": "apps/desktop/public" }],
             "styles": ["apps/desktop/src/styles.scss"],
@@ -21,13 +22,16 @@
           },
           "configurations": {
             "production": {
+              "define": { "GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES": "false" },
               "budgets": [
-                { "type": "initial", "maximumWarning": "900kB", "maximumError": "1.3MB" },
+                { "type": "initial", "maximumWarning": "900kB", "maximumError": "1.45MB" },
                 { "type": "anyComponentStyle", "maximumWarning": "76kB", "maximumError": "80kB" }
               ],
               "outputHashing": "all"
             },
             "development": {
+              "outputPath": "dist/development/desktop",
+              "define": { "GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES": "true" },
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true

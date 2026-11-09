@@ -1,0 +1,191 @@
+name: Desktop CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      native-suite:
+        description: Packaged native suite
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - performance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NX_DAEMON: "false"
+  NX_ISOLATE_PLUGINS: "false"
+
+jobs:
+  windows-repository-files:
+    name: Windows repository file boundaries
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NX_DAEMON: "false"
+      NX_ISOLATE_PLUGINS: "false"
+      CARGO_BUILD_JOBS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: windows-repository-files-v1
+      - run: pnpm install --frozen-lockfile
+      - name: Verify repository file boundaries on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core repository_files::tests -- --nocapture
+      - name: Verify working-file previews on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core file_content::tests -- --nocapture
+      - name: Verify ignore-rule scope on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core untracks_only_the_selected_file_and_preserves_other_changes -- --nocapture
+      - name: Verify ignore-file safety on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core tests::ignore_ -- --nocapture
+      - name: Verify discard path boundaries on Windows
+        run: pnpm exec nx exec -p desktop --excludeTaskDependencies -- cargo test -p git-khronos-git-core discard_refuses_a_parent_symlink_swapped_after_review -- --nocapture
+
+  checks:
+    name: Checks and renderer acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: checks-line-tables-v1
+      - name: Install Linux build and renderer prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl
+      - run: pnpm install --frozen-lockfile
+      - name: Verify generated IPC, TypeScript, Rust, and harness tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/git-khronos-tests"
+          df -h . "$RUNNER_TEMP"
+          pnpm nx run-many -t check -p contracts desktop --output-style=static
+          TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test --output-style=static
+          TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
+          TMPDIR=/tmp pnpm nx run desktop:test-signing --output-style=static
+          pnpm nx run desktop:native-harness-test --output-style=static
+      - name: Release checked desktop build artifacts before renderer acceptance
+        run: |
+          df -h . "$RUNNER_TEMP"
+          cargo clean --profile dev --package git-khronos-desktop
+          df -h . "$RUNNER_TEMP"
+      - name: Run renderer acceptance
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          # Bound each browser/server lifetime while still running every case.
+          for shard in 1 2 3 4; do
+            GIT_KHRONOS_RENDERER_OUTPUT_DIR="test-results/renderer/shard-${shard}" \
+            GIT_KHRONOS_RENDERER_REPORT_DIR="test-results/renderer-report/shard-${shard}" \
+              pnpm nx run desktop:e2e --output-style=static --skipNxCache -- \
+                --shard="${shard}/4" --workers=1 --retries=0
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: renderer-failure-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  packaged-native:
+    name: Packaged native acceptance
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NATIVE_SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs['native-suite'] || 'full') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: go-task/setup-task@v1
+      - name: Install Linux package and WebDriver prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl dbus-daemon dbus-bin
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned Tauri WebDriver bridge
+        run: cargo install tauri-driver --locked --version 2.0.6
+      - name: Run packaging regressions
+        run: |
+          # Private dpkg databases still read host invocation hooks. Keep the
+          # runner's needrestart hook out of fixture transactions and restore it
+          # before building or installing the application package.
+          hook=/etc/dpkg/dpkg.cfg.d/needrestart
+          backup=$(mktemp -d)
+          restore_hook() {
+            status=$?
+            if [ -e "$backup/needrestart" ]; then
+              sudo mv -- "$backup/needrestart" "$hook" || status=1
+            fi
+            rmdir -- "$backup" || status=1
+            exit "$status"
+          }
+          trap restore_hook EXIT
+          if [ -e "$hook" ]; then sudo mv -- "$hook" "$backup/needrestart"; fi
+          pnpm nx run desktop:package-test --output-style=static
+      - name: Build and verify Debian package
+        run: pnpm nx run desktop:package-deb --output-style=static
+      - name: Run packaged WebKitGTK acceptance
+        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
+      - name: Run packaged GitLab catalogue acceptance
+        run: |
+          package=$(task --silent package:deb:path)
+          pnpm nx exec -p desktop --excludeTaskDependencies -- \
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
+          path: |
+            target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb
+            test-results/native/
+          if-no-files-found: error
+          retention-days: 14

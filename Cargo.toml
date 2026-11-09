@@ -9,10 +9,12 @@ license = "GPL-3.0-only"
 rust-version = "1.99"
 
 [workspace.dependencies]
-git-chronos-git-core = { path = "crates/git-core" }
-gix = { version = "0.88", default-features = false, features = ["sha1", "max-performance-safe"] }
+git-khronos-git-core = { path = "crates/git-core" }
+gix = { version = "0.90", default-features = false, features = ["sha1", "max-performance"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
+specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 
 [profile.release]
 lto = "thin"

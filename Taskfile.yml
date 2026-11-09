@@ -2,11 +2,12 @@ version: '3'
 
 vars:
   TAURI_CONFIG: apps/desktop/src-tauri/tauri.conf.json
-  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-chronos-desktop.exe{{else}}./target/release/git-chronos-desktop{{end}}'
+  CARGO_OUTPUT: '{{.CARGO_TARGET_DIR | default "target"}}'
+  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-khronos.exe{{else}}./target/release/git-khronos{{end}}'
 
 tasks:
   default:
-    desc: List the available Git Chronos tasks
+    desc: List the available Git Khronos tasks
     cmds:
       - task --list
 
@@ -60,6 +61,87 @@ tasks:
     deps: [doctor]
     cmds:
       - pnpm tauri:build
+
+  package:deb:
+    aliases: [deb]
+    desc: Build the Debian/Ubuntu system package
+    platforms: [linux]
+    deps: [doctor]
+    cmds:
+      - task: package:deb:build
+      - tools/manage-linux-package.sh verify
+
+  package:deb:build:
+    internal: true
+    platforms: [linux]
+    method: checksum
+    sources:
+      - Taskfile.yml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - angular.json
+      - nx.json
+      - tsconfig*.json
+      - .cargo/**/*
+      - apps/desktop/**/*
+      - exclude: apps/desktop/src-tauri/gen/**/*
+      - exclude: apps/desktop/src-tauri/target/**/*
+      - crates/**/*
+      - libs/**/*
+      - packaging/**/*
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - tools/check-node.mjs
+      - tools/check-production-renderer.mjs
+      - tools/prepare-linux-package.mjs
+      - tools/prepare-rust-notices.mjs
+      - tools/prepare-frontend-notices.mjs
+      - tools/collect-rust-notices.mjs
+      - tools/manage-linux-package.sh
+      - tools/package-build-receipt.mjs
+    generates:
+      - '{{.CARGO_OUTPUT}}/release/git-khronos'
+      - '{{.CARGO_OUTPUT}}/release/.git-khronos-package-build.v1.json'
+      - '{{.CARGO_OUTPUT}}/release/bundle/deb/*.deb'
+      - target/package-assets/changelog.gz
+      - target/package-assets/git-khronos.1.gz
+      - target/package-assets/rust-dependency-notices.json.gz
+      - target/package-assets/frontend-dependency-notices.txt.gz
+      - dist/apps/desktop/3rdpartylicenses.txt
+      - dist/apps/desktop/browser/index.html
+    status:
+      - node tools/package-build-receipt.mjs check "{{.CHECKSUM}}" >/dev/null 2>&1
+    cmds:
+      - node tools/package-build-receipt.mjs begin "{{.CHECKSUM}}"
+      - mkdir -p "${TMPDIR:-$PWD/target/package-tmp}"
+      - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
+      - tools/manage-linux-package.sh name
+      - node tools/package-build-receipt.mjs complete "{{.CHECKSUM}}"
+
+  package:deb:path:
+    desc: Print the latest Debian/Ubuntu package path
+    platforms: [linux]
+    cmds:
+      - tools/manage-linux-package.sh print-package
+
+  install:system:
+    aliases: [install:linux]
+    desc: Build and install Git Khronos system-wide on Debian/Ubuntu
+    platforms: [linux]
+    deps: [package:deb]
+    cmds:
+      - tools/manage-linux-package.sh install
+
+  uninstall:system:
+    aliases: [uninstall:linux]
+    desc: Remove the system-wide Debian/Ubuntu installation
+    platforms: [linux]
+    cmds:
+      - tools/manage-linux-package.sh uninstall
 
   test:
     desc: Run the workspace test suite

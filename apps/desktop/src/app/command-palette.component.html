@@ -1,0 +1,58 @@
+<div class="palette-backdrop" (click)="closed.emit()">
+  <section class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette"
+    (click)="$event.stopPropagation()" (keydown)="handleDialogKey($event)">
+    @let items = commands();
+    <header class="palette-header">
+      <label class="palette-search">
+        <span><gc-icon name="search" [size]="18" /></span>
+        @if (scope() !== 'all') { <b class="palette-scope">{{ scope() === 'files' ? 'Files' : 'Branches' }}</b> }
+        <input #searchInput type="search"
+          [attr.aria-label]="scope() === 'files' ? 'Search tracked files' : scope() === 'branches' ? 'Search branches' : 'Search commands'"
+          role="combobox" aria-controls="command-palette-results" aria-autocomplete="list" aria-expanded="true"
+          [attr.aria-activedescendant]="items.length ? 'command-palette-option-' + selection() : null"
+          [placeholder]="scope() === 'files' ? 'Search files for history or blame' : scope() === 'branches' ? 'Search local and remote branches' : 'Search commands, repos, refs, and files'"
+          autocomplete="off" [ngModel]="query()" (ngModelChange)="queryChanged.emit($event)"
+          (keydown)="handleSearchKey($event)" />
+        @if (scope() !== 'branches') { <kbd>{{ scope() === 'files' ? shortcutKey() + ' Shift H' : shortcutKey() + ' P' }}</kbd> }
+      </label>
+      <button class="palette-close" type="button" aria-label="Close command palette"
+        title="Close command palette (Esc)" (click)="closed.emit()"><gc-icon name="x" [size]="15" /></button>
+    </header>
+    <div id="command-palette-results" class="palette-results"
+      [attr.role]="items.length ? 'listbox' : 'region'"
+      [attr.aria-label]="items.length ? (scope() === 'files' ? 'Tracked file actions' : scope() === 'branches' ? 'Branch choices' : 'Available commands') : 'Command search status'">
+      @for (action of items; track action.id; let index = $index) {
+        @if (!query().trim() && (index === 0 || action.group !== items[index - 1].group)) {
+          <div class="palette-group-heading" role="presentation">{{ action.group }}</div>
+        }
+        <button type="button" role="option" tabindex="-1" id="command-palette-option-{{ index }}"
+          title="{{ action.label }} — {{ action.detail }}"
+          [attr.aria-selected]="selection() === index" [class.selected]="selection() === index"
+          [disabled]="!action.enabled" (mousemove)="previewed.emit({ index, enabled: action.enabled })"
+          (click)="executed.emit(action)">
+          <span class="palette-action-icon"><gc-icon [name]="action.icon" [size]="14" /></span>
+          <span class="palette-action-copy"><strong>{{ action.label }}</strong><em>@if (query().trim()) { <span class="palette-inline-group">{{ action.group }}</span><span aria-hidden="true"> · </span> }{{ action.detail }}</em></span>
+          @if (action.shortcut) { <kbd>{{ action.shortcut }}</kbd> }
+        </button>
+      } @empty {
+        <div class="palette-empty">
+          <span><gc-icon name="search" [size]="22" /></span>
+          <strong>{{ git.trackedFileSearchBusy() ? 'Searching tracked files…' : scope() === 'files' && query().trim().length < 2 ? 'Type at least two characters' : scope() === 'files' ? 'No matching tracked files' : scope() === 'branches' ? 'No matching branches' : 'No matching commands, repositories, references, or files' }}</strong>
+          @if (query().trim() && !git.trackedFileSearchBusy()) {
+            <small>Try another phrase or browse the full list.</small>
+            <button type="button" (click)="clearSearch()"><gc-icon name="reset" [size]="13" /> Clear search</button>
+          }
+        </div>
+      }
+      @if (scope() === 'files' && git.trackedFileSearch()?.truncated) {
+        <div class="palette-result-limit">More files match. Refine your search to narrow the results.</div>
+      }
+    </div>
+    <footer class="palette-footer">
+      <small class="palette-result-count" aria-live="polite">{{ items.length }} {{ scope() === 'branches' ? (items.length === 1 ? 'branch' : 'branches') : scope() === 'files' || query().trim() ? (items.length === 1 ? 'result' : 'results') : (items.length === 1 ? 'command' : 'commands') }}</small>
+      @if (!query().trim() && scope() === 'all') { <span class="palette-search-hint">Commands · repos · refs · files</span> }
+      @if (scope() === 'branches') { <span class="palette-search-hint">Local · remote</span> }
+      <span class="palette-navigation-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span class="palette-jump-hint"><kbd>PgUp</kbd><kbd>PgDn</kbd> Jump</span><span><kbd>↵</kbd> {{ scope() === 'branches' ? 'Switch' : 'Run' }}</span><span><kbd>Esc</kbd> Close</span>
+    </footer>
+  </section>
+</div>

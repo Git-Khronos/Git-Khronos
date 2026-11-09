@@ -1,0 +1,54 @@
+<section class="fork-create" aria-label="Create a GitLab fork" [attr.aria-busy]="busy() ? true : null" (keydown)="preventSubmit($event)">
+  <h4 #heading tabindex="-1">Review a new fork request</h4>
+  <p>Source: {{ project().fullPath }} · {{ connection().account.login }} · {{ connection().account.origin }}</p>
+  <p>This request includes all branches. Namespace visibility does not grant creation permission. GitLab may import the repository asynchronously.</p>
+  <div class="actions"><button type="button" [disabled]="!!busy()" (click)="returnToForks()">Return to fork browser</button></div>
+  @if (error()) { <p #errorBox class="error" role="alert" tabindex="-1">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  @if (busy(); as operation) {
+    <div class="actions" role="status"><span>{{ operation === 'namespaces' ? 'Reading namespaces…' : operation === 'preparing' ? 'Checking the fork request…' : 'Submitting the reviewed request…' }}</span>
+      <button type="button" [disabled]="cancelling()" (click)="cancel()">{{ cancelling() ? 'Stopping the wait…' : 'Stop waiting' }}</button></div>
+    @if (operation === 'submitting') { <p>Stopping the wait does not undo a request GitLab has received. Inspect saved outcomes before another submission.</p> }
+  }
+  @if (!outcome() && !uncertain()) {
+    <fieldset [disabled]="locked()"><legend>Destination namespace</legend>
+      <label for="fork-namespace-search">Namespace search<input id="fork-namespace-search" type="search" maxlength="256" [value]="search()" (input)="change('search', $any($event.target).value)" [attr.aria-invalid]="searchError() ? true : null" /></label>
+      @if (searchError()) { <p class="error">Use a single-line search of at most 256 bytes.</p> }
+      <label class="check"><input type="checkbox" [checked]="ownedOnly()" (change)="changeOwned($any($event.target).checked)" />Only namespaces I own</label>
+      <button type="button" [disabled]="searchError() || locked()" (click)="loadNamespaces()">Load destination namespaces</button>
+      @if (namespaceQueryChanged()) { <p role="status">Reload namespaces to apply this search.</p> }
+      @if (namespaces(); as page) {
+        <label for="fork-namespace">Destination namespace<select id="fork-namespace" [value]="namespaceId()" [disabled]="namespaceQueryChanged()" (change)="change('namespace', $any($event.target).value)">
+          <option value="">Choose a namespace</option>
+          @for (item of page.entries; track item.id) { <option [value]="item.id">{{ item.fullPath }} · {{ item.kind }} · ID {{ item.id }}</option> }
+        </select></label>
+        @if (!page.entries.length) { <p>No accessible destination namespaces were returned.</p> }
+        <nav aria-label="Destination namespace pages"><button type="button" [disabled]="locked() || namespaceQueryChanged() || page.page <= 1" (click)="loadNamespaces(page.page - 1)">Previous namespace page</button><span>Page {{ page.page }}</span><button type="button" [disabled]="locked() || namespaceQueryChanged() || !page.nextPage" (click)="loadNamespaces(page.nextPage!)">Next namespace page</button></nav>
+      }
+    </fieldset>
+    <fieldset [disabled]="locked()"><legend>Project destination</legend>
+      <label for="fork-project-path">Project path<input id="fork-project-path" maxlength="255" [value]="projectPath()" (input)="change('path', $any($event.target).value)" [attr.aria-invalid]="pathError() ? true : null" aria-describedby="fork-path-help" /></label>
+      <p id="fork-path-help">Use letters, digits, dots, underscores or hyphens, starting and ending with a letter or digit. GitLab also applies its reserved-name rules.</p>
+      <label for="fork-project-name">Display name (optional)<input id="fork-project-name" maxlength="255" [value]="projectName()" (input)="change('name', $any($event.target).value)" [attr.aria-invalid]="nameError() ? true : null" /></label>
+      <button type="button" [disabled]="!canPrepare()" (click)="prepare()">Prepare fork review</button>
+    </fieldset>
+  }
+  @if (prepared(); as result) {
+    <section #review class="details" aria-label="Prepared fork request" tabindex="-1">
+      <h4>Confirm the destination</h4>
+      <dl><dt>Account</dt><dd>{{ result.preview.account.login }} · {{ result.preview.account.origin }}</dd>
+        <dt>Source</dt><dd>{{ result.preview.source.fullPath }} · ID {{ result.preview.source.id }}</dd>
+        <dt>Destination</dt><dd>{{ result.preview.targetFullPath }}</dd>
+        <dt>Namespace</dt><dd>{{ result.preview.namespace.kind }} · ID {{ result.preview.namespace.id }}</dd>
+        <dt>Display name</dt><dd>{{ result.preview.projectName ?? 'Use the source project name' }}</dd><dt>Branches</dt><dd>All branches</dd></dl>
+      <p>Submitting sends one creation request to this instance. The review expires and is consumed once. Editing the destination clears this review.</p>
+      <div class="actions"><button type="button" [disabled]="locked()" (click)="invalidate()">Discard fork review</button><button type="button" [disabled]="locked()" (click)="submit()">Submit reviewed fork request</button></div>
+    </section>
+  }
+  @if (outcome(); as result) {
+    <section class="details" aria-label="Fork submission outcome"><h4>{{ outcomeLabel(result) }}</h4><p>Saved outcome ID: <code>{{ result.recordId }}</code></p>
+      @if (result.httpStatus) { <p>HTTP status: {{ result.httpStatus }}</p> }
+      <p>This response does not confirm a completed import or Git access. Inspect the saved outcome with a matching connected account.</p></section>
+  }
+  @if (outcome() || uncertain()) { <button type="button" [disabled]="!!busy()" (click)="viewOutcomes()">Inspect saved fork outcomes</button> }
+</section>

@@ -1,0 +1,80 @@
+@let review = action();
+<div class="confirmation-backdrop" (click)="closed.emit()">
+  <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="history-confirmation-title"
+    (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
+    <div class="confirmation-icon" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'"><gc-icon [name]="review.kind === 'split' ? 'edit' : review.kind === 'cherry-pick' ? 'cherry-pick' : review.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
+    <div class="confirmation-copy">
+      <span>{{ review.kind === 'split' ? 'Split stopped commit' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits') : 'Reset to commit' }}</span>
+      <h2 id="history-confirmation-title">{{ review.kind !== 'reset' && review.oids.length > 1 ? review.oids.length + ' selected commits' : review.label }}</h2>
+      @if (review.kind === 'split') {
+        <p>Move detached HEAD <code [title]="review.oid">{{ shortOid(review.oid) }}</code> to its parent, keeping this commit's changes unstaged. Nothing is discarded or committed automatically. Requires a clean intentional Edit stop.</p>
+        <p>Stage selected files, hunks or lines and create at least two separate commits. New files become untracked until staged. Do not Amend: that would rewrite the parent. Every part uses your reviewed message and current commit identity options; original author and signatures are not automatically inherited.</p>
+        <p>Continue requires a clean working tree and the same combined tree as the stopped commit. The original tip and stopped commit are saved for recovery. Abort may refuse split-created untracked files: review and stage only those files, or move them safely outside the repository, then retry. Unrelated untracked files are not deleted.</p>
+        <button #splitHelp type="button" aria-haspopup="dialog" (click)="documentation.open('split', splitHelp)">Learn about splitting commits…</button>
+      }
+      @if (review.kind === 'cherry-pick') { <p>@if (review.targetBranch) { Switch to <strong>{{ review.targetBranch }}</strong>, then apply this commit's changes there{{ noCommit() ? ' without committing' : ' as a new commit' }}. } @else { Apply {{ review.oids.length === 1 ? "this commit's changes" : 'these commits in oldest-to-newest order' }} onto the current branch{{ noCommit() ? ' without committing' : review.oids.length === 1 ? ' as a new commit' : ' as new commits' }}. }</p> }
+      @if (review.kind === 'revert') {
+        @if (review.oids.length === 1) { <p>Create a new commit that safely reverses this commit.</p> } @else {
+          <p>Create one new inverse commit per selected commit, in the reviewed newest-to-oldest order below. Original history stays intact. Requires a clean working tree; the current tip is saved first. Conflicts pause Git's sequence: resolve and stage, then Continue, Skip the conflicted step, or Abort the whole sequence.</p>
+          <ol class="revert-sequence" aria-label="Reviewed revert order">
+            @for (step of revertSteps(); track step.oid) { <li><code [title]="step.oid">{{ shortOid(step.oid) }}</code> {{ step.subject }}</li> }
+          </ol>
+          <button #revertHelp type="button" aria-haspopup="dialog" (click)="documentation.open('revert', revertHelp)">Learn about ordered revert…</button>
+        }
+      }
+      @if (review.kind === 'cherry-pick') {
+        <label class="commit-option"><input type="checkbox" [ngModel]="noCommit()" (ngModelChange)="noCommitChanged.emit($event)" [disabled]="git.busy()" />Apply changes without creating commits</label>
+        @if (noCommit()) { <p>Apply in reviewed order to the index and working tree. HEAD stays unchanged. Review the staged result and commit explicitly with your own message and identity. Requires a clean working tree; the original tip is saved. Conflicts pause a restart-safe sequence; stage resolutions and Continue without committing.</p> }
+      }
+      @if (parents().length) {
+        @if (review.oids.length > 1) {
+          <p role="alert">Replay merge commits individually so each mainline parent can be reviewed.</p>
+        } @else {
+          <div class="upstream-picker">
+            <label for="history-mainline">Mainline parent (required)</label>
+            <select id="history-mainline" aria-describedby="history-mainline-hint" [ngModel]="mainline()" (ngModelChange)="mainlineChanged.emit($event)" [disabled]="git.busy()">
+              <option [ngValue]="null">Choose a parent...</option>
+              @for (parent of parents(); track $index) { <option [ngValue]="$index + 1" [title]="parent">Parent {{ $index + 1 }} · {{ shortOid(parent) }}</option> }
+            </select>
+          </div>
+          <p id="history-mainline-hint">The selected parent is the baseline. {{ review.kind === 'cherry-pick' ? 'Apply the merge difference relative to that parent.' : 'Reverse the merge difference relative to that parent; the original merge remains in history.' }} Parent 1 is not selected automatically. Commit or stash local changes first. The current tip is saved for recovery before execution.</p>
+          <button #mainlineHelp type="button" aria-haspopup="dialog" (click)="documentation.open(review.kind === 'cherry-pick' ? 'cherry-pick' : 'revert', mainlineHelp)">Learn about merge mainline…</button>
+        }
+      }
+      @if (review.kind === 'reset') {
+        <p>Choose what happens to changes after moving <strong>{{ git.repository()?.status?.branch || 'detached HEAD' }}</strong> to this commit. Remote branches are not changed.</p>
+        <div class="reset-options">
+          <label [class.selected]="resetMode() === 'soft'"><input type="radio" name="resetMode" value="soft" [disabled]="git.busy()" [ngModel]="resetMode()" (ngModelChange)="previewRequested.emit($event)" /><span><strong>Soft</strong><small>Keep changes staged</small></span></label>
+          <label [class.selected]="resetMode() === 'mixed'"><input type="radio" name="resetMode" value="mixed" [disabled]="git.busy()" [ngModel]="resetMode()" (ngModelChange)="previewRequested.emit($event)" /><span><strong>Mixed</strong><small>Keep changes unstaged</small></span></label>
+          <label class="hard" [class.selected]="resetMode() === 'hard'"><input type="radio" name="resetMode" value="hard" [disabled]="git.busy()" [ngModel]="resetMode()" (ngModelChange)="previewRequested.emit($event)" /><span><strong>Hard</strong><small>Discard tracked working changes</small></span></label>
+        </div>
+        <div class="reset-preview" aria-live="polite">
+          @if (previewBusy()) {
+            <p role="status">Reading the complete reset scope...</p>
+          } @else if (preview(); as captured) {
+            <p><code>{{ shortOid(captured.headOid) }}</code> to <code>{{ shortOid(captured.targetOid) }}</code> · {{ captured.paths.length }} {{ captured.mode === 'mixed' ? 'index' : 'tracked' }} paths affected</p>
+            @if (captured.paths.length) {
+              <details><summary>Review affected paths</summary><ul class="discard-preview-paths">@for (path of captured.paths; track path) { <li>{{ path }}</li> }</ul></details>
+            }
+            <p>Original history and staged/unstaged tracked contents will be saved before resetting. Recover them on a new branch from <strong>Recovery History</strong>, even after restarting.</p>
+            <p>Untracked, ignored and submodule working contents are not captured. Hard reset refuses local obstructions instead of deleting them.</p>
+          }
+          @if (git.error()) { <p class="recovery-error" role="alert" tabindex="-1">{{ git.error() }}</p> }
+          @if (!previewBusy()) { <button type="button" [disabled]="git.busy()" (click)="previewRequested.emit(resetMode())">Review a new preview</button> }
+        </div>
+      }
+      @if (review.kind !== 'reset' && git.error()) {
+        <p class="recovery-error" role="alert" tabindex="-1">{{ git.error() }}</p>
+        @if (review.kind === 'revert' && review.oids.length > 1) {
+          <p>A failed hook can leave an inverse step staged inside Git's sequence. Close this confirmation and review current changes. If Continue refuses staged changes, explicitly commit the reviewed inverse step, then Continue; or Abort the sequence. Do not replay the whole selection again.</p>
+        } @else if (parents().length) { <p>A failed hook can leave applied changes staged. Close this confirmation and review them before retrying. Use Continue or Abort if Git reports an active operation; otherwise commit explicitly or restore the original tip.</p> }
+      }
+    </div>
+    <footer>
+      <button type="button" data-history-dialog-cancel (click)="closed.emit()">Cancel</button>
+      <button class="confirm-action" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'" type="button" [disabled]="git.busy() || (review.kind === 'reset' && !preview()) || (parents().length > 0 && (review.oids.length !== 1 || !mainline()))" (click)="execute.emit()">
+        {{ review.kind === 'split' ? 'Begin split' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits') : 'Reset ' + resetMode() }}
+      </button>
+    </footer>
+  </section>
+</div>

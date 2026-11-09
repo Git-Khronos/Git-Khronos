@@ -1,0 +1,14 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Git Khronos
+Upstream-Contact: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Source: https://github.com/Git-Khronos/Git-Khronos
+
+Files: *
+Copyright: 2026 Maurizio Casciano and Git Khronos contributors
+License: GPL-3.0-only
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, version 3 only.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 is available in /usr/share/common-licenses/GPL-3.

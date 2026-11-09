@@ -1,0 +1,21 @@
+<div class="confirmation-backdrop" (click)="closed.emit()">
+  <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="prune-lfs-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+    <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+    <div class="confirmation-copy">
+      <span>Clean Git LFS storage</span>
+      <h2 id="prune-lfs-title">Remove unreferenced LFS objects?</h2>
+      @if (preview(); as result) {
+        @if (result.objects.length) {
+          <p><strong>{{ result.objects.length }} {{ result.objects.length === 1 ? 'object' : 'objects' }} · {{ formatSize(result.totalSize) }}</strong> in local LFS storage {{ result.objects.length === 1 ? 'is' : 'are' }} not referenced by any Git object: no branch, tag, stash, reflog, index or unreachable commit points to {{ result.objects.length === 1 ? 'it' : 'them' }}.</p>
+          <ul class="lfs-prune-list" aria-label="Reviewed unreferenced LFS objects">
+            @for (object of result.objects.slice(0, 200); track object.oid) { <li><code [title]="'sha256:' + object.oid">{{ object.oid.slice(0, 12) }}</code><span>{{ formatSize(object.size) }}</span></li> }
+          </ul>
+          @if (result.objects.length > 200) { <p class="lfs-prune-note">and {{ result.objects.length - 200 }} more reviewed objects.</p> }
+        } @else { <p role="status"><strong>Nothing to remove.</strong> Every local LFS object is referenced by Git or was written in the last hour.</p> }
+        <p class="lfs-prune-note">Kept: {{ result.referenced }} referenced{{ result.recent ? ', ' + result.recent + ' written in the last hour' : '' }}.@if (result.remaining) { {{ result.remaining }} more unreferenced objects can be reviewed after this batch.} Storage is re-checked before removal; removed copies have no offline undo.</p>
+      } @else { <p role="status" aria-live="polite">Reviewing local LFS storage against every Git object…</p> }
+      <details class="lfs-retention-prune"><summary>Advanced: Git LFS retention prune</summary><p>Runs <code>git lfs prune</code> with the current retention and fetch-exclude settings. Historical, orphaned or fetch-excluded objects may be removed without an exact list or remote verification, and reflogs do not protect them. Never use it on storage shared with another repository.</p><button class="danger" type="button" [disabled]="git.busy()" (click)="retentionConfirmed.emit()">Run git lfs prune</button></details>
+    </div>
+    <footer><button type="button" (click)="closed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || reviewing() || !preview()?.objects?.length" (click)="confirmed.emit()">{{ actionLabel() }}</button></footer>
+  </section>
+</div>

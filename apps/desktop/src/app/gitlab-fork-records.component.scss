@@ -1,0 +1,12 @@
+:host { display: block; min-width: 0; }
+.records, .details, li { display: grid; gap: 12px; min-width: 0; }
+.records { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--overlay-border); }
+h3, h4, p { margin: 0; } p, dd, code { overflow-wrap: anywhere; line-height: 1.5; }
+ul { padding: 0; margin: 0; list-style: none; } li, .details { padding: 12px; border: 1px solid var(--overlay-border); border-radius: 5px; margin-bottom: 12px; }
+.highlighted, .details { border-color: var(--accent); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--inspector-row); color: var(--text); font: inherit; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
+button:disabled { opacity: .55; cursor: default; } .check { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; } input[type=checkbox] { flex-shrink: 0; width: 18px; height: 18px; }
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 6px 12px; margin: 0; } dd { min-width: 0; margin: 0; } .error { color: var(--danger); }
+@media (max-width: 600px) { dl { grid-template-columns: minmax(0, 1fr); } }

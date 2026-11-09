@@ -1,4 +1,4 @@
-import type { Remote } from '@git-chronos/contracts';
+import type { Remote } from '@git-khronos/contracts';
 
 export type HostingProvider = 'GitHub' | 'GitLab' | 'Bitbucket';
 

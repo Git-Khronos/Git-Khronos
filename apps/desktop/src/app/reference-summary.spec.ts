@@ -70,6 +70,19 @@ describe('buildCompactReferenceSummary', () => {
     expect(summary.locations.map((location) => location.kind)).toEqual(['head', 'remote']);
     expect(summary.hiddenCount).toBe(1);
   });
+
+  it('identifies checkpoints separately from local branches', () => {
+    const ref = 'refs/copilot/checkpoints/session/one';
+    const summary = buildCompactReferenceSummary([
+      { decoration: ref, label: ref, kind: 'checkpoint' },
+      { decoration: 'HEAD -> main', label: 'main', kind: 'head' },
+    ]);
+
+    expect(summary.label).toBe('main');
+    expect(summary.hiddenCount).toBe(1);
+    expect(buildCompactReferenceSummary([{ decoration: ref, label: ref, kind: 'checkpoint' }]).ariaLabel)
+      .toContain('Copilot checkpoint');
+  });
 });
 
 describe('buildReferenceGroups', () => {
@@ -122,6 +135,16 @@ describe('buildReferenceGroups', () => {
     expect(groups).toHaveLength(2);
     expect(new Set(groups.map((group) => group.key)).size).toBe(2);
     expect(groups.map((group) => group.locations[0].kind)).toEqual(['local', 'tag']);
+  });
+
+  it('keeps individual checkpoints separate when they point to the same commit', () => {
+    const groups = buildReferenceGroups([
+      { decoration: 'refs/copilot/checkpoints/session/one', label: 'checkpoint', kind: 'checkpoint' },
+      { decoration: 'refs/copilot/checkpoints/session/two', label: 'checkpoint', kind: 'checkpoint' },
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(new Set(groups.map((group) => group.key)).size).toBe(2);
   });
 
   it('describes a shared branch as one branch across multiple locations', () => {

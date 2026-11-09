@@ -1,0 +1,135 @@
+name: Debian release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  debian:
+    name: Build Ubuntu package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require release commit to be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: go-task/setup-task@v1
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl
+      - name: Check release tag matches project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          project_version="$(node -p "require('./package.json').version")"
+          test "$version" = "$project_version" || {
+            echo "Tag $RELEASE_TAG does not match package version $project_version." >&2
+            exit 1
+          }
+      - run: pnpm install --frozen-lockfile
+      - name: Test and build Debian package
+        run: |
+          pnpm nx run desktop:package-test --output-style=static
+          pnpm nx run desktop:package-deb --output-style=static
+      - name: Install checksum-verified Syft
+        run: |
+          version=1.57.1
+          asset="syft_${version}_linux_amd64.tar.gz"
+          url="https://github.com/anchore/syft/releases/download/v${version}"
+          mkdir -p "$RUNNER_TEMP/syft"
+          curl --fail --silent --show-error --location "$url/$asset" --output "$RUNNER_TEMP/syft/$asset"
+          curl --fail --silent --show-error --location "$url/syft_${version}_checksums.txt" \
+            --output "$RUNNER_TEMP/syft/checksums.txt"
+          awk -v asset="$asset" '$2 == asset || $2 == "*" asset' "$RUNNER_TEMP/syft/checksums.txt" \
+            > "$RUNNER_TEMP/syft/asset.sha256"
+          test "$(wc -l < "$RUNNER_TEMP/syft/asset.sha256")" -eq 1
+          (cd "$RUNNER_TEMP/syft" && sha256sum --check --status asset.sha256)
+          tar -xzf "$RUNNER_TEMP/syft/$asset" -C "$RUNNER_TEMP/syft" syft
+          echo "$RUNNER_TEMP/syft" >> "$GITHUB_PATH"
+      - name: Prepare release package and checksum
+        run: |
+          package="$(task --silent package:deb:path)"
+          version="${GITHUB_REF_NAME#v}"
+          asset="$(basename "$package")"
+          test "$(dpkg-deb -f "$package" Package)" = git-khronos
+          test "$(dpkg-deb -f "$package" Version)" = "$version"
+          test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          mkdir -p release-assets
+          cp -- "$package" release-assets/
+          syft scan "file:$PWD/release-assets/$asset" \
+            -o "cyclonedx-json=$PWD/release-assets/${asset%.deb}.cdx.json"
+          syft scan "dir:$GITHUB_WORKSPACE" \
+            --source-name "Git Khronos source dependencies" \
+            --source-version "$version" \
+            --exclude '**/node_modules/**' \
+            --exclude '**/target/**' \
+            --exclude '**/dist/**' \
+            --exclude '**/release-assets/**' \
+            --exclude '**/.git/**' \
+            -o "cyclonedx-json=$PWD/release-assets/Git-Khronos_${version}_source.cdx.json"
+          jq -e '.bomFormat == "CycloneDX" and (.components | type == "array")' \
+            "release-assets/${asset%.deb}.cdx.json" >/dev/null
+          jq -e '.bomFormat == "CycloneDX" and (.components | length > 0)' \
+            "release-assets/Git-Khronos_${version}_source.cdx.json" >/dev/null
+          (
+            cd release-assets
+            sha256sum -- "$asset" "${asset%.deb}.cdx.json" \
+              "Git-Khronos_${version}_source.cdx.json" > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish GitHub release
+    needs: debian
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "release-assets/Git-Khronos_${version}_amd64.deb" \
+            "release-assets/Git-Khronos_${version}_amd64.cdx.json" \
+            "release-assets/Git-Khronos_${version}_source.cdx.json" \
+            release-assets/SHA256SUMS \
+            --verify-tag \
+            --latest \
+            --title "Git Khronos ${version}" \
+            --notes "Debian package built and verified on Ubuntu 24.04. Requires glibc 2.39 or newer. Includes a CycloneDX inventory of the Debian artifact and a separate source-lockfile dependency inventory (which includes development/build dependencies), with SHA256SUMS for all three assets."

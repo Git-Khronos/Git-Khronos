@@ -1,9 +1,9 @@
 {
-  "name": "git-chronos",
+  "name": "git-khronos",
   "version": "0.1.0",
   "private": true,
   "license": "GPL-3.0-only",
-  "packageManager": "pnpm@12.4.2",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
     "node": ">=24.15.0 <25 || >=26.0.0 <27",
     "pnpm": ">=10"
@@ -20,29 +20,31 @@
     "tauri:build": "nx run desktop:tauri-build"
   },
   "dependencies": {
-    "@angular/common": "22.2.0",
-    "@angular/compiler": "22.2.0",
-    "@angular/core": "22.2.0",
-    "@angular/forms": "22.2.0",
-    "@angular/platform-browser": "22.2.0",
-    "@angular/router": "22.2.0",
+    "@angular/common": "22.2.3",
+    "@angular/compiler": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@angular/forms": "22.2.3",
+    "@angular/platform-browser": "22.2.3",
+    "@angular/router": "22.2.3",
     "@tauri-apps/api": "2.12.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
+    "marked": "18.1.2",
     "rxjs": "^7.8.2",
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@angular/build": "22.2.1",
-    "@angular/cli": "22.2.1",
-    "@angular/compiler-cli": "22.2.0",
+    "@angular/build": "22.2.4",
+    "@angular/cli": "22.2.4",
+    "@angular/compiler-cli": "22.2.3",
     "@nx/angular": "23.2.1",
     "@nx/js": "23.2.1",
     "@playwright/test": "1.63.0",
     "@tauri-apps/cli": "^2.12.0",
+    "@types/node": "24.19.2",
     "nx": "23.2.1",
     "typescript": "~6.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.12"
   }
 }

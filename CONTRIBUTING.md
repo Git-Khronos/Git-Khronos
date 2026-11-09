@@ -1,4 +1,4 @@
-# Contributing to Git Chronos
+# Contributing to Git Khronos
 
 Thank you for helping build a Git client that stays free, local-first, and
 pleasant to use.

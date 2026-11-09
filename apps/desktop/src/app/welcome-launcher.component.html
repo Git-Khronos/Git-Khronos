@@ -1,0 +1,89 @@
+<main class="welcome">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <header class="welcome-nav">
+    <div class="brand"><span class="brand-mark">GC</span><span>Git Khronos</span></div>
+    <div class="welcome-controls">
+      <ng-container *ngTemplateOutlet="workspaceControl()"></ng-container>
+      <button class="welcome-theme-toggle" type="button" title="Switch to {{ appTheme() === 'chronos' ? 'Midnight Contrast' : 'Chronos Dark' }}" aria-label="Switch application theme" (click)="themeToggled.emit()"><gc-icon name="eye" [size]="14" /><span>{{ appTheme() === 'chronos' ? 'Chronos Dark' : 'Midnight Contrast' }}</span></button>
+      <div class="version">{{ git.systemInfo()?.appVersion ?? 'starting…' }}</div>
+    </div>
+  </header>
+
+  <section class="welcome-launcher" aria-labelledby="welcome-launcher-title">
+    <div class="welcome-launcher-heading">
+      <span class="welcome-launcher-mark" aria-hidden="true"><gc-icon name="folder-git" [size]="22" /></span>
+      <div><h1 id="welcome-launcher-title">Open a repository</h1><p>Choose a local repository, clone a remote, or start a new one.</p></div>
+    </div>
+    <div class="hero-actions">
+      <button #openRepositoryAction class="primary large welcome-open-action" type="button" title="Open a local repository ({{ primaryShortcutKey() }}+Shift+O)" aria-keyshortcuts="Control+Shift+O Meta+Shift+O" (click)="repositoryChosen.emit()">
+        <span class="welcome-action-icon"><gc-icon name="folder-git" [size]="18" /></span><span class="welcome-action-copy"><strong>Open repository</strong><small>Use an existing local working copy</small></span><kbd>{{ primaryShortcutKey() }} ⇧ O</kbd>
+      </button>
+      <button class="secondary large" type="button" (click)="repositoryManagerOpened.emit('clone')"><span class="welcome-action-icon"><gc-icon name="copy" [size]="17" /></span><span class="welcome-action-copy"><strong>Clone repository</strong><small>Download from a remote URL</small></span></button>
+      <button class="secondary large" type="button" (click)="repositoryManagerOpened.emit('init')"><span class="welcome-action-icon"><gc-icon name="plus" [size]="17" /></span><span class="welcome-action-copy"><strong>Initialize repository</strong><small>Create a repository in a folder</small></span></button>
+      @if (git.recentlyClosedRepositoryPath(); as closedPath) {
+        <button class="secondary large welcome-reopen-action" type="button" title="{{ primaryShortcutKey() }}+Shift+T" (click)="closedRepositoryReopened.emit()"><span class="welcome-action-icon"><gc-icon name="redo" [size]="17" /></span><span class="welcome-action-copy"><strong>Reopen {{ git.pathLabel(closedPath) }}</strong><small>Restore the most recently closed tab</small></span></button>
+      }
+    </div>
+    <button class="secondary" type="button" (click)="editorDraftRecoveryOpened.emit()">Editor draft recovery</button>
+    @if (git.systemInfo(); as info) {
+      <div class="git-health" [class.warning]="info.appVersion !== 'browser preview' && !info.gitSupported">
+        <span class="health-dot"></span>
+        @if (info.appVersion === 'browser preview') { Browser preview uses sample data. Native Git commands run in the desktop app. }
+        @else if (info.gitVersion) { Git {{ info.gitVersion }} {{ info.gitSupported ? 'ready' : 'is older than supported' }} }
+        @else { Git was not found. Install Git {{ info.minimumGitVersion }} or newer. }
+      </div>
+    }
+  </section>
+
+  @if (repositoryHistoryCount() >= 4) {
+    <section class="welcome-repository-filter" aria-label="Filter repository history">
+      <label><gc-icon name="search" [size]="13" /><input #repositoryFilter type="search" aria-label="Filter favorites and recent repositories" placeholder="Filter repositories by name or path" [value]="repositoryQuery()" (input)="repositoryQuery.set(repositoryFilter.value)" (keydown.escape)="$event.stopPropagation(); clearRepositoryFilter()" />@if (repositoryQuery()) { <button type="button" aria-label="Clear repository filter" title="Clear repository filter (Esc)" (click)="clearRepositoryFilter()"><gc-icon name="x" [size]="11" /></button> }</label>
+      <span data-welcome-filter-status role="status" aria-live="polite">{{ visibleRepositoryCount() }} of {{ repositoryHistoryCount() }} shown</span>
+    </section>
+  }
+
+  @if (repositoryQuery() && !visibleRepositoryCount()) {
+    <section class="welcome-repository-empty" aria-label="No matching repositories">
+      <span><gc-icon name="search" [size]="18" /></span><div><strong>No matching repositories</strong><small>Try part of a repository name or folder path.</small></div><button type="button" (click)="clearRepositoryFilter()">Clear filter</button>
+    </section>
+  }
+
+  @if (filteredFavoritePaths().length) {
+    <section class="recents favorites" aria-labelledby="favorites-title">
+      <div class="section-heading"><h2 id="favorites-title">Favorites</h2><span>{{ filteredFavoritePaths().length }}{{ repositoryQuery() ? ' of ' + git.favoritePaths().length : '' }} pinned</span></div>
+      <div class="recent-grid">
+        @for (path of filteredFavoritePaths(); track path) {
+          @let shortcutIndex = git.favoritePaths().indexOf(path);
+          <div class="welcome-repository-card favorite">
+            <button class="welcome-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="favoriteOpened.emit(path)">
+              <span class="repo-icon"><gc-icon name="folder-git" [size]="18" /></span><span class="recent-copy"><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span>
+              @if (shortcutIndex < 9) { <kbd>{{ favoriteShortcut() }} {{ shortcutIndex + 1 }}</kbd> }
+            </button>
+            <span class="welcome-repository-actions"><button class="welcome-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="14" /></button></span>
+            <span class="repository-path-tooltip" role="tooltip">{{ path }}</span>
+          </div>
+        }
+      </div>
+    </section>
+  }
+  @if (filteredRecentPaths().length) {
+    <section class="recents" aria-labelledby="recents-title">
+      <div class="section-heading"><h2 id="recents-title">Recent repositories</h2><span>{{ filteredRecentPaths().length }}{{ repositoryQuery() ? ' of ' + git.unpinnedRecentPaths().length : '' }} {{ filteredRecentPaths().length === 1 ? 'repository' : 'repositories' }}</span></div>
+      <div class="recent-grid">
+        @for (path of filteredRecentPaths(); track path) {
+          <div class="welcome-repository-card">
+            <button class="welcome-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="repositoryOpened.emit(path)">
+              <span class="repo-icon"><gc-icon name="folder-git" [size]="18" /></span><span class="recent-copy"><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><gc-icon class="arrow" name="chevron-right" [size]="12" />
+            </button>
+            <span class="welcome-repository-actions">
+              <button class="welcome-favorite-toggle" type="button" [class.active]="git.isFavoritePath(path)" title="{{ git.isFavoritePath(path) ? 'Remove from favorites' : 'Add to favorites' }}" [attr.aria-label]="(git.isFavoritePath(path) ? 'Remove ' : 'Add ') + git.pathLabel(path) + (git.isFavoritePath(path) ? ' from favorites' : ' to favorites')" [attr.aria-pressed]="git.isFavoritePath(path)" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="14" /></button>
+              <button class="welcome-recent-remove" type="button" title="Remove {{ git.pathLabel(path) }} from recent repositories" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from recent repositories'" (click)="git.removeRecentPath(path)"><gc-icon name="x" [size]="14" /></button>
+            </span>
+            <span class="repository-path-tooltip" role="tooltip">{{ path }}</span>
+          </div>
+        }
+      </div>
+    </section>
+  }
+</main>

@@ -1,0 +1,18 @@
+selectors 0.38.0
+
+The published selectors crate declares the Mozilla Public License 2.0
+(MPL-2.0), and its source files carry MPL-2.0 license headers.
+
+The unmodified source distribution, including its upstream license notices,
+is available from the versioned public crate archive:
+https://static.crates.io/crates/selectors/selectors-0.38.0.crate
+
+The license terms are available from Mozilla:
+https://www.mozilla.org/en-US/MPL/2.0/
+
+The published crate records this upstream source revision:
+https://github.com/servo/stylo/tree/572ecba2d1600e7c3d490586692a209faf703baa/selectors
+
+This source-availability notice was written for Git Khronos. It is not an
+upstream LICENSE file and does not replace or alter the upstream source
+license notices or recipients' rights in that source.

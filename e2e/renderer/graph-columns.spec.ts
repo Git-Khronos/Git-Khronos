@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expectGraphLayout as expectLayout, HEADINGS, type Column } from './graph-layout-test-helpers';
 
 // Exhaustive layout checks for the commit history columns: every ordering, resizing from every
 // separator, both horizontal-scroll modes, window resizes, and real drag-and-drop reordering.
 
-type Column = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 
-const REPOSITORY_KEY = 'git-chronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-chronos';
+const REPOSITORY_KEY = 'git-khronos.graph.%2Fhome%2Fmaya%2Fprojects%2Fgit-khronos';
 const DEFAULT_VISIBLE: Column[] = ['branch', 'graph', 'message', 'author', 'date'];
 const SEPARATORS: Record<Column, string> = {
   branch: 'Resize Branch and Tag column',
@@ -14,9 +14,6 @@ const SEPARATORS: Record<Column, string> = {
   author: 'Resize Author column',
   date: 'Resize Date and Time column',
   sha: 'Resize SHA column',
-};
-const HEADINGS: Record<Column, string> = {
-  branch: 'BRANCH / TAG', graph: 'GRAPH', message: 'COMMIT MESSAGE', author: 'AUTHOR', date: 'DATE / TIME', sha: 'SHA',
 };
 
 function permutations<T>(items: T[]): T[][] {
@@ -31,96 +28,12 @@ async function openWithLayout(page: Page, order: Column[], options: { scroll?: b
     const hidden = (['branch', 'graph', 'message', 'author', 'date', 'sha'] as const).filter((column) => !order.includes(column));
     localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...hidden]));
     if (options.sha) localStorage.setItem(`${key}.column.sha.visible`, 'true');
-    if (options.scroll === false) localStorage.setItem('git-chronos.graph.horizontal-scroll', 'false');
+    if (options.scroll === false) localStorage.setItem('git-khronos.graph.horizontal-scroll', 'false');
   }, { key: REPOSITORY_KEY, order, options });
   await page.reload();
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
 }
 
-/** Measures the header and the first commit row, returning every violated layout invariant. */
-function layoutProblems(page: Page, expectedOrder: Column[], fit: boolean) {
-  return page.evaluate(({ expectedOrder, fit }) => {
-    const problems: string[] = [];
-    const header = document.querySelector<HTMLElement>('.graph-columns')!;
-    const list = document.querySelector<HTMLElement>('.commit-list')!;
-    const row = document.querySelector<HTMLElement>('.commit-row[data-commit-oid]')!;
-    const byOrder = (parent: Element, selector: string) => [...parent.querySelectorAll<HTMLElement>(selector)]
-      .filter((element) => element.style.order !== '' && element.getBoundingClientRect().width > 0)
-      .sort((a, b) => Number(a.style.order) - Number(b.style.order));
-    const headings = byOrder(header, ':scope > .draggable-column');
-    const cells = byOrder(row, ':scope > [style*="order"]');
-    const titles = headings.map((heading) => (heading.textContent ?? '').replace(/\s+/g, ' ').trim());
-    if (headings.length !== expectedOrder.length) problems.push(`expected ${expectedOrder.length} headings, found ${headings.length}: ${titles.join('|')}`);
-    const boxes = headings.map((heading) => heading.getBoundingClientRect());
-    for (let index = 1; index < boxes.length; index += 1) {
-      const gap = boxes[index].left - boxes[index - 1].right;
-      if (Math.abs(gap) > 1) problems.push(`${gap < 0 ? 'overlap' : 'gap'} of ${gap.toFixed(1)}px between headings ${index - 1} and ${index}`);
-    }
-    for (const [index, box] of boxes.entries()) {
-      if (box.width < 30) problems.push(`heading ${index} is only ${box.width.toFixed(1)}px wide`);
-    }
-    // Row cells share the heading tracks.
-    for (const [index, cell] of cells.entries()) {
-      const heading = boxes[index];
-      const box = cell.getBoundingClientRect();
-      if (heading && Math.abs(box.left - heading.left) > 1.5) problems.push(`row cell ${index} starts at ${box.left.toFixed(1)}, heading at ${heading.left.toFixed(1)}`);
-    }
-    // The settings button sits inside the last heading's right end, with no empty area before it,
-    // and the last heading never spills past the visible header.
-    const gear = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect();
-    const last = boxes.at(-1)!;
-    const overflow = list.scrollWidth - list.clientWidth;
-    const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);
-    if (gear.width < 20 || gear.width > 32) problems.push(`settings button is ${gear.width.toFixed(1)}px wide`);
-    if (overflow <= 1) {
-      if (Math.abs(last.right - visibleRight) > 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, panel edge at ${visibleRight.toFixed(1)}`);
-      if (gear.right > last.right + 4 || gear.left < last.right - 34) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is outside the last heading's end ${last.right.toFixed(1)}`);
-    }
-    // Scroll markers stay in their own rail and never cover the settings button, or row actions once
-    // they rest at the end (no overflow, or scrolled fully right). Until then, overflowing content
-    // scrolls under the rail as it would under a scrollbar.
-    const atEnd = list.scrollWidth - list.clientWidth - list.scrollLeft <= 1;
-    const actions = [
-      ...(atEnd ? [...document.querySelectorAll<HTMLElement>('.commit-row .row-menu')].map((element) => element.getBoundingClientRect()) : []),
-      document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect(),
-    ];
-    for (const marker of document.querySelectorAll<HTMLElement>('.graph-scroll-marker')) {
-      const box = marker.getBoundingClientRect();
-      if (actions.some((action) => box.left < action.right && action.left < box.right && box.top < action.bottom && action.top < box.bottom)) {
-        problems.push(`scroll marker ${marker.getAttribute('aria-label')} at ${box.left.toFixed(1)}-${box.right.toFixed(1)} covers a row action`);
-      }
-    }
-    if (fit && overflow > 1) problems.push(`fitted columns overflow by ${overflow}px`);
-    if (Math.abs(header.scrollLeft - list.scrollLeft) > 1) problems.push(`header scroll ${header.scrollLeft} differs from list scroll ${list.scrollLeft}`);
-    // Separators report sane, in-range widths that match what is drawn.
-    for (const [index, heading] of headings.entries()) {
-      const separator = heading.querySelector<HTMLElement>(':scope > [role="separator"]');
-      if (!separator) { problems.push(`heading ${index} has no separator`); continue; }
-      const now = Number(separator.getAttribute('aria-valuenow'));
-      const min = Number(separator.getAttribute('aria-valuemin'));
-      const max = Number(separator.getAttribute('aria-valuemax'));
-      const label = separator.getAttribute('aria-label');
-      if (!(min <= now && now <= Math.max(max, now - 0) && min <= max)) problems.push(`${label}: now ${now} outside ${min}-${max}`);
-      if (now < min) problems.push(`${label}: ${now} below minimum ${min}`);
-      const drawn = boxes[index].width - (index === boxes.length - 1 && headings.length ? 26 : 0);
-      if (Math.abs(now - drawn) > 1.5 && Math.abs(now - boxes[index].width) > 1.5) problems.push(`${label}: reports ${now}px, draws ${drawn.toFixed(1)}px`);
-      const isLast = index === headings.length - 1;
-      const leading = separator.classList.contains('leading-edge');
-      if (isLast && index > 0 && !leading) problems.push(`${label}: the last column must resize from its left edge`);
-    }
-    return { problems, titles };
-  }, { expectedOrder, fit });
-}
-
-async function expectLayout(page: Page, order: Column[], context: string, fit = false) {
-  try {
-    await expect.poll(async () => (await layoutProblems(page, order, fit)).problems, { timeout: 3000 }).toEqual([]);
-  } catch {
-    throw new Error(`${context}: ${(await layoutProblems(page, order, fit)).problems.join('; ')}`);
-  }
-  const { titles } = await layoutProblems(page, order, fit);
-  expect(titles.map((title) => title.toUpperCase()), context).toEqual(order.map((column) => expect.stringContaining(HEADINGS[column])));
-}
 
 async function separatorWidth(page: Page, column: Column) {
   return Number(await page.getByRole('separator', { name: SEPARATORS[column], exact: true }).getAttribute('aria-valuenow'));
@@ -142,45 +55,44 @@ async function exerciseSeparators(page: Page, order: Column[], context: string, 
 
 const allOrders = permutations(DEFAULT_VISIBLE);
 
-for (const first of DEFAULT_VISIBLE) {
-  test(`keeps every column ordering starting with ${first} aligned while resizing`, async ({ page }) => {
-    test.setTimeout(240_000);
+// Every permutation gets an independent timeout and failure report. Combining
+// 24 complete resize sequences under one deadline could time out with no layout
+// violation and prevent the remaining permutations from being exercised.
+for (const order of allOrders) {
+  test(`keeps column order ${order.join(',')} aligned while resizing`, async ({ page }) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 1920, height: 900 });
     await page.goto('/');
-    for (const order of allOrders.filter((candidate) => candidate[0] === first)) {
-      await openWithLayout(page, order);
-      await expectLayout(page, order, `${order.join()} initial`);
-      await exerciseSeparators(page, order, order.join(), false);
-    }
+    await openWithLayout(page, order);
+    await expectLayout(page, order, `${order.join()} initial`);
+    await exerciseSeparators(page, order, order.join(), false);
   });
 
-  test(`fits every column ordering starting with ${first} when horizontal scrolling is off`, async ({ page }) => {
-    test.setTimeout(240_000);
+  test(`fits column order ${order.join(',')} when horizontal scrolling is off`, async ({ page }) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto('/');
-    for (const order of allOrders.filter((candidate) => candidate[0] === first)) {
-      await openWithLayout(page, order, { scroll: false });
-      await expectLayout(page, order, `${order.join()} fitted initial`, true);
-      await exerciseSeparators(page, order, `${order.join()} fitted`, true);
-    }
+    await openWithLayout(page, order, { scroll: false });
+    await expectLayout(page, order, `${order.join()} fitted initial`, true);
+    await exerciseSeparators(page, order, `${order.join()} fitted`, true);
   });
 }
 
-test('keeps the SHA column aligned in every position', async ({ page }) => {
-  test.setTimeout(240_000);
-  await page.setViewportSize({ width: 1920, height: 900 });
-  await page.goto('/');
-  for (const base of [DEFAULT_VISIBLE, [...DEFAULT_VISIBLE].reverse()]) {
-    for (let position = 0; position <= base.length; position += 1) {
-      const order = [...base.slice(0, position), 'sha', ...base.slice(position)] as Column[];
-      for (const scroll of [true, false]) {
+for (const base of [DEFAULT_VISIBLE, [...DEFAULT_VISIBLE].reverse()]) {
+  for (let position = 0; position <= base.length; position += 1) {
+    const order = [...base.slice(0, position), 'sha', ...base.slice(position)] as Column[];
+    for (const scroll of [true, false]) {
+      test(`keeps SHA aligned in column order ${order.join(',')} with scroll=${scroll}`, async ({ page }) => {
+        test.setTimeout(60_000);
+        await page.setViewportSize({ width: 1920, height: 900 });
+        await page.goto('/');
         await openWithLayout(page, order, { sha: true, scroll });
         await expectLayout(page, order, `${order.join()} scroll=${scroll}`, !scroll);
         await exerciseSeparators(page, order, `${order.join()} scroll=${scroll}`, !scroll);
-      }
+      });
     }
   }
-});
+}
 
 test('keeps orderings aligned with only some columns shown', async ({ page }) => {
   test.setTimeout(240_000);
@@ -194,10 +106,10 @@ test('keeps orderings aligned with only some columns shown', async ({ page }) =>
     for (const scroll of [true, false]) {
       await page.evaluate(({ key, order, scroll }) => {
         localStorage.clear();
-        const all = ['branch', 'graph', 'message', 'author', 'date', 'sha'];
+        const all: Column[] = ['branch', 'graph', 'message', 'author', 'date', 'sha'];
         for (const column of all) localStorage.setItem(`${key}.column.${column}.visible`, String(order.includes(column)));
         localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...all.filter((column) => !order.includes(column))]));
-        localStorage.setItem('git-chronos.graph.horizontal-scroll', String(scroll));
+        localStorage.setItem('git-khronos.graph.horizontal-scroll', String(scroll));
       }, { key: REPOSITORY_KEY, order, scroll });
       await page.reload();
       await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
@@ -231,7 +143,78 @@ test('keeps column layouts intact across window resizes', async ({ page }) => {
   }
 });
 
-test('resizes the last column from its left edge with the pointer in any ordering', async ({ page }) => {
+test('keeps graph settings controls reachable in a compact window', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 640 });
+  await page.goto('/');
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Configure graph columns' });
+  await toggle.click();
+  const dialog = page.getByRole('dialog', { name: 'Graph settings' });
+  const scrollArea = dialog.locator('.column-settings-scroll');
+  const restore = dialog.getByRole('button', { name: 'Restore graph defaults' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close graph settings' })).toBeVisible();
+  await expect(restore).toBeVisible();
+
+  const before = await restore.boundingBox();
+  expect(before).not.toBeNull();
+  expect(before!.y + before!.height).toBeLessThanOrEqual(640);
+  await scrollArea.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const after = await restore.boundingBox();
+  expect(after).not.toBeNull();
+  expect(after!.y).toBeCloseTo(before!.y, 0);
+
+  await dialog.getByRole('button', { name: 'Close graph settings' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(toggle).toBeFocused();
+
+  await toggle.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(toggle).toBeFocused();
+});
+
+test('discloses hidden graph columns from the column settings control', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 640 });
+  await page.goto('/');
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Configure graph columns' });
+  const count = toggle.locator('.graph-settings-hidden-count');
+  await expect(toggle).toHaveAttribute('title', 'Configure graph columns (3 hidden)');
+  await expect(toggle).toHaveAttribute('aria-describedby', 'graph-hidden-columns-description');
+  await expect(toggle.locator('#graph-hidden-columns-description')).toHaveText('3 hidden columns');
+  await expect(count).toHaveText('3');
+  const badgeContrast = () => count.evaluate((element) => {
+    const parse = (color: string) => color.match(/[\d.]+/g)?.map(Number).slice(0, 3) ?? [];
+    const weights = [0.2126, 0.7152, 0.0722] as const;
+    const luminance = (color: number[]) => color.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }).reduce((total, value, index) => total + value * (weights[index] ?? 0), 0);
+    const foreground = luminance(parse(getComputedStyle(element).color));
+    const background = luminance(parse(getComputedStyle(element).backgroundColor));
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+  await expect.poll(badgeContrast).toBeGreaterThanOrEqual(4.5);
+  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'midnight'; });
+  await expect.poll(badgeContrast).toBeGreaterThanOrEqual(4.5);
+
+  await toggle.click();
+  const dialog = page.getByRole('dialog', { name: 'Graph settings' });
+  await dialog.getByRole('checkbox', { name: 'Author', exact: true }).check();
+  await expect(count).toHaveText('2');
+  await expect(toggle.locator('#graph-hidden-columns-description')).toHaveText('2 hidden columns');
+  await dialog.getByRole('checkbox', { name: 'Date / Time', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: 'SHA', exact: true }).check();
+  await expect(count).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('title', 'Configure graph columns');
+  await expect(toggle).not.toHaveAttribute('aria-describedby', /.+/);
+});
+
+test('resizes the last column from its right edge without moving columns to its left', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto('/');
@@ -246,32 +229,37 @@ test('resizes the last column from its left edge with the pointer in any orderin
       const last = order.at(-1)!;
       const neighbour = order.at(-2)!;
       // Freeze the automatic layout first so widths are exact.
-      await page.getByRole('separator', { name: SEPARATORS[order[0]], exact: true }).focus();
+      const firstSeparator = page.getByRole('separator', { name: SEPARATORS[order[0]], exact: true });
+      const firstWidth = await separatorWidth(page, order[0]);
+      await firstSeparator.focus();
       await page.keyboard.press('ArrowLeft');
+      await expect.poll(() => separatorWidth(page, order[0])).toBe(firstWidth - 8);
       const startLast = await separatorWidth(page, last);
       const startNeighbour = await separatorWidth(page, neighbour);
+      const lastHeading = page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[last] }).first();
+      const lastBox = (await lastHeading.boundingBox())!;
       const handle = (await page.getByRole('separator', { name: SEPARATORS[last], exact: true }).boundingBox())!;
-      const neighbourBox = (await page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[neighbour] }).first().boundingBox())!;
-      // The handle sits on the boundary with the neighbour, not at the panel edge.
-      expect(Math.abs(handle.x + handle.width / 2 - (neighbourBox.x + neighbourBox.width)), order.join()).toBeLessThanOrEqual(2);
+      // The handle sits at the column's right end, not on the boundary with the neighbour.
+      expect(handle.x + handle.width / 2, order.join()).toBeGreaterThan(lastBox.x + lastBox.width / 2);
       const y = handle.y + handle.height / 2;
       const shrinkBy = Math.min(40, startLast - Number(await page.getByRole('separator', { name: SEPARATORS[last], exact: true }).getAttribute('aria-valuemin')));
-      const growBy = Math.min(30, startNeighbour - Number(await page.getByRole('separator', { name: SEPARATORS[neighbour], exact: true }).getAttribute('aria-valuemin')));
-      expect(growBy, `${order.join()} neighbour has room`).toBeGreaterThan(5);
+      expect(shrinkBy, `${order.join()} last column has room`).toBeGreaterThan(5);
       await page.mouse.move(handle.x + handle.width / 2, y);
       await page.mouse.down();
-      await page.mouse.move(handle.x + handle.width / 2 - growBy, y, { steps: 3 });
-      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast + growBy);
-      expect(await separatorWidth(page, neighbour), order.join()).toBe(startNeighbour - growBy);
-      await expectLayout(page, order, `${order.join()} widened last`, !scroll);
-      await page.mouse.move(handle.x + handle.width / 2 + shrinkBy, y, { steps: 3 });
+      await page.mouse.move(handle.x + handle.width / 2 - shrinkBy, y, { steps: 3 });
       await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast - shrinkBy);
-      expect(await separatorWidth(page, neighbour), order.join()).toBe(startNeighbour + shrinkBy);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
+      expect((await lastHeading.boundingBox())!.x, `${order.join()} left edge fixed`).toBeCloseTo(lastBox.x, 0);
+      await page.mouse.move(handle.x + handle.width / 2, y, { steps: 3 });
+      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
+      await page.mouse.move(handle.x + handle.width / 2 - shrinkBy, y, { steps: 3 });
       await page.mouse.up();
-      await expectLayout(page, order, `${order.join()} narrowed last`, !scroll);
+      await expect.poll(() => separatorWidth(page, last), order.join()).toBe(startLast - shrinkBy);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour unchanged`).toBe(startNeighbour);
       await page.reload();
       await expect.poll(() => separatorWidth(page, last), `${order.join()} persisted`).toBe(startLast - shrinkBy);
-      await expectLayout(page, order, `${order.join()} after reload`, !scroll);
+      expect(await separatorWidth(page, neighbour), `${order.join()} neighbour persisted`).toBe(startNeighbour);
     }
   }
 });
@@ -296,7 +284,24 @@ test('reorders columns by dragging headings in both directions and persists the 
     const to = order.indexOf(target);
     order = order.filter((column) => column !== source);
     order.splice(order.indexOf(target) + (from < to ? 1 : 0), 0, source);
-    await heading(source).locator('.column-heading-label, :scope').first().dragTo(heading(target));
+    const [sourceBox, targetBox, headerBox] = await Promise.all([
+      heading(source).boundingBox(),
+      heading(target).boundingBox(),
+      page.locator('.graph-columns').boundingBox(),
+    ]);
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    const visibleCenter = (box: NonNullable<typeof sourceBox>) =>
+      (Math.max(box.x, headerBox!.x) + Math.min(box.x + box.width, headerBox!.x + headerBox!.width - 48)) / 2;
+    const sourceX = visibleCenter(sourceBox!);
+    const targetX = visibleCenter(targetBox!);
+    const y = sourceBox!.y + sourceBox!.height / 2;
+    await page.mouse.move(sourceX, y);
+    await page.mouse.down();
+    await page.mouse.move(sourceX + 10, y, { steps: 2 });
+    await page.mouse.move(targetX, y, { steps: 10 });
+    await page.mouse.up();
     await expectLayout(page, order, `after dragging ${source} onto ${target}`);
     await exerciseSeparators(page, order, `dragged ${source} onto ${target}`, false);
   }
