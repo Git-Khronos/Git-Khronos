@@ -310,7 +310,7 @@ async function packagePayloadFixture(t) {
     'Package: git-khronos', 'Version: 0.1.0', 'Architecture: amd64',
     'Conflicts: git-khronos-desktop', 'Replaces: git-khronos-desktop',
     'Section: vcs', 'Maintainer: Fixture <fixture@example.test>',
-    'Depends: git (>= 1:2.39), libwebkit2gtk-4.1-0, libgtk-3-0',
+    'Depends: git (>= 1:2.39), libc6 (>= 2.39), libwebkit2gtk-4.1-0, libgtk-3-0',
     'Description: Package payload regression fixture', '',
   ].join('\n'));
   await put('usr/bin/git-khronos', '#!/bin/sh\nexit 0\n');
@@ -390,6 +390,19 @@ test('successful package verification cleans only its owned temporary directory'
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(await readdir(temporaryRoot), ['unrelated']);
   assert.equal(await readFile(join(temporaryRoot, 'unrelated'), 'utf8'), 'preserve');
+});
+
+test('package verification requires the glibc version used by the supported build baseline', async (t) => {
+  const { payload, put, build, verify } = await packagePayloadFixture(t);
+  build();
+  assert.equal(verify().status, 0);
+
+  const control = await readFile(join(payload, 'DEBIAN/control'), 'utf8');
+  await put('DEBIAN/control', control.replace('libc6 (>= 2.39)', 'libc6'));
+  build();
+  const refused = verify();
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /glibc 2\.39 or newer/);
 });
 
 for (const [kind, filename] of [['Rust', 'rust-dependency-notices.json.gz'], ['frontend', 'frontend-dependency-notices.txt.gz']]) {

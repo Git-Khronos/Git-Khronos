@@ -25,7 +25,7 @@ usage() {
   cat <<EOF
 Usage: install.sh [options]
 
-Install Git Khronos system-wide on Debian or Ubuntu.
+Install Git Khronos system-wide on Debian or Ubuntu with glibc 2.39 or newer.
 
 Options:
   --version VERSION   Install a specific release (for example 0.1.0).

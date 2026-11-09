@@ -69,6 +69,9 @@ architecture against it, confirms the package is Git Khronos, and installs it
 with APT (which resolves dependencies and asks for `sudo`). Download and read
 the script before running it:
 
+The Debian package requires glibc 2.39 or newer (the Ubuntu 24.04 baseline).
+APT refuses installation on systems with an older glibc.
+
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Git-Khronos/Git-Khronos/main/install.sh
 less install.sh
@@ -104,6 +107,8 @@ package belongs to Git Khronos, and then asks for administrator access through
 Khronos in the desktop application menu, and installs its icons and license
 notices in the standard system locations. Git 2.39 or newer is a required
 package dependency; OpenSSH client and Git LFS are recommended dependencies.
+The Debian package requires glibc 2.39 or newer, matching the Ubuntu 24.04
+build baseline.
 
 To build and verify the `.deb` without installing it, print the generated
 package path, or remove the system package while leaving repositories and

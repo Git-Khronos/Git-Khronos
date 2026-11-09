@@ -51,7 +51,7 @@
         ],
         "depends": [
           "git (>= 1:2.39)",
-          "libc6",
+          "libc6 (>= 2.39)",
           "libssl3"
         ],
         "recommends": [

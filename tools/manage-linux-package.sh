@@ -116,6 +116,7 @@ verify_package() {
   [[ -n "$(package_field "$package_file" Architecture)" ]] || fail "package architecture is empty."
   depends="$(package_field "$package_file" Depends)"
   [[ "$depends" == *"git (>= 1:2.39)"* ]] || fail "package does not require Git 2.39 or newer."
+  [[ "$depends" == *"libc6 (>= 2.39)"* ]] || fail "package does not require glibc 2.39 or newer."
   [[ "$depends" == *"libwebkit2gtk-4.1-0"* ]] || fail "package does not declare the WebKitGTK runtime."
   [[ "$depends" == *"libgtk-3-0"* ]] || fail "package does not declare the GTK runtime."
 
