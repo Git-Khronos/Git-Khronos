@@ -82,11 +82,23 @@ jobs:
           cp -- "$package" release-assets/
           syft scan "file:$PWD/release-assets/$asset" \
             -o "cyclonedx-json=$PWD/release-assets/${asset%.deb}.cdx.json"
+          syft scan "dir:$GITHUB_WORKSPACE" \
+            --source-name "Git Khronos source dependencies" \
+            --source-version "$version" \
+            --exclude '**/node_modules/**' \
+            --exclude '**/target/**' \
+            --exclude '**/dist/**' \
+            --exclude '**/release-assets/**' \
+            --exclude '**/.git/**' \
+            -o "cyclonedx-json=$PWD/release-assets/Git-Khronos_${version}_source.cdx.json"
           jq -e '.bomFormat == "CycloneDX" and (.components | type == "array")' \
             "release-assets/${asset%.deb}.cdx.json" >/dev/null
+          jq -e '.bomFormat == "CycloneDX" and (.components | length > 0)' \
+            "release-assets/Git-Khronos_${version}_source.cdx.json" >/dev/null
           (
             cd release-assets
-            sha256sum -- "$asset" "${asset%.deb}.cdx.json" > SHA256SUMS
+            sha256sum -- "$asset" "${asset%.deb}.cdx.json" \
+              "Git-Khronos_${version}_source.cdx.json" > SHA256SUMS
             sha256sum --check SHA256SUMS
           )
       - uses: actions/upload-artifact@v4
@@ -115,8 +127,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "release-assets/Git-Khronos_${version}_amd64.deb" \
             "release-assets/Git-Khronos_${version}_amd64.cdx.json" \
+            "release-assets/Git-Khronos_${version}_source.cdx.json" \
             release-assets/SHA256SUMS \
             --verify-tag \
             --latest \
             --title "Git Khronos ${version}" \
-            --notes "Debian package built and verified on Ubuntu 24.04. Requires glibc 2.39 or newer. Includes a CycloneDX SBOM and SHA256SUMS for package download verification."
+            --notes "Debian package built and verified on Ubuntu 24.04. Requires glibc 2.39 or newer. Includes a CycloneDX inventory of the Debian artifact and a separate source-lockfile dependency inventory (which includes development/build dependencies), with SHA256SUMS for all three assets."
