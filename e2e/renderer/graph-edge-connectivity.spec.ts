@@ -55,7 +55,7 @@ async function connectivityProblems(page: Page, topology: Topology, compact: boo
         for (const point of [probe.getPointAtLength(0), probe.getPointAtLength(length)]) {
           if (Math.abs(point.y) < 0.01) top.push(point.x);
           else if (Math.abs(point.y - 40) < 0.01) bottom.push(point.x);
-          else if (Math.hypot(point.x - row.nodeOffset, point.y - 20) > radius + 1) {
+          else if (Math.hypot(point.x - row.nodeOffset, point.y - 20) > radius + (segment.mergeTarget ? 2.01 : 1)) {
             problems.push(`${row.commit.oid}: ${app.graphSegmentPath(segment)} ends at ${point.x.toFixed(1)},${point.y.toFixed(1)} away from its avatar`);
           }
         }
@@ -73,6 +73,55 @@ async function connectivityProblems(page: Page, topology: Topology, compact: boo
 }
 
 for (const compact of [false, true]) {
+  test(`routes adjacent and distant merges at the upper corner with arrows (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.author-node').first()).toBeVisible();
+    const topology: Topology = [
+      ['adjacent-merge', ['main', 'branch']],
+      ['branch', ['base']],
+      ['main', ['trunk', 'distant']],
+      ['unrelated', []],
+      ['distant', ['base']],
+      ['trunk', ['base']],
+      ['base', []],
+    ];
+    expect(await connectivityProblems(page, topology, compact, 240)).toEqual([]);
+    const arrows = page.locator('.graph-merge-arrow');
+    await expect(arrows).toHaveCount(2);
+    const geometry = await arrows.evaluateAll(elements => elements.map(element => {
+      const arrow = element as SVGPolylineElement;
+      const tip = arrow.points.getItem(1);
+      const tail = arrow.points.getItem(0);
+      const row = element.closest('[data-commit-oid]')!;
+      const edge = element.previousElementSibling as SVGPathElement;
+      const start = edge.getPointAtLength(0);
+      const end = edge.getPointAtLength(edge.getTotalLength());
+      const avatar = row.querySelector<HTMLElement>('.author-node')!;
+      return {
+        oid: row.getAttribute('data-commit-oid'),
+        tip: [tip.x, tip.y], start: [start.x, start.y], tailX: tail.x,
+        nodeX: Number(avatar.dataset['laneOffset']), end: [end.x, end.y],
+        stroke: getComputedStyle(element).stroke,
+        edgeStroke: getComputedStyle(edge).stroke,
+      };
+    }));
+    for (const arrow of geometry) {
+      expect(arrow.tip).toEqual(arrow.start);
+      expect(arrow.tip[1]).toBe(20);
+      expect(arrow.tailX).toBeGreaterThan(arrow.tip[0]);
+      expect(arrow.end[0]).toBeGreaterThan(arrow.tip[0]);
+      expect(arrow.end[1]).toBe(40);
+      expect(arrow.tip[0] - arrow.nodeX).toBe(compact ? 12 : 14);
+      expect(arrow.stroke).toBe(arrow.edgeStroke);
+    }
+    await test.info().attach('Merge routing and direction', {
+      body: await page.locator('.virtual-commit-rows').screenshot({
+        path: test.info().outputPath('merge-direction.png'),
+      }),
+      contentType: 'image/png',
+    });
+  });
+
   test(`connects every graph edge to an avatar or an adjacent row (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();

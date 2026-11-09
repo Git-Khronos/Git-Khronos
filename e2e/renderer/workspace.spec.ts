@@ -1500,7 +1500,7 @@ test('terminates an unmerged branch lane at its tip commit', async ({ page }) =>
   expect(paths.some((path) => path.startsWith(`M ${nodeOffset} 20`))).toBe(true);
 });
 
-test('routes cross-lane links from the side-middle of the author node', async ({ page }) => {
+test('routes a merge link to a directional arrow beside the author node', async ({ page }) => {
   await page.goto('/?unmerged-branch-preview');
   const row = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"]');
   const node = row.locator('.author-node');
@@ -1514,7 +1514,8 @@ test('routes cross-lane links from the side-middle of the author node', async ({
 
   const paths = await row.locator('.graph-edges path').evaluateAll((elements) =>
     elements.map((element) => element.getAttribute('d') ?? ''));
-  expect(paths.some((path) => path.startsWith(`M ${nodeOffset + 12} 20 H `))).toBe(true);
+  expect(paths.some((path) => path.startsWith(`M ${nodeOffset + 14} 20 H `))).toBe(true);
+  await expect(row.locator('.graph-merge-arrow')).toHaveCount(1);
 });
 
 test('joins a converging branch at the parent avatar right-middle edge', async ({ page }) => {
@@ -8563,6 +8564,21 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '  '));
   await page.reload();
   await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
+});
+
+test('shows the reported native version rather than a stale fallback', async ({ page }) => {
+  const environment = page.locator('.status-version');
+  await expect(environment).toHaveText('Preview');
+  await page.evaluate(() => {
+    (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set(null);
+  });
+  await expect(environment).toHaveText('Starting…');
+  await page.evaluate(() => {
+    (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+      appVersion: '2.3.4', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
+    });
+  });
+  await expect(environment).toHaveText('v2.3.4');
 });
 
 test('reserves status-bar space for the persistent zoom controls', async ({ page }) => {

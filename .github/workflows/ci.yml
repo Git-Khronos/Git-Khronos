@@ -127,7 +127,6 @@ jobs:
 
   packaged-native:
     name: Packaged native acceptance
-    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -172,7 +171,10 @@ jobs:
           if [ -e "$hook" ]; then sudo mv -- "$hook" "$backup/needrestart"; fi
           pnpm nx run desktop:package-test --output-style=static
       - name: Build and verify Debian package
-        run: pnpm nx run desktop:package-deb --output-style=static
+        id: package
+        run: |
+          pnpm nx run desktop:package-deb --output-style=static
+          echo "path=$(task --silent package:deb:path)" >> "$GITHUB_OUTPUT"
       - name: Run packaged WebKitGTK acceptance
         run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
       - name: Run packaged GitLab catalogue acceptance
@@ -185,7 +187,7 @@ jobs:
         with:
           name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
           path: |
-            target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb
+            ${{ steps.package.outputs.path }}
             test-results/native/
           if-no-files-found: error
           retention-days: 14

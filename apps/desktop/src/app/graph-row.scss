@@ -29,7 +29,7 @@
 .commit-row.branch-highlighted.selected { background: var(--row-branch-highlighted-selected); --row-surface: var(--row-branch-highlighted-selected); box-shadow: inset 3px 0 #a59aff, inset 0 0 0 1px #5a557d; }
 .commit-row.branch-dimmed.selected { background: var(--row-branch-dimmed-selected); --row-surface: var(--row-branch-dimmed-selected); box-shadow: inset 3px 0 #8f84ed; opacity: 1; filter: none; }
 .commit-row.branch-dimmed.selected > * { opacity: 1; filter: none; }
-.commit-row.branch-highlighted .graph-edges path { filter: brightness(1.2); }
+.commit-row.branch-highlighted .graph-edges path, .commit-row.branch-highlighted .graph-merge-arrow { filter: brightness(1.2); }
 .wip-row { --row-surface: var(--row-wip); height: 44px; min-height: 44px; background: var(--row-wip); }
 .wip-row { cursor: pointer; }
 .wip-row.linked-worktree { background: var(--row-wip-linked); --row-surface: var(--row-wip-linked); }
@@ -51,7 +51,8 @@
 .graph-cell { position: relative; align-self: stretch; display: grid; place-items: center; }
 .graph-cell.multi-lane { display: block; overflow: visible; }
 .graph-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.graph-edges path { fill: none; stroke: var(--graph-lane-color, #55c9a5); stroke-width: 2; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.graph-edges path, .graph-merge-arrow { fill: none; stroke: var(--graph-lane-color, #55c9a5); stroke-width: 2; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.graph-merge-arrow { pointer-events: none; }
 .graph-edges .graph-edge-cap { fill: var(--graph-lane-color, #55c9a5); pointer-events: none; }
 .commit-row.branch-highlighted .graph-edges .graph-edge-cap { filter: brightness(1.2); }
 .lane-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--graph-lane-color, #55c9a5); }

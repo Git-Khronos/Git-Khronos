@@ -1611,13 +1611,19 @@ def avatar_attachment_measurements(driver):
             point = end; right = start.x > offset; kind = 'arrival';
           } else continue;
           const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM());
+          const arrow = path.nextElementSibling?.classList.contains('graph-merge-arrow')
+            ? path.nextElementSibling : null;
+          const tip = arrow?.points.getItem(1), tail = arrow?.points.getItem(0);
+          const clearance = arrow ? 2 : 0;
           checks.push({oid: row.dataset.commitOid, kind, side: right ? 'right' : 'left',
-            dx: Math.abs(screen.x - (right ? rect.right : rect.left)),
-            dy: Math.abs(screen.y - centerY)});
+            dx: Math.abs(screen.x - (right ? rect.right + clearance : rect.left - clearance)),
+            dy: Math.abs(screen.y - centerY), arrow: !!arrow,
+            arrowAligned: !arrow || (Math.abs(tip.x - point.x) < .01 && Math.abs(tip.y - point.y) < .01
+              && (tail.x - tip.x) * (right ? 1 : -1) > 0)});
         }
         const connector = row.querySelector('.ref-connector')?.getBoundingClientRect();
         if (connector) checks.push({kind: 'reference', dx: 0,
-          dy: Math.abs(connector.y + connector.height / 2 - centerY)});
+          dy: Math.abs(connector.y + connector.height / 2 - centerY), arrow: false, arrowAligned: true});
       }
       return checks;
     """)
@@ -1665,7 +1671,8 @@ def avatar_side_attachments(driver, fixtures, original_repository, report):
                 """, 60)
                 measurements = avatar_attachment_measurements(driver)
                 assert measurements, (compact, pin, "Missing avatar attachment measurements")
-                assert all(check["dx"] < .1 and check["dy"] < .1 for check in measurements), (
+                assert all(check["dx"] < .1 and check["dy"] < .1 and check["arrowAligned"]
+                           for check in measurements), (
                     compact, pin, measurements)
                 if pin:
                     assert any(check.get("oid") == pinned and check["kind"] == "arrival"
@@ -1673,6 +1680,7 @@ def avatar_side_attachments(driver, fixtures, original_repository, report):
                 else:
                     assert {check["side"] for check in measurements if check["kind"] == "departure"} == {
                         "left", "right"}, ("Both side departures must be exercised", measurements)
+                    assert any(check["arrow"] for check in measurements), ("Missing merge arrow", measurements)
                 report["scenarios"].append(
                     f"native-avatar-side-centers-{'compact' if compact else 'expanded'}-{'pinned' if pin else 'unpinned'}")
         assert fixtures.git(repository, "show-ref") == before_refs
@@ -1740,7 +1748,7 @@ def shared_parent_avatar_attachments(driver, fixtures, original_repository, repo
             """)
             assert routing["rounded"] > 0 and not routing["invalid"], (compact, routing)
             measurements = avatar_attachment_measurements(driver)
-            assert measurements and all(check["dx"] < .1 and check["dy"] < .1
+            assert measurements and all(check["dx"] < .1 and check["dy"] < .1 and check["arrowAligned"]
                                         for check in measurements), (compact, measurements)
             attachments = driver.script("""
               const inspect = oid => {

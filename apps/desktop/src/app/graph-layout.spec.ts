@@ -8,6 +8,7 @@ import {
   GRAPH_LANE_COLOR_COUNT,
   graphLaneCapacity,
   graphLaneOffset,
+  graphMergeArrowPoints,
   isAppendOnlyCommitHistory,
   isCompactAuthorColumn,
   isDefaultGraphColumnVisible,
@@ -52,6 +53,37 @@ function expectAvatarAttachment(point: number[], center: number, radius: number,
 }
 
 describe('graph column layout', () => {
+  it('bends merge links beside the upper commit and points back into it, with avatar clearance', () => {
+    for (const radius of [10, 12]) {
+      for (const direction of [-1, 1]) {
+        for (const y of [16, 20, 24]) {
+          const segment: GraphSegmentGeometry = {
+            x1: 96, y1: 20, x2: 96 + direction * 40, y2: 40,
+            sourceNodeRadius: radius, mergeTarget: true,
+            horizontalTrack: { y, strokeWidth: 2 },
+          };
+          const path = inspectRoundedPath(buildGraphSegmentPath(segment));
+          expect(path.start[1]).toBe(y);
+          expect(Math.hypot(path.start[0] - 96, y - 20)).toBeCloseTo(radius + 2, 8);
+          expect(path.end).toEqual([segment.x2, 40]);
+          expect(path.arcs).toBe(1);
+          const points = graphMergeArrowPoints(segment)!.split(' ').map(point => point.split(',').map(Number));
+          expect(points[1]).toEqual(path.start);
+          expect((points[0][0] - points[1][0]) * direction).toBeGreaterThan(0);
+          expect(points[0][1]).toBeLessThan(y);
+          expect(points[2][1]).toBeGreaterThan(y);
+        }
+      }
+    }
+  });
+
+  it('does not put merge arrows on straight, collapsed or ordinary ancestry links', () => {
+    expect(graphMergeArrowPoints({ x1: 16, y1: 20, x2: 56, y2: 40, sourceNodeRadius: 12 })).toBeNull();
+    expect(graphMergeArrowPoints({
+      x1: 16, y1: 20, x2: 16, y2: 40, sourceNodeRadius: 12, mergeTarget: true,
+    })).toBeNull();
+  });
+
   it('stacks overlapping incoming and outgoing edges without moving their endpoints', () => {
     const segments: GraphSegmentGeometry[] = [
       { x1: 96, y1: 0, x2: 16, y2: 20, parentNodeRadius: 12,
