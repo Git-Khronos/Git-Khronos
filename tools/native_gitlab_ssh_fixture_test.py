@@ -4,10 +4,26 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from native_gitlab_ssh_fixture import accepted_upload, serve_upload, VIRTUAL_REPOSITORY
+from native_gitlab_ssh_fixture import accepted_upload, serve_upload, sshd_helper_config, VIRTUAL_REPOSITORY
 
 
 class GitLabSshFixtureTests(unittest.TestCase):
+    def test_selects_both_helpers_from_an_extracted_server_prefix(self):
+        with tempfile.TemporaryDirectory(prefix="sshd fixture ") as directory:
+            prefix = Path(directory) / "usr"
+            helpers = prefix / "lib/openssh"
+            helpers.mkdir(parents=True)
+            session = helpers / "sshd-session"
+            auth = helpers / "sshd-auth"
+            self.assertEqual(sshd_helper_config(prefix / "sbin/sshd"), "")
+            session.touch()
+            self.assertEqual(sshd_helper_config(prefix / "sbin/sshd"), "")
+            auth.touch()
+            self.assertEqual(
+                sshd_helper_config(prefix / "sbin/sshd"),
+                f'SshdSessionPath "{session}"\nSshdAuthPath "{auth}"\n',
+            )
+
     def test_accepts_only_the_literal_owned_upload(self):
         self.assertTrue(accepted_upload("git-upload-pack '" + VIRTUAL_REPOSITORY + "'"))
         self.assertTrue(accepted_upload("git-upload-pack " + VIRTUAL_REPOSITORY))

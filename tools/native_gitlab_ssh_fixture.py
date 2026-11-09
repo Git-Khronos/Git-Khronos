@@ -33,6 +33,15 @@ def serve_upload(repository, journal, git):
                                 **({"GIT_PROTOCOL": os.environ["GIT_PROTOCOL"]} if "GIT_PROTOCOL" in os.environ else {})})
 
 
+def sshd_helper_config(sshd):
+    helpers = sshd.parent.parent / "lib/openssh"
+    session = helpers / "sshd-session"
+    auth = helpers / "sshd-auth"
+    if session.is_file() and auth.is_file():
+        return f"SshdSessionPath {json.dumps(str(session))}\nSshdAuthPath {json.dumps(str(auth))}\n"
+    return ""
+
+
 def start_gitlab_ssh(fixtures, gate, children, report):
     sshd = Path(os.environ.get("GIT_KHRONOS_SSHD", "/usr/sbin/sshd"))
     if not sshd.is_absolute() or not sshd.is_file():
@@ -60,7 +69,8 @@ def start_gitlab_ssh(fixtures, gate, children, report):
               f"AllowUsers {login}\nPidFile none\nUsePAM no\nStrictModes no\n"
               "PasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\n"
               "AllowAgentForwarding no\nAllowTcpForwarding no\nX11Forwarding no\nPermitTTY no\n"
-              "PermitUserEnvironment no\nAcceptEnv GIT_PROTOCOL\n" + f"ForceCommand {forced}\n")
+              "PermitUserEnvironment no\nAcceptEnv GIT_PROTOCOL\n" + f"ForceCommand {forced}\n"
+              + sshd_helper_config(sshd))
     (directory / "sshd_config").write_text(config)
     subprocess.run([str(sshd), "-t", "-f", str(directory / "sshd_config")],
                    env=fixtures.env, stdin=subprocess.DEVNULL, check=True)
@@ -72,7 +82,8 @@ def start_gitlab_ssh(fixtures, gate, children, report):
     deadline = time.monotonic() + 10
     while "Server listening" not in (directory / "server.log").read_text():
         if process.poll() is not None or time.monotonic() >= deadline:
-            raise RuntimeError("Owned loopback sshd did not become ready; inspect fixture server.log")
+            detail = (directory / "server.log").read_text(errors="replace").strip()
+            raise RuntimeError(f"Owned loopback sshd did not become ready: {detail}")
         time.sleep(.02)
     key = " ".join((directory / "host.pub").read_text().split()[:2])
     (directory / "known_hosts").write_text(f"[127.0.0.1]:{port} {key}\n")

@@ -128,7 +128,9 @@ The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
 set `GIT_KHRONOS_SSHD` to an absolute private server path when it is not installed
-at `/usr/sbin/sshd`:
+at `/usr/sbin/sshd`. For OpenSSH builds with separate `sshd-session` and
+`sshd-auth` executables, keep both under the same extracted prefix's
+`usr/lib/openssh`; the fixture selects them automatically:
 
 ```sh
 package=$(task --silent package:deb:path)
