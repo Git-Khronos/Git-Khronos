@@ -32,6 +32,13 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def expected_debian_package():
+    version = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["version"]
+    if not isinstance(version, str) or not version:
+        raise ValueError("The Tauri package version must be a nonempty string")
+    return version, f"Git-Khronos_{version}_amd64.deb"
+
+
 def stop_owned_process_group(process, timeout=10):
     """Stop a Popen started with start_new_session, including surviving writers."""
     group = process.pid
@@ -964,8 +971,9 @@ def performance(driver, fixtures, report):
 
 
 def main():
+    version, expected_package_name = expected_debian_package()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb")
+    parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
     parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--inherited-git-environment", action="store_true",
@@ -985,9 +993,11 @@ def main():
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         package = args.package.resolve(strict=True)
-        assert package.name == "Git-Khronos_0.1.0_amd64.deb", package.name
+        assert package.name == expected_package_name, (package.name, expected_package_name)
         assert run("dpkg-deb", "-f", str(package), "Package") == "git-khronos"
         assert run("dpkg-deb", "-f", str(package), "Architecture") == "amd64"
+        actual_version = run("dpkg-deb", "-f", str(package), "Version")
+        assert actual_version == version, (actual_version, version)
         report["package"] = str(package)
         with package.open("rb") as package_data:
             report["packageSha256"] = hashlib.file_digest(package_data, "sha256").hexdigest()

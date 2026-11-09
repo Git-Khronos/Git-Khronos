@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import type { GraphRow, GraphRowView } from './app.component';
 import { IconComponent } from './icon.component';
 import { SearchHighlightPipe } from './search-highlight.pipe';
+import { graphMergeArrowPoints } from './graph-layout';
 
 @Component({
   selector: 'gc-graph-row',
@@ -12,6 +13,7 @@ import { SearchHighlightPipe } from './search-highlight.pipe';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRowComponent {
+  protected readonly mergeArrowPoints = graphMergeArrowPoints;
   readonly graphRow = input.required<GraphRow>();
   readonly top = input.required<number>();
   readonly presenter = input.required<GraphRowView>();

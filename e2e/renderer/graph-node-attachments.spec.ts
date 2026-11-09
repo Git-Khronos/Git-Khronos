@@ -272,6 +272,7 @@ for (const compact of [false, true]) {
           tracks: {
             y: number; stroke: string; width: number; visible: boolean;
             attachmentY: number; radiusError: number; outgoing: boolean; distance: number; hasBoundaryCap: boolean;
+            mergeTarget: boolean; arrowStroke: string | null; arrowWidth: number | null;
           }[];
           join: { sourceX: number; parentX: number; gap: number; sourceWidth: number; parentWidth: number };
         } = await row.evaluate((element, direction) => {
@@ -309,6 +310,8 @@ for (const compact of [false, true]) {
             const outgoing = !!segment.sourceNodeRadius;
             const attachment = path.getPointAtLength(outgoing ? 0 : path.getTotalLength());
             const attachmentPoint = new DOMPoint(attachment.x, attachment.y).matrixTransform(path.getScreenCTM()!);
+            const arrow = path.nextElementSibling?.classList.contains('graph-merge-arrow')
+              ? path.nextElementSibling : null;
             return [{
               y: point.y,
               stroke: getComputedStyle(path).stroke,
@@ -316,9 +319,12 @@ for (const compact of [false, true]) {
               visible: document.elementFromPoint(point.x, point.y) === path,
               attachmentY: attachmentPoint.y,
               radiusError: Math.abs(Math.hypot(attachmentPoint.x - (node.x + node.width / 2),
-                attachmentPoint.y - (node.y + node.height / 2)) - node.width / 2),
+                attachmentPoint.y - (node.y + node.height / 2)) - node.width / 2 - (segment.mergeTarget ? 2 : 0)),
               outgoing,
               distance: Math.abs(segment.x2 - segment.x1),
+              mergeTarget: !!segment.mergeTarget,
+              arrowStroke: arrow ? getComputedStyle(arrow).stroke : null,
+              arrowWidth: arrow ? parseFloat(getComputedStyle(arrow).strokeWidth) : null,
               hasBoundaryCap: !!path.ownerSVGElement!.querySelector(
                 `.graph-edge-cap[cx="${outgoing ? segment.x2 : segment.x1}"][cy="${outgoing ? 40 : 0}"]`),
             }];
@@ -355,6 +361,12 @@ for (const compact of [false, true]) {
         for (const track of tracks) {
           expect(Math.abs(track.y - track.attachmentY), JSON.stringify(track)).toBeLessThan(0.1);
           expect(track.radiusError, JSON.stringify(track)).toBeLessThan(0.5);
+          if (track.mergeTarget) {
+            expect(track.arrowStroke).toBe(track.stroke);
+            expect(track.arrowWidth).toBeCloseTo(track.width, 4);
+          } else {
+            expect(track.arrowStroke).toBeNull();
+          }
           if (track.width < 2) expect(track.hasBoundaryCap, JSON.stringify(track)).toBe(true);
         }
         const outgoing = tracks.filter(track => track.outgoing).sort((a, b) => a.distance - b.distance);
@@ -440,7 +452,7 @@ for (const compact of [false, true]) {
     });
   }
 
-  test(`keeps a merge's adjacent parent link beside its continuing lane (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
+  test(`connects an adjacent merge arrow without disturbing its continuing lane (${compact ? 'compact' : 'expanded'})`, async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate((compact) => {
@@ -473,9 +485,11 @@ for (const compact of [false, true]) {
         const node = element.querySelector('.author-node')!.getBoundingClientRect();
         const lines: {
           part?: 'source' | 'parent';
+          mergeTarget: boolean;
           start: { x: number; y: number };
           end: { x: number; y: number };
           strokeWidth: number;
+          arrow: { tip: { x: number; y: number }; tail: { x: number; y: number } } | null;
         }[] = row.segments.map((segment: any, index: number) => {
           const path = paths[index];
           const matrix = path.getScreenCTM()!;
@@ -484,35 +498,48 @@ for (const compact of [false, true]) {
               .matrixTransform(matrix);
             return { x: point.x, y: point.y };
           };
-          return { part: segment.nodeConnection?.part, start: at(0), end: at(path.getTotalLength()),
-            strokeWidth: parseFloat(getComputedStyle(path).strokeWidth) };
+          const arrow = path.nextElementSibling?.classList.contains('graph-merge-arrow')
+            ? path.nextElementSibling as SVGPolylineElement : null;
+          const arrowPoint = (index: number) => {
+            const point = arrow!.points.getItem(index).matrixTransform(matrix);
+            return { x: point.x, y: point.y };
+          };
+          return {
+            part: segment.nodeConnection?.part, mergeTarget: !!segment.mergeTarget,
+            start: at(0), end: at(path.getTotalLength()),
+            strokeWidth: parseFloat(getComputedStyle(path).strokeWidth),
+            arrow: arrow ? { tip: arrowPoint(1), tail: arrowPoint(0) } : null,
+          };
         });
         return { node: { centerX: node.x + node.width / 2, centerY: node.y + node.height / 2,
-          bottom: node.bottom }, lines };
+          radius: node.width / 2, bottom: node.bottom }, lines };
       });
     });
     const [merge, feature] = geometry;
-    const lane = merge.lines.find(line => !line.part)!;
-    const source = merge.lines.find(line => line.part === 'source')!;
+    const lane = merge.lines.find(line => !line.part && !line.mergeTarget)!;
+    const source = merge.lines.find(line => line.mergeTarget)!;
     const continuing = feature.lines.find(line => !line.part
       && Math.abs(line.start.x - merge.node.centerX) < 0.1 && line.end.y > feature.node.bottom)!;
+    const incoming = feature.lines.find(line => !line.part
+      && Math.abs(line.start.x - feature.node.centerX) < 0.1 && line.end.y <= feature.node.centerY + 0.1)!;
     expect(continuing).toBeTruthy();
-    // The side link is the feature's only incoming edge; no lane stub above it.
+    expect(incoming).toBeTruthy();
     expect(feature.lines).toHaveLength(3);
-    const parent = feature.lines.find(line => line.part === 'parent')!;
-    // The first-parent lane stays centered while the second-parent stem runs beside it.
+    // The first-parent lane remains centered and the merge link continues into the feature row.
     expect(Math.abs(lane.end.x - merge.node.centerX)).toBeLessThan(0.1);
     expect(Math.abs(continuing.start.x - merge.node.centerX)).toBeLessThan(0.1);
-    const gap = source.start.x - merge.node.centerX;
-    expect(Math.abs(gap)).toBeGreaterThanOrEqual(source.strokeWidth + 1);
-    expect(Math.sign(gap)).toBe(Math.sign(feature.node.centerX - merge.node.centerX));
-    expect(source.start.y).toBeGreaterThan(merge.node.centerY);
-    expect(source.start.y).toBeLessThanOrEqual(merge.node.bottom);
-    expect(Math.abs(source.end.x - source.start.x)).toBeLessThan(0.1);
-    expect(Math.abs(parent.start.x - source.end.x)).toBeLessThan(0.1);
-    await test.info().attach('Merge stem beside continuing lane', {
+    expect(Math.abs(source.end.x - incoming.start.x)).toBeLessThan(0.1);
+    expect(incoming.start.y - source.end.y).toBeGreaterThanOrEqual(0);
+    expect(incoming.start.y - source.end.y).toBeLessThanOrEqual((source.strokeWidth + incoming.strokeWidth) / 2);
+    expect(Math.abs(Math.hypot(source.start.x - merge.node.centerX, source.start.y - merge.node.centerY)
+      - merge.node.radius - 2)).toBeLessThan(0.1);
+    expect(source.arrow).not.toBeNull();
+    expect(Math.abs(source.arrow!.tip.x - source.start.x)).toBeLessThan(0.1);
+    expect(Math.abs(source.arrow!.tip.y - source.start.y)).toBeLessThan(0.1);
+    expect(source.arrow!.tail.x).toBeGreaterThan(source.arrow!.tip.x);
+    await test.info().attach('Merge arrow beside continuing lane', {
       body: await page.locator('.virtual-commit-rows').screenshot({
-        path: test.info().outputPath(`merge-stem-beside-lane-${compact ? 'compact' : 'expanded'}.png`),
+        path: test.info().outputPath(`merge-arrow-beside-lane-${compact ? 'compact' : 'expanded'}.png`),
       }), contentType: 'image/png',
     });
   });
@@ -541,7 +568,8 @@ for (const compact of [false, true]) {
           const right = source ? segment.x2 > segment.x1 : segment.x1 > segment.x2;
           const verticalOffset = (segment.horizontalTrack?.y ?? 20) - 20;
           const radius = node.width / 2;
-          const sideX = Math.sqrt(Math.max(0, radius * radius - verticalOffset * verticalOffset));
+          const connectionRadius = radius + (segment.mergeTarget ? 2 : 0);
+          const sideX = Math.sqrt(Math.max(0, connectionRadius * connectionRadius - verticalOffset * verticalOffset));
           const scaleY = path.ownerSVGElement!.getBoundingClientRect().height / 40;
           return [{ oid: row.commit.oid, x: screen.x, y: screen.y,
             expectedX: segment.nodeConnection?.part === 'source' ? node.x + node.width / 2

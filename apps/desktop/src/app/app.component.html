@@ -1952,7 +1952,7 @@
           (click)="git.cancelActiveOperation()"
         >{{ git.activeOperationCancelling() ? 'Stopping…' : 'Cancel' }}</button>
       }
-      <span class="status-separator"></span><span class="status-version" [class.preview]="git.browserPreview()" [title]="git.browserPreview() ? 'Browser preview environment' : 'Git Khronos version'">{{ git.browserPreview() ? 'Preview' : 'v' + (git.systemInfo()?.appVersion ?? '0.1.0') }}</span>
+      <span class="status-separator"></span><span class="status-version" [class.preview]="git.browserPreview()" [title]="git.browserPreview() ? 'Browser preview environment' : 'Git Khronos version'">{{ git.browserPreview() ? 'Preview' : (git.systemInfo()?.appVersion ? 'v' + git.systemInfo()?.appVersion : 'Starting…') }}</span>
     </footer>
   }
 

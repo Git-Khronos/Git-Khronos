@@ -135,6 +135,9 @@
     <svg class="graph-edges" [attr.viewBox]="'0 0 ' + view.graphColumnWidth() + ' 40'" preserveAspectRatio="none">
       @for (segment of row.segments; track $index) {
         <path class="color-{{ segment.color }}" [attr.d]="view.graphSegmentPath(segment)" [style.stroke-width.px]="segment.horizontalTrack?.strokeWidth" />
+        @if (mergeArrowPoints(segment); as points) {
+          <polyline class="graph-merge-arrow color-{{ segment.color }}" [attr.points]="points" [style.stroke-width.px]="segment.horizontalTrack?.strokeWidth" />
+        }
         @if (segment.horizontalTrack; as track) {
           @if (track.strokeWidth < 2) {
             @if (segment.y1 === 0) { <circle class="graph-edge-cap color-{{ segment.color }}" [attr.cx]="segment.x1" cy="0" r="1" /> }

@@ -16,9 +16,40 @@ from unittest.mock import MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
-    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, main, run,
+    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering,
 )
+
+
+class PackageIdentityTests(unittest.TestCase):
+    def test_package_name_follows_tauri_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "apps/desktop/src-tauri/tauri.conf.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({"version": "2.3.4"}))
+            with patch("native_acceptance.ROOT", root):
+                self.assertEqual(expected_debian_package(), ("2.3.4", "Git-Khronos_2.3.4_amd64.deb"))
+
+    def test_package_with_wrong_version_is_rejected_before_launch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            version, filename = expected_debian_package()
+            package = root / filename
+            package.write_bytes(b"package fixture")
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
+                                   headless=False, inherited_git_environment=False)
+            with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
+                    patch("native_acceptance.shutil.which", return_value="/fixture/tool"), \
+                    patch("native_acceptance.run", side_effect=lambda *command: {
+                        "Package": "git-khronos", "Architecture": "amd64", "Version": "0.0.0",
+                    }.get(command[-1], "fixture")), \
+                    patch("native_acceptance.Driver") as driver, patch("builtins.print"):
+                self.assertEqual(main(), 1)
+            driver.assert_not_called()
+            report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
+            self.assertFalse(report["passed"])
+            self.assertIn(f"('0.0.0', '{version}')", report["failure"])
 
 
 class TerminalCspTests(unittest.TestCase):
@@ -595,7 +626,8 @@ class FixtureTests(unittest.TestCase):
     def _assert_failed_startup_cleanup(self, shutdown_fails):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            package = root / "Git-Khronos_0.1.0_amd64.deb"
+            version, filename = expected_debian_package()
+            package = root / filename
             package.write_bytes(b"package fixture")
             fixture = root / "fixture"
             executable = fixture / "package/usr/bin/git-khronos"
@@ -647,7 +679,7 @@ class FixtureTests(unittest.TestCase):
                 }.items():
                     mocks.enter_context(patch(target, return_value=value))
                 mocks.enter_context(patch("native_acceptance.run", side_effect=lambda *command: {
-                    "Package": "git-khronos", "Architecture": "amd64",
+                    "Package": "git-khronos", "Architecture": "amd64", "Version": version,
                 }.get(command[-1], "fixture")))
                 mocks.enter_context(patch("native_acceptance.start_private_dbus", side_effect=private_bus))
                 mocks.enter_context(patch("builtins.print"))

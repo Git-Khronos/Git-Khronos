@@ -214,6 +214,14 @@ Every rendered commit edge in this fixture must use only horizontal/vertical
 SVG segments and circular quarter-turn arcs, with rounded joins in both modes.
 At least one rounded turn must actually be exercised. Avatar lane spacing is
 40 px expanded and 32 px compact, leaving room for the rounded side ports.
+
+The renderer merge-direction regression checks adjacent and distant secondary
+parents in both densities. Merge links turn beside the upper merge commit,
+then follow the branch lane downward; a lane-colored arrow points back into
+the merge commit and stops 2 px outside its avatar. Ordinary first-parent
+links and unrelated continuing lanes retain their existing routing. Collapsed
+same-column links omit the arrow rather than placing it over the avatar.
+
 The report records the checked path count per mode as
 `roundedOrthogonalGraphPathCount`; earlier reports without this field do not
 qualify the rounded orthogonal routing requirement.

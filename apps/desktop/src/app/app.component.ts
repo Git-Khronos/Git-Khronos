@@ -2677,7 +2677,7 @@ export class AppComponent implements OnInit, OnDestroy {
         const target = afterIndexByOid.get(parent);
         if (target === undefined) return;
         const color = parentIndex === 0 ? current.color : after[target]!.color;
-        if (target !== nodeLane && commits[commitIndex + 1]?.oid === parent) {
+        if (parentIndex === 0 && target !== nodeLane && commits[commitIndex + 1]?.oid === parent) {
           const fromOffset = laneOffset(nodeLane);
           const parentOffset = laneOffset(pinnedHistory.has(parent) ? 0 : target);
           const connection = fromOffset !== parentOffset ? {
@@ -2707,6 +2707,7 @@ export class AppComponent implements OnInit, OnDestroy {
           y2: 40,
           color,
           sourceNodeRadius: compact ? 10 : 12,
+          mergeTarget: parentIndex > 0,
         });
       });
       active = after;

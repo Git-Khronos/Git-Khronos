@@ -22,6 +22,7 @@ export interface GraphSegmentGeometry {
   readonly parentNodeRadius?: number;
   // Radius of the commit node a segment leaves from at its center (y1).
   readonly sourceNodeRadius?: number;
+  readonly mergeTarget?: boolean;
   readonly nodeConnection?: GraphNodeConnection;
   readonly bypassNode?: { readonly offset: number; readonly radius: number };
   readonly horizontalTrack?: { readonly y: number; readonly strokeWidth: number };
@@ -270,6 +271,15 @@ function graphNodeSideOffset(nodeX: number, nodeY: number, radius: number, side:
   return nodeX + side * Math.sqrt(Math.max(0, radius * radius - verticalOffset * verticalOffset));
 }
 
+export function graphMergeArrowPoints(segment: GraphSegmentGeometry): string | null {
+  if (!segment.mergeTarget || !segment.sourceNodeRadius || segment.x1 === segment.x2) return null;
+  const direction = Math.sign(segment.x2 - segment.x1);
+  const y = segment.horizontalTrack?.y ?? segment.y1;
+  const tip = graphNodeSideOffset(segment.x1, segment.y1, segment.sourceNodeRadius + 2, direction, y);
+  const length = Math.min(4, Math.abs(segment.x2 - tip) / 2);
+  return `${tip + direction * length},${y - length * 0.65} ${tip},${y} ${tip + direction * length},${y + length * 0.65}`;
+}
+
 export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
   if (segment.nodeConnection) {
     const { sourceOffset, parentOffset, nodeRadius, part } = segment.nodeConnection;
@@ -305,7 +315,7 @@ export function buildGraphSegmentPath(segment: GraphSegmentGeometry): string {
   if (segment.sourceNodeRadius && direction > 0) {
     // Depart horizontally from the avatar, then turn into the target lane.
     const trackY = segment.horizontalTrack?.y ?? segment.y1;
-    const exitX = graphNodeSideOffset(segment.x1, segment.y1, segment.sourceNodeRadius,
+    const exitX = graphNodeSideOffset(segment.x1, segment.y1, segment.sourceNodeRadius + (segment.mergeTarget ? 2 : 0),
       horizontalDirection, trackY);
     if (Math.sign(segment.x2 - exitX) === horizontalDirection) {
       return roundedGraphRoute([[exitX, trackY], [segment.x2, trackY], [segment.x2, segment.y2]]);
