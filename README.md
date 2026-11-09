@@ -61,6 +61,37 @@ task bundle
 
 ### Install system-wide on Debian or Ubuntu
 
+#### Using the install script
+
+[`install.sh`](install.sh) installs Git Khronos from a published GitHub Release.
+It downloads the release's `SHA256SUMS`, verifies the `.deb` for your CPU
+architecture against it, confirms the package is Git Khronos, and installs it
+with APT (which resolves dependencies and asks for `sudo`). Download and read
+the script before running it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Git-Khronos/Git-Khronos/main/install.sh
+less install.sh
+bash install.sh --dry-run   # verify and show APT's plan only
+bash install.sh             # install the latest release
+```
+
+Other options:
+
+```bash
+bash install.sh --version 0.1.0          # a specific release
+bash install.sh --deb ./Git-Khronos.deb  # a package you already have
+bash install.sh --from-source            # build from source, then install
+bash install.sh --uninstall              # remove; repositories and preferences are kept
+```
+
+Downloading requires a published release that provides
+`Git-Khronos_<version>_<arch>.deb` and `SHA256SUMS`. Until one exists, use
+`--from-source` or `--deb`, or the `task` commands below. Run
+`bash install.sh --help` for every option.
+
+#### From a source checkout
+
 Build a native Debian package and install it for every user on the machine:
 
 ```bash

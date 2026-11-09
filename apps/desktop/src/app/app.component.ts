@@ -99,7 +99,6 @@ import {
   graphColumnWidthForLaneCount,
   GRAPH_LANE_COLOR_COUNT,
   graphLaneCapacity,
-  graphLaneOffset,
   graphNodeConnectionStemOffset,
   isAppendOnlyCommitHistory,
   isCompactAuthorColumn,
@@ -2558,8 +2557,11 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!seeded.has(row.worktree.oid)) seeded.set(row.worktree.oid, { oid: row.worktree.oid, color: row.color });
     }
     const compact = this.compactGraphColumn();
-    const laneCapacity = graphLaneCapacity(this.graphColumnWidth(), compact);
-    const laneOffset = (index: number) => graphLaneOffset(index, compact);
+    const graphWidth = this.graphColumnWidth();
+    const laneCapacity = graphLaneCapacity(graphWidth, compact);
+    // Lanes beyond the column's capacity keep their topology and are drawn on
+    // its last visible lane, so their edges never lose a source or a parent.
+    const laneOffset = (index: number) => boundedGraphLaneOffset(index, graphWidth, compact);
     const authorColors = this.authorColors();
     const pinned = this.graphBranches().find(
       (branch) => !branch.remote && branch.name === this.pinnedBranch() && this.isBranchGraphVisible(branch.name),
@@ -2580,7 +2582,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const canExtend = cache?.key === key && isAppendOnlyCommitHistory(cache.commitOids, commits);
     let active: (ActiveGraphLane | null)[] = canExtend
       ? cache.active.map((lane) => lane ? { ...lane } : null)
-      : [...seeded.values()].slice(0, laneCapacity);
+      : [...seeded.values()];
     let nextColor = canExtend ? cache.nextColor : active.length;
     // A push or fetch can move decorations without changing topology. Keep the geometry,
     // but rebind changed commit metadata so recycled rows do not display stale references.
@@ -2598,7 +2600,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const hasIncomingConnection = lane >= 0 && !sideLinkedParents.delete(commit.oid);
       if (lane < 0) {
         lane = active.indexOf(null);
-        if (lane < 0) lane = Math.min(active.length, laneCapacity - 1);
+        if (lane < 0) lane = active.length;
         active[lane] = { oid: commit.oid, color: nextColor++ % GRAPH_LANE_COLOR_COUNT };
       }
       const before = active.map((candidate) => candidate ? { ...candidate } : null);
@@ -2613,7 +2615,6 @@ export class AppComponent implements OnInit, OnDestroy {
         if (afterIndexByOid.has(parent)) return;
         let insertion = parentIndex === 0 && !after[nodeLane] ? nodeLane : after.indexOf(null);
         if (insertion < 0) insertion = after.length;
-        if (insertion >= laneCapacity) return;
         after[insertion] = {
           oid: parent,
           color: parentIndex === 0 ? current.color : nextColor++ % GRAPH_LANE_COLOR_COUNT,
