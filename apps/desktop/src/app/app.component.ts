@@ -1653,6 +1653,20 @@ export class AppComponent implements OnInit, OnDestroy {
       });
     });
     effect(() => {
+      const theme = this.appTheme();
+      const native = this.git.systemInfo()?.windowsSubsystemForLinux === true && !this.git.browserPreview();
+      if (!native) return;
+      untracked(() => {
+        this.applyAppTheme(theme);
+        const style = getComputedStyle(document.documentElement);
+        void this.git.styleWindowChrome(
+          style.getPropertyValue('--tabbar'),
+          style.getPropertyValue('--text'),
+          style.getPropertyValue('--border'),
+        );
+      });
+    });
+    effect(() => {
       const title = this.repositoryWindowTitle(this.git.repository());
       const systemInfo = this.git.systemInfo();
       const browserPreview = this.git.browserPreview();

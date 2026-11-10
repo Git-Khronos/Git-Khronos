@@ -150,7 +150,10 @@ toolkit-drawn window chrome, under WSL the native title bar (its height, buttons
 button glyphs, and title text) is scaled with the same effective zoom through a GTK style
 sheet loaded only in the application process, and the button glyphs are replaced with
 thin original icons that are re-applied after maximize, restore, and minimize; global GTK, WSLg, and Windows
-settings are not changed. Other platforms keep the unmodified native title bar.
+settings are not changed. The title bar also follows the selected application theme:
+its background, text, border, and dark or light preference are derived from the
+theme's colors and updated live, again only inside the application process.
+Other platforms keep the unmodified native title bar.
 
 The interface zoom shown as **100%** is an automatic scale for the current
 screen. It is computed from the screen size in CSS pixels (after any operating

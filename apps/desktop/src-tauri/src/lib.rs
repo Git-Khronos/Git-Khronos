@@ -285,6 +285,17 @@ fn set_window_chrome_scale(percent: u32, app: AppHandle) {
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+fn set_window_chrome_colors(background: String, foreground: String, border: String, app: AppHandle) {
+    #[cfg(target_os = "linux")]
+    if let Some(colors) = display_environment::ChromeColors::parse(&background, &foreground, &border) {
+        let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_colors(colors));
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (background, foreground, border, app);
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn cancel_git_operation(
     operation_id: String,
     state: tauri::State<'_, AppState>,
@@ -3975,6 +3986,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             file_tool_commands::discard_file_tool_review,
             system_info,
             set_window_chrome_scale,
+            set_window_chrome_colors,
             incoming_repository_links::incoming_repository_links,
             incoming_repository_links::acknowledge_incoming_repository_link,
             incoming_repository_links::dismiss_incoming_repository_link_overflow,

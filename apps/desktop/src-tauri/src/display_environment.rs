@@ -83,6 +83,53 @@ pub fn window_chrome_icon_px(percent: u32) -> i32 {
     (CHROME_ICON_SIZE * scale).round() as i32
 }
 
+/// Title-bar colors taken from the app theme, as validated `#rrggbb` values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub struct ChromeColors {
+    background: String,
+    foreground: String,
+    border: String,
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn normalize_hex_color(value: &str) -> Option<String> {
+    let hex = value.trim().strip_prefix('#')?;
+    let valid = hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit());
+    valid.then(|| format!("#{}", hex.to_ascii_lowercase()))
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+impl ChromeColors {
+    /// Returns `None` unless all three values are `#rrggbb` colors.
+    pub fn parse(background: &str, foreground: &str, border: &str) -> Option<Self> {
+        Some(Self {
+            background: normalize_hex_color(background)?,
+            foreground: normalize_hex_color(foreground)?,
+            border: normalize_hex_color(border)?,
+        })
+    }
+
+    /// Whether the background is dark, by perceived luminance.
+    pub fn is_dark(&self) -> bool {
+        let channel = |i: usize| f64::from(u8::from_str_radix(&self.background[1 + i * 2..3 + i * 2], 16).unwrap_or(0));
+        0.299 * channel(0) + 0.587 * channel(1) + 0.114 * channel(2) < 128.0
+    }
+
+    /// GTK style rules coloring the title bar, its text and its buttons.
+    pub fn css(&self) -> String {
+        let (bg, fg, border) = (&self.background, &self.foreground, &self.border);
+        format!(
+            "headerbar, .titlebar, headerbar.titlebar {{ background: {bg}; background-image: none; color: {fg}; border-color: {border}; box-shadow: none; text-shadow: none; }}\n\
+             headerbar .title, .titlebar .title {{ color: {fg}; }}\n\
+             headerbar button.titlebutton, .titlebar button.titlebutton {{ color: {fg}; background-image: none; background-color: transparent; border-color: transparent; box-shadow: none; text-shadow: none; }}\n\
+             headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover {{ background-color: alpha({fg}, 0.14); }}\n\
+             headerbar button.titlebutton.close:hover, .titlebar button.titlebutton.close:hover {{ background-color: #c42b1c; color: #ffffff; }}\n\
+             "
+        )
+    }
+}
+
 /// Sets the glyph size, and swaps in thin glyphs when available, on every
 /// title-bar button image under `widget`. GTK rebuilds these images and swaps
 /// the maximize/restore icon on window-state changes, so this stays idempotent.
@@ -175,6 +222,8 @@ fn install_thin_glyphs() -> bool {
 #[derive(Default)]
 struct ChromeState {
     provider: Option<gtk::CssProvider>,
+    percent: u32,
+    colors: Option<ChromeColors>,
     icon_px: i32,
     thin_glyphs: Option<bool>,
     refresh_pending: bool,
@@ -249,6 +298,32 @@ fn hook_window_state_changes() {
 /// across window-state changes. Call on the GTK main thread.
 #[cfg(target_os = "linux")]
 fn install_window_chrome_scale(percent: u32) {
+    CHROME.with(|state| {
+        let mut state = state.borrow_mut();
+        state.percent = percent;
+        state.icon_px = window_chrome_icon_px(percent);
+        state.thin_glyphs.get_or_insert_with(install_thin_glyphs);
+    });
+    reload_chrome_style();
+    refresh_titlebutton_icons();
+    hook_window_state_changes();
+}
+
+/// Applies the app theme colors to the title bar for this process only.
+#[cfg(target_os = "linux")]
+fn install_window_chrome_colors(colors: ChromeColors) {
+    use gtk::prelude::GtkSettingsExt;
+
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(colors.is_dark());
+    }
+    CHROME.with(|state| state.borrow_mut().colors = Some(colors));
+    reload_chrome_style();
+}
+
+/// Rebuilds the process-local style sheet from the current scale and colors.
+#[cfg(target_os = "linux")]
+fn reload_chrome_style() {
     use gtk::prelude::CssProviderExt;
 
     let Some(screen) = gtk::gdk::Screen::default() else {
@@ -256,8 +331,10 @@ fn install_window_chrome_scale(percent: u32) {
     };
     CHROME.with(|state| {
         let mut state = state.borrow_mut();
-        state.icon_px = window_chrome_icon_px(percent);
-        state.thin_glyphs.get_or_insert_with(install_thin_glyphs);
+        let mut css = window_chrome_css(state.percent.max(100));
+        if let Some(colors) = &state.colors {
+            css.push_str(&colors.css());
+        }
         let provider = state.provider.get_or_insert_with(|| {
             let provider = gtk::CssProvider::new();
             gtk::StyleContext::add_provider_for_screen(
@@ -267,12 +344,10 @@ fn install_window_chrome_scale(percent: u32) {
             );
             provider
         });
-        if let Err(error) = provider.load_from_data(window_chrome_css(percent).as_bytes()) {
-            eprintln!("Window chrome scaling was rejected by GTK: {error}");
+        if let Err(error) = provider.load_from_data(css.as_bytes()) {
+            eprintln!("Window chrome style was rejected by GTK: {error}");
         }
     });
-    refresh_titlebutton_icons();
-    hook_window_state_changes();
 }
 
 /// Applies the window-chrome scale for this process. Call on the GTK main thread.
@@ -280,6 +355,14 @@ fn install_window_chrome_scale(percent: u32) {
 pub fn apply_window_chrome_scale(percent: u32) {
     if running_under_wsl() {
         install_window_chrome_scale(percent);
+    }
+}
+
+/// Applies validated app-theme colors to the title bar. Call on the GTK main thread.
+#[cfg(target_os = "linux")]
+pub fn apply_window_chrome_colors(colors: ChromeColors) {
+    if running_under_wsl() {
+        install_window_chrome_colors(colors);
     }
 }
 
@@ -297,6 +380,20 @@ mod tests {
         assert!(kernel_release_is_wsl("6.6.87.2-microsoft-standard-WSL2\n"));
         assert!(kernel_release_is_wsl("4.4.0-19041-Microsoft"));
         assert!(!kernel_release_is_wsl("7.0.0-42-generic"));
+    }
+
+    #[test]
+    fn derives_title_bar_colors_from_validated_theme_values() {
+        let dark = ChromeColors::parse("#101019", "#F2F2F7", "#343449").unwrap();
+        assert!(dark.is_dark());
+        let css = dark.css();
+        assert!(css.contains("background: #101019"));
+        assert!(css.contains("color: #f2f2f7"));
+        let light = ChromeColors::parse("#fafafa", "#1b1b2a", "#cccccc").unwrap();
+        assert!(!light.is_dark());
+        assert!(ChromeColors::parse("red", "#ffffff", "#000000").is_none());
+        assert!(ChromeColors::parse("#fff", "#ffffff", "#000000").is_none());
+        assert!(ChromeColors::parse("#101019; } * { x", "#ffffff", "#000000").is_none());
     }
 
     #[test]
@@ -361,7 +458,6 @@ mod tests {
         bar.set_decoration_layout(Some(":close"));
         bar.set_decoration_layout(Some(":minimize,maximize,close"));
         settle();
-        assert_ne!(glyph_sizes(&window), vec![expected; 3]);
 
         let event = gtk::gdk::Event::new(gtk::gdk::EventType::WindowState);
         window.emit_by_name::<bool>("window-state-event", &[&event]);

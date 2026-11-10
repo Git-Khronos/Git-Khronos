@@ -8642,6 +8642,40 @@ test.describe('automatic zoom scale', () => {
     await expect.poll(async () => (await chromeCalls()).at(-1)).toBe(135);
   });
 
+  test('applies the selected app theme to the native window chrome only under WSL', async ({ page }) => {
+    await page.evaluate(() => {
+      const calls: Array<{ command: string; args: any }> = [];
+      (window as any).__chromeCalls = calls;
+      (window as any).__TAURI_INTERNALS__ = {
+        invoke: (command: string, args: any) => {
+          calls.push({ command, args });
+          return Promise.resolve(null);
+        },
+      };
+    });
+    const report = (wsl: boolean) => page.evaluate((flag) => {
+      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+        appVersion: 'chrome fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
+        windowsSubsystemForLinux: flag,
+      });
+    }, wsl);
+    const colorCalls = () => page.evaluate(() => (window as any).__chromeCalls
+      .filter((call: { command: string }) => call.command === 'set_window_chrome_colors')
+      .map((call: { args: { background: string } }) => call.args.background.trim()));
+    const setTheme = (theme: string) => page.evaluate((value) => {
+      (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(value);
+    }, theme);
+
+    await report(false);
+    await setTheme('midnight');
+    expect(await colorCalls()).toEqual([]);
+
+    await report(true);
+    await expect.poll(colorCalls).toContain('#090e15');
+    await setTheme('chronos');
+    await expect.poll(async () => (await colorCalls()).at(-1)).toBe('#101019');
+  });
+
   test('ignores an absolute zoom saved by earlier releases', async ({ page }) => {
     await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '150'));
     await page.reload();

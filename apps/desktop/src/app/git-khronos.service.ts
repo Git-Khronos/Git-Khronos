@@ -362,6 +362,14 @@ export class GitKhronosService {
     }
   }
 
+  async styleWindowChrome(background: string, foreground: string, border: string): Promise<void> {
+    try {
+      await ipc.set_window_chrome_colors({ background, foreground, border });
+    } catch {
+      // The native title bar keeps the toolkit colors when theming is unavailable.
+    }
+  }
+
   async initialize(): Promise<void> {
     const initialization = ++this.incomingInitializationRequest;
     this.incomingRepositoryLinksReady.set(false);
