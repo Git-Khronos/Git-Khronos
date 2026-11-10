@@ -156,7 +156,8 @@ theme's colors and updated live, again only inside the application process.
 The last title-bar scale and colors are saved in the application's config directory
 (`window-chrome.txt`) and applied natively before the window first appears, together with the
 web view's background color, so start-up shows neither a light title bar nor a gray
-strip before the interface has loaded. The very first launch uses the default dark theme.
+strip before the interface has loaded. A small start-up script also selects the saved theme at
+document start, so the first painted page already uses it. The very first launch uses the default dark theme.
 Other platforms keep the unmodified native title bar.
 
 The interface zoom shown as **100%** is an automatic scale for the current

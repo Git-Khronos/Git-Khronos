@@ -377,6 +377,11 @@ pub fn apply_window_chrome_colors(colors: ChromeColors) {
 
 const CHROME_STATE_FILE: &str = "window-chrome.txt";
 
+/// Runs at document start: selects the saved theme before the first paint.
+/// Mirrors the storage key and ids used by the frontend theme setting.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub const STARTUP_THEME_SCRIPT: &str = "try{if(window.localStorage.getItem('git-khronos.ui.theme')==='midnight'){document.documentElement.dataset.theme='midnight';}}catch(e){}";
+
 /// Title-bar settings remembered between launches so that the bar is styled
 /// before the web view has loaded and told the native side about the theme.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -489,6 +494,12 @@ mod tests {
         saved.save(&directory);
         assert_eq!(ChromeSnapshot::load(&directory), saved);
         let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn startup_theme_script_uses_the_frontend_theme_key() {
+        assert!(STARTUP_THEME_SCRIPT.contains("git-khronos.ui.theme"));
+        assert!(STARTUP_THEME_SCRIPT.contains("'midnight'"));
     }
 
     #[test]

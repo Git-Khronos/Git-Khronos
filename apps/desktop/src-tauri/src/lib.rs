@@ -3925,6 +3925,18 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init());
+    // Under WSL the saved theme is applied at document start, so the first
+    // paint uses the saved theme instead of the default one.
+    #[cfg(target_os = "linux")]
+    let builder = if display_environment::running_under_wsl() {
+        builder.plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("startup-theme")
+                .js_init_script(display_environment::STARTUP_THEME_SCRIPT.to_string())
+                .build(),
+        )
+    } else {
+        builder
+    };
     builder
         .manage(authentication::AuthenticationState::default())
         .manage(working_file_commands::EditorState::default())
