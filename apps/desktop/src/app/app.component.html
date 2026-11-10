@@ -2889,7 +2889,7 @@
       <option value="140">140%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option>
     </select>
     <button type="button" title="Increase zoom ({{ primaryShortcutKey }}++)" aria-label="Increase zoom" aria-keyshortcuts="Control++ Meta++" [disabled]="zoomPercent() >= 200" (click)="stepZoom(1)">+</button>
-    <button class="zoom-reset" type="button" title="Reset zoom to 100% ({{ primaryShortcutKey }}+0)" aria-label="Reset zoom to 100 percent" aria-keyshortcuts="Control+0 Meta+0" [disabled]="zoomPercent() === 100" (click)="setZoom(100)"><gc-icon name="reset" [size]="10" /></button>
+    <button class="zoom-reset" type="button" title="Reset zoom to {{ defaultZoom() }}% ({{ primaryShortcutKey }}+0)" [attr.aria-label]="'Reset zoom to ' + defaultZoom() + ' percent'" aria-keyshortcuts="Control+0 Meta+0" [disabled]="zoomPercent() === defaultZoom()" (click)="resetZoom()"><gc-icon name="reset" [size]="10" /></button>
   </div>
   @if (git.busy()) { <div class="progress-line" aria-label="Operation in progress"></div> }
 </div>

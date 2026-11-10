@@ -577,6 +577,18 @@ function normalizeZoom(value: unknown): number {
   );
 }
 
+// Experimental readability heuristic based on reported CSS dimensions,
+// not physical DPI or Windows display scaling.
+const REFERENCE_DISPLAY_WIDTH = 1920;
+const REFERENCE_DISPLAY_HEIGHT = 1080;
+const MAX_AUTOMATIC_ZOOM = 175;
+
+function automaticDisplayZoom(width: number, height: number): number {
+  if (!(width > 0 && height > 0)) return DEFAULT_ZOOM;
+  const scale = Math.min(width / REFERENCE_DISPLAY_WIDTH, height / REFERENCE_DISPLAY_HEIGHT) * 100;
+  return normalizeZoom(Math.min(MAX_AUTOMATIC_ZOOM, Math.max(DEFAULT_ZOOM, scale)));
+}
+
 function stableAuthorColor(identity: string): string {
   let hash = 2_166_136_261;
   for (const character of identity) {
@@ -1062,7 +1074,13 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commandPaletteScope = signal<CommandPaletteScope>('all');
   protected readonly commandSelection = signal(0);
   private readonly recentCommandIds = signal(this.readRecentCommandIds());
-  protected readonly zoomPercent = signal(this.readZoom());
+  private readonly storedZoomPreference = signal(this.readStoredZoom());
+  protected readonly zoomPercent = signal(this.storedZoomPreference() ?? DEFAULT_ZOOM);
+  /** Estimate a WSL starting zoom without replacing a saved user preference. */
+  protected readonly defaultZoom = computed(() => {
+    if (this.git.systemInfo()?.windowsSubsystemForLinux !== true || typeof screen === 'undefined') return DEFAULT_ZOOM;
+    return automaticDisplayZoom(screen.width, screen.height);
+  });
   protected readonly appTheme = signal<AppTheme>(this.readAppTheme());
   protected readonly appThemeOptions = APP_THEME_OPTIONS;
   protected readonly workingTreeViewMode = signal<WorkingTreeViewMode>(this.readWorkingTreeViewMode());
@@ -1641,6 +1659,12 @@ export class AppComponent implements OnInit, OnDestroy {
       this.diffInsightMode();
       this.diffWordWrap();
       this.stopDiffViewportTracking?.();
+    });
+    effect(() => {
+      const zoom = this.defaultZoom();
+      if (this.storedZoomPreference() !== null || untracked(this.zoomPercent) === zoom) return;
+      this.zoomPercent.set(zoom);
+      void this.applyZoom(zoom);
     });
     effect(() => {
       const title = this.repositoryWindowTitle(this.git.repository());
@@ -3387,7 +3411,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'theme-toggle', group: 'View', label: this.appTheme() === 'chronos' ? 'Switch to Midnight Contrast' : 'Switch to Chronos Dark', detail: 'Change the global application color theme', enabled: true, icon: 'eye' },
       { id: 'zoom-in', group: 'View', label: 'Increase Zoom', detail: 'Increase the interface zoom level', shortcut: `${this.primaryShortcutKey} +`, enabled: this.zoomPercent() < ZOOM_LEVELS.at(-1)!, icon: 'plus' },
       { id: 'zoom-out', group: 'View', label: 'Decrease Zoom', detail: 'Decrease the interface zoom level', shortcut: `${this.primaryShortcutKey} -`, enabled: this.zoomPercent() > ZOOM_LEVELS[0], icon: 'reset' },
-      { id: 'zoom-reset', group: 'View', label: 'Reset Zoom', detail: 'Return interface zoom to 100%', shortcut: `${this.primaryShortcutKey} 0`, enabled: this.zoomPercent() !== 100, icon: 'reset' },
+      { id: 'zoom-reset', group: 'View', label: 'Reset Zoom', detail: `Return interface zoom to ${this.defaultZoom()}%`, shortcut: `${this.primaryShortcutKey} 0`, enabled: this.zoomPercent() !== this.defaultZoom(), icon: 'reset' },
       { id: 'diff-view', group: 'View', label: 'Open Diff View', detail: 'Inspect the selected file in the focused diff workspace', shortcut: `${this.primaryShortcutKey} D`, enabled: !!this.activeDiff(), icon: 'file' },
       { id: 'shortcuts', group: 'View', label: 'Keyboard Shortcuts', detail: 'Open the desktop shortcut reference', shortcut: `${this.primaryShortcutKey} /`, enabled: true, icon: 'keyboard' },
       { id: 'activity-log', group: 'View', label: 'Activity Logs', detail: 'Inspect application and repository operations', enabled: !!repository, icon: 'activity' },
@@ -4528,7 +4552,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (key === '0') {
       event.preventDefault();
-      void this.setZoom(DEFAULT_ZOOM);
+      void this.resetZoom();
       return;
     }
 
@@ -5309,7 +5333,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async restoreInterfaceDefaults(): Promise<void> {
     this.resetUiConfirmation.set(false);
     this.setAppTheme('chronos');
-    await this.setZoom(DEFAULT_ZOOM);
+    await this.resetZoom();
     this.showToolbarLabels.set(true);
     this.showWorktreeTabGroups.set(true);
     this.highlightRelatedCommits.set(true);
@@ -10424,7 +10448,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'theme-toggle': this.toggleAppTheme(); break;
       case 'zoom-in': await this.stepZoom(1); break;
       case 'zoom-out': await this.stepZoom(-1); break;
-      case 'zoom-reset': await this.setZoom(DEFAULT_ZOOM); break;
+      case 'zoom-reset': await this.resetZoom(); break;
       case 'diff-view': this.openDiffViewer(); break;
       case 'shortcuts': this.openKeyboardShortcuts(paletteReturnFocus); break;
       case 'activity-log': this.showActivityLogs(this.activityLogTab(), paletteReturnFocus); break;
@@ -10475,8 +10499,21 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async setZoom(value: number): Promise<void> {
     const zoom = normalizeZoom(value);
     this.zoomPercent.set(zoom);
+    this.storedZoomPreference.set(zoom);
     try {
       localStorage.setItem('git-khronos.ui.zoom', String(zoom));
+    } catch {
+      // Zoom remains available when WebView storage is unavailable.
+    }
+    await this.applyZoom(zoom);
+  }
+
+  protected async resetZoom(): Promise<void> {
+    const zoom = this.defaultZoom();
+    this.zoomPercent.set(zoom);
+    this.storedZoomPreference.set(null);
+    try {
+      localStorage.removeItem('git-khronos.ui.zoom');
     } catch {
       // Zoom remains available when WebView storage is unavailable.
     }
@@ -13170,12 +13207,12 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  private readZoom(): number {
+  private readStoredZoom(): number | null {
     try {
       const stored = localStorage.getItem('git-khronos.ui.zoom');
-      return stored === null ? DEFAULT_ZOOM : normalizeZoom(stored);
+      return stored === null ? null : normalizeZoom(stored);
     } catch {
-      return DEFAULT_ZOOM;
+      return null;
     }
   }
 

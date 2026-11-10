@@ -140,6 +140,25 @@ deletions, or missing required outputs trigger another build. Use
 `task --force package:deb` to rebuild explicitly, for example after changing the
 installed toolchain or system libraries.
 
+#### Experimental WSL display defaults on dev
+
+The `dev` branch includes WSL-specific changes awaiting real WSLg validation.
+When GTK reports an empty or `menu:close` decoration layout, Git Khronos
+requests minimize, maximize, and close buttons for its own process. Other
+reported layouts are left unchanged.
+
+With no saved zoom preference, the app estimates a starting zoom from the
+screen size in CSS pixels: 1920x1080 gives 100%, 2560x1440 gives 140%, and
+the automatic value is capped at 175%. This is a readability heuristic,
+not physical-DPI detection or a guarantee of matching Windows scaling.
+The result depends on the dimensions exposed by WSLg and WebKitGTK.
+
+A manually chosen zoom is retained. **Reset zoom** or **Ctrl+0** clears that
+choice and returns to the estimated default. Outside WSL, the default remains
+100%. Test the native app built from `dev`, not the sample-data browser preview
+or the published release. Changing Windows or WSLg display settings is not
+required to try these app-local changes.
+
 `task frontend` creates an optimized frontend build. Use `task preview` when
 you need a browser-accessible, sample-data development server at
 `http://127.0.0.1:4200`. Add `?welcome-preview` to inspect the welcome screen.

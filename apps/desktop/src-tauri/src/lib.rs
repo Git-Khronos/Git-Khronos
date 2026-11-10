@@ -98,6 +98,7 @@ use tauri_specta::Event;
 
 mod authentication;
 mod branch_workflow_commands;
+mod display_environment;
 mod file_tool_commands;
 #[cfg(any(target_os = "linux", test))]
 mod file_tool_reviews;
@@ -246,6 +247,7 @@ struct SystemInfo {
     git_version: Option<String>,
     git_supported: bool,
     minimum_git_version: &'static str,
+    windows_subsystem_for_linux: bool,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -266,6 +268,7 @@ fn system_info() -> SystemInfo {
         git_version: git.version,
         git_supported: git.supported,
         minimum_git_version: MINIMUM_GIT_VERSION,
+        windows_subsystem_for_linux: display_environment::running_under_wsl(),
     }
 }
 
@@ -3891,6 +3894,8 @@ pub fn run() {
         .manage(state)
         .invoke_handler(bindings.invoke_handler())
         .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            display_environment::show_wsl_window_buttons();
             bindings.mount_events(app);
             app.state::<gitlab_commands::GitLabAccounts>()
                 .start_cleanup();

@@ -8555,7 +8555,7 @@ test('persists the selected interface zoom preset', async ({ page }) => {
 
   await page.keyboard.press('Control+0');
   await expect(restoredZoom.locator('option:checked')).toHaveText('100%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('100');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
 
   await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', 'invalid'));
   await page.reload();
@@ -8579,6 +8579,42 @@ test('shows the reported native version rather than a stale fallback', async ({ 
     });
   });
   await expect(environment).toHaveText('v2.3.4');
+});
+
+test.describe('on a large unscaled WSL display', () => {
+  test('derives a readable default zoom until the user chooses one', async ({ page }) => {
+    const zoom = page.getByLabel('Interface zoom', { exact: true });
+    await page.evaluate(() => {
+      Object.defineProperty(screen, 'width', { configurable: true, get: () => 2560 });
+      Object.defineProperty(screen, 'height', { configurable: true, get: () => 1440 });
+    });
+    const reportSystem = (windowsSubsystemForLinux: boolean) => page.evaluate((wsl) => {
+      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+        appVersion: 'zoom fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
+        windowsSubsystemForLinux: wsl,
+      });
+    }, windowsSubsystemForLinux);
+    await expect(zoom.locator('option:checked')).toHaveText('100%');
+
+    await reportSystem(true);
+    await expect(zoom.locator('option:checked')).toHaveText('140%');
+    const resetZoom = page.getByRole('button', { name: 'Reset zoom to 140 percent' });
+    await expect(resetZoom).toHaveAttribute('title', 'Reset zoom to 140% (Ctrl+0)');
+    await expect(resetZoom).toBeDisabled();
+    expect(await page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
+
+    await zoom.selectOption({ label: '110%' });
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('110');
+    await reportSystem(true);
+    await expect(zoom.locator('option:checked')).toHaveText('110%');
+
+    await resetZoom.click();
+    await expect(zoom.locator('option:checked')).toHaveText('140%');
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
+
+    await reportSystem(false);
+    await expect(zoom.locator('option:checked')).toHaveText('100%');
+  });
 });
 
 test('reserves status-bar space for the persistent zoom controls', async ({ page }) => {
