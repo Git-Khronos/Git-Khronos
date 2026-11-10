@@ -1,3 +1,12 @@
+git-khronos (0.1.2) unstable; urgency=medium
+
+  * Scale the interface automatically to the screen, so 100% is the detected default.
+  * Match the WSL title bar and startup surfaces to the selected theme.
+  * Ship the launcher as git-khronos.desktop so WSLg groups the window with its pin.
+  * Rename remaining Chronos references to Khronos.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Tue, 10 Nov 2026 18:40:00 +0100
+
 git-khronos (0.1.1) unstable; urgency=medium
 
   * Improve merge graph routing and show merge direction with arrowheads.
