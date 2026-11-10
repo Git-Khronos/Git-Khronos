@@ -33,7 +33,7 @@ interface PreferenceSearchEntry {
 
 const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
   { label: 'Terminal programs', category: 'Terminal', section: 'terminal', targetId: 'preference-programs', keywords: 'configured tools executable arguments profiles default shell' },
-  { label: 'Application theme', category: 'General', section: 'general', targetId: 'preference-appearance', keywords: 'appearance color dark midnight chronos' },
+  { label: 'Application theme', category: 'General', section: 'general', targetId: 'preference-appearance', keywords: 'appearance color dark midnight khronos' },
   { label: 'Toolbar labels', category: 'General', section: 'general', targetId: 'preference-toolbar', keywords: 'buttons icons actions' },
   { label: 'Worktree tab groups', category: 'General', section: 'general', targetId: 'preference-tabs', keywords: 'tabs repositories grouping' },
   { label: 'Left panel visibility', category: 'General', section: 'general', targetId: 'preference-left-panel', keywords: 'sidebar layout show hide' },

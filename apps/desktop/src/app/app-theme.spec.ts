@@ -7,16 +7,17 @@ describe('application theme preference', () => {
   });
 
   it('falls back to the project default for stale or invalid values', () => {
-    expect(normalizeAppTheme(null)).toBe('chronos');
-    expect(normalizeAppTheme('light')).toBe('chronos');
+    expect(normalizeAppTheme(null)).toBe('khronos');
+    expect(normalizeAppTheme('light')).toBe('khronos');
+    expect(normalizeAppTheme('chronos')).toBe('khronos');
   });
 
   it('navigates the theme radio group in every desktop direction', () => {
-    expect(appThemeNavigationValue('chronos', 'ArrowRight')).toBe('midnight');
-    expect(appThemeNavigationValue('chronos', 'ArrowDown')).toBe('midnight');
-    expect(appThemeNavigationValue('chronos', 'ArrowLeft')).toBe('midnight');
-    expect(appThemeNavigationValue('midnight', 'ArrowUp')).toBe('chronos');
-    expect(appThemeNavigationValue('midnight', 'Home')).toBe('chronos');
-    expect(appThemeNavigationValue('chronos', 'End')).toBe('midnight');
+    expect(appThemeNavigationValue('khronos', 'ArrowRight')).toBe('midnight');
+    expect(appThemeNavigationValue('khronos', 'ArrowDown')).toBe('midnight');
+    expect(appThemeNavigationValue('khronos', 'ArrowLeft')).toBe('midnight');
+    expect(appThemeNavigationValue('midnight', 'ArrowUp')).toBe('khronos');
+    expect(appThemeNavigationValue('midnight', 'Home')).toBe('khronos');
+    expect(appThemeNavigationValue('khronos', 'End')).toBe('midnight');
   });
 });

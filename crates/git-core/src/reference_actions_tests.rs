@@ -159,7 +159,7 @@ impl Repository {
             .unwrap()
             .as_nanos();
         let root =
-            std::env::temp_dir().join(format!("chronos-ref-actions-{}-{id}", std::process::id()));
+            std::env::temp_dir().join(format!("khronos-ref-actions-{}-{id}", std::process::id()));
         fs::create_dir(&root).unwrap();
         for args in [
             vec!["init", "-b", "main"],
@@ -3224,7 +3224,7 @@ fn commit_policy_never_bypasses_failing_commit_hooks_or_signer() {
         &[
             "config",
             "gpg.program",
-            "/definitely/missing/chronos-test-signer",
+            "/definitely/missing/khronos-test-signer",
         ],
         "set unavailable signer",
     )
@@ -3262,7 +3262,7 @@ fn signing_ssh_round_trip_preserves_policy_and_distinguishes_trust_revocation_an
     let path = &repository.0;
     let key = path.join(".git/signing-fixture");
     let output = Command::new("ssh-keygen")
-        .args(["-q", "-t", "ed25519", "-N", "", "-C", "chronos-test", "-f"])
+        .args(["-q", "-t", "ed25519", "-N", "", "-C", "khronos-test", "-f"])
         .arg(&key)
         .output()
         .expect("ssh-keygen is required for this optional qualification");
@@ -3726,7 +3726,7 @@ impl GnuPgHome {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("chronos-pgp-{}-{id}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("khronos-pgp-{}-{id}", std::process::id()));
         fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
         let home = Self { path, program };
         let signer = home.signer();
@@ -3826,7 +3826,7 @@ fn signing_openpgp_round_trip_distinguishes_trust_missing_keys_tampering_and_exp
             "--passphrase",
             "",
             "--quick-generate-key",
-            "Chronos Signing Fixture <signer@example.test>",
+            "Khronos Signing Fixture <signer@example.test>",
             "ed25519",
             "sign",
             "0",
@@ -3885,7 +3885,7 @@ fn signing_openpgp_round_trip_distinguishes_trust_missing_keys_tampering_and_exp
     assert_eq!(details.signature.trust.as_deref(), Some("ultimate"));
     assert_eq!(
         details.signature.signer.as_deref(),
-        Some("Chronos Signing Fixture <signer@example.test>")
+        Some("Khronos Signing Fixture <signer@example.test>")
     );
     assert!(
         details
@@ -4109,7 +4109,7 @@ fn signing_x509_round_trip_keeps_certificate_trust_and_signing_failures_explicit
             "-days",
             "2",
             "-subj",
-            "/CN=Chronos X509 Fixture/emailAddress=signer@example.test",
+            "/CN=Khronos X509 Fixture/emailAddress=signer@example.test",
             "-addext",
             "keyUsage=critical,digitalSignature",
             "-addext",
@@ -4207,7 +4207,7 @@ fn signing_x509_round_trip_keeps_certificate_trust_and_signing_failures_explicit
             .signature
             .signer
             .as_deref()
-            .is_some_and(|value| value.contains("Chronos X509 Fixture"))
+            .is_some_and(|value| value.contains("Khronos X509 Fixture"))
     );
     assert_eq!(
         String::from_utf8(run_git(path, &["rev-parse", "HEAD^"]).unwrap().stdout)
@@ -5825,13 +5825,13 @@ fn opening_repository_data_without_a_working_tree_is_explained_and_unchanged() {
     .unwrap();
     run_mutation(
         &repository.0,
-        &["config", "extensions.chronosUnknownFeature", "true"],
+        &["config", "extensions.khronosUnknownFeature", "true"],
         "ext",
     )
     .unwrap();
     let format = resolve_repository(&repository.0).unwrap_err();
     assert_eq!(format.kind, "unsupportedRepositoryFormat");
-    assert!(format.message.contains("chronosunknownfeature"));
+    assert!(format.message.contains("khronosunknownfeature"));
     fs::remove_dir_all(base).unwrap();
 }
 
@@ -6051,7 +6051,7 @@ fn scoped_fetch_all_remote_prune_is_explicit_and_uses_fetch_not_push_url() {
             "set-url",
             "--push",
             "origin",
-            "/no-such-chronos-push-destination",
+            "/no-such-khronos-push-destination",
         ],
         "separate push URL",
     )
@@ -6182,7 +6182,7 @@ fn scoped_fetch_cancel_and_failure_leave_actual_updates_visible() {
             "remote",
             "set-url",
             "origin",
-            "/no-such-chronos-fetch-destination",
+            "/no-such-khronos-fetch-destination",
         ],
         "break later remote",
     )
@@ -6677,7 +6677,7 @@ fn worktree_repair_does_not_rewrite_another_worktrees_broken_link() {
     let actual = repository.0.join("actual");
     fs::rename(&old, &actual).unwrap();
     let other_marker = repository.0.join("other/.git");
-    let broken = b"gitdir: /no-such-chronos-worktree-registration\n";
+    let broken = b"gitdir: /no-such-khronos-worktree-registration\n";
     fs::write(&other_marker, broken).unwrap();
     let result = repair_worktree(
         &repository.0,
@@ -7267,7 +7267,7 @@ fn lfs_checkout_hydrates_one_verified_pointer_preserving_index_refs_modes_config
             .unwrap()
             .file_name()
             .to_string_lossy()
-            .starts_with(".chronos-lfs-")
+            .starts_with(".khronos-lfs-")
     }));
 }
 
@@ -7297,7 +7297,7 @@ fn lfs_checkout_refuses_same_size_corrupt_cache_without_replacing_pointer_or_lea
             .unwrap()
             .file_name()
             .to_string_lossy()
-            .starts_with(".chronos-lfs-")
+            .starts_with(".khronos-lfs-")
     }));
 }
 
@@ -7578,7 +7578,7 @@ fn lfs_checkout_active_cancellation_cleans_owned_copy_and_retains_working_pointe
                     .unwrap()
                     .file_name()
                     .to_string_lossy()
-                    .starts_with(".chronos-lfs-")
+                    .starts_with(".khronos-lfs-")
             }) {
                 cancellation.cancel();
                 break;
@@ -7601,7 +7601,7 @@ fn lfs_checkout_active_cancellation_cleans_owned_copy_and_retains_working_pointe
             .unwrap()
             .file_name()
             .to_string_lossy()
-            .starts_with(".chronos-lfs-")
+            .starts_with(".khronos-lfs-")
     }));
 }
 

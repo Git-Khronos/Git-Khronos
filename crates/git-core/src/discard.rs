@@ -2472,7 +2472,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir()
-                .join(format!("chronos-bulk-discard-{}-{id}", std::process::id()));
+                .join(format!("khronos-bulk-discard-{}-{id}", std::process::id()));
             fs::create_dir(&path).unwrap();
             for args in [
                 vec!["init", "-b", "main"],

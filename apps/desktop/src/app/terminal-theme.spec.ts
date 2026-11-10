@@ -3,7 +3,7 @@ import { terminalTheme } from './terminal-theme';
 
 describe('terminal theme', () => {
   it('keeps each terminal canvas aligned with its application surface', () => {
-    expect(terminalTheme('chronos')).toMatchObject({
+    expect(terminalTheme('khronos')).toMatchObject({
       background: '#11111a',
       foreground: '#d8d7e2',
       cursor: '#63dbb5',
@@ -16,6 +16,6 @@ describe('terminal theme', () => {
   });
 
   it('returns independent palette objects for live terminal updates', () => {
-    expect(terminalTheme('chronos')).not.toBe(terminalTheme('chronos'));
+    expect(terminalTheme('khronos')).not.toBe(terminalTheme('khronos'));
   });
 });

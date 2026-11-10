@@ -204,7 +204,7 @@ test('a confirmed clone arriving after cancellation remains a truthful completed
   expect(await page.evaluate(() => (window as any).__hostedCatalogue.calls.filter((c: any) => c.command === 'execute_hosted_clone'))).toHaveLength(1);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} hosted catalogue stays keyboard-contained and readable in a compact window`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} hosted catalogue stays keyboard-contained and readable in a compact window`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);

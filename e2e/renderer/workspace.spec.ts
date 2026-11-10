@@ -212,13 +212,13 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await page.evaluate(() => {
     localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
-      '/home/maya/projects/chronos-api',
+      '/home/maya/projects/khronos-api',
       '/home/maya/sandboxes/release-candidate',
       '/mnt/work/client-portal',
     ]));
     localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
-      '/home/maya/projects/chronos-api',
+      '/home/maya/projects/khronos-api',
     ]));
   });
   await page.reload();
@@ -248,9 +248,9 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await expect(recentFavoriteControl).toHaveCSS('color', 'rgb(226, 180, 95)');
   await expect(page.locator('.recents:not(.favorites)')).toContainText('2 repositories');
   await expect(page.locator('.recents:not(.favorites)')).not.toContainText('atlas-ui');
-  await expect(page.locator('.recents:not(.favorites)')).not.toContainText('chronos-api');
+  await expect(page.locator('.recents:not(.favorites)')).not.toContainText('khronos-api');
   const repositoryFilter = page.getByRole('searchbox', { name: 'Filter favorites and recent repositories' });
-  await repositoryFilter.fill('chronos-api');
+  await repositoryFilter.fill('khronos-api');
   await expect(page.locator('.recents.favorites .welcome-repository-card kbd')).toHaveText('Ctrl Alt 2');
   await repositoryFilter.press('Escape');
   await repositoryFilter.fill('release');
@@ -300,7 +300,7 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await expect(page.locator('.recents:not(.favorites)')).toContainText('2 repositories');
   await expect(page.locator('.recents:not(.favorites)')).not.toContainText('release-candidate');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.recent-repositories.v1')))
-    .toBe('["/home/maya/projects/atlas-ui","/home/maya/projects/chronos-api","/mnt/work/client-portal"]');
+    .toBe('["/home/maya/projects/atlas-ui","/home/maya/projects/khronos-api","/mnt/work/client-portal"]');
   await expect(openRepository).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+O Meta+Shift+O');
   await expect(openRepository).toHaveAttribute('title', 'Open a local repository (Ctrl+Shift+O)');
   await expect(openRepository.locator('kbd')).toHaveText('Ctrl ⇧ O');
@@ -3403,7 +3403,7 @@ test('groups panel visibility with the panel it controls', async ({ page }) => {
 
 test('keeps preference hierarchy legible in every application theme', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await page.getByRole('button', { name: 'Preferences', exact: true }).click();
@@ -3459,7 +3459,7 @@ test('navigates preference categories as a standard tab list', async ({ page }) 
   await expect(preferences.locator('header small')).toHaveCSS('font-size', '12px');
   await expect(general.locator('strong')).toHaveCSS('font-size', '13px');
   await expect(general.locator('small')).toHaveCSS('font-size', '12px');
-  await expect(preferences.getByRole('radio', { name: /Chronos Dark/ }).locator('strong')).toHaveCSS('font-size', '13px');
+  await expect(preferences.getByRole('radio', { name: /Khronos Dark/ }).locator('strong')).toHaveCSS('font-size', '13px');
   await expect(preferences.locator('.preference-group label').filter({ hasText: 'Show toolbar icon labels' })).toHaveCSS('font-size', '13px');
   await expect(preferences.getByLabel('Commit Panel file layout')).toHaveCSS('font-size', '13px');
   await expect(close).toHaveCSS('border-top-style', 'solid');
@@ -3549,14 +3549,14 @@ test('navigates and persists application themes as a standard radio group', asyn
   await expect(preferences).toHaveCSS('background-color', 'rgb(36, 35, 53)');
   await expect(preferences).toHaveCSS('border-color', 'rgb(74, 73, 98)');
   const themes = preferences.getByRole('radiogroup', { name: 'Application theme' });
-  const chronos = themes.getByRole('radio', { name: /Chronos Dark/ });
+  const khronos = themes.getByRole('radio', { name: /Khronos Dark/ });
   const midnight = themes.getByRole('radio', { name: /Midnight Contrast/ });
 
-  await expect(chronos).toHaveAttribute('aria-checked', 'true');
-  await expect(chronos).toHaveAttribute('tabindex', '0');
+  await expect(khronos).toHaveAttribute('aria-checked', 'true');
+  await expect(khronos).toHaveAttribute('tabindex', '0');
   await expect(midnight).toHaveAttribute('tabindex', '-1');
-  await chronos.focus();
-  await chronos.press('ArrowRight');
+  await khronos.focus();
+  await khronos.press('ArrowRight');
   await expect(midnight).toBeFocused();
   await expect(midnight).toHaveAttribute('aria-checked', 'true');
   await expect(midnight).toHaveAttribute('tabindex', '0');
@@ -3838,22 +3838,22 @@ test('reveals repository display-name editing only when requested', async ({ pag
   await expect(editor.getByRole('button', { name: 'Save' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(input).toBeFocused();
-  await input.fill('Chronos Core');
+  await input.fill('Khronos Core');
   await editor.getByRole('button', { name: 'Save' }).click();
-  await expect(tab).toContainText('Chronos Core');
+  await expect(tab).toContainText('Khronos Core');
 
   await tab.click({ button: 'right' });
-  const renamedMenu = page.getByRole('menu', { name: 'Repository actions for Chronos Core' });
+  const renamedMenu = page.getByRole('menu', { name: 'Repository actions for Khronos Core' });
   await renamedMenu.getByRole('menuitem', { name: 'Edit display name…' }).click();
-  const renamedEditor = page.getByRole('dialog', { name: 'Edit display name for Chronos Core' });
+  const renamedEditor = page.getByRole('dialog', { name: 'Edit display name for Khronos Core' });
   const renamedInput = renamedEditor.getByRole('textbox', { name: 'Repository display name' });
-  await expect(renamedInput).toHaveValue('Chronos Core');
+  await expect(renamedInput).toHaveValue('Khronos Core');
   await renamedInput.fill('Discard this draft');
   await page.keyboard.press('Escape');
   await expect(renamedMenu.getByRole('menuitem', { name: 'Edit display name…' })).toBeFocused();
   await renamedMenu.getByRole('menuitem', { name: 'Edit display name…' }).click();
-  await expect(page.getByRole('dialog', { name: 'Edit display name for Chronos Core' })
-    .getByRole('textbox', { name: 'Repository display name' })).toHaveValue('Chronos Core');
+  await expect(page.getByRole('dialog', { name: 'Edit display name for Khronos Core' })
+    .getByRole('textbox', { name: 'Repository display name' })).toHaveValue('Khronos Core');
 });
 
 test('switches repository tabs with standard tablist keys and restores focus after close', async ({ page }) => {
@@ -5698,7 +5698,7 @@ test('keeps command palette chrome inside a short desktop window', async ({ page
 
 test('pairs command palette surfaces with each application theme', async ({ page }) => {
   const appearances: Record<string, string[]> = {};
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await page.keyboard.press('Control+P');
@@ -5714,8 +5714,8 @@ test('pairs command palette surfaces with each application theme', async ({ page
     await page.keyboard.press('Escape');
   }
 
-  expect(appearances['chronos']).not.toEqual(appearances['midnight']);
-  expect(new Set(appearances['chronos']).size).toBeGreaterThan(2);
+  expect(appearances['khronos']).not.toEqual(appearances['midnight']);
+  expect(new Set(appearances['khronos']).size).toBeGreaterThan(2);
   expect(new Set(appearances['midnight']).size).toBeGreaterThan(2);
 });
 
@@ -7819,13 +7819,13 @@ test('keeps browser-only repository limitations explicit', async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
-      '/home/maya/projects/chronos-api',
+      '/home/maya/projects/khronos-api',
       '/home/maya/sandboxes/release-candidate',
       '/mnt/work/client-portal',
     ]));
     localStorage.setItem('git-khronos.favorite-repositories.v1', JSON.stringify([
       '/home/maya/projects/atlas-ui',
-      '/home/maya/projects/chronos-api',
+      '/home/maya/projects/khronos-api',
     ]));
   });
   await page.reload();
@@ -7848,7 +7848,7 @@ test('keeps browser-only repository limitations explicit', async ({ page }) => {
   await expect(dialog.locator('.manager-favorites .manager-repository-row')).toHaveCount(2);
   await expect(dialog.locator('.manager-recents .manager-repository-row')).toHaveCount(2);
   await expect(dialog.locator('.manager-recents')).not.toContainText('atlas-ui');
-  await expect(dialog.locator('.manager-recents')).not.toContainText('chronos-api');
+  await expect(dialog.locator('.manager-recents')).not.toContainText('khronos-api');
   await expect(dialog.locator('.manager-repository-main').first()).toHaveCSS('border-top-width', '0px');
   await expect(dialog.locator('.manager-favorite-toggle').first()).toHaveCSS('border-top-width', '0px');
   await expect(browseTab).toHaveAttribute('aria-selected', 'true');
@@ -8004,7 +8004,7 @@ test('navigates activity scopes as a familiar tab strip', async ({ page }) => {
 
 test('shows activity outcomes as text with readable theme-paired surfaces', async ({ page }) => {
   const themeSurfaces: string[] = [];
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await expect(page.locator('.commit-row').first()).toBeVisible();
@@ -8672,7 +8672,7 @@ test.describe('automatic zoom scale', () => {
 
     await report(true);
     await expect.poll(colorCalls).toContain('#090e15');
-    await setTheme('chronos');
+    await setTheme('khronos');
     await expect.poll(async () => (await colorCalls()).at(-1)).toBe('#101019');
   });
 
@@ -8794,7 +8794,7 @@ test('keeps secondary workspace text legible and respects reduced motion', async
       expect(ratio, `${selector} should meet WCAG AA contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
     }
   };
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
     await expect(page.locator('.commit-row').first()).toBeVisible();

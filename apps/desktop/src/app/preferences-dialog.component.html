@@ -40,7 +40,7 @@
           @for (option of appThemeOptions; track option.value) {
             <button type="button" role="radio" [attr.data-app-theme]="option.value" [attr.aria-checked]="host.appTheme() === option.value" [attr.tabindex]="host.appTheme() === option.value ? 0 : -1" [class.selected]="host.appTheme() === option.value" (click)="host.setAppTheme(option.value)" (keydown)="host.handleAppThemeKeydown($event, option.value)">
               <span class="theme-preview {{ option.value }}"><i></i><i></i><i></i></span>
-              <span><strong>{{ option.label }}</strong><small>{{ option.value === 'chronos' ? 'Balanced deep color' : 'Crisp high contrast' }}</small></span>
+              <span><strong>{{ option.label }}</strong><small>{{ option.value === 'khronos' ? 'Balanced deep color' : 'Crisp high contrast' }}</small></span>
               @if (host.appTheme() === option.value) { <gc-icon name="check" [size]="12" /> }
             </button>
           }

@@ -156,7 +156,7 @@ test('long source lines remain reachable with horizontal keyboard scrolling', as
 test('line numbers and dates retain readable contrast in both themes', async ({page}) => {
   await prepare(page);
   await expect(page.locator('.blame-line')).toHaveCount(100);
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate(theme => { document.documentElement.dataset['theme'] = theme; }, theme);
     const ratios = await page.locator('.blame-line').first().evaluate(row => {
       const luminance = (color: string) => {

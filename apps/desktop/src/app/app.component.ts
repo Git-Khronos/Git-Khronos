@@ -3408,7 +3408,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'commit-panel', group: 'View', label: 'Toggle Commit Panel', detail: 'Show or hide commit details', shortcut: `${this.primaryShortcutKey} K`, enabled: !!repository, icon: 'panel-right' },
       { id: 'preferences', group: 'View', label: 'Open Preferences', detail: 'Customize appearance, graph, Git features, and terminal defaults', enabled: true, icon: 'settings' },
       { id: 'reset-ui', group: 'View', label: 'Restore Interface Defaults', detail: 'Review and reset appearance and layout preferences without changing Git data', enabled: true, icon: 'reset' },
-      { id: 'theme-toggle', group: 'View', label: this.appTheme() === 'chronos' ? 'Switch to Midnight Contrast' : 'Switch to Chronos Dark', detail: 'Change the global application color theme', enabled: true, icon: 'eye' },
+      { id: 'theme-toggle', group: 'View', label: this.appTheme() === 'khronos' ? 'Switch to Midnight Contrast' : 'Switch to Khronos Dark', detail: 'Change the global application color theme', enabled: true, icon: 'eye' },
       { id: 'zoom-in', group: 'View', label: 'Increase Zoom', detail: 'Increase the interface zoom level', shortcut: `${this.primaryShortcutKey} +`, enabled: this.zoomPercent() < ZOOM_LEVELS.at(-1)!, icon: 'plus' },
       { id: 'zoom-out', group: 'View', label: 'Decrease Zoom', detail: 'Decrease the interface zoom level', shortcut: `${this.primaryShortcutKey} -`, enabled: this.zoomPercent() > ZOOM_LEVELS[0], icon: 'reset' },
       { id: 'zoom-reset', group: 'View', label: 'Reset Zoom', detail: `Return interface zoom to ${DEFAULT_ZOOM}% (automatic scale ${this.autoZoom()}%)`, shortcut: `${this.primaryShortcutKey} 0`, enabled: this.zoomPercent() !== DEFAULT_ZOOM, icon: 'reset' },
@@ -5330,7 +5330,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async restoreInterfaceDefaults(): Promise<void> {
     this.resetUiConfirmation.set(false);
-    this.setAppTheme('chronos');
+    this.setAppTheme('khronos');
     await this.resetZoom();
     this.showToolbarLabels.set(true);
     this.showWorktreeTabGroups.set(true);
@@ -13227,7 +13227,7 @@ export class AppComponent implements OnInit, OnDestroy {
     try {
       return normalizeAppTheme(localStorage.getItem('git-khronos.ui.theme'));
     } catch {
-      return 'chronos';
+      return 'khronos';
     }
   }
 
@@ -13243,7 +13243,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected toggleAppTheme(): void {
-    this.setAppTheme(this.appTheme() === 'chronos' ? 'midnight' : 'chronos');
+    this.setAppTheme(this.appTheme() === 'khronos' ? 'midnight' : 'khronos');
   }
 
   protected handleAppThemeKeydown(event: KeyboardEvent, theme: AppTheme): void {

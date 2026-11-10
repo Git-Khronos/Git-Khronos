@@ -247,7 +247,7 @@ test('clone cancellation addresses only its operation and never restores an exec
   expect(await calls(page, 'execute_gitlab_clone')).toHaveLength(1);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} GitLab clone review fits a compact keyboard workflow`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} GitLab clone review fits a compact keyboard workflow`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   await reviewed(page);

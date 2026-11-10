@@ -261,7 +261,7 @@ already-running graph refresh is reported as pending rather than as a failed
 workflow. Cancellation of a workflow request does not start an uncancellable
 snapshot refresh. Closing an active request requests cancellation and waits for
 its result. Late previews are discarded. Keyboard focus is contained and restored;
-compact layouts use the existing Chronos and Midnight palettes.
+compact layouts use the existing Khronos and Midnight palettes.
 
 Local qualification uses Linux package SHA-256
 `81b51505a83ac60066aa27946b3131e8879f1234419bd00eae3b4e6314627ff0`.

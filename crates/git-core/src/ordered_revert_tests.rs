@@ -10,7 +10,7 @@ impl Repository {
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "chronos-ordered-revert-{}-{id}",
+            "khronos-ordered-revert-{}-{id}",
             std::process::id()
         ));
         fs::create_dir(&path).unwrap();

@@ -430,7 +430,7 @@ fn run_pattern_command(path: &Path, args: &[&str]) -> Result<(Output, bool), App
     let name: String = nonce.iter().map(|byte| format!("{byte:02x}")).collect();
     let directory = fs::canonicalize(std::env::temp_dir())
         .map_err(attributes_error)?
-        .join(format!("chronos-lfs-hooks-{name}"));
+        .join(format!("khronos-lfs-hooks-{name}"));
     let config = format!(
         "core.hooksPath={}",
         directory.to_str().ok_or_else(|| attributes_error(

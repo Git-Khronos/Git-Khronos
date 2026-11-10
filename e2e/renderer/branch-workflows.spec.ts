@@ -201,7 +201,7 @@ test('repository switch closes the workflow and prevents late previews from cros
   expect(await page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'execute_branch_workflow'))).toBe(false);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} compact dialog contains keyboard focus and fits the viewport`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} compact dialog contains keyboard focus and fits the viewport`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => { const app = (window as any).ng.getComponent(document.querySelector('gc-root')); app.setAppTheme(theme); }, theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);

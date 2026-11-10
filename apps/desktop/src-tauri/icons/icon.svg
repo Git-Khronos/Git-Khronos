@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title id="title">Git Khronos</title>
   <defs>
-    <linearGradient id="chronos-ring" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="khronos-ring" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#a98cff"/>
       <stop offset="1" stop-color="#55dfb5"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="116" fill="#11111c"/>
-  <circle cx="256" cy="256" r="158" fill="#1c1b2c" stroke="url(#chronos-ring)" stroke-width="28"/>
+  <circle cx="256" cy="256" r="158" fill="#1c1b2c" stroke="url(#khronos-ring)" stroke-width="28"/>
   <path d="M256 256V151M256 256l82-62M256 256l-67 93" fill="none" stroke="#edf3f1" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M189 349v48h-54" fill="none" stroke="#55dfb5" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="256" cy="151" r="22" fill="#11111c" stroke="#a98cff" stroke-width="12"/>

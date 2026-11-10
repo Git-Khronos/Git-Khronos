@@ -9096,8 +9096,8 @@ mod tests {
             fs::create_dir_all(&path).expect("create test repository directory");
             let repository = Self { path };
             repository.git(&["init", "-b", "main"]);
-            repository.git(&["config", "user.name", "Chronos Tester"]);
-            repository.git(&["config", "user.email", "chronos@example.test"]);
+            repository.git(&["config", "user.name", "Khronos Tester"]);
+            repository.git(&["config", "user.email", "khronos@example.test"]);
             repository
         }
 
@@ -9145,8 +9145,8 @@ mod tests {
         assert_eq!(page.entries[0].oid.len(), 40);
         assert!(page.entries[0].selector.contains("@{"));
         assert!(page.entries[0].subject.contains("Second recovery point"));
-        assert_eq!(page.entries[0].author_name, "Chronos Tester");
-        assert_eq!(page.entries[0].author_email, "chronos@example.test");
+        assert_eq!(page.entries[0].author_name, "Khronos Tester");
+        assert_eq!(page.entries[0].author_email, "khronos@example.test");
     }
 
     #[cfg(unix)]
@@ -9753,8 +9753,8 @@ mod tests {
         fs::create_dir(&path).expect("create SHA-256 fixture directory");
         let repository = TestRepository { path };
         repository.git(&["init", "--object-format=sha256", "-b", "main"]);
-        repository.git(&["config", "user.name", "Chronos Tester"]);
-        repository.git(&["config", "user.email", "chronos@example.test"]);
+        repository.git(&["config", "user.name", "Khronos Tester"]);
+        repository.git(&["config", "user.email", "khronos@example.test"]);
         repository.write("history.txt", "root\n");
         repository.git(&["add", "history.txt"]);
         repository.git(&["commit", "-m", "Root"]);
@@ -15161,8 +15161,8 @@ mod tests {
 
         let data = snapshot(&repository.path).expect("snapshot signing configuration");
 
-        assert_eq!(data.identity.name.as_deref(), Some("Chronos Tester"));
-        assert_eq!(data.identity.email.as_deref(), Some("chronos@example.test"));
+        assert_eq!(data.identity.name.as_deref(), Some("Khronos Tester"));
+        assert_eq!(data.identity.email.as_deref(), Some("khronos@example.test"));
         assert!(data.signing.enabled);
         assert_eq!(data.signing.format, "ssh");
         assert_eq!(data.signing.key.as_deref(), Some("~/.ssh/id_ed25519.pub"));
@@ -15186,15 +15186,15 @@ mod tests {
 
         let error = set_repository_identity(
             &repository.path,
-            "Chronos Tester\nAnother Author",
+            "Khronos Tester\nAnother Author",
             "other@example.test",
         )
         .expect_err("reject multiline identity");
 
         assert_eq!(error.kind, "invalidIdentityName");
         let data = snapshot(&repository.path).expect("snapshot preserved identity");
-        assert_eq!(data.identity.name.as_deref(), Some("Chronos Tester"));
-        assert_eq!(data.identity.email.as_deref(), Some("chronos@example.test"));
+        assert_eq!(data.identity.name.as_deref(), Some("Khronos Tester"));
+        assert_eq!(data.identity.email.as_deref(), Some("khronos@example.test"));
     }
 
     #[test]
@@ -15273,8 +15273,8 @@ mod tests {
         let repository = TestRepository::new();
         let data = snapshot(&repository.path).expect("snapshot repository identity");
 
-        assert_eq!(data.identity.name.as_deref(), Some("Chronos Tester"));
-        assert_eq!(data.identity.email.as_deref(), Some("chronos@example.test"));
+        assert_eq!(data.identity.name.as_deref(), Some("Khronos Tester"));
+        assert_eq!(data.identity.email.as_deref(), Some("khronos@example.test"));
     }
 
     #[test]

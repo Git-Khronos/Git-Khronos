@@ -1,7 +1,7 @@
 import type { ITheme } from '@xterm/xterm';
 import type { AppTheme } from './app-theme';
 
-const CHRONOS_TERMINAL_THEME: Readonly<ITheme> = {
+const KHRONOS_TERMINAL_THEME: Readonly<ITheme> = {
   background: '#11111a',
   foreground: '#d8d7e2',
   cursor: '#63dbb5',
@@ -50,5 +50,5 @@ const MIDNIGHT_TERMINAL_THEME: Readonly<ITheme> = {
 };
 
 export function terminalTheme(theme: AppTheme): ITheme {
-  return theme === 'midnight' ? { ...MIDNIGHT_TERMINAL_THEME } : { ...CHRONOS_TERMINAL_THEME };
+  return theme === 'midnight' ? { ...MIDNIGHT_TERMINAL_THEME } : { ...KHRONOS_TERMINAL_THEME };
 }

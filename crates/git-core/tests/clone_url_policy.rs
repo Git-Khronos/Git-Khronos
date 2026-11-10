@@ -27,7 +27,7 @@ fn isolated(name: &str, check: impl FnOnce(&Path)) {
         .unwrap()
         .as_nanos();
     let root =
-        std::env::temp_dir().join(format!("chronos-clone-policy-{}-{id}", std::process::id()));
+        std::env::temp_dir().join(format!("khronos-clone-policy-{}-{id}", std::process::id()));
     let mut builder = fs::DirBuilder::new();
     builder.recursive(false);
     #[cfg(unix)]

@@ -129,7 +129,7 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   readonly fontSize = input(13);
   readonly lineHeight = input(1.25);
   readonly cursorStyle = input<TerminalCursorStyle>('block');
-  readonly theme = input<AppTheme>('chronos');
+  readonly theme = input<AppTheme>('khronos');
   readonly closed = output<void>();
   readonly dismissed = output<void>();
 

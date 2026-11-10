@@ -252,7 +252,7 @@ test('file history keeps its scroll position when returning from Diff', async ({
   await expect(page.locator('#repository-commit-panel')).toBeFocused();
   await page.keyboard.press('Shift+F6');
   await expect(viewport).toBeFocused();
-  for (const theme of ['chronos', 'midnight']) {
+  for (const theme of ['khronos', 'midnight']) {
     await page.evaluate(theme => { document.documentElement.dataset['theme'] = theme; }, theme);
     const ratio = await viewport.evaluate(list => {
       const luminance = (color: string) => {

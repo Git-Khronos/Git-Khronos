@@ -159,7 +159,7 @@ const states = [
   '/?clean-preview',
 ];
 
-for (const theme of ['chronos', 'midnight'] as const) {
+for (const theme of ['khronos', 'midnight'] as const) {
   for (const state of states) {
     test(`has a structurally accessible ${theme} interface for ${state}`, async ({ page }) => {
       await page.addInitScript((selectedTheme) => {
@@ -175,7 +175,7 @@ for (const theme of ['chronos', 'midnight'] as const) {
   }
 }
 
-for (const theme of ['chronos', 'midnight'] as const) {
+for (const theme of ['khronos', 'midnight'] as const) {
   test(`keeps open ${theme} menus and dialogs accessible`, async ({ page }) => {
     await page.addInitScript((selectedTheme) => {
       localStorage.setItem('git-khronos.ui.theme', selectedTheme);

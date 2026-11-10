@@ -492,7 +492,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let directory =
-                std::env::temp_dir().join(format!("chronos-patch-{}-{id}", std::process::id()));
+                std::env::temp_dir().join(format!("khronos-patch-{}-{id}", std::process::id()));
             let repository = directory.join("repository");
             fs::create_dir_all(&repository).unwrap();
             let fixture = Self {

@@ -177,7 +177,7 @@ pub fn checkout_lfs_object(
     let temporary = target
         .parent()
         .ok_or_else(|| unsafe_checkout("No ordinary parent directory."))?
-        .join(format!(".chronos-lfs-{suffix}.tmp"));
+        .join(format!(".khronos-lfs-{suffix}.tmp"));
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]

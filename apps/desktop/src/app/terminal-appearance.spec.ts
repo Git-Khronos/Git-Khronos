@@ -25,7 +25,7 @@ describe('terminal appearance', () => {
     const firstOptions: ITerminalOptions = { fontSize: 11 };
     const secondOptions: ITerminalOptions = { cursorStyle: 'block' };
     const appearance = terminalAppearance({
-      theme: 'chronos',
+      theme: 'khronos',
       cursorStyle: 'underline',
       fontFamily: 'Readable Mono',
       fontSize: 16,

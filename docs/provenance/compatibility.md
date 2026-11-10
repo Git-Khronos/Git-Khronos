@@ -1840,7 +1840,7 @@ Documented behavior:
 
 Independent implementation:
 
-- Git Khronos provides project-owned Chronos Dark and Midnight Contrast palettes through CSS custom properties.
+- Git Khronos provides project-owned Khronos Dark and Midnight Contrast palettes through CSS custom properties.
 - The selected theme is stored locally and applied at the document root so welcome, repository, overlay, and terminal-adjacent surfaces share the same state.
 - Palette names, color values, controls, and styling are original to Git Khronos.
 

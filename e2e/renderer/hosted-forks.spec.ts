@@ -236,7 +236,7 @@ test('a mismatched inspection cannot hand an unverified fork to clone controls',
   await expect(forks.getByRole('alert')).toContainText('identity changed'); await expect(forks.getByRole('button', { name: 'Use this fork for cloning', exact: true })).toHaveCount(0);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} fork review wraps in a compact keyboard-contained dialog`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} fork review wraps in a compact keyboard-contained dialog`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   const { dialog, forks } = await reviewed(page);
@@ -416,7 +416,7 @@ test('rapid local controls close and reopen creates a usable new review context'
   expect((await calls(page, 'prepare_hosted_fork_remote'))[1].args.contextId).not.toBe(old);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} local attachment review remains readable and keyboard-contained`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} local attachment review remains readable and keyboard-contained`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   const { remote, dialog } = await reviewedAttachment(page);

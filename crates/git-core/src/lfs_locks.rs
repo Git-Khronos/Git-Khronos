@@ -428,7 +428,7 @@ mod tests {
 
     fn lfs_repository(url: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "chronos-lfs-locks-{}-{}",
+            "khronos-lfs-locks-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

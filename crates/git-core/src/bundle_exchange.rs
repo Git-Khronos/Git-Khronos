@@ -353,7 +353,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let directory =
-                std::env::temp_dir().join(format!("chronos-bundle-{}-{id}", std::process::id()));
+                std::env::temp_dir().join(format!("khronos-bundle-{}-{id}", std::process::id()));
             let source = directory.join("source");
             let target = directory.join("target");
             for path in [&source, &target] {

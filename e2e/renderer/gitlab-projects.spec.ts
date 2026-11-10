@@ -257,7 +257,7 @@ test('an oversized multibyte search explains its disabled action without sending
   expect(await calls(page, 'load_gitlab_projects')).toHaveLength(1);
 });
 
-for (const theme of ['chronos', 'midnight']) test(`${theme} GitLab browsing contains keyboard focus and fits a compact window`, async ({ page }, testInfo) => {
+for (const theme of ['khronos', 'midnight']) test(`${theme} GitLab browsing contains keyboard focus and fits a compact window`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
   const panel = await loaded(page);

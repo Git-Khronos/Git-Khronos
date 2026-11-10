@@ -5,7 +5,7 @@ const failures = {
     message: 'This folder belongs to a bare repository but is not its top-level folder. Git reported: fatal: this operation must be run in a work tree',
     hint: 'Open the bare repository folder itself (often named project.git) to browse it read-only. Nothing was changed.' },
   format: { kind: 'unsupportedRepositoryFormat',
-    message: 'This repository uses a format that the installed Git does not support. Git reported: fatal: unknown repository extension found: chronosunknownfeature',
+    message: 'This repository uses a format that the installed Git does not support. Git reported: fatal: unknown repository extension found: khronosunknownfeature',
     hint: 'Update Git, or use the tool that created the repository. Nothing was changed.' },
 };
 

@@ -9,7 +9,7 @@ impl Repository {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("chronos-split-{}-{id}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("khronos-split-{}-{id}", std::process::id()));
         fs::create_dir(&path).unwrap();
         for args in [
             vec!["init", "-b", "main"],

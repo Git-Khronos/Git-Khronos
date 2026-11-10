@@ -1,13 +1,14 @@
-export type AppTheme = 'chronos' | 'midnight';
+export type AppTheme = 'khronos' | 'midnight';
 export type AppThemeNavigationKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown' | 'Home' | 'End';
 
 export const APP_THEME_OPTIONS: ReadonlyArray<{ value: AppTheme; label: string }> = [
-  { value: 'chronos', label: 'Chronos Dark' },
+  { value: 'khronos', label: 'Khronos Dark' },
   { value: 'midnight', label: 'Midnight Contrast' },
 ];
 
 export function normalizeAppTheme(value: unknown): AppTheme {
-  return value === 'midnight' ? 'midnight' : 'chronos';
+  // Any other value, including the legacy "chronos" id stored by earlier releases, selects the default.
+  return value === 'midnight' ? 'midnight' : 'khronos';
 }
 
 export function appThemeNavigationValue(
