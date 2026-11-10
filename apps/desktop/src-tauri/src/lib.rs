@@ -274,6 +274,17 @@ fn system_info() -> SystemInfo {
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+fn set_window_chrome_scale(percent: u32, app: AppHandle) {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_scale(percent));
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (percent, app);
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn cancel_git_operation(
     operation_id: String,
     state: tauri::State<'_, AppState>,
@@ -3963,6 +3974,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             file_tool_commands::discard_reviewed_file_tool_session,
             file_tool_commands::discard_file_tool_review,
             system_info,
+            set_window_chrome_scale,
             incoming_repository_links::incoming_repository_links,
             incoming_repository_links::acknowledge_incoming_repository_link,
             incoming_repository_links::dismiss_incoming_repository_link_overflow,

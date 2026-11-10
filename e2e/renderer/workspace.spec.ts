@@ -8608,6 +8608,40 @@ test.describe('automatic zoom scale', () => {
     await expect(zoom).toHaveAttribute('data-auto-zoom', '175');
   });
 
+  test('scales the native window chrome with the effective zoom only under WSL', async ({ page }) => {
+    await page.evaluate(() => {
+      const calls: Array<{ command: string; args: any }> = [];
+      (window as any).__chromeCalls = calls;
+      (window as any).__TAURI_INTERNALS__ = {
+        invoke: (command: string, args: any) => {
+          calls.push({ command, args });
+          return Promise.resolve(null);
+        },
+      };
+      Object.defineProperty(screen, 'width', { configurable: true, get: () => 2560 });
+      Object.defineProperty(screen, 'height', { configurable: true, get: () => 1440 });
+      window.dispatchEvent(new Event('resize'));
+    });
+    const report = (wsl: boolean) => page.evaluate((flag) => {
+      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+        appVersion: 'chrome fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
+        windowsSubsystemForLinux: flag,
+      });
+    }, wsl);
+    const chromeCalls = () => page.evaluate(() => (window as any).__chromeCalls
+      .filter((call: { command: string }) => call.command === 'set_window_chrome_scale')
+      .map((call: { args: { percent: number } }) => call.args.percent));
+
+    await report(false);
+    await page.getByLabel('Interface zoom', { exact: true }).selectOption({ label: '110%' });
+    expect(await chromeCalls()).toEqual([]);
+
+    await report(true);
+    await expect.poll(chromeCalls).toContain(149);
+    await page.keyboard.press('Control+0');
+    await expect.poll(async () => (await chromeCalls()).at(-1)).toBe(135);
+  });
+
   test('ignores an absolute zoom saved by earlier releases', async ({ page }) => {
     await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '150'));
     await page.reload();

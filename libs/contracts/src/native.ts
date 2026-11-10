@@ -535,6 +535,7 @@ export function review_file_tool_cleanup(args: { request: FileToolReviewRequest 
 export function discard_reviewed_file_tool_session(args: { request: DiscardFileToolSessionRequest }): Promise<boolean> { return TAURI_INVOKE("discard_reviewed_file_tool_session", args); }
 export function discard_file_tool_review(args: { request: DiscardFileToolReviewRequest }): Promise<null> { return TAURI_INVOKE("discard_file_tool_review", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
+export function set_window_chrome_scale(args: { percent: number }): Promise<void> { return TAURI_INVOKE("set_window_chrome_scale", args); }
 export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
 export function acknowledge_incoming_repository_link(args: { requestId: string }): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("acknowledge_incoming_repository_link", args); }
 export function dismiss_incoming_repository_link_overflow(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("dismiss_incoming_repository_link_overflow", args); }
@@ -797,6 +798,7 @@ export type CommandMap = {
   discard_reviewed_file_tool_session: typeof discard_reviewed_file_tool_session;
   discard_file_tool_review: typeof discard_file_tool_review;
   system_info: typeof system_info;
+  set_window_chrome_scale: typeof set_window_chrome_scale;
   incoming_repository_links: typeof incoming_repository_links;
   acknowledge_incoming_repository_link: typeof acknowledge_incoming_repository_link;
   dismiss_incoming_repository_link_overflow: typeof dismiss_incoming_repository_link_overflow;

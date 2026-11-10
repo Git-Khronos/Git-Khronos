@@ -1646,7 +1646,11 @@ export class AppComponent implements OnInit, OnDestroy {
     });
     effect(() => {
       const zoom = this.effectiveZoom();
-      untracked(() => void this.applyZoom(zoom));
+      const scaleWindowChrome = this.git.systemInfo()?.windowsSubsystemForLinux === true && !this.git.browserPreview();
+      untracked(() => {
+        void this.applyZoom(zoom);
+        if (scaleWindowChrome) void this.git.scaleWindowChrome(zoom);
+      });
     });
     effect(() => {
       const title = this.repositoryWindowTitle(this.git.repository());

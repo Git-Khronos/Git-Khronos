@@ -354,6 +354,14 @@ export class GitKhronosService {
   private readonly deferredMetadataRefreshes = new Set<string>();
   private closedRepositories: ClosedRepository[] = [];
 
+  async scaleWindowChrome(percent: number): Promise<void> {
+    try {
+      await ipc.set_window_chrome_scale({ percent });
+    } catch {
+      // The native title bar keeps its toolkit size when scaling is unavailable.
+    }
+  }
+
   async initialize(): Promise<void> {
     const initialization = ++this.incomingInitializationRequest;
     this.incomingRepositoryLinksReady.set(false);
