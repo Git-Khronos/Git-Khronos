@@ -1663,6 +1663,7 @@ export class AppComponent implements OnInit, OnDestroy {
           style.getPropertyValue('--tabbar'),
           style.getPropertyValue('--text'),
           style.getPropertyValue('--border'),
+          style.getPropertyValue('--bg'),
         );
       });
     });

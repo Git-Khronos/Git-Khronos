@@ -277,6 +277,11 @@ fn system_info() -> SystemInfo {
 fn set_window_chrome_scale(percent: u32, app: AppHandle) {
     #[cfg(target_os = "linux")]
     {
+        if display_environment::running_under_wsl()
+            && let Ok(directory) = app.path().app_config_dir()
+        {
+            display_environment::remember_window_chrome(&directory, Some(percent), None);
+        }
         let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_scale(percent));
     }
     #[cfg(not(target_os = "linux"))]
@@ -285,13 +290,29 @@ fn set_window_chrome_scale(percent: u32, app: AppHandle) {
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn set_window_chrome_colors(background: String, foreground: String, border: String, app: AppHandle) {
+fn set_window_chrome_colors(background: String, foreground: String, border: String, page: String, app: AppHandle) {
     #[cfg(target_os = "linux")]
-    if let Some(colors) = display_environment::ChromeColors::parse(&background, &foreground, &border) {
+    if let Some(colors) = display_environment::ChromeColors::parse(&background, &foreground, &border, &page) {
+        if display_environment::running_under_wsl()
+            && let Ok(directory) = app.path().app_config_dir()
+        {
+            display_environment::remember_window_chrome(&directory, None, Some(colors.clone()));
+        }
+        paint_window_background(&app, &colors);
         let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_colors(colors));
     }
     #[cfg(not(target_os = "linux"))]
-    let _ = (background, foreground, border, app);
+    let _ = (background, foreground, border, page, app);
+}
+
+/// Colors the surface behind the web view so no default-gray gap shows before
+/// the page has painted or while the window is being resized.
+#[cfg(target_os = "linux")]
+fn paint_window_background(app: &AppHandle, colors: &display_environment::ChromeColors) {
+    let (red, green, blue, alpha) = colors.page_rgba();
+    for window in app.webview_windows().values() {
+        let _ = window.set_background_color(Some(tauri::window::Color(red, green, blue, alpha)));
+    }
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3917,7 +3938,14 @@ pub fn run() {
         .invoke_handler(bindings.invoke_handler())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            display_environment::show_wsl_window_buttons();
+            {
+                display_environment::show_wsl_window_buttons();
+                if let Ok(directory) = app.path().app_config_dir()
+                    && let Some(colors) = display_environment::apply_saved_window_chrome(&directory)
+                {
+                    paint_window_background(app.handle(), &colors);
+                }
+            }
             bindings.mount_events(app);
             app.state::<gitlab_commands::GitLabAccounts>()
                 .start_cleanup();

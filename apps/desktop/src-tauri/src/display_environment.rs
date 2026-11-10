@@ -90,6 +90,7 @@ pub struct ChromeColors {
     background: String,
     foreground: String,
     border: String,
+    page: String,
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -101,13 +102,21 @@ fn normalize_hex_color(value: &str) -> Option<String> {
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 impl ChromeColors {
-    /// Returns `None` unless all three values are `#rrggbb` colors.
-    pub fn parse(background: &str, foreground: &str, border: &str) -> Option<Self> {
+    /// Returns `None` unless all four values are `#rrggbb` colors. `page` is the
+    /// color of the app surface below the title bar.
+    pub fn parse(background: &str, foreground: &str, border: &str, page: &str) -> Option<Self> {
         Some(Self {
             background: normalize_hex_color(background)?,
             foreground: normalize_hex_color(foreground)?,
             border: normalize_hex_color(border)?,
+            page: normalize_hex_color(page)?,
         })
+    }
+
+    /// The surface color as RGBA bytes, for the web view's pre-paint background.
+    pub fn page_rgba(&self) -> (u8, u8, u8, u8) {
+        let channel = |i: usize| u8::from_str_radix(&self.page[1 + i * 2..3 + i * 2], 16).unwrap_or(0);
+        (channel(0), channel(1), channel(2), 255)
     }
 
     /// Whether the background is dark, by perceived luminance.
@@ -366,6 +375,94 @@ pub fn apply_window_chrome_colors(colors: ChromeColors) {
     }
 }
 
+const CHROME_STATE_FILE: &str = "window-chrome.txt";
+
+/// Title-bar settings remembered between launches so that the bar is styled
+/// before the web view has loaded and told the native side about the theme.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub struct ChromeSnapshot {
+    pub percent: Option<u32>,
+    pub colors: ChromeColors,
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+impl ChromeSnapshot {
+    /// The default application theme, used before any preference has been saved.
+    pub fn default_theme() -> Self {
+        Self {
+            percent: None,
+            colors: ChromeColors::parse("#101019", "#f2f2f7", "#343449", "#151521").expect("valid default colors"),
+        }
+    }
+
+    pub fn serialize(&self) -> String {
+        format!(
+            "percent={}\nbackground={}\nforeground={}\nborder={}\npage={}\n",
+            self.percent.map(|value| value.to_string()).unwrap_or_default(),
+            self.colors.background,
+            self.colors.foreground,
+            self.colors.border,
+            self.colors.page,
+        )
+    }
+
+    /// Parses saved text; anything missing or invalid falls back to the defaults.
+    pub fn parse(text: &str) -> Self {
+        let value = |key: &str| {
+            text.lines()
+                .find_map(|line| line.strip_prefix(key).and_then(|rest| rest.strip_prefix('=')))
+                .unwrap_or("")
+        };
+        let defaults = Self::default_theme();
+        Self {
+            percent: value("percent").trim().parse().ok(),
+            colors: ChromeColors::parse(value("background"), value("foreground"), value("border"), value("page"))
+                .unwrap_or(defaults.colors),
+        }
+    }
+
+    pub fn load(directory: &std::path::Path) -> Self {
+        std::fs::read_to_string(directory.join(CHROME_STATE_FILE))
+            .map(|text| Self::parse(&text))
+            .unwrap_or_else(|_| Self::default_theme())
+    }
+
+    pub fn save(&self, directory: &std::path::Path) {
+        if std::fs::create_dir_all(directory).is_ok() {
+            let _ = std::fs::write(directory.join(CHROME_STATE_FILE), self.serialize());
+        }
+    }
+}
+
+/// Styles the title bar from the remembered settings. Call on the GTK main
+/// thread during start-up, before the window is first shown.
+#[cfg(target_os = "linux")]
+pub fn apply_saved_window_chrome(directory: &std::path::Path) -> Option<ChromeColors> {
+    if !running_under_wsl() {
+        return None;
+    }
+    let snapshot = ChromeSnapshot::load(directory);
+    install_window_chrome_colors(snapshot.colors.clone());
+    if let Some(percent) = snapshot.percent {
+        install_window_chrome_scale(percent);
+    }
+    Some(snapshot.colors)
+}
+
+/// Remembers a change of scale or colors for the next launch.
+#[cfg(target_os = "linux")]
+pub fn remember_window_chrome(directory: &std::path::Path, percent: Option<u32>, colors: Option<ChromeColors>) {
+    let mut snapshot = ChromeSnapshot::load(directory);
+    if percent.is_some() {
+        snapshot.percent = percent;
+    }
+    if let Some(colors) = colors {
+        snapshot.colors = colors;
+    }
+    snapshot.save(directory);
+}
+
 #[cfg(target_os = "linux")]
 fn needs_window_buttons(layout: Option<&str>) -> bool {
     layout.is_none_or(|layout| layout.trim().is_empty() || layout == GTK_FALLBACK_DECORATION_LAYOUT)
@@ -376,6 +473,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn remembers_title_bar_settings_between_launches() {
+        let defaults = ChromeSnapshot::default_theme();
+        assert!(defaults.colors.is_dark());
+        assert_eq!(ChromeSnapshot::parse(""), defaults);
+        assert_eq!(ChromeSnapshot::parse("percent=oops\nbackground=red"), defaults);
+        let saved = ChromeSnapshot {
+            percent: Some(130),
+            colors: ChromeColors::parse("#090e15", "#f4f7fb", "#35445b", "#0c1119").unwrap(),
+        };
+        assert_eq!(ChromeSnapshot::parse(&saved.serialize()), saved);
+
+        let directory = std::env::temp_dir().join(format!("gk-chrome-test-{}", std::process::id()));
+        assert_eq!(ChromeSnapshot::load(&directory), defaults);
+        saved.save(&directory);
+        assert_eq!(ChromeSnapshot::load(&directory), saved);
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
     fn recognizes_wsl_kernel_releases() {
         assert!(kernel_release_is_wsl("6.6.87.2-microsoft-standard-WSL2\n"));
         assert!(kernel_release_is_wsl("4.4.0-19041-Microsoft"));
@@ -384,16 +500,18 @@ mod tests {
 
     #[test]
     fn derives_title_bar_colors_from_validated_theme_values() {
-        let dark = ChromeColors::parse("#101019", "#F2F2F7", "#343449").unwrap();
+        let dark = ChromeColors::parse("#101019", "#F2F2F7", "#343449", "#151521").unwrap();
         assert!(dark.is_dark());
+        assert_eq!(dark.page_rgba(), (0x15, 0x15, 0x21, 255));
         let css = dark.css();
         assert!(css.contains("background: #101019"));
         assert!(css.contains("color: #f2f2f7"));
-        let light = ChromeColors::parse("#fafafa", "#1b1b2a", "#cccccc").unwrap();
+        let light = ChromeColors::parse("#fafafa", "#1b1b2a", "#cccccc", "#ffffff").unwrap();
         assert!(!light.is_dark());
-        assert!(ChromeColors::parse("red", "#ffffff", "#000000").is_none());
-        assert!(ChromeColors::parse("#fff", "#ffffff", "#000000").is_none());
-        assert!(ChromeColors::parse("#101019; } * { x", "#ffffff", "#000000").is_none());
+        assert!(ChromeColors::parse("red", "#ffffff", "#000000", "#000000").is_none());
+        assert!(ChromeColors::parse("#fff", "#ffffff", "#000000", "#000000").is_none());
+        assert!(ChromeColors::parse("#101019; } * { x", "#ffffff", "#000000", "#000000").is_none());
+        assert!(ChromeColors::parse("#101019", "#ffffff", "#000000", "").is_none());
     }
 
     #[test]

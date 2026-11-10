@@ -362,9 +362,9 @@ export class GitKhronosService {
     }
   }
 
-  async styleWindowChrome(background: string, foreground: string, border: string): Promise<void> {
+  async styleWindowChrome(background: string, foreground: string, border: string, page: string): Promise<void> {
     try {
-      await ipc.set_window_chrome_colors({ background, foreground, border });
+      await ipc.set_window_chrome_colors({ background, foreground, border, page });
     } catch {
       // The native title bar keeps the toolkit colors when theming is unavailable.
     }

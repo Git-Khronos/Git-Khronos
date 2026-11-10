@@ -8661,7 +8661,7 @@ test.describe('automatic zoom scale', () => {
     }, wsl);
     const colorCalls = () => page.evaluate(() => (window as any).__chromeCalls
       .filter((call: { command: string }) => call.command === 'set_window_chrome_colors')
-      .map((call: { args: { background: string } }) => call.args.background.trim()));
+      .map((call: { args: { background: string; page: string } }) => `${call.args.background.trim()}|${call.args.page.trim()}`));
     const setTheme = (theme: string) => page.evaluate((value) => {
       (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(value);
     }, theme);
@@ -8671,9 +8671,9 @@ test.describe('automatic zoom scale', () => {
     expect(await colorCalls()).toEqual([]);
 
     await report(true);
-    await expect.poll(colorCalls).toContain('#090e15');
+    await expect.poll(colorCalls).toContain('#090e15|#0c1119');
     await setTheme('khronos');
-    await expect.poll(async () => (await colorCalls()).at(-1)).toBe('#101019');
+    await expect.poll(async () => (await colorCalls()).at(-1)).toBe('#101019|#151521');
   });
 
   test('ignores an absolute zoom saved by earlier releases', async ({ page }) => {
