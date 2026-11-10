@@ -147,15 +147,20 @@ When GTK reports an empty or `menu:close` decoration layout, Git Khronos
 requests minimize, maximize, and close buttons for its own process. Other
 reported layouts are left unchanged.
 
-With no saved zoom preference, the app estimates a starting zoom from the
-screen size in CSS pixels: 1920x1080 gives 100%, 2560x1440 gives 140%, and
-the automatic value is capped at 175%. This is a readability heuristic,
-not physical-DPI detection or a guarantee of matching Windows scaling.
-The result depends on the dimensions exposed by WSLg and WebKitGTK.
+The interface zoom shown as **100%** is an automatic scale for the current
+screen. It is computed from the screen size in CSS pixels (after any operating
+system scaling the web view already applies) as the smaller of width/1920 and
+height/1080, snapped to 5% steps, never below 100% and capped at 175%, so
+1920x1080 and smaller screens use 1.0x and 2560x1440 uses 1.35x. It is
+recomputed when the window or display changes. This is a readability
+heuristic, not physical-DPI detection; the result depends on the dimensions
+exposed by the platform (for example WSLg and WebKitGTK).
 
-A manually chosen zoom is retained. **Reset zoom** or **Ctrl+0** clears that
-choice and returns to the estimated default. Outside WSL, the default remains
-100%. Test the native app built from `dev`, not the sample-data browser preview
+The zoom control stores only a multiplier relative to that automatic scale
+(75%-200%), so a chosen 110% stays 10% larger on any screen. **Reset zoom** or
+**Ctrl+0** returns the multiplier to 100%. Absolute zoom values saved by
+earlier versions are ignored. Test the native app built from `dev`, not the
+sample-data browser preview
 or the published release. Changing Windows or WSLg display settings is not
 required to try these app-local changes.
 

@@ -125,6 +125,15 @@ import {
   type AppTheme,
   type AppThemeNavigationKey,
 } from './app-theme';
+import {
+  DEFAULT_ZOOM,
+  LEGACY_ZOOM_PREFERENCE_KEY,
+  ZOOM_LEVELS,
+  ZOOM_PREFERENCE_KEY,
+  automaticZoom,
+  effectiveZoom,
+  normalizeZoom,
+} from './ui-zoom';
 import { hostedReviewRequestsForRemotes } from './remote-hosting';
 import {
   buildCompactReferenceSummary,
@@ -491,8 +500,6 @@ const REMOTE_LOCATION_ICONS: ReadonlyArray<{ value: RemoteLocationIcon; label: s
   { value: 'globe', label: 'Globe' },
   { value: 'link', label: 'Link' },
 ];
-const DEFAULT_ZOOM = 100;
-const ZOOM_LEVELS = [75, 80, 90, DEFAULT_ZOOM, 110, 125, 140, 150, 175, 200] as const;
 const AUTO_FETCH_INTERVALS: readonly AutoFetchIntervalMinutes[] = [0, 1, 5, 15, 30];
 const LIVE_STATUS_REFRESH_MS = 30_000;
 const AUTHOR_PALETTE = [
@@ -566,28 +573,6 @@ const COMMAND_QUICK_ACTION_IDS: readonly string[] = ['fetch', 'pull', 'push', 'r
 const COMMAND_GROUP_ORDER: readonly string[] = ['Quick Actions', 'Workspace', 'Repository', 'Git Features', 'Edit', 'Remote', 'Branch', 'Working Tree', 'History', 'View'];
 const EMPTY_COMMITS: CommitSummary[] = [];
 
-function normalizeZoom(value: unknown): number {
-  if (typeof value === 'string' && !value.trim()) return DEFAULT_ZOOM;
-  const requested = Number(value);
-  if (!Number.isFinite(requested)) return DEFAULT_ZOOM;
-  if (requested <= ZOOM_LEVELS[0]) return ZOOM_LEVELS[0];
-  if (requested >= ZOOM_LEVELS.at(-1)!) return ZOOM_LEVELS.at(-1)!;
-  return ZOOM_LEVELS.reduce((closest, level) =>
-    Math.abs(level - requested) < Math.abs(closest - requested) ? level : closest
-  );
-}
-
-// Experimental readability heuristic based on reported CSS dimensions,
-// not physical DPI or Windows display scaling.
-const REFERENCE_DISPLAY_WIDTH = 1920;
-const REFERENCE_DISPLAY_HEIGHT = 1080;
-const MAX_AUTOMATIC_ZOOM = 175;
-
-function automaticDisplayZoom(width: number, height: number): number {
-  if (!(width > 0 && height > 0)) return DEFAULT_ZOOM;
-  const scale = Math.min(width / REFERENCE_DISPLAY_WIDTH, height / REFERENCE_DISPLAY_HEIGHT) * 100;
-  return normalizeZoom(Math.min(MAX_AUTOMATIC_ZOOM, Math.max(DEFAULT_ZOOM, scale)));
-}
 
 function stableAuthorColor(identity: string): string {
   let hash = 2_166_136_261;
@@ -1074,13 +1059,12 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commandPaletteScope = signal<CommandPaletteScope>('all');
   protected readonly commandSelection = signal(0);
   private readonly recentCommandIds = signal(this.readRecentCommandIds());
-  private readonly storedZoomPreference = signal(this.readStoredZoom());
-  protected readonly zoomPercent = signal(this.storedZoomPreference() ?? DEFAULT_ZOOM);
-  /** Estimate a WSL starting zoom without replacing a saved user preference. */
-  protected readonly defaultZoom = computed(() => {
-    if (this.git.systemInfo()?.windowsSubsystemForLinux !== true || typeof screen === 'undefined') return DEFAULT_ZOOM;
-    return automaticDisplayZoom(screen.width, screen.height);
-  });
+  /** User multiplier; 100% is always the automatic default for the current screen. */
+  protected readonly zoomPercent = signal(this.readStoredZoom() ?? DEFAULT_ZOOM);
+  /** Automatic scale derived from the screen size, recomputed when the display changes. */
+  protected readonly autoZoom = signal(this.measureAutoZoom());
+  protected readonly effectiveZoom = computed(() => effectiveZoom(this.autoZoom(), this.zoomPercent()));
+  protected readonly defaultZoom = DEFAULT_ZOOM;
   protected readonly appTheme = signal<AppTheme>(this.readAppTheme());
   protected readonly appThemeOptions = APP_THEME_OPTIONS;
   protected readonly workingTreeViewMode = signal<WorkingTreeViewMode>(this.readWorkingTreeViewMode());
@@ -1661,10 +1645,8 @@ export class AppComponent implements OnInit, OnDestroy {
       this.stopDiffViewportTracking?.();
     });
     effect(() => {
-      const zoom = this.defaultZoom();
-      if (this.storedZoomPreference() !== null || untracked(this.zoomPercent) === zoom) return;
-      this.zoomPercent.set(zoom);
-      void this.applyZoom(zoom);
+      const zoom = this.effectiveZoom();
+      untracked(() => void this.applyZoom(zoom));
     });
     effect(() => {
       const title = this.repositoryWindowTitle(this.git.repository());
@@ -3411,7 +3393,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'theme-toggle', group: 'View', label: this.appTheme() === 'chronos' ? 'Switch to Midnight Contrast' : 'Switch to Chronos Dark', detail: 'Change the global application color theme', enabled: true, icon: 'eye' },
       { id: 'zoom-in', group: 'View', label: 'Increase Zoom', detail: 'Increase the interface zoom level', shortcut: `${this.primaryShortcutKey} +`, enabled: this.zoomPercent() < ZOOM_LEVELS.at(-1)!, icon: 'plus' },
       { id: 'zoom-out', group: 'View', label: 'Decrease Zoom', detail: 'Decrease the interface zoom level', shortcut: `${this.primaryShortcutKey} -`, enabled: this.zoomPercent() > ZOOM_LEVELS[0], icon: 'reset' },
-      { id: 'zoom-reset', group: 'View', label: 'Reset Zoom', detail: `Return interface zoom to ${this.defaultZoom()}%`, shortcut: `${this.primaryShortcutKey} 0`, enabled: this.zoomPercent() !== this.defaultZoom(), icon: 'reset' },
+      { id: 'zoom-reset', group: 'View', label: 'Reset Zoom', detail: `Return interface zoom to ${DEFAULT_ZOOM}% (automatic scale ${this.autoZoom()}%)`, shortcut: `${this.primaryShortcutKey} 0`, enabled: this.zoomPercent() !== DEFAULT_ZOOM, icon: 'reset' },
       { id: 'diff-view', group: 'View', label: 'Open Diff View', detail: 'Inspect the selected file in the focused diff workspace', shortcut: `${this.primaryShortcutKey} D`, enabled: !!this.activeDiff(), icon: 'file' },
       { id: 'shortcuts', group: 'View', label: 'Keyboard Shortcuts', detail: 'Open the desktop shortcut reference', shortcut: `${this.primaryShortcutKey} /`, enabled: true, icon: 'keyboard' },
       { id: 'activity-log', group: 'View', label: 'Activity Logs', detail: 'Inspect application and repository operations', enabled: !!repository, icon: 'activity' },
@@ -3685,7 +3667,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.restoreCommitDraft();
     this.loadGraphPreferences();
     if (!GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES) {
-      void this.applyZoom(this.zoomPercent());
       return;
     }
     // Repository-change effects clear old dialogs. Apply preview fixtures only
@@ -3938,7 +3919,6 @@ export class AppComponent implements OnInit, OnDestroy {
         }
       }
     }
-    void this.applyZoom(this.zoomPercent());
   }
 
   ngOnDestroy(): void {
@@ -5400,6 +5380,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const exactKeys = [
         'git-khronos.ui.theme',
         'git-khronos.ui.zoom',
+        'git-khronos.ui.zoom-multiplier',
         'git-khronos.ui.toolbar-labels',
         'git-khronos.ui.worktree-tab-groups',
         'git-khronos.ui.highlight-related-commits',
@@ -10499,25 +10480,20 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async setZoom(value: number): Promise<void> {
     const zoom = normalizeZoom(value);
     this.zoomPercent.set(zoom);
-    this.storedZoomPreference.set(zoom);
     try {
-      localStorage.setItem('git-khronos.ui.zoom', String(zoom));
+      localStorage.setItem(ZOOM_PREFERENCE_KEY, String(zoom));
     } catch {
       // Zoom remains available when WebView storage is unavailable.
     }
-    await this.applyZoom(zoom);
   }
 
   protected async resetZoom(): Promise<void> {
-    const zoom = this.defaultZoom();
-    this.zoomPercent.set(zoom);
-    this.storedZoomPreference.set(null);
+    this.zoomPercent.set(DEFAULT_ZOOM);
     try {
-      localStorage.removeItem('git-khronos.ui.zoom');
+      localStorage.removeItem(ZOOM_PREFERENCE_KEY);
     } catch {
       // Zoom remains available when WebView storage is unavailable.
     }
-    await this.applyZoom(zoom);
   }
 
   protected async stepZoom(direction: -1 | 1): Promise<void> {
@@ -13209,11 +13185,24 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readStoredZoom(): number | null {
     try {
-      const stored = localStorage.getItem('git-khronos.ui.zoom');
+      localStorage.removeItem(LEGACY_ZOOM_PREFERENCE_KEY);
+      const stored = localStorage.getItem(ZOOM_PREFERENCE_KEY);
       return stored === null ? null : normalizeZoom(stored);
     } catch {
       return null;
     }
+  }
+
+  /** Screen size in CSS pixels; any OS scaling already applied by the web view is not repeated. */
+  private measureAutoZoom(): number {
+    if (typeof screen === 'undefined') return DEFAULT_ZOOM;
+    return automaticZoom(screen.width, screen.height);
+  }
+
+  @HostListener('window:resize')
+  protected refreshAutoZoom(): void {
+    const next = this.measureAutoZoom();
+    if (next !== untracked(this.autoZoom)) this.autoZoom.set(next);
   }
 
   private readAppTheme(): AppTheme {

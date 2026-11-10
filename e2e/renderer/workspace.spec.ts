@@ -8524,7 +8524,7 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await decreaseZoom.click();
   await expect(zoom.locator('option:checked')).toHaveText('90%');
   await expect(resetZoom).toBeEnabled();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('90');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('90');
 
   await decreaseZoom.click();
   await expect(zoom.locator('option:checked')).toHaveText('80%');
@@ -8540,7 +8540,7 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await expect(zoom.locator('option:checked')).toHaveText('125%');
   await expect(decreaseZoom).toBeEnabled();
   await expect(resetZoom).toBeEnabled();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('125');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('125');
 
   await page.reload();
   const restoredZoom = page.getByLabel('Interface zoom', { exact: true });
@@ -8548,20 +8548,20 @@ test('persists the selected interface zoom preset', async ({ page }) => {
 
   await page.keyboard.press('Control+=');
   await expect(restoredZoom.locator('option:checked')).toHaveText('140%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('140');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('140');
 
   await page.keyboard.press('Control+-');
   await expect(restoredZoom.locator('option:checked')).toHaveText('125%');
 
   await page.keyboard.press('Control+0');
   await expect(restoredZoom.locator('option:checked')).toHaveText('100%');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBeNull();
 
-  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', 'invalid'));
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom-multiplier', 'invalid'));
   await page.reload();
   await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
 
-  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '  '));
+  await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom-multiplier', '  '));
   await page.reload();
   await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
 });
@@ -8581,39 +8581,38 @@ test('shows the reported native version rather than a stale fallback', async ({ 
   await expect(environment).toHaveText('v2.3.4');
 });
 
-test.describe('on a large unscaled WSL display', () => {
-  test('derives a readable default zoom until the user chooses one', async ({ page }) => {
+test.describe('automatic zoom scale', () => {
+  test('keeps 100% as the automatic default and adapts to the screen size', async ({ page }) => {
     const zoom = page.getByLabel('Interface zoom', { exact: true });
-    await page.evaluate(() => {
-      Object.defineProperty(screen, 'width', { configurable: true, get: () => 2560 });
-      Object.defineProperty(screen, 'height', { configurable: true, get: () => 1440 });
-    });
-    const reportSystem = (windowsSubsystemForLinux: boolean) => page.evaluate((wsl) => {
-      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
-        appVersion: 'zoom fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
-        windowsSubsystemForLinux: wsl,
-      });
-    }, windowsSubsystemForLinux);
-    await expect(zoom.locator('option:checked')).toHaveText('100%');
+    const setScreen = (width: number, height: number) => page.evaluate(([w, h]) => {
+      Object.defineProperty(screen, 'width', { configurable: true, get: () => w });
+      Object.defineProperty(screen, 'height', { configurable: true, get: () => h });
+      window.dispatchEvent(new Event('resize'));
+    }, [width, height]);
 
-    await reportSystem(true);
-    await expect(zoom.locator('option:checked')).toHaveText('140%');
-    const resetZoom = page.getByRole('button', { name: 'Reset zoom to 140 percent' });
-    await expect(resetZoom).toHaveAttribute('title', 'Reset zoom to 140% (Ctrl+0)');
-    await expect(resetZoom).toBeDisabled();
-    expect(await page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
+    await expect(zoom.locator('option:checked')).toHaveText('100%');
+    await setScreen(2560, 1440);
+    await expect(zoom).toHaveAttribute('data-auto-zoom', '135');
+    await expect(zoom.locator('option:checked')).toHaveText('100%');
+    await expect(page.getByRole('button', { name: 'Reset zoom to 100 percent' })).toBeDisabled();
 
     await zoom.selectOption({ label: '110%' });
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBe('110');
-    await reportSystem(true);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('110');
+    await setScreen(1920, 1080);
+    await expect(zoom).toHaveAttribute('data-auto-zoom', '100');
     await expect(zoom.locator('option:checked')).toHaveText('110%');
 
-    await resetZoom.click();
-    await expect(zoom.locator('option:checked')).toHaveText('140%');
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
-
-    await reportSystem(false);
+    await page.keyboard.press('Control+0');
     await expect(zoom.locator('option:checked')).toHaveText('100%');
+    await setScreen(7680, 4320);
+    await expect(zoom).toHaveAttribute('data-auto-zoom', '175');
+  });
+
+  test('ignores an absolute zoom saved by earlier releases', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('git-khronos.ui.zoom', '150'));
+    await page.reload();
+    await expect(page.getByLabel('Interface zoom', { exact: true }).locator('option:checked')).toHaveText('100%');
+    expect(await page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom'))).toBeNull();
   });
 });
 
