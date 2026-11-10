@@ -147,7 +147,7 @@ When GTK reports an empty or `menu:close` decoration layout, Git Khronos
 requests minimize, maximize, and close buttons for its own process. Other
 reported layouts are left unchanged. Because the web view zoom cannot reach
 toolkit-drawn window chrome, under WSL the native title bar (its height, buttons,
-and title text) is scaled with the same effective zoom through a GTK style
+button glyphs, and title text) is scaled with the same effective zoom through a GTK style
 sheet loaded only in the application process; global GTK, WSLg, and Windows
 settings are not changed. Other platforms keep the unmodified native title bar.
 

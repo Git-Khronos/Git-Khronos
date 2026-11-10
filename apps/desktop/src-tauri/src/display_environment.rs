@@ -48,6 +48,10 @@ pub fn show_wsl_window_buttons() {
 const CHROME_BAR_HEIGHT: f64 = 36.0;
 const CHROME_BAR_PADDING: u32 = 8;
 const CHROME_BUTTON_SIZE: f64 = 24.0;
+const CHROME_BUTTON_WIDTH: f64 = 46.0;
+// The theme's symbolic glyphs fill only about half of their image box, so the
+// box is large to give a glyph of roughly 14px at 100%.
+const CHROME_ICON_SIZE: f64 = 28.0;
 const CHROME_MAX_PERCENT: u32 = 400;
 
 /// GTK style rules that scale the client-side title bar with the interface zoom.
@@ -61,13 +65,36 @@ pub fn window_chrome_css(percent: u32) -> String {
     format!(
         "headerbar, .titlebar {{ min-height: {bar}px; }}\n\
          headerbar .title, .titlebar .title {{ font-size: {text}%; }}\n\
-         headerbar button.titlebutton, .titlebar button.titlebutton {{ min-width: {button}px; min-height: {button}px; }}\n\
-         headerbar button.titlebutton image, .titlebar button.titlebutton image {{ -gtk-icon-transform: scale({scale}); }}\n",
+         headerbar button.titlebutton, .titlebar button.titlebutton {{ min-width: {button_w}px; min-height: {button}px; padding: 0; }}\n\
+         ",
         bar = px(CHROME_BAR_HEIGHT).saturating_sub(CHROME_BAR_PADDING),
         text = (scale * 100.0).round() as u32,
         button = px(CHROME_BUTTON_SIZE),
-        scale = scale,
+        button_w = px(CHROME_BUTTON_WIDTH),
     )
+}
+
+/// Pixel size of the title-bar button glyphs. GTK 3 sizes these images through
+/// the widget, not CSS, so the value is applied to the image widgets directly.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn window_chrome_icon_px(percent: u32) -> i32 {
+    let scale = f64::from(percent.clamp(100, CHROME_MAX_PERCENT)) / 100.0;
+    (CHROME_ICON_SIZE * scale).round() as i32
+}
+
+#[cfg(target_os = "linux")]
+fn scale_titlebutton_icons(widget: &gtk::Widget, in_button: bool, pixels: i32) {
+    use gtk::prelude::*;
+
+    let in_button = in_button || widget.style_context().has_class("titlebutton");
+    if in_button
+        && let Some(image) = widget.downcast_ref::<gtk::Image>()
+    {
+        image.set_pixel_size(pixels);
+    }
+    if let Some(container) = widget.downcast_ref::<gtk::Container>() {
+        container.forall(|child| scale_titlebutton_icons(child, in_button, pixels));
+    }
 }
 
 /// Applies the window-chrome scale for this process. Call on the GTK main thread.
@@ -101,6 +128,10 @@ pub fn apply_window_chrome_scale(percent: u32) {
             eprintln!("Window chrome scaling was rejected by GTK: {error}");
         }
     });
+    let pixels = window_chrome_icon_px(percent);
+    for window in gtk::Window::list_toplevels() {
+        scale_titlebutton_icons(&window, false, pixels);
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -126,8 +157,10 @@ mod tests {
         assert!(base.contains("font-size: 100%"));
         let zoomed = window_chrome_css(130);
         assert!(zoomed.contains("min-height: 39px"));
-        assert!(zoomed.contains("min-width: 31px"));
-        assert!(zoomed.contains("scale(1.3)"));
+        assert!(zoomed.contains("min-width: 60px"));
+        assert_eq!(window_chrome_icon_px(100), 28);
+        assert_eq!(window_chrome_icon_px(130), 36);
+        assert_eq!(window_chrome_icon_px(9000), 112);
         assert!(zoomed.contains("font-size: 130%"));
         assert_eq!(window_chrome_css(50), base);
         assert_eq!(window_chrome_css(9000), window_chrome_css(400));
