@@ -75,9 +75,35 @@ package_field() {
   dpkg-deb --field "$1" "$2" 2>/dev/null
 }
 
+# The bundler names the desktop entry after the product name ("Git Khronos.desktop"),
+# but WSLg matches a window to its entry by the file stem, and the window's app id is
+# the binary name. Repack the package so the stem equals the app id.
+rename_desktop_entry() {
+  local package_file="$1" work legacy modern
+  work="$(mktemp -d -t git-khronos-repack.XXXXXX)"
+  legacy="usr/share/applications/Git Khronos.desktop"
+  modern="usr/share/applications/git-khronos.desktop"
+  dpkg-deb --raw-extract "$package_file" "$work/root"
+  if [[ -f "$work/root/$legacy" ]]; then
+    mv -- "$work/root/$legacy" "$work/root/$modern"
+    local sums="$work/root/DEBIAN/md5sums"
+    if [[ -f "$sums" ]]; then
+      local sum
+      sum="$(md5sum "$work/root/$modern" | cut -d' ' -f1)"
+      grep -v -F "  $legacy" "$sums" > "$sums.new" || true
+      printf '%s  %s\n' "$sum" "$modern" >> "$sums.new"
+      mv -- "$sums.new" "$sums"
+    fi
+    dpkg-deb --root-owner-group --build "$work/root" "$work/out.deb" >/dev/null
+    mv -- "$work/out.deb" "$package_file"
+  fi
+  rm -rf -- "$work"
+}
+
 name_package() {
   local package_file destination
   package_file="$(latest_package)"
+  rename_desktop_entry "$package_file"
   destination="${package_directory}/Git-Khronos_$(package_field "$package_file" Version)_$(package_field "$package_file" Architecture).deb"
   if [[ "$package_file" != "$destination" ]]; then
     mv -- "$package_file" "$destination"
@@ -149,7 +175,7 @@ NODE
   [[ ! -e "${extracted}/bin/export-ipc" ]] || fail "package contains the development-only export-ipc executable."
   local required_file
   for required_file in \
-    "share/applications/Git Khronos.desktop" \
+    "share/applications/git-khronos.desktop" \
     "share/icons/hicolor/32x32/apps/git-khronos.png" \
     "share/icons/hicolor/128x128/apps/git-khronos.png" \
     "share/icons/hicolor/256x256@2/apps/git-khronos.png" \
@@ -162,7 +188,7 @@ NODE
     [[ -s "${extracted}/${required_file}" ]] || fail "package payload is missing /usr/${required_file}."
   done
 
-  local desktop_file="${extracted}/share/applications/Git Khronos.desktop"
+  local desktop_file="${extracted}/share/applications/git-khronos.desktop"
   require_desktop_field "$desktop_file" Type "Application"
   require_desktop_field "$desktop_file" Name "Git Khronos"
   require_desktop_field "$desktop_file" Exec "git-khronos %U"

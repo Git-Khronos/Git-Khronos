@@ -104,7 +104,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
 
         # Register only inside this fixture's private XDG roots. The packaged
         # entry is checked before rebasing its executable to the extracted path.
-        desktop = fixtures.root / 'package/usr/share/applications/Git Khronos.desktop'
+        desktop = fixtures.root / 'package/usr/share/applications/git-khronos.desktop'
         entry = desktop.read_text()
         assert '\nExec=git-khronos %U\n' in entry
         assert '\nMimeType=x-scheme-handler/git-khronos;\n' in entry

@@ -131,6 +131,11 @@ menu or run `git-khronos` from any terminal. A locally built package
 targets the current CPU architecture and native-library baseline; build public
 release packages on the oldest Debian/Ubuntu baseline the release supports.
 
+The package installs its launcher as `git-khronos.desktop` so the entry id
+equals the window's application id. Under WSLg this lets Windows group the
+running window with its pinned taskbar shortcut and icon. If you pinned the app
+from an earlier build, unpin and pin it once more after upgrading.
+
 `task package:deb` (and `task install:system`) reuses the last successful build
 when its source/configuration checksums are unchanged and required build outputs
 are still present. Package verification still runs every time. The first

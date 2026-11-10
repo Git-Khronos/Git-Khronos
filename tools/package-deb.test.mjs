@@ -315,7 +315,7 @@ async function packagePayloadFixture(t) {
   ].join('\n'));
   await put('usr/bin/git-khronos', '#!/bin/sh\nexit 0\n');
   await chmod(join(payload, 'usr/bin/git-khronos'), 0o755);
-  await put('usr/share/applications/Git Khronos.desktop', [
+  await put('usr/share/applications/git-khronos.desktop', [
     '[Desktop Entry]', 'Type=Application', 'Name=Git Khronos',
     'Exec=git-khronos %U', 'MimeType=x-scheme-handler/git-khronos;', 'Icon=git-khronos', 'StartupWMClass=git-khronos', '',
   ].join('\n'));
@@ -529,7 +529,7 @@ test('renamed package replaces the legacy payload in a private dpkg database', a
   }
   assert.equal(upgraded.status, 0, `${upgraded.error ?? ''}\n${upgraded.stdout}\n${upgraded.stderr}`);
   assert.equal(await readFile(join(privateRoot, 'usr/bin/git-khronos'), 'utf8'), '#!/bin/sh\nexit 0\n');
-  assert.match(await readFile(join(privateRoot, 'usr/share/applications/Git Khronos.desktop'), 'utf8'), /^Exec=git-khronos %U$/m);
+  assert.match(await readFile(join(privateRoot, 'usr/share/applications/git-khronos.desktop'), 'utf8'), /^Exec=git-khronos %U$/m);
   await assert.rejects(stat(join(privateRoot, 'usr/bin/git-khronos-desktop')), { code: 'ENOENT' });
 });
 
@@ -851,7 +851,7 @@ for (const [name, transform, key] of [
 ]) {
   test(`package verification rejects a desktop entry that ${name}`, async t => {
     const f = await packagePayloadFixture(t);
-    const path = 'usr/share/applications/Git Khronos.desktop';
+    const path = 'usr/share/applications/git-khronos.desktop';
     await f.put(path, transform(await readFile(join(f.payload, path), 'utf8')));
     f.build();
     const result = f.verify();
