@@ -1,5 +1,16 @@
 # Informational sources
 
+## Reviewed original-reference deletion
+
+- [Git reference update semantics](https://git-scm.com/docs/git-update-ref)
+- [Git reference enumeration and format atoms](https://git-scm.com/docs/git-for-each-ref)
+- Existing gitoxide direct-reference read API documentation (the workspace's
+  already licensed dependency).
+
+Used for independently implemented canonical-name framing and a hook-aware,
+non-dereferencing Git transaction with a locked direct-object lease. Display decorations are not used to
+reconstruct reference authority. No external implementation code was copied.
+
 ## Linux worktree path resolution
 
 - [Linux `openat2(2)` manual](https://man7.org/linux/man-pages/man2/openat2.2.html)

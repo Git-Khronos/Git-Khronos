@@ -65,10 +65,10 @@ for (const action of ['discard', 'ignore', 'restore-commit']) {
       const state = (window as any).__diffAction;
       const { app, git } = state;
       if (action === 'restore-commit') {
-        app.commitFileContextMenu.set({ file: { path: 'file.txt' }, oid: state.repository.headOid });
+        app.actionOverlays.open({ kind: 'commitFile', value: { file: { path: 'file.txt' }, oid: state.repository.headOid } });
         app.requestRestoreCommitFile();
       } else {
-        app.fileContextMenu.set({ path: 'file.txt', staged: false, untracked: false });
+        app.actionOverlays.open({ kind: 'file', value: { path: 'file.txt', staged: false, untracked: false } });
         if (action === 'discard') app.requestDiscardFile();
         else await app.requestIgnoreFile('file');
       }
@@ -89,7 +89,7 @@ test('ignore reports an ineffective rule without claiming the file was untracked
   await page.evaluate(async () => {
     const state = (window as any).__diffAction;
     state.outcome = 'ignore-precedence';
-    state.app.fileContextMenu.set({ path: 'file.txt', staged: false, untracked: false });
+    state.app.actionOverlays.open({ kind: 'file', value: { path: 'file.txt', staged: false, untracked: false } });
     await state.app.requestIgnoreFile('extension');
   });
   const dialog = page.getByRole('alertdialog', { name: 'file.txt' });
@@ -115,7 +115,7 @@ test('ignoring an untracked file still succeeds without a confirmation', async (
   await prepare(page);
   const result = await page.evaluate(async () => {
     const state = (window as any).__diffAction;
-    state.app.fileContextMenu.set({ path: 'file.txt', staged: false, untracked: true });
+    state.app.actionOverlays.open({ kind: 'file', value: { path: 'file.txt', staged: false, untracked: true } });
     await state.app.requestIgnoreFile('file');
     return {
       calls: state.calls.filter((call: any) => call.command === 'ignore_path'),
@@ -144,9 +144,9 @@ test('ignore options use Git path separators for literal backslashes and extensi
     { path: 'report.', extension: false, directory: false },
   ]) {
     await page.evaluate(path => {
-      (window as any).__diffAction.app.fileContextMenu.set({
+      (window as any).__diffAction.app.actionOverlays.open({ kind: 'file', value: {
         path, x: 20, y: 20, content: null, staged: false, untracked: true, conflicted: false,
-      });
+      } });
     }, path);
     const menu = page.locator('.file-context-menu');
     await expect(menu.locator('.context-heading')).toContainText(path);
@@ -193,9 +193,9 @@ for (const { pattern, menuName, scope } of [
   test(`ignore ${pattern} confirmation explains its scope and untracks only the selected file`, async ({ page }) => {
     await prepare(page);
     await page.evaluate(() => {
-      (window as any).__diffAction.app.fileContextMenu.set({
+      (window as any).__diffAction.app.actionOverlays.open({ kind: 'file', value: {
         path: 'nested/file.txt', x: 20, y: 20, content: null, staged: false, untracked: false, conflicted: false,
-      });
+      } });
     });
     await page.locator('.file-context-menu').getByRole('menuitem', { name: menuName, exact: true }).click();
     const dialog = page.getByRole('alertdialog', { name: 'nested/file.txt' });
@@ -223,7 +223,7 @@ test('ignore warns about an interrupted response even when refresh also fails', 
     state.ignoreFailure = { message: 'Desktop connection interrupted.' };
     state.refreshFailure = { message: 'Snapshot unavailable.' };
     state.statusRefreshFailure = { message: 'Status unavailable.' };
-    state.app.fileContextMenu.set({ path: 'file.txt', staged: false, untracked: false });
+    state.app.actionOverlays.open({ kind: 'file', value: { path: 'file.txt', staged: false, untracked: false } });
     await state.app.requestIgnoreFile('extension');
   });
   const dialog = page.getByRole('alertdialog', { name: 'file.txt' });

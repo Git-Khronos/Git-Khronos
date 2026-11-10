@@ -24,6 +24,7 @@ use git_khronos_git_core::{
     create_worktree_for_branch as git_create_worktree_for_branch,
     delete_branch as git_delete_branch,
     delete_checkpoint_reference as git_delete_checkpoint_reference, detect_git,
+    delete_original_reference as git_delete_original_reference,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
     execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
@@ -1064,6 +1065,27 @@ fn delete_checkpoint_reference(
             error.message
         ),
         hint: Some("Refresh the repository to update its history.".into()),
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+fn delete_original_reference(
+    repo_id: String,
+    reference: String,
+    expected_oid: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    let session = repository_session(&repo_id, &state)?;
+    let _operation = session.operation.lock().map_err(state_error)?;
+    git_delete_original_reference(&session.path, &reference, &expected_oid)?;
+    build_snapshot(repo_id, &session).map_err(|error| AppError {
+        kind: "originalReferenceDeletedRefreshFailed".into(),
+        message: format!(
+            "The original reference was deleted, but history could not refresh: {}",
+            error.message
+        ),
+        hint: Some("Refresh the repository to update its history. Do not repeat the deletion.".into()),
     })
 }
 
@@ -4102,6 +4124,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             set_branch_upstream,
             delete_branch,
             delete_checkpoint_reference,
+            delete_original_reference,
             integrate_branch,
             continue_merge,
             abort_merge,

@@ -2380,3 +2380,34 @@ reports confirm exact collection matching. Runtime and package inputs did not
 change for that test correction.
 Fork-network ancestry, branch-scope selection and reviewed remote attachment remain
 open; further packaged error/cancellation composition coverage is also required.
+
+## Reviewed original references
+
+Graph and commit-detail controls expose single-reference deletion for direct
+commit references under `refs/original/` (commonly left by history filtering).
+The confirmation reviews the full canonical name and direct object ID. It warns
+that removing the name may make history unreachable and subject to eventual
+pruning; it does not erase objects, rewrite branches, or create a recovery ref.
+Branches, tags, remotes, checkpoint/recovery refs and other namespaces are not
+accepted by this command. Symbolic and non-commit original refs are not offered
+as actionable history decorations and are rejected by the mutation boundary.
+Symbolic commit refs and annotated-tag originals (including nested tags) retain
+a read-only indication on the commit where Git previously decorated them.
+Peeling is used only for that display placement, never as deletion authority.
+
+History excludes original refs from `%D` display parsing, then appends
+`original: <full-ref>` entries from a separate NUL-framed `for-each-ref` stream.
+The marker cannot be a valid Git ref name. Commas and display-name collisions
+therefore do not determine deletion authority. These references remain visible
+with either checkpoint visibility setting, including incremental history pages.
+Deletion uses Git's explicit prepare/commit transaction with an object-ID lease
+and no dereferencing, honoring configured `reference-transaction` hooks. Before
+commit, the direct target is also checked while Git holds the ref lock; this
+rejects symbolic replacements even on Git versions whose OID comparison follows
+symrefs. EOF aborts any uncommitted transaction. Transaction errors require
+inspection, not blind retry; a successful deletion followed by a failed native
+or renderer-side history refresh reports both facts. Non-UTF-8 original names
+remain visible as read-only notices without preventing ordinary history reads;
+lossy reconstructed names are never supplied as deletion identities.
+Only disposable fixtures are used for mutation tests. No proprietary
+implementation, assets or wording were used.

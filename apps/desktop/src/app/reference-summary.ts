@@ -1,4 +1,4 @@
-export type GraphReferenceKind = 'head' | 'tag' | 'remote' | 'local' | 'checkpoint';
+export type GraphReferenceKind = 'head' | 'tag' | 'remote' | 'local' | 'checkpoint' | 'original';
 
 export interface GraphReferenceIdentity {
   decoration: string;
@@ -99,6 +99,8 @@ export function buildCompactReferenceSummary(
       ? 'tag'
       : location.kind === 'checkpoint'
         ? 'Copilot checkpoint'
+        : location.kind === 'original'
+          ? 'original reference'
         : location.kind === 'head'
           ? 'current local branch'
           : 'local branch');

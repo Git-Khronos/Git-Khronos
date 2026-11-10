@@ -2,6 +2,10 @@
 
 ## Purpose
 
+See [State machines](docs/state-machines.md) for lifecycle ownership, migration
+boundaries, invariants, and behavioral coverage. Preserve orthogonal state and
+native authority when making lifecycle changes.
+
 This repository must be developed as an independent implementation.
 
 AI coding agents working on this project must prioritize:

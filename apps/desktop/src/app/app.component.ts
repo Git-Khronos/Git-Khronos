@@ -58,6 +58,8 @@ import type {
   WorkingTreeEntry,
 } from '@git-khronos/contracts';
 import { GitKhronosService, type RepositoryWorkspace } from './git-khronos.service';
+import { OverlayController } from './overlay-controller';
+import { repositoryOperationState } from './repository-operation';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
@@ -317,7 +319,8 @@ interface BranchSyncState {
 }
 
 interface ContextMenuState {
-  kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint';
+  kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint' | 'original';
+  repositoryId?: string | null;
   x: number;
   y: number;
   oid: string;
@@ -325,7 +328,8 @@ interface ContextMenuState {
   label: string;
 }
 
-interface PendingCheckpointDelete {
+interface PendingStoredReferenceDelete {
+  kind: 'checkpoint' | 'original';
   repoId: string;
   reference: string;
   oid: string;
@@ -433,6 +437,17 @@ interface StashContextMenuState {
   stash: StashEntry;
   repositoryId: string;
 }
+
+type ActionOverlay =
+  | { kind: 'context'; value: ContextMenuState }
+  | { kind: 'file'; value: FileContextMenuState }
+  | { kind: 'commitFile'; value: CommitFileContextMenuState }
+  | { kind: 'stash'; value: StashContextMenuState }
+  | { kind: 'repositoryTab'; value: RepositoryTabMenuState }
+  | { kind: 'remoteGroup'; value: RemoteGroupMenuState }
+  | { kind: 'worktree'; value: string }
+  | { kind: 'submodule'; value: string }
+  | { kind: 'referencePane'; value: { x: number; y: number } };
 
 interface GhostBranchState {
   branch: Branch;
@@ -682,7 +697,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly repositoryTabs = viewChild<ElementRef<HTMLElement>>('repositoryTabs');
   private readonly historyConfirmationDialog = viewChild<unknown, ElementRef<HTMLElement>>('historyConfirmationDialog', { read: ElementRef });
   private readonly branchConfirmationDialog = viewChild<ElementRef<HTMLElement>>('branchConfirmationDialog');
-  private readonly checkpointConfirmationDialog = viewChild<ElementRef<HTMLElement>>('checkpointConfirmationDialog');
+  private readonly storedReferenceConfirmationDialog = viewChild<ElementRef<HTMLElement>>('storedReferenceConfirmationDialog');
   private readonly fileConfirmationDialog = viewChild<ElementRef<HTMLElement>>('fileConfirmationDialog');
   private readonly workingTreeOptionsMenu = viewChild<ElementRef<HTMLElement>>('workingTreeOptionsMenu');
   private readonly workingTreeOptionsToggle = viewChild<ElementRef<HTMLButtonElement>>('workingTreeOptionsToggle');
@@ -722,6 +737,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitKhronosService);
+  protected readonly repositoryOperation = computed(() => repositoryOperationState(this.git.repository()?.status));
   protected readonly historySearch = inject(HistorySearchService);
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
@@ -772,7 +788,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
   private branchActionReturnFocus: HTMLElement | null = null;
-  private checkpointActionReturnFocus: HTMLElement | null = null;
+  private storedReferenceActionReturnFocus: HTMLElement | null = null;
   private fileActionReturnFocus: HTMLElement | null = null;
   private readonly graphCommitChildrenByOid = computed(() => {
     const children = new Map<string, CommitSummary[]>();
@@ -820,7 +836,11 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editedCommitDescription = signal('');
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
-  protected readonly contextMenu = signal<ContextMenuState | null>(null);
+  protected readonly actionOverlays = new OverlayController<ActionOverlay>();
+  protected readonly contextMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'context' ? active.value : null;
+  });
   protected readonly fileToolsDialog = signal<FileToolsDialogRequest | null>(null);
   private readonly fileToolsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileToolsLoaderClose');
   protected openFileTools(action: FileToolsDialogRequest['action'] = null, returnFocus: HTMLElement | null = null): void {
@@ -845,9 +865,18 @@ export class AppComponent implements OnInit, OnDestroy {
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
   private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
-  protected readonly fileContextMenu = signal<FileContextMenuState | null>(null);
-  protected readonly commitFileContextMenu = signal<CommitFileContextMenuState | null>(null);
-  protected readonly stashContextMenu = signal<StashContextMenuState | null>(null);
+  protected readonly fileContextMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'file' ? active.value : null;
+  });
+  protected readonly commitFileContextMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'commitFile' ? active.value : null;
+  });
+  protected readonly stashContextMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'stash' ? active.value : null;
+  });
   protected readonly selectedPanelFiles = signal<string[]>([]);
   protected readonly panelFileSelectionSource = signal<'commit' | 'comparison' | null>(null);
   protected readonly panelFileSelectionAnchor = signal<string | null>(null);
@@ -906,7 +935,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly selectedRemoteName = signal('');
   protected readonly toolbarCheckoutMenuOpen = signal(false);
   protected readonly toolbarBranchQuery = signal('');
-  protected readonly repositoryTabMenu = signal<RepositoryTabMenuState | null>(null);
+  protected readonly repositoryTabMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'repositoryTab' ? active.value : null;
+  });
   protected readonly repositoryTabMenuRepository = computed(() => {
     const menu = this.repositoryTabMenu();
     return menu ? this.git.repositories().find((repository) => repository.id === menu.repoId) ?? null : null;
@@ -917,7 +949,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const index = this.git.repositories().findIndex((repository) => repository.id === target.id);
     return index < 0 ? 0 : this.git.repositories().length - index - 1;
   });
-  protected readonly remoteGroupMenu = signal<RemoteGroupMenuState | null>(null);
+  protected readonly remoteGroupMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'remoteGroup' ? active.value : null;
+  });
   protected readonly repositoryAlias = signal('');
   protected readonly repositoryAliasEditing = signal(false);
   protected readonly preferencesOpen = signal(false);
@@ -936,13 +971,22 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly worktreeFolder = signal('');
   protected readonly worktreeHandoff = signal<'none' | 'terminal'>('none');
   protected readonly worktreeCreationSource = signal<string | null>(null);
-  protected readonly worktreeMenuPath = signal<string | null>(null);
+  protected readonly worktreeMenuPath = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'worktree' ? active.value : null;
+  });
   protected readonly worktreeMoveRequest = signal<WorktreeMoveRequest | null>(null);
   protected readonly worktreeRegistrationRequest = signal<WorktreeRegistrationRequest | null>(null);
   protected readonly documentation = inject(GitDocumentationService);
   protected readonly lfsTrackingRequest = signal<LfsTrackingRequest | null>(null);
-  protected readonly submoduleMenuPath = signal<string | null>(null);
-  protected readonly referencePaneMenu = signal<{ x: number; y: number } | null>(null);
+  protected readonly submoduleMenuPath = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'submodule' ? active.value : null;
+  });
+  protected readonly referencePaneMenu = computed(() => {
+    const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'referencePane' ? active.value : null;
+  });
   protected readonly submoduleDialogOpen = signal(false);
   protected readonly submoduleUrl = signal('');
   protected readonly submodulePath = signal('');
@@ -994,7 +1038,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
   protected readonly pendingBranchRename = signal<string | null>(null);
   protected readonly pendingBranchAction = signal<PendingBranchAction | null>(null);
-  protected readonly pendingCheckpointDelete = signal<PendingCheckpointDelete | null>(null);
+  protected readonly pendingStoredReferenceDelete = signal<PendingStoredReferenceDelete | null>(null);
   protected readonly pendingBranchUpstream = signal<PendingBranchUpstream | null>(null);
   protected readonly branchUpstreamChoice = signal('');
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
@@ -1099,14 +1143,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly graphDateFormat = signal<GraphDateFormat>(this.readGraphDateFormat());
   protected readonly authorMarkerStyle = signal<AuthorMarkerStyle>(this.readAuthorMarkerStyle());
   protected readonly draggedGraphColumn = signal<GraphColumn | null>(null);
-  protected readonly fetchMenuOpen = signal(false);
-  protected readonly pullMenuOpen = signal(false);
-  protected readonly pushMenuOpen = signal(false);
-  protected readonly branchMenuOpen = signal(false);
-  protected readonly stashMenuOpen = signal(false);
-  protected readonly lfsMenuOpen = signal(false);
-  protected readonly sparseCheckoutMenuOpen = signal(false);
-  protected readonly moreActionsMenuOpen = signal(false);
+  protected readonly toolbarOverlays = new OverlayController<{
+    kind: 'fetch' | 'pull' | 'push' | 'branch' | 'stash' | 'lfs' | 'sparseCheckout' | 'moreActions';
+  }>();
+  protected readonly fetchMenuOpen = this.toolbarOverlays.isOpen('fetch');
+  protected readonly pullMenuOpen = this.toolbarOverlays.isOpen('pull');
+  protected readonly pushMenuOpen = this.toolbarOverlays.isOpen('push');
+  protected readonly branchMenuOpen = this.toolbarOverlays.isOpen('branch');
+  protected readonly stashMenuOpen = this.toolbarOverlays.isOpen('stash');
+  protected readonly lfsMenuOpen = this.toolbarOverlays.isOpen('lfs');
+  protected readonly sparseCheckoutMenuOpen = this.toolbarOverlays.isOpen('sparseCheckout');
+  protected readonly moreActionsMenuOpen = this.toolbarOverlays.isOpen('moreActions');
   protected readonly workingTreeOptionsOpen = signal(false);
   protected readonly pullStrategy = signal<PullStrategy>(this.readPullStrategy());
   protected readonly showToolbarLabels = signal(this.readUiPreference('toolbar-labels', true));
@@ -1613,7 +1660,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private referenceStackCloseTimer: ReturnType<typeof setTimeout> | null = null;
   private detailReferenceStackCloseTimer: ReturnType<typeof setTimeout> | null = null;
   private tagPreviewTimer: ReturnType<typeof setTimeout> | null = null;
-  private toolbarMenuReturnFocus: HTMLElement | null = null;
+  private get toolbarMenuReturnFocus(): HTMLElement | null {
+    return this.toolbarOverlays.activeOverlay()?.returnFocus ?? null;
+  }
   private readonly repositoryRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private repositoryChangeUnlisten: UnlistenFn | null = null;
   private rebaseRequest = 0;
@@ -2944,6 +2993,7 @@ export class AppComponent implements OnInit, OnDestroy {
     jumpToReference: this.jumpToReference.bind(this),
     openBranchMenu: this.openBranchMenu.bind(this),
     openCheckpointMenu: this.openCheckpointMenu.bind(this),
+    openOriginalReferenceMenu: this.openOriginalReferenceMenu.bind(this),
     openCommitMenu: this.openCommitMenu.bind(this),
     openReferenceStack: this.openReferenceStack.bind(this),
     openReferenceStackFromTrigger: this.openReferenceStackFromTrigger.bind(this),
@@ -3387,23 +3437,23 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'file-tools', group: 'Edit', label: 'External File Tools', detail: 'Inspect reviewed editor, comparison and merge sessions', enabled: !!repository && !busy && !this.fileContentDialog(), icon: 'terminal' },
       { id: 'editor-draft-recovery', group: 'Edit', label: 'Editor Draft Recovery', detail: 'Inspect retained editor copies and review a working file', enabled: !busy && !this.fileContentDialog(), icon: 'history' },
       { id: 'recovery-history', group: 'History', label: 'Recovery History', detail: 'Find previous reference positions and preserve a commit with a new branch', enabled: !!repository && !busy, icon: 'history' },
-      ...(repository?.status.mergeInProgress ? [
+      ...((repository && this.repositoryOperation().mergeInProgress) ? [
         { id: 'merge-continue', group: 'Branch', label: 'Continue Merge', detail: repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Create the merge commit from the resolved index', enabled: !repository.status.conflicted && !busy, icon: 'merge' as IconName },
         { id: 'merge-abort', group: 'Branch', label: 'Abort Merge', detail: 'Stop the merge and restore its pre-merge state', enabled: !busy, icon: 'reset' as IconName },
       ] : []),
-      ...(repository?.status.historyOperation ? [
-        { id: 'history-operation-continue', group: 'History', label: `Continue ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: repository.status.historyNoCommit ? 'Stage resolutions and apply remaining changes without committing' : repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Continue the interrupted history operation', enabled: !repository.status.conflicted && !(repository.status.historyNoCommit && repository.status.unstaged) && !busy, icon: (repository.status.historyOperation === 'cherry-pick' ? 'cherry-pick' : 'revert') as IconName },
-        { id: 'history-operation-skip', group: 'History', label: `Skip Current ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Omit the current commit and advance the operation', enabled: !repository.status.historyNoCommit && !busy, icon: 'redo' as IconName },
-        { id: 'history-operation-abort', group: 'History', label: `Abort ${repository.status.historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Stop the operation and restore its original state', enabled: !busy, icon: 'reset' as IconName },
-        ...(repository.status.historyNoCommit ? [{ id: 'history-operation-quit', group: 'History', label: 'Finish No-commit Replay Manually', detail: 'End the saved sequence while retaining all current files and staged changes', enabled: !busy, icon: 'check' as IconName }] : []),
+      ...((repository && this.repositoryOperation().historyOperation) ? [
+        { id: 'history-operation-continue', group: 'History', label: `Continue ${this.repositoryOperation().historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: this.repositoryOperation().historyNoCommit ? 'Stage resolutions and apply remaining changes without committing' : repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Continue the interrupted history operation', enabled: !repository.status.conflicted && !(this.repositoryOperation().historyNoCommit && repository.status.unstaged) && !busy, icon: (this.repositoryOperation().historyOperation === 'cherry-pick' ? 'cherry-pick' : 'revert') as IconName },
+        { id: 'history-operation-skip', group: 'History', label: `Skip Current ${this.repositoryOperation().historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Omit the current commit and advance the operation', enabled: !this.repositoryOperation().historyNoCommit && !busy, icon: 'redo' as IconName },
+        { id: 'history-operation-abort', group: 'History', label: `Abort ${this.repositoryOperation().historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: 'Stop the operation and restore its original state', enabled: !busy, icon: 'reset' as IconName },
+        ...(this.repositoryOperation().historyNoCommit ? [{ id: 'history-operation-quit', group: 'History', label: 'Finish No-commit Replay Manually', detail: 'End the saved sequence while retaining all current files and staged changes', enabled: !busy, icon: 'check' as IconName }] : []),
       ] : []),
-      ...(repository?.status.bisectInProgress ? [
+      ...((repository && this.repositoryOperation().bisectInProgress) ? [
         { id: 'bisect-good', group: 'History', label: 'Bisect: Mark Current Commit Good', detail: 'Continue the search using the current commit as a known-good result', enabled: !busy, icon: 'check' as IconName },
         { id: 'bisect-bad', group: 'History', label: 'Bisect: Mark Current Commit Bad', detail: 'Continue the search using the current commit as a known-bad result', enabled: !busy, icon: 'warning' as IconName },
         { id: 'bisect-skip', group: 'History', label: 'Bisect: Skip Current Commit', detail: 'Continue without classifying the current commit', enabled: !busy, icon: 'redo' as IconName },
         { id: 'bisect-reset', group: 'History', label: 'Bisect: Reset', detail: 'Stop the search and restore the original branch', enabled: !busy, icon: 'reset' as IconName },
       ] : [
-        { id: 'bisect-start', group: 'History', label: 'Start Bisect from Selected Commit', detail: 'Treat the selected commit as good and the current HEAD as bad', enabled: !!this.selectedCommitData() && this.selectedCommitData()?.oid !== repository?.headOid && !repository?.status.entryCount && !repository?.status.rebaseInProgress && !busy, icon: 'history' as IconName },
+        { id: 'bisect-start', group: 'History', label: 'Start Bisect from Selected Commit', detail: 'Treat the selected commit as good and the current HEAD as bad', enabled: !!this.selectedCommitData() && this.selectedCommitData()?.oid !== repository?.headOid && !repository?.status.entryCount && !(repository && this.repositoryOperation().rebaseInProgress) && !busy, icon: 'history' as IconName },
       ]),
       { id: 'left-panel', group: 'View', label: 'Toggle Left Panel', detail: 'Show or hide repository references', shortcut: `${this.primaryShortcutKey} J`, enabled: !!repository, icon: 'panel-left' },
       { id: 'commit-panel', group: 'View', label: 'Toggle Commit Panel', detail: 'Show or hide commit details', shortcut: `${this.primaryShortcutKey} K`, enabled: !!repository, icon: 'panel-right' },
@@ -3665,7 +3715,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly isRebaseRootStop = computed(() => {
     const repository = this.git.repository();
-    return !!repository?.status.rebaseEditStopped
+    return !!(repository && this.repositoryOperation().rebaseEditStopped)
       && repository.commits.find(commit => commit.oid === repository.headOid)?.parents.length === 0;
   });
 
@@ -3817,32 +3867,32 @@ export class AppComponent implements OnInit, OnDestroy {
       if (parameters.has('branch-worktree')) {
         const branch = this.git.repository()?.branches.find((candidate) => !candidate.remote && !candidate.current);
         if (branch) {
-          this.contextMenu.set({
+          this.actionOverlays.open({ kind: 'context', value: {
             kind: 'branch',
             oid: branch.oid,
             oids: [branch.oid],
             label: branch.name,
             x: 250,
             y: 220,
-          });
+          } }, this.contextMenuReturnFocus);
           this.openContextWorktreeDialog();
         }
       }
       if (parameters.has('worktree-menu')) {
-        this.worktreeMenuPath.set(this.git.repository()?.worktrees.find((worktree) => !worktree.current)?.path ?? null);
+        this.setSidebarActionMenu('worktree', this.git.repository()?.worktrees.find((worktree) => !worktree.current)?.path ?? null);
       }
       if (parameters.has('list-worktree-menu')) {
-        this.worktreeMenuPath.set(this.git.repository()?.worktrees.find((worktree) => !worktree.current)?.path ?? null);
+        this.setSidebarActionMenu('worktree', this.git.repository()?.worktrees.find((worktree) => !worktree.current)?.path ?? null);
       }
       if (parameters.has('submodules') || parameters.has('submodule-menu')) {
         this.referencePaneVisibility.update((panes) => ({ ...panes, submodules: true }));
         this.submodulesOpen.set(true);
       }
       if (parameters.has('submodule-menu')) {
-        this.submoduleMenuPath.set(this.git.repository()?.submodules[0]?.path ?? null);
+        this.setSidebarActionMenu('submodule', this.git.repository()?.submodules[0]?.path ?? null);
       }
       if (parameters.has('add-submodule')) this.openSubmoduleDialog();
-      if (parameters.has('pane-menu')) this.referencePaneMenu.set({ x: 185, y: 255 });
+      if (parameters.has('pane-menu')) this.actionOverlays.open({ kind: 'referencePane', value: { x: 185, y: 255 } }, this.sidebarContextMenuReturnFocus);
       if (parameters.has('coauthors')) {
         this.selectWip();
         this.commitMessage.set('Pair on commit panel polish');
@@ -3885,14 +3935,14 @@ export class AppComponent implements OnInit, OnDestroy {
             truncated: false,
           });
           if (parameters.has('multi-commit-menu')) {
-            this.contextMenu.set({
+            this.actionOverlays.open({ kind: 'context', value: {
               kind: 'commit',
               oid: commits[0].oid,
               oids: [...commits].reverse().map((commit) => commit.oid),
               label: commits[0].subject || shortLabel(commits[0].oid),
               x: Math.max(20, window.innerWidth - 650),
               y: 230,
-            });
+            } }, this.contextMenuReturnFocus);
           }
         }
       }
@@ -3925,7 +3975,7 @@ export class AppComponent implements OnInit, OnDestroy {
           this.selectedPanelFiles.set(paths);
           this.panelFileSelectionSource.set('comparison');
           this.panelFileSelectionAnchor.set(file.path);
-          this.commitFileContextMenu.set({
+          this.actionOverlays.open({ kind: 'commitFile', value: {
             content: this.commitMediaSelection(file, comparison.targetOid, 'comparison'),
             repositoryId: this.git.activeRepositoryId(),
             x: Math.max(20, window.innerWidth - 620),
@@ -3934,7 +3984,7 @@ export class AppComponent implements OnInit, OnDestroy {
             file,
             paths,
             source: 'comparison',
-          });
+          } }, this.fileContextMenuReturnFocus);
         }
       }
     }
@@ -3989,7 +4039,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openMergePreview(returnFocus: HTMLElement | null = null, source?: string, target?: string): void {
     const repository = this.git.repository();
     if (!repository?.headOid || this.git.busy()) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.mergePreviewRequest.set({ repositoryId: repository.id, source, target, returnFocus });
   }
 
@@ -4015,9 +4065,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && this.pendingCheckpointDelete()) {
+    if (event.key === 'Escape' && this.pendingStoredReferenceDelete()) {
       event.preventDefault();
-      this.dismissCheckpointConfirmation(true);
+      this.dismissStoredReferenceConfirmation(true);
       return;
     }
     if (this.savedDiscards()) {
@@ -4603,28 +4653,20 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:click')
   protected closeContextMenu(): void {
-    this.contextMenu.set(null);
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
-    this.stashContextMenu.set(null);
+    this.actionOverlays.closeAll();
     this.contextMenuReturnFocus = null;
     this.appMenuOpen.set(false);
     this.workspaceMenuOpen.set(false);
     this.repositoryTabsOpen.set(false);
     this.toolbarRemoteMenuOpen.set(false);
     this.toolbarCheckoutMenuOpen.set(false);
-    this.repositoryTabMenu.set(null);
     this.repositoryTabMenuReturnFocus = null;
-    this.remoteGroupMenu.set(null);
     this.preferencesOpen.set(false);
     this.identityPopoverOpen.set(false);
     this.authorFilterOpen.set(false);
     this.graphSettingsOpen.set(false);
     this.graphSettingsPosition.set(null);
     this.dismissBranchDropMenu();
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
-    this.referencePaneMenu.set(null);
     this.coAuthorPickerOpen.set(false);
     this.workingTreeOptionsOpen.set(false);
     this.diffFileMenuOpen.set(false);
@@ -5742,12 +5784,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const fileName = menu.path.split('/').at(-1) ?? menu.path;
     const extension = fileName.includes('.') ? fileName.split('.').at(-1) : null;
     this.lfsPattern.set(extension ? `*.${extension}` : menu.path);
-    this.fileContextMenu.set(null);
+    this.actionOverlays.close('file');
     this.openPreferences('git');
   }
 
   protected openSparseCheckoutPreferences(): void {
-    this.sparseCheckoutMenuOpen.set(false);
+    this.toolbarOverlays.close('sparseCheckout');
     this.openPreferences('git');
   }
 
@@ -5760,8 +5802,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestSparseCheckoutDisable(returnFocus?: HTMLElement | null): void {
     const opener = this.captureSecondaryConfirmationOpener(returnFocus);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.toolbarMenuReturnFocus = null;
+    this.toolbarOverlays.close('sparseCheckout');
     this.closePreferences(false);
     this.secondaryConfirmationOpener = opener;
     this.pendingSparseCheckoutAction.set('disable');
@@ -5789,7 +5830,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async reapplySparseCheckout(): Promise<void> {
-    this.sparseCheckoutMenuOpen.set(false);
+    this.toolbarOverlays.close('sparseCheckout');
     await this.git.reapplySparseCheckout();
   }
 
@@ -5835,7 +5876,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repoId = this.git.activeRepositoryId();
     if (!menu || !repoId || (menu.kind === 'commit' && menu.oids.length !== 1)) return;
     const returnFocus = this.contextMenuReturnFocus;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     const target = menu.kind === 'commit' ? { kind: 'commit' as const, oid: menu.oid }
       : { kind: 'reference' as const, reference: `refs/${menu.kind === 'tag' ? 'tags' : menu.kind === 'remote' ? 'remotes' : 'heads'}/${menu.label}` };
     this.repositoryLinkDialog.set({ mode: 'share', repoId, target, returnFocus });
@@ -5866,7 +5907,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
     const opener = returnFocus ?? document.querySelector<HTMLButtonElement>('button[aria-label="Pull options"]');
-    this.pullMenuOpen.set(false);
+    this.toolbarOverlays.close('pull');
     this.fetchRequest.set({ repositoryId, returnFocus: opener });
   }
 
@@ -5960,19 +6001,19 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.prepareActionMenu('sidebar-context');
-    this.contextMenu.set(null);
-    this.stashContextMenu.set(null);
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
-    this.remoteGroupMenu.set(null);
+    this.actionOverlays.close('context');
+    this.actionOverlays.close('stash');
+    this.actionOverlays.close('file');
+    this.actionOverlays.close('commitFile');
+    this.actionOverlays.close('worktree');
+    this.actionOverlays.close('submodule');
+    this.actionOverlays.close('remoteGroup');
     this.sidebarContextMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.heading-toggle');
     const preferredPosition = { x: event.clientX, y: event.clientY };
-    this.referencePaneMenu.set({
+    this.actionOverlays.open({ kind: 'referencePane', value: {
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 230)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 285)),
-    });
+    } }, this.sidebarContextMenuReturnFocus);
     this.settleSidebarContextMenuPosition('reference', 'reference', preferredPosition);
   }
 
@@ -6132,7 +6173,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu || menu.kind !== 'branch' || !repository || !this.canCreateContextWorktree()) return;
     this.worktreeDialogOpener = this.contextMenuReturnFocus ?? this.captureDialogOpener();
     const parent = repository.path.replace(/[\\/][^\\/]+$/, '') || repository.path;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.worktreeCreationSource.set(menu.label);
     this.worktreeBranch.set(menu.label);
     this.worktreeBase.set(menu.label);
@@ -6188,8 +6229,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.sidebarActionMenuReturnFocus = opening && event.currentTarget instanceof HTMLElement
       ? event.currentTarget
       : null;
-    this.submoduleMenuPath.set(null);
-    this.worktreeMenuPath.set(opening ? path : null);
+    this.actionOverlays.close('submodule');
+    this.setSidebarActionMenu('worktree', opening ? path : null);
     if (opening) this.focusSidebarActionMenu(event);
   }
 
@@ -6198,8 +6239,8 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.worktree-list-main');
-    this.submoduleMenuPath.set(null);
-    this.worktreeMenuPath.set(path);
+    this.actionOverlays.close('submodule');
+    this.setSidebarActionMenu('worktree', path);
     this.focusSidebarActionMenu(event);
   }
 
@@ -6207,7 +6248,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || worktree.prunable || this.isWorktreeOpen(worktree.path)) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
-    this.worktreeMenuPath.set(null);
+    this.actionOverlays.close('worktree');
     this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus });
   }
 
@@ -6215,7 +6256,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || this.isWorktreeOpen(worktree.path)) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
-    this.worktreeMenuPath.set(null);
+    this.actionOverlays.close('worktree');
     this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus, repair: true });
   }
 
@@ -6225,8 +6266,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = returnFocus
       ?? this.sidebarActionMenuReturnFocus
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
+    this.actionOverlays.close('worktree');
+    this.actionOverlays.close('submodule');
     this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules });
   }
 
@@ -6472,8 +6513,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.sidebarActionMenuReturnFocus = opening && event.currentTarget instanceof HTMLElement
       ? event.currentTarget
       : null;
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(opening ? path : null);
+    this.actionOverlays.close('worktree');
+    this.setSidebarActionMenu('submodule', opening ? path : null);
     if (opening) this.focusSidebarActionMenu(event);
   }
 
@@ -6482,13 +6523,13 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.prepareActionMenu('sidebar');
     this.sidebarActionMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.submodule-main');
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(path);
+    this.actionOverlays.close('worktree');
+    this.setSidebarActionMenu('submodule', path);
     this.focusSidebarActionMenu(event);
   }
 
   protected async openSubmodule(submodule: Submodule): Promise<void> {
-    this.submoduleMenuPath.set(null);
+    this.actionOverlays.close('submodule');
     if (!submodule.initialized) {
       await this.git.initializeSubmodule(submodule.path);
       return;
@@ -6497,12 +6538,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async initializeSubmodule(submodule: Submodule): Promise<void> {
-    this.submoduleMenuPath.set(null);
+    this.actionOverlays.close('submodule');
     await this.git.initializeSubmodule(submodule.path);
   }
 
   protected async updateSubmodule(submodule: Submodule): Promise<void> {
-    this.submoduleMenuPath.set(null);
+    this.actionOverlays.close('submodule');
     await this.git.updateSubmodule(submodule.path);
   }
 
@@ -6511,13 +6552,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async setWorktreeLocked(worktree: Worktree): Promise<void> {
-    this.worktreeMenuPath.set(null);
+    this.actionOverlays.close('worktree');
     await this.git.setWorktreeLocked(worktree.path, !worktree.locked);
   }
 
   protected requestWorktreeRemoval(worktree: Worktree, deleteBranch: boolean): void {
     this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(this.sidebarActionMenuReturnFocus);
-    this.worktreeMenuPath.set(null);
+    this.actionOverlays.close('worktree');
     this.sidebarActionMenuReturnFocus = null;
     this.forceWorktreeRemoval.set(false);
     this.pendingWorktreeAction.set({
@@ -6594,9 +6635,9 @@ export class AppComponent implements OnInit, OnDestroy {
       && !this.fullWidthInspectorMode()
       && this.detailsVisible();
     this.fullWidthInspectorMode.set(fullWidthInspector);
-    if (enteringFullWidthInspector && !this.pendingHistoryAction() && !this.pendingCheckpointDelete()) {
+    if (enteringFullWidthInspector && !this.pendingHistoryAction() && !this.pendingStoredReferenceDelete()) {
       setTimeout(() => {
-        if (!this.pendingHistoryAction() && !this.pendingCheckpointDelete()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
+        if (!this.pendingHistoryAction() && !this.pendingStoredReferenceDelete()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
       });
     }
     const activeRepositoryId = this.git.activeRepositoryId();
@@ -6814,10 +6855,10 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.busy()) {
       return { ready: false, icon: 'warning', message: 'Git is busy. Wait for the current operation to finish.' };
     }
-    if (repository.status.historyNoCommit) {
+    if (this.repositoryOperation().historyNoCommit) {
       return { ready: false, icon: 'warning', message: 'Finish the no-commit replay from the operation banner before creating another commit.' };
     }
-    const split = repository.status.rebaseSplit;
+    const split = this.repositoryOperation().rebaseSplit;
     if (split?.preparing) {
       return { ready: false, icon: 'warning', message: 'The split reset needs attention. Abort it from the operation banner before committing.' };
     }
@@ -6859,7 +6900,7 @@ export class AppComponent implements OnInit, OnDestroy {
       .join('\n\n');
     const pushAfter = this.pushAfterCommit();
     const committed = await this.git.commit(message, {
-      amend: !repository.status.rebaseSplit && this.amendPrevious(),
+      amend: !this.repositoryOperation().rebaseSplit && this.amendPrevious(),
       skipHooks: this.skipGitHooks(),
       sign: this.signCommit(),
       ...this.commitPolicy(),
@@ -7283,6 +7324,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected decorationLabel(decoration: string): string {
+    if (decoration.startsWith('original: refs/original/')) return decoration.slice('original: '.length);
     const label = decoration.replace(/^HEAD ->\s*/, '').replace(/^tag:\s*/, '');
     const branch = this.branchForRawDecoration(label);
     if (branch) return branch.name;
@@ -7293,7 +7335,8 @@ export class AppComponent implements OnInit, OnDestroy {
       .replace(/^remotes\//, '');
   }
 
-  protected decorationKind(decoration: string): 'head' | 'tag' | 'remote' | 'local' | 'checkpoint' {
+  protected decorationKind(decoration: string): 'head' | 'tag' | 'remote' | 'local' | 'checkpoint' | 'original' {
+    if (decoration.startsWith('original: refs/original/')) return 'original';
     if (decoration.startsWith('HEAD ->')) return 'head';
     if (decoration.startsWith('tag:')) return 'tag';
     if (decoration.startsWith('refs/copilot/checkpoints/')) return 'checkpoint';
@@ -7304,6 +7347,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private branchForRawDecoration(decoration: string): Branch | null {
+    if (decoration.startsWith('original: ')) return null;
     if (decoration.startsWith('refs/copilot/checkpoints/')) return null;
     const fullName = decoration.startsWith('refs/')
       ? decoration
@@ -7385,20 +7429,20 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.prepareActionMenu('sidebar-context');
-    this.contextMenu.set(null);
-    this.stashContextMenu.set(null);
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
-    this.referencePaneMenu.set(null);
+    this.actionOverlays.close('context');
+    this.actionOverlays.close('stash');
+    this.actionOverlays.close('file');
+    this.actionOverlays.close('commitFile');
+    this.actionOverlays.close('worktree');
+    this.actionOverlays.close('submodule');
+    this.actionOverlays.close('referencePane');
     this.sidebarContextMenuReturnFocus = this.sidebarMenuReturnTarget(event, '.remote-collapse');
     const preferredPosition = { x: event.clientX, y: event.clientY };
-    this.remoteGroupMenu.set({
+    this.actionOverlays.open({ kind: 'remoteGroup', value: {
       remote,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 242)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 190)),
-    });
+    } }, this.sidebarContextMenuReturnFocus);
     this.settleSidebarContextMenuPosition('remote', remote, preferredPosition);
   }
 
@@ -7594,14 +7638,14 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'branch') return;
     this.toggleHiddenBranch(menu.label);
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
   }
 
   protected soloContextBranch(): void {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'branch') return;
     this.toggleSoloBranch(menu.label);
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
   }
 
   protected clearReferenceFilter(event: Event): void {
@@ -7956,7 +8000,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'branch') return;
     this.pinnedBranch.set(this.pinnedBranch() === menu.label ? null : menu.label);
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.storePinnedBranch();
   }
 
@@ -8091,7 +8135,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     const source = this.git.repository()?.status.branch;
     if (!menu || menu.kind !== 'branch' || !source || source === menu.label) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.openInteractiveRebase(source, menu.label);
   }
 
@@ -8101,7 +8145,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!menu || menu.kind !== 'branch' || !source || !repositoryId || source === menu.label || this.git.busy()) return;
     const returnFocus = this.contextMenuReturnFocus;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     const request = ++this.rebaseRequest;
     const plan = await this.git.prepareMergeRebase(repositoryId, source, menu.label);
     if (plan && request === this.rebaseRequest && repositoryId === this.git.activeRepositoryId()) {
@@ -8113,7 +8157,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     const source = this.git.repository()?.status.branch;
     if (!menu || menu.kind !== 'commit' || !source || this.git.busy()) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.openInteractiveRebase(source, source, [...menu.oids]);
   }
 
@@ -8121,7 +8165,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     const source = this.git.repository()?.status.branch;
     if (!menu || menu.kind !== 'branch' || menu.label !== source || !source || this.git.busy()) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.openInteractiveRebase(source, source, undefined, true);
   }
 
@@ -8229,25 +8273,25 @@ export class AppComponent implements OnInit, OnDestroy {
     this.interactiveRebase.set(null);
     this.selectedRebaseOid.set(null);
     await this.git.executeInteractiveRebase(state.source, state.target, steps, state.selectionOids, state.root, state.ontoOid);
-    if (this.git.repository()?.status.rebaseInProgress) this.selectWip();
+    if (this.repositoryOperation().rebaseInProgress) this.selectWip();
   }
 
   protected async controlRebase(action: 'continue' | 'skip' | 'abort'): Promise<void> {
     if (action === 'continue') await this.git.continueRebase();
     else if (action === 'skip') await this.git.skipRebase();
     else await this.git.abortRebase();
-    if (this.git.repository()?.status.rebaseInProgress) this.selectWip();
+    if (this.repositoryOperation().rebaseInProgress) this.selectWip();
   }
 
   protected async controlMerge(action: 'continue' | 'abort'): Promise<void> {
     if (action === 'continue') await this.git.continueMerge();
     else await this.git.abortMerge();
-    if (this.git.repository()?.status.mergeInProgress) this.selectWip();
+    if (this.repositoryOperation().mergeInProgress) this.selectWip();
   }
 
   protected async controlHistoryOperation(action: 'continue' | 'skip' | 'abort' | 'quit'): Promise<void> {
     await this.git.controlHistoryOperation(action);
-    if (this.git.repository()?.status.historyOperation) this.selectWip();
+    if (this.repositoryOperation().historyOperation) this.selectWip();
   }
 
   protected async openConflictTool(path: string): Promise<void> {
@@ -8314,7 +8358,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async resolveContextConflict(resolution: 'current' | 'incoming'): Promise<void> {
     const menu = this.fileContextMenu();
     if (!menu || !menu.conflicted) return;
-    this.fileContextMenu.set(null);
+    this.actionOverlays.close('file');
     await this.git.resolveConflict(menu.path, resolution);
   }
 
@@ -8400,7 +8444,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected collapseReferenceStack(event: Event, oid: string): void {
     event.preventDefault();
     event.stopPropagation();
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.cancelReferenceStackClose();
     this.expandedReferenceStackOid.set(null);
     this.pinnedReferenceStackOid.set(null);
@@ -9349,14 +9393,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected canEditSelectedCommitMessage(): boolean {
     const repository = this.git.repository();
     const commit = this.selectedCommitData();
-    return !!repository?.headOid && !repository.status.rebaseSplit && commit?.oid === repository.headOid;
+    return !!repository?.headOid && !this.repositoryOperation().rebaseSplit && commit?.oid === repository.headOid;
   }
 
   protected canEditContextCommitMessage(): boolean {
     const menu = this.contextMenu();
     return menu?.kind === 'commit'
       && menu.oids.length === 1
-      && !this.git.repository()?.status.rebaseSplit
+      && !this.repositoryOperation().rebaseSplit
       && menu.oid === this.git.repository()?.headOid;
   }
 
@@ -9388,7 +9432,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected editContextCommitMessage(): void {
     if (!this.canEditContextCommitMessage()) return;
     const oid = this.contextMenu()!.oid;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.selectCommit(oid);
     this.beginCommitMessageEdit();
   }
@@ -9601,7 +9645,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleRepositoryTabs(event: MouseEvent): void {
     event.stopPropagation();
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     const open = !this.repositoryTabsOpen();
     this.repositoryTabsOpen.set(open);
     if (open) {
@@ -9644,7 +9688,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.workspaceMenuOpen.set(false);
     this.repositoryTabsOpen.set(false);
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     this.toolbarRemoteMenuOpen.set(false);
     this.toolbarCheckoutMenuOpen.set(false);
     this.preferencesOpen.set(false);
@@ -9751,7 +9795,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!repository || repository.bare || this.git.busy()) return;
     const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.workspaceMenuOpen.set(false);
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.branchWorkflowRequest.set({ repositoryId: repository.id, path: repository.path,
       returnFocus: opener?.getAttribute('role') === 'menuitem' ? this.workspaceToggle()?.nativeElement ?? null : opener });
   }
@@ -10045,16 +10089,16 @@ export class AppComponent implements OnInit, OnDestroy {
     this.repositoryTabsOpen.set(false);
     this.repositoryAlias.set(this.git.repositoryAliases()[repository.path] ?? '');
     this.repositoryAliasEditing.set(false);
-    this.repositoryTabMenu.set({
+    this.actionOverlays.open({ kind: 'repositoryTab', value: {
       repoId,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - 280)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 390)),
-    });
+    } }, this.repositoryTabMenuReturnFocus);
     queueMicrotask(() => requestAnimationFrame(() => {
       const element = this.repositoryTabMenuElement()?.nativeElement;
       const menu = this.repositoryTabMenu();
       if (!element || menu?.repoId !== repoId) return;
-      this.repositoryTabMenu.set({ ...menu, ...this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }) });
+      this.actionOverlays.open({ kind: 'repositoryTab', value: { ...menu, ...this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }) } }, this.repositoryTabMenuReturnFocus);
     }));
     if (focusMenu) {
       this.focusWhenRendered(
@@ -10120,7 +10164,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private dismissRepositoryTabMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.repositoryTabMenuReturnFocus : null;
     this.repositoryAliasEditing.set(false);
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     this.repositoryTabMenuReturnFocus = null;
     if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
   }
@@ -10153,7 +10197,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeRepositoryFromMenu(): void {
     const menu = this.repositoryTabMenu();
     if (!menu) return;
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     this.closeRepository(menu.repoId);
   }
 
@@ -10167,7 +10211,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.repositoryTabMenu();
     if (!menu) return;
     if (!this.terminalOpen()) this.terminalOpener = this.repositoryTabMenuReturnFocus;
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     this.repositoryTabMenuReturnFocus = null;
     this.showTerminalForRepository(menu.repoId);
   }
@@ -10175,7 +10219,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openRepositoryFolderFromMenu(): void {
     const menu = this.repositoryTabMenu();
     if (!menu) return;
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     void this.git.openRepositoryInFileManager(menu.repoId);
   }
 
@@ -10184,7 +10228,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu) return;
     const repositories = this.git.repositories();
     const index = repositories.findIndex((repository) => repository.id === menu.repoId);
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     if (index < 0) return;
     for (const repository of repositories.slice(index + 1).reverse()) {
       this.closeRepository(repository.id);
@@ -10196,7 +10240,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu) return;
     const repositories = this.git.repositories();
     const target = repositories.find((repository) => repository.id === menu.repoId);
-    this.repositoryTabMenu.set(null);
+    this.actionOverlays.close('repositoryTab');
     if (!target) return;
     this.activateRepository(target.id);
     for (const repository of repositories.filter((repository) => repository.id !== target.id).reverse()) {
@@ -10209,7 +10253,7 @@ export class AppComponent implements OnInit, OnDestroy {
     scope: CommandPaletteScope = 'all',
     returnFocus?: HTMLElement | null,
   ): void {
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.commandPaletteOpener = returnFocus ?? (document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null);
@@ -10224,7 +10268,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = (event.currentTarget as HTMLElement)
       .closest('.toolbar-overflow-control')
       ?.querySelector<HTMLElement>(':scope > .tool-button') ?? null;
-    this.moreActionsMenuOpen.set(false);
+    this.toolbarOverlays.close('moreActions');
     this.openCommandPalette('', 'branches', opener);
   }
 
@@ -10553,113 +10597,49 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleFetchMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.fetchMenuOpen();
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.fetchMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'fetch' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.fetch-menu', open);
   }
 
   protected togglePullMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.pullMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.pullMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'pull' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.pull-menu', open);
   }
 
   protected togglePushMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.pushMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.pushMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'push' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.push-menu', open);
   }
 
   protected toggleBranchMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.branchMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.branchMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'branch' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.branch-menu', open);
   }
 
   protected toggleStashMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.stashMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.stashMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'stash' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.stash-menu', open);
   }
 
   protected toggleLfsMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.lfsMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.lfsMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'lfs' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.lfs-menu', open);
   }
 
   protected toggleSparseCheckoutMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.sparseCheckoutMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'sparseCheckout' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.sparse-menu', open);
   }
 
   protected toggleMoreActionsMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = !this.moreActionsMenuOpen();
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(open);
+    const open = this.toolbarOverlays.toggle({ kind: 'moreActions' }, event.currentTarget as HTMLElement);
     this.prepareToolbarMenu(event, '.compact-action-menu', open);
   }
 
@@ -10689,12 +10669,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private prepareToolbarMenu(event: MouseEvent, selector: string, open: boolean): void {
-    if (!open) {
-      this.toolbarMenuReturnFocus = null;
-      return;
-    }
-    this.toolbarMenuReturnFocus = event.currentTarget as HTMLElement;
+    if (!open) return;
+    const overlay = this.toolbarOverlays.activeOverlay();
     window.setTimeout(() => {
+      if (this.toolbarOverlays.activeOverlay() !== overlay) return;
       const menu = document.querySelector<HTMLElement>(selector);
       if (menu) this.visibleToolbarMenuItems(menu)[0]?.focus();
     }, 0);
@@ -10705,15 +10683,19 @@ export class AppComponent implements OnInit, OnDestroy {
       .filter((item) => item.getClientRects().length > 0);
   }
 
+  private setSidebarActionMenu(kind: 'worktree' | 'submodule', path: string | null): void {
+    if (path === null) this.actionOverlays.close(kind);
+    else this.actionOverlays.open({ kind, value: path }, this.sidebarActionMenuReturnFocus);
+  }
+
   protected async pullLfsObjects(): Promise<void> {
-    this.lfsMenuOpen.set(false);
+    this.toolbarOverlays.close('lfs');
     await this.git.lfs('lfs_pull');
   }
 
   protected requestLfsPrune(returnFocus?: HTMLElement | null): void {
     this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(returnFocus);
-    this.lfsMenuOpen.set(false);
-    this.toolbarMenuReturnFocus = null;
+    this.toolbarOverlays.close('lfs');
     this.pendingLfsPrune.set(true);
     this.lfsPrunePreview.set(null);
     void this.reviewLfsPrune();
@@ -10757,7 +10739,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async executePullStrategy(strategy: PullStrategy): Promise<void> {
-    this.pullMenuOpen.set(false);
+    this.toolbarOverlays.close('pull');
     await this.pullCurrentBranch(strategy);
   }
 
@@ -10814,7 +10796,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected pushCurrentBranch(): void {
     const opener = this.captureSecondaryConfirmationOpener();
-    this.pushMenuOpen.set(false);
+    this.toolbarOverlays.close('push');
     const branch = this.currentBranch();
     const remote = this.currentRemote();
     const targetBranch = this.currentRemoteBranch();
@@ -10838,7 +10820,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestForcePush(): void {
     const opener = this.captureSecondaryConfirmationOpener();
-    this.pushMenuOpen.set(false);
+    this.toolbarOverlays.close('push');
     if (!this.currentRemoteIsUpstream() || this.git.busy()) return;
     const repository = this.git.repository();
     const branch = this.currentBranch();
@@ -11340,14 +11322,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected compareContextCommitWithWorkingTree(): void {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'commit' || menu.oids.length !== 1) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.startWorkingTreeComparison(menu.oid);
   }
 
   protected compareContextReferenceWithWorkingTree(): void {
     const menu = this.contextMenu();
     if (!menu || (menu.kind !== 'branch' && menu.kind !== 'remote')) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.startWorkingTreeComparison(menu.oid);
   }
 
@@ -11380,10 +11362,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return;
     this.prepareActionMenu('graph');
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
+    this.actionOverlays.close('file');
+    this.actionOverlays.close('commitFile');
     if (focusMenu && event.currentTarget instanceof HTMLElement) {
       this.contextMenuReturnFocus = event.currentTarget;
     } else if (!focusMenu) {
@@ -11395,7 +11377,7 @@ export class AppComponent implements OnInit, OnDestroy {
       x: anchor?.x ?? event.clientX,
       y: anchor?.y ?? event.clientY,
     };
-    this.stashContextMenu.set({
+    this.actionOverlays.open({ kind: 'stash', value: {
       stash,
       repositoryId,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(
@@ -11403,7 +11385,7 @@ export class AppComponent implements OnInit, OnDestroy {
         window.innerWidth - GRAPH_ACTION_MENU_WIDTH - VIEWPORT_MENU_GUTTER,
       )),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 320)),
-    });
+    } }, this.contextMenuReturnFocus);
     this.settleGraphActionMenuPosition('stash', stash.reference, preferredPosition, focusMenu);
   }
 
@@ -11419,8 +11401,8 @@ export class AppComponent implements OnInit, OnDestroy {
       ? explicitReturnFocus
       : (action === 'save' ? this.workingTreeOptionsToggle()?.nativeElement : null) ?? this.contextMenuReturnFocus
         ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    this.contextMenu.set(null);
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('context');
+    this.actionOverlays.close('stash');
     this.workingTreeOptionsOpen.set(false);
     this.git.error.set(null);
     this.stashDialog.set({ action, repositoryId: repository.id, stash, branch,
@@ -11439,7 +11421,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.stashActionRepositoryId(target);
     if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
     this.stashRenameRepositoryId = repositoryId;
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
     this.stashRenameMessage.set(target.message.replace(/^(?:On|WIP on) [^:]+:\s*/, ''));
     this.stashRenameTarget.set(target);
   }
@@ -11458,7 +11440,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const stash = menu?.stash ?? this.selectedStash();
     const repositoryId = menu?.repositoryId ?? this.git.activeRepositoryId();
     if (!stash || !repositoryId) return;
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
     await this.runSelectedStash(pop, stash, repositoryId);
   }
 
@@ -11478,7 +11460,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const returnFocus = this.stashContextMenu()
       ? this.contextMenuReturnFocus
       : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
     this.pendingStashDelete.set({ repositoryId, stash: target, returnFocus });
   }
 
@@ -11505,24 +11487,24 @@ export class AppComponent implements OnInit, OnDestroy {
       ? oids.filter((oid) => oid !== stash.oid)
       : [...oids, stash.oid]);
     this.storeHiddenStashes();
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
   }
 
   protected showAllStashes(): void {
     this.hiddenStashOids.set([]);
     this.storeHiddenStashes();
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
   }
 
   protected hideAllStashes(): void {
     this.hiddenStashOids.set(this.git.repository()?.stashes.map((stash) => stash.oid) ?? []);
     this.storeHiddenStashes();
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
   }
 
   protected handleReferenceActionKeydown(
     event: KeyboardEvent,
-    kind: 'branch' | 'remote' | 'tag' | 'checkpoint',
+    kind: 'branch' | 'remote' | 'tag' | 'checkpoint' | 'original',
     name: string,
     oid: string,
   ): void {
@@ -11564,6 +11546,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.openContextMenu('checkpoint', oid, reference, event, [oid], true);
   }
 
+  protected openOriginalReferenceMenu(event: MouseEvent, decoration: string, oid: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.decorationKind(decoration) !== 'original') return;
+    this.openContextMenu('original', oid, this.decorationLabel(decoration), event, [oid], true);
+  }
+
   protected openFileMenu(
     event: MouseEvent,
     entry: WorkingTreeEntry,
@@ -11574,9 +11563,9 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     if (this.isUntrackedDirectory(entry)) return;
     this.prepareActionMenu('file');
-    this.contextMenu.set(null);
-    this.stashContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
+    this.actionOverlays.close('context');
+    this.actionOverlays.close('stash');
+    this.actionOverlays.close('commitFile');
     const returnTarget = this.fileMenuReturnTarget(event);
     if (focusMenu && returnTarget) this.fileContextMenuReturnFocus = returnTarget;
     else if (!focusMenu) this.fileContextMenuReturnFocus = null;
@@ -11590,7 +11579,7 @@ export class AppComponent implements OnInit, OnDestroy {
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 260)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 310)),
     };
-    this.fileContextMenu.set(state);
+    this.actionOverlays.open({ kind: 'file', value: state }, this.fileContextMenuReturnFocus);
     this.settleFileActionMenuPosition('working', `${entry.path}:${staged}`, preferredPosition, focusMenu);
   }
 
@@ -11604,9 +11593,9 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.prepareActionMenu('file');
-    this.contextMenu.set(null);
-    this.stashContextMenu.set(null);
-    this.fileContextMenu.set(null);
+    this.actionOverlays.close('context');
+    this.actionOverlays.close('stash');
+    this.actionOverlays.close('file');
     const returnTarget = this.fileMenuReturnTarget(event);
     if (focusMenu && returnTarget) this.fileContextMenuReturnFocus = returnTarget;
     else if (!focusMenu) this.fileContextMenuReturnFocus = null;
@@ -11617,7 +11606,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.panelFileSelectionSource.set(source);
     this.panelFileSelectionAnchor.set(file.path);
     const preferredPosition = { x: event.clientX, y: event.clientY };
-    this.commitFileContextMenu.set({
+    this.actionOverlays.open({ kind: 'commitFile', value: {
       content: this.commitMediaSelection(file, oid, source),
       repositoryId: this.git.activeRepositoryId(),
       file,
@@ -11626,7 +11615,7 @@ export class AppComponent implements OnInit, OnDestroy {
       source,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 278)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 245)),
-    });
+    } }, this.fileContextMenuReturnFocus);
     this.settleFileActionMenuPosition(
       'commit',
       `${source}:${oid}:${file.path}`,
@@ -11791,7 +11780,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private async inspectContextCommitFile(): Promise<boolean> {
     const menu = this.commitFileContextMenu();
     if (!menu) return false;
-    this.commitFileContextMenu.set(null);
+    this.actionOverlays.close('commitFile');
     if (menu.source === 'comparison') await this.git.inspectComparisonFile(menu.file);
     else await this.git.inspectCommitFile(menu.file);
     return menu.source === 'comparison' ? !!this.git.comparisonFileDiff() : !!this.git.commitFileDiff();
@@ -11806,14 +11795,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async viewFileChanges(): Promise<void> {
     const menu = this.fileContextMenu();
     if (!menu) return;
-    this.fileContextMenu.set(null);
+    this.actionOverlays.close('file');
     await this.inspectWorkingTreeFile(menu.path, menu.staged);
   }
 
   protected async toggleFileStaging(): Promise<void> {
     const menu = this.fileContextMenu();
     if (!menu) return;
-    this.fileContextMenu.set(null);
+    this.actionOverlays.close('file');
     if (menu.staged) await this.git.unstagePath(menu.path);
     else await this.git.stagePath(menu.path);
   }
@@ -12086,7 +12075,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async copyContextValue(value: string): Promise<void> {
     await this.copyText(value);
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
   }
 
   protected async checkoutContextTarget(): Promise<void> {
@@ -12128,7 +12117,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const active = this.contextMenu();
       const element = this.actionMenuElement()?.nativeElement;
       if (generation !== this.contextMenuGeneration || !active || !element) return;
-      this.contextMenu.set({ ...active, ...this.fittedMenuPosition(element, active) });
+      this.actionOverlays.open({ kind: 'context', value: { ...active, ...this.fittedMenuPosition(element, active) } }, this.contextMenuReturnFocus);
       if (this.canRestoreFocusFrom(element)) {
         element.querySelector<HTMLInputElement>('#context-branch-name')?.focus({ preventScroll: true });
         element.querySelector<HTMLElement>('#context-branch-error')?.scrollIntoView({ block: 'nearest' });
@@ -12196,7 +12185,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openContextTagCreator(): void {
     const menu = this.contextMenu();
     if (!menu) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.showTagCreator(menu.oid, menu.label);
   }
 
@@ -12208,7 +12197,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const remote = menu.kind === 'remote' ? this.remoteLocationName(menu.label) : undefined;
     const name = menu.kind === 'remote' ? this.remoteBranchLabel(menu.label) : menu.label;
     const returnFocus = this.contextMenuReturnFocus;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.git.dismissError();
     this.referenceAction.set({ action, repositoryId, name, oid: menu.oid, remote, returnFocus });
   }
@@ -12216,7 +12205,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async verifyContextTag(): Promise<void> {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'tag') return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.git.manageReference('verify-tag', menu.label);
   }
 
@@ -12225,7 +12214,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const name = this.contextRenameName().trim();
     if (!menu || menu.kind !== 'branch' || !name || name === menu.label || this.git.busy()) return;
     const wasPinned = this.pinnedBranch() === menu.label;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.git.renameBranch(menu.label, name);
     if (!this.git.error() && wasPinned) {
       this.pinnedBranch.set(name);
@@ -12274,7 +12263,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const sameName = options.find((candidate) => candidate.name.endsWith(`/${branch.name}`));
     this.branchUpstreamChoice.set(branch.upstream ?? sameName?.name ?? options[0].name);
     this.pendingBranchUpstream.set({ branch: branch.name, current: branch.upstream });
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
   }
 
   protected async confirmBranchUpstream(upstream: string | null = this.branchUpstreamChoice()): Promise<void> {
@@ -12287,14 +12276,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async unsetContextBranchUpstream(): Promise<void> {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'branch' || !this.contextBranchUpstream(menu.label) || this.git.busy()) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.git.setBranchUpstream(menu.label, null);
   }
 
   protected async integrateContextBranch(strategy: 'merge' | 'ff-only' | 'squash'): Promise<void> {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'branch' || menu.label === this.git.repository()?.status.branch || this.git.busy()) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     await this.git.integrateBranch(menu.label, strategy);
   }
 
@@ -12307,60 +12296,71 @@ export class AppComponent implements OnInit, OnDestroy {
     this.openBranchConfirmation({ kind, branch: menu.label }, returnFocus);
   }
 
-  protected requestCheckpointDelete(): void {
+  protected requestStoredReferenceDelete(): void {
     const menu = this.contextMenu();
     const repoId = this.git.activeRepositoryId();
-    if (!menu || menu.kind !== 'checkpoint' || !repoId) return;
-    const action = { repoId, reference: menu.label, oid: menu.oid };
-    this.checkpointActionReturnFocus = this.contextMenuReturnFocus;
+    if (!menu || (menu.kind !== 'checkpoint' && menu.kind !== 'original') || !repoId) return;
+    if (menu.kind === 'original' && menu.repositoryId !== repoId) {
+      this.dismissGraphActionMenu();
+      this.git.error.set('The active repository changed. Open the original reference again before deleting it.');
+      return;
+    }
+    const action = { kind: menu.kind, repoId, reference: menu.label, oid: menu.oid };
+    this.storedReferenceActionReturnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
-    this.pendingCheckpointDelete.set(action);
+    this.pendingStoredReferenceDelete.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
-      if (this.pendingCheckpointDelete() !== action) return;
-      this.checkpointConfirmationDialog()?.nativeElement
+      if (this.pendingStoredReferenceDelete() !== action) return;
+      this.storedReferenceConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-checkpoint-dialog-cancel]')
         ?.focus();
     }));
   }
 
-  protected dismissCheckpointConfirmation(restoreFocus = true): void {
-    const target = restoreFocus ? this.checkpointActionReturnFocus : null;
-    this.pendingCheckpointDelete.set(null);
-    this.checkpointActionReturnFocus = null;
-    if (restoreFocus) this.restoreCheckpointActionFocus(target);
+  protected dismissStoredReferenceConfirmation(restoreFocus = true): void {
+    const target = restoreFocus ? this.storedReferenceActionReturnFocus : null;
+    this.pendingStoredReferenceDelete.set(null);
+    this.storedReferenceActionReturnFocus = null;
+    if (restoreFocus) this.restoreStoredReferenceActionFocus(target);
   }
 
-  protected handleCheckpointConfirmationKeydown(event: KeyboardEvent): void {
+  protected handleStoredReferenceConfirmationKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      this.dismissCheckpointConfirmation(true);
+      this.dismissStoredReferenceConfirmation(true);
       return;
     }
-    this.cycleDialogFocus(this.checkpointConfirmationDialog()?.nativeElement, event);
+    this.cycleDialogFocus(this.storedReferenceConfirmationDialog()?.nativeElement, event);
   }
 
-  protected async confirmCheckpointDelete(): Promise<void> {
-    const action = this.pendingCheckpointDelete();
+  protected async confirmStoredReferenceDelete(): Promise<void> {
+    const action = this.pendingStoredReferenceDelete();
     if (!action || this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating()) return;
-    const returnFocus = this.checkpointActionReturnFocus;
-    this.dismissCheckpointConfirmation(false);
+    const returnFocus = this.storedReferenceActionReturnFocus;
+    this.dismissStoredReferenceConfirmation(false);
     if (this.git.activeRepositoryId() !== action.repoId) {
-      this.git.error.set('The active repository changed. Open the checkpoint again before deleting it.');
-      this.restoreCheckpointActionFocus(returnFocus);
+      this.git.error.set('The active repository changed. Open the reference again before deleting it.');
+      this.restoreStoredReferenceActionFocus(returnFocus);
       return;
     }
-    await this.git.deleteCheckpointReference(action.reference, action.oid);
+    if (action.kind === 'original') await this.git.deleteOriginalReference(action.repoId, action.reference, action.oid);
+    else await this.git.deleteCheckpointReference(action.reference, action.oid);
     this.reconcileCheckpointSelection(action.repoId);
-    this.restoreCheckpointActionFocus(returnFocus);
+    this.restoreStoredReferenceActionFocus(returnFocus);
   }
 
-  private restoreCheckpointActionFocus(target: HTMLElement | null): void {
+  private restoreStoredReferenceActionFocus(target: HTMLElement | null): void {
     queueMicrotask(() => {
+      const available = (element: HTMLElement | null | undefined) => element?.isConnected
+        && element.getClientRects().length && !element.closest('[inert]')
+        && getComputedStyle(element).visibility !== 'hidden';
+      const stackTrigger = target?.closest('.commit-ref-stack, .commit-detail-ref-stack')
+        ?.querySelector<HTMLElement>('.reference-stack-trigger');
       const fallback = this.historyInert()
         ? this.commitPanelClose()?.nativeElement
         : this.graphSettingsToggle()?.nativeElement;
-      (target?.isConnected && target.getClientRects().length && !target.closest('[inert]') ? target : fallback)
+      (available(target) ? target : available(stackTrigger) ? stackTrigger : fallback)
         ?.focus({ preventScroll: true });
     });
   }
@@ -12401,7 +12401,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestRebaseSplit(): void {
     const repository = this.git.repository();
-    if (!repository?.headOid || !repository.status.rebaseEditStopped || repository.status.rebaseSplit || this.isRebaseRootStop() || this.git.busy()) return;
+    if (!repository?.headOid || !this.repositoryOperation().rebaseEditStopped || this.repositoryOperation().rebaseSplit || this.isRebaseRootStop() || this.git.busy()) return;
     const head = repository.commits.find(commit => commit.oid === repository.headOid);
     this.openHistoryConfirmation({ kind: 'split', oid: repository.headOid,
       oids: [repository.headOid], label: head?.subject || shortLabel(repository.headOid) });
@@ -12412,15 +12412,15 @@ export class AppComponent implements OnInit, OnDestroy {
     return !!repository?.headOid
       && oid !== repository.headOid
       && !repository.status.entryCount
-      && !repository.status.rebaseInProgress
-      && !repository.status.bisectInProgress
+      && !this.repositoryOperation().rebaseInProgress
+      && !this.repositoryOperation().bisectInProgress
       && !this.git.busy();
   }
 
   protected requestBisectFromContext(): void {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'commit' || menu.oids.length !== 1 || !this.canStartBisectAt(menu.oid)) return;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.openBisectConfirmation(menu.oid, menu.label);
   }
 
@@ -12703,7 +12703,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private openContextMenu(
-    kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint',
+    kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint' | 'original',
     oid: string,
     label: string,
     event: MouseEvent,
@@ -12711,7 +12711,7 @@ export class AppComponent implements OnInit, OnDestroy {
     focusMenu = false,
   ): void {
     this.prepareActionMenu('graph');
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
     this.contextMenuGeneration += 1;
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
     if (focusMenu && event.currentTarget instanceof HTMLElement) {
@@ -12729,8 +12729,9 @@ export class AppComponent implements OnInit, OnDestroy {
       x: anchor?.x ?? event.clientX,
       y: anchor?.y ?? event.clientY,
     };
-    this.contextMenu.set({
+    this.actionOverlays.open({ kind: 'context', value: {
       kind,
+      repositoryId: this.git.activeRepositoryId(),
       oid,
       oids,
       label,
@@ -12739,7 +12740,7 @@ export class AppComponent implements OnInit, OnDestroy {
         window.innerWidth - GRAPH_ACTION_MENU_WIDTH - VIEWPORT_MENU_GUTTER,
       )),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 440)),
-    });
+    } }, this.contextMenuReturnFocus);
     this.settleGraphActionMenuPosition('context', `${kind}:${oid}`, preferredPosition, focusMenu);
   }
 
@@ -12906,9 +12907,9 @@ export class AppComponent implements OnInit, OnDestroy {
           Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
         );
         if (target === 'reference' && reference && (reference.x !== x || reference.y !== y)) {
-          this.referencePaneMenu.set({ ...reference, x, y });
+          this.actionOverlays.open({ kind: 'referencePane', value: { ...reference, x, y } }, this.sidebarContextMenuReturnFocus);
         } else if (target === 'remote' && remote && (remote.x !== x || remote.y !== y)) {
-          this.remoteGroupMenu.set({ ...remote, x, y });
+          this.actionOverlays.open({ kind: 'remoteGroup', value: { ...remote, x, y } }, this.sidebarContextMenuReturnFocus);
         }
         element.querySelector<HTMLElement>(
           '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
@@ -12949,9 +12950,9 @@ export class AppComponent implements OnInit, OnDestroy {
           Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
         );
         if (target === 'working' && working && (working.x !== x || working.y !== y)) {
-          this.fileContextMenu.set({ ...working, x, y });
+          this.actionOverlays.open({ kind: 'file', value: { ...working, x, y } }, this.fileContextMenuReturnFocus);
         } else if (target === 'commit' && commit && (commit.x !== x || commit.y !== y)) {
-          this.commitFileContextMenu.set({ ...commit, x, y });
+          this.actionOverlays.open({ kind: 'commitFile', value: { ...commit, x, y } }, this.fileContextMenuReturnFocus);
         }
         if (focusMenu) {
           element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
@@ -12997,9 +12998,9 @@ export class AppComponent implements OnInit, OnDestroy {
         Math.min(preferred.y, bottomBoundary - menuHeight),
       );
       if (target === 'context' && context && (context.x !== x || context.y !== y)) {
-        this.contextMenu.set({ ...context, x, y });
+        this.actionOverlays.open({ kind: 'context', value: { ...context, x, y } }, this.contextMenuReturnFocus);
       } else if (target === 'stash' && stash && (stash.x !== x || stash.y !== y)) {
-        this.stashContextMenu.set({ ...stash, x, y });
+        this.actionOverlays.open({ kind: 'stash', value: { ...stash, x, y } }, this.contextMenuReturnFocus);
       }
       element.classList.add('positioned');
       if (focusMenu) {
@@ -13045,9 +13046,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = restoreFocus ? this.contextMenuReturnFocus : null;
     const menu = this.actionMenuElement()?.nativeElement ?? null;
     this.contextMenuGeneration += 1;
-    this.contextMenu.set(null);
+    this.actionOverlays.close('context');
     this.contextBranchCreatorOpen.set(false);
-    this.stashContextMenu.set(null);
+    this.actionOverlays.close('stash');
     this.contextBranchError.set(null);
     this.contextMenuReturnFocus = null;
     if (target) queueMicrotask(() => {
@@ -13057,24 +13058,24 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private dismissFileActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.fileContextMenuReturnFocus : null;
-    this.fileContextMenu.set(null);
-    this.commitFileContextMenu.set(null);
+    this.actionOverlays.close('file');
+    this.actionOverlays.close('commitFile');
     this.fileContextMenuReturnFocus = null;
     if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
   }
 
   private dismissSidebarActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.sidebarActionMenuReturnFocus : null;
-    this.worktreeMenuPath.set(null);
-    this.submoduleMenuPath.set(null);
+    this.actionOverlays.close('worktree');
+    this.actionOverlays.close('submodule');
     this.sidebarActionMenuReturnFocus = null;
     if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
   }
 
   private dismissSidebarContextMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.sidebarContextMenuReturnFocus : null;
-    this.referencePaneMenu.set(null);
-    this.remoteGroupMenu.set(null);
+    this.actionOverlays.close('referencePane');
+    this.actionOverlays.close('remoteGroup');
     this.sidebarContextMenuReturnFocus = null;
     if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
   }
@@ -13464,17 +13465,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private closeToolbarMenus(restoreFocus = false): void {
-    this.fetchMenuOpen.set(false);
-    this.pullMenuOpen.set(false);
-    this.pushMenuOpen.set(false);
-    this.branchMenuOpen.set(false);
-    this.stashMenuOpen.set(false);
-    this.lfsMenuOpen.set(false);
-    this.sparseCheckoutMenuOpen.set(false);
-    this.moreActionsMenuOpen.set(false);
-    const returnFocus = this.toolbarMenuReturnFocus;
-    this.toolbarMenuReturnFocus = null;
-    if (restoreFocus) queueMicrotask(() => returnFocus?.focus());
+    this.toolbarOverlays.closeAll(restoreFocus);
   }
 
   private storeColumnWidth(column: GraphColumn, width: number): void {

@@ -376,12 +376,46 @@ export type RepositoryLinkLocationIssue = { path: string; message: string }
 export type RepositoryLinkReadPolicy = { noLazyReads: boolean; autoFetchPaused: boolean }
 export type RepositoryLinkTarget = { kind: "repository" } | { kind: "commit"; oid: string } | { kind: "reference"; reference: string }
 export type RepositoryLinkTargetState = { kind: "notMatched" } | { kind: "repository" } | { kind: "commit"; oid: string } | { kind: "unavailable"; message: string }
+export type RepositoryOperation = { kind: "merge" } | { kind: "rebase"; editStopped: boolean; split: RebaseSplitStatus | null } | { kind: "cherryPick"; noCommit: boolean } | { kind: "revert"; noCommit: boolean } | { kind: "mailPatch" }
 export type RepositorySnapshot = ({ name: string; path: string; identity: GitIdentity; signing: SigningInfo; headOid: string | null; status: RepositoryStatus; remotes: Remote[]; branches: Branch[]; stashes: StashEntry[]; tags: Tag[]; worktrees: Worktree[]; submodules: Submodule[]; lfs: LfsInfo; sparseCheckout: SparseCheckoutInfo; commitTemplate: string | null; commitTemplateError: AppError | null; commits: CommitSummary[]; historyTruncated: boolean;
 /**
  * Bare repositories have no working tree; working-tree actions are unavailable.
  */
 bare: boolean }) & { id: string; showCheckpoints: boolean }
-export type RepositoryStatus = { branch: string | null; ahead: number; behind: number; staged: number; unstaged: number; untracked: number; conflicted: number; mergeInProgress: boolean; historyOperation: string | null; historyNoCommit: boolean; rebaseInProgress: boolean; rebaseEditStopped: boolean; rebaseSplit: RebaseSplitStatus | null; mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
+export type RepositoryStatus = { branch: string | null; ahead: number; behind: number; staged: number; unstaged: number; untracked: number; conflicted: number;
+/**
+ * Observed Git operations. Empty means idle; null supports older snapshot producers.
+ * Multiple operations may coexist. Bisect is orthogonal.
+ */
+operations: RepositoryOperation[] | null;
+/**
+ * @deprecated Read operations instead.
+ */
+mergeInProgress: boolean;
+/**
+ * @deprecated Read operations instead.
+ */
+historyOperation: string | null;
+/**
+ * @deprecated Read the replay operation's noCommit instead.
+ */
+historyNoCommit: boolean;
+/**
+ * @deprecated Read operations instead.
+ */
+rebaseInProgress: boolean;
+/**
+ * @deprecated Read the rebase operation's editStopped instead.
+ */
+rebaseEditStopped: boolean;
+/**
+ * @deprecated Read the rebase operation's split instead.
+ */
+rebaseSplit: RebaseSplitStatus | null;
+/**
+ * @deprecated Read operations instead.
+ */
+mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
 export type RetireForkRequest = { recordId: string; expectedRevision: string; acknowledgeUnconfirmed: boolean; operationId: string }
 export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
 export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }
@@ -612,6 +646,7 @@ export function rename_branch(args: { repoId: string; oldName: string; newName: 
 export function set_branch_upstream(args: { repoId: string; branch: string; upstream?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_branch_upstream", args); }
 export function delete_branch(args: { repoId: string; name: string; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
 export function delete_checkpoint_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_checkpoint_reference", args); }
+export function delete_original_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_original_reference", args); }
 export function integrate_branch(args: { repoId: string; name: string; strategy: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }
 export function continue_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_merge", args); }
 export function abort_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_merge", args); }
@@ -876,6 +911,7 @@ export type CommandMap = {
   set_branch_upstream: typeof set_branch_upstream;
   delete_branch: typeof delete_branch;
   delete_checkpoint_reference: typeof delete_checkpoint_reference;
+  delete_original_reference: typeof delete_original_reference;
   integrate_branch: typeof integrate_branch;
   continue_merge: typeof continue_merge;
   abort_merge: typeof abort_merge;

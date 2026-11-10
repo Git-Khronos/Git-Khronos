@@ -334,7 +334,7 @@ test('a failed GitLab panel chunk preserves drafts and offers the working manual
 
 test('disconnecting a GitLab account stays available during an unrelated Git operation', async ({ page }) => {
   const panel = await connect(page);
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationBusy.set(true));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operations.start(-1, null, null));
   try {
     await expect(panel.getByRole('button', { name: 'Connect to GitLab', exact: true })).toBeDisabled();
     await expect(panel.getByRole('button', { name: 'Load GitLab projects', exact: true })).toBeDisabled();
@@ -346,7 +346,7 @@ test('disconnecting a GitLab account stays available during an unrelated Git ope
     expect(await calls(page, 'load_gitlab_projects')).toHaveLength(0);
     expect(await calls(page, 'cancel_git_operation')).toHaveLength(0);
   } finally {
-    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationBusy.set(false));
+    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operations.complete(-1));
   }
 });
 

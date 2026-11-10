@@ -26,6 +26,7 @@ function status(entries: WorkingTreeEntry[]): RepositoryStatus {
     unstaged: 0,
     untracked: 0,
     conflicted: 0,
+    operations: null,
     mergeInProgress: false,
     historyOperation: null,
     historyNoCommit: false,

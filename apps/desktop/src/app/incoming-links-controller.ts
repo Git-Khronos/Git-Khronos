@@ -1,13 +1,13 @@
 import type { WritableSignal } from '@angular/core';
 import { events, ipc, type IncomingRepositoryLinkState } from '@git-khronos/contracts';
+import type { AsyncStateController } from './async-state';
 
 interface IncomingLinksHost {
-  state: WritableSignal<IncomingRepositoryLinkState>;
+  read: AsyncStateController<IncomingRepositoryLinkState>;
   pending: WritableSignal<boolean>;
-  loading: WritableSignal<boolean>;
   supported: WritableSignal<boolean>;
-  readError: WritableSignal<string>;
   listenError: WritableSignal<string>;
+  mutationError: WritableSignal<string>;
   refreshPolicies(): Promise<void>;
 }
 
@@ -15,7 +15,9 @@ interface IncomingLinksHost {
 export class IncomingLinksController {
   private listener: (() => void) | null = null;
   private listenerRequest = 0;
-  private stateRequest = 0;
+  private acceptedSnapshot = 0;
+  private mutationEpoch = 0;
+  private readonly confirmedDismissals = new Set<string>();
   private stopped = false;
   constructor(private readonly host: IncomingLinksHost) {}
 
@@ -44,57 +46,105 @@ export class IncomingLinksController {
   }
 
   stop(): void {
-    this.stopped = true; ++this.listenerRequest; ++this.stateRequest;
-    this.release(this.listener); this.listener = null; this.host.loading.set(false);
+    this.stopped = true; ++this.listenerRequest;
+    this.host.read.invalidate();
+    this.release(this.listener); this.listener = null;
   }
 
   async retry(): Promise<void> { await this.connect(); await this.refresh(); }
 
-  private apply(state: IncomingRepositoryLinkState): void {
-    this.host.supported.set(true); this.host.state.set(state);
-    this.host.pending.set(state.requests.length > 0 || state.overflowed);
-    this.host.readError.set('');
+  private validate(state: IncomingRepositoryLinkState): void {
+    if (!state || !Array.isArray(state.requests) || typeof state.overflowed !== 'boolean') {
+      throw new Error('Invalid incoming-link inbox response');
+    }
+  }
+
+  private apply(request: number, state: IncomingRepositoryLinkState, reconcilesUncertainty = false): void {
+    this.validate(state);
+    const requests = state.requests.filter(item => !this.confirmedDismissals.has(item.id));
+    if (!this.host.read.publish(request, { ...state, requests })) return;
+    for (const id of this.confirmedDismissals) {
+      if (!state.requests.some(item => item.id === id)) this.confirmedDismissals.delete(id);
+    }
+    ++this.acceptedSnapshot;
+    this.host.supported.set(true);
+    if (reconcilesUncertainty) this.host.mutationError.set('');
+    this.host.pending.set(requests.length > 0 || state.overflowed || Boolean(this.host.mutationError()));
   }
 
   async refresh(): Promise<void> {
     if (this.stopped) return;
-    const request = ++this.stateRequest;
-    this.host.loading.set(true);
+    const mutationEpoch = this.mutationEpoch;
+    const request = this.host.read.begin();
     try {
       const state = await ipc.incoming_repository_links();
-      if (this.stopped || request !== this.stateRequest) return;
-      if (!state || !Array.isArray(state.requests)) return;
-      this.apply(state); await this.host.refreshPolicies();
+      if (this.stopped || !this.host.read.isCurrent(request)) return;
+      this.apply(request, state, mutationEpoch === this.mutationEpoch); await this.host.refreshPolicies();
     } catch {
-      if (!this.stopped && request === this.stateRequest) {
+      if (!this.stopped && this.host.read.isCurrent(request)) {
         this.host.supported.set(true); this.host.pending.set(true);
-        this.host.readError.set('Incoming links could not be read. Retry to preserve the pending requests.');
+        this.host.read.fail(request, 'Incoming links could not be read. Retry to preserve the pending requests.');
       }
-    } finally { if (!this.stopped && request === this.stateRequest) this.host.loading.set(false); }
+    } finally { this.host.read.finish(request); }
   }
 
   async acknowledge(requestId: string): Promise<boolean> {
-    if (this.stopped) return false;
-    const request = ++this.stateRequest;
+    if (this.stopped || this.host.mutationError()) return false;
+    const request = this.host.read.begin(false);
+    let confirmed = false;
     try {
       const state = await ipc.acknowledge_incoming_repository_link({ requestId });
-      if (this.stopped || request !== this.stateRequest) return false;
-      this.apply(state); await this.host.refreshPolicies(); return true;
+      this.validate(state); confirmed = true;
+      if (this.stopped) return true;
+      this.confirmedDismissals.add(requestId);
+      if (this.host.read.isCurrent(request)) this.apply(request, state);
+      else {
+        this.host.read.updateValue(value => ({
+          ...value, requests: value.requests.filter(item => item.id !== requestId),
+        }));
+        ++this.acceptedSnapshot;
+      }
+      await this.host.refreshPolicies(); return true;
     } catch {
-      if (!this.stopped && request === this.stateRequest) this.host.readError.set('That request could not be dismissed. Refresh the incoming links and retry.');
-      return false;
-    }
+      if (!this.stopped) {
+        if (confirmed) this.host.read.fail(request,
+          'The request was dismissed, but read policies could not refresh. Retry reading the incoming links.');
+        else this.requireReconciliation(
+          'Dismissal could not be confirmed. Refresh the incoming links before deciding whether to retry.');
+      }
+      return confirmed;
+    } finally { this.host.read.finish(request); }
   }
 
   async dismissOverflow(): Promise<void> {
-    if (this.stopped) return;
-    const request = ++this.stateRequest;
+    if (this.stopped || this.host.mutationError()) return;
+    const request = this.host.read.begin(false);
+    const acceptedSnapshot = this.acceptedSnapshot;
+    let confirmed = false;
     try {
       const state = await ipc.dismiss_incoming_repository_link_overflow();
-      if (this.stopped || request !== this.stateRequest) return;
-      this.apply(state); await this.host.refreshPolicies();
+      this.validate(state); confirmed = true;
+      if (this.stopped) return;
+      if (this.host.read.isCurrent(request)) this.apply(request, state);
+      else if (acceptedSnapshot === this.acceptedSnapshot) {
+        this.host.read.updateValue(value => ({ ...value, overflowed: state.overflowed }));
+        ++this.acceptedSnapshot;
+      }
+      await this.host.refreshPolicies();
     } catch {
-      if (!this.stopped && request === this.stateRequest) this.host.readError.set('The overflow notice could not be dismissed. Refresh and retry.');
-    }
+      if (!this.stopped) {
+        if (confirmed) this.host.read.fail(request,
+          'The overflow notice was dismissed, but read policies could not refresh. Retry reading the incoming links.');
+        else this.requireReconciliation(
+          'Overflow dismissal could not be confirmed. Refresh the incoming links before deciding whether to retry.');
+      }
+    } finally { this.host.read.finish(request); }
+  }
+
+  private requireReconciliation(message: string): void {
+    ++this.mutationEpoch;
+    this.host.supported.set(true);
+    this.host.pending.set(true);
+    this.host.mutationError.set(message);
   }
 }

@@ -4,6 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import type { CommitSummary, MailPatchAction, MailPatchImportReview, MailPatchProgress, MailPatchReview } from '@git-khronos/contracts';
 import { GitKhronosService, type ActivityReporter } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
+import { repositoryOperationState } from './repository-operation';
 
 const MAX_SERIES = 500;
 
@@ -111,7 +112,7 @@ export class MailPatchPanelComponent {
   readonly progress = signal<MailPatchProgress | null>(null);
   readonly error = signal('');
   readonly notice = signal('');
-  readonly active = computed(() => !!this.git.repository()?.status.mailPatchInProgress);
+  readonly active = computed(() => repositoryOperationState(this.git.repository()?.status).mailPatchInProgress);
   readonly branchName = computed(() => this.git.repository()?.branches.find(branch => branch.current && !branch.remote)?.name ?? '');
   /** Ordinary first-parent commits ending at HEAD, newest first, among loaded history. */
   readonly chain = computed(() => {

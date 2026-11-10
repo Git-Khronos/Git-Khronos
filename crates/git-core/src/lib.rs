@@ -16,6 +16,8 @@ mod file_content;
 mod file_statistics;
 mod file_tool_model;
 mod ignore_rules;
+mod original_references;
+pub use original_references::delete_original_reference;
 #[cfg(unix)]
 mod process_pipe;
 mod working_file_text;
@@ -460,17 +462,80 @@ pub struct RepositoryStatus {
     pub unstaged: usize,
     pub untracked: usize,
     pub conflicted: usize,
+    /// Observed Git operations. Empty means idle; null supports older snapshot producers.
+    /// Multiple operations may coexist. Bisect is orthogonal.
+    pub operations: Option<Vec<RepositoryOperation>>,
+    /// @deprecated Read operations instead.
     pub merge_in_progress: bool,
+    /// @deprecated Read operations instead.
     pub history_operation: Option<String>,
+    /// @deprecated Read the replay operation's noCommit instead.
     pub history_no_commit: bool,
+    /// @deprecated Read operations instead.
     pub rebase_in_progress: bool,
+    /// @deprecated Read the rebase operation's editStopped instead.
     pub rebase_edit_stopped: bool,
+    /// @deprecated Read the rebase operation's split instead.
     pub rebase_split: Option<RebaseSplitStatus>,
+    /// @deprecated Read operations instead.
     pub mail_patch_in_progress: bool,
     pub bisect_in_progress: bool,
     pub entry_count: usize,
     pub entries_truncated: bool,
     pub entries: Vec<WorkingTreeEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RepositoryOperation {
+    Merge,
+    Rebase {
+        #[serde(rename = "editStopped")]
+        edit_stopped: bool,
+        split: Option<RebaseSplitStatus>,
+    },
+    CherryPick {
+        #[serde(rename = "noCommit")]
+        no_commit: bool,
+    },
+    Revert {
+        #[serde(rename = "noCommit")]
+        no_commit: bool,
+    },
+    MailPatch,
+}
+
+impl RepositoryStatus {
+    fn with_operations(operations: Vec<RepositoryOperation>, bisect: bool) -> Self {
+        let mut status = Self {
+            bisect_in_progress: bisect,
+            ..Self::default()
+        };
+        for operation in &operations {
+            match operation {
+                RepositoryOperation::Merge => status.merge_in_progress = true,
+                RepositoryOperation::Rebase {
+                    edit_stopped,
+                    split,
+                } => {
+                    status.rebase_in_progress = true;
+                    status.rebase_edit_stopped = *edit_stopped;
+                    status.rebase_split = split.clone();
+                }
+                RepositoryOperation::CherryPick { no_commit } => {
+                    status.history_operation = Some("cherry-pick".into());
+                    status.history_no_commit = *no_commit;
+                }
+                RepositoryOperation::Revert { no_commit } => {
+                    status.history_operation = Some("revert".into());
+                    status.history_no_commit = *no_commit;
+                }
+                RepositoryOperation::MailPatch => status.mail_patch_in_progress = true,
+            }
+        }
+        status.operations = Some(operations);
+        status
+    }
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -7116,17 +7181,7 @@ fn read_status_with_limit_mode(
         run_status_with_limit(path, entry_limit, untracked_files)?;
     let records = output.stdout.split(|byte| *byte == 0).collect::<Vec<_>>();
     let operations = repository_operation_state(path)?;
-    let mut status = RepositoryStatus {
-        merge_in_progress: operations.merge,
-        history_operation: operations.history.clone(),
-        history_no_commit: operations.history_no_commit,
-        rebase_in_progress: operations.rebase,
-        rebase_edit_stopped: operations.rebase_edit,
-        rebase_split: operations.rebase_split,
-        mail_patch_in_progress: operations.mail_patch,
-        bisect_in_progress: operations.bisect,
-        ..RepositoryStatus::default()
-    };
+    let mut status = operations.into_status()?;
     let mut index = 0;
 
     while index < records.len() {
@@ -7197,15 +7252,7 @@ fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
     let operations = repository_operation_state(path)?;
     Ok(RepositoryStatus {
         branch,
-        merge_in_progress: operations.merge,
-        history_operation: operations.history,
-        history_no_commit: operations.history_no_commit,
-        rebase_in_progress: operations.rebase,
-        rebase_edit_stopped: operations.rebase_edit,
-        rebase_split: operations.rebase_split,
-        mail_patch_in_progress: operations.mail_patch,
-        bisect_in_progress: operations.bisect,
-        ..RepositoryStatus::default()
+        ..operations.into_status()?
     })
 }
 
@@ -7995,6 +8042,7 @@ fn add_history_format_arguments(args: &mut Vec<&str>, show_checkpoints: bool) {
         },
         "--decorate-refs-exclude=refs/remotes/*/HEAD",
         "--decorate-refs-exclude=refs/git-khronos/recovery/*",
+        "--decorate-refs-exclude=refs/original/*",
     ]);
     if !show_checkpoints {
         args.push("--decorate-refs-exclude=refs/copilot/checkpoints/*");
@@ -8117,6 +8165,7 @@ fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitS
             }
         }
     }
+    original_references::decorate(path, &mut commits)?;
     Ok(commits)
 }
 
@@ -8361,6 +8410,43 @@ struct RepositoryOperationState {
     rebase_split: Option<RebaseSplitStatus>,
     mail_patch: bool,
     bisect: bool,
+}
+
+impl RepositoryOperationState {
+    fn into_status(self) -> Result<RepositoryStatus, AppError> {
+        let mut operations = Vec::new();
+        if self.merge {
+            operations.push(RepositoryOperation::Merge);
+        }
+        match self.history.as_deref() {
+            Some("cherry-pick") => operations.push(RepositoryOperation::CherryPick {
+                no_commit: self.history_no_commit,
+            }),
+            Some("revert") => operations.push(RepositoryOperation::Revert {
+                no_commit: self.history_no_commit,
+            }),
+            None => {}
+            Some(_) => {
+                return Err(AppError::new(
+                    "invalidHistorySequence",
+                    "The observed Git sequence does not identify a supported replay operation.",
+                    Some(
+                        "Inspect Git's sequencer state and preserve current changes before manual recovery.",
+                    ),
+                ));
+            }
+        }
+        if self.rebase {
+            operations.push(RepositoryOperation::Rebase {
+                edit_stopped: self.rebase_edit,
+                split: self.rebase_split,
+            });
+        }
+        if self.mail_patch {
+            operations.push(RepositoryOperation::MailPatch);
+        }
+        Ok(RepositoryStatus::with_operations(operations, self.bisect))
+    }
 }
 
 fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, AppError> {
@@ -9100,7 +9186,83 @@ mod tests {
             repository.git(&["config", "user.email", "khronos@example.test"]);
             repository
         }
+    }
 
+    #[test]
+    fn repository_operation_observations_preserve_overlapping_markers() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "original\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Original"]);
+        repository.write(".git/MERGE_HEAD", "a".repeat(40).as_str());
+        repository.write(".git/CHERRY_PICK_HEAD", "b".repeat(40).as_str());
+        repository.write(".git/BISECT_START", "main\n");
+        fs::create_dir_all(repository.path.join(".git/rebase-apply")).unwrap();
+        repository.write(".git/rebase-apply/applying", "");
+        let status = read_status(&repository.path).unwrap();
+        let operations = status.operations.as_ref().unwrap();
+        assert_eq!(operations.len(), 3);
+        assert!(matches!(operations[0], RepositoryOperation::Merge));
+        assert!(matches!(
+            operations[1],
+            RepositoryOperation::CherryPick { no_commit: false }
+        ));
+        assert!(matches!(operations[2], RepositoryOperation::MailPatch));
+        assert!(status.merge_in_progress);
+        assert_eq!(status.history_operation.as_deref(), Some("cherry-pick"));
+        assert!(status.mail_patch_in_progress);
+        assert!(status.bisect_in_progress);
+    }
+
+    #[test]
+    fn repository_operation_legacy_projection_and_wire_fields_are_consistent() {
+        let status = RepositoryStatus::with_operations(
+            vec![
+                RepositoryOperation::Rebase {
+                    edit_stopped: true,
+                    split: Some(RebaseSplitStatus {
+                        preparing: true,
+                        part_count: 2,
+                        tree_matches: false,
+                    }),
+                },
+                RepositoryOperation::Revert { no_commit: true },
+            ],
+            true,
+        );
+        assert!(status.rebase_in_progress);
+        assert!(status.rebase_edit_stopped);
+        assert!(status.rebase_split.as_ref().unwrap().preparing);
+        assert_eq!(status.history_operation.as_deref(), Some("revert"));
+        assert!(status.history_no_commit);
+        assert!(status.bisect_in_progress);
+        let wire = serde_json::to_value(&status).unwrap();
+        assert_eq!(wire["operations"][0]["kind"], "rebase");
+        assert_eq!(wire["operations"][0]["editStopped"], true);
+        assert_eq!(wire["operations"][0]["split"]["partCount"], 2);
+        assert_eq!(wire["operations"][1]["noCommit"], true);
+        let idle = RepositoryStatus::with_operations(Vec::new(), false);
+        assert!(idle.operations.as_ref().unwrap().is_empty());
+        assert!(!idle.merge_in_progress && !idle.rebase_in_progress && !idle.bisect_in_progress);
+    }
+
+    #[test]
+    fn repository_operation_replay_markers_keep_legacy_precedence() {
+        let repository = TestRepository::new();
+        repository.write("file.txt", "original\n");
+        repository.git(&["add", "."]);
+        repository.git(&["commit", "-m", "Original"]);
+        repository.write(".git/CHERRY_PICK_HEAD", "a".repeat(40).as_str());
+        repository.write(".git/REVERT_HEAD", "b".repeat(40).as_str());
+        let status = read_status(&repository.path).unwrap();
+        assert_eq!(status.history_operation.as_deref(), Some("cherry-pick"));
+        assert!(matches!(
+            status.operations.as_deref(),
+            Some([RepositoryOperation::CherryPick { no_commit: false }])
+        ));
+    }
+
+    impl TestRepository {
         fn git(&self, args: &[&str]) {
             let output = Command::new("git")
                 .arg("-C")

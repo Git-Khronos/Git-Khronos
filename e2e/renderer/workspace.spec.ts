@@ -799,7 +799,7 @@ test('does not present a fully disabled split action as interactive on hover', a
 
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    app.git.operationBusy.set(true);
+    app.git.operations.start(-1, null, null);
   });
   await expect(pull).toBeDisabled();
   await expect(split.getByRole('button', { name: 'Pull options' })).toBeDisabled();

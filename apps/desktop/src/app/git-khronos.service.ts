@@ -1,3 +1,6 @@
+import { repositoryOperationState } from './repository-operation';
+import { AsyncStateController } from './async-state';
+import { OperationTracker } from './operation-tracker';
 import type { IncomingLinksController } from './incoming-links-controller';
 import type { RepositoryFileActionLifecycle } from './repository-file-actions';
 import { Injectable, computed, signal } from '@angular/core';
@@ -120,6 +123,8 @@ function sameItems<T>(left: readonly T[], right: readonly T[], key: (item: T) =>
 }
 
 function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): boolean {
+  const leftOperation = repositoryOperationState(left);
+  const rightOperation = repositoryOperationState(right);
   return left.branch === right.branch
     && left.ahead === right.ahead
     && left.behind === right.behind
@@ -127,16 +132,16 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && left.unstaged === right.unstaged
     && left.untracked === right.untracked
     && left.conflicted === right.conflicted
-    && left.mergeInProgress === right.mergeInProgress
-    && left.historyOperation === right.historyOperation
-    && left.historyNoCommit === right.historyNoCommit
-    && left.rebaseInProgress === right.rebaseInProgress
-    && left.rebaseEditStopped === right.rebaseEditStopped
-    && left.rebaseSplit?.preparing === right.rebaseSplit?.preparing
-    && left.rebaseSplit?.partCount === right.rebaseSplit?.partCount
-    && left.rebaseSplit?.treeMatches === right.rebaseSplit?.treeMatches
-    && !!left.mailPatchInProgress === !!right.mailPatchInProgress
-    && left.bisectInProgress === right.bisectInProgress
+    && leftOperation.mergeInProgress === rightOperation.mergeInProgress
+    && leftOperation.historyOperation === rightOperation.historyOperation
+    && leftOperation.historyNoCommit === rightOperation.historyNoCommit
+    && leftOperation.rebaseInProgress === rightOperation.rebaseInProgress
+    && leftOperation.rebaseEditStopped === rightOperation.rebaseEditStopped
+    && leftOperation.rebaseSplit?.preparing === rightOperation.rebaseSplit?.preparing
+    && leftOperation.rebaseSplit?.partCount === rightOperation.rebaseSplit?.partCount
+    && leftOperation.rebaseSplit?.treeMatches === rightOperation.rebaseSplit?.treeMatches
+    && !!leftOperation.mailPatchInProgress === !!rightOperation.mailPatchInProgress
+    && leftOperation.bisectInProgress === rightOperation.bisectInProgress
     && left.entryCount === right.entryCount
     && left.entriesTruncated === right.entriesTruncated
     && left.entries.length === right.entries.length
@@ -238,15 +243,17 @@ export class GitKhronosService {
   readonly repository = computed(
     () => this.repositories().find((repository) => repository.id === this.activeRepositoryId()) ?? null,
   );
-  readonly incomingRepositoryLinks = signal<IncomingRepositoryLinkState>({ requests: [], overflowed: false });
+  private readonly incomingLinksRead = new AsyncStateController<IncomingRepositoryLinkState>({ requests: [], overflowed: false });
+  readonly incomingRepositoryLinks = this.incomingLinksRead.value;
   readonly incomingRepositoryLinksPending = signal(false);
   readonly incomingRepositoryLinksReady = signal(false);
-  readonly incomingRepositoryLinksLoading = signal(false);
+  readonly incomingRepositoryLinksLoading = this.incomingLinksRead.loading;
   private readonly incomingLinksSupported = signal(false);
-  private readonly incomingLinksReadError = signal('');
   private readonly incomingLinksListenError = signal('');
+  private readonly incomingLinksMutationError = signal('');
+  readonly incomingRepositoryLinkDismissalBlocked = computed(() => Boolean(this.incomingLinksMutationError()));
   readonly incomingRepositoryLinksError = computed(() => this.incomingLinksSupported()
-    ? [this.incomingLinksReadError(), this.incomingLinksListenError()].filter(Boolean).join(' ') : '');
+    ? [this.incomingLinksRead.error(), this.incomingLinksListenError(), this.incomingLinksMutationError()].filter(Boolean).join(' ') : '');
   private incomingInitializationRequest = 0;
   private incomingControllerRequest = 0;
   private incomingController: IncomingLinksController | null = null;
@@ -261,12 +268,11 @@ export class GitKhronosService {
   });
   readonly repositoryAliases = signal<Record<string, string>>(this.readAliases());
   readonly recentlyClosedRepositoryPath = signal<string | null>(null);
-  private readonly operationBusy = signal(false);
+  private readonly operations = new OperationTracker();
   private readonly branchMutationPending = signal(false);
-  readonly busy = computed(() => this.operationBusy() || this.branchMutationPending());
-  private runningOperations = 0;
-  readonly backgroundFetchBusy = signal(false);
-  readonly backgroundFetchRepositoryId = signal<string | null>(null);
+  readonly busy = computed(() => this.operations.busy() || this.branchMutationPending());
+  readonly backgroundFetchBusy = this.operations.backgroundBusy;
+  readonly backgroundFetchRepositoryId = this.operations.backgroundRepositoryId;
   readonly backgroundFetchLastAt = signal<Record<string, number>>({});
   readonly backgroundFetchErrors = signal<Record<string, string>>({});
   readonly historyLoading = signal(false);
@@ -285,7 +291,7 @@ export class GitKhronosService {
   });
   readonly activity = signal('Ready');
   readonly activityLogs = signal<ActivityLogEntry[]>([]);
-  readonly cancellingOperationIds = signal<string[]>([]);
+  readonly cancellingOperationIds = this.operations.cancellingOperationIds;
   readonly activeActivity = computed(() =>
     [...this.activityLogs()].reverse().find((entry) => entry.status === 'running') ?? null,
   );
@@ -539,15 +545,16 @@ export class GitKhronosService {
     const loading = import('./incoming-links-controller').then(({ IncomingLinksController }) => {
       if (request !== this.incomingControllerRequest) return null;
       return this.incomingController = new IncomingLinksController({
-        state: this.incomingRepositoryLinks, pending: this.incomingRepositoryLinksPending,
-        loading: this.incomingRepositoryLinksLoading, supported: this.incomingLinksSupported,
-        readError: this.incomingLinksReadError, listenError: this.incomingLinksListenError,
+        read: this.incomingLinksRead, pending: this.incomingRepositoryLinksPending,
+        supported: this.incomingLinksSupported, listenError: this.incomingLinksListenError,
+        mutationError: this.incomingLinksMutationError,
         refreshPolicies: () => this.refreshRepositoryLinkPolicies(),
       });
     }).catch(() => {
       if (request === this.incomingControllerRequest) {
         this.incomingLinksSupported.set(true); this.incomingRepositoryLinksPending.set(true);
-        this.incomingLinksReadError.set('Incoming link controls could not load. Preserve drafts and retry or restart.');
+        this.incomingLinksRead.fail(this.incomingLinksRead.begin(false),
+          'Incoming link controls could not load. Preserve drafts and retry or restart.');
       }
       return null;
     }).finally(() => { if (request === this.incomingControllerRequest) this.incomingControllerLoad = null; });
@@ -558,13 +565,14 @@ export class GitKhronosService {
   private async connectIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.connect(); }
   async refreshIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.refresh(); }
   async retryIncomingRepositoryLinks(): Promise<void> { await (await this.loadIncomingLinksController())?.retry(); }
+  /** False includes an unconfirmed outcome, not proof that the native inbox was unchanged. */
   async acknowledgeIncomingRepositoryLink(id: string): Promise<boolean> { return await (await this.loadIncomingLinksController())?.acknowledge(id) ?? false; }
   async dismissIncomingRepositoryLinkOverflow(): Promise<void> { await (await this.loadIncomingLinksController())?.dismissOverflow(); }
 
   stopIncomingRepositoryLinks(): void {
     ++this.incomingInitializationRequest; ++this.incomingControllerRequest;
     this.incomingController?.stop(); this.incomingController = null;
-    this.incomingControllerLoad = null; this.incomingRepositoryLinksLoading.set(false);
+    this.incomingControllerLoad = null; this.incomingLinksRead.invalidate();
   }
 
   async refreshRepositoryLinkPolicies(): Promise<void> {
@@ -826,8 +834,8 @@ export class GitKhronosService {
     if (!repository || this.incomingRepositoryLinksPending() || this.repositoryLinkPolicies()[repository.id]?.autoFetchPaused || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
     // An explicit fetch retries a failure; timers must not repeatedly retry authentication.
     if (this.backgroundFetchErrors()[repository.id]) return false;
-    this.backgroundFetchBusy.set(true);
-    this.backgroundFetchRepositoryId.set(repository.id);
+    const request = this.operations.beginBackground(repository.id);
+    if (!request) return false;
     this.backgroundFetchErrors.update((errors) => {
       const updated = { ...errors };
       delete updated[repository.id];
@@ -838,7 +846,9 @@ export class GitKhronosService {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (this.busy() || !this.repositories().some((candidate) => candidate.id === repository.id)) return false;
       const generation = this.statusGeneration(repository.id);
+      this.operations.advanceBackground(request, 'fetching');
       const snapshot = await ipc.sync_repository({ repoId: repository.id });
+      this.operations.advanceBackground(request, 'reconciling');
       // Reconciliation itself ignores repositories closed while fetch ran.
       if (snapshot && generation === this.statusGeneration(repository.id)) {
         await this.storeRefreshedSnapshot(snapshot);
@@ -857,8 +867,7 @@ export class GitKhronosService {
       }));
       return false;
     } finally {
-      this.backgroundFetchBusy.set(false);
-      this.backgroundFetchRepositoryId.set(null);
+      this.operations.completeBackground(request);
       finishHistoryBarrier();
     }
   }
@@ -1666,6 +1675,25 @@ export class GitKhronosService {
     );
   }
 
+  async deleteOriginalReference(repoId: string, reference: string, expectedOid: string): Promise<void> {
+    const repository = this.repository();
+    if (!repository || repository.id !== repoId) {
+      this.error.set('The active repository changed. Review the original reference again.');
+      return;
+    }
+    const result = await this.mutateRepositoryWithResult(
+      repository,
+      'delete_original_reference',
+      'Deleting original reference…',
+      'Original reference deleted',
+      { reference, expectedOid },
+    );
+    if (result.status === 'success' && result.refreshError) {
+      this.error.set(`The original reference was deleted, but history could not refresh: ${result.refreshError} Refresh the repository before deciding on further actions. Do not repeat the deletion.`);
+      this.activity.set('Original reference deleted; history needs refreshing');
+    }
+  }
+
   async integrateBranch(name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
     const verbs = { merge: 'Merging', 'ff-only': 'Fast-forwarding', squash: 'Squashing', rebase: 'Rebasing' };
     await this.mutate('integrate_branch', `${verbs[strategy]} ${name}…`, `${verbs[strategy]} ${name} complete`, {
@@ -1743,9 +1771,9 @@ export class GitKhronosService {
   }
 
   private rebaseActivity(snapshot: RepositorySnapshot): string {
-    if (snapshot.status.rebaseSplit) return 'Rebase paused for splitting. Commit every part explicitly, then Continue; or Abort.';
-    if (snapshot.status.rebaseEditStopped && !snapshot.status.conflicted) return 'Rebase paused for Edit. Amend the replayed commit, then Continue; or Continue unchanged.';
-    return snapshot.status.rebaseInProgress ? 'Rebase remains in progress. Review the current stop before continuing.' : 'Interactive rebase complete';
+    if (repositoryOperationState(snapshot.status).rebaseSplit) return 'Rebase paused for splitting. Commit every part explicitly, then Continue; or Abort.';
+    if (repositoryOperationState(snapshot.status).rebaseEditStopped && !snapshot.status.conflicted) return 'Rebase paused for Edit. Amend the replayed commit, then Continue; or Continue unchanged.';
+    return repositoryOperationState(snapshot.status).rebaseInProgress ? 'Rebase remains in progress. Review the current stop before continuing.' : 'Interactive rebase complete';
   }
 
   async abortRebase(): Promise<void> {
@@ -1754,7 +1782,7 @@ export class GitKhronosService {
 
   async continueMerge(): Promise<void> {
     const repository = this.repository();
-    if (!repository?.status.mergeInProgress || repository.status.conflicted) return;
+    if (!(repository && repositoryOperationState(repository.status).mergeInProgress) || repository.status.conflicted) return;
     if (this.browserPreview()) {
       this.updatePreviewMergeState(repository.id, false);
       this.activity.set('Merge complete');
@@ -1765,7 +1793,7 @@ export class GitKhronosService {
 
   async abortMerge(): Promise<void> {
     const repository = this.repository();
-    if (!repository?.status.mergeInProgress) return;
+    if (!(repository && repositoryOperationState(repository.status).mergeInProgress)) return;
     if (this.browserPreview()) {
       this.updatePreviewMergeState(repository.id, false);
       this.activity.set('Merge aborted');
@@ -1792,7 +1820,7 @@ export class GitKhronosService {
 
   async controlHistoryOperation(action: 'continue' | 'skip' | 'abort' | 'quit'): Promise<void> {
     const repository = this.repository();
-    const operation = repository?.status.historyOperation;
+    const operation = (repository && repositoryOperationState(repository.status).historyOperation);
     if (!repository || !operation || (action === 'continue' && repository.status.conflicted)) return;
     if (this.browserPreview()) {
       this.repositories.update((repositories) => repositories.map((candidate) => candidate.id === repository.id
@@ -1817,8 +1845,8 @@ export class GitKhronosService {
     await this.mutate(
       'control_history_operation',
       `${action === 'continue' ? 'Continuing' : action === 'skip' ? 'Skipping' : action === 'quit' ? 'Finishing manually' : 'Aborting'} ${label}…`,
-      snapshot => snapshot.status.historyNoCommit ? 'No-commit replay paused; review and stage conflicts'
-        : repository.status.historyNoCommit
+      snapshot => repositoryOperationState(snapshot.status).historyNoCommit ? 'No-commit replay paused; review and stage conflicts'
+        : repositoryOperationState(repository.status).historyNoCommit
           ? action === 'abort' ? 'No-commit replay aborted; original tracked state restored'
             : action === 'quit' ? 'No-commit sequence ended; current files and staged changes retained'
               : snapshot.status.staged ? 'Selected changes staged; no commit created' : 'Selected changes have no effect; HEAD unchanged and no commit created'
@@ -2287,7 +2315,7 @@ export class GitKhronosService {
 
   async markBisect(verdict: 'good' | 'bad' | 'skip'): Promise<void> {
     const repository = this.repository();
-    if (!repository?.status.bisectInProgress) return;
+    if (!(repository && repositoryOperationState(repository.status).bisectInProgress)) return;
     if (this.browserPreview()) {
       const currentIndex = repository.commits.findIndex((commit) => commit.oid === repository.headOid);
       const candidate = repository.commits[Math.min(repository.commits.length - 1, Math.max(0, currentIndex + 1))];
@@ -2302,7 +2330,7 @@ export class GitKhronosService {
 
   async resetBisect(): Promise<void> {
     const repository = this.repository();
-    if (!repository?.status.bisectInProgress) return;
+    if (!(repository && repositoryOperationState(repository.status).bisectInProgress)) return;
     if (this.browserPreview()) {
       const originalHead = this.previewBisectOriginalHeads.get(repository.id) ?? repository.headOid;
       const branch = repository.branches.find((candidate) => candidate.current)?.name ?? 'main';
@@ -2920,13 +2948,14 @@ export class GitKhronosService {
     const operation = this.activeActivity();
     const operationId = operation?.operationId;
     if (!operationId || !operation.cancelable || this.cancellingOperationIds().includes(operationId)) return;
-    this.cancellingOperationIds.update((ids) => [...ids, operationId]);
+    const request = this.operations.requestCancellation(operationId);
+    if (!request) return;
     try {
       const accepted = await ipc.cancel_git_operation({ operationId });
-      if (!accepted) this.finishCancellationRequest(operationId);
+      this.operations.settleCancellation(request, accepted);
     } catch (error: unknown) {
       this.error.set(this.formatError(error));
-      this.finishCancellationRequest(operationId);
+      this.operations.settleCancellation(request, false);
     }
   }
 
@@ -3256,7 +3285,7 @@ export class GitKhronosService {
       ...entries,
       entry,
     ].slice(-250));
-    this.updateRunningOperations(1);
+    this.operations.start(id, repositoryId, operationId);
     this.error.set(null);
     this.lastFailureKind = null;
     this.activity.set(label);
@@ -3295,15 +3324,9 @@ export class GitKhronosService {
       this.finishActivity(id, status, label.replace(/…$/, ''), startedAt, detail);
       return status;
     } finally {
-      if (operationId) this.finishCancellationRequest(operationId);
-      this.updateRunningOperations(-1);
+      this.operations.complete(id);
       finishHistoryBarrier?.();
     }
-  }
-
-  private updateRunningOperations(delta: 1 | -1): void {
-    this.runningOperations += delta;
-    this.operationBusy.set(this.runningOperations > 0);
   }
 
   private finishActivity(
@@ -3514,10 +3537,6 @@ export class GitKhronosService {
     ].includes(command);
   }
 
-  private finishCancellationRequest(operationId: string): void {
-    this.cancellingOperationIds.update((ids) => ids.filter((id) => id !== operationId));
-  }
-
   private remember(path: string): void {
     const paths = [path, ...this.recentPaths().filter((recent) => recent !== path)].slice(0, 8);
     this.recentPaths.set(paths);
@@ -3544,7 +3563,8 @@ export class GitKhronosService {
       ...paths.filter((path) => path !== activePath),
     ];
     const failedPaths: string[] = [];
-    this.updateRunningOperations(1);
+    const activityId = this.nextActivityId++;
+    this.operations.start(activityId, null, null);
     this.activity.set('Restoring active repository…');
     let restoredPath: string | null = null;
     const finishHistoryBarrier = this.beginHistoryBarrier();
@@ -3566,7 +3586,7 @@ export class GitKhronosService {
       }
       this.activity.set('Ready');
     } finally {
-      this.updateRunningOperations(-1);
+      this.operations.complete(activityId);
       finishHistoryBarrier();
     }
     if (!restoredPath) {
@@ -3929,7 +3949,7 @@ function createRepositoryPreview(): RepositorySnapshot {
     identity: { name: 'Maya Chen', email: 'maya@example.test' },
     headOid,
     status: {
-      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, mergeInProgress: false, historyOperation: null, historyNoCommit: false, rebaseInProgress: false, rebaseEditStopped: false, rebaseSplit: null, mailPatchInProgress: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
+      branch: 'main', ahead: 1, behind: 0, staged: 1, unstaged: 2, untracked: 1, conflicted: 0, operations: null, mergeInProgress: false, historyOperation: null, historyNoCommit: false, rebaseInProgress: false, rebaseEditStopped: false, rebaseSplit: null, mailPatchInProgress: false, bisectInProgress: false, entryCount: 4, entriesTruncated: false,
       entries: [
         { path: 'apps/desktop/src/app/app.component.ts', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
         { path: 'apps/desktop/src/app/app.component.html', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },

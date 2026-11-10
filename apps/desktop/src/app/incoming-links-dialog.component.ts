@@ -18,13 +18,13 @@ import { GitKhronosService } from './git-khronos.service';
                 <strong>{{ request.payload.link.remote }}</strong>
                 <small>{{ targetLabel(request) }}</small>
                 <label>Received link<textarea aria-label="Received repository link" readonly [value]="request.payload.uri"></textarea></label>
-                <div class="actions"><button type="button" [disabled]="busy() || git.busy()" (click)="review.emit(request)">Review local context…</button><button type="button" [disabled]="busy()" (click)="dismiss(request.id)">Dismiss request</button></div>
+                <div class="actions"><button type="button" [disabled]="busy() || git.busy()" (click)="review.emit(request)">Review local context…</button><button type="button" [disabled]="busy() || git.incomingRepositoryLinkDismissalBlocked()" (click)="dismiss(request.id)">Dismiss request</button></div>
               } @else {
-                <p role="alert">{{ request.payload.message }}</p><button type="button" [disabled]="busy()" (click)="dismiss(request.id)">Dismiss invalid request</button>
+                <p role="alert">{{ request.payload.message }}</p><button type="button" [disabled]="busy() || git.incomingRepositoryLinkDismissalBlocked()" (click)="dismiss(request.id)">Dismiss invalid request</button>
               }
             </article>
           } @empty { <p role="status">No queued repository links.</p> }
-          @if (git.incomingRepositoryLinks().overflowed) { <article><p role="alert">Additional links could not be queued. Review the current requests, then reopen any remaining links.</p><button type="button" [disabled]="busy()" (click)="dismissOverflow()">Dismiss overflow notice</button></article> }
+          @if (git.incomingRepositoryLinks().overflowed) { <article><p role="alert">Additional links could not be queued. Review the current requests, then reopen any remaining links.</p><button type="button" [disabled]="busy() || git.incomingRepositoryLinkDismissalBlocked()" (click)="dismissOverflow()">Dismiss overflow notice</button></article> }
           @if (busy() || git.incomingRepositoryLinksLoading()) { <p role="status">Updating incoming links…</p> }
         </div>
       </section>
@@ -48,12 +48,12 @@ export class IncomingLinksDialogComponent {
     return target.kind === 'commit' ? `Commit ${target.oid}` : target.kind === 'reference' ? target.reference : 'Repository context';
   }
   protected async dismiss(id: string): Promise<void> {
-    if (this.busy()) return; this.busy.set(true);
+    if (this.busy() || this.git.incomingRepositoryLinkDismissalBlocked()) return; this.busy.set(true);
     try { await this.git.acknowledgeIncomingRepositoryLink(id); }
     finally { this.busy.set(false); }
   }
   protected async dismissOverflow(): Promise<void> {
-    if (this.busy()) return; this.busy.set(true);
+    if (this.busy() || this.git.incomingRepositoryLinkDismissalBlocked()) return; this.busy.set(true);
     try { await this.git.dismissIncomingRepositoryLinkOverflow(); }
     finally { this.busy.set(false); }
   }

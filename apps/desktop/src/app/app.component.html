@@ -1,3 +1,4 @@
+@let operationState = repositoryOperation();
 <div class="app-shell" [class.is-busy]="git.busy()" [style.--zoom-controls-width.px]="zoomControlsWidth()">
   @defer (on immediate) {
     <gc-authentication />
@@ -363,7 +364,7 @@
                 <span><small>Remote references</small><strong>{{ toolbarRemotes().length }} {{ toolbarRemotes().length === 1 ? 'remote' : 'remotes' }}</strong></span>
                 <b>{{ fetchMenuDetail() }}</b>
               </header>
-              <button type="button" role="menuitem" (click)="fetchMenuOpen.set(false); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update every configured remote without changing local work</small></span></button>
+              <button type="button" role="menuitem" (click)="toolbarOverlays.close('fetch'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update every configured remote without changing local work</small></span></button>
               <button type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose a remote and whether stale branches are pruned</small></span></button>
             </div>
           }
@@ -395,7 +396,7 @@
                 <span><small>{{ currentBranch()?.upstream ? 'Push destination' : 'Publish destination' }}</small><strong>{{ currentRemote()?.name }}/{{ currentRemoteBranch() }}</strong></span>
                 @if (currentRemoteIsUpstream()) { <b>{{ currentBranchSync().ahead ? currentBranchSync().ahead + ' outgoing' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
               </header>
-              <button type="button" role="menuitem" (click)="pushMenuOpen.set(false); pushCurrentBranch()"><gc-icon name="push" [size]="13" /><span><strong>{{ currentBranch()?.upstream ? 'Push' : 'Publish branch' }}</strong><small>{{ pushToolbarLabel() }}</small></span></button>
+              <button type="button" role="menuitem" (click)="toolbarOverlays.close('push'); pushCurrentBranch()"><gc-icon name="push" [size]="13" /><span><strong>{{ currentBranch()?.upstream ? 'Push' : 'Publish branch' }}</strong><small>{{ pushToolbarLabel() }}</small></span></button>
               <div class="menu-separator"></div>
               <button class="danger-item" type="button" role="menuitem" [disabled]="!currentRemoteIsUpstream()" (click)="requestForcePush()"><gc-icon name="warning" [size]="13" /><span><strong>Force Push with Lease…</strong><small>Rewrite only if the reviewed upstream commit is unchanged</small></span></button>
             </div>
@@ -433,7 +434,7 @@
                 <span><small>Working directory</small><strong>{{ repo.status.branch || 'Detached HEAD' }}</strong></span>
                 <b>{{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</b>
               </header>
-              <button type="button" role="menuitem" (click)="stashMenuOpen.set(false); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
+              <button type="button" role="menuitem" (click)="toolbarOverlays.close('stash'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
               <button type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose modes, untracked files, or specific paths</small></span></button>
             </div>
           }
@@ -485,7 +486,7 @@
               @if (toolbarRemotes().length) {
                 <div class="menu-caption toolbar-remote-overflow">Pull and push remote</div>
                 @for (remote of toolbarRemotes(); track remote.name) {
-                  <button class="toolbar-remote-overflow" type="button" role="menuitemradio" [attr.aria-checked]="remote.name === currentRemote()?.name" (click)="moreActionsMenuOpen.set(false); selectToolbarRemote(remote.name)">
+                  <button class="toolbar-remote-overflow" type="button" role="menuitemradio" [attr.aria-checked]="remote.name === currentRemote()?.name" (click)="toolbarOverlays.close('moreActions'); selectToolbarRemote(remote.name)">
                     <gc-icon [name]="remoteIcon(remote.name)" [size]="13" />
                     <span>
                       <strong>{{ remote.name }}</strong>
@@ -497,26 +498,26 @@
                 <div class="menu-separator toolbar-remote-overflow"></div>
               }
               <div class="menu-caption compact-menu-caption toolbar-repository-overflow" role="separator" aria-label="Repository tools">Repository tools</div>
-              <button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update remote branches without changing local work</small></span></button>
+              <button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update remote branches without changing local work</small></span></button>
               <button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()" [disabled]="git.busy()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose a remote and whether stale branches are pruned</small></span></button>
-              <button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="terminalOpen() && terminalRepositoryId() === repo.id" (click)="moreActionsMenuOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="13" /><span><strong>{{ terminalOpen() && terminalRepositoryId() === repo.id ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</small></span></button>
+              <button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="terminalOpen() && terminalRepositoryId() === repo.id" (click)="toolbarOverlays.close('moreActions'); toggleTerminal()"><gc-icon name="terminal" [size]="13" /><span><strong>{{ terminalOpen() && terminalRepositoryId() === repo.id ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</small></span></button>
               <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Operation history">Operation history</div>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="moreActionsMenuOpen.set(false); git.undo()"><gc-icon name="undo" [size]="13" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the latest supported repository action</small></span><kbd>{{ undoShortcut }}</kbd></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="moreActionsMenuOpen.set(false); git.redo()"><gc-icon name="redo" [size]="13" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the last repository action that was undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.undo()"><gc-icon name="undo" [size]="13" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the latest supported repository action</small></span><kbd>{{ undoShortcut }}</kbd></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.redo()"><gc-icon name="redo" [size]="13" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the last repository action that was undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
               <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Working directory">Working directory</div>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
               <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose modes, untracked files, or specific paths</small></span></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
               @if (repo.lfs.enabled) {
                 <div class="menu-separator toolbar-secondary-overflow"></div>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
-                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage…</strong><small>Review unreferenced local objects</small></span></button>
+                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
+                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage…</strong><small>Review unreferenced local objects</small></span></button>
               }
               @if (repo.sparseCheckout.enabled) {
                 <div class="menu-separator toolbar-secondary-overflow"></div>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); openSparseCheckoutPreferences()" [disabled]="git.busy()"><gc-icon name="edit" [size]="13" /><span><strong>Edit sparse checkout</strong><small>Choose working-tree directories</small></span></button>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); reapplySparseCheckout()" [disabled]="git.busy()"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured selection</small></span></button>
-                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="moreActionsMenuOpen.set(false); requestSparseCheckoutDisable()" [disabled]="git.busy()"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout…</strong><small>Restore every tracked file</small></span></button>
+                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); openSparseCheckoutPreferences()" [disabled]="git.busy()"><gc-icon name="edit" [size]="13" /><span><strong>Edit sparse checkout</strong><small>Choose working-tree directories</small></span></button>
+                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); reapplySparseCheckout()" [disabled]="git.busy()"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured selection</small></span></button>
+                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); requestSparseCheckoutDisable()" [disabled]="git.busy()"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout…</strong><small>Restore every tracked file</small></span></button>
               }
             </div>
           }
@@ -648,8 +649,8 @@
                   @if (worktreeMenuPath() === worktree.path) {
                     <div #sidebarActionMenuElement class="worktree-card-menu list-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
                       <div><small>Worktree</small><strong>{{ worktree.branch || 'Detached HEAD' }}</strong></div>
-                      <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="worktreeMenuPath.set(null); openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
-                      <button type="button" role="menuitem" (click)="worktreeMenuPath.set(null); copyContextValue(worktree.path)"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
+                      <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="actionOverlays.close('worktree'); openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
+                      <button type="button" role="menuitem" (click)="actionOverlays.close('worktree'); copyContextValue(worktree.path)"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
                       <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || worktree.prunable || isWorktreeOpen(worktree.path)" (click)="openWorktreeMove(worktree)"><gc-icon name="folder-git" [size]="12" />Move linked worktree…</button>
                       <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || isWorktreeOpen(worktree.path)" (click)="openWorktreeRepair(worktree)"><gc-icon name="refresh" [size]="12" />Repair after external move…</button>
                       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview()"><gc-icon name="eye" [size]="12" />Review registrations and prune report…</button>
@@ -959,8 +960,8 @@
                         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="updateSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Update to latest commit</button>
                       }
                       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview(true)"><gc-icon name="settings" [size]="12" />Manage submodules…</button>
-                      <button type="button" role="menuitem" (click)="submoduleMenuPath.set(null); copyContextValue(submodule.url)"><gc-icon name="copy" [size]="12" />Copy remote URL</button>
-                      <button type="button" role="menuitem" (click)="submoduleMenuPath.set(null); copyContextValue(submodule.path)"><gc-icon name="copy" [size]="12" />Copy submodule path</button>
+                      <button type="button" role="menuitem" (click)="actionOverlays.close('submodule'); copyContextValue(submodule.url)"><gc-icon name="copy" [size]="12" />Copy remote URL</button>
+                      <button type="button" role="menuitem" (click)="actionOverlays.close('submodule'); copyContextValue(submodule.path)"><gc-icon name="copy" [size]="12" />Copy submodule path</button>
                     </div>
                   }
                 </div>
@@ -977,29 +978,29 @@
       </aside>
 
       <section class="history-panel workspace-focus-region" aria-label="Commit history" tabindex="-1" [attr.inert]="historyInert() ? '' : null">
-        @if (repo.status.mergeInProgress) {
+        @if (operationState.mergeInProgress) {
           <div class="merge-progress" role="status" aria-label="Git merge in progress">
             <span><gc-icon name="merge" [size]="13" /><strong>MERGE IN PROGRESS</strong></span>
             <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'All conflicts resolved; complete the merge' }}</small>
             <div><button type="button" [disabled]="git.busy()" (click)="controlMerge('abort')">Abort</button><button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted" (click)="controlMerge('continue')">Continue</button></div>
           </div>
         }
-        @if (repo.status.historyOperation; as operation) {
+        @if (operationState.historyOperation; as operation) {
           <div class="history-operation-progress" role="status" [attr.aria-label]="'Git ' + operation + ' in progress'">
             <span><gc-icon [name]="operation === 'cherry-pick' ? 'cherry-pick' : 'revert'" [size]="13" /><strong>{{ operation === 'cherry-pick' ? 'CHERRY-PICK' : 'REVERT' }} IN PROGRESS</strong></span>
-            <small>{{ repo.status.historyNoCommit ? 'NO COMMIT: resolve and stage, then Continue without creating a commit. Abort restores the original tracked state; Finish manually keeps current files.' : repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'All conflicts resolved; continue the operation' }}</small>
-            <div><button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('abort')">Abort</button>@if (repo.status.historyNoCommit) { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('quit')">Finish manually</button> } @else { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('skip')">Skip</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (repo.status.historyNoCommit && !!repo.status.unstaged)" (click)="controlHistoryOperation('continue')">Continue</button></div>
+            <small>{{ operationState.historyNoCommit ? 'NO COMMIT: resolve and stage, then Continue without creating a commit. Abort restores the original tracked state; Finish manually keeps current files.' : repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'All conflicts resolved; continue the operation' }}</small>
+            <div><button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('abort')">Abort</button>@if (operationState.historyNoCommit) { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('quit')">Finish manually</button> } @else { <button type="button" [disabled]="git.busy()" (click)="controlHistoryOperation('skip')">Skip</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (operationState.historyNoCommit && !!repo.status.unstaged)" (click)="controlHistoryOperation('continue')">Continue</button></div>
           </div>
         }
-        @if (repo.status.rebaseInProgress) {
+        @if (operationState.rebaseInProgress) {
           <div class="rebase-progress" role="status" aria-label="Git rebase in progress">
-            <span><gc-icon name="refresh" [size]="13" /><strong>{{ repo.status.rebaseSplit ? 'REBASE PAUSED FOR SPLIT' : repo.status.rebaseEditStopped && !repo.status.conflicted ? 'REBASE PAUSED FOR EDIT' : 'REBASE IN PROGRESS' }}</strong></span>
-            @if (repo.status.rebaseSplit; as split) { <small>{{ split.preparing ? 'Split reset was interrupted. Preserve changes and Abort; do not start it again.' : split.partCount + ' part(s) committed. Stage selected changes and create separate commits; keep the combined tree unchanged before Continue.' }}</small> }
-            @else { <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : repo.status.rebaseEditStopped ? 'Stage changes and Amend, then Continue; or Continue unchanged' + (isRebaseRootStop() ? '. Guided splitting requires a parent.' : ' / Split this commit') : 'Stage resolved files, then continue' }}</small> }
-            <div><button type="button" [disabled]="git.busy()" (click)="controlRebase('abort')">Abort</button>@if (!repo.status.rebaseSplit && (!repo.status.rebaseEditStopped || repo.status.conflicted)) { <button type="button" [disabled]="git.busy()" (click)="controlRebase('skip')">Skip</button> }@if (repo.status.rebaseEditStopped && !repo.status.rebaseSplit && !repo.status.conflicted && !isRebaseRootStop()) { <button type="button" [disabled]="git.busy() || !!repo.status.entryCount || repo.status.entriesTruncated" (click)="requestRebaseSplit()">Split this commit…</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (repo.status.rebaseEditStopped && !!(repo.status.staged || repo.status.unstaged)) || (!!repo.status.rebaseSplit && (repo.status.rebaseSplit.preparing || repo.status.rebaseSplit.partCount < 2 || !repo.status.rebaseSplit.treeMatches || !!repo.status.entryCount || repo.status.entriesTruncated))" (click)="controlRebase('continue')">Continue</button></div>
+            <span><gc-icon name="refresh" [size]="13" /><strong>{{ operationState.rebaseSplit ? 'REBASE PAUSED FOR SPLIT' : operationState.rebaseEditStopped && !repo.status.conflicted ? 'REBASE PAUSED FOR EDIT' : 'REBASE IN PROGRESS' }}</strong></span>
+            @if (operationState.rebaseSplit; as split) { <small>{{ split.preparing ? 'Split reset was interrupted. Preserve changes and Abort; do not start it again.' : split.partCount + ' part(s) committed. Stage selected changes and create separate commits; keep the combined tree unchanged before Continue.' }}</small> }
+            @else { <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : operationState.rebaseEditStopped ? 'Stage changes and Amend, then Continue; or Continue unchanged' + (isRebaseRootStop() ? '. Guided splitting requires a parent.' : ' / Split this commit') : 'Stage resolved files, then continue' }}</small> }
+            <div><button type="button" [disabled]="git.busy()" (click)="controlRebase('abort')">Abort</button>@if (!operationState.rebaseSplit && (!operationState.rebaseEditStopped || repo.status.conflicted)) { <button type="button" [disabled]="git.busy()" (click)="controlRebase('skip')">Skip</button> }@if (operationState.rebaseEditStopped && !operationState.rebaseSplit && !repo.status.conflicted && !isRebaseRootStop()) { <button type="button" [disabled]="git.busy() || !!repo.status.entryCount || repo.status.entriesTruncated" (click)="requestRebaseSplit()">Split this commit…</button> }<button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted || (operationState.rebaseEditStopped && !!(repo.status.staged || repo.status.unstaged)) || (!!operationState.rebaseSplit && (operationState.rebaseSplit.preparing || operationState.rebaseSplit.partCount < 2 || !operationState.rebaseSplit.treeMatches || !!repo.status.entryCount || repo.status.entriesTruncated))" (click)="controlRebase('continue')">Continue</button></div>
           </div>
         }
-        @if (repo.status.bisectInProgress) {
+        @if (operationState.bisectInProgress) {
           <div class="bisect-progress" role="status" aria-label="Git bisect in progress">
             <span><gc-icon name="history" [size]="13" /><strong>BISECT IN PROGRESS</strong></span>
             <small>Test commit {{ shortOid(repo.headOid || '') }}, then classify the result</small>
@@ -1419,7 +1420,7 @@
             </div>
             <div class="commit-options">
               <label class="commit-option"><input type="checkbox" name="pushAfter" aria-label="Push after committing" [checked]="pushAfterCommit()" (change)="pushAfterCommit.set($any($event.target).checked)" /> Push after commit</label>
-              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [checked]="!repo.status.rebaseSplit && amendPrevious()" (change)="toggleAmend($any($event.target).checked)" [disabled]="!repo.headOid || !!repo.status.rebaseSplit" /> Amend previous</label>
+              <label class="commit-option"><input type="checkbox" name="amend" aria-label="Amend previous commit" [checked]="!operationState.rebaseSplit && amendPrevious()" (change)="toggleAmend($any($event.target).checked)" [disabled]="!repo.headOid || !!operationState.rebaseSplit" /> Amend previous</label>
               <label class="commit-option" title="Override signing for this commit using Git's configured key and format"><input type="checkbox" name="signCommit" aria-label="Sign this commit" [checked]="signCommit()" (change)="signCommit.set($any($event.target).checked)" /> Sign commit</label>
               <label class="commit-option"><input type="checkbox" name="skipHooks" aria-label="Skip verification hooks" [checked]="skipGitHooks()" (change)="skipGitHooks.set($any($event.target).checked)" /> Skip checks</label>
             </div>
@@ -1428,7 +1429,7 @@
             <p id="commit-readiness" class="commit-readiness" [class.ready]="commitReadiness.ready" aria-live="polite" aria-atomic="true"><gc-icon [name]="commitReadiness.icon" [size]="12" />{{ commitReadiness.message }}</p>
             <button class="primary" type="submit" aria-describedby="commit-readiness" [title]="commitReadiness.message" [disabled]="!commitReadiness.ready">
               <gc-icon name="git-commit" [size]="13" />
-              {{ !repo.status.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : repo.status.staged ? 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') : 'Stage files to commit' }}{{ (repo.status.staged || amendPrevious() || commitPolicy().allowEmpty) && pushAfterCommit() ? ' and push' : '' }}
+              {{ !operationState.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : repo.status.staged ? 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') : 'Stage files to commit' }}{{ (repo.status.staged || amendPrevious() || commitPolicy().allowEmpty) && pushAfterCommit() ? ' and push' : '' }}
             </button>
           </form>
           </div>
@@ -1561,6 +1562,8 @@
                   <button class="ref-pill remote interactive-detail-ref lane-color-{{ graphLaneColor(commit.oid) }}" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Remote branch {{ decorationLabel(decoration) }}" aria-haspopup="menu" title="Click to view branch tip · Double-click or press Enter to create and checkout a local tracking branch · Right-click for actions" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', decorationLabel(decoration), commit.oid)" (keydown.enter)="checkoutRemoteBranch($event, decorationLabel(decoration))" (dblclick)="checkoutRemoteBranch($event, decorationLabel(decoration))" (contextmenu)="openRemoteMenu($event, decorationLabel(decoration), commit.oid)"><gc-icon [name]="remoteIconForDecoration(decoration)" [size]="9" />{{ decorationLabel(decoration) }}</button>
                 } @else if (decorationKind(decoration) === 'tag') {
                   <button class="ref-pill tag interactive-detail-ref interactive-tag-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Tag {{ decorationLabel(decoration) }}" [attr.aria-describedby]="tagPreview()?.name === decorationLabel(decoration) ? 'tag-reference-preview' : null" aria-haspopup="menu" title="View tag {{ decorationLabel(decoration) }} · Right-click for actions" (mouseenter)="scheduleTagPreview($event, decorationLabel(decoration), commit.oid)" (mouseleave)="closeTagPreview()" (focus)="scheduleTagPreview($event, decorationLabel(decoration), commit.oid, true)" (blur)="closeTagPreview()" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'tag', decorationLabel(decoration), commit.oid)" (contextmenu)="openTagMenu($event, decorationLabel(decoration), commit.oid)"><gc-icon name="tag" [size]="9" />{{ decorationLabel(decoration) }}</button>
+                } @else if (decorationKind(decoration) === 'original') {
+                  <button class="ref-pill checkpoint interactive-detail-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Original reference {{ decorationLabel(decoration) }}" aria-haspopup="menu" title="{{ decorationLabel(decoration) }} · Click or right-click for actions" (click)="openOriginalReferenceMenu($event, decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'original', decorationLabel(decoration), commit.oid)" (contextmenu)="openOriginalReferenceMenu($event, decoration, commit.oid)"><gc-icon name="archive" [size]="9" />{{ decorationLabel(decoration) }}</button>
                 } @else if (decorationKind(decoration) === 'checkpoint') {
                   <button class="ref-pill checkpoint interactive-detail-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Copilot checkpoint {{ decoration }}" aria-haspopup="menu" title="{{ decoration }} · Click or right-click for actions" (click)="openCheckpointMenu($event, decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'checkpoint', decoration, commit.oid)" (contextmenu)="openCheckpointMenu($event, decoration, commit.oid)"><gc-icon name="archive" [size]="9" />{{ decorationLabel(decoration) }}</button>
                 } @else {
@@ -1579,7 +1582,7 @@
                   (click)="openDetailReferenceStackFromTrigger($event)"
                   (contextmenu)="openDetailReferenceStackFromTrigger($event, true)"
                   (keydown)="handleDetailReferenceStackTriggerKeydown($event)"
-                ><span class="reference-stack-locations" aria-hidden="true">@for (location of detailReferenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? remoteIconForDecoration(location.decoration) : location.kind === 'checkpoint' ? 'archive' : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ detailReferenceSummary.label }}</span>@if (detailReferenceSummary.hiddenCount) { <b>+{{ detailReferenceSummary.hiddenCount }}</b> }</button>
+                ><span class="reference-stack-locations" aria-hidden="true">@for (location of detailReferenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? remoteIconForDecoration(location.decoration) : location.kind === 'checkpoint' || location.kind === 'original' ? 'archive' : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ detailReferenceSummary.label }}</span>@if (detailReferenceSummary.hiddenCount) { <b>+{{ detailReferenceSummary.hiddenCount }}</b> }</button>
                 <span class="detail-reference-popover" role="menu" aria-label="References on selected commit" (keydown)="handleDetailReferenceStackMenuKeydown($event)">
                   @let selectedReferenceGroups = referenceGroups(commit.decorations);
                   <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ referenceGroupHeading(selectedReferenceGroups) }}</span>
@@ -1593,6 +1596,8 @@
                             <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to create a local tracking branch" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', location.label, commit.oid)" (keydown.enter)="checkoutRemoteBranch($event, location.label)" (dblclick)="checkoutRemoteBranch($event, location.label)" (contextmenu)="openRemoteMenu($event, location.label, commit.oid)"><gc-icon [name]="remoteIconForDecoration(location.decoration)" [size]="10" /></button>
                           } @else if (location.kind === 'tag') {
                             <button class="grouped-reference-location tag" type="button" role="menuitem" aria-label="Tag {{ location.label }}" title="Tag {{ location.label }} · Right-click for actions" (mouseenter)="scheduleTagPreview($event, location.label, commit.oid)" (mouseleave)="closeTagPreview()" (focus)="scheduleTagPreview($event, location.label, commit.oid, true)" (blur)="closeTagPreview()" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'tag', location.label, commit.oid)" (contextmenu)="openTagMenu($event, location.label, commit.oid)"><gc-icon name="tag" [size]="10" /></button>
+                          } @else if (location.kind === 'original') {
+                            <button class="grouped-reference-location checkpoint" type="button" role="menuitem" aria-label="Original reference {{ location.label }}" aria-haspopup="menu" title="{{ location.label }} · Click or right-click for actions" (click)="openOriginalReferenceMenu($event, location.decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'original', location.label, commit.oid)" (contextmenu)="openOriginalReferenceMenu($event, location.decoration, commit.oid)"><gc-icon name="archive" [size]="10" /></button>
                           } @else if (location.kind === 'checkpoint') {
                             <button class="grouped-reference-location checkpoint" type="button" role="menuitem" aria-label="Copilot checkpoint {{ location.decoration }}" aria-haspopup="menu" title="{{ location.decoration }} · Click or right-click for actions" (click)="openCheckpointMenu($event, location.decoration, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'checkpoint', location.decoration, commit.oid)" (contextmenu)="openCheckpointMenu($event, location.decoration, commit.oid)"><gc-icon name="archive" [size]="10" /></button>
                           } @else {
@@ -2244,7 +2249,7 @@
     >
       <div class="context-heading"><span>{{ menu.conflicted ? 'Conflicted file' : menu.staged ? 'Staged file' : menu.untracked ? 'Untracked file' : 'Modified file' }}</span><strong>{{ menu.path }}</strong></div>
       @if (menu.conflicted) {
-        <button type="button" role="menuitem" (click)="fileContextMenu.set(null); openConflictTool(menu.path)"><span><gc-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
+        <button type="button" role="menuitem" (click)="actionOverlays.close('file'); openConflictTool(menu.path)"><span><gc-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
         <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('working')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
         <div class="context-divider"></div>
         <div class="context-subheading">Resolve conflict</div>
@@ -2326,7 +2331,7 @@
       [class.commit-context-menu]="menu.kind === 'commit'"
       [class.branch-context-menu]="menu.kind === 'branch'"
       role="menu"
-      [attr.aria-label]="menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Actions for commit ' + menu.label : 'Actions for ' + menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Actions for tag ' + menu.label : menu.kind === 'remote' ? 'Actions for remote branch ' + menu.label : menu.kind === 'checkpoint' ? 'Actions for Copilot checkpoint ' + menu.label : 'Actions for branch ' + menu.label"
+      [attr.aria-label]="menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Actions for commit ' + menu.label : 'Actions for ' + menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Actions for tag ' + menu.label : menu.kind === 'remote' ? 'Actions for remote branch ' + menu.label : menu.kind === 'checkpoint' ? 'Actions for Copilot checkpoint ' + menu.label : menu.kind === 'original' ? 'Actions for original reference ' + menu.label : 'Actions for branch ' + menu.label"
       [style.left.px]="menu.x"
       [style.top.px]="menu.y"
       [style.--context-menu-top.px]="menu.y"
@@ -2334,7 +2339,7 @@
       (keydown)="handleContextMenuKeydown($event)"
     >
       <div class="context-heading">
-        <span class="context-heading-eyebrow">{{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Commit' : menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Tag' : menu.kind === 'remote' ? 'Remote branch' : menu.kind === 'checkpoint' ? 'Copilot checkpoint' : 'Branch' }}@if (menu.kind === 'commit' && menu.oids.length === 1) { <code>{{ shortOid(menu.oid) }}</code> }</span>
+        <span class="context-heading-eyebrow">{{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Commit' : menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Tag' : menu.kind === 'remote' ? 'Remote branch' : menu.kind === 'checkpoint' ? 'Copilot checkpoint' : menu.kind === 'original' ? 'Original reference' : 'Branch' }}@if (menu.kind === 'commit' && menu.oids.length === 1) { <code>{{ shortOid(menu.oid) }}</code> }</span>
         <strong [attr.title]="menu.kind === 'commit' && menu.oids.length > 1 ? null : menu.label">{{ menu.kind === 'commit' && menu.oids.length > 1 ? 'Oldest to newest' : menu.label }}</strong>
       </div>
       @if (menu.kind === 'commit') {
@@ -2344,9 +2349,12 @@
       } @else if (menu.kind === 'remote') {
         <div class="context-section-label" aria-hidden="true">Checkout and inspect</div>
       }
-      @if (menu.kind === 'checkpoint') {
+      @if (menu.kind === 'original') {
+        <button type="button" role="menuitem" (click)="copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy original reference</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestStoredReferenceDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete original reference…</button>
+      } @else if (menu.kind === 'checkpoint') {
         <button type="button" role="menuitem" (click)="copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy checkpoint reference</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestCheckpointDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestStoredReferenceDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
       } @else {
       <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
         <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Create local tracking branch' : menu.label === git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
@@ -2662,18 +2670,22 @@
       </section></div>
     }
   }
-  @if (pendingCheckpointDelete(); as action) {
-    <div class="confirmation-backdrop" (click)="dismissCheckpointConfirmation(true)">
-      <section #checkpointConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleCheckpointConfirmationKeydown($event)">
+  @if (pendingStoredReferenceDelete(); as action) {
+    <div class="confirmation-backdrop" (click)="dismissStoredReferenceConfirmation(true)">
+      <section #storedReferenceConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleStoredReferenceConfirmationKeydown($event)">
         <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>Delete Copilot checkpoint</span>
-          <h2 id="checkpoint-confirmation-title">Delete checkpoint reference?</h2>
+          <span>{{ action.kind === 'original' ? 'Delete saved original reference' : 'Delete Copilot checkpoint' }}</span>
+          <h2 id="checkpoint-confirmation-title">{{ action.kind === 'original' ? 'Delete original reference?' : 'Delete checkpoint reference?' }}</h2>
           <p><code class="checkpoint-reference-name">{{ action.reference }}</code></p>
-          <p>Points to commit <code>{{ shortOid(action.oid) }}</code>.</p>
-          <p id="checkpoint-confirmation-warning">Deleting this reference may prevent Copilot from recovering this session or checkpoint. Git may eventually remove commits that are no longer reachable. This action cannot be undone here.</p>
+          <p>Points to commit <code class="checkpoint-reference-name">{{ action.kind === 'original' ? action.oid : shortOid(action.oid) }}</code>.</p>
+          @if (action.kind === 'original') {
+            <p id="checkpoint-confirmation-warning">Delete only this saved reference name under refs/original/. Deleting it may make history unreachable and Git may eventually prune those objects. This does not itself erase objects or rewrite branches. No replacement recovery reference will be created. This action cannot be undone here.</p>
+          } @else {
+            <p id="checkpoint-confirmation-warning">Deleting this reference may prevent Copilot from recovering this session or checkpoint. Git may eventually remove commits that are no longer reachable. This action cannot be undone here.</p>
+          }
         </div>
-        <footer><button type="button" data-checkpoint-dialog-cancel (click)="dismissCheckpointConfirmation(true)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="confirmCheckpointDelete()">Delete checkpoint reference</button></footer>
+        <footer><button type="button" data-checkpoint-dialog-cancel (click)="dismissStoredReferenceConfirmation(true)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="confirmStoredReferenceDelete()">{{ action.kind === 'original' ? 'Delete original reference' : 'Delete checkpoint reference' }}</button></footer>
       </section>
     </div>
   }

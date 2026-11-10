@@ -86,6 +86,18 @@ describe('buildCompactReferenceSummary', () => {
 });
 
 describe('buildReferenceGroups', () => {
+  it('keeps canonical comma-containing original refs separate from lookalike branches', () => {
+    const ref = 'refs/original/refs/heads/dev,backup';
+    const references = [
+      { decoration: `original: ${ref}`, label: ref, kind: 'original' as const },
+      { decoration: ref, label: ref, kind: 'local' as const },
+    ];
+    const groups = buildReferenceGroups(references);
+    expect(groups).toHaveLength(2);
+    expect(groups.map(group => group.locations[0].kind)).toEqual(['original', 'local']);
+    expect(buildCompactReferenceSummary([references[0]]).ariaLabel).toContain('original reference');
+  });
+
   it('places the current branch first and combines its local and remote locations', () => {
     const groups = buildReferenceGroups([
       { decoration: 'feature/a', label: 'feature/a', kind: 'local' },

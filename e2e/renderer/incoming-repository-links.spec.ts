@@ -52,9 +52,15 @@ async function prepare(page: Page, options: { bootstrap?: boolean; heldListener?
         if (command === 'acknowledge_incoming_repository_link') {
           if (!state.queue.requests.some((entry: any) => entry.id === args.requestId)) return Promise.reject({ kind: 'staleIncomingRepositoryLink' });
           state.queue.requests = state.queue.requests.filter((entry: any) => entry.id !== args.requestId);
-          const result = structuredClone(state.queue); state.emit(); return Promise.resolve(result);
+          const result = structuredClone(state.queue); state.emit();
+          if (state.failDismissal) return Promise.reject({ message: 'Post-mutation snapshot unavailable' });
+          return Promise.resolve(result);
         }
-        if (command === 'dismiss_incoming_repository_link_overflow') { state.queue.overflowed = false; state.emit(); return Promise.resolve(structuredClone(state.queue)); }
+        if (command === 'dismiss_incoming_repository_link_overflow') {
+          state.queue.overflowed = false; state.emit();
+          if (state.failDismissal) return Promise.reject({ message: 'Post-mutation snapshot unavailable' });
+          return Promise.resolve(structuredClone(state.queue));
+        }
         if (command === 'repository_link_read_policies') return Promise.resolve(structuredClone(state.policies));
         if (command === 'discover_repository_link') {
           const link = state.queue.requests.find((entry: any) => entry.payload.kind === 'ready' && entry.payload.uri === args.rawLink)?.payload.link;
@@ -297,3 +303,38 @@ test('a rejected native unlisten cannot prevent retry or revive an invalidated l
   await page.evaluate(() => (window as any).__incoming.oldHandler({ payload: { pending: true } }));
   expect((await calls(page, 'incoming_repository_links')).length).toBe(reads);
 });
+
+for (const overflow of [false, true]) {
+  for (const eventRead of ['pending', 'failed', 'successful']) {
+    test(`unconfirmed ${overflow ? 'overflow' : 'request'} dismissal blocks replay with a ${eventRead} event read until reconciliation`, async ({ page }) => {
+      await prepare(page, { requests: [request(), request('incoming-owned-2', 'second')], overflowed: overflow });
+      const dialog = await openInbox(page);
+      await page.evaluate(eventRead => {
+        const state = (window as any).__incoming;
+        state.failDismissal = true;
+        state.failSnapshot = eventRead === 'failed';
+        state.holdNextSnapshot = eventRead === 'pending';
+      }, eventRead);
+      const command = overflow ? 'dismiss_incoming_repository_link_overflow' : 'acknowledge_incoming_repository_link';
+      await dialog.getByRole('button', { name: overflow ? 'Dismiss overflow notice' : 'Dismiss request', exact: true }).first().click();
+      const uncertainty = dialog.getByRole('alert').filter({ hasText: 'could not be confirmed' });
+      await expect(uncertainty).toBeVisible();
+      const dismissals = dialog.getByRole('button', { name: 'Dismiss request', exact: true });
+      await expect(dismissals).toHaveCount(overflow || eventRead !== 'successful' ? 2 : 1);
+      for (const button of await dismissals.all()) await expect(button).toBeDisabled();
+      expect(await calls(page, command)).toHaveLength(1);
+      await expect.poll(() => page.evaluate(() => (window as any).__incoming.git.incomingRepositoryLinksPending())).toBe(true);
+      if (eventRead === 'pending') {
+        await page.evaluate(() => (window as any).__incoming.finishSnapshot());
+        await expect(dialog.getByRole('button', { name: 'Retry incoming links', exact: true })).toBeEnabled();
+        await expect(uncertainty).toBeVisible();
+      }
+      await page.evaluate(() => { (window as any).__incoming.failSnapshot = false; });
+      await dialog.getByRole('button', { name: 'Retry incoming links', exact: true }).click();
+      await expect(uncertainty).toHaveCount(0);
+      await expect(dismissals).toHaveCount(overflow ? 2 : 1);
+      for (const button of await dismissals.all()) await expect(button).toBeEnabled();
+      expect(await calls(page, command)).toHaveLength(1);
+    });
+  }
+}

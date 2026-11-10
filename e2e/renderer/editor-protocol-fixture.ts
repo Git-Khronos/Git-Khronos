@@ -161,9 +161,9 @@ export async function prepareEditor(page: Page, mode = 'ready', openPreview = tr
       return Promise.resolve(null);
     } };
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer editor fixture' }));
-    if (openPreview) { app.fileContextMenu.set({ content: { repoId: repo.id, request: {
+    if (openPreview) { app.actionOverlays.open({ kind: 'file', value: { content: { repoId: repo.id, request: {
       context: { kind: 'commit', oid: repo.headOid }, path: 'notes.md', previousPath: null,
-    } } });
+    } } } });
     app.viewContextFileContent('working'); }
   }, { mode, openPreview });
   if (openPreview) await expect(page.getByRole('button', { name: 'Edit working copy', exact: true })).toBeVisible();

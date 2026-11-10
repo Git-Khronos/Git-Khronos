@@ -46,7 +46,7 @@ test('a stash menu owned by another repository cannot start a mutation', async (
     const state = (window as any).__stashAction;
     state.git.repositories.set([state.repository, { ...state.repository, id: 'other-repository' }]);
     state.git.activeRepositoryId.set('other-repository');
-    state.root.stashContextMenu.set({ repositoryId: state.repository.id, stash: state.stash, x: 100, y: 100 });
+    state.root.actionOverlays.open({ kind: 'stash', value: { repositoryId: state.repository.id, stash: state.stash, x: 100, y: 100 } });
     void state.root.applyStashFromMenu(true);
   });
   expect(await page.evaluate(() => (window as any).__stashAction.calls)).toHaveLength(0);
