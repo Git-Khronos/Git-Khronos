@@ -6585,6 +6585,7 @@ export class AppComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   protected handleResponsiveLayout(): void {
     this.finishResize();
+    this.refreshAutoZoom();
     this.viewportWidth.set(window.innerWidth);
     this.syncDefaultGraphMetadataColumns();
     const fullWidthInspector = window.innerWidth <= FULL_WIDTH_INSPECTOR_BREAKPOINT;
@@ -13217,8 +13218,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return automaticZoom(screen.width, screen.height);
   }
 
-  @HostListener('window:resize')
-  protected refreshAutoZoom(): void {
+  private refreshAutoZoom(): void {
     const next = this.measureAutoZoom();
     if (next !== untracked(this.autoZoom)) this.autoZoom.set(next);
   }
