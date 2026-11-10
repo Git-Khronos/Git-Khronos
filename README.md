@@ -148,7 +148,8 @@ requests minimize, maximize, and close buttons for its own process. Other
 reported layouts are left unchanged. Because the web view zoom cannot reach
 toolkit-drawn window chrome, under WSL the native title bar (its height, buttons,
 button glyphs, and title text) is scaled with the same effective zoom through a GTK style
-sheet loaded only in the application process; global GTK, WSLg, and Windows
+sheet loaded only in the application process, and the button glyphs are replaced with
+thin original icons that are re-applied after maximize, restore, and minimize; global GTK, WSLg, and Windows
 settings are not changed. Other platforms keep the unmodified native title bar.
 
 The interface zoom shown as **100%** is an automatic scale for the current
