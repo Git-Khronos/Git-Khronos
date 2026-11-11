@@ -136,6 +136,42 @@ equals the window's application id. Under WSLg this lets Windows group the
 running window with its pinned taskbar shortcut and icon. If you pinned the app
 from an earlier build, unpin and pin it once more after upgrading.
 
+WSLg does not give its Start Menu shortcut or taskbar pins the application
+identity Windows assigns to the running window, so Windows can still show the
+open window as a second taskbar button. Under WSL, the main menu includes
+**Windows taskbar shortcut**. It checks the Git Khronos shortcuts without
+changing them, and offers two repairs you confirm one shortcut at a time:
+
+- a taskbar pin without the identity Windows recorded for the running window
+  (found in a window record under `ImplicitAppShortcuts`) can receive it;
+- a pin or window record whose launcher path was split at `C:\Program` can be
+  pointed back to `wslg.exe`, but only when that launcher exists and matches
+  every working Git Khronos shortcut.
+
+These describe shortcut files, not the taskbar: a pin can already open and
+group correctly even when its file lacks the identity. The dialog therefore
+offers each change as a possible repair to review; if a pin already works as
+expected, leave it unchanged.
+
+If no window record exists yet, no identity is applied; Windows writes these
+records itself at undocumented times, and Git Khronos cannot create them. On
+one tested machine a record was present after pinning Git Khronos from its
+running taskbar button; this is an optional observation, not documented
+behavior, and such a pin may start a split path that the check can repair.
+
+Each repair first saves a backup in a new, private folder under
+`%LOCALAPPDATA%\Git Khronos\Windows shortcut backups` and checks that it is
+byte-identical to the reviewed shortcut; if that is not possible, nothing is
+changed. Only the confirmed file changes. Besides the repaired values, the
+working directory, icon, description, window style and hotkey are compared in
+a staged copy; other shortcut data is not compared. If a shortcut file or
+folder could not be read, the dialog says the list may be incomplete. Git
+Khronos never creates pins, changes the Start Menu shortcut, edits Explorer's
+taskbar settings, or restarts Explorer.
+The check reads shortcut files only, so it cannot confirm which file backs a
+visible pin or whether Windows now groups the window with it; that may only
+change after you sign out and back in.
+
 `task package:deb` (and `task install:system`) reuses the last successful build
 when its source/configuration checksums are unchanged and required build outputs
 are still present. Package verification still runs every time. The first

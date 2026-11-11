@@ -2411,3 +2411,55 @@ remain visible as read-only notices without preventing ordinary history reads;
 lossy reconstructed names are never supplied as deletion identities.
 Only disposable fixtures are used for mutation tests. No proprietary
 implementation, assets or wording were used.
+
+## WSLg taskbar pin identity check
+
+Observed behavior:
+
+- WSLg's Start Menu shortcut and taskbar pins launch the app through wslg.exe
+  but carry no System.AppUserModel.ID;
+- Windows records the running window's identity on an implicit shortcut under
+  User Pinned\ImplicitAppShortcuts, and pins without that identity group as
+  a separate taskbar button;
+- pinning from the running window can produce a target split at C:\Program.
+
+Implementation:
+
+- the check only reads shortcuts and adopts an identity only when exactly one
+  valid identity is recorded on an implicit shortcut launching this
+  distribution's git-khronos; the identity is never derived or hardcoded;
+- launch state (working, split path, missing launcher, unreadable) and
+  identity state are reported separately; implicit shortcuts with a split path
+  still count as identity sources;
+- a split target is rejoined only when the rejoined `X:\Program Files\...\wslg.exe`
+  exists and agrees with every working Git Khronos shortcut; Start Menu
+  shortcuts are never changed;
+- only a reviewed taskbar pin or implicit shortcut with an unchanged SHA-256
+  fingerprint and the same repair plan is changed, after explicit
+  confirmation and a verified backup; an edited copy is staged from a separate
+  working copy and compared before the original file is rewritten in place,
+  and every failure after the backup reports its path;
+- each attempt creates a new uniquely named backup folder exclusively (an
+  existing folder is never reused, overwritten or emptied), keeps the backup
+  and staging files in separate subfolders so no shortcut name can collide
+  with them, creates every file with create-new semantics, and removes only
+  files it created, never recursively; after a write the backup is re-hashed
+  and a mismatch is reported instead of success;
+- the staged comparison covers target, arguments, working directory, icon,
+  description, window style, hotkey and identity; other shortcut data is not
+  compared. Setting a target can reset the working directory, so it is
+  restored explicitly;
+- unreadable shortcut files and folder-listing errors are reported as a
+  possibly incomplete list rather than as "no shortcuts";
+- when no identity record exists, the dialog states that its creation is not
+  documented and offers, as an optional observation from the developer's
+  machine, pinning from the running taskbar button;
+- matching shortcut files are not treated as proof of taskbar grouping, and
+  which file backs a visible pin is not determined;
+- Explorer taskbar registry/cache state, Start Menu shortcuts, pin creation and
+  Explorer restarts are out of scope.
+
+Implementation sources: Microsoft documentation for Application User Model IDs,
+IShellLinkW, IPersistFile and IPropertyStore, the public WSLg issue
+tracker, and black-box observation on the developer's own machine. No
+proprietary implementation details were used.

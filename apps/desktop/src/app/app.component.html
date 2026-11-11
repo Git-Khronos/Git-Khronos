@@ -140,6 +140,9 @@
               <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openCommandPalette()"><gc-icon name="search" [size]="14" /><span><strong>Command Palette</strong></span><kbd>{{ primaryShortcutKey }} P</kbd></button>
               <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openKeyboardShortcuts()"><gc-icon name="keyboard" [size]="14" /><span><strong>Keyboard Shortcuts</strong></span><kbd>{{ primaryShortcutKey }} /</kbd></button>
               <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openPreferences()"><gc-icon name="settings" [size]="14" /><span><strong>Preferences</strong></span></button>
+              @if (windowsLauncherAvailable()) {
+                <button type="button" role="menuitem" (click)="openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>Check and repair Git Khronos shortcut files</small></span></button>
+              }
             </div>
           </div>
         }
@@ -2211,6 +2214,15 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading editor draft recovery" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="status">Loading recovery controls…</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Cancel</button></section></div>
     } @error {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Editor draft recovery unavailable" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="alert">Recovery controls could not load. Stored copies were preserved. Restart to try again.</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Close</button></section></div>
+    }
+  }
+  @if (windowsLauncherOpen()) {
+    @defer (on immediate) {
+      <gc-windows-launcher (closed)="closeWindowsLauncher()" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Windows taskbar shortcut check" (keydown)="handleWindowsLauncherLoaderKey($event)"><p role="status">Loading shortcut check…</p><button #windowsLauncherLoaderClose type="button" (click)="closeWindowsLauncher()">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Windows taskbar shortcut check unavailable" (keydown)="handleWindowsLauncherLoaderKey($event)"><p role="alert">The shortcut check could not load. No shortcuts were changed. Restart to try again.</p><button #windowsLauncherLoaderClose type="button" (click)="closeWindowsLauncher()">Close</button></section></div>
     }
   }
   @for (tool of fileToolsDialog() ? [fileToolsDialog()!] : []; track tool.id) {

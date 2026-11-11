@@ -452,6 +452,34 @@ export type TerminalOutput = { sessionId: string; data: number[] }
 export type ToolProfile = { version: number; id: string; name: string; role: ToolRole; executable: string; arguments: string[] }
 export type ToolRole = "editor" | "diff" | "merge" | "terminal"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
+export type WindowsLauncherInspection = { supported: boolean; message: string | null; distribution: string | null; appIdentity: string | null; identitySource: string | null; conflictingIdentities: string[];
+/**
+ * Launcher used by every working Git Khronos shortcut, when they agree.
+ */
+launcher: string | null; shortcuts: WindowsShortcut[];
+/**
+ * Reasons the shortcut list may be incomplete.
+ */
+incomplete: string[] }
+export type WindowsShortcut = { location: WindowsShortcutLocation; path: string; target: string; arguments: string; appIdentity: string | null; launch: WindowsShortcutLaunch; identity: WindowsShortcutIdentity; fingerprint: string; repair: WindowsShortcutRepairPlan | null;
+/**
+ * Why a visible problem has no repair, in user-facing words.
+ */
+note: string | null }
+/**
+ * How the shortcut's application id compares with the recorded identity.
+ */
+export type WindowsShortcutIdentity = "matching" | "missing" | "different" | "unverified" | "unknown"
+/**
+ * Whether the shortcut's launcher can start Git Khronos.
+ */
+export type WindowsShortcutLaunch = "works" | "splitPath" | "launcherMissing" | "unreadable"
+export type WindowsShortcutLocation = "startMenu" | "taskbarPin" | "implicit"
+export type WindowsShortcutRepair = { path: string; plan: WindowsShortcutRepairPlan; backupPath: string }
+/**
+ * The exact change a reviewed repair makes. Unset fields stay unchanged.
+ */
+export type WindowsShortcutRepairPlan = { target: string | null; arguments: string | null; appIdentity: string | null }
 export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
 export type WorkingTreeEntry = { path: string; indexStatus: string; worktreeStatus: string; conflicted: boolean }
@@ -569,6 +597,8 @@ export function review_file_tool_cleanup(args: { request: FileToolReviewRequest 
 export function discard_reviewed_file_tool_session(args: { request: DiscardFileToolSessionRequest }): Promise<boolean> { return TAURI_INVOKE("discard_reviewed_file_tool_session", args); }
 export function discard_file_tool_review(args: { request: DiscardFileToolReviewRequest }): Promise<null> { return TAURI_INVOKE("discard_file_tool_review", args); }
 export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
+export function inspect_windows_launcher(args: {  } = {}): Promise<WindowsLauncherInspection> { return TAURI_INVOKE("inspect_windows_launcher", args); }
+export function repair_windows_shortcut(args: { path: string; fingerprint: string; plan: WindowsShortcutRepairPlan }): Promise<WindowsShortcutRepair> { return TAURI_INVOKE("repair_windows_shortcut", args); }
 export function set_window_chrome_scale(args: { percent: number }): Promise<void> { return TAURI_INVOKE("set_window_chrome_scale", args); }
 export function set_window_chrome_colors(args: { background: string; foreground: string; border: string; page: string }): Promise<void> { return TAURI_INVOKE("set_window_chrome_colors", args); }
 export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
@@ -834,6 +864,8 @@ export type CommandMap = {
   discard_reviewed_file_tool_session: typeof discard_reviewed_file_tool_session;
   discard_file_tool_review: typeof discard_file_tool_review;
   system_info: typeof system_info;
+  inspect_windows_launcher: typeof inspect_windows_launcher;
+  repair_windows_shortcut: typeof repair_windows_shortcut;
   set_window_chrome_scale: typeof set_window_chrome_scale;
   set_window_chrome_colors: typeof set_window_chrome_colors;
   incoming_repository_links: typeof incoming_repository_links;

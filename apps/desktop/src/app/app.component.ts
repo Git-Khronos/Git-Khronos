@@ -6,6 +6,7 @@ import type { FileToolsDialogRequest } from './file-tools-dialog-request';
 import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from './repository-link-dialog.component';
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
+import { WindowsLauncherComponent } from './windows-launcher.component';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
@@ -626,7 +627,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -864,6 +865,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editorDraftRecoveryOpen = signal(false);
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
   private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
+  protected readonly windowsLauncherOpen = signal(false);
+  protected readonly windowsLauncherAvailable = computed(() => this.git.systemInfo()?.windowsSubsystemForLinux === true && !this.git.browserPreview());
+  private windowsLauncherReturnFocus: HTMLElement | null = null;
+  private readonly windowsLauncherLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('windowsLauncherLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
   protected readonly fileContextMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -11698,6 +11703,25 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.closeEditorDraftRecovery(); }
     else if (event.key === 'Tab') { event.preventDefault(); this.editorDraftRecoveryLoaderClose()?.nativeElement.focus(); }
+  }
+
+  protected openWindowsLauncher(): void {
+    if (!this.windowsLauncherAvailable()) return;
+    this.windowsLauncherReturnFocus = this.appMenuToggle()?.nativeElement
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    this.appMenuOpen.set(false); this.windowsLauncherOpen.set(true);
+  }
+
+  protected closeWindowsLauncher(): void {
+    this.windowsLauncherOpen.set(false);
+    const target = this.windowsLauncherReturnFocus; this.windowsLauncherReturnFocus = null;
+    queueMicrotask(() => { if (target?.isConnected) target.focus({ preventScroll: true }); });
+  }
+
+  protected handleWindowsLauncherLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeWindowsLauncher(); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.windowsLauncherLoaderClose()?.nativeElement.focus(); }
   }
 
   protected handleFileContentLoaderKey(event: KeyboardEvent): void {

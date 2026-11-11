@@ -118,6 +118,7 @@ mod recovery_commands;
 mod repository_file_commands;
 mod repository_link_commands;
 mod terminal_profile_commands;
+mod windows_launcher;
 mod working_file_commands;
 
 #[derive(Default)]
@@ -4047,6 +4048,8 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             file_tool_commands::discard_reviewed_file_tool_session,
             file_tool_commands::discard_file_tool_review,
             system_info,
+            windows_launcher::inspect_windows_launcher,
+            windows_launcher::repair_windows_shortcut,
             set_window_chrome_scale,
             set_window_chrome_colors,
             incoming_repository_links::incoming_repository_links,

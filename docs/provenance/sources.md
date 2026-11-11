@@ -1923,3 +1923,19 @@ No comma, wildcard, pattern or regular-expression semantics have been assumed.
 The present implementation still requests all branches; scope selection is not
 claimed complete. Only functional documentation was consulted, without vendor
 implementation, assets or copied interface wording.
+
+## WSLg taskbar shortcut identity
+
+Sources:
+
+- [Application User Model IDs](https://learn.microsoft.com/windows/win32/shell/appids)
+- [System.AppUserModel.ID](https://learn.microsoft.com/windows/win32/properties/props-system-appusermodel-id)
+- [IShellLinkW](https://learn.microsoft.com/windows/win32/api/shobjidl_core/nn-shobjidl_core-ishelllinkw)
+- [IPropertyStore](https://learn.microsoft.com/windows/win32/api/propsys/nn-propsys-ipropertystore)
+- [microsoft/wslg#229](https://github.com/microsoft/wslg/issues/229) (taskbar grouping)
+- [microsoft/wslg#1530](https://github.com/microsoft/wslg/issues/1530) (split launcher path)
+- [WSLDVCPlugin/utils.cpp](https://github.com/microsoft/wslg/blob/main/WSLDVCPlugin/utils.cpp) (MIT; read to confirm which shortcut properties WSLg sets)
+
+Used for: property keys, COM interface contracts (including IShellLinkW
+SetPath/SetArguments for split-path repair) and the observed defects.
+No source code copied.
