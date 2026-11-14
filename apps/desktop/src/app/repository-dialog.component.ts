@@ -32,7 +32,7 @@ export class RepositoryFormDrafts {
   <div class="repository-backdrop" (click)="close()">
     <section #dialog class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
       <header class="repository-dialog-header">
-        <span class="brand-mark mini">GC</span><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
+        <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" /><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
         <button type="button" aria-label="Close repository management" (click)="close()"><gc-icon name="x" [size]="14" /></button>
       </header>
       <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleTabKey($event)">

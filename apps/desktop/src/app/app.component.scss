@@ -23,7 +23,6 @@
 .worktree-dialog { width: min(590px, calc(100vw - 32px)); }
 .worktree-dialog-mark, .submodule-dialog-mark { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 7px; background: #304c47; color: var(--accent); }
 .worktree-dialog-fields { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr); gap: 10px; }
-.worktree-dialog-fields label { display: grid; gap: 6px; color: #aaa9ba; font-size: 12px; }
 .worktree-dialog select { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #414058; border-radius: 3px; outline: none; background: #181824; color: #dddce8; font-size: 12px; }
 .worktree-dialog select:focus { border-color: var(--purple); }
 .worktree-dialog option:disabled { color: #676679; }

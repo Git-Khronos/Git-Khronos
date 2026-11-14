@@ -13,7 +13,7 @@ import { MailPatchPanelComponent } from './mail-patch-panel.component';
   imports: [FormsModule, GitHelpComponent, BundleExchangePanelComponent, MailPatchPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <details #panel>
+    <details #panel class="form-disclosure">
       <summary>Patch exchange</summary>
       <p>Exchange complete tracked diffs, including binary changes. No commits, authors, signatures or
         references are imported. LFS diffs exchange pointers, not the LFS object cache. Mail patches

@@ -103,13 +103,13 @@
     <header class="chrome">
       <div class="tabbar">
         <button #appMenuToggle class="app-menu" type="button" title="Main menu" aria-label="Main menu" aria-haspopup="menu" [attr.aria-expanded]="appMenuOpen()" (click)="toggleAppMenu($event)">
-          <span class="brand-mark mini">GC</span>
+          <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" />
           <gc-icon class="app-menu-chevron" name="chevron-down" [size]="8" />
         </button>
         @if (appMenuOpen()) {
           <div class="app-menu-popover" role="menu" aria-label="Git Khronos menu" (click)="$event.stopPropagation()" (keydown)="handleAppMenuKeydown($event)">
             <header>
-              <span class="brand-mark mini">GC</span>
+              <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" />
               <span><strong>Git Khronos</strong><small>{{ git.repositoryLabel(repo) }}</small></span>
             </header>
             <div class="app-menu-scroll">
@@ -141,7 +141,7 @@
               <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openKeyboardShortcuts()"><gc-icon name="keyboard" [size]="14" /><span><strong>Keyboard Shortcuts</strong></span><kbd>{{ primaryShortcutKey }} /</kbd></button>
               <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openPreferences()"><gc-icon name="settings" [size]="14" /><span><strong>Preferences</strong></span></button>
               @if (windowsLauncherAvailable()) {
-                <button type="button" role="menuitem" (click)="openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>Check and repair Git Khronos shortcut files</small></span></button>
+                <button type="button" role="menuitem" (click)="openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>{{ windowsLauncher.status() }}</small></span></button>
               }
             </div>
           </div>
@@ -368,7 +368,7 @@
                 <b>{{ fetchMenuDetail() }}</b>
               </header>
               <button type="button" role="menuitem" (click)="toolbarOverlays.close('fetch'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update every configured remote without changing local work</small></span></button>
-              <button type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose a remote and whether stale branches are pruned</small></span></button>
+              <button type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
             </div>
           }
         </div>
@@ -438,7 +438,7 @@
                 <b>{{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</b>
               </header>
               <button type="button" role="menuitem" (click)="toolbarOverlays.close('stash'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
-              <button type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose modes, untracked files, or specific paths</small></span></button>
+              <button type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
             </div>
           }
         </div>
@@ -502,14 +502,14 @@
               }
               <div class="menu-caption compact-menu-caption toolbar-repository-overflow" role="separator" aria-label="Repository tools">Repository tools</div>
               <button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update remote branches without changing local work</small></span></button>
-              <button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()" [disabled]="git.busy()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose a remote and whether stale branches are pruned</small></span></button>
+              <button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()" [disabled]="git.busy()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
               <button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="terminalOpen() && terminalRepositoryId() === repo.id" (click)="toolbarOverlays.close('moreActions'); toggleTerminal()"><gc-icon name="terminal" [size]="13" /><span><strong>{{ terminalOpen() && terminalRepositoryId() === repo.id ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</small></span></button>
               <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Operation history">Operation history</div>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.undo()"><gc-icon name="undo" [size]="13" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the latest supported repository action</small></span><kbd>{{ undoShortcut }}</kbd></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.redo()"><gc-icon name="redo" [size]="13" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the last repository action that was undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.undo()"><gc-icon name="undo" [size]="13" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the last supported action</small></span><kbd>{{ undoShortcut }}</kbd></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.redo()"><gc-icon name="redo" [size]="13" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the action just undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
               <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Working directory">Working directory</div>
               <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose modes, untracked files, or specific paths</small></span></button>
+              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
               <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
               @if (repo.lfs.enabled) {
                 <div class="menu-separator toolbar-secondary-overflow"></div>
@@ -2028,8 +2028,10 @@
           <button type="button" aria-label="Close workspace dialog" (click)="closeWorkspaceDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form workspace-form" (submit)="$event.preventDefault(); submitWorkspace()">
-          <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="workspaceNameConflict()" [gcTextValue]="workspaceName()" (gcTextValueChange)="workspaceName.set($event)" />@if (workspaceNameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
-          <p>Each workspace remembers its own open repository tabs and active repository.</p>
+          <div class="repository-form-body">
+            <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="workspaceNameConflict()" aria-describedby="workspace-name-help" [gcTextValue]="workspaceName()" (gcTextValueChange)="workspaceName.set($event)" />@if (workspaceNameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
+            <p id="workspace-name-help" class="form-help">Saves open tabs and the active repository for this workspace.</p>
+          </div>
           <footer><button type="button" (click)="closeWorkspaceDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!workspaceName().trim() || workspaceNameConflict() || git.busy()">{{ mode === 'create' ? 'Create Workspace' : 'Save Name' }}</button></footer>
         </form>
       </section>
@@ -2057,24 +2059,26 @@
           <button type="button" aria-label="Close worktree setup" (click)="closeWorktreeDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitWorktree()">
-          <div class="form-intro"><span><gc-icon name="folder-git" [size]="21" /></span><div><h2>Worktree options</h2><p>{{ worktreeCreationSource() ? 'Create a working directory for ' + worktreeCreationSource() + '.' : 'Choose a new branch, starting point, and worktree location.' }}</p></div></div>
-          @if (worktreeCreationSource()) {
-            <label>Branch<input name="worktreeBranch" readonly [gcTextValue]="worktreeBranch()" /></label>
-          } @else {
-            <div class="worktree-dialog-fields">
-              <label>Branch name<input name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="worktreeBranch()" (gcTextValueChange)="worktreeBranch.set($event)" /></label>
-              <label>Base branch<select name="worktreeBase" [value]="worktreeBase()" (change)="worktreeBase.set($any($event.target).value)">
-                @if (!git.repository()?.status?.branch) { <option value="HEAD" [selected]="worktreeBase() === 'HEAD'">HEAD</option> }
-                @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name" [selected]="worktreeBase() === branch.name">{{ branch.name }}</option> } }
-              </select></label>
-            </div>
-            <label>After creating<select name="worktreeHandoff" [value]="worktreeHandoff()" (change)="worktreeHandoff.set($any($event.target).value)">
-              <option value="none">Open the worktree</option>
-              <option value="terminal">Open the worktree and a terminal</option>
-            </select><small class="worktree-field-note">The terminal starts in the new worktree.</small></label>
-          }
-          <label>Worktree location<div class="path-picker"><input name="worktreeParent" readonly [gcTextValue]="worktreeParent()" /><button type="button" (click)="chooseWorktreeParent()">Browse</button></div></label>
-          <label>Folder name<input name="worktreeFolder" autocomplete="off" [gcTextValue]="worktreeFolder()" (gcTextValueChange)="worktreeFolder.set($event)" /></label>
+          <div class="repository-form-body">
+            <p class="form-help">{{ worktreeCreationSource() ? 'Create a working directory for ' + worktreeCreationSource() + '.' : 'Choose a new branch, its starting point, and a folder.' }}</p>
+            @if (worktreeCreationSource()) {
+              <label>Branch<input name="worktreeBranch" readonly [gcTextValue]="worktreeBranch()" /></label>
+            } @else {
+              <div class="worktree-dialog-fields">
+                <label>Branch name<input name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="worktreeBranch()" (gcTextValueChange)="worktreeBranch.set($event)" /></label>
+                <label>Base branch<select name="worktreeBase" [value]="worktreeBase()" (change)="worktreeBase.set($any($event.target).value)">
+                  @if (!git.repository()?.status?.branch) { <option value="HEAD" [selected]="worktreeBase() === 'HEAD'">HEAD</option> }
+                  @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name" [selected]="worktreeBase() === branch.name">{{ branch.name }}</option> } }
+                </select></label>
+              </div>
+              <label>After creating<select name="worktreeHandoff" [value]="worktreeHandoff()" (change)="worktreeHandoff.set($any($event.target).value)">
+                <option value="none">Open the worktree</option>
+                <option value="terminal">Open the worktree and a terminal</option>
+              </select><small class="worktree-field-note">The terminal starts in the new worktree.</small></label>
+            }
+            <label>Worktree location<div class="path-picker"><input name="worktreeParent" readonly [gcTextValue]="worktreeParent()" /><button type="button" (click)="chooseWorktreeParent()">Browse</button></div></label>
+            <label>Folder name<input name="worktreeFolder" autocomplete="off" [gcTextValue]="worktreeFolder()" (gcTextValueChange)="worktreeFolder.set($event)" /></label>
+          </div>
           <footer><button type="button" (click)="closeWorktreeDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!worktreeBranch().trim() || (!worktreeCreationSource() && !worktreeBase()) || !worktreeParent() || !worktreeFolder().trim() || git.busy()">Create worktree</button></footer>
         </form>
       </section>
@@ -2089,9 +2093,12 @@
           <button type="button" aria-label="Close add submodule dialog" (click)="closeSubmoduleDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitSubmodule()">
-          <div class="form-intro"><span><gc-icon name="repo" [size]="21" /></span><div><h2>Submodule details</h2><p>Paste an HTTPS, SSH, or local repository URL and choose its path inside this repository.</p></div></div>
-          <label>Remote URL<input name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [gcTextValue]="submoduleUrl()" (gcTextValueChange)="submoduleUrl.set($event)" /></label>
-          <label>Name / Path<input name="submodulePath" autocomplete="off" placeholder="vendor/library" [gcTextValue]="submodulePath()" (gcTextValueChange)="submodulePath.set($event)" /></label>
+          <div class="repository-form-body">
+            <label>Remote URL<input name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="submodule-url-help" [gcTextValue]="submoduleUrl()" (gcTextValueChange)="submoduleUrl.set($event)" /></label>
+            <p id="submodule-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
+            <label>Name / Path<input name="submodulePath" autocomplete="off" placeholder="vendor/library" aria-describedby="submodule-path-help" [gcTextValue]="submodulePath()" (gcTextValueChange)="submodulePath.set($event)" /></label>
+            <p id="submodule-path-help" class="form-help">Folder inside the current repository, such as vendor/library.</p>
+          </div>
           <footer><button type="button" (click)="closeSubmoduleDialog()">Cancel</button><button class="primary add-submodule" type="submit" [disabled]="!submoduleUrl().trim() || !submodulePath().trim() || git.busy()">Add Submodule</button></footer>
         </form>
       </section>
@@ -2102,16 +2109,25 @@
       <section #remoteDialogElement class="repository-dialog remote-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <header class="repository-dialog-header">
           <span class="remote-dialog-mark"><gc-icon name="remote" [size]="17" /></span>
-          <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another tracked repository' : 'Update where ' + remoteName() + ' fetches from' }}</small></div>
+          <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another Git repository' : 'Fetch and push destinations for ' + remoteName() }}</small></div>
           <button type="button" aria-label="Close remote dialog" (click)="closeRemoteDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitRemote()">
-          <div class="form-intro"><span><gc-icon name="remote" [size]="21" /></span><div><h2>Remote details</h2><p>Use an HTTPS, SSH, or local Git repository URL. Fetching remains a separate action.</p></div></div>
-          <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
-          <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteUrl.set($event)" /></label>
-          <details><summary>Advanced: separate push destination</summary><label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" [gcTextValue]="remotePushUrl()" (gcTextValueChange)="remotePushUrl.set($event)" /></label><p>Leave empty to use the fetch URL. A separate push URL changes where branches and tags are sent, not where they are fetched.</p></details>
-          <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [value]="remoteDialogIcon()" (change)="remoteDialogIcon.set($any($event.target).value)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value" [selected]="remoteDialogIcon() === option.value">{{ option.label }}</option> }</select></label>
-          @if (mode === 'edit') { <small class="remote-push-note">Push currently uses {{ editedRemotePushUrl() }}.</small> }
+          <div class="repository-form-body">
+            <p class="form-help">Save connection settings here. Fetch and push run separately.</p>
+            <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
+            <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteUrl.set($event)" /></label>
+            <p id="remote-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
+            <details class="form-disclosure">
+              <summary>Advanced: separate push destination</summary>
+              <div class="form-disclosure-body">
+                @if (mode === 'edit') { <p class="form-help remote-push-note">Push currently uses {{ editedRemotePushUrl() }}.</p> }
+                <label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" aria-describedby="remote-push-help" [gcTextValue]="remotePushUrl()" (gcTextValueChange)="remotePushUrl.set($event)" /></label>
+                <p id="remote-push-help" class="form-help">Leave empty to use the fetch URL. This changes where branches and tags are sent, not fetched.</p>
+              </div>
+            </details>
+            <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [value]="remoteDialogIcon()" (change)="remoteDialogIcon.set($any($event.target).value)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value" [selected]="remoteDialogIcon() === option.value">{{ option.label }}</option> }</select></label>
+          </div>
           <footer>
             @if (mode === 'edit') { <button class="remote-remove" type="button" (click)="requestRemoteRemoval()">Remove Remote</button> }
             <span></span><button type="button" (click)="closeRemoteDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!remoteName().trim() || !remoteUrl().trim() || git.busy()">{{ mode === 'add' ? 'Add Remote' : 'Save Remote' }}</button>
@@ -2905,7 +2921,6 @@
     </div>
   }
   <div class="zoom-control" gcViewportWidth (gcViewportWidth)="zoomControlsWidth.set($event)" role="group" aria-label="Interface zoom controls">
-    <span class="zoom-label" aria-hidden="true">Zoom</span>
     <button type="button" title="Decrease zoom ({{ primaryShortcutKey }}+-)" aria-label="Decrease zoom" aria-keyshortcuts="Control+- Meta+-" [disabled]="zoomPercent() <= 75" (click)="stepZoom(-1)">−</button>
     <select class="zoom-select" aria-label="Interface zoom" [attr.title]="'Interface zoom (100% = automatic scale '+autoZoom()+'%)'" [attr.data-auto-zoom]="autoZoom()" [value]="zoomPercent()" (change)="setZoom(+$any($event.target).value)">
       <option value="75">75%</option><option value="80">80%</option><option value="90">90%</option>
@@ -2913,7 +2928,6 @@
       <option value="140">140%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option>
     </select>
     <button type="button" title="Increase zoom ({{ primaryShortcutKey }}++)" aria-label="Increase zoom" aria-keyshortcuts="Control++ Meta++" [disabled]="zoomPercent() >= 200" (click)="stepZoom(1)">+</button>
-    <button class="zoom-reset" type="button" title="Reset zoom to {{ defaultZoom }}% ({{ primaryShortcutKey }}+0)" [attr.aria-label]="'Reset zoom to ' + defaultZoom + ' percent'" aria-keyshortcuts="Control+0 Meta+0" [disabled]="zoomPercent() === defaultZoom" (click)="resetZoom()"><gc-icon name="reset" [size]="10" /></button>
   </div>
   @if (git.busy()) { <div class="progress-line" aria-label="Operation in progress"></div> }
 </div>

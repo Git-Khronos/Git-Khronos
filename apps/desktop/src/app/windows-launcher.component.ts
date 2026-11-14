@@ -1,5 +1,6 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, computed, ElementRef, output, signal, viewChild, type OnDestroy } from '@angular/core';
-import { ipc, type AppError, type WindowsLauncherInspection, type WindowsShortcut, type WindowsShortcutIdentity, type WindowsShortcutLaunch, type WindowsShortcutLocation, type WindowsShortcutRepair } from '@git-khronos/contracts';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, ElementRef, inject, output, signal, viewChild, type OnDestroy } from '@angular/core';
+import { ipc, type AppError, type WindowsShortcut, type WindowsShortcutIdentity, type WindowsShortcutLaunch, type WindowsShortcutLocation, type WindowsShortcutRepair } from '@git-khronos/contracts';
+import { WindowsLauncherService } from './windows-launcher.service';
 
 const LOCATIONS: Record<WindowsShortcutLocation, string> = {
   startMenu: 'Start Menu shortcut',
@@ -29,12 +30,13 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
     <div class="backdrop" (click)="requestClose()">
       <section role="dialog" aria-modal="true" aria-labelledby="windows-launcher-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         <header><div><h2 id="windows-launcher-title">Windows taskbar shortcut</h2>
-          <p>Looks for Git Khronos shortcuts that start the wrong path or lack the identity Windows uses to group taskbar buttons. Checking changes nothing.</p></div>
+          <p>Checks Git Khronos shortcut files for launcher and identity differences. It cannot verify the visible pin or taskbar grouping. Checking changes nothing.</p></div>
           <button #closeButton type="button" [disabled]="busy() === 'repairing'" (click)="requestClose()">Close</button></header>
         <div class="toolbar"><button type="button" [disabled]="!!busy()" (click)="refresh()">Check again</button>
           @if (busy()) { <span role="status">{{ busy() === 'repairing' ? 'Updating the shortcut…' : 'Reading Windows shortcuts…' }}</span> }
         </div>
         @if (error()) { <div class="feedback" role="alert"><p>{{ error() }}</p>@if (errorHint()) { <p>{{ errorHint() }}</p> }</div> }
+        @if (launcher.storageError()) { <div class="feedback" role="alert">{{ launcher.storageError() }}</div> }
         @if (repaired(); as result) {
           <div class="feedback" role="status">
             <p>{{ repairSummary(result) }}</p>
@@ -47,12 +49,6 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
             @if (!data.supported) {
               <p>{{ data.message }}</p>
             } @else {
-              <dl>
-                <dt>WSL distribution</dt><dd>{{ data.distribution }}</dd>
-                <dt>Recorded identity</dt><dd>{{ data.appIdentity ?? 'Not found' }}</dd>
-                @if (data.identitySource) { <dt>Recorded in</dt><dd>{{ data.identitySource }}</dd> }
-                @if (data.launcher) { <dt>Working launcher</dt><dd>{{ data.launcher }}</dd> }
-              </dl>
               <p class="limit">This check reads shortcut files only. Windows does not report which file backs a visible pin or how buttons are grouped, so results describe files, not the taskbar itself.</p>
               @if (data.incomplete.length) {
                 <div class="feedback" role="alert">
@@ -60,20 +56,36 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
                   <ul aria-label="Read problems">@for (problem of data.incomplete; track $index) { <li>{{ problem }}</li> }</ul>
                 </div>
               }
+              <details><summary>Windows identity and launcher details</summary><dl>
+                <dt>WSL distribution</dt><dd>{{ data.distribution }}</dd>
+                <dt>Recorded identity</dt><dd>{{ data.appIdentity ?? 'Not found' }}</dd>
+                @if (data.identitySource) { <dt>Recorded in</dt><dd>{{ data.identitySource }}</dd> }
+                @if (data.launcher) { <dt>Existing launcher</dt><dd>{{ data.launcher }}</dd> }
+              </dl>
               @if (data.conflictingIdentities.length > 1) {
                 <p role="alert">Windows recorded more than one identity for Git Khronos, so no identity is applied. Split launcher paths can still be repaired.</p>
               } @else if (!data.appIdentity) {
                 <p>No window record with an application identity was found. Windows writes these records itself, and when it does so is not documented; Git Khronos cannot create one. Until a record exists, only a split launcher path can be repaired.</p>
                 <p>Optional: on one tested machine, such a record was present after Git Khronos was pinned from its running taskbar button (right-click the button, then Pin to taskbar). This is an observation, not documented Windows behavior. A pin made that way may start a split C:\\Program path, which this check can then repair. A pin made from the Start Menu starts correctly but cannot receive an identity until a record exists.</p>
-              }
+              }</details>
               <ul aria-label="Windows shortcuts">
                 @for (shortcut of data.shortcuts; track shortcut.path) {
                   <li>
                     <strong>{{ locationLabel(shortcut.location) }}</strong>
                     <span class="state" [attr.data-launch]="shortcut.launch">{{ launchLabel(shortcut.launch) }}</span>
-                    @if (shortcut.launch !== 'unreadable') { <span class="state" [attr.data-identity]="shortcut.identity">{{ identityLabel(shortcut.identity) }}</span> }
                     <small>{{ shortcut.path }}</small>
+                    @if (launcher.isAcknowledged(shortcut) && shortcut.launch === 'works') {
+                      <p class="limit">You marked this shortcut as working.</p>
+                      <button type="button" (click)="acknowledge(shortcut, false, $event)">Undo acknowledgement</button>
+                    } @else {
+                    <details [open]="shortcut.launch !== 'works'">
+                    <summary>Shortcut details</summary>
+                    @if (shortcut.launch !== 'unreadable') { <span class="state" [attr.data-identity]="shortcut.identity">{{ identityLabel(shortcut.identity) }}</span> }
                     @if (shortcut.note) { <p>{{ shortcut.note }}</p> }
+                    @if (shortcut.location === 'taskbarPin' && shortcut.launch === 'works' && (shortcut.identity === 'missing' || shortcut.identity === 'different') && shortcut.fingerprint) {
+                      @if (!shortcut.repair) { <p class="limit">An identity difference does not prove a pin is broken. If this pin opens and groups correctly, leave it unchanged.</p> }
+                      <button type="button" (click)="acknowledge(shortcut, true, $event)">This pin works</button>
+                    }
                     @if (shortcut.repair; as plan) {
                       <p class="limit" data-working-pin-advice>A difference in this file does not prove a pin is broken. If your Git Khronos pin already opens the app and groups with its window, leave it unchanged.</p>
                       @if (pending()?.path === shortcut.path) {
@@ -93,12 +105,14 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
                         </div>
                       } @else { <button type="button" [disabled]="!!busy()" (click)="pending.set(shortcut)">Review possible repair…</button> }
                     }
+                    </details>
+                    }
                   </li>
                 } @empty {
                   <li>No Git Khronos shortcuts were found for this distribution.</li>
                 }
               </ul>
-              @if (!hasPin()) { <p>No Git Khronos shortcut was found in the taskbar pins folder. To pin it, right-click Git Khronos in the Start Menu, choose Pin to taskbar, then check again.</p> }
+              @if (!hasPin()) { <p>No Git Khronos shortcut was found in the taskbar pins folder. This does not establish whether a visible pin exists.</p> }
             }
           </div>
         }
@@ -113,13 +127,14 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
     .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px}.feedback{padding:0 16px}.body{padding:0 16px 16px}code{overflow-wrap:anywhere}
     dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:12px}dd{margin:0;overflow-wrap:anywhere}
     ul{list-style:none;margin:12px 0 0;padding:0}li{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 0;border-top:1px solid var(--inspector-divider);font-size:13px}small{font-size:12px;overflow-wrap:anywhere}strong{font-weight:600}
-    .state{font-size:12px}.confirm{align-self:stretch;margin-top:6px;padding-top:8px;border-top:1px dashed var(--inspector-divider)}.confirm button+button{margin-left:8px}
+    .state{font-size:12px}details{max-width:100%}summary{cursor:pointer;color:var(--muted);font-size:12px;padding:5px 0}.confirm{align-self:stretch;margin-top:6px;padding-top:8px;border-top:1px dashed var(--inspector-divider)}.confirm button+button{margin-left:8px}
     @media(max-width:640px){header{padding:12px}dl{grid-template-columns:minmax(0,1fr)}dd{margin-bottom:6px}}
   `,
 })
 export class WindowsLauncherComponent implements OnDestroy {
   readonly closed = output<void>();
-  readonly inspection = signal<WindowsLauncherInspection | null>(null);
+  readonly launcher = inject(WindowsLauncherService);
+  readonly inspection = this.launcher.inspection;
   readonly busy = signal<'reading' | 'repairing' | null>(null);
   readonly error = signal('');
   readonly errorHint = signal('');
@@ -131,7 +146,7 @@ export class WindowsLauncherComponent implements OnDestroy {
   private destroyed = false;
   private repairFailed = false;
 
-  constructor() { afterNextRender(() => { this.closeButton()?.nativeElement.focus(); void this.refresh(); }); }
+  constructor() { afterNextRender(() => { this.closeButton()?.nativeElement.focus(); void this.load(false); }); }
   private fail(error: unknown, fallback: string, repair: boolean): void {
     this.repairFailed = repair;
     const details = error as Partial<AppError> | null;
@@ -141,6 +156,13 @@ export class WindowsLauncherComponent implements OnDestroy {
   locationLabel(location: WindowsShortcutLocation): string { return LOCATIONS[location] ?? location; }
   launchLabel(launch: WindowsShortcutLaunch): string { return LAUNCH[launch] ?? launch; }
   identityLabel(identity: WindowsShortcutIdentity): string { return IDENTITY[identity] ?? identity; }
+  acknowledge(shortcut: WindowsShortcut, acknowledged: boolean, event: Event): void {
+    const row = (event.currentTarget as HTMLElement).closest('li');
+    this.launcher.acknowledge(shortcut, acknowledged);
+    if (!this.launcher.storageError()) {
+      setTimeout(() => row?.querySelector<HTMLElement>(acknowledged ? 'button' : 'summary')?.focus());
+    }
+  }
   repairSummary(result: WindowsShortcutRepair): string {
     const changes = [
       result.plan.target !== null ? `starts ${result.plan.target}` : '',
@@ -149,15 +171,19 @@ export class WindowsLauncherComponent implements OnDestroy {
     return `The shortcut file now ${changes.join(' and ')}.`;
   }
   async refresh(): Promise<void> {
+    await this.load(true);
+  }
+  private async load(force: boolean): Promise<void> {
     if (this.destroyed || this.busy()) return;
     const generation = ++this.generation;
     this.busy.set('reading'); this.pending.set(null);
     if (!this.repairFailed) { this.error.set(''); this.errorHint.set(''); }
     try {
-      const result = await ipc.inspect_windows_launcher();
-      if (!this.destroyed && generation === this.generation) this.inspection.set(result);
+      if (force) await this.launcher.refresh(); else await this.launcher.ensureChecked();
+      const problem = this.launcher.error();
+      if (problem && !this.destroyed && generation === this.generation) this.fail(problem, 'The Windows shortcuts could not be checked.', false);
     } catch (error) {
-      if (!this.destroyed && generation === this.generation) { this.inspection.set(null); this.fail(error, 'The Windows shortcuts could not be checked.', false); }
+      if (!this.destroyed && generation === this.generation) this.fail(error, 'The Windows shortcuts could not be checked.', false);
     } finally { if (!this.destroyed && generation === this.generation) this.busy.set(null); }
   }
   async repair(shortcut: WindowsShortcut): Promise<void> {
@@ -178,7 +204,7 @@ export class WindowsLauncherComponent implements OnDestroy {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.requestClose(); return; }
     if (event.key !== 'Tab') return;
-    const controls = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled)')]
+    const controls = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled), summary')]
       .filter(element => element.getClientRects().length > 0);
     const index = controls.indexOf(document.activeElement as HTMLElement);
     if (event.shiftKey && index <= 0) { event.preventDefault(); controls.at(-1)?.focus(); }

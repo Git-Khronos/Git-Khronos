@@ -7,6 +7,7 @@ import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from 
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
 import { WindowsLauncherComponent } from './windows-launcher.component';
+import { WindowsLauncherService } from './windows-launcher.service';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
@@ -866,7 +867,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
   private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
   protected readonly windowsLauncherOpen = signal(false);
-  protected readonly windowsLauncherAvailable = computed(() => this.git.systemInfo()?.windowsSubsystemForLinux === true && !this.git.browserPreview());
+  protected readonly windowsLauncher = inject(WindowsLauncherService);
+  protected readonly windowsLauncherAvailable = computed(() => this.git.systemInfo()?.windowsSubsystemForLinux === true && this.git.systemInfo()?.windowsInteropAvailable === true && !this.git.browserPreview());
   private windowsLauncherReturnFocus: HTMLElement | null = null;
   private readonly windowsLauncherLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('windowsLauncherLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
@@ -9701,6 +9703,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const open = !this.appMenuOpen();
     this.appMenuOpen.set(open);
     if (open) {
+      if (this.windowsLauncherAvailable()) void this.windowsLauncher.refresh();
       setTimeout(() => document.querySelector<HTMLElement>('.app-menu-popover [role="menuitem"]')?.focus());
     }
   }

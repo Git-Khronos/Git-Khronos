@@ -70,6 +70,8 @@ test('all-remotes pruning requires opt-in and discloses branch-only and partial 
   await expect(dialog).toContainText('earlier remotes may already be updated');
   await dialog.getByRole('checkbox').check();
   await dialog.getByText('Advanced scope', { exact: true }).click();
+  await expect(dialog.locator('.form-disclosure-body li')).toHaveCount(3);
+  await expect(dialog.locator('summary')).toBeVisible();
   await expect(dialog).toContainText('not custom fetch refspecs or mirror settings');
   await expect(dialog).toContainText('never fetches or prunes tags');
   await dialog.getByRole('button', { name: 'Fetch branches', exact: true }).click();

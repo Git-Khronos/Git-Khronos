@@ -47,7 +47,7 @@ import { GitKhronosService } from './git-khronos.service';
     label { display: block; margin-bottom: 8px; }
     input { box-sizing: border-box; width: 100%; color: inherit; background: transparent;
       padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
-    .actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+    .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
     button { color: inherit; background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 6px; padding: 10px 12px; cursor: pointer; }
     :is(input, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

@@ -16,7 +16,10 @@
             "tsConfig": "apps/desktop/tsconfig.app.json",
             "webWorkerTsConfig": "apps/desktop/tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
-            "assets": [{ "glob": "**/*", "input": "apps/desktop/public" }],
+            "assets": [
+              { "glob": "**/*", "input": "apps/desktop/public" },
+              { "glob": "icon.svg", "input": "apps/desktop/src-tauri/icons", "output": "assets" }
+            ],
             "styles": ["apps/desktop/src/styles.scss"],
             "outputPath": "dist/apps/desktop"
           },

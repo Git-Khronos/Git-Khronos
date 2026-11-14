@@ -443,7 +443,7 @@ export type SubmoduleTrackingBranchChange = { path: string; expectedTrackingBran
 export type SubmoduleTrackingBranchResult = { path: string; name: string; previousTrackingBranch: string | null; trackingBranch: string | null }
 export type SubmoduleUrlSync = { path: string; expectedDeclaredUrl: string; expectedRegisteredUrl: string }
 export type SubmoduleUrlSyncResult = { path: string; name: string; previousRegisteredUrl: string; registeredUrl: string; remoteName: string | null; previousRemoteUrl: string | null; remoteUrl: string | null }
-export type SystemInfo = { appVersion: string; gitVersion: string | null; gitSupported: boolean; minimumGitVersion: string; windowsSubsystemForLinux: boolean }
+export type SystemInfo = { appVersion: string; gitVersion: string | null; gitSupported: boolean; minimumGitVersion: string; windowsSubsystemForLinux: boolean; windowsInteropAvailable: boolean }
 export type Tag = { fullName: string; name: string; oid: string }
 export type TagDetails = { name: string; oid: string; annotated: boolean; message: string | null; taggerName: string | null; taggerEmail: string | null; taggedAt: string | null }
 export type TerminalExit = { sessionId: string }
@@ -452,7 +452,7 @@ export type TerminalOutput = { sessionId: string; data: number[] }
 export type ToolProfile = { version: number; id: string; name: string; role: ToolRole; executable: string; arguments: string[] }
 export type ToolRole = "editor" | "diff" | "merge" | "terminal"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
-export type WindowsLauncherInspection = { supported: boolean; message: string | null; distribution: string | null; appIdentity: string | null; identitySource: string | null; conflictingIdentities: string[];
+export type WindowsLauncherInspection = { supported: boolean; interopUnavailable: boolean; message: string | null; distribution: string | null; appIdentity: string | null; identitySource: string | null; conflictingIdentities: string[];
 /**
  * Launcher used by every working Git Khronos shortcut, when they agree.
  */
@@ -471,7 +471,7 @@ note: string | null }
  */
 export type WindowsShortcutIdentity = "matching" | "missing" | "different" | "unverified" | "unknown"
 /**
- * Whether the shortcut's launcher can start Git Khronos.
+ * Whether the recognized shortcut's launcher target exists or has a known defect.
  */
 export type WindowsShortcutLaunch = "works" | "splitPath" | "launcherMissing" | "unreadable"
 export type WindowsShortcutLocation = "startMenu" | "taskbarPin" | "implicit"

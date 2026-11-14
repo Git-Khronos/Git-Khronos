@@ -7,7 +7,7 @@
     <aside class="preferences-sidebar">
       <label class="preferences-search">
         <gc-icon name="search" [size]="13" />
-        <input type="search" autocomplete="off" placeholder="Find a setting" aria-label="Find a setting" aria-controls="preference-search-results" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" (keydown)="handleSearchKeydown($event)" />
+        <input type="search" autocomplete="off" placeholder="Find a setting" aria-label="Find a setting" [attr.aria-controls]="searchQuery().trim() ? 'preference-search-results' : null" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" (keydown)="handleSearchKeydown($event)" />
         @if (searchQuery()) { <button type="button" aria-label="Clear preference search" (click)="searchQuery.set('')"><gc-icon name="x" [size]="11" /></button> }
       </label>
       @if (searchQuery().trim()) {
@@ -119,8 +119,8 @@
         <button type="button" [disabled]="git.busy()" (click)="host.openLfsTracking()"><gc-icon name="server" [size]="12" />Manage tracking patterns…</button>
         <button #lfsHelp class="preference-help-action" type="button" (click)="documentation.open('lfs', lfsHelp)" aria-haspopup="dialog">Learn about Git LFS…</button>
       </div>
-      <div id="preference-reference" class="preference-group" [hidden]="host.preferencesSection() !== 'git'">
-        <span>Learning and reference</span><small>Hints and official manuals. Help never changes repository data.</small>
+      <div id="preference-reference" class="preference-group repository-tool-preferences" [hidden]="host.preferencesSection() !== 'git'">
+        <span>Repository tools</span><small>Review each tool's scope before running it. Reference pages never run commands.</small>
         <button #referenceHelp class="preference-help-action" type="button" (click)="documentation.open(null, referenceHelp)" aria-haspopup="dialog">Git command reference…</button>
         @defer (when host.preferencesSection() === 'git') { <gc-integrity-panel [repositoryId]="repo.id" [disabled]="git.busy()" /><gc-patch-exchange-panel [repositoryId]="repo.id" [disabled]="git.busy()" /> }
         @loading { <p role="status">Loading repository tools…</p> }
@@ -139,7 +139,7 @@
         <label>Line height<select aria-label="Terminal line height" [ngModel]="host.terminalLineHeight()" (ngModelChange)="host.setTerminalPreference('line-height', $event)"><option [ngValue]="1">1.0</option><option [ngValue]="1.15">1.15</option><option [ngValue]="1.25">1.25</option><option [ngValue]="1.4">1.4</option><option [ngValue]="1.5">1.5</option></select></label>
         <label>Cursor<select aria-label="Terminal cursor style" [ngModel]="host.terminalCursorStyle()" (ngModelChange)="host.setTerminalPreference('cursor-style', $event)"><option value="block">Block</option><option value="underline">Underline</option><option value="bar">Bar</option></select></label>
       </div>
-      @if (host.preferencesSection() === 'terminal') { <div id="preference-programs" class="preference-group"><gc-configured-tools-panel /></div> }
+      @if (host.preferencesSection() === 'terminal') { <div id="preference-programs" class="preference-group program-preferences"><gc-configured-tools-panel /></div> }
       <div id="preference-reset" class="preference-group reset-preferences" [hidden]="host.preferencesSection() !== 'general'">
         <span>Interface defaults</span><small>Restore the original layout and appearance. Repositories, Git configuration, credentials, and files are not changed.</small>
         @if (host.resetUiConfirmation()) { <div class="reset-preference-confirmation"><strong>Restore interface defaults?</strong><button type="button" (click)="host.restoreInterfaceDefaults()">Restore</button><button type="button" (click)="host.resetUiConfirmation.set(false)">Cancel</button></div> }

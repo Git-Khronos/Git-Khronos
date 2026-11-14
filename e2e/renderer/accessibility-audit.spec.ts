@@ -176,6 +176,57 @@ for (const theme of ['khronos', 'midnight'] as const) {
 }
 
 for (const theme of ['khronos', 'midnight'] as const) {
+  test(`keeps expanded ${theme} repository tools and program settings readable`, async ({ page }) => {
+    await page.addInitScript(selectedTheme => {
+      localStorage.setItem('git-khronos.ui.theme', selectedTheme);
+    }, theme);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Preferences' });
+    await dialog.getByRole('tab', { name: /^Git/ }).click();
+    const panels = [
+      page.locator('gc-integrity-panel'),
+      page.locator('gc-patch-exchange-panel'),
+      page.locator('gc-mail-patch-panel'),
+      page.locator('gc-bundle-exchange-panel'),
+    ];
+    for (const panel of panels) {
+      const summary = panel.locator(':scope > details > summary');
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await expect(panel.locator(':scope > details')).toHaveAttribute('open', '');
+    }
+    await panels[0].getByRole('button', { name: 'Review maintenance', exact: true }).click();
+    for (const [width, zoom] of [[1100, 100], [700, 150]]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.evaluate(value => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(value), zoom);
+      expect(await dialog.locator('#preference-reference').evaluate(card => {
+        const grid = card.parentElement!;
+        return card.getBoundingClientRect().width / (grid.clientWidth - 20);
+      })).toBeGreaterThan(.95);
+      for (const panel of panels) {
+        expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      }
+      expect(await audit(page), `${width}px expanded repository tools`).toEqual([]);
+      expect(await auditTextContrast(page), `${width}px expanded repository tools`).toEqual([]);
+    }
+    await dialog.getByRole('tab', { name: /^Terminal/ }).click();
+    await dialog.getByRole('button', { name: 'New program profile', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Add argument', exact: true }).click();
+    expect(await dialog.locator('#preference-programs').evaluate(card => {
+      const grid = card.parentElement!;
+      return card.getBoundingClientRect().width / (grid.clientWidth - 20);
+    })).toBeGreaterThan(.95);
+    expect(await audit(page), 'Expanded program profile').toEqual([]);
+    expect(await auditTextContrast(page), 'Expanded program profile').toEqual([]);
+    const search = dialog.getByRole('searchbox', { name: 'Find a setting', exact: true });
+    await search.fill('terminal');
+    await expect(search).toHaveAttribute('aria-controls', 'preference-search-results');
+    expect(await audit(page), 'Populated preference search').toEqual([]);
+    await search.fill('');
+    await expect(search).not.toHaveAttribute('aria-controls');
+  });
+
   test(`keeps open ${theme} menus and dialogs accessible`, async ({ page }) => {
     await page.addInitScript((selectedTheme) => {
       localStorage.setItem('git-khronos.ui.theme', selectedTheme);
@@ -215,5 +266,26 @@ for (const theme of ['khronos', 'midnight'] as const) {
       expect(await auditTextContrast(page), label).toEqual([]);
       await page.keyboard.press('Escape');
     }
+    await page.getByRole('button', { name: 'Edit remote origin', exact: true }).click();
+    const remoteDialog = page.getByRole('dialog', { name: 'Edit Remote' });
+    await remoteDialog.getByText('Advanced: separate push destination', { exact: true }).click();
+    expect(await audit(page), 'Expanded remote settings').toEqual([]);
+    expect(await auditTextContrast(page), 'Expanded remote settings').toEqual([]);
+    await remoteDialog.getByRole('button', { name: 'Remove Remote', exact: true }).click();
+    await expect(page.getByRole('alertdialog', { name: 'origin', exact: true })).toBeVisible();
+    expect(await audit(page), 'Remove remote confirmation').toEqual([]);
+    expect(await auditTextContrast(page), 'Remove remote confirmation').toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Fetch options', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Fetch branches with options/ }).click();
+    await page.getByRole('dialog', { name: 'Fetch branches with options' }).getByText('Advanced scope', { exact: true }).click();
+    expect(await audit(page), 'Expanded fetch scope').toEqual([]);
+    expect(await auditTextContrast(page), 'Expanded fetch scope').toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.goto('/?submodules');
+    await page.getByRole('button', { name: 'Add submodule', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Add Submodule' })).toBeVisible();
+    expect(await audit(page), 'Add submodule').toEqual([]);
+    expect(await auditTextContrast(page), 'Add submodule').toEqual([]);
   });
 }

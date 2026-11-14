@@ -97,6 +97,30 @@ test('selected tag push chooses one remote and pins the displayed target', async
   await expect(tag).toBeFocused();
 });
 
+test('compact reference confirmation separates its field and wraps its actions', async ({ page }) => {
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Delete tag on remote…', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Delete tag on remote', exact: true });
+  await page.getByRole('button', { name: 'Check remote tag', exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 650 });
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(200));
+  expect(await dialog.getByLabel('Remote', { exact: true }).evaluate(select => {
+    const label = (select as HTMLSelectElement).labels![0];
+    return select.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  })).toBeGreaterThanOrEqual(6);
+  expect(await dialog.locator('footer').evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.querySelectorAll('button')].every(button => {
+      const action = button.getBoundingClientRect();
+      return action.left >= bounds.left - 1 && action.right <= bounds.right + 1;
+    });
+  })).toBe(true);
+  expect(await page.evaluate(() => (window as any).__referenceCalls
+    .some((call: any) => call.command === 'transport_reference'))).toBe(false);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 for (const mode of ['cancel', 'failure'] as const) {
   test(`deferred Git action ${mode} restores its opener without transporting a reference`, async ({ page }) => {
     let finished!: () => void;

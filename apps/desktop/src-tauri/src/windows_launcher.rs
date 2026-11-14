@@ -12,7 +12,7 @@
 //!   path is rejoined only when the result exists on Windows and agrees with
 //!   every working Git Khronos shortcut.
 //!
-//! Nothing here runs automatically. Explorer's taskbar registry and caches are
+//! Inspection is read-only. Explorer's taskbar registry and caches are
 //! never written, pins are never created, and Explorer is never restarted, so
 //! whether the taskbar groups as expected cannot be verified from here.
 use crate::AppError;
@@ -37,7 +37,7 @@ pub enum WindowsShortcutLocation {
     Implicit,
 }
 
-/// Whether the shortcut's launcher can start Git Khronos.
+/// Whether the recognized shortcut's launcher target exists or has a known defect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum WindowsShortcutLaunch {
@@ -87,6 +87,7 @@ pub struct WindowsShortcut {
 #[serde(rename_all = "camelCase")]
 pub struct WindowsLauncherInspection {
     pub supported: bool,
+    pub interop_unavailable: bool,
     pub message: Option<String>,
     pub distribution: Option<String>,
     pub app_identity: Option<String>,
@@ -151,6 +152,7 @@ fn error(kind: &str, message: impl Into<String>, hint: Option<&str>) -> AppError
 fn unsupported(message: &str) -> WindowsLauncherInspection {
     WindowsLauncherInspection {
         supported: false,
+        interop_unavailable: false,
         message: Some(message.into()),
         distribution: None,
         app_identity: None,
@@ -434,6 +436,7 @@ fn classify(raw: Vec<RawShortcut>, distribution: &str) -> WindowsLauncherInspect
 
     WindowsLauncherInspection {
         supported: true,
+        interop_unavailable: false,
         message: None,
         distribution: Some(distribution.to_owned()),
         app_identity,
@@ -715,6 +718,20 @@ fn find_powershell() -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+pub(crate) fn interop_available() -> bool {
+    crate::display_environment::running_under_wsl()
+        && interop_registered(
+            std::fs::read_to_string("/proc/sys/fs/binfmt_misc/WSLInterop")
+                .ok()
+                .as_deref(),
+        )
+        && find_powershell().is_some()
+}
+
+fn interop_registered(registration: Option<&str>) -> bool {
+    registration.is_some_and(|text| text.lines().next() == Some("enabled"))
+}
+
 fn run_powershell(script: &str, timeout: Duration) -> Result<String, AppError> {
     let executable = find_powershell().ok_or_else(interop_unavailable)?;
     let mut command = Command::new(&executable);
@@ -842,6 +859,7 @@ fn inspect() -> Result<WindowsLauncherInspection, AppError> {
         Ok(output) => output,
         Err(problem) if problem.kind == "windowsInteropUnavailable" => {
             let mut result = unsupported(&problem.message);
+            result.interop_unavailable = true;
             result.distribution = Some(distribution);
             return Ok(result);
         }
@@ -1176,6 +1194,13 @@ mod tests {
         );
         assert_eq!(launches_app(r"C:\Windows\notepad.exe", ARGS, "DEV"), None);
         assert_eq!(launches_app(WSLG, "-d DEV git-khronos", "DEV"), None);
+    }
+
+    #[test]
+    fn interop_registration_must_be_enabled() {
+        assert!(interop_registered(Some("enabled\ninterpreter /init\n")));
+        assert!(!interop_registered(Some("disabled\n")));
+        assert!(!interop_registered(None));
     }
 
     #[test]

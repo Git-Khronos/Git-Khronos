@@ -47,7 +47,7 @@ async function mock(page: Page, responses: { inspect: unknown[]; repair?: unknow
       },
     };
     (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
-      appVersion: 'launcher fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0', windowsSubsystemForLinux: wsl,
+      appVersion: 'launcher fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0', windowsSubsystemForLinux: wsl, windowsInteropAvailable: wsl,
     });
   }, { responses, wsl });
 }
@@ -57,7 +57,11 @@ async function open(page: Page) {
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await page.getByRole('menuitem', { name: /Windows taskbar shortcut/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Windows taskbar shortcut', exact: true });
-  await expect(dialog).toBeVisible(); return dialog;
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Check again' })).toBeEnabled();
+  const summaries = dialog.locator('details:not([open]) > summary');
+  while (await summaries.count()) await summaries.first().click();
+  return dialog;
 }
 
 test.beforeEach(async ({ page }) => { await page.goto('/'); });
@@ -71,6 +75,121 @@ test('offers the shortcut check only under WSL', async ({ page }) => {
   await mock(page, { inspect: [UNREPAIRED] }, true);
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.update((info: object) => ({ ...info, windowsInteropAvailable: false })));
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toHaveCount(0);
+});
+
+test('incomplete enumeration is not reported as clean', async ({ page }) => {
+  await mock(page, { inspect: [{ ...UNREPAIRED, incomplete: ['Access denied'] }] });
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toContainText("Couldn't check");
+});
+
+for (const launch of ['splitPath', 'launcherMissing', 'unreadable']) {
+  test(`menu needs attention for ${launch}`, async ({ page }) => {
+    await mock(page, { inspect: [{ ...BASE, shortcuts: [shortcut('taskbarPin', PIN, launch, 'unknown', null)] }] });
+    await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toContainText('Needs attention');
+  });
+}
+
+test('menu opens without waiting for inspection and reports failures', async ({ page }) => {
+  await mock(page, { inspect: [UNREPAIRED] });
+  await page.evaluate(() => {
+    const original = (window as any).__TAURI_INTERNALS__.invoke;
+    (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: unknown) =>
+      command === 'inspect_windows_launcher'
+        ? new Promise((_, reject) => { (window as any).__rejectInspection = reject; })
+        : original(command, args);
+  });
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await expect(menu).toContainText('Checking…');
+  await expect(page.getByRole('menuitem', { name: /Preferences/ })).toBeVisible();
+  await page.evaluate(() => (window as any).__rejectInspection({ message: 'Unavailable' }));
+  await expect(menu).toContainText("Couldn't check");
+});
+
+test('reopening the menu sees an externally repaired launcher', async ({ page }) => {
+  const broken = { ...BASE, shortcuts: [shortcut('taskbarPin', PIN, 'splitPath', 'missing', null, targetPlan, null, true)] };
+  await mock(page, { inspect: [broken, UNREPAIRED] });
+  const toggle = page.getByRole('button', { name: 'Main menu', exact: true });
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await toggle.click();
+  await expect(menu).toContainText('Needs attention');
+  await page.keyboard.press('Escape');
+  await toggle.click();
+  await expect(menu).toContainText('No launcher problems in checked files');
+  expect(await calls(page, 'inspect_windows_launcher')).toHaveLength(2);
+});
+
+test('reopening the menu refreshes an acknowledged file changed externally', async ({ page }) => {
+  const changed = { ...UNREPAIRED, shortcuts: [START_ROW, { ...UNREPAIRED.shortcuts[1], fingerprint: 'changed-externally' }, UNREPAIRED.shortcuts[2]] };
+  await mock(page, { inspect: [UNREPAIRED, changed] });
+  const dialog = await open(page);
+  const pin = dialog.getByRole('listitem').filter({ hasText: PIN });
+  await pin.getByRole('button', { name: 'This pin works' }).click();
+  await expect(pin.getByText('You marked this shortcut as working.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await expect(menu).toContainText('No launcher problems in checked files');
+  await menu.click();
+  await expect(pin.getByText('You marked this shortcut as working.')).toHaveCount(0);
+  await pin.locator('summary').click();
+  await expect(pin.getByRole('button', { name: 'This pin works' })).toBeVisible();
+  expect(await calls(page, 'inspect_windows_launcher')).toHaveLength(2);
+  expect(await calls(page, 'repair_windows_shortcut')).toEqual([]);
+});
+
+test('transient interop failure remains visible and retries on reopening', async ({ page }) => {
+  await mock(page, { inspect: [
+    { ...BASE, supported: false, interopUnavailable: true, message: 'Windows programs could not start.', shortcuts: [] },
+    UNREPAIRED,
+  ] });
+  const toggle = page.getByRole('button', { name: 'Main menu', exact: true });
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await toggle.click();
+  await expect(menu).toContainText("Couldn't check");
+  await page.keyboard.press('Escape');
+  await toggle.click();
+  await expect(menu).toContainText('No launcher problems in checked files');
+  expect(await calls(page, 'inspect_windows_launcher')).toHaveLength(2);
+});
+
+test('does not imply a pin was checked when only other shortcut files exist', async ({ page }) => {
+  await mock(page, { inspect: [{ ...BASE, shortcuts: [START_ROW, UNREPAIRED.shortcuts[2]] }] });
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toContainText('No matching taskbar pin file found');
+});
+
+test('repeated menu openings share an in-flight inspection', async ({ page }) => {
+  await mock(page, { inspect: [UNREPAIRED] });
+  await page.evaluate(() => {
+    const original = (window as any).__TAURI_INTERNALS__.invoke;
+    (window as any).__inspectionCount = 0;
+    (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: unknown) => {
+      if (command !== 'inspect_windows_launcher') return original(command, args);
+      (window as any).__inspectionCount++;
+      return new Promise(resolve => { (window as any).__resolveInspection = resolve; });
+    };
+  });
+  const toggle = page.getByRole('button', { name: 'Main menu', exact: true });
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await toggle.click();
+  await expect(menu).toContainText('Checking…');
+  await page.keyboard.press('Escape');
+  await toggle.click();
+  await expect(menu).toContainText('Checking…');
+  await menu.click();
+  const dialog = page.getByRole('dialog', { name: 'Windows taskbar shortcut', exact: true });
+  await expect(dialog.getByText('Reading Windows shortcuts…')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__inspectionCount)).toBe(1);
+  await page.evaluate(data => (window as any).__resolveInspection(data), UNREPAIRED);
+  await expect(dialog.getByText('Reading Windows shortcuts…')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__inspectionCount)).toBe(1);
 });
 
 test('adds the recorded identity to a pin made from the Start Menu only after confirmation', async ({ page }) => {
@@ -153,6 +272,51 @@ test('explains first-time setup and conflicting records without guessing an iden
   await dialog.getByRole('button', { name: 'Check again' }).click();
   await expect(dialog.getByRole('alert')).toContainText('more than one identity');
   await expect(dialog.getByRole('button', { name: 'Review possible repair…' })).toHaveCount(0);
+  expect(await calls(page, 'repair_windows_shortcut')).toEqual([]);
+});
+
+test('menu reports only launcher problems and treats missing identities as informational', async ({ page }) => {
+  const broken = { ...BASE, shortcuts: [shortcut('taskbarPin', PIN, 'splitPath', 'missing', null, targetPlan, null, true)] };
+  const empty = { ...BASE, shortcuts: [], incomplete: [] };
+  await mock(page, { inspect: [UNREPAIRED, broken, broken, empty, empty] });
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  const menu = page.getByRole('menuitem', { name: /Windows taskbar shortcut/ });
+  await expect(menu).toContainText('No launcher problems in checked files');
+  await menu.click();
+  const dialog = page.getByRole('dialog', { name: 'Windows taskbar shortcut', exact: true });
+  await expect(dialog.locator('[data-identity="missing"]:visible')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Review possible repair…' })).toBeHidden();
+  await dialog.getByRole('button', { name: 'Check again' }).click();
+  await expect(dialog.getByText('Launcher path split at a space')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  await expect(menu).toContainText('Needs attention');
+  await menu.click();
+  await dialog.getByRole('button', { name: 'Check again' }).click();
+  await expect(dialog.getByText('No Git Khronos shortcuts were found for this distribution.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Main menu', exact: true }).click();
+  await expect(menu).toContainText("Couldn't check");
+  expect(await calls(page, 'inspect_windows_launcher')).toHaveLength(5);
+});
+
+test('acknowledgement persists for the same file and disappears when its fingerprint changes', async ({ page }) => {
+  const changed = { ...UNREPAIRED, shortcuts: [START_ROW, { ...UNREPAIRED.shortcuts[1], fingerprint: 'changed-hash' }, UNREPAIRED.shortcuts[2]] };
+  await mock(page, { inspect: [UNREPAIRED, UNREPAIRED, changed] });
+  const dialog = await open(page);
+  const pin = dialog.getByRole('listitem').filter({ hasText: PIN });
+  await pin.getByRole('button', { name: 'This pin works' }).click();
+  await expect(pin.getByText('You marked this shortcut as working.')).toBeVisible();
+  await expect(pin.getByRole('button', { name: 'Review possible repair…' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await mock(page, { inspect: [UNREPAIRED, changed] });
+  await open(page);
+  await expect(pin.getByText('You marked this shortcut as working.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Check again' }).click();
+  await expect(pin.getByText('You marked this shortcut as working.')).toHaveCount(0);
+  await pin.locator('summary').click();
+  await expect(pin.getByRole('button', { name: 'This pin works' })).toBeVisible();
   expect(await calls(page, 'repair_windows_shortcut')).toEqual([]);
 });
 

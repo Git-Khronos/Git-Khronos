@@ -10,9 +10,10 @@ import { GitKhronosService } from './git-khronos.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <strong>Repository integrity</strong>
-    <p>Explicit git fsck --full inspects objects and connectivity. No repairs, lost-found files,
-      maintenance or downloads are requested. Results are an observation, not a guarantee against concurrent changes.
-      Promisor/partial-clone configurations are refused. LFS content, filesystem health and signatures are not verified.</p>
+    <p>Inspect objects and connectivity with git fsck --full. No repairs, lost-found files,
+      maintenance or downloads are requested.</p>
+    <p>Results describe the check, not concurrent changes. Promisor/partial-clone configurations are refused.
+      LFS content, filesystem health and signatures are not verified.</p>
     @if (busy()) {
       <p role="status">Inspecting repository…</p>
       <button type="button" (click)="cancel()" [disabled]="cancelling()">Cancel inspection</button>
@@ -32,18 +33,20 @@ import { GitKhronosService } from './git-khronos.service';
         cannot restore missing data. Recover from a verified backup or known-good source.</p>
     }
     <gc-git-help topic="maintenance" label="Learn about integrity and maintenance…" [disabled]="busy() || disabled()" />
-    <details (toggle)="maintenanceConfirmed.set(false)">
+    <details class="form-disclosure" (toggle)="maintenanceConfirmed.set(false)">
       <summary>Non-pruning maintenance</summary>
       <p>Checks integrity first, then builds the commit graph and packs references.
-        No garbage collection, object pruning, reflog expiry, worktree cleanup, prefetch or scheduling.
-        This changes repository metadata and uses disk space; it cannot repair missing data.
+        No garbage collection, object pruning, reflog expiry, worktree cleanup, prefetch or scheduling.</p>
+      <p>This changes repository metadata and uses disk space; it cannot repair missing data.
         Inspect failures and partial effects before retrying. This operation is not cancellable.
         The command-palette action uses the same bounded scope.</p>
       @if (maintenancePending()) { <p role="status">Checking integrity and packing metadata…</p> }
       @if (maintenanceConfirmed()) {
         <p role="status">Run integrity-checked commit-graph and ref packing in this repository?</p>
-        <button type="button" [disabled]="disabled() || busy()" (click)="maintain()">Run maintenance</button>
-        <button type="button" [disabled]="disabled() || busy()" (click)="maintenanceConfirmed.set(false)">Cancel maintenance</button>
+        <div class="actions">
+          <button type="button" [disabled]="disabled() || busy()" (click)="maintain()">Run maintenance</button>
+          <button type="button" [disabled]="disabled() || busy()" (click)="maintenanceConfirmed.set(false)">Cancel maintenance</button>
+        </div>
       } @else {
         <button type="button" [disabled]="disabled() || busy()" (click)="maintenanceConfirmed.set(true)">Review maintenance</button>
       }
@@ -51,6 +54,9 @@ import { GitKhronosService } from './git-khronos.service';
   `,
   styles: [`
     :host { display: block; }
+    :host > strong { font-size: 14px; }
+    details { margin-top: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     p { line-height: 1.5; font-size: 12px; overflow-wrap: anywhere; }
     pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--inspector-row); padding: 8px; }
     button { min-height: 28px; padding: 6px 8px; color: var(--text); background: var(--inspector-row); cursor: pointer; }

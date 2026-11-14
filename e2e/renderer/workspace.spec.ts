@@ -42,9 +42,21 @@ async function cssContrastRatio(page: Page, foreground: string, background: stri
 
 test('uses the Git Khronos identity throughout the application chrome', async ({ page }) => {
   await expect(page).toHaveTitle(/ — Git Khronos$/);
-  await expect(page.locator('.app-menu .brand-mark')).toHaveText('GC');
+  const expectLogo = async (selector: string) => {
+    const logo = page.locator(selector);
+    await expect(logo).toHaveAttribute('src', 'assets/icon.svg');
+    await expect(logo).toHaveAttribute('alt', '');
+    await expect.poll(() => logo.evaluate((element) =>
+      element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0)).toBe(true);
+  };
+  await expectLogo('.app-menu img.brand-mark');
   await page.getByRole('button', { name: 'Main menu' }).click();
-  await expect(page.getByRole('menu', { name: 'Git Khronos menu' })).toContainText('Git Khronos');
+  const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
+  await expect(menu).toContainText('Git Khronos');
+  await expectLogo('.app-menu-popover > header img.brand-mark');
+  await menu.getByRole('menuitem', { name: /Manage Repositories/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Repository management' })).toBeVisible();
+  await expectLogo('.repository-dialog-header img.brand-mark');
 });
 
 test('summarizes branch sync and working-tree state in the primary branch selector', async ({ page }) => {
@@ -4420,6 +4432,10 @@ test('manages repository remotes from the reference panel', async ({ page }) => 
   await expect(editDialog.getByLabel('Name')).toHaveAttribute('readonly', '');
   await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-khronos.git');
   await expect(editDialog.getByLabel('Fetch URL')).toBeFocused();
+  await expect(editDialog.getByRole('heading', { name: 'Remote details' })).toHaveCount(0);
+  await expect(editDialog.getByLabel('Fetch URL')).toHaveAccessibleDescription('HTTPS, SSH, or a local repository path.');
+  await editDialog.getByText('Advanced: separate push destination', { exact: true }).click();
+  await expect(editDialog.getByLabel('Push URL', { exact: true })).toHaveAccessibleDescription('Leave empty to use the fetch URL. This changes where branches and tags are sent, not fetched.');
   await expect(editDialog).toContainText('Push currently uses git@github.com:example/git-khronos.git.');
 
   await editDialog.getByRole('button', { name: 'Remove Remote' }).click();
@@ -4435,6 +4451,43 @@ test('manages repository remotes from the reference panel', async ({ page }) => 
   await page.keyboard.press('Escape');
   await expect(confirmation).toBeHidden();
   await expect(editRemote).toBeFocused();
+});
+
+test('keeps repository form fields padded and actions reachable at narrow sizes and increased zoom', async ({ page }) => {
+  for (const [width, height, zoom] of [[1440, 900, '100%'], [700, 600, '125%'], [420, 600, '150%']] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/?worktree-dialog');
+    await page.getByLabel('Interface zoom', { exact: true }).selectOption({ label: zoom });
+    let dialog = page.getByRole('dialog', { name: 'Create Worktree' });
+    const body = dialog.locator('.repository-form-body');
+    await expect(body).toHaveCSS('overflow-y', 'auto');
+    expect(await body.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(14);
+    await dialog.getByLabel('Folder name', { exact: true }).scrollIntoViewIfNeeded();
+    const footer = dialog.locator('footer');
+    await expect(footer).toBeVisible();
+    const box = await footer.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+    await page.keyboard.press('Escape');
+
+    await page.evaluate(() => {
+      (window as any).ng.getComponent(document.querySelector('gc-root')).openEditRemoteDialog(
+        (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().remotes[0]);
+    });
+    dialog = page.getByRole('dialog', { name: 'Edit Remote' });
+    await dialog.getByText('Advanced: separate push destination', { exact: true }).click();
+    const pushUrl = dialog.getByLabel('Push URL', { exact: true });
+    await pushUrl.scrollIntoViewIfNeeded();
+    await expect(pushUrl).toBeVisible();
+    await expect(dialog.locator('.form-disclosure label')).toHaveCSS('row-gap', '6px');
+    await expect(dialog.locator('.remote-push-note')).toBeVisible();
+    const pushBox = await pushUrl.boundingBox();
+    const helpBox = await dialog.locator('#remote-push-help').boundingBox();
+    expect(helpBox!.y - pushBox!.y - pushBox!.height).toBeGreaterThanOrEqual(6);
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  }
 });
 
 test('keeps add-submodule keyboard focus inside the dialog and returns it to its launcher', async ({ page }) => {
@@ -5535,7 +5588,6 @@ test('shows shortcuts for the active desktop platform', async ({ page }) => {
   await expect(page.getByTitle('Hide Commit Panel (Ctrl+K)')).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
   await expect(page.getByRole('button', { name: 'Decrease zoom' })).toHaveAttribute('title', 'Decrease zoom (Ctrl+-)');
   await expect(page.getByRole('button', { name: 'Increase zoom' })).toHaveAttribute('title', 'Increase zoom (Ctrl++)');
-  await expect(page.getByRole('button', { name: 'Reset zoom to 100 percent' })).toHaveAttribute('title', 'Reset zoom to 100% (Ctrl+0)');
   await expect(page.locator('.graph-search kbd')).toHaveText('Ctrl F');
 
   await page.getByTitle('Show all open repositories').click();
@@ -8506,24 +8558,22 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   const zoomControls = page.getByLabel('Interface zoom controls');
   const decreaseZoom = page.getByRole('button', { name: 'Decrease zoom' });
   const increaseZoom = page.getByRole('button', { name: 'Increase zoom' });
-  const resetZoom = page.getByRole('button', { name: 'Reset zoom to 100 percent' });
   await expect(zoomControls).toHaveCSS('height', '26px');
-  await expect(zoomControls.locator('.zoom-label')).toHaveText('Zoom');
+  await expect(zoomControls.locator(':scope > *')).toHaveCount(3);
+  await expect(zoomControls.locator('.zoom-label, .zoom-reset')).toHaveCount(0);
   await zoom.focus();
   await expect(zoom).toHaveCSS('outline-style', 'solid');
-  for (const control of [decreaseZoom, increaseZoom, resetZoom]) {
+  for (const control of [decreaseZoom, increaseZoom]) {
     await expect.poll(() => control.evaluate((element) => {
       const box = element.getBoundingClientRect();
       return Math.min(box.width, box.height);
     })).toBeGreaterThanOrEqual(24);
   }
   await expect(decreaseZoom).toBeEnabled();
-  await expect(resetZoom).toBeDisabled();
   expect(await decreaseZoom.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity))).toBeGreaterThanOrEqual(.7);
 
   await decreaseZoom.click();
   await expect(zoom.locator('option:checked')).toHaveText('90%');
-  await expect(resetZoom).toBeEnabled();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('90');
 
   await decreaseZoom.click();
@@ -8532,14 +8582,13 @@ test('persists the selected interface zoom preset', async ({ page }) => {
   await expect(zoom.locator('option:checked')).toHaveText('75%');
   await expect(decreaseZoom).toBeDisabled();
 
-  await resetZoom.click();
+  await zoom.blur();
+  await page.keyboard.press('Control+0');
   await expect(zoom.locator('option:checked')).toHaveText('100%');
-  await expect(resetZoom).toBeDisabled();
 
   await zoom.selectOption({ label: '125%' });
   await expect(zoom.locator('option:checked')).toHaveText('125%');
   await expect(decreaseZoom).toBeEnabled();
-  await expect(resetZoom).toBeEnabled();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('125');
 
   await page.reload();
@@ -8594,7 +8643,6 @@ test.describe('automatic zoom scale', () => {
     await setScreen(2560, 1440);
     await expect(zoom).toHaveAttribute('data-auto-zoom', '135');
     await expect(zoom.locator('option:checked')).toHaveText('100%');
-    await expect(page.getByRole('button', { name: 'Reset zoom to 100 percent' })).toBeDisabled();
 
     await zoom.selectOption({ label: '110%' });
     await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.ui.zoom-multiplier'))).toBe('110');
@@ -8693,8 +8741,7 @@ test('reserves status-bar space for the persistent zoom controls', async ({ page
     await page.setViewportSize({ width, height: 720 });
     const zoomBox = await page.getByLabel('Interface zoom controls').boundingBox();
     expect(zoomBox).not.toBeNull();
-    if (width > 420) await expect(page.locator('.zoom-label')).toBeVisible();
-    else await expect(page.locator('.zoom-label')).toBeHidden();
+    await expect(page.getByLabel('Interface zoom controls').locator(':scope > *')).toHaveCount(3);
     const statusHeight = await page.locator('.statusbar').evaluate((element) => element.getBoundingClientRect().height);
     for (const selector of ['.status-branch', '.status-sync.outgoing', '.status-changes', '.activity-status', '.status-version']) {
       const item = page.locator(selector);
@@ -8729,7 +8776,7 @@ test('keeps core repository text readable at 100 percent zoom', async ({ page })
     '.commit-field > span',
     '.statusbar',
     '.status-version.preview',
-    '.zoom-label',
+    '.zoom-select',
   ];
 
   for (const selector of selectors) {

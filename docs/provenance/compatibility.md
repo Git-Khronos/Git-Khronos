@@ -2418,9 +2418,9 @@ Observed behavior:
 
 - WSLg's Start Menu shortcut and taskbar pins launch the app through wslg.exe
   but carry no System.AppUserModel.ID;
-- Windows records the running window's identity on an implicit shortcut under
-  User Pinned\ImplicitAppShortcuts, and pins without that identity group as
-  a separate taskbar button;
+- Windows can record the running window's identity on an implicit shortcut
+  under User Pinned\ImplicitAppShortcuts; a pin without that identity may
+  produce a separate taskbar button, but can also already work;
 - pinning from the running window can produce a target split at C:\Program.
 
 Implementation:
@@ -2431,6 +2431,11 @@ Implementation:
 - launch state (working, split path, missing launcher, unreadable) and
   identity state are reported separately; implicit shortcuts with a split path
   still count as identity sources;
+- opening the main menu starts a read-only scan, sharing any scan already in
+  progress; only definite launcher
+  problems raise attention, while incomplete or empty scans remain uncertain;
+  acknowledging a working pin stores its path and fingerprint in app settings,
+  hiding identity details until that file changes;
 - a split target is rejoined only when the rejoined `X:\Program Files\...\wslg.exe`
   exists and agrees with every working Git Khronos shortcut; Start Menu
   shortcuts are never changed;

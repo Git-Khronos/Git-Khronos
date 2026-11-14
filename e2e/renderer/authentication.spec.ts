@@ -90,3 +90,21 @@ test('shows bounded submission feedback and actionable errors without retaining 
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
   await expect(page.getByLabel('Username', { exact: true })).toHaveValue('');
 });
+
+test('compact authentication keeps both actions inside the dialog', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 650 });
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(200));
+  const dialog = page.getByRole('dialog', { name: 'Git authentication' });
+  const actions = dialog.locator('.actions');
+  expect(await actions.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.querySelectorAll('button')].every(button => {
+      const action = button.getBoundingClientRect();
+      return action.left >= bounds.left - 1 && action.right <= bounds.right + 1;
+    });
+  })).toBe(true);
+  await page.getByLabel('Username', { exact: true }).press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Cancel operation' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
+});

@@ -132,15 +132,24 @@ targets the current CPU architecture and native-library baseline; build public
 release packages on the oldest Debian/Ubuntu baseline the release supports.
 
 The package installs its launcher as `git-khronos.desktop` so the entry id
-equals the window's application id. Under WSLg this lets Windows group the
-running window with its pinned taskbar shortcut and icon. If you pinned the app
+equals the window's application id. Under WSLg this helps Windows identify
+the application but does not guarantee taskbar grouping. If you pinned the app
 from an earlier build, unpin and pin it once more after upgrading.
 
 WSLg does not give its Start Menu shortcut or taskbar pins the application
 identity Windows assigns to the running window, so Windows can still show the
-open window as a second taskbar button. Under WSL, the main menu includes
-**Windows taskbar shortcut**. It checks the Git Khronos shortcuts without
-changing them, and offers two repairs you confirm one shortcut at a time:
+open window as a second taskbar button. Under WSL with Windows interop, the
+main menu includes **Windows taskbar shortcut**. Each menu opening starts a
+read-only check in the background (or shares one already in progress). Its status describes shortcut files only:
+missing launchers, split paths and unreadable shortcuts need attention;
+incomplete scans or no matching files cannot be checked conclusively. The
+status does not verify the visible pin or taskbar grouping.
+
+Identity differences alone are informational and appear under shortcut
+details. If a pin works, **This pin works** hides that file's identity details
+and repair prompt until its fingerprint changes. The acknowledgement is stored
+in application settings and changes no Windows files. The dialog offers two
+possible repairs you confirm one shortcut at a time:
 
 - a taskbar pin without the identity Windows recorded for the running window
   (found in a window record under `ImplicitAppShortcuts`) can receive it;

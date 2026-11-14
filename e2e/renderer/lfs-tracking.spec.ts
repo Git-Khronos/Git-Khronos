@@ -194,6 +194,31 @@ test('LFS patterns modal contains keyboard focus in a compact window and restore
   await expect(page.getByRole('button', { name: 'Manage tracking patterns…', exact: true })).toBeFocused();
 });
 
+test('expanded LFS diagnostics separate scopes and keep reviewed actions contained', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns', exact: true });
+  const diagnostics = dialog.locator('details').filter({ hasText: 'Local LFS object diagnostics' });
+  const locks = dialog.locator('details.locks');
+  await diagnostics.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await locks.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(diagnostics).toHaveAttribute('open', '');
+  await expect(locks).toHaveAttribute('open', '');
+  expect(await locks.evaluate(element => {
+    const preceding = element.previousElementSibling!;
+    return element.getBoundingClientRect().top - preceding.getBoundingClientRect().bottom;
+  })).toBeGreaterThanOrEqual(16);
+  await diagnostics.getByRole('button', { name: 'Inspect local objects', exact: true }).click();
+  await diagnostics.getByRole('button', { name: 'Review hydration of assets/pointer.bin', exact: true }).click();
+  await page.setViewportSize({ width: 700, height: 680 });
+  await expect(dialog.getByRole('button', { name: 'Hydrate reviewed file', exact: true })).toBeVisible();
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__lfsTracking.calls
+    .some((call: any) => call.command === 'lfs_checkout_object'))).toBe(false);
+});
+
 test('repository switch prevents untracking rules in the previously reviewed repository', async ({ page }) => {
   await setup(page);
   await open(page);

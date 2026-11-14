@@ -396,6 +396,7 @@ export class GitKhronosService {
         gitSupported: false,
         minimumGitVersion: '2.39.0',
         windowsSubsystemForLinux: false,
+        windowsInteropAvailable: false,
       });
       const activeWorkspace = this.activeWorkspace();
       const shouldShowPreview = activeWorkspace?.id === DEFAULT_WORKSPACE_ID

@@ -11,11 +11,11 @@ import { GitHelpComponent } from './git-help.component';
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <details #panel [attr.aria-busy]="pending()">
+    <details #panel class="form-disclosure" [attr.aria-busy]="pending()">
       <summary>Offline Git bundles</summary>
       <p>Transfer committed history and Git objects without a network connection. Working files,
-        index changes, repository settings, hooks, credentials and LFS cached objects are not included.
-        Verification checks format and available prerequisites, not authenticity or commit signatures.
+        index changes, repository settings, hooks, credentials and LFS cached objects are not included.</p>
+      <p>Verification checks format and available prerequisites, not authenticity or commit signatures.
         Git checks the object payload during import; review does not unpack every object.
         Only open bundles from a source you trust.</p>
       @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }

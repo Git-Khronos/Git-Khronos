@@ -42,7 +42,7 @@ export interface FetchDialogRequest {
           }
           <label class="checkbox"><input type="checkbox" name="pruneRemoteBranches" [disabled]="git.busy()"
             [ngModel]="prune()" (ngModelChange)="prune.set($event)" />Remove stale remote-tracking branches</label>
-          <p>Pruning removes only cached branch references no longer advertised by the chosen remote(s), not branches on the server.</p>
+          <p>Pruning removes local tracking references that the selected remotes no longer advertise. Branches on the server stay unchanged.</p>
           @if (shallow(); as state) {
             <fieldset [disabled]="git.busy()">
               <legend>History depth</legend>
@@ -57,7 +57,14 @@ export interface FetchDialogRequest {
               @if (history() === 'complete') { <p>Complete history can be large. If the chosen remote is itself shallow, Git Khronos reports that history is still incomplete.</p> }
             </fieldset>
           }
-          <details><summary>Advanced scope</summary><p>This uses a standard branch-only mapping, not custom fetch refspecs or mirror settings. It never fetches or prunes tags and never updates submodule working trees. Shared tracking destinations are refused; symbolic destinations are checked.</p></details>
+          <details class="form-disclosure">
+            <summary>Advanced scope</summary>
+            <div class="form-disclosure-body"><ul>
+              <li>Uses a standard branch-only mapping, not custom fetch refspecs or mirror settings.</li>
+              <li>It never fetches or prunes tags, or updates submodule working trees.</li>
+              <li>Shared tracking destinations are refused; symbolic destinations are checked.</li>
+            </ul></div>
+          </details>
           @if (cancelled()) { <p role="status" tabindex="-1">Fetch was cancelled. Earlier remotes may already be updated. Review the refreshed graph before retrying.</p> }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
           <gc-git-help topic="fetch" label="Learn about fetch and remote-tracking pruning…" />
@@ -75,15 +82,17 @@ export interface FetchDialogRequest {
     form { width: min(520px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; border: 1px solid var(--inspector-divider); border-radius: 7px; background: var(--inspector-list); color: var(--text); }
     h2 { margin: 0 0 12px; font-size: 16px; }
     p, details { font-size: 13px; line-height: 1.5; }
+    p { margin: 8px 0 16px; }
     .destination { overflow-wrap: anywhere; }
     label { display: block; margin-top: 14px; font-size: 13px; }
+    label:not(.checkbox) { margin-bottom: 6px; font-weight: 600; }
     .checkbox { display: flex; gap: 8px; align-items: center; min-height: 28px; }
     fieldset { margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--inspector-divider); border-radius: 5px; }
     legend { font-size: 13px; font-weight: 600; }
     input[type=number] { width: 9ch; padding: 4px 6px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
     select { width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
-    footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; }
-    button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); }
+    footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--inspector-divider); }
+    button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); font-size: 13px; }
     button:disabled, select:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
     button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     [role=alert] { color: var(--danger); }

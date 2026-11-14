@@ -71,9 +71,9 @@ export interface ReferenceActionRequest {
     h2 { margin: 0 0 12px; font-size: 16px; }
     p { font-size: 13px; line-height: 1.5; }
     code, .destination { overflow-wrap: anywhere; }
-    label { display: grid; gap: 6px; margin-top: 14px; font-size: 13px; }
+    label { display: block; margin: 14px 0 6px; font-size: 13px; }
     select { width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
-    footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+    footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--inspector-divider); }
     button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); }
     .danger, .error { color: var(--danger); }
   `],

@@ -13,7 +13,7 @@ const MAX_SERIES = 500;
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <details #panel [attr.aria-busy]="pending()">
+    <details #panel class="form-disclosure" [attr.aria-busy]="pending()">
       <summary>Mail patches (format-patch / am)</summary>
       <p>Exchange commits as email-formatted patches that keep each author, date and message.
         Applying records you as committer; signatures, notes and merge commits are not carried.</p>

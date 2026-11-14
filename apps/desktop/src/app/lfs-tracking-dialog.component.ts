@@ -21,19 +21,20 @@ export interface LfsTrackingRequest {
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="lfs-tracking-title"
           aria-describedby="lfs-tracking-scope" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
           <h2 id="lfs-tracking-title">LFS tracking patterns</h2>
-          <p id="lfs-tracking-scope">These are configured rules, not a list of effective attributes for each file.
-            Only root .gitattributes rules can be removed here. Nested or external rules must be edited in their own scope.
+          <p id="lfs-tracking-scope">Review configured LFS rules, not effective attributes for each file.
+            Only root .gitattributes rules can be removed here; edit nested or external rules at their source.
             Git LFS may initialize repository-local metadata; configured hooks are not changed.</p>
           @if (target.repositoryId !== git.activeRepositoryId()) {
             <p role="alert" tabindex="-1">The active repository changed. Close this dialog and review the intended repository.</p>
           }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
           @if (loading()) { <p role="status">Reading repository diagnostics…</p> }
-          <details>
+          <details class="form-disclosure">
             <summary [attr.aria-disabled]="unavailable()" (click)="guardDisclosure($event)">Local LFS object diagnostics</summary>
             <p>Scan Git LFS pointers reported for the current index and HEAD, not all history or untracked files.
               Index entries take precedence for the same path; the CLI can still report HEAD paths deleted from the index.
-              Zero-size objects are omitted by Git LFS. No download, checkout, prune or integrity check runs.</p>
+              Zero-size objects are omitted by Git LFS.</p>
+            <p>No download, checkout, prune or integrity check runs.</p>
             <button type="button" [disabled]="unavailable()" (click)="inspectObjects()">Inspect local objects</button>
             @if (objects(); as listing) {
               <div class="object-result" role="status" tabindex="-1">
@@ -118,7 +119,7 @@ export interface LfsTrackingRequest {
               </div>
             }
           </details>
-          <details class="locks">
+          <details class="locks form-disclosure">
             <summary [attr.aria-disabled]="unavailable()" (click)="guardDisclosure($event)">File locks on the LFS server</summary>
             <p>Locks tell collaborators you are editing a file that cannot be merged. They are advisory and held by the LFS server,
               so loading contacts the configured LFS endpoint. Nothing is locked or unlocked automatically.</p>
@@ -221,6 +222,10 @@ export interface LfsTrackingRequest {
     section { box-sizing: border-box; width: min(620px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; border: 1px solid var(--inspector-divider); border-radius: 7px; background: var(--inspector-list); color: var(--text); }
     h2 { margin: 0 0 12px; font-size: 16px; }
     h3 { font-size: 14px; }
+    details { margin-top: 16px; }
+    section > form { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--inspector-divider); }
+    .fetch-review, .checkout-review, .force-review, .review { margin-top: 16px; padding: 12px; border: 1px solid var(--inspector-divider); border-radius: 5px; }
+    .fetch-review > h3, .checkout-review > h3, .force-review > h3, .review > h3 { margin-top: 0; }
     p, li, button { font-size: 13px; line-height: 1.5; }
     ul { list-style: none; padding: 0; max-height: 240px; overflow: auto; }
     li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--inspector-divider); }
