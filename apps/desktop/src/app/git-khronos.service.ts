@@ -1122,11 +1122,13 @@ export class GitKhronosService {
           const entries = repository.status.entries.filter(entry =>
             (!paths || paths.includes(entry.path))
             && (entry.conflicted || entry.indexStatus === '?' || entry.worktreeStatus.trim()));
+          const eligible = entries.filter(entry => !entry.conflicted && !entry.path.includes('/'));
           preview = {
             token: 'preview',
-            paths: entries.filter(entry => !entry.conflicted).map(entry => entry.path),
+            paths: eligible.map(entry => entry.path),
             skippedPaths: entries.filter(entry => entry.conflicted).map(entry => entry.path),
-            untracked: entries.filter(entry => entry.indexStatus === '?').length,
+            blockedPaths: entries.filter(entry => !entry.conflicted && entry.path.includes('/')).map(entry => entry.path),
+            untracked: eligible.filter(entry => entry.indexStatus === '?').length,
           };
         } else {
           preview = await ipc.preview_discard({ repoId: repository.id, paths });

@@ -788,7 +788,15 @@ status poll is required to place the remote reference at the pushed commit.
 **Select files for discard** mode. A native preview includes files beyond the loaded
 status page and expands untracked folders. Conflicts, submodule working trees,
 and nested repositories are excluded; staged contents and ignored files are
-preserved. Changed files or index contents invalidate the preview.
+preserved. On Linux, only files directly in the repository root can be discarded:
+bulk previews identify ordinary subdirectory files as blockers and refuse the
+entire request if any are present, leaving otherwise eligible root files
+unchanged. Individual, hunk, and line discards also refuse nested paths because
+a parent directory could move outside the worktree during the operation.
+Conflicts, submodule trees, and nested repositories remain excluded without
+blocking eligible root-only requests. Recovery also refuses captures with
+nested paths. Discard is not yet available on other operating systems. Changed
+files or index contents invalidate the preview.
 File, hunk, selected-line and bulk discards save binary-capable recovery patches in the worktree's Git
 directory before changing files. **Recover discarded** discovers these captures
 after restart and offers checked recovery, repeat discard, and explicit capture

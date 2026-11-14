@@ -35,6 +35,7 @@ struct DiscardBoundary {
 pub struct DiscardPreview {
     pub paths: Vec<String>,
     pub skipped_paths: Vec<String>,
+    pub blocked_paths: Vec<String>,
     pub untracked: usize,
 }
 
@@ -128,6 +129,33 @@ fn unsafe_discard(message: &str) -> AppError {
             "No working files were changed. Preserve any recovery captures and use a trusted Git tool if necessary.",
         ),
     )
+}
+
+fn nested_discard_error(paths: &[String]) -> AppError {
+    const MAX_DISPLAYED_PATHS: usize = 8;
+    const MAX_PATH_CHARS: usize = 120;
+    let displayed = paths
+        .iter()
+        .take(MAX_DISPLAYED_PATHS)
+        .map(|path| {
+            let truncated = path.chars().count() > MAX_PATH_CHARS;
+            let mut path = path.chars().take(MAX_PATH_CHARS).collect::<String>();
+            if truncated {
+                path.push_str("...");
+            }
+            format!("{path:?}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let omitted = paths.len().saturating_sub(MAX_DISPLAYED_PATHS);
+    let suffix = if omitted == 0 {
+        String::new()
+    } else {
+        format!(" (and {omitted} more)")
+    };
+    unsafe_discard(&format!(
+        "This discard request includes nested paths that cannot be changed safely: {displayed}{suffix}."
+    ))
 }
 
 fn guarded_leaf(file: &str) -> bool {
@@ -555,7 +583,7 @@ fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppErro
 
     if !guarded_leaf(name) {
         return Err(unsafe_discard(
-            "Only files directly in the worktree root can be discarded safely.",
+            "Files in subdirectories cannot be discarded safely because their parent directories may move outside the worktree.",
         ));
     }
     let metadata = match statat(root, name, AtFlags::SYMLINK_NOFOLLOW) {
@@ -733,6 +761,7 @@ pub fn prepare_discard(
         .collect::<HashSet<_>>();
     let mut paths = Vec::new();
     let mut skipped_paths = Vec::new();
+    let mut blocked_paths = Vec::new();
     let mut patch = Vec::new();
     let mut untracked = 0;
     for entry in status {
@@ -751,6 +780,10 @@ pub fn prepare_discard(
         }
         if entry.conflicted || gitlinks.contains(&entry.path) || !safe_file(path, &entry.path) {
             skipped_paths.push(entry.path);
+            continue;
+        }
+        if !guarded_leaf(&entry.path) {
+            blocked_paths.push(entry.path);
             continue;
         }
         let output = if entry.index_status == "?" {
@@ -817,33 +850,35 @@ pub fn prepare_discard(
         paths.push(entry.path);
     }
     if paths.is_empty() {
+        if !blocked_paths.is_empty() {
+            return Err(nested_discard_error(&blocked_paths));
+        }
         return Err(AppError::new(
             "emptyDiscard",
             "There are no eligible unstaged files to discard.",
-            Some("Conflicts, submodule working trees and nested repositories are not discarded."),
+            Some(
+                "Conflicts, submodule working trees, nested repositories, and files in subdirectories are not discarded. Linux currently supports only worktree-root files because parent directories can move outside the worktree during a discard.",
+            ),
         ));
     }
-    let mutation_patch = if paths.iter().all(|file| guarded_leaf(file)) {
-        let changes = paths
-            .iter()
-            .map(|file| {
-                let before = read_guarded_file(&boundary.root, file)?;
-                let after = indexed_file(path, &index_output.stdout, file, &before)?;
-                Ok(GuardedChange {
-                    path: file.clone(),
-                    before,
-                    after,
-                })
+    let changes = paths
+        .iter()
+        .map(|file| {
+            let before = read_guarded_file(&boundary.root, file)?;
+            let after = indexed_file(path, &index_output.stdout, file, &before)?;
+            Ok(GuardedChange {
+                path: file.clone(),
+                before,
+                after,
             })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        encode_guarded_capture(&changes, &patch)?
-    } else {
-        patch.clone()
-    };
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    let mutation_patch = encode_guarded_capture(&changes, &patch)?;
     Ok(DiscardPlan {
         preview: DiscardPreview {
             paths,
             skipped_paths,
+            blocked_paths,
             untracked,
         },
         selected,
@@ -880,17 +915,17 @@ pub fn prepare_partial_discard_with_preview(
     }
     #[cfg(target_os = "linux")]
     {
+        if !guarded_leaf(file) {
+            return Err(unsafe_discard(
+                "Partial discard is available only for worktree-root files. Files in subdirectories cannot be safely changed because their parent directories may move outside the worktree.",
+            ));
+        }
         let mut plan = prepare_discard(path, Some(vec![file.to_owned()]))?;
         if plan.preview.untracked > 0 {
             return Err(AppError::new(
                 "untrackedPartialDiscardUnsupported",
                 "Discard an untracked file as a whole, not as individual changes.",
                 None,
-            ));
-        }
-        if !guarded_leaf(file) {
-            return Err(unsafe_discard(
-                "Partial discard is available only for files directly in the worktree root.",
             ));
         }
         let rooted = plan.boundary.root_path();
@@ -1464,7 +1499,7 @@ fn guarded_capture(
     for change in &changes {
         if !guarded_leaf(&change.path) || !names.insert(&change.path) {
             return Err(unsafe_discard(
-                "The recovery capture contains paths that cannot be changed safely.",
+                "The recovery capture contains paths that cannot be changed safely. Only worktree-root files are supported; nested parent directories could move outside the worktree during an operation.",
             ));
         }
         for state in [&change.before, &change.after] {
@@ -1731,9 +1766,12 @@ fn execute_discard_with_hook(
     {
         use std::os::unix::fs::MetadataExt;
         let _ = path;
+        if !plan.preview.blocked_paths.is_empty() {
+            return Err(nested_discard_error(&plan.preview.blocked_paths));
+        }
         if !plan.preview.paths.iter().all(|file| guarded_leaf(file)) {
             return Err(unsafe_discard(
-                "Files in subdirectories cannot yet be discarded safely while their parents may change.",
+                "Files in subdirectories cannot be discarded safely because their parent directories may move outside the worktree.",
             ));
         }
         let rooted_path = plan.boundary.root_path();
@@ -1749,6 +1787,7 @@ fn execute_discard_with_hook(
             || current.index != plan.index
             || current.preview.paths != plan.preview.paths
             || current.preview.skipped_paths != plan.preview.skipped_paths
+            || current.preview.blocked_paths != plan.preview.blocked_paths
             || !same_directory(&current.boundary.root, &plan.boundary.root)?
             || !same_directory(
                 &current.boundary.git_directory,
@@ -2463,6 +2502,13 @@ fn finish_removing_recovery_marker(marker: &Path) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn nested_discard_error_does_not_mark_short_unicode_paths_as_truncated() {
+        let error = nested_discard_error(&["nested/é.txt".into()]);
+        assert!(error.message.contains("nested/é.txt"));
+        assert!(!error.message.contains("é.txt..."));
+    }
+
     struct Repository(PathBuf);
 
     impl Repository {
@@ -2502,6 +2548,51 @@ mod tests {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).unwrap();
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recovery_refuses_a_capture_with_nested_paths_before_mutation() {
+        let repository = Repository::new();
+        repository.baseline();
+        let nested = "nested/selected.txt";
+        repository.write(nested, b"captured contents\n");
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let boundary = DiscardBoundary::open(&repository.0).unwrap();
+        let (_directory_guard, directory) = boundary.recovery_directory(true).unwrap();
+        let id = next_discard_capture_id().unwrap();
+        let payload = encode_guarded_capture(
+            &[GuardedChange {
+                path: nested.into(),
+                before: GuardedFile::Regular {
+                    data: BASE64.encode(b"before\n"),
+                    mode: 0o644,
+                },
+                after: GuardedFile::Regular {
+                    data: BASE64.encode(b"captured contents\n"),
+                    mode: 0o644,
+                },
+            }],
+            b"",
+        )
+        .unwrap();
+        let capture = save_discard_capture(
+            &directory,
+            &id,
+            |file| file.write_all(&payload).map_err(io_error),
+            |_| {},
+        )
+        .unwrap();
+
+        let error = recover_discarded_changes(&repository.0, &id, false).unwrap_err();
+        assert_eq!(error.kind, "repositoryFileRefused");
+        assert_eq!(
+            fs::read(repository.0.join(nested)).unwrap(),
+            b"captured contents\n"
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(capture).unwrap(), payload);
+        assert!(!directory.join(format!("{id}.restored")).exists());
     }
 
     #[test]
@@ -2626,89 +2717,44 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     }
 
-    #[cfg(any(unix, windows))]
-    fn assert_discard_refuses_a_parent_symlink_swapped_after_review(tracked: bool) {
-        #[cfg(unix)]
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn moving_a_nested_parent_never_produces_a_discard_plan() {
         use std::os::unix::fs::symlink;
-        #[cfg(windows)]
-        use std::os::windows::fs::symlink_dir as symlink;
-
         let repository = Repository::new();
         repository.baseline();
-        #[cfg(target_os = "linux")]
-        let previous = {
-            repository.write("previous.txt", b"earlier recovery\n");
-            let plan = prepare_discard(&repository.0, Some(vec!["previous.txt".into()])).unwrap();
-            let fingerprint = discard_plan_fingerprint(&plan).unwrap();
-            (execute_discard(&repository.0, &plan).unwrap(), fingerprint)
-        };
         let file = "folder/selected.txt";
-        if tracked {
-            repository.write(file, b"committed\n");
-            stage_all(&repository.0).unwrap();
-            commit(&repository.0, "Track selected file").unwrap();
-            repository.write(file, b"staged edit\n");
-            stage_all(&repository.0).unwrap();
-        }
-        repository.write(file, b"outside file must survive\n");
+        repository.write(file, b"worktree data\n");
         let index = fs::read(repository.0.join(".git/index")).unwrap();
         let outside_repository = Repository::new();
         let outside = outside_repository.0.join("moved-folder");
         fs::create_dir(&outside).unwrap();
         fs::write(outside.join("selected.txt"), b"outside sentinel\n").unwrap();
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
-                .err()
-                .expect("unsupported platform must refuse before mutation");
-            assert_eq!(error.kind, "repositoryFileRefused");
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let plan = prepare_discard(&repository.0, Some(vec![file.to_owned()])).unwrap();
-            assert_eq!(plan.preview.untracked, usize::from(!tracked));
-            let mut mutation_reached = false;
-            let error = execute_discard_with_hook(&repository.0, &plan, |step, _| {
-                if step == DiscardStep::BeforeApply {
-                    mutation_reached = true;
-                    fs::rename(repository.0.join("folder"), outside.join("original")).unwrap();
-                    symlink(&outside, repository.0.join("folder")).unwrap();
-                }
-            })
-            .unwrap_err();
-
-            assert_eq!(error.kind, "repositoryFileRefused");
-            assert!(!mutation_reached);
-            let recoveries = discarded_change_recoveries(&repository.0).unwrap();
-            assert_eq!(recoveries.len(), 1);
-            assert_eq!(recoveries[0].id, previous.0);
-            assert_eq!(
-                recoveries[0].content_sha256.as_deref(),
-                Some(previous.1.as_str())
-            );
-        }
+        let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
+            .err()
+            .expect("nested file should be refused before a plan is returned");
+        assert_eq!(error.kind, "repositoryFileRefused");
+        fs::rename(repository.0.join("folder"), outside.join("original")).unwrap();
+        symlink(&outside, repository.0.join("folder")).unwrap();
+        let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
+            .err()
+            .expect("symlinked parent should not produce a discard plan");
+        assert_eq!(error.kind, "emptyDiscard");
         assert_eq!(
-            fs::read(repository.0.join(file)).unwrap(),
-            b"outside file must survive\n"
+            fs::read(outside.join("original/selected.txt")).unwrap(),
+            b"worktree data\n"
         );
         assert_eq!(
             fs::read(outside.join("selected.txt")).unwrap(),
             b"outside sentinel\n"
         );
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
-    }
-
-    #[cfg(any(unix, windows))]
-    #[test]
-    fn untracked_discard_refuses_a_parent_symlink_swapped_after_review() {
-        assert_discard_refuses_a_parent_symlink_swapped_after_review(false);
-    }
-
-    #[cfg(any(unix, windows))]
-    #[test]
-    fn tracked_discard_refuses_a_parent_symlink_swapped_after_review() {
-        assert_discard_refuses_a_parent_symlink_swapped_after_review(true);
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -2976,11 +3022,40 @@ mod tests {
                     "selected.txt"
                 };
                 repository.write(file, b"reviewed work\n");
-                let plan = prepare_discard(&repository.0, Some(vec![file.into()])).unwrap();
+                let patch = if nested {
+                    inspect_git(
+                        &repository.0,
+                        &[
+                            "-c",
+                            "diff.noprefix=false",
+                            "-c",
+                            "diff.mnemonicPrefix=false",
+                            "diff",
+                            "--no-index",
+                            "--binary",
+                            "--full-index",
+                            "--no-ext-diff",
+                            "--no-textconv",
+                            "--no-color",
+                            "--src-prefix=a/",
+                            "--dst-prefix=b/",
+                            "--unified=3",
+                            "--",
+                            "/dev/null",
+                            file,
+                        ],
+                    )
+                    .unwrap()
+                    .stdout
+                } else {
+                    prepare_discard(&repository.0, Some(vec![file.into()]))
+                        .unwrap()
+                        .patch
+                };
                 let directory = recovery_directory(&repository.0).unwrap();
                 fs::create_dir(&directory).unwrap();
                 let capture = directory.join("123.patch");
-                fs::write(&capture, &plan.patch).unwrap();
+                fs::write(&capture, &patch).unwrap();
                 if reverse {
                     let mut snapshot = RecoverySnapshot::capture(&capture, None).unwrap();
                     let fingerprint = snapshot.content_sha256.clone();
@@ -2995,7 +3070,7 @@ mod tests {
                 let index = fs::read(repository.0.join(".git/index")).unwrap();
                 let error = recover_discarded_changes(&repository.0, "123", reverse).unwrap_err();
                 assert_eq!(error.kind, "repositoryFileRefused");
-                assert_eq!(fs::read(&capture).unwrap(), plan.patch);
+                assert_eq!(fs::read(&capture).unwrap(), patch);
                 assert_eq!(
                     fs::read(repository.0.join(file)).unwrap(),
                     b"reviewed work\n"
@@ -3892,11 +3967,11 @@ mod tests {
             &run_git(&repository.0.join("nested"), &["init"]).unwrap(),
         )
         .unwrap();
-        let plan = prepare_discard(&repository.0, Some(vec!["selected/".into()])).unwrap();
-        assert_eq!(
-            execute_discard(&repository.0, &plan).unwrap_err().kind,
-            "repositoryFileRefused"
-        );
+        let error = prepare_discard(&repository.0, Some(vec!["selected/".into()]))
+            .err()
+            .expect("nested-only selection should be refused before confirmation");
+        assert_eq!(error.kind, "repositoryFileRefused");
+        assert!(error.message.contains("selected/new.txt"));
         assert!(repository.0.join("selected/new.txt").exists());
         assert!(repository.0.join("unselected.txt").exists());
         assert!(repository.0.join("ignored/secret").exists());
@@ -3907,17 +3982,134 @@ mod tests {
                 .iter()
                 .any(|file| file.starts_with("nested"))
         );
+        assert_eq!(all.preview.blocked_paths, ["selected/new.txt"]);
         assert_eq!(
             execute_discard(&repository.0, &all).unwrap_err().kind,
             "repositoryFileRefused"
         );
         assert!(repository.0.join("unselected.txt").exists());
-        let root = prepare_discard(&repository.0, Some(vec!["unselected.txt".into()])).unwrap();
-        execute_discard(&repository.0, &root).unwrap();
-        assert!(!repository.0.join("unselected.txt").exists());
         assert!(repository.0.join("selected/new.txt").exists());
         assert!(repository.0.join("nested/new.txt").exists());
         assert!(repository.0.join("ignored/secret").exists());
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+        let root = prepare_discard(&repository.0, Some(vec!["unselected.txt".into()])).unwrap();
+        execute_discard(&repository.0, &root).unwrap();
+        assert!(!repository.0.join("unselected.txt").exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bulk_discard_refuses_mixed_nested_requests_without_mutating_any_files() {
+        for tracked_nested in [false, true] {
+            let repository = Repository::new();
+            repository.baseline();
+            let nested = "nested/selected.txt";
+            if tracked_nested {
+                repository.write(nested, b"nested baseline\n");
+                stage_all(&repository.0).unwrap();
+                commit(&repository.0, "Track nested file").unwrap();
+                repository.write(nested, b"nested work\n");
+            } else {
+                repository.write(nested, b"nested untracked\n");
+            }
+            repository.write("tracked.txt", b"root work\n");
+            let nested_contents = fs::read(repository.0.join(nested)).unwrap();
+            let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+            let plan = prepare_discard(&repository.0, None).unwrap();
+            assert_eq!(plan.preview.paths, ["tracked.txt"]);
+            assert!(plan.preview.skipped_paths.is_empty());
+            assert_eq!(plan.preview.blocked_paths, [nested]);
+            assert_eq!(plan.preview.untracked, 0);
+
+            let error = execute_discard(&repository.0, &plan).unwrap_err();
+            assert_eq!(error.kind, "repositoryFileRefused");
+            assert!(error.message.contains(nested));
+            assert_eq!(
+                fs::read(repository.0.join("tracked.txt")).unwrap(),
+                b"root work\n"
+            );
+            assert_eq!(
+                fs::read(repository.0.join(nested)).unwrap(),
+                nested_contents
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            assert!(
+                discarded_change_recoveries(&repository.0)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn discard_is_refused_off_linux_without_mutating_files_or_index() {
+        let repository = Repository::new();
+        repository.baseline();
+        repository.write("tracked.txt", b"work\n");
+        repository.write("nested/new.txt", b"nested\n");
+        let root = fs::read(repository.0.join("tracked.txt")).unwrap();
+        let nested = fs::read(repository.0.join("nested/new.txt")).unwrap();
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+        let error = prepare_discard(&repository.0, None)
+            .err()
+            .expect("discard should be refused off Linux");
+        assert_eq!(error.kind, "repositoryFileRefused");
+        assert_eq!(fs::read(repository.0.join("tracked.txt")).unwrap(), root);
+        assert_eq!(
+            fs::read(repository.0.join("nested/new.txt")).unwrap(),
+            nested
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn individual_and_partial_nested_discards_are_refused_before_capture() {
+        for tracked_nested in [false, true] {
+            let repository = Repository::new();
+            repository.baseline();
+            let nested = "nested/selected.txt";
+            if tracked_nested {
+                repository.write(nested, b"nested baseline\n");
+                stage_all(&repository.0).unwrap();
+                commit(&repository.0, "Track nested file").unwrap();
+                repository.write(nested, b"nested work\n");
+            } else {
+                repository.write(nested, b"nested untracked\n");
+            }
+            let contents = fs::read(repository.0.join(nested)).unwrap();
+            let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+            let error = prepare_discard(&repository.0, Some(vec![nested.into()]))
+                .err()
+                .expect("nested file should not produce a discard plan");
+            assert_eq!(error.kind, "repositoryFileRefused");
+            assert!(error.message.contains(nested));
+
+            let error = prepare_partial_discard(&repository.0, nested, 0, None)
+                .err()
+                .expect("partial discard should refuse nested files");
+            assert_eq!(error.kind, "repositoryFileRefused");
+            assert!(
+                error
+                    .message
+                    .contains("parent directories may move outside")
+            );
+            assert_eq!(fs::read(repository.0.join(nested)).unwrap(), contents);
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            assert!(
+                discarded_change_recoveries(&repository.0)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
     }
 
     #[test]

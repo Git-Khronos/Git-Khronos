@@ -470,8 +470,10 @@ test('does not open stale discarded-change captures after a repository switch', 
 });
 
 for (const selected of [false, true]) {
-  test(`previews ${selected ? 'selected' : 'all'} unstaged changes before discarding`, async ({ page }) => {
-    await page.evaluate((path) => {
+  test(selected
+    ? 'refuses a selected nested path before discarding'
+    : 'refuses a mixed root and nested bulk request before discarding', async ({ page }) => {
+    await page.evaluate(({ path, selected }) => {
       const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
       const git = app.git;
       const before = git.repository().status;
@@ -482,8 +484,11 @@ for (const selected of [false, true]) {
         invoke: (command: string, args: any) => {
           test.calls.push({ command, args });
           if (command === 'preview_discard') return Promise.resolve({
-            token: 'native-token', paths: [path, 'unloaded/file.bin'],
-            skippedPaths: ['nested/'], untracked: 1,
+            token: 'native-token',
+            paths: selected ? [] : ['tracked-root.txt'],
+            skippedPaths: selected ? [] : ['nested-repository/'],
+            blockedPaths: selected ? [path] : [path, 'unloaded/file.bin'],
+            untracked: 1,
           });
           if (command === 'discard_changes') return Promise.resolve({
             id: '1791408000000000000-12',
@@ -493,7 +498,7 @@ for (const selected of [false, true]) {
           return Promise.reject(new Error(`Unexpected command ${command}`));
         },
       };
-    }, path);
+    }, { path, selected });
     await expect(page.getByRole('checkbox', { name: `Select ${path} for discard` })).toHaveCount(0);
     await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
     if (selected) {
@@ -504,26 +509,28 @@ for (const selected of [false, true]) {
       await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
     }
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('unloaded/file.bin');
-    await expect(dialog).toContainText('nested/');
-    await expect(dialog).toContainText('Staged contents and ignored files remain untouched');
+    await expect(dialog).toContainText(selected ? path : 'unloaded/file.bin');
+    await expect(dialog).toContainText('subdirectory paths cannot be changed safely');
+    await expect(dialog).toContainText('no files will be discarded');
+    if (!selected) {
+      await expect(dialog).toContainText('tracked-root.txt');
+      await expect(dialog).toContainText('Also excluded: conflicts, submodule working trees, and nested repositories.');
+    }
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
     const preview = await page.evaluate(() => (window as any).__discardTest.calls.filter(
       (call: { command: string }) => call.command !== 'refresh_repository_status'));
     expect(preview).toEqual([{ command: 'preview_discard', args: {
       repoId: expect.any(String), paths: selected ? [path] : null,
     } }]);
-    await dialog.getByRole('button', { name: 'Discard captured changes' }).click();
-    await expect(page.locator('#unstaged-files-list').getByRole('button', { name: `Stage ${path}` })).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
     const result = await page.evaluate(() => {
       const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-      return { calls: (window as any).__discardTest.calls, staged: app.git.repository().status.staged,
-        beforeStaged: (window as any).__discardTest.before.staged };
+      return { calls: (window as any).__discardTest.calls, status: app.git.repository().status,
+        before: (window as any).__discardTest.before };
     });
-    expect(result.staged).toBe(result.beforeStaged);
-    expect(result.calls.find((call: { command: string }) => call.command === 'discard_changes')).toEqual({ command: 'discard_changes', args: {
-      repoId: expect.any(String), token: 'native-token',
-    } });
+    expect(result.status).toEqual(result.before);
+    expect(result.calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
   });
 }
 
@@ -535,7 +542,7 @@ test('a stale preview surfaces its error and keeps current files', async ({ page
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string) => {
         if (command === 'preview_discard') return Promise.resolve({
-          token: 'stale', paths: [path], skippedPaths: [], untracked: 0,
+          token: 'stale', paths: [path], skippedPaths: [], blockedPaths: [], untracked: 0,
         });
         if (command === 'discard_changes') return Promise.reject({
           kind: 'staleDiscard', message: 'Files changed after the preview. Nothing was discarded.',
@@ -852,7 +859,7 @@ test('unknown discard outcomes invalidate the matching diff and undo across disc
         } };
         await git.inspectWorkingTreeFile('example.txt', false);
         if (operation === 'path') await git.discardPath('example.txt', false);
-        if (operation === 'bulk') await git.discardPrepared({ token: 'preview', paths: ['example.txt'], skippedPaths: [], untracked: 0 }, repository.id);
+        if (operation === 'bulk') await git.discardPrepared({ token: 'preview', paths: ['example.txt'], skippedPaths: [], blockedPaths: [], untracked: 0 }, repository.id);
         if (operation === 'hunk') await git.applyWorkingTreeHunk('example.txt', false, 0, 'discard');
         if (operation === 'lines') await git.applyWorkingTreeLines('example.txt', false, 0, [0], 'discard');
         results.push({

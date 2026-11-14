@@ -15,7 +15,7 @@ async function prepare(page: Page): Promise<void> {
     const fresh = { ...discarded, staged: 1, unstaged: 0, entries: [{ ...entries[1], indexStatus: 'M', worktreeStatus: ' ' }] };
     const repository = { ...original, status: before };
     const state: any = { app, git, repository, before, discarded, fresh, details, calls: [], outcome: 'success',
-      preview: { token: 'reviewed-discard', paths: ['first.txt'], skippedPaths: [], untracked: 0 } };
+      preview: { token: 'reviewed-discard', paths: ['first.txt'], skippedPaths: [], blockedPaths: [], untracked: 0 } };
     (window as any).__fileOperation = state;
     git.repositories.set([repository, { ...repository, id: 'file-other', path: '/fixture/file-other' }]);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -62,6 +62,27 @@ test('bulk discard browser preview keeps staging intact without a native mutatio
   expect(result.succeeded).toBe(true);
   expect(result.actual).toEqual(result.expected);
   expect(result.nativeCalls).toEqual([]);
+});
+
+test('browser discard preview blocks nested files but keeps root files eligible', async ({ page }) => {
+  await prepare(page);
+  const preview = await page.evaluate(async () => {
+    const state = (window as any).__fileOperation;
+    const entries = [
+      { path: 'root.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
+      { path: 'nested/file.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
+    ];
+    const repository = { ...state.repository,
+      status: { ...state.repository.status, entries, entryCount: entries.length } };
+    state.git.repositories.set([repository]);
+    state.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'browser preview' }));
+    return state.git.previewDiscard(null);
+  });
+  expect(preview).toMatchObject({
+    paths: ['root.txt'],
+    skippedPaths: [],
+    blockedPaths: ['nested/file.txt'],
+  });
 });
 
 for (const navigation of ['unchanged', 'new-file', 'closed-diff', 'other-tab', 'new-conflict']) {
