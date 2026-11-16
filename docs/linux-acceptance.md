@@ -1,14 +1,90 @@
 # Linux packaged acceptance
 
-The native acceptance harness tests the production WebKitGTK application
-extracted from the Debian package. It does not install the package, alter a
+By default, the native acceptance harness tests the production WebKitGTK
+application extracted from the Debian package. It does not install the package, alter a
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
+
+## Ubuntu release qualification
+
+The release target is Ubuntu 22.04 (Jammy), 24.04 (Noble) and 26.04 (Resolute),
+amd64, using one unchanged Debian artifact built on Jammy. These workflow
+definitions do not themselves establish a passing qualification: retain the
+per-release reports from a completed run before claiming that artifact works.
+No three-release run was performed locally while introducing these gates.
+
+Jammy support is conditional on **separately supplied, maintained Git >=2.39**.
+Its official Git 2.34 cannot satisfy the package or the app's safety requirements.
+Neither the installer nor the Debian package configures external repositories;
+on Ubuntu 22.04, `install.sh` requires a sufficient Git already registered with
+dpkg. A newer PATH-only Git binary does not satisfy APT. On other Debian/Ubuntu
+releases, APT retains responsibility for installing or updating dependencies,
+including Git. Selecting and maintaining an external Git distribution on a
+Jammy user's system remains their responsibility.
+
+The explicitly labeled `jammy-git` CI action uses the Git project's documented
+`git-core/ppa` only on disposable GitHub-hosted Ubuntu 22.04 runners, with normal
+APT signature verification. This is an external maintenance/trust boundary, not
+Ubuntu's stock/security archive and not a recommendation to silently configure
+user systems. No Git implementation is bundled into Git Khronos.
+
+CI and release builds use Ubuntu 22.04 with official updates/Universe enabled
+for WebKitGTK 4.1. `desktop:package-ubuntu` first requires an Ubuntu 22.04 amd64
+build host, then merges `packaging/linux/ubuntu-jammy.conf.json` over the normal
+Tauri configuration. Only this release flavor declares glibc 2.35; ordinary
+local builds retain the existing 2.39 floor. Tauri's generated runtime
+dependencies are not removed or rewritten. A local newer-system executable
+was observed to import GLIBC_2.39, so changing only its metadata would be false
+compatibility. The separate release gate refuses any higher declared libc
+floor, numeric GLIBC requirement above 2.35, unknown/non-numeric GLIBC ABI
+requirements, or non-amd64 ELF:
+
+```sh
+node tools/check-linux-abi.mjs /path/to/Git-Khronos_VERSION_amd64.deb
+```
+
+The check's JSON records the package SHA-256, full Depends, required GLIBC versions
+and DT_NEEDED libraries without executing the payload. This static check alone is
+not runtime qualification. The shared `ubuntu-package-acceptance.yml` downloads
+the build job's artifact on each release, verifies its original SHA256SUMS,
+checks the ABI again, and lets APT install that exact file without removals.
+APT must resolve the actual runtime dependencies successfully. No rebuild or
+per-release repackaging is permitted.
+
+Build the release flavor on its required baseline with:
+
+```sh
+pnpm nx run desktop:package-ubuntu
+```
+
+Each runner then runs native smoke and GitLab HTTPS/SSH catalogue acceptance
+using `--installed`. Before launching `/usr/bin/git-khronos`, the harness
+requires its SHA-256 to equal the package's extracted executable. Repositories,
+profile, Xvfb display and session bus remain private fixtures. Reports retain
+the package/executable hashes, actual executable path and runtime platform.
+The ordinary harness default still extracts the package without installing it.
+Python 3.11+ is required by the harness; these jobs select Python 3.12 explicitly
+instead of assuming Jammy's system Python has `hashlib.file_digest`.
+The runtime runners install `webkit2gtk-driver` on Jammy/Noble and
+`webkitgtk-webdriver` on Resolute from that release's official archives.
+Both provide `WebKitWebDriver` on PATH and depend on the matching WebKitGTK 4.1
+runtime. Provisioning checks binary discovery and equal installed package
+versions before attempting native acceptance.
+The build and runtime jobs request `dbus`, available across all three releases.
+On Jammy it directly supplies `dbus-daemon`, `dbus-send` and `dbus-run-session`;
+newer releases pull the split packages through dependencies. All three commands
+must be discoverable before native acceptance.
+
+The release publish job depends on all three successful runtime jobs. Failed
+or unavailable runners, an unsatisfied dependency, absent WebDriver, loader
+failure or scenario failure block publication; they are not skipped support.
+The build-job checksums cover the same package and inventories later published.
 
 ## Prerequisites
 
 - the pinned Node, pnpm, and Rust toolchains;
-- `task`, `dpkg-deb`, Python 3, Git, Git LFS, and OpenSSH;
+- `task`, `dpkg-deb`, Python 3.11+, Git, Git LFS, and OpenSSH;
+- `readelf` (binutils) and a C compiler for release ABI/package regressions;
 - `openssl` for the owned GitLab HTTPS test fixture;
 - `fakeroot` for the package regression suite's private dpkg ownership checks
   (not required for normal application use or installation);
@@ -675,6 +751,38 @@ renderer output directory.
 Pull requests run the smoke suite against a newly built package. Pushes to
 `dev` run the full suite. Manual workflow dispatch can run full or performance
 acceptance. CI artifacts retain both the tested package and its evidence.
+
+## Local discard-selection qualification (2026-11-14)
+
+The source at base commit `71997b497a896751853e1328e563788878b40075` passed
+`pnpm exec nx run desktop:e2e --args=e2e/renderer/discard-recovery.spec.ts`
+(42 tests) and `pnpm nx run desktop:check`. `pnpm nx run
+desktop:package-deb` built and verified
+`Git-Khronos_0.1.2_amd64.deb` with Task source checksum
+`59cf5977acd0b2f257b6f3fb0c6be21c`. The package SHA-256 is
+`5984b473872aacca34f11c2112da619e4904b3bb0684a3f6875316f97ed76228`;
+the extracted packaged executable SHA-256 is
+`0401326a116fd53c260aefb81be3efa155b81c9d36a09665d32bab308ec96cdf`.
+The package was extracted, not installed.
+
+The extracted application was exercised through its actual UI with XTEST input
+on a private Xvfb display, private D-Bus session, isolated HOME/XDG directories,
+and a disposable repository. Mixed root/nested discard was refused without
+changing the worktree or index. Pointer and keyboard selection left only the
+chosen root file selected; a fresh native preview listed exactly that file and
+made no changes until its separate confirmation. The confirmed discard created
+a recovery capture, and the UI recovery restored the file. The nested-only
+request also surfaced a refusal. Across these operations, staged content and
+index, HEAD, unrelated files, and blocked nested contents were preserved.
+Sanitized screenshots are retained under the session files as
+`discard-sprint-*.png`.
+
+The repository's WebDriver-based native suite was not run: `tauri-driver` and
+`WebKitWebDriver` are unavailable, and Python AT-SPI bindings are also absent.
+The isolated XTEST run verifies the requested discard UI workflow, but does not
+replace full native-suite or accessibility-tree coverage. The production build
+also emitted size-budget warnings for the initial bundle and
+`app.component.scss`; packaging and verification succeeded.
 
 ## Evidence boundary
 

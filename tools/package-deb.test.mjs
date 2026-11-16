@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
+import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
@@ -18,6 +19,81 @@ const outputs = [
   'dist/apps/desktop/3rdpartylicenses.txt',
   'dist/apps/desktop/browser/index.html',
 ];
+
+test('Ubuntu CI provisions discoverable D-Bus and release-specific, version-matched WebDriver', async (t) => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/ubuntu-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
+  assert.ok(step, 'Missing runtime prerequisite step');
+  assert.match(step, /UBUNTU_RELEASE: \$\{\{ matrix\.ubuntu \}\}/);
+  const script = step.split('        run: |\n')[1]?.replace(/^          /gm, '');
+  assert.ok(script, 'Missing runtime prerequisite commands');
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-webdriver-ci-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  const commands = {
+    sudo: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
+    cargo: '#!/bin/sh\nprintf "cargo %s\\n" "$*" >> "$COMMAND_LOG"\n',
+    WebKitWebDriver: '#!/bin/sh\nexit 99\n',
+    'dbus-daemon': '#!/bin/sh\nexit 99\n',
+    'dbus-send': '#!/bin/sh\nexit 99\n',
+    'dbus-run-session': '#!/bin/sh\nexit 99\n',
+    'dpkg-query': `#!/bin/sh
+case "$*" in
+  *libwebkit2gtk-4.1-0) printf '%s' "$RUNTIME_VERSION" ;;
+  *) printf '%s' '2.52.0-1' ;;
+esac
+`,
+  };
+  for (const [name, content] of Object.entries(commands)) {
+    await writeFile(join(bin, name), content, { mode: 0o755 });
+  }
+  for (const [release, expected] of [
+    ['22.04', 'webkit2gtk-driver'], ['24.04', 'webkit2gtk-driver'], ['26.04', 'webkitgtk-webdriver'],
+  ]) {
+    const log = join(root, release);
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
+      UBUNTU_RELEASE: release, RUNTIME_VERSION: '2.52.0-1' };
+    const result = spawnSync('bash', ['-c', script], { encoding: 'utf8', env });
+    assert.equal(result.status, 0, result.stderr);
+    for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
+      assert.ok(result.stdout.includes(join(bin, tool)), `Missing discovery check for ${tool}`);
+    }
+    const calls = await readFile(log, 'utf8');
+    assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0 `));
+    assert.match(calls, / dbus\s/);
+    assert.doesNotMatch(calls, / dbus-(?:daemon|bin)(?:\s|$)/);
+    assert.match(calls, /cargo install tauri-driver --locked --version 2\.0\.6/);
+    await writeFile(log, '');
+    const mismatch = spawnSync('bash', ['-c', script], {
+      encoding: 'utf8', env: { ...env, RUNTIME_VERSION: '2.50.0-1' },
+    });
+    assert.notEqual(mismatch.status, 0);
+    assert.match(mismatch.stderr, /WebKitWebDriver and WebKitGTK runtime versions differ/);
+    assert.doesNotMatch(await readFile(log, 'utf8'), /cargo/);
+  }
+  const unknownLog = join(root, 'unknown');
+  const unknown = spawnSync('bash', ['-c', script], { encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: unknownLog,
+      UBUNTU_RELEASE: 'unknown' } });
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /Unsupported Ubuntu release/);
+  await assert.rejects(readFile(unknownLog), { code: 'ENOENT' });
+  const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const buildScript = ci.match(/      - name: Install Linux package and WebDriver prerequisites\n        run: \|\n([\s\S]*?)(?=      - )/)?.[1]?.replace(/^          /gm, '');
+  assert.ok(buildScript, 'Missing Jammy build prerequisite commands');
+  const buildLog = join(root, 'build');
+  const build = spawnSync('bash', ['-c', buildScript], { encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: buildLog } });
+  assert.equal(build.status, 0, build.stderr);
+  const buildCalls = await readFile(buildLog, 'utf8');
+  assert.match(buildCalls, / webkit2gtk-driver /);
+  assert.match(buildCalls, / dbus\s/);
+  assert.doesNotMatch(buildCalls, / dbus-(?:daemon|bin)(?:\s|$)/);
+  for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
+    assert.ok(build.stdout.includes(join(bin, tool)), `Missing Jammy discovery check for ${tool}`);
+  }
+});
 
 async function requireHookFreeDpkg() {
   const files = ['/etc/dpkg/dpkg.cfg', join(homedir(), '.dpkg.cfg')];
@@ -310,7 +386,7 @@ async function packagePayloadFixture(t) {
     'Package: git-khronos', 'Version: 0.1.0', 'Architecture: amd64',
     'Conflicts: git-khronos-desktop', 'Replaces: git-khronos-desktop',
     'Section: vcs', 'Maintainer: Fixture <fixture@example.test>',
-    'Depends: git (>= 1:2.39), libc6 (>= 2.39), libwebkit2gtk-4.1-0, libgtk-3-0',
+    'Depends: git (>= 1:2.39), libc6 (>= 2.35), libwebkit2gtk-4.1-0, libgtk-3-0',
     'Description: Package payload regression fixture', '',
   ].join('\n'));
   await put('usr/bin/git-khronos', '#!/bin/sh\nexit 0\n');
@@ -392,17 +468,66 @@ test('successful package verification cleans only its owned temporary directory'
   assert.equal(await readFile(join(temporaryRoot, 'unrelated'), 'utf8'), 'preserve');
 });
 
-test('package verification requires the glibc version used by the supported build baseline', async (t) => {
+test('local package verification keeps generated stronger glibc requirements and rejects a missing baseline', async (t) => {
   const { payload, put, build, verify } = await packagePayloadFixture(t);
   build();
   assert.equal(verify().status, 0);
 
   const control = await readFile(join(payload, 'DEBIAN/control'), 'utf8');
-  await put('DEBIAN/control', control.replace('libc6 (>= 2.39)', 'libc6'));
+  await put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6 (>= 2.39)'));
+  build();
+  assert.equal(verify().status, 0, 'local builds on newer systems must retain their truthful dependencies');
+  await put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6'));
   build();
   const refused = verify();
   assert.notEqual(refused.status, 0);
-  assert.match(refused.stderr, /glibc 2\.39 or newer/);
+  assert.match(refused.stderr, /glibc 2\.35 or newer/);
+});
+
+test('Ubuntu release ABI gate checks numeric symbol versions and declared requirements independently', () => {
+  const versions = 'Name: GLIBC_2.9 Flags: none\nName: GLIBC_2.34 Flags: none\nName: GLIBC_2.35 Flags: none';
+  assert.deepEqual(verifyGlibcBaseline('git (>= 1:2.39), libc6 (>= 2.35)', versions).required,
+    ['2.9', '2.34', '2.35']);
+  for (const [depends, info] of [
+    ['libc6', versions],
+    ['libc6 (>= 2.34)', versions],
+    ['libc6 (>= 2.35), libc6 (>= 2.39)', versions],
+    ['libc6 (>= 2.35) | other-libc', versions],
+    ['libc6 (>= 2.35)', 'No version information found'],
+    ['libc6 (>= 2.35)', 'Name: GLIBC_2.36 Flags: none'],
+    ['libc6 (>= 2.35)', 'Name: GLIBC_ABI_DT_RELR Flags: none'],
+    ['libc6 (>= 2.35)', 'Name: GLIBC_PRIVATE Flags: none'],
+  ]) {
+    assert.throws(() => verifyGlibcBaseline(depends, info), undefined, `${depends}\n${info}`);
+  }
+});
+
+test('Jammy release overlay retains every other explicit runtime dependency', async () => {
+  const normal = JSON.parse(await readFile(join(repositoryRoot, 'apps/desktop/src-tauri/tauri.conf.json'), 'utf8'));
+  const jammy = JSON.parse(await readFile(join(repositoryRoot, 'packaging/linux/ubuntu-jammy.conf.json'), 'utf8'));
+  const withoutLibc = depends => depends.filter(dependency => !dependency.startsWith('libc6 '));
+  assert.deepEqual(withoutLibc(jammy.bundle.linux.deb.depends), withoutLibc(normal.bundle.linux.deb.depends));
+  assert.deepEqual(Object.keys(jammy.bundle.linux.deb), ['depends']);
+});
+
+test('Ubuntu ABI gate inspects the actual packaged ELF without running it', async (t) => {
+  const f = await packagePayloadFixture(t);
+  const executable = join(f.payload, 'usr/bin/git-khronos');
+  const compiled = spawnSync('cc', ['-x', 'c', '-o', executable, '-'], {
+    input: 'int main(void) { return 73; }\n', encoding: 'utf8',
+  });
+  assert.equal(compiled.status, 0, `${compiled.error ?? ''}\n${compiled.stderr}`);
+  f.build();
+  const result = checkPackage(f.artifact);
+  assert.equal(result.glibc.declared, '2.35');
+  assert.match(result.packageSha256, /^[0-9a-f]{64}$/);
+  const control = await readFile(join(f.payload, 'DEBIAN/control'), 'utf8');
+  await f.put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6 (>= 2.39)'));
+  f.build();
+  assert.throws(() => checkPackage(f.artifact), /Release libc6 floor is 2.39/);
+  await f.put('usr/bin/git-khronos', '#!/bin/sh\nexit 0\n');
+  f.build();
+  assert.throws(() => checkPackage(f.artifact), /Command failed/);
 });
 
 for (const [kind, filename] of [['Rust', 'rust-dependency-notices.json.gz'], ['frontend', 'frontend-dependency-notices.txt.gz']]) {

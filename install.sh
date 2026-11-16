@@ -20,12 +20,18 @@ source_ref=""
 dry_run=false
 assume_yes=false
 work_directory=""
+ubuntu_jammy=false
 
 usage() {
   cat <<EOF
 Usage: install.sh [options]
 
-Install Git Khronos system-wide on Debian or Ubuntu with glibc 2.39 or newer.
+Install Git Khronos system-wide on Debian or Ubuntu.
+Release ABI target: Ubuntu 22.04/24.04/26.04 amd64, glibc 2.35 or newer.
+Ubuntu 22.04 needs separately installed Git >=2.39; its stock Git is too old.
+On other Debian/Ubuntu releases, APT resolves the package dependencies.
+Older releases and locally built packages can require newer system libraries.
+This script does not add APT sources.
 
 Options:
   --version VERSION   Install a specific release (for example 0.1.0).
@@ -109,11 +115,16 @@ check_system() {
   require_command apt-get "apt-get was not found. This installer supports Debian and Ubuntu."
   require_command dpkg "dpkg was not found. This installer supports Debian and Ubuntu."
   if [[ -r /etc/os-release ]]; then
-    local id="" id_like=""
+    local id="" id_like="" version_id=""
     # shellcheck disable=SC1091
     id="$(. /etc/os-release && printf '%s' "${ID:-}")"
     # shellcheck disable=SC1091
     id_like="$(. /etc/os-release && printf '%s' "${ID_LIKE:-}")"
+    # shellcheck disable=SC1091
+    version_id="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
+    if [[ "$id" == ubuntu && "$version_id" == 22.04 ]]; then
+      ubuntu_jammy=true
+    fi
     case " ${id} ${id_like} " in
       *" ubuntu "*|*" debian "*) ;;
       *) say "Warning: ${id:-this distribution} is not Debian or Ubuntu; continuing because APT is available." ;;
@@ -200,6 +211,17 @@ verify_package_identity() {
     || fail "${package_file} targets ${architecture}, but this system is ${system_architecture}."
 }
 
+require_git_prerequisite() {
+  [[ "$ubuntu_jammy" == true ]] || return 0
+  local depends state installed
+  depends="$(dpkg-deb --field "$1" Depends)"
+  [[ "$depends" == *"git (>= 1:2.39)"* ]] || return 0
+  IFS=$'\t' read -r state installed <<< "$(dpkg-query --show --showformat='${db:Status-Status}\t${Version}' git 2>/dev/null || true)"
+  if [[ "$state" != installed || -z "$installed" ]] || ! dpkg --compare-versions "$installed" ge 1:2.39; then
+    fail "Git >=2.39 must already be installed as a Debian package. Ubuntu 22.04 ships Git 2.34; separately provision a maintained newer Git, then retry. This installer does not add APT sources or upgrade Git."
+  fi
+}
+
 install_package_file() {
   local package_file="$1" absolute
   verify_package_identity "$package_file"
@@ -207,6 +229,7 @@ install_package_file() {
   if is_present "$legacy_package_name"; then
     fail "the older ${legacy_package_name} package is installed. Remove it first with 'sudo apt-get remove ${legacy_package_name}', then run this installer again."
   fi
+  require_git_prerequisite "$absolute"
   local options=(install --reinstall --no-remove)
   [[ "$assume_yes" == true ]] && options+=(--yes)
   if [[ "$dry_run" == true ]]; then

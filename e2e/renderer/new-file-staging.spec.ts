@@ -3,15 +3,16 @@ import { expect, test, type Page } from '@playwright/test';
 const file = 'fresh.txt';
 const patch = 'diff --git a/fresh.txt b/fresh.txt\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/fresh.txt\n@@ -0,0 +1,3 @@\n+first\n+second\n+third\n';
 
-async function mockNewFile(page: Page, truncated = false, stale = false): Promise<void> {
+async function mockNewFile(page: Page, truncated = false, stale = false, staged = false): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
-  await page.evaluate(({ file, patch, truncated, stale }) => {
+  await page.evaluate(({ file, patch, truncated, stale, staged }) => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
     const repository = git.repository();
     const status = {
-      ...repository.status, staged: 0, unstaged: 0, untracked: 1, entryCount: 1,
-      entries: [{ path: file, originalPath: null, indexStatus: '?', worktreeStatus: '?', conflicted: false }],
+      ...repository.status, staged: staged ? 1 : 0, unstaged: 0, untracked: staged ? 0 : 1, entryCount: 1,
+      entries: [{ path: file, originalPath: null, indexStatus: staged ? 'A' : '?',
+        worktreeStatus: staged ? ' ' : '?', conflicted: false }],
     };
     git.repositories.update((repositories: any[]) => repositories.map((item) =>
       item.id === repository.id ? { ...item, status } : item));
@@ -37,8 +38,8 @@ async function mockNewFile(page: Page, truncated = false, stale = false): Promis
         return Promise.reject(new Error(`Unexpected command ${command}`));
       },
     };
-  }, { file, patch, truncated, stale });
-  await page.getByTitle(`View changes in ${file}`).click();
+  }, { file, patch, truncated, stale, staged });
+  await page.getByTitle(`${staged ? 'View staged changes in' : 'View changes in'} ${file}`).click();
   await expect(page.getByLabel('Diff viewer')).toBeVisible();
 }
 
@@ -70,6 +71,31 @@ test('allows explicit full-hunk staging of a new text file', async ({ page }) =>
     command: 'apply_working_tree_hunk',
     args: { repoId: expect.any(String), path: file, staged: false, hunkIndex: 0,
       action: 'stage', expectedPatch: patch },
+  });
+});
+
+test('unstages only chosen new-file lines with the displayed native preview', async ({ page }) => {
+  await mockNewFile(page, false, false, true);
+  const diff = page.getByLabel('Diff viewer');
+  await diff.getByRole('button', { name: 'Select added line 2', exact: true }).click();
+  await diff.getByRole('group', { name: 'Selected line actions' }).getByRole('button', { name: 'Unstage', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).__newFileTest.calls);
+  expect(calls.find((call: { command: string }) => call.command === 'apply_working_tree_lines')).toEqual({
+    command: 'apply_working_tree_lines',
+    args: { repoId: expect.any(String), path: file, staged: true, hunkIndex: 0,
+      lineIndices: [1], action: 'unstage', expectedPatch: patch },
+  });
+  expect(calls.some((call: { command: string }) => ['unstage_path', 'unstage_all'].includes(call.command))).toBe(false);
+});
+
+test('allows explicit full-hunk unstage of a staged new text file', async ({ page }) => {
+  await mockNewFile(page, false, false, true);
+  await page.getByLabel('Diff viewer').getByRole('button', { name: 'Unstage Hunk', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).__newFileTest.calls);
+  expect(calls.find((call: { command: string }) => call.command === 'apply_working_tree_hunk')).toEqual({
+    command: 'apply_working_tree_hunk',
+    args: { repoId: expect.any(String), path: file, staged: true, hunkIndex: 0,
+      action: 'unstage', expectedPatch: patch },
   });
 });
 

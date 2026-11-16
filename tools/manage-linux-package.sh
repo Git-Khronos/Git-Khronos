@@ -142,7 +142,18 @@ verify_package() {
   [[ -n "$(package_field "$package_file" Architecture)" ]] || fail "package architecture is empty."
   depends="$(package_field "$package_file" Depends)"
   [[ "$depends" == *"git (>= 1:2.39)"* ]] || fail "package does not require Git 2.39 or newer."
-  [[ "$depends" == *"libc6 (>= 2.39)"* ]] || fail "package does not require glibc 2.39 or newer."
+  local libc_floor="" clause
+  local -a clauses=()
+  IFS=',' read -ra clauses <<< "$depends"
+  for clause in "${clauses[@]}"; do
+    if [[ "$clause" =~ ^[[:space:]]*libc6[[:space:]]+\(\>=[[:space:]]+([0-9]+(\.[0-9]+)+)\)[[:space:]]*$ ]]; then
+      if [[ -z "$libc_floor" ]] || dpkg --compare-versions "${BASH_REMATCH[1]}" gt "$libc_floor"; then
+        libc_floor="${BASH_REMATCH[1]}"
+      fi
+    fi
+  done
+  [[ -n "$libc_floor" ]] && dpkg --compare-versions "$libc_floor" ge 2.35 \
+    || fail "package does not require glibc 2.35 or newer."
   [[ "$depends" == *"libwebkit2gtk-4.1-0"* ]] || fail "package does not declare the WebKitGTK runtime."
   [[ "$depends" == *"libgtk-3-0"* ]] || fail "package does not declare the GTK runtime."
 

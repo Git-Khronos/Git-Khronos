@@ -1,0 +1,94 @@
+name: Exact-artifact Ubuntu acceptance
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    name: Installed package on Ubuntu ${{ matrix.ubuntu }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04", "26.04"]
+    runs-on: ubuntu-${{ matrix.ubuntu }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ubuntu-package
+      - name: Verify the build job's exact artifact checksums
+        working-directory: ubuntu-package
+        run: sha256sum --check SHA256SUMS
+      - uses: ./.github/actions/jammy-git
+        if: matrix.ubuntu == '22.04'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ubuntu-runtime-${{ matrix.ubuntu }}
+      - name: Install runtime acceptance prerequisites
+        env:
+          UBUNTU_RELEASE: ${{ matrix.ubuntu }}
+        run: |
+          set -euo pipefail
+          case "$UBUNTU_RELEASE" in
+            22.04|24.04) webdriver_package=webkit2gtk-driver ;;
+            26.04) webdriver_package=webkitgtk-webdriver ;;
+            *) echo "Unsupported Ubuntu release: $UBUNTU_RELEASE" >&2; exit 1 ;;
+          esac
+          sudo apt-get update
+          sudo apt-get install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config
+          for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
+            command -v "$tool"
+          done
+          dpkg-query -W "$webdriver_package" libwebkit2gtk-4.1-0
+          if [[ "$(dpkg-query -W -f='${Version}' "$webdriver_package")" != "$(dpkg-query -W -f='${Version}' libwebkit2gtk-4.1-0)" ]]; then
+            echo "WebKitWebDriver and WebKitGTK runtime versions differ." >&2
+            exit 1
+          fi
+          cargo install tauri-driver --locked --version 2.0.6
+      - name: Check Jammy ABI and install the unchanged Debian package
+        run: |
+          set -euo pipefail
+          packages=(ubuntu-package/Git-Khronos_*_amd64.deb)
+          test "${#packages[@]}" -eq 1
+          package="$PWD/${packages[0]}"
+          node tools/check-linux-abi.mjs "$package" > ubuntu-package/abi-runtime.json
+          sudo apt-get install --yes --no-remove "$package"
+          dpkg-query -W git-khronos git libc6 libwebkit2gtk-4.1-0
+          sudo apt-get check
+          printf 'PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
+      - name: Exercise the installed executable with isolated repositories and profile
+        run: |
+          python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
+          python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ubuntu-${{ matrix.ubuntu }}-runtime-${{ github.run_id }}
+          path: |
+            test-results/native/
+            ubuntu-package/abi-runtime.json
+          if-no-files-found: warn
+          retention-days: 14

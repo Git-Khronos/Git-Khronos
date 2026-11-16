@@ -56,6 +56,10 @@ coding-agent functionality is outside the product scope.
 ## Behavioral rules
 
 - A view never treats unavailable data as a clean repository or passing CI.
+- Linux mixed bulk-discard requests that include nested files are refused as a
+  whole. Users can then explicitly select eligible root files, request a fresh
+  native preview, review its exact paths and confirm separately; blocked paths
+  are never silently omitted.
 - Remote data loads only after an explicit action and is tied to repository,
   remote fetch destination, section and (for PR inspection) expected head SHA.
 - Provider text and patches are plain text, never executable HTML. Provider URLs

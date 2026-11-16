@@ -483,13 +483,19 @@ for (const selected of [false, true]) {
       (window as any).__TAURI_INTERNALS__ = {
         invoke: (command: string, args: any) => {
           test.calls.push({ command, args });
-          if (command === 'preview_discard') return Promise.resolve({
-            token: 'native-token',
-            paths: selected ? [] : ['tracked-root.txt'],
-            skippedPaths: selected ? [] : ['nested-repository/'],
-            blockedPaths: selected ? [path] : [path, 'unloaded/file.bin'],
-            untracked: 1,
-          });
+          if (command === 'preview_discard') {
+            if (selected) return Promise.reject({
+              kind: 'repositoryFileRefused',
+              message: 'The selected nested path cannot be discarded safely.',
+            });
+            return Promise.resolve({
+              token: 'native-token',
+              paths: ['tracked-root.txt'],
+              skippedPaths: ['nested-repository/'],
+              blockedPaths: [path, 'unloaded/file.bin'],
+              untracked: 1,
+            });
+          }
           if (command === 'discard_changes') return Promise.resolve({
             id: '1791408000000000000-12',
             status: { ...before, unstaged: 0, entries: before.entries.filter((entry: any) => entry.path !== path) },
@@ -509,9 +515,23 @@ for (const selected of [false, true]) {
       await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
     }
     const dialog = page.getByRole('alertdialog');
+    if (selected) {
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() =>
+        (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+        .toContain('selected nested path cannot be discarded safely');
+      const preview = await page.evaluate(() => (window as any).__discardTest.calls.filter(
+        (call: { command: string }) => call.command !== 'refresh_repository_status'));
+      expect(preview).toEqual([{ command: 'preview_discard', args: {
+        repoId: expect.any(String), paths: [path],
+      } }]);
+      expect((await page.evaluate(() => (window as any).__discardTest.calls))
+        .some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+      return;
+    }
     await expect(dialog).toContainText(selected ? path : 'unloaded/file.bin');
     await expect(dialog).toContainText('subdirectory paths cannot be changed safely');
-    await expect(dialog).toContainText('no files will be discarded');
+    await expect(dialog).toContainText('No files will be discarded');
     if (!selected) {
       await expect(dialog).toContainText('tracked-root.txt');
       await expect(dialog).toContainText('Also excluded: conflicts, submodule working trees, and nested repositories.');
@@ -533,6 +553,257 @@ for (const selected of [false, true]) {
     expect(result.calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
   });
 }
+
+test('offers a fresh root-file preview after blocking a mixed discard request', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const before = git.repository().status;
+    const fixture = { calls: [] as Array<{ command: string; args: any }>, before, previews: 0 };
+    (window as any).__discardChoiceTest = fixture;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => {
+        fixture.calls.push({ command, args });
+        if (command === 'preview_discard') {
+          fixture.previews++;
+          if (fixture.previews === 1) return Promise.resolve({
+            token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [],
+            blockedPaths: ['initial-nested/file.txt'], untracked: 0,
+          });
+          if (fixture.previews === 2) return Promise.resolve({
+            token: 'refreshed-token', paths: ['root-a.txt', 'root-b.txt'], skippedPaths: ['conflicted.txt'],
+            blockedPaths: ['nested/current.txt'], untracked: 1,
+          });
+          return Promise.resolve({
+            token: 'selected-token', paths: args.paths, skippedPaths: [], blockedPaths: [], untracked: 0,
+          });
+        }
+        if (command === 'discard_changes') return Promise.resolve({
+          id: '1791408000000000000-12',
+          status: { ...before, unstaged: 0, entries: before.entries.filter((entry: any) => entry.path !== 'root-b.txt') },
+        });
+        if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+        return Promise.reject(new Error(`Unexpected command ${command}`));
+      },
+    };
+  });
+
+  await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('initial-nested/file.txt');
+  await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+
+  await expect(dialog).toContainText('Still blocked; these paths will remain unchanged');
+  await expect(dialog).toContainText('nested/current.txt');
+  await expect(dialog).toContainText('conflicted.txt');
+  const rootA = dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' });
+  const rootB = dialog.getByRole('checkbox', { name: 'Select root-b.txt for fresh discard review' });
+  await expect(rootA).not.toBeChecked();
+  await expect(rootB).not.toBeChecked();
+  await rootB.check();
+  await dialog.getByRole('button', { name: 'Preview selected files' }).click();
+
+  await expect(dialog).toContainText('1 unstaged files');
+  await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeEnabled();
+  let calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
+  expect(calls.filter((call: { command: string }) => call.command === 'preview_discard')
+    .map((call: { args: any }) => call.args.paths)).toEqual([null, null, ['root-b.txt']]);
+  expect(calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+
+  await dialog.getByRole('button', { name: 'Discard captured changes' }).click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
+  expect(calls.find((call: { command: string }) => call.command === 'discard_changes')?.args).toEqual({
+    repoId: expect.any(String),
+    token: 'selected-token',
+  });
+});
+
+test('returns to the blocked review without retaining root selections', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const before = git.repository().status;
+    const fixture = { calls: [] as Array<{ command: string; args: any }>, before, previews: 0 };
+    (window as any).__discardChoiceTest = fixture;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => {
+        fixture.calls.push({ command, args });
+        if (command === 'preview_discard') {
+          fixture.previews++;
+          return Promise.resolve(fixture.previews === 1
+            ? { token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0 }
+            : { token: 'refreshed-token', paths: ['root-a.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0 });
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+        return Promise.reject(new Error(`Unexpected command ${command}`));
+      },
+    };
+  });
+
+  const options = page.getByRole('button', { name: 'Working directory options', exact: true });
+  await options.click();
+  await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+  const rootA = dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' });
+  await rootA.check();
+  await dialog.getByRole('button', { name: 'Back to blocked review' }).click();
+
+  await expect(dialog.getByRole('button', { name: 'Choose root files…' })).toBeFocused();
+  await expect(dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(options).toBeFocused();
+  const result = await page.evaluate(() => (window as any).__discardChoiceTest);
+  expect(result.calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+  expect(result.before).toEqual((await page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().status)));
+});
+
+test('does not use a refreshed preview after switching repositories and back', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    const fixture = { calls: [] as Array<{ command: string; args: any }>, release: null as null | (() => void) };
+    (window as any).__discardChoiceTest = fixture;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => {
+        fixture.calls.push({ command, args });
+        if (command === 'preview_discard' && args.paths === null) {
+          if (fixture.calls.filter((call: { command: string }) => call.command === 'preview_discard').length === 1) {
+            return Promise.resolve({
+              token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+            });
+          }
+          return new Promise(resolve => {
+            fixture.release = () => resolve({
+              token: 'late-refreshed-token', paths: ['stale-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+            });
+          });
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+        return Promise.reject(new Error(`Unexpected command ${command}`));
+      },
+    };
+  });
+
+  await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+  await expect(dialog.getByRole('status')).toContainText('Refreshing the file list');
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const original = git.repository();
+    const other = { ...original, id: 'another-discard-repository', path: '/test/another' };
+    git.repositories.update((repositories: any[]) => [...repositories, other]);
+    git.activeRepositoryId.set(other.id);
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+    git.activeRepositoryId.set(original.id);
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+    (window as any).__discardChoiceTest.release();
+  });
+
+  await expect(dialog.getByRole('button', { name: 'Choose root files…' })).toBeEnabled();
+  await expect(dialog.getByRole('checkbox', { name: 'Select stale-root.txt for fresh discard review' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
+  const calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
+  expect(calls.filter((call: { command: string }) => call.command === 'preview_discard')).toHaveLength(2);
+  expect(calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
+
+test('refuses a selected-file preview that contains unselected paths', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const fixture = { calls: [] as Array<{ command: string; args: any }>, previews: 0 };
+    (window as any).__discardChoiceTest = fixture;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => {
+        fixture.calls.push({ command, args });
+        if (command === 'preview_discard') {
+          fixture.previews++;
+          if (fixture.previews === 1) return Promise.resolve({
+            token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+          });
+          if (fixture.previews === 2) return Promise.resolve({
+            token: 'refreshed-token', paths: ['root-a.txt', 'root-b.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+          });
+          return Promise.resolve({
+            token: 'broader-token', paths: ['root-a.txt', 'root-b.txt'], skippedPaths: [], blockedPaths: [], untracked: 0,
+          });
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+        return Promise.reject(new Error(`Unexpected command ${command}`));
+      },
+    };
+  });
+
+  await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+  await dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' }).check();
+  await dialog.getByRole('button', { name: 'Preview selected files' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('files you did not select: root-b.txt');
+  await expect(dialog.getByRole('button', { name: 'Preview selected files' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toHaveCount(0);
+  const calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
+  expect(calls.filter((call: { command: string }) => call.command === 'preview_discard')
+    .map((call: { args: any }) => call.args.paths)).toEqual([null, null, ['root-a.txt']]);
+  expect(calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
+
+test('keeps stale root selections in review without discarding', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const fixture = { calls: [] as Array<{ command: string; args: any }>, previews: 0 };
+    (window as any).__discardChoiceTest = fixture;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => {
+        fixture.calls.push({ command, args });
+        if (command === 'preview_discard') {
+          fixture.previews++;
+          if (fixture.previews === 1) return Promise.resolve({
+            token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+          });
+          if (fixture.previews === 2) return Promise.resolve({
+            token: 'refreshed-token', paths: ['root-a.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0,
+          });
+          return Promise.reject({ kind: 'emptyDiscard', message: 'The selected file changed before review.' });
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+        return Promise.reject(new Error(`Unexpected command ${command}`));
+      },
+    };
+  });
+
+  await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+  await dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' }).check();
+  await dialog.getByRole('button', { name: 'Preview selected files' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('The selected file changed before review');
+  await expect(dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' })).toBeChecked();
+  await expect(dialog.getByRole('button', { name: 'Preview selected files' })).toBeEnabled();
+  const calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
+  expect(calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
 
 test('a stale preview surfaces its error and keeps current files', async ({ page }) => {
   await page.evaluate((path) => {

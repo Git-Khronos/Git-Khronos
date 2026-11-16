@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -11,12 +11,13 @@ const installer = join(dirname(fileURLToPath(import.meta.url)), '..', 'install.s
 const architecture = execFileSync('dpkg', ['--print-architecture'], { encoding: 'utf8' }).trim();
 let root;
 
-function buildPackage(name, packageName = 'git-khronos') {
+function buildPackage(name, packageName = 'git-khronos', depends = '') {
   const tree = join(root, `tree-${name}`);
   mkdirSync(join(tree, 'DEBIAN'), { recursive: true });
   writeFileSync(join(tree, 'DEBIAN', 'control'), [
     `Package: ${packageName}`, 'Version: 0.1.0', `Architecture: ${architecture}`,
-    'Maintainer: Installer Test <test@example.invalid>', 'Description: installer fixture', '',
+    'Maintainer: Installer Test <test@example.invalid>', 'Description: installer fixture',
+    ...(depends ? [`Depends: ${depends}`] : []), '',
   ].join('\n'));
   const output = join(root, `${name}.deb`);
   execFileSync('dpkg-deb', ['--root-owner-group', '--build', tree, output], { stdio: 'ignore' });
@@ -86,6 +87,69 @@ test('accepts a local Git Khronos package', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Inst git-khronos/);
 });
+
+function gitPrerequisiteFixture(id, release) {
+  const packageFile = buildPackage(`requires-newer-git-${id}-${release}`, 'git-khronos', 'git (>= 1:2.39)');
+  const directory = join(root, `git-prerequisite-${id}-${release}`);
+  const bin = join(directory, 'bin');
+  mkdirSync(directory);
+  mkdirSync(bin);
+  const osRelease = join(directory, 'os-release');
+  writeFileSync(osRelease, `ID=${id}\nVERSION_ID=${release}\n`);
+  const script = join(directory, 'install.sh');
+  writeFileSync(script, readFileSync(installer, 'utf8').replaceAll('/etc/os-release',
+    "'" + osRelease.replaceAll("'", "'\\''") + "'"));
+  const query = join(bin, 'dpkg-query');
+  writeFileSync(query, `#!/bin/sh
+case "$*" in
+  *'git-khronos-desktop'*) exit 1 ;;
+  *'git') printf '%s\\t%s' "$FIXTURE_GIT_STATE" "$FIXTURE_GIT_VERSION" ;;
+  *) exit 99 ;;
+esac
+`);
+  chmodSync(query, 0o755);
+  const apt = join(bin, 'apt-get');
+  writeFileSync(apt, `#!/bin/sh
+case "$*" in
+  *--simulate*) printf 'APT simulation\\n' ;;
+  *) printf 'Fixture refuses a real APT operation\\n' >&2; exit 99 ;;
+esac
+`);
+  chmodSync(apt, 0o755);
+  return (state, version) => spawnSync('bash', [script, '--deb', packageFile, '--dry-run'], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+      FIXTURE_GIT_STATE: state, FIXTURE_GIT_VERSION: version },
+  });
+}
+
+test('requires separately provisioned Git without asking APT to upgrade stock Jammy Git', () => {
+  const run = gitPrerequisiteFixture('ubuntu', '22.04');
+  for (const [state, version] of [
+    ['', ''], ['installed', '1:2.34.1-1ubuntu1.18'], ['config-files', '1:2.53.0-1ubuntu1'],
+  ]) {
+    const result = run(state, version);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /separately provision a maintained newer Git/);
+    assert.doesNotMatch(result.stdout, /APT simulation/);
+  }
+  const accepted = run('installed', '1:2.43.0-1ubuntu7');
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /APT simulation/);
+});
+
+for (const [id, release] of [['ubuntu', '24.04'], ['ubuntu', '26.04'], ['debian', '12']]) {
+  test(`lets APT resolve Git on ${id} ${release}, whether Git is absent or already supported`, () => {
+    const run = gitPrerequisiteFixture(id, release);
+    for (const [state, version] of [
+      ['', ''], ['installed', '1:2.43.0-1ubuntu7'], ['installed', '1:2.34.1-1ubuntu1.18'],
+    ]) {
+      const result = run(state, version);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /APT simulation/);
+      assert.doesNotMatch(result.stderr, /separately provision/);
+    }
+  });
+}
 
 test('rejects conflicting and unknown options', () => {
   assert.match(run(['--deb', 'x.deb', '--uninstall']).stderr, /cannot be combined/);

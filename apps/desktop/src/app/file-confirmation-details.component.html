@@ -1,7 +1,7 @@
 @if (action(); as action) {
   @if (action.kind === 'discard-bulk' && action.preview; as preview) {
     @if (preview.blockedPaths.length) {
-      <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. Remove them from the request and review it again; no files will be discarded.</p>
+      <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. No files will be discarded. To continue, choose root-level files for a fresh preview.</p>
       <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
     } @else {
       <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>

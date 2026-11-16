@@ -1,0 +1,21 @@
+name: Provision newer Git on disposable Jammy CI
+description: Explicit external Git prerequisite for conditional Ubuntu 22.04 acceptance, never a user installer step
+runs:
+  using: composite
+  steps:
+    - name: Provision Git project's documented PPA on this hosted runner only
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$GITHUB_ACTIONS" = true
+        test "$RUNNER_ENVIRONMENT" = github-hosted
+        . /etc/os-release
+        test "$ID" = ubuntu
+        test "$VERSION_ID" = 22.04
+        # This source is maintained outside Ubuntu's security archive.
+        # add-apt-repository and APT retain normal signature verification.
+        sudo add-apt-repository --yes ppa:git-core/ppa
+        sudo apt-get update
+        sudo apt-get install --yes git
+        dpkg --compare-versions "$(dpkg-query -W -f='${Version}' git)" ge 1:2.39
+        git --version

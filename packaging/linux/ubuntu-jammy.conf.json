@@ -1,0 +1,13 @@
+{
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": [
+          "git (>= 1:2.39)",
+          "libc6 (>= 2.35)",
+          "libssl3"
+        ]
+      }
+    }
+  }
+}

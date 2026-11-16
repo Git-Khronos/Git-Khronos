@@ -39,6 +39,16 @@ def expected_debian_package():
     return version, f"Git-Khronos_{version}_amd64.deb"
 
 
+def verified_installed_executable(packaged, installed):
+    with packaged.open("rb") as stream:
+        expected = hashlib.file_digest(stream, "sha256").digest()
+    with installed.open("rb") as stream:
+        actual = hashlib.file_digest(stream, "sha256").digest()
+    if expected != actual:
+        raise RuntimeError("The installed executable differs from the reviewed Debian package")
+    return installed
+
+
 def stop_owned_process_group(process, timeout=10):
     """Stop a Popen started with start_new_session, including surviving writers."""
     group = process.pid
@@ -976,6 +986,8 @@ def main():
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
     parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools"), default="smoke")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--installed", action="store_true",
+                        help="Run /usr/bin/git-khronos after byte verification against the package (CI only)")
     parser.add_argument("--inherited-git-environment", action="store_true",
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
@@ -1017,6 +1029,10 @@ def main():
         executable = extracted / "usr/bin/git-khronos"
         with executable.open("rb") as executable_data:
             report["executableSha256"] = hashlib.file_digest(executable_data, "sha256").hexdigest()
+        if args.installed:
+            executable = verified_installed_executable(executable, Path("/usr/bin/git-khronos"))
+        report["executable"] = str(executable)
+        report["installedExecutable"] = args.installed
         if args.suite == "gitlab":
             dependencies = run("dpkg-deb", "-f", str(package), "Depends")
             names = {alternative.strip().split()[0] for clause in dependencies.split(",")

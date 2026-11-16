@@ -17,11 +17,24 @@ from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
-    start_private_dbus, stop_owned_process_group, terminal_csp_rendering,
+    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
 )
 
 
 class PackageIdentityTests(unittest.TestCase):
+    def test_installed_acceptance_requires_the_exact_packaged_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packaged, installed = (Path(directory) / name for name in ("packaged", "installed"))
+            packaged.write_bytes(b"owned package executable")
+            installed.write_bytes(packaged.read_bytes())
+            self.assertEqual(verified_installed_executable(packaged, installed), installed)
+            installed.write_bytes(b"another executable")
+            with self.assertRaisesRegex(RuntimeError, "differs from the reviewed Debian package"):
+                verified_installed_executable(packaged, installed)
+            installed.unlink()
+            with self.assertRaises(FileNotFoundError):
+                verified_installed_executable(packaged, installed)
+
     def test_package_name_follows_tauri_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -38,7 +51,7 @@ class PackageIdentityTests(unittest.TestCase):
             package = root / filename
             package.write_bytes(b"package fixture")
             args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
-                                   headless=False, inherited_git_environment=False)
+                                   headless=False, inherited_git_environment=False, installed=False)
             with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
                     patch("native_acceptance.shutil.which", return_value="/fixture/tool"), \
                     patch("native_acceptance.run", side_effect=lambda *command: {
@@ -665,7 +678,7 @@ class FixtureTests(unittest.TestCase):
                 children.append(bus)
                 return {'pid': 123, 'private': True, 'hostServiceActivation': False}
             args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
-                                   headless=False, inherited_git_environment=False)
+                                   headless=False, inherited_git_environment=False, installed=False)
             with ExitStack() as mocks:
                 for target, value in {
                     "native_acceptance.argparse.ArgumentParser.parse_args": args,

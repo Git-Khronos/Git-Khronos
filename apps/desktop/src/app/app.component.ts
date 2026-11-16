@@ -1052,6 +1052,11 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly publishRemote = signal('');
   protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
   protected readonly fileConfirmationDetailsReady = signal<PendingFileAction | null>(null);
+  protected readonly blockedDiscardChoicePaths = signal<string[] | null>(null);
+  protected readonly blockedDiscardChoiceSelectedPaths = signal<string[]>([]);
+  protected readonly blockedDiscardChoiceLoading = signal(false);
+  protected readonly blockedDiscardChoiceError = signal<string | null>(null);
+  private blockedDiscardChoiceRequest = 0;
   protected readonly selectedDiscardPaths = signal<string[]>([]);
   protected readonly discardSelectionMode = signal(false);
   protected readonly savedDiscards = signal<DiscardRecovery[] | null>(null);
@@ -1740,8 +1745,13 @@ export class AppComponent implements OnInit, OnDestroy {
     effect(() => {
       this.git.activeRepositoryId();
       untracked(() => {
+        this.blockedDiscardChoiceRequest++;
         this.selectedDiscardPaths.set([]);
         this.discardSelectionMode.set(false);
+        this.blockedDiscardChoicePaths.set(null);
+        this.blockedDiscardChoiceSelectedPaths.set([]);
+        this.blockedDiscardChoiceLoading.set(false);
+        this.blockedDiscardChoiceError.set(null);
         this.savedDiscards.set(null);
         this.savedDiscardsRepositoryId.set(null);
         this.savedDiscardsReturnFocus = null;
@@ -11865,6 +11875,140 @@ export class AppComponent implements OnInit, OnDestroy {
     }, this.workingTreeOptionsToggle()?.nativeElement ?? null);
   }
 
+  protected async chooseRootFilesFromBlockedDiscard(): Promise<void> {
+    const action = this.pendingFileAction();
+    const repositoryId = action?.repositoryId;
+    if (!action || action.kind !== 'discard-bulk' || !action.preview?.blockedPaths.length || !repositoryId) return;
+    if (repositoryId !== this.git.activeRepositoryId()) {
+      this.blockedDiscardChoiceError.set('The active repository changed. Close this review and inspect the other repository before continuing.');
+      return;
+    }
+    if (this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+
+    const request = ++this.blockedDiscardChoiceRequest;
+    this.blockedDiscardChoiceLoading.set(true);
+    this.blockedDiscardChoiceError.set(null);
+    try {
+      const preview = await this.git.previewDiscard(null);
+      if (request !== this.blockedDiscardChoiceRequest || this.pendingFileAction() !== action) return;
+      if (repositoryId !== this.git.activeRepositoryId()) {
+        this.blockedDiscardChoiceError.set('The active repository changed while refreshing the file list. No files were discarded.');
+        return;
+      }
+      if (!preview) {
+        this.blockedDiscardChoiceError.set('A fresh file preview could not be prepared. No files were discarded; retry or cancel this review.');
+        return;
+      }
+
+      const refreshedAction: PendingFileAction = {
+        ...action,
+        path: 'Choose root-level files',
+        preview,
+      };
+      this.pendingFileAction.set(refreshedAction);
+      this.fileConfirmationDetailsReady.set(null);
+      this.blockedDiscardChoicePaths.set(preview.paths);
+      this.blockedDiscardChoiceSelectedPaths.set([]);
+      afterNextRender(() => {
+        if (this.pendingFileAction() === refreshedAction && this.blockedDiscardChoicePaths() === preview.paths) {
+          document.querySelector<HTMLInputElement>('.blocked-discard-choice input[type="checkbox"]:not(:disabled)')
+            ?.focus({ preventScroll: true });
+        }
+      }, { injector: this.injector });
+    } finally {
+      if (request === this.blockedDiscardChoiceRequest) this.blockedDiscardChoiceLoading.set(false);
+    }
+  }
+
+  protected toggleBlockedDiscardChoicePath(path: string): void {
+    const candidates = this.blockedDiscardChoicePaths();
+    if (!candidates?.includes(path) || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    this.blockedDiscardChoiceError.set(null);
+    this.blockedDiscardChoiceSelectedPaths.update(paths => paths.includes(path)
+      ? paths.filter(candidate => candidate !== path) : [...paths, path]);
+  }
+
+  protected returnToBlockedDiscardReview(): void {
+    if (this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    this.blockedDiscardChoiceRequest++;
+    this.blockedDiscardChoiceLoading.set(false);
+    const action = this.pendingFileAction();
+    if (action?.kind === 'discard-bulk' && action.preview) {
+      this.pendingFileAction.set({
+        ...action,
+        path: `${action.preview.paths.length} unstaged files`,
+      });
+      this.fileConfirmationDetailsReady.set(null);
+    }
+    this.blockedDiscardChoicePaths.set(null);
+    this.blockedDiscardChoiceSelectedPaths.set([]);
+    this.blockedDiscardChoiceError.set(null);
+    afterNextRender(() => {
+      const target = document.querySelector<HTMLButtonElement>('[data-choose-root-files]')
+        ?? document.querySelector<HTMLButtonElement>('[data-file-dialog-cancel]');
+      target?.focus({ preventScroll: true });
+    }, { injector: this.injector });
+  }
+
+  protected async previewBlockedDiscardChoice(): Promise<void> {
+    const action = this.pendingFileAction();
+    const repositoryId = action?.repositoryId;
+    const candidates = this.blockedDiscardChoicePaths();
+    const selected = this.blockedDiscardChoiceSelectedPaths();
+    if (!action || action.kind !== 'discard-bulk' || !repositoryId || !candidates || !selected.length
+      || selected.some(path => !candidates.includes(path))) return;
+    if (repositoryId !== this.git.activeRepositoryId()) {
+      this.blockedDiscardChoiceError.set('The active repository changed. Close this review and inspect the other repository before continuing.');
+      return;
+    }
+    if (this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+
+    const request = ++this.blockedDiscardChoiceRequest;
+    this.blockedDiscardChoiceLoading.set(true);
+    this.blockedDiscardChoiceError.set(null);
+    try {
+      const preview = await this.git.previewDiscard(selected);
+      if (request !== this.blockedDiscardChoiceRequest || this.pendingFileAction() !== action) return;
+      if (repositoryId !== this.git.activeRepositoryId()) {
+        this.blockedDiscardChoiceError.set('The active repository changed while preparing the selected-file preview. No files were discarded.');
+        return;
+      }
+      if (!preview) {
+        this.blockedDiscardChoiceError.set(
+          `${this.git.error() || 'The selected files could not be previewed.'} No files were discarded; adjust the selection or retry.`,
+        );
+        return;
+      }
+
+      const unexpectedPaths = preview.paths.filter(path => !selected.includes(path));
+      if (unexpectedPaths.length) {
+        this.blockedDiscardChoiceError.set(
+          `The fresh preview included files you did not select: ${unexpectedPaths.join(', ')}. No files were discarded.`,
+        );
+        return;
+      }
+
+      const accountedPaths = new Set([...preview.paths, ...preview.blockedPaths, ...preview.skippedPaths]);
+      const missingPaths = selected.filter(path => !accountedPaths.has(path));
+      if (missingPaths.length) {
+        this.blockedDiscardChoiceError.set(
+          `The fresh preview no longer includes: ${missingPaths.join(', ')}. No files were discarded; go back and choose again.`,
+        );
+        return;
+      }
+
+      const returnFocus = this.fileActionReturnFocus;
+      this.dismissFileConfirmation(false);
+      this.openFileConfirmation({
+        ...action,
+        path: `${preview.paths.length} unstaged files`,
+        preview,
+      }, returnFocus);
+    } finally {
+      if (request === this.blockedDiscardChoiceRequest) this.blockedDiscardChoiceLoading.set(false);
+    }
+  }
+
   protected async openSavedDiscards(): Promise<void> {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
@@ -12606,8 +12750,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected dismissFileConfirmation(restoreFocus = true): void {
     const target = restoreFocus ? this.fileActionReturnFocus : null;
+    this.blockedDiscardChoiceRequest++;
     this.pendingFileAction.set(null);
     this.fileConfirmationDetailsReady.set(null);
+    this.blockedDiscardChoicePaths.set(null);
+    this.blockedDiscardChoiceSelectedPaths.set([]);
+    this.blockedDiscardChoiceLoading.set(false);
+    this.blockedDiscardChoiceError.set(null);
     this.fileActionReturnFocus = null;
     if (target?.isConnected) {
       afterNextRender(() => {

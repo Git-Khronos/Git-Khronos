@@ -1058,6 +1058,30 @@ Used for:
 
 No source code, assets, or product wording were copied.
 
+## Conditional Ubuntu release baseline
+
+Sources:
+
+- [Jammy Git packages](https://packages.ubuntu.com/jammy-updates/git)
+- [Jammy WebKitGTK 4.1 runtime](https://packages.ubuntu.com/jammy-updates/libwebkit2gtk-4.1-0)
+- [Noble WebDriver package and runtime dependency](https://packages.ubuntu.com/noble/webkit2gtk-driver)
+- [Resolute WebDriver package and runtime dependency](https://packages.ubuntu.com/resolute/webkitgtk-webdriver)
+- [Resolute WebDriver executable path](https://packages.ubuntu.com/resolute/amd64/webkitgtk-webdriver/filelist)
+- [Jammy D-Bus executable paths](https://packages.ubuntu.com/jammy/amd64/dbus/filelist)
+- [Resolute D-Bus dependency split](https://packages.ubuntu.com/resolute/dbus)
+- [Git's Linux installation guidance](https://git-scm.com/install/linux)
+- [Git stable PPA and maintenance boundary](https://launchpad.net/~git-core/+archive/ubuntu/ppa)
+
+Used to distinguish the Jammy glibc 2.35/WebKitGTK baseline from its insufficient
+stock Git 2.34, retain Git >=2.39 as a separately supplied prerequisite, and
+explicitly provision that prerequisite only in disposable CI. Cross-release
+support depends on exact-artifact acceptance, not package availability alone.
+WebDriver provisioning uses each release's package name while retaining the
+same executable name and a version-matched WebKitGTK 4.1 runtime.
+The common `dbus` package supplies the native harness commands directly on
+Jammy and through package dependencies on newer releases.
+No source code copied.
+
 ## Native window title updates
 
 Source:

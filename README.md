@@ -69,8 +69,22 @@ architecture against it, confirms the package is Git Khronos, and installs it
 with APT (which resolves dependencies and asks for `sudo`). Download and read
 the script before running it:
 
-The Debian package requires glibc 2.39 or newer (the Ubuntu 24.04 baseline).
-APT refuses installation on systems with an older glibc.
+The release pipeline targets **Ubuntu 22.04, 24.04 and 26.04, amd64**, using
+one package built on Ubuntu 22.04 (glibc 2.35). Publication requires the exact
+same package to pass installed-app acceptance on all three releases. This is
+a qualification gate, not evidence that an unrun build or older release works.
+
+**Ubuntu 22.04 requires separately provisioned Git 2.39 or newer.** Its stock
+Git 2.34 is insufficient. Newer Git must also be registered with Debian's
+package manager so APT can satisfy the dependency; a PATH-only source install
+does not do that. On Ubuntu 22.04, the installer refuses an insufficient
+installed Git rather than upgrading it. You choose and maintain any external
+Git source yourself; the installer never adds an APT source. On other
+Debian/Ubuntu releases it lets APT resolve dependencies, including installing
+Git when absent. Ubuntu 24.04 and 26.04 provide a sufficiently new Git.
+WebKitGTK 4.1 on Ubuntu 22.04 requires the official updates and Universe archives.
+Older published packages and local builds may require a newer glibc; APT checks
+the actual package dependencies.
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Git-Khronos/Git-Khronos/main/install.sh
@@ -108,8 +122,13 @@ package belongs to Git Khronos, and then asks for administrator access through
 Khronos in the desktop application menu, and installs its icons and license
 notices in the standard system locations. Git 2.39 or newer is a required
 package dependency; OpenSSH client and Git LFS are recommended dependencies.
-The Debian package requires glibc 2.39 or newer, matching the Ubuntu 24.04
-build baseline.
+Normal local builds retain their glibc 2.39 floor. The dedicated
+`pnpm nx run desktop:package-ubuntu` target runs only on Ubuntu 22.04 amd64 and
+uses the Jammy release overlay with a 2.35 floor, then checks the actual ELF.
+Tauri's generated dependencies are retained; they are not rewritten to make a
+newer-system build appear portable. Local builds are not portable releases.
+The [Ubuntu qualification gates](docs/linux-acceptance.md#ubuntu-release-qualification)
+check the artifact rather than weakening these dependencies.
 
 To build and verify the `.deb` without installing it, print the generated
 package path, or remove the system package while leaving repositories and

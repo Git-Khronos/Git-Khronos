@@ -23,14 +23,15 @@ concurrency:
 
 jobs:
   debian:
-    name: Build Ubuntu package
-    runs-on: ubuntu-24.04
+    name: Build Ubuntu package on Jammy
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
+      - uses: ./.github/actions/jammy-git
       - name: Require release commit to be on main
         run: |
           git fetch origin main
@@ -54,7 +55,7 @@ jobs:
       - name: Install Linux build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl fakeroot
       - name: Check release tag matches project version
         run: |
           version="${RELEASE_TAG#v}"
@@ -81,7 +82,10 @@ jobs:
           pnpm nx run desktop:package-test --output-style=static
       - name: Build Debian package
         run: |
-          pnpm nx run desktop:package-deb --output-style=static
+          pnpm nx run desktop:package-ubuntu --output-style=static
+          package="$(task --silent package:deb:path)"
+          mkdir -p test-results
+          node tools/check-linux-abi.mjs "$package" > test-results/ubuntu-abi-build.json
       - name: Install checksum-verified Syft
         run: |
           version=1.57.1
@@ -135,9 +139,17 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  ubuntu-runtime:
+    name: Qualify the exact release package
+    needs: debian
+    uses: ./.github/workflows/ubuntu-package-acceptance.yml
+    with:
+      artifact-name: release-assets
+      ref: ${{ inputs.release_tag || github.ref_name }}
+
   publish:
     name: Publish GitHub release
-    needs: debian
+    needs: [debian, ubuntu-runtime]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -163,4 +175,4 @@ jobs:
             --verify-tag \
             --latest \
             --title "Git Khronos ${version}" \
-            --notes "Debian package built and verified on Ubuntu 24.04. Requires glibc 2.39 or newer. Includes a CycloneDX inventory of the Debian artifact and a separate source-lockfile dependency inventory (which includes development/build dependencies), with SHA256SUMS for all three assets."
+            --notes "One amd64 Debian package built on Ubuntu 22.04 (glibc 2.35) and qualified unchanged on Ubuntu 22.04, 24.04 and 26.04. Git >=2.39 is required: Ubuntu 22.04 users must separately provision a maintained newer Git; stock Jammy Git 2.34 is insufficient. Neither the installer nor this package adds APT repositories. Disposable Jammy CI uses the externally maintained git-core/ppa, not Ubuntu's stock Git. Includes CycloneDX package and source dependency inventories and SHA256SUMS."
