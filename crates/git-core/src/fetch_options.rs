@@ -229,7 +229,7 @@ pub fn fetch_with_options(
     Ok(())
 }
 
-fn check_tracking_aliases(path: &Path, namespace: &str) -> Result<(), AppError> {
+pub(crate) fn check_tracking_aliases(path: &Path, namespace: &str) -> Result<(), AppError> {
     let storage = run_git(path, &["config", "--get", "extensions.refStorage"])?;
     if storage.status.code() != Some(1) {
         ensure_success("read reference storage format", &storage)?;

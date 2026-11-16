@@ -7587,8 +7587,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const branch = this.branchForReferenceGroup(group);
     if (branch) return branch.current ? 'Current branch.' : `Double-click to check out ${branch.name}.`;
     const remotes = group.locations.filter((location) => location.kind === 'remote');
-    if (remotes.length > 1) return 'Double-click a remote location to create a tracking branch.';
-    if (remotes.length === 1) return `Double-click to create a tracking branch for ${remotes[0].label}.`;
+    if (remotes.length > 1) return 'Double-click a remote location to fetch and check out its local branch.';
+    if (remotes.length === 1) return `Double-click to fetch and check out the local branch for ${remotes[0].label}.`;
     return '';
   }
 

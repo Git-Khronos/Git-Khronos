@@ -7,6 +7,7 @@ interface TestApp {
     repository: () => RepositorySnapshot;
     busy: Signal<boolean>;
     error: WritableSignal<string | null>;
+    activity: Signal<string>;
     activeRepositoryId: WritableSignal<string | null>;
     repositories: WritableSignal<RepositorySnapshot[]>;
     selectedWorkingTreeFile: WritableSignal<string | null>;
@@ -31,8 +32,8 @@ declare global {
   }
 }
 
-async function installBackend(page: Page, options: { fail?: boolean; hold?: boolean; holdRecovery?: boolean } = {}): Promise<void> {
-  await page.evaluate(({ fail, hold, holdRecovery }) => {
+async function installBackend(page: Page, options: { fail?: boolean; hold?: boolean; holdRecovery?: boolean; remoteOutcome?: 'upToDate' | 'ahead' | 'diverged' } = {}): Promise<void> {
+  await page.evaluate(({ fail, hold, holdRecovery, remoteOutcome }) => {
     const host = window;
     const app = host.ng.getComponent(document.querySelector('gc-root'));
     let snapshot = structuredClone(app.git.repository());
@@ -47,7 +48,7 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
           if (holdRecovery) await new Promise<void>((resolve) => { host.__completeBranchRecovery = resolve; });
           return snapshot;
         }
-        if (!['checkout_branch', 'checkout_remote_branch', 'checkout_commit', 'create_branch', 'create_branch_at', 'create_branch_reference'].includes(command)) {
+        if (!['checkout_branch', 'sync_checkout_remote_branch', 'checkout_commit', 'create_branch', 'create_branch_at', 'create_branch_reference'].includes(command)) {
           host.__otherCalls.push(command);
           throw new Error(`Unexpected command: ${command}`);
         }
@@ -62,18 +63,21 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
           throw new Error('Branch name is invalid. Choose a different name.');
         }
         if (command === 'checkout_commit') return snapshot;
-        const remote = command === 'checkout_remote_branch'
+        const remote = command === 'sync_checkout_remote_branch'
           ? snapshot.branches.find((candidate) => candidate.remote && candidate.name === args['name'])
           : null;
-        if (command === 'checkout_remote_branch' && !remote) throw new Error('Remote branch no longer exists.');
+        if (command === 'sync_checkout_remote_branch' && !remote) throw new Error('Remote branch no longer exists.');
         const name = remote ? remote.name.slice(remote.name.indexOf('/') + 1) : args['name'];
         const branch = snapshot.branches.find((candidate) => !candidate.remote && candidate.name === name);
-        if (remote && branch) throw new Error(`A local branch named '${name}' already exists.`);
         const referenceOnly = command === 'create_branch_reference';
         const oid = command === 'create_branch_at' || referenceOnly ? args['oid'] : remote?.oid ?? branch?.oid ?? snapshot.headOid!;
         const branches = referenceOnly
           ? [...snapshot.branches]
-          : snapshot.branches.map((candidate) => ({ ...candidate, current: !candidate.remote && candidate.name === name }));
+          : snapshot.branches.map((candidate) => ({
+            ...candidate,
+            current: !candidate.remote && candidate.name === name,
+            oid: remote && !candidate.remote && candidate.name === name ? remote.oid : candidate.oid,
+          }));
         if (!branch) branches.push({
           ...snapshot.branches.find((candidate) => candidate.current)!,
           name,
@@ -87,7 +91,7 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
         snapshot = referenceOnly
           ? { ...snapshot, branches }
           : { ...snapshot, branches, headOid: oid, status: { ...snapshot.status, branch: name } };
-        return snapshot;
+        return remote ? { snapshot, outcome: remoteOutcome ?? (branch ? 'updated' : 'created') } : snapshot;
       },
     };
   }, options);
@@ -391,7 +395,7 @@ test('keeps branch reference navigation and context menus available during a mut
   await remote.click();
   await expect(remote).toHaveClass(/tip-selected/);
   await remote.click({ button: 'right' });
-  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: /Copy/ })).toBeEnabled();
   await page.keyboard.press('Escape');
   await remote.dblclick();
@@ -1106,10 +1110,63 @@ test('requires a remote selection before checking out a group with multiple remo
   await expect(stack).toHaveClass(/pointer-expanded/);
   await stack.getByRole('menuitem', { name: 'Remote branch upstream/main' }).dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
-    .toEqual([{ command: 'checkout_remote_branch', name: 'upstream/main' }]);
+    .toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/main' }]);
   await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
-    .toContain("A local branch named 'main' already exists.");
+    .toBeNull();
 });
+
+for (const activation of ['dblclick', 'keyboard'] as const) {
+  test(`updates an existing branch from a remote hidden in a mixed graph chip using ${activation}`, async ({ page }) => {
+    await page.evaluate(() => {
+      const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+      const repository = git.repository();
+      const main = repository.branches.find(branch => !branch.remote && branch.name === 'main')!;
+      const remote = repository.branches.find(branch => branch.remote && branch.name === 'origin/main')!;
+      const oid = remote.oid;
+      git.repositories.update(repositories => repositories.map(candidate => candidate.id !== repository.id ? candidate : {
+        ...candidate,
+        headOid: oid,
+        status: { ...candidate.status, branch: 'dev' },
+        branches: [
+          ...candidate.branches.map(branch => branch.name === 'main' && !branch.remote ? { ...branch, current: false } : branch),
+          { ...main, name: 'dev', fullName: 'refs/heads/dev', oid, current: true, upstream: null },
+        ],
+        commits: candidate.commits.map(commit => commit.oid !== oid ? commit : {
+          ...commit, decorations: ['HEAD -> dev', 'origin/main', 'tag: mixed-chip'],
+        }),
+      }));
+    });
+    await installBackend(page);
+    const stack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'dev' }) });
+    await stack.locator('.reference-stack-trigger').click();
+    const remote = stack.getByRole('menuitem', { name: 'Remote branch origin/main' });
+    if (activation === 'keyboard') {
+      await remote.focus();
+      await remote.press('Enter');
+    } else {
+      await remote.dblclick();
+    }
+    await expect.poll(() => page.evaluate(() => window.__branchCalls))
+      .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/main' }]);
+    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+      .toBe('main');
+  });
+}
+
+for (const [outcome, message] of [
+  ['upToDate', 'already up to date'],
+  ['ahead', 'local commits are ahead'],
+  ['diverged', 'histories diverged. Review and choose merge or rebase.'],
+] as const) {
+  test(`reports ${outcome} after remote checkout`, async ({ page }) => {
+    await installBackend(page, { remoteOutcome: outcome });
+    await page.locator('#reference-section-local').getByLabel('Remote branch origin/main', { exact: true })
+      .click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Fetch and check out local branch' }).click();
+    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.activity()))
+      .toContain(message);
+  });
+}
 
 test('checks out an unambiguous remote graph reference as a local tracking branch', async ({ page }) => {
   await prepareRemoteDocsStack(page, false);
@@ -1117,7 +1174,7 @@ test('checks out an unambiguous remote graph reference as a local tracking branc
   await page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'docs' }) })
     .locator('.reference-stack-trigger').dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
-    .toEqual([{ command: 'checkout_remote_branch', name: 'origin/docs' }]);
+    .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/docs' }]);
   await expect.poll(() => page.evaluate(() => {
     const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
     const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
@@ -1134,7 +1191,7 @@ test('creates a tracking branch for the explicitly selected remote location', as
   expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
   await stack.getByRole('menuitem', { name: 'Remote branch upstream/docs' }).dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
-    .toEqual([{ command: 'checkout_remote_branch', name: 'upstream/docs' }]);
+    .toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/docs' }]);
   await expect.poll(() => page.evaluate(() => {
     const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
     const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
@@ -1143,7 +1200,7 @@ test('creates a tracking branch for the explicitly selected remote location', as
   })).toEqual(['docs', true, 'upstream/docs', true]);
 });
 
-test('surfaces an existing local branch when a remote tracking checkout cannot be created', async ({ page }) => {
+test('fetches and updates an existing local branch from the selected remote', async ({ page }) => {
   await page.evaluate(() => {
     const git = window.ng.getComponent(document.querySelector('gc-root')).git;
     const repository = git.repository();
@@ -1159,9 +1216,11 @@ test('surfaces an existing local branch when a remote tracking checkout cannot b
   await page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'main' }) })
     .locator('.reference-stack-trigger').dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
-    .toEqual([{ command: 'checkout_remote_branch', name: 'origin/main' }]);
+    .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/main' }]);
   await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
-    .toContain("A local branch named 'main' already exists.");
-  expect(await page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
-    .toBe('main');
+    .toBeNull();
+  await expect.poll(() => page.evaluate(() => {
+    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    return [repository.status.branch, repository.headOid === repository.branches.find(branch => branch.name === 'origin/main')?.oid];
+  })).toEqual(['main', true]);
 });

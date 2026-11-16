@@ -23,7 +23,9 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
         if (command === 'refresh_repository_status') return Promise.resolve(fresh.status);
         if (!state.started) {
           state.started = true;
-          return new Promise(resolve => { state.finish = () => resolve(fresh); });
+          return new Promise(resolve => { state.finish = () => resolve(
+            command === 'sync_checkout_remote_branch' ? { snapshot: fresh, outcome: 'updated' } : fresh,
+          ); });
         }
         return Promise.resolve(fresh);
       } };
@@ -74,6 +76,28 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
     }
   });
 }
+
+test('records a remote checkout after a verified partial update failure', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    const partial = { ...repository, status: { ...repository.status, branch: 'remote-branch' } };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      if (command === 'refresh_repository_status') return Promise.resolve(partial.status);
+      if (command === 'refresh_repository') return Promise.resolve(partial);
+      return Promise.reject({ kind: 'remoteCheckoutUpdateFailed', message: 'Fast-forward failed',
+        hint: 'Inspect the branch and working files before retrying.' });
+    } };
+    const outcome = await git.checkoutRemote('origin/remote-branch');
+    return { outcome, entry: git.operationHistory()[repository.id], before: repository.status.branch, error: git.error() };
+  });
+  expect(result.outcome.status).toBe('error');
+  expect(result.error).toContain('Fast-forward failed');
+  expect(result.entry).toMatchObject({ beforeBranch: result.before, afterBranch: 'remote-branch' });
+});
 
 for (const operation of ['checkout', 'revertCommit', 'commit', 'renameBranch']) {
   test(`${operation} does not record failed work when its error is dismissed during refresh`, async ({ page }) => {

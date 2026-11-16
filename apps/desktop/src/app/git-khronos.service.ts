@@ -32,6 +32,7 @@ import type {
   ResetPreview,
   RepositoryStatus,
   RepositorySnapshot,
+  RemoteCheckoutOutcome,
   IncomingRepositoryLinkState,
   OpenedRepositoryLink,
   RepositoryLinkReadPolicy,
@@ -117,6 +118,8 @@ interface MutationInspection {
   workingTree: number;
   conflict: number;
 }
+
+type RepositoryMutationCommand = SnapshotCommand | 'sync_checkout_remote_branch';
 
 function sameItems<T>(left: readonly T[], right: readonly T[], key: (item: T) => string): boolean {
   return left.length === right.length && left.every((item, index) => key(item) === key(right[index]));
@@ -1400,12 +1403,24 @@ export class GitKhronosService {
       const repository = this.repository();
       const beforeBranch = repository?.status.branch;
       const result = await this.mutateWithResult(
-        'checkout_remote_branch',
-        `Creating a tracking branch for ${name}…`,
-        `Checked out ${name} as a local tracking branch`,
+        'sync_checkout_remote_branch',
+        `Fetching and checking out ${name}…`,
+        (_snapshot, outcome) => {
+          switch (outcome) {
+            case 'created': return `Created and checked out a tracking branch for ${name}`;
+            case 'updated': return `Checked out and fast-forwarded the local branch for ${name}`;
+            case 'upToDate': return `Checked out the local branch for ${name}; already up to date`;
+            case 'ahead': return `Checked out the local branch for ${name}; local commits are ahead`;
+            case 'diverged': return `Checked out the local branch for ${name}; histories diverged. Review and choose merge or rebase.`;
+            default: throw new Error('Remote checkout returned no outcome. Refresh the repository before retrying.');
+          }
+        },
         { name },
       );
-      if (result?.status === 'success') this.recordCheckout(repository?.id, beforeBranch);
+      if (result?.status === 'success' || (
+        result?.status === 'error' && !result.refreshError
+        && ['remoteCheckoutUpdateFailed', 'remoteCheckoutInterrupted', 'remoteCheckoutRefreshFailed'].includes(result.failureKind ?? '')
+      )) this.recordCheckout(repository?.id, beforeBranch);
       return result;
     });
   }
@@ -2972,20 +2987,20 @@ export class GitKhronosService {
     }
   }
 
-  private async mutate<K extends SnapshotCommand>(
+  private async mutate<K extends RepositoryMutationCommand>(
     command: K,
     pending: string,
-    done: string | ((snapshot: RepositorySnapshot) => string),
+    done: string | ((snapshot: RepositorySnapshot, outcome: RemoteCheckoutOutcome | null) => string),
     ...options: MutationOptions<K>
   ): Promise<'success' | 'error' | 'cancelled' | undefined> {
     return (await this.mutateWithResult(command, pending, done, ...options))?.status;
   }
 
   /** Captures this mutation's failure before refreshes or later actions replace the shared error. */
-  private async mutateWithResult<K extends SnapshotCommand>(
+  private async mutateWithResult<K extends RepositoryMutationCommand>(
     command: K,
     pending: string,
-    done: string | ((snapshot: RepositorySnapshot) => string),
+    done: string | ((snapshot: RepositorySnapshot, outcome: RemoteCheckoutOutcome | null) => string),
     ...options: MutationOptions<K>
   ): Promise<MutationResult | null> {
     const repo = this.repository();
@@ -2993,11 +3008,11 @@ export class GitKhronosService {
     return this.mutateRepositoryWithResult(repo, command, pending, done, ...options);
   }
 
-  async mutateRepositoryWithResult<K extends SnapshotCommand>(
+  async mutateRepositoryWithResult<K extends RepositoryMutationCommand>(
     repo: RepositorySnapshot,
     command: K,
     pending: string,
-    done: string | ((snapshot: RepositorySnapshot) => string),
+    done: string | ((snapshot: RepositorySnapshot, outcome: RemoteCheckoutOutcome | null) => string),
     ...options: MutationOptions<K>
   ): Promise<MutationResult> {
     const [extra = {}, preserveConflictOnFailure = false] = options;
@@ -3016,12 +3031,19 @@ export class GitKhronosService {
       const operationId = this.isCancelableCommand(command) ? crypto.randomUUID() : null;
       const result = await this.run(pending, async report => {
         let snapshot: RepositorySnapshot;
+        let checkoutOutcome: RemoteCheckoutOutcome | null = null;
         try {
-          snapshot = await invokeCommand(command, {
+          const response = await invokeCommand(command, {
             repoId: repo.id,
             ...extra,
             ...(operationId ? { operationId } : {}),
-          } as CommandArgs<K>) as RepositorySnapshot;
+          } as CommandArgs<K>);
+          if ('outcome' in response && 'snapshot' in response) {
+            snapshot = response.snapshot;
+            checkoutOutcome = response.outcome;
+          } else {
+            snapshot = response;
+          }
         } catch (error: unknown) {
           failureKind = this.errorKind(error);
           if (command === 'ignore_path') {
@@ -3070,7 +3092,7 @@ export class GitKhronosService {
           ignoreFailure = this.formatError(error);
           throw error;
         }
-        report(typeof done === 'function' ? done(snapshot) : done);
+        report(typeof done === 'function' ? done(snapshot, checkoutOutcome) : done);
       }, repo.id, operationId);
       let failure = result === 'success' ? null : command === 'ignore_path' ? ignoreFailure ?? this.error() : this.error();
       if (result === 'error' && ownsRepository()) {
@@ -3521,6 +3543,7 @@ export class GitKhronosService {
   private isCancelableCommand(command: string): boolean {
     return [
       'fetch_repository',
+      'sync_checkout_remote_branch',
       'fetch_branches',
       'pull_repository',
       'push_repository',

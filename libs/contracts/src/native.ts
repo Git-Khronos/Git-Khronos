@@ -365,6 +365,8 @@ export type ReferenceTransport = { remote: string; name: string; kind: string; d
 export type ReflogEntry = { oid: string; selector: string; subject: string; authorName: string; authorEmail: string }
 export type ReflogPage = { entries: ReflogEntry[]; truncated: boolean }
 export type Remote = { name: string; fetchUrl: string; pushUrl: string }
+export type RemoteCheckoutOutcome = "created" | "updated" | "upToDate" | "ahead" | "diverged"
+export type RemoteCheckoutResult = { snapshot: RepositorySnapshot; outcome: RemoteCheckoutOutcome }
 export type RepositoryChanged = { repositoryId: string }
 export type RepositoryFile = { path: string; tracked: boolean; ignored: boolean; symbolicLink: boolean; deletable: boolean }
 export type RepositoryFileMutation = { snapshot: RepositorySnapshot | null; refreshError: AppError | null }
@@ -648,6 +650,7 @@ export function commit_changes(args: { repoId: string; message: string; amend: b
 export function update_head_message(args: { repoId: string; expectedOid: string; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
 export function checkout_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
 export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
+export function sync_checkout_remote_branch(args: { repoId: string; name: string; operationId: string }): Promise<RemoteCheckoutResult> { return TAURI_INVOKE("sync_checkout_remote_branch", args); }
 export function create_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch", args); }
 export function create_branch_at(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_at", args); }
 export function create_branch_reference(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_reference", args); }
@@ -915,6 +918,7 @@ export type CommandMap = {
   update_head_message: typeof update_head_message;
   checkout_branch: typeof checkout_branch;
   checkout_remote_branch: typeof checkout_remote_branch;
+  sync_checkout_remote_branch: typeof sync_checkout_remote_branch;
   create_branch: typeof create_branch;
   create_branch_at: typeof create_branch_at;
   create_branch_reference: typeof create_branch_reference;

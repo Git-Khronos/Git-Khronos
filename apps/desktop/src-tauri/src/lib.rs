@@ -262,6 +262,13 @@ struct RepositorySnapshot {
     data: RepositoryData,
 }
 
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct RemoteCheckoutResult {
+    snapshot: RepositorySnapshot,
+    outcome: git_khronos_git_core::RemoteCheckoutOutcome,
+}
+
 #[tauri::command]
 #[specta::specta]
 fn system_info() -> SystemInfo {
@@ -1048,6 +1055,47 @@ fn checkout_remote_branch(
     mutate_and_refresh(&repo_id, &state, |path| {
         git_checkout_remote_branch(path, &name)
     })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn sync_checkout_remote_branch(
+    repo_id: String,
+    name: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RemoteCheckoutResult, AppError> {
+    let (cancellation, _active_operation) = register_active_operation(&app, operation_id.clone())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        let outcome = authentication::run(
+            &app,
+            &operation_id,
+            Some(&repo_id),
+            &cancellation,
+            true,
+            || {
+                git_khronos_git_core::sync_checkout_remote_branch(
+                    &session.path,
+                    &name,
+                    &cancellation,
+                )
+            },
+        )?;
+        let snapshot = build_snapshot(repo_id, &session).map_err(|error| AppError {
+            kind: "remoteCheckoutRefreshFailed".into(),
+            message: format!(
+                "The remote checkout completed, but the repository could not refresh: {}",
+                error.message
+            ),
+            hint: Some("Refresh the repository and inspect the branch before retrying.".into()),
+        })?;
+        Ok(RemoteCheckoutResult { snapshot, outcome })
+    })
+    .await
+    .map_err(background_task_error)?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -4101,6 +4149,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             update_head_message,
             checkout_branch,
             checkout_remote_branch,
+            sync_checkout_remote_branch,
             create_branch,
             create_branch_at,
             create_branch_reference,

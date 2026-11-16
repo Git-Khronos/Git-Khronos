@@ -613,7 +613,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   );
   await expect(sharedTipTrigger).toHaveAttribute(
     'title',
-    'main: remote origin, remote upstream. Show all 2 references. Double-click a remote location to create a tracking branch.',
+    'main: remote origin, remote upstream. Show all 2 references. Double-click a remote location to fetch and check out its local branch.',
   );
   await expect(sharedTipTrigger).toHaveAttribute('aria-expanded', 'false');
   await expect(sharedTip.locator('.ref-stack-heading')).toBeHidden();
@@ -686,7 +686,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(remoteSidebarBranch).toHaveJSProperty('tagName', 'BUTTON');
   await expect(sharedTip.locator('[aria-label="Remote branch origin/main"]')).toHaveAttribute(
     'title',
-    'Remote origin · Double-click to create a local tracking branch',
+    'Remote origin · Double-click to fetch and check out the local branch',
   );
   expect(await sharedTip.locator('.grouped-reference-label').evaluate((label) =>
     label.scrollWidth <= label.clientWidth,
@@ -3164,7 +3164,7 @@ test('exposes remote branch actions without a context-menu gesture', async ({ pa
 
   const menu = page.getByRole('menu', { name: 'Actions for remote branch origin/docs' });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeFocused();
   await expect(actions).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
@@ -6464,7 +6464,7 @@ test('opens local, remote, and tag reference actions from the keyboard', async (
   await remoteBranch.focus();
   await page.keyboard.press('ContextMenu');
   menu = page.locator('.context-menu[role="menu"]');
-  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(remoteBranch).toBeFocused();
 
@@ -6899,10 +6899,10 @@ test('exposes consistent remote branch actions wherever a reference appears', as
     'Checkout and inspect',
     'Manage remote branch',
   ]);
-  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeFocused();
   await expect(menu.getByRole('menuitem', { name: 'Copy remote branch name' })).toBeVisible();
   await expect(menu.getByRole('menuitem')).toHaveText([
-    'Create local tracking branch',
+    'Fetch and check out local branch',
     'Share repository context…',
     'Copy remote branch name',
     'Compare with working directory',
@@ -6921,7 +6921,7 @@ test('exposes consistent remote branch actions wherever a reference appears', as
   await expect(graphRemote).toBeVisible();
   await graphRemote.click({ button: 'right' });
   menu = page.locator('.context-menu[role="menu"]').filter({ hasText: 'origin/main' });
-  await expect(menu.getByRole('menuitem', { name: 'Create local tracking branch' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
 
@@ -7050,7 +7050,7 @@ test('searches local and remote branches from the repository breadcrumb', async 
   const trackedMain = picker.getByRole('button', { name: /main Current branch/ });
   await expect(trackedMain).toBeVisible();
   await expect(trackedMain.locator('.toolbar-branch-locations [aria-label="Remote location upstream"]')).toBeVisible();
-  const remoteDocs = picker.getByRole('button', { name: /Remote branch docs, create local tracking branch from origin\/docs, 2 locations/ });
+  const remoteDocs = picker.getByRole('button', { name: /Remote branch docs, fetch and check out local branch from origin\/docs, 2 locations/ });
   await expect(remoteDocs).toBeVisible();
   await expect(remoteDocs.locator('.toolbar-branch-locations [aria-label="Remote location origin"]')).toBeVisible();
   await expect(remoteDocs.locator('.toolbar-branch-locations [aria-label="Remote location upstream"]')).toBeVisible();
@@ -7061,7 +7061,7 @@ test('searches local and remote branches from the repository breadcrumb', async 
   await search.fill('');
   const currentBranch = picker.getByRole('button', { name: /main Current branch · origin\/main · ahead 1/ });
   const featureBranch = picker.getByRole('button', { name: /feature\/partial-staging Local branch/ });
-  const docsBranch = picker.getByRole('button', { name: /Remote branch docs, create local tracking branch from origin\/docs, 2 locations/ });
+  const docsBranch = picker.getByRole('button', { name: /Remote branch docs, fetch and check out local branch from origin\/docs, 2 locations/ });
   await expect(currentBranch).toBeVisible();
   await search.press('ArrowDown');
   await expect(currentBranch).toBeFocused();

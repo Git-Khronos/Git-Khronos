@@ -206,6 +206,8 @@ pub use mail_patch::{
     review_mail_patch_import,
 };
 mod fetch_options;
+mod remote_checkout;
+pub use remote_checkout::{RemoteCheckoutOutcome, sync_checkout_remote_branch};
 mod worktree_actions;
 mod worktree_diagnostics;
 pub use worktree_diagnostics::{
@@ -11935,6 +11937,230 @@ mod tests {
         assert_eq!(branch.tracking.as_deref(), Some("ahead 1"));
 
         fs::remove_dir_all(parent).expect("remove tracking fixture directory");
+    }
+
+    #[test]
+    fn sync_checkout_remote_branch_handles_fresh_branch_and_divergence() {
+        let source = TestRepository::new();
+        source.write("seed.txt", "seed\n");
+        stage_all(&source.path).unwrap();
+        commit(&source.path, "Seed").unwrap();
+        let parent = std::env::temp_dir().join(format!(
+            "git-khronos-remote-sync-{}-{}",
+            std::process::id(),
+            TEST_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&parent).unwrap();
+        let remote = parent.join("origin.git");
+        let output = Command::new("git")
+            .args(["clone", "--bare"])
+            .arg(&source.path)
+            .arg(&remote)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let remote_text = remote.to_string_lossy().into_owned();
+        let working = clone_repository(&remote_text, &parent, "working", None, None).unwrap();
+        source.git(&["remote", "add", "fixture", &remote_text]);
+        create_branch(&source.path, "topic").unwrap();
+        source.write("feature.txt", "first\n");
+        stage_all(&source.path).unwrap();
+        commit(&source.path, "Remote feature").unwrap();
+        source.git(&["push", "fixture", "topic"]);
+        let token = CancellationToken::default();
+        let cancelled = CancellationToken::default();
+        cancelled.cancel();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &cancelled)
+                .unwrap_err()
+                .kind,
+            "operationCancelled"
+        );
+        assert_eq!(
+            snapshot(&working).unwrap().status.branch.as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap(),
+            RemoteCheckoutOutcome::Created
+        );
+        assert_eq!(
+            snapshot(&working).unwrap().status.branch.as_deref(),
+            Some("topic")
+        );
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap(),
+            RemoteCheckoutOutcome::UpToDate
+        );
+
+        source.write("feature.txt", "second\n");
+        stage_all(&source.path).unwrap();
+        commit(&source.path, "Advance remote").unwrap();
+        source.git(&["push", "fixture", "topic"]);
+        fs::write(working.join("feature.txt"), "uncommitted\n").unwrap();
+        assert!(sync_checkout_remote_branch(&working, "origin/topic", &token).is_err());
+        assert_eq!(
+            fs::read_to_string(working.join("feature.txt")).unwrap(),
+            "uncommitted\n"
+        );
+        fs::write(working.join("feature.txt"), "first\n").unwrap();
+        fs::write(working.join("seed.txt"), "uncommitted seed\n").unwrap();
+        fs::write(working.join("untracked.txt"), "untracked\n").unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap(),
+            RemoteCheckoutOutcome::Updated
+        );
+        assert_eq!(
+            fs::read_to_string(working.join("feature.txt")).unwrap(),
+            "second\n"
+        );
+        assert_eq!(
+            fs::read_to_string(working.join("seed.txt")).unwrap(),
+            "uncommitted seed\n"
+        );
+        assert_eq!(
+            fs::read_to_string(working.join("untracked.txt")).unwrap(),
+            "untracked\n"
+        );
+        fs::write(working.join("seed.txt"), "seed\n").unwrap();
+        fs::remove_file(working.join("untracked.txt")).unwrap();
+
+        fs::write(working.join("local.txt"), "local\n").unwrap();
+        stage_all(&working).unwrap();
+        commit(&working, "Local advance").unwrap();
+        checkout_branch(&working, "main").unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap(),
+            RemoteCheckoutOutcome::Ahead
+        );
+
+        checkout_branch(&working, "main").unwrap();
+        let occupied = parent.join("occupied");
+        let occupied_text = occupied.to_str().unwrap();
+        run_mutation(
+            &working,
+            &["worktree", "add", occupied_text, "topic"],
+            "create test worktree",
+        )
+        .unwrap();
+        let error = sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap_err();
+        assert_eq!(error.kind, "branchInAnotherWorktree");
+        assert!(error.message.contains(occupied_text));
+        run_mutation(
+            &working,
+            &["worktree", "remove", occupied_text],
+            "remove test worktree",
+        )
+        .unwrap();
+
+        source.write("remote.txt", "remote\n");
+        stage_all(&source.path).unwrap();
+        commit(&source.path, "Independent remote advance").unwrap();
+        source.git(&["push", "fixture", "topic"]);
+        checkout_branch(&working, "main").unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token).unwrap(),
+            RemoteCheckoutOutcome::Diverged
+        );
+        assert_eq!(
+            snapshot(&working).unwrap().status.branch.as_deref(),
+            Some("topic")
+        );
+        assert!(working.join("local.txt").exists());
+        assert!(!working.join("remote.txt").exists());
+
+        source.git(&["push", "fixture", "--delete", "topic"]);
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "origin/topic", &token)
+                .unwrap_err()
+                .kind,
+            "remoteBranchDeleted"
+        );
+        assert_eq!(
+            snapshot(&working).unwrap().status.branch.as_deref(),
+            Some("topic")
+        );
+
+        create_branch(&source.path, "slash-feature").unwrap();
+        source.git(&["push", "fixture", "slash-feature"]);
+        run_mutation(
+            &working,
+            &["remote", "add", "upstream/team", &remote_text],
+            "add test remote",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "upstream/team/slash-feature", &token).unwrap(),
+            RemoteCheckoutOutcome::Created
+        );
+        let tracked = snapshot(&working).unwrap();
+        assert_eq!(tracked.status.branch.as_deref(), Some("slash-feature"));
+        assert_eq!(
+            tracked
+                .branches
+                .iter()
+                .find(|branch| !branch.remote && branch.name == "slash-feature")
+                .unwrap()
+                .upstream
+                .as_deref(),
+            Some("upstream/team/slash-feature")
+        );
+        run_mutation(
+            &working,
+            &[
+                "config",
+                "--add",
+                "remote.origin.fetch",
+                "+refs/heads/*:refs/remotes/upstream/team/*",
+            ],
+            "add overlapping test mapping",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "upstream/team/slash-feature", &token)
+                .unwrap_err()
+                .kind,
+            "ambiguousRemoteBranch"
+        );
+        run_mutation(
+            &working,
+            &["remote", "add", "precise", &remote_text],
+            "add exact mapping remote",
+        )
+        .unwrap();
+        run_mutation(
+            &working,
+            &[
+                "config",
+                "--replace-all",
+                "remote.precise.fetch",
+                "+refs/heads/slash-feature:refs/remotes/precise/alias",
+            ],
+            "set exact test mapping",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "precise/alias", &token).unwrap(),
+            RemoteCheckoutOutcome::UpToDate
+        );
+        run_mutation(
+            &working,
+            &[
+                "config",
+                "--add",
+                "remote.precise.fetch",
+                "^refs/heads/slash-feature",
+            ],
+            "exclude exact test mapping",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_checkout_remote_branch(&working, "precise/alias", &token)
+                .unwrap_err()
+                .kind,
+            "ambiguousRemoteBranch"
+        );
+        fs::remove_dir_all(parent).unwrap();
     }
 
     #[test]
