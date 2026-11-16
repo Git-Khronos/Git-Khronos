@@ -1,155 +1,188 @@
 # Git Khronos
 
-Git Khronos is a free and open-source, local-first Git desktop client built with
-Angular, Nx, Rust, and Tauri.
+<p align="center">
+  <img src="apps/desktop/src-tauri/icons/icon.png" alt="Git Khronos application icon" width="112" />
+</p>
 
-> [!NOTE]
-> The project is under active development. The current vertical slice supports
-> repository tabs, a visual commit graph and focused panels, file, hunk, and
-> line staging operations with recoverable discards, commit comparison, history
-> and blame, silently prefetched commit history, common history and remote
-> operations, configurable background fetching, conditional Git LFS pull and
-> prune actions, repository-scoped sparse checkout, interactive rebase,
-> conflict resolution, searchable reflog recovery with safe branch creation,
-> explicitly signed commits with effective repository-signing diagnostics,
-> linked-worktree and native submodule management, and a repository-scoped terminal with
-> multiple independent tabs.
+<p align="center">
+  <a href="https://github.com/Git-Khronos/Git-Khronos/actions/workflows/ci.yml"><img src="https://github.com/Git-Khronos/Git-Khronos/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
+  <a href="https://github.com/Git-Khronos/Git-Khronos/releases/latest"><img src="https://img.shields.io/github/v/release/Git-Khronos/Git-Khronos" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Git-Khronos/Git-Khronos" alt="GPL-3.0-only license"></a>
+</p>
 
-## Prerequisites
+Git Khronos is a free, open-source, local-first desktop Git client. Explore
+repository history, review changes, and manage Git workflows in a native
+workspace built with Angular, Nx, Rust, and Tauri. Local Git work does not
+require an online account.
 
-- Node.js 24.15+ LTS or Node.js 26
-- pnpm 10 or newer
-- Rust 1.99.0 (pinned by `rust-toolchain.toml`)
-- Git 2.39 or newer (the native suite is qualified against Git 2.39, 2.43 and
-  current releases; older Git lacks options such as NUL-separated worktree lists)
-- The [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) for
-  your platform
+## Features
 
-## Development
+- Browse repositories in tabs with a visual commit graph, history, comparison,
+  and blame.
+- Stage or review files, hunks, and lines; discard changes through recoverable
+  workflows.
+- Manage branches and remotes. Double-clicking a remote branch fetches it and
+  checks out its local branch, updating an existing branch only by fast-forward.
+- Use interactive rebase, resolve conflicts, and recover commits through a
+  searchable reflog with safe branch creation.
+- Work with Git LFS, sparse checkout, submodules, and linked worktrees.
+- Configure background fetching and use a repository-scoped terminal with
+  multiple tabs.
+- Create explicitly signed commits with effective signing diagnostics, and
+  review GitHub pull requests and checks through an authenticated `gh` CLI.
+
+## Installation
+
+Release packages are amd64 Debian packages built on Ubuntu 22.04 (Jammy). The
+Ubuntu release workflow qualifies the same package on Ubuntu 22.04, 24.04, and
+26.04; it does not rebuild the package for each release.
+
+### Windows
+
+The release pipeline currently publishes a Linux `.deb`, not a native Windows
+installer. On Windows, run Git Khronos inside Ubuntu on WSL 2 with WSLg and
+follow the Ubuntu instructions below. The app can inspect WSL-related Windows
+shortcuts and offers only explicitly confirmed file repairs; it does not create
+taskbar pins or edit Explorer's taskbar state.
+
+### Ubuntu
+
+Download and review the installer, preview APT's plan, then install the latest
+published release:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Git-Khronos/Git-Khronos/main/install.sh
+less install.sh
+bash install.sh --dry-run
+bash install.sh
+```
+
+Ubuntu 22.04 requires separately provisioned, maintained Git 2.39 or newer;
+stock Git 2.34 is insufficient. APT must know about that Git package, and the
+installer does not add repositories or upgrade Git automatically. Ubuntu 24.04
+and 26.04 allow APT to resolve their dependencies normally. Jammy also needs the
+official updates and Universe archives enabled for WebKitGTK 4.1.
+
+The installer verifies the release checksum and package identity before asking
+APT to install the package. Releases also publish CycloneDX package and source
+dependency inventories. See the [Linux qualification guide](docs/linux-acceptance.md)
+for ABI and runtime gates.
+
+### Debian
+
+**Debian 12 (Bookworm) and Debian 13 (Trixie) are pending exact-artifact CI
+qualification.** Do not treat Debian as supported until both release jobs pass
+with the same Jammy-built package, including the real APT dependency install and
+installed-app acceptance. In particular, Trixie's `libssl3t64` must satisfy the
+package dependency. No Debian runtime qualification has been performed locally.
+
+### Installer options
+
+```bash
+bash install.sh --version <version>  # install a specific published release
+bash install.sh --deb ./Git-Khronos.deb
+bash install.sh --from-source
+bash install.sh --uninstall
+```
+
+Run `bash install.sh --help` for all options. The source-build and local-package
+paths are not a substitute for release qualification.
+
+## Quick start
+
+After installation, launch **Git Khronos** from the desktop application menu or
+run `git-khronos` in a terminal, then open a local repository. Local Git
+workflows need no online account. GitHub reviews and checks use the separately
+installed, authenticated GitHub CLI (`gh`) when requested.
+
+## Build from source
+
+### Requirements
+
+- Node.js 24.15+ or 26, with pnpm 12.14.0 (the version pinned by this checkout).
+- Rust 1.99.0, pinned by `rust-toolchain.toml`.
+- Git 2.39 or newer. Older Git lacks options required by the native suite.
+- The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your
+  operating system, plus [Task](https://taskfile.dev/).
+
+### Develop and run
 
 ```bash
 nvm install
 nvm use
-pnpm install
+pnpm install --frozen-lockfile
+task doctor
 task dev
 ```
 
-If you do not use `nvm`, install a supported Node.js release through your usual
-version manager or package source. Run `task doctor` to verify all required
-toolchains before building.
-
-Build and run the optimized native application:
+Build and run the optimized native executable:
 
 ```bash
 task build
 task run
 ```
 
-Other useful shortcuts:
+Useful checks include `task test`, `task test:e2e`, `task check`, and `task ci`.
 
-```bash
-task --list
-task frontend
-task preview
-task test
-task test:e2e:install
-task test:e2e
-task check
-task ci
-task bundle
-```
+### Build a Linux package
 
-### Install system-wide on Debian or Ubuntu
-
-#### Using the install script
-
-[`install.sh`](install.sh) installs Git Khronos from a published GitHub Release.
-It downloads the release's `SHA256SUMS`, verifies the `.deb` for your CPU
-architecture against it, confirms the package is Git Khronos, and installs it
-with APT (which resolves dependencies and asks for `sudo`). Download and read
-the script before running it:
-
-The release pipeline targets **Ubuntu 22.04, 24.04 and 26.04, amd64**, using
-one package built on Ubuntu 22.04 (glibc 2.35). Publication requires the exact
-same package to pass installed-app acceptance on all three releases. Debian 12
-and 13 are being added to that exact-artifact qualification; Debian support is
-not claimed until those CI jobs pass.
-
-**Ubuntu 22.04 requires separately provisioned Git 2.39 or newer.** Its stock
-Git 2.34 is insufficient. Newer Git must also be registered with Debian's
-package manager so APT can satisfy the dependency; a PATH-only source install
-does not do that. On Ubuntu 22.04, the installer refuses an insufficient
-installed Git rather than upgrading it. You choose and maintain any external
-Git source yourself; the installer never adds an APT source. On other
-Debian/Ubuntu releases it lets APT resolve dependencies, including installing
-Git when absent. Ubuntu 24.04 and 26.04 provide a sufficiently new Git.
-WebKitGTK 4.1 on Ubuntu 22.04 requires the official updates and Universe archives.
-Older published packages and local builds may require a newer glibc; APT checks
-the actual package dependencies.
-
-```bash
-curl -fsSLO https://raw.githubusercontent.com/Git-Khronos/Git-Khronos/main/install.sh
-less install.sh
-bash install.sh --dry-run   # verify and show APT's plan only
-bash install.sh             # install the latest release
-```
-
-Other options:
-
-```bash
-bash install.sh --version 0.1.4          # a specific release
-bash install.sh --deb ./Git-Khronos.deb  # a package you already have
-bash install.sh --from-source            # build from source, then install
-bash install.sh --uninstall              # remove; repositories and preferences are kept
-```
-
-Downloading requires a published release that provides
-`Git-Khronos_<version>_<arch>.deb` and `SHA256SUMS`; releases also provide
-CycloneDX package and source dependency inventories. Until one exists, use
-`--from-source` or `--deb`, or the `task` commands below. Run
-`bash install.sh --help` for every option.
-
-#### From a source checkout
-
-Build a native Debian package and install it for every user on the machine:
-
-```bash
-task install:system
-```
-
-The command builds the optimized application, verifies that the generated
-package belongs to Git Khronos, and then asks for administrator access through
-`sudo`. The package installs `git-khronos` in `/usr/bin`, registers Git
-Khronos in the desktop application menu, and installs its icons and license
-notices in the standard system locations. Git 2.39 or newer is a required
-package dependency; OpenSSH client and Git LFS are recommended dependencies.
-Normal local builds retain their glibc 2.39 floor. The dedicated
-`pnpm nx run desktop:package-ubuntu` target runs only on Ubuntu 22.04 amd64 and
-uses the Jammy release overlay with a 2.35 floor, then checks the actual ELF.
-Tauri's generated dependencies are retained; they are not rewritten to make a
-newer-system build appear portable. Local builds are not portable releases.
-The [Linux qualification gates](docs/linux-acceptance.md#linux-release-qualification)
-check the artifact rather than weakening these dependencies.
-
-To build and verify the `.deb` without installing it, print the generated
-package path, or remove the system package while leaving repositories and
-per-user preferences untouched:
+On Debian or Ubuntu, build and verify a local `.deb` with:
 
 ```bash
 task package:deb
 task package:deb:path
-task uninstall:system
 ```
 
-The generated package is written to `target/release/bundle/deb/`. Unchanged
-builds reuse it only after validating its metadata and required payload; a
-missing or invalid package triggers a rebuild. The generic
-`task bundle` command continues to build every installer format supported by the
-current platform, while `task install` remains the development-dependency setup
-command. After installation, launch **Git Khronos** from the desktop application
-menu or run `git-khronos` from any terminal. A locally built package
-targets the current CPU architecture and native-library baseline; build public
-release packages on the oldest Debian/Ubuntu baseline the release supports.
+`task install:system` installs the verified package system-wide and requests
+administrator access; `task uninstall:system` removes the package while keeping
+repositories and preferences. Ordinary local builds retain their glibc 2.39
+floor and are not portable release packages. The release package target,
+`pnpm nx run desktop:package-ubuntu`, is limited to Ubuntu 22.04 amd64 and checks
+the Jammy glibc 2.35 baseline without rewriting generated runtime dependencies.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for product principles, local checks,
+commit conventions, and the Developer Certificate of Origin. Focused changes
+should include behavioral tests; changes to the packaged app should also follow
+the guide's native build check.
+
+## Documentation
+
+- [Git and provider capability inventory](docs/clean-room-capabilities.md)
+- [Linux package acceptance and release gates](docs/linux-acceptance.md)
+- [State ownership and lifecycle guidance](docs/state-machines.md)
+- [Branch workflows](docs/specifications/branch-workflows.md)
+
+## Architecture
+
+- `apps/desktop` contains the Angular UI and Tauri application adapter.
+- `apps/desktop/src-tauri` contains the narrow native command surface.
+- `crates/git-core` owns Git process execution, parsing, and domain types.
+- `libs/contracts` contains the frontend TypeScript IPC contracts.
+
+Git itself remains the source of truth. The Rust backend invokes Git directly
+with argument arrays—never through a shell—and returns typed, redacted results
+to the UI.
+
+## Privacy
+
+Git Khronos has no telemetry, advertisements, or hosted account service.
+Application settings stay on the device. Git operations contact only the
+selected remotes, and GitHub reviews use the separately installed `gh` CLI
+when explicitly requested; Git Khronos does not operate a hosted backend.
+
+## License
+
+GPL-3.0-only. See [LICENSE](LICENSE).
+
+Third-party component notices are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Detailed behavior and implementation notes
+
+<details>
+<summary>Open the full technical reference</summary>
 
 The package installs its launcher as `git-khronos.desktop` so the entry id
 equals the window's application id. Under WSLg this helps Windows identify
@@ -1256,25 +1289,4 @@ terminal profiles; migration does not start them or set them as defaults.
 See [the capability inventory](docs/clean-room-capabilities.md) for remaining
 Git, provider, account-context and collaboration workflow scope.
 
-## Architecture
-
-- `apps/desktop` contains the Angular UI and Tauri application adapter.
-- `apps/desktop/src-tauri` contains the narrow native command surface.
-- `crates/git-core` owns Git process execution, parsing, and domain types.
-- `libs/contracts` contains the frontend TypeScript IPC contracts.
-
-Git itself remains the source of truth. The Rust backend invokes Git directly
-with argument arrays—never through a shell—and returns typed, redacted results
-to the UI.
-
-## Privacy
-
-Git Khronos has no telemetry, accounts, advertisements, or hosted backend.
-Repository information and diagnostics remain on the local machine.
-
-## License
-
-GPL-3.0-only. See [LICENSE](LICENSE).
-
-Third-party component notices are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+</details>
