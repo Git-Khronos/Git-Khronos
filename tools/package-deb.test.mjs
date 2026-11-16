@@ -126,6 +126,7 @@ esac
   assert.match(workflow, /sha256sum --check SHA256SUMS/);
   const debianWorkflow = workflow.split('  debian-runtime:\n')[1];
   assert.ok(debianWorkflow, 'Missing Debian runtime job');
+  assert.match(debianWorkflow, /strategy:\n      fail-fast: true\n      matrix:\n        debian:/);
   const bootstrap = debianWorkflow.match(/      - name: Bootstrap tools for Debian container actions\n([\s\S]*?)(?=      - (?:name:|uses:))/)?.[1];
   assert.ok(bootstrap, 'Missing Debian container action prerequisites');
   assert.match(bootstrap, /apt-get install --yes ca-certificates curl git tar xz-utils/);

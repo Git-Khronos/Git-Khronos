@@ -99,7 +99,7 @@ jobs:
     container:
       image: debian:${{ matrix.debian }}-slim
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         debian: ["12", "13"]
     timeout-minutes: 45
