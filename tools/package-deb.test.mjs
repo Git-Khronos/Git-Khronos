@@ -95,7 +95,7 @@ esac
   }
 });
 
-test('Jammy CI restores both known dpkg hooks after successful and failed fixture runs', async (t) => {
+test('Jammy CI restores known dpkg hooks after successful and failed fixture runs', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-ci-hooks-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const hooks = join(root, 'hooks');
@@ -103,7 +103,8 @@ test('Jammy CI restores both known dpkg hooks after successful and failed fixtur
   const temporary = join(root, 'temporary');
   for (const directory of [hooks, bin, temporary]) await mkdir(directory);
   const originals = { needrestart: 'post-invoke=fixture-needrestart\n',
-    'pkg-config-hook-config': 'post-invoke=fixture-pkg-config\n', unrelated: 'preserve\n' };
+    'pkg-config-hook-config': 'post-invoke=fixture-pkg-config\n',
+    'pkgconf-hook-config': 'post-invoke=fixture-pkgconf\n', unrelated: 'preserve\n' };
   for (const [name, content] of Object.entries(originals)) {
     await writeFile(join(hooks, name), content, { mode: 0o640 });
   }
@@ -111,6 +112,7 @@ test('Jammy CI restores both known dpkg hooks after successful and failed fixtur
   await writeFile(join(bin, 'pnpm'), `#!/bin/sh
 [ ! -e "$HOOK_DIRECTORY/needrestart" ] || exit 98
 [ ! -e "$HOOK_DIRECTORY/pkg-config-hook-config" ] || exit 98
+[ ! -e "$HOOK_DIRECTORY/pkgconf-hook-config" ] || exit 98
 [ -f "$HOOK_DIRECTORY/unrelated" ] || exit 98
 printf 'isolated fixtures\\n'
 exit "$FIXTURE_EXIT"

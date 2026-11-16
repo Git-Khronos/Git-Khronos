@@ -67,7 +67,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run packaging regressions
         run: |
-          hooks=(needrestart pkg-config-hook-config)
+          hooks=(needrestart pkg-config-hook-config pkgconf-hook-config)
           backup="$(mktemp -d)"
           restore_hook() {
             status=$?

@@ -167,7 +167,7 @@ jobs:
           # Private dpkg databases still read host invocation hooks. Keep the
           # runner's known hooks out of fixture transactions and restore them
           # before building or installing the application package.
-          hooks=(needrestart pkg-config-hook-config)
+          hooks=(needrestart pkg-config-hook-config pkgconf-hook-config)
           backup=$(mktemp -d)
           restore_hook() {
             status=$?
