@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install --yes ca-certificates curl git tar xz-utils
+          apt-get install --yes ca-certificates curl gcc git libc6-dev tar xz-utils
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -155,6 +155,9 @@ jobs:
             echo "WebKitWebDriver and WebKitGTK runtime versions differ." >&2
             exit 1
           fi
+          for tool in cargo rustup; do
+            command -v "$tool"
+          done
           cargo install tauri-driver --locked --version 2.0.6
       - name: Check Jammy ABI and install the unchanged Debian package
         shell: bash

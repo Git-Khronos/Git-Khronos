@@ -36,6 +36,7 @@ test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriv
     'apt-get': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
     dpkg: '#!/bin/sh\n[ "$1" = --print-architecture ] && printf "amd64\\n"\n',
     cargo: '#!/bin/sh\nprintf "cargo %s\\n" "$*" >> "$COMMAND_LOG"\n',
+    rustup: '#!/bin/sh\nprintf "rustup %s\\n" "$*" >> "$COMMAND_LOG"\n',
     WebKitWebDriver: '#!/bin/sh\nexit 99\n',
     'dbus-daemon': '#!/bin/sh\nexit 99\n',
     'dbus-send': '#!/bin/sh\nexit 99\n',
@@ -110,6 +111,9 @@ esac
     for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
       assert.ok(result.stdout.includes(join(bin, tool)), `Missing Debian discovery check for ${tool}`);
     }
+    for (const tool of ['cargo', 'rustup']) {
+      assert.ok(result.stdout.includes(join(bin, tool)), `Missing Debian tool path for ${tool}`);
+    }
     const calls = await readFile(log, 'utf8');
     assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0`));
     assert.match(calls, /dbus-daemon dbus-bin/);
@@ -129,7 +133,7 @@ esac
   assert.match(debianWorkflow, /strategy:\n      fail-fast: true\n      matrix:\n        debian:/);
   const bootstrap = debianWorkflow.match(/      - name: Bootstrap tools for Debian container actions\n([\s\S]*?)(?=      - (?:name:|uses:))/)?.[1];
   assert.ok(bootstrap, 'Missing Debian container action prerequisites');
-  assert.match(bootstrap, /apt-get install --yes ca-certificates curl git tar xz-utils/);
+  assert.match(bootstrap, /apt-get install --yes ca-certificates curl gcc git libc6-dev tar xz-utils/);
   const bootstrapIndex = debianWorkflow.indexOf('Bootstrap tools for Debian container actions');
   for (const action of ['actions/setup-node@v4', 'dtolnay/rust-toolchain@master', 'Swatinem/rust-cache@v2']) {
     assert.ok(bootstrapIndex < debianWorkflow.indexOf(action), `Debian bootstrap must precede ${action}`);
