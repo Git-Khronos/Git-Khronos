@@ -146,6 +146,7 @@ jobs:
             "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git git-lfs \
             openssh-client openssh-server desktop-file-utils libglib2.0-bin \
             openssl dbus-daemon dbus-bin libssl-dev pkg-config python3 binutils
+          install -d -m 0755 /run/sshd
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
           done

@@ -34,6 +34,7 @@ test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriv
   const commands = {
     sudo: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
     'apt-get': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
+    install: '#!/bin/sh\nprintf "install %s\\n" "$*" >> "$COMMAND_LOG"\n',
     dpkg: '#!/bin/sh\n[ "$1" = --print-architecture ] && printf "amd64\\n"\n',
     cargo: '#!/bin/sh\nprintf "cargo %s\\n" "$*" >> "$COMMAND_LOG"\n',
     rustup: '#!/bin/sh\nprintf "rustup %s\\n" "$*" >> "$COMMAND_LOG"\n',
@@ -116,6 +117,7 @@ esac
     }
     const calls = await readFile(log, 'utf8');
     assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0`));
+    assert.match(calls, /install -d -m 0755 \/run\/sshd/);
     assert.match(calls, /dbus-daemon dbus-bin/);
     assert.match(calls, /cargo install tauri-driver --locked --version 2\.0\.6/);
     const mismatch = spawnSync('bash', ['-c', debianScript], {
