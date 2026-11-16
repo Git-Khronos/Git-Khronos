@@ -221,10 +221,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  ubuntu-runtime:
-    name: Three-release exact-artifact acceptance
+  linux-runtime:
+    name: Ubuntu and Debian exact-artifact acceptance
     needs: packaged-native
-    uses: ./.github/workflows/ubuntu-package-acceptance.yml
+    uses: ./.github/workflows/linux-package-acceptance.yml
     with:
       artifact-name: ubuntu-package
       ref: ${{ github.sha }}

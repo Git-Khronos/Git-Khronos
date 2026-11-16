@@ -145,17 +145,17 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  ubuntu-runtime:
+  linux-runtime:
     name: Qualify the exact release package
     needs: debian
-    uses: ./.github/workflows/ubuntu-package-acceptance.yml
+    uses: ./.github/workflows/linux-package-acceptance.yml
     with:
       artifact-name: release-assets
       ref: ${{ inputs.release_tag || github.ref_name }}
 
   publish:
     name: Publish GitHub release
-    needs: [debian, ubuntu-runtime]
+    needs: [debian, linux-runtime]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -181,4 +181,4 @@ jobs:
             --verify-tag \
             --latest \
             --title "Git Khronos ${version}" \
-            --notes "One amd64 Debian package built on Ubuntu 22.04 (glibc 2.35) and qualified unchanged on Ubuntu 22.04, 24.04 and 26.04. Git >=2.39 is required: Ubuntu 22.04 users must separately provision a maintained newer Git; stock Jammy Git 2.34 is insufficient. Neither the installer nor this package adds APT repositories. Disposable Jammy CI uses the externally maintained git-core/ppa, not Ubuntu's stock Git. Includes CycloneDX package and source dependency inventories and SHA256SUMS."
+            --notes "One amd64 Debian package built on Ubuntu 22.04 (glibc 2.35) and qualified unchanged on Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. Git >=2.39 is required: Ubuntu 22.04 users must separately provision a maintained newer Git; stock Jammy Git 2.34 is insufficient. Debian's standard repositories provide a sufficient Git. Neither the installer nor this package adds APT repositories. Disposable Jammy CI uses the externally maintained git-core/ppa, not Ubuntu's stock Git. Includes CycloneDX package and source dependency inventories and SHA256SUMS."

@@ -5,13 +5,27 @@ application extracted from the Debian package. It does not install the package, 
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
 
-## Ubuntu release qualification
+## Linux release qualification
 
-The release target is Ubuntu 22.04 (Jammy), 24.04 (Noble) and 26.04 (Resolute),
-amd64, using one unchanged Debian artifact built on Jammy. These workflow
-definitions do not themselves establish a passing qualification: retain the
-per-release reports from a completed run before claiming that artifact works.
-No three-release run was performed locally while introducing these gates.
+The current release qualification target is Ubuntu 22.04 (Jammy), 24.04 (Noble)
+and 26.04 (Resolute), amd64, using one unchanged Debian artifact built on
+Jammy. Debian 12 (Bookworm) and 13 (Trixie) are additional exact-artifact
+qualification targets in the reusable workflow. This change does not itself
+establish Debian support: claim it only after both Debian jobs pass on the same
+artifact and their reports are retained. GitHub does not provide Debian-hosted
+runners, so those jobs run in official Debian container images on an Ubuntu
+hosted runner. No Debian runtime qualification was performed locally.
+
+Debian's release package data shows Bookworm's glibc 2.36 and Git 1:2.39.5,
+and Trixie's glibc 2.41 and Git 1:2.47.3; both meet the package's glibc 2.35
+floor and Git >=2.39 dependency. Both releases provide `libwebkit2gtk-4.1-0`.
+Bookworm provides `libssl3`; Trixie uses `libssl3t64`. The actual Debian
+package installation must confirm Trixie's package satisfies the `.deb`'s
+`libssl3` dependency. The WebDriver package name is
+`webkit2gtk-driver` on Bookworm and `webkitgtk-webdriver` on Trixie; each
+provides `WebKitWebDriver` and depends on the matching-version WebKitGTK runtime.
+Debian splits the D-Bus commands between `dbus-daemon` (`dbus-daemon`,
+`dbus-run-session`) and its `dbus-bin` dependency (`dbus-send`).
 
 Jammy support is conditional on **separately supplied, maintained Git >=2.39**.
 Its official Git 2.34 cannot satisfy the package or the app's safety requirements.
@@ -45,9 +59,10 @@ node tools/check-linux-abi.mjs /path/to/Git-Khronos_VERSION_amd64.deb
 
 The check's JSON records the package SHA-256, full Depends, required GLIBC versions
 and DT_NEEDED libraries without executing the payload. This static check alone is
-not runtime qualification. The shared `ubuntu-package-acceptance.yml` downloads
-the build job's artifact on each release, verifies its original SHA256SUMS,
-checks the ABI again, and lets APT install that exact file without removals.
+not runtime qualification. The shared `linux-package-acceptance.yml` downloads
+the build job's artifact for every Ubuntu and Debian release, verifies its
+original SHA256SUMS, checks the ABI again, and lets APT install that exact file
+without removals.
 APT must resolve the actual runtime dependencies successfully. No rebuild or
 per-release repackaging is permitted.
 
@@ -63,21 +78,23 @@ requires its SHA-256 to equal the package's extracted executable. Repositories,
 profile, Xvfb display and session bus remain private fixtures. Reports retain
 the package/executable hashes, actual executable path and runtime platform.
 The ordinary harness default still extracts the package without installing it.
-Python 3.11+ is required by the harness; these jobs select Python 3.12 explicitly
-instead of assuming Jammy's system Python has `hashlib.file_digest`.
-The runtime runners install `webkit2gtk-driver` on Jammy/Noble and
-`webkitgtk-webdriver` on Resolute from that release's official archives.
-Both provide `WebKitWebDriver` on PATH and depend on the matching WebKitGTK 4.1
-runtime. Provisioning checks binary discovery and equal installed package
-versions before attempting native acceptance.
-The build and runtime jobs request `dbus`, available across all three releases.
-On Jammy it directly supplies `dbus-daemon`, `dbus-send` and `dbus-run-session`;
-newer releases pull the split packages through dependencies. All three commands
-must be discoverable before native acceptance.
+Python 3.11+ is required by the harness. Ubuntu jobs select Python 3.12 instead
+of assuming Jammy's system Python has `hashlib.file_digest`; Debian jobs install
+their distribution Python and assert the minimum version.
+The Ubuntu runtime runners install `webkit2gtk-driver` on Jammy/Noble and
+`webkitgtk-webdriver` on Resolute. Debian runtime runners install
+`webkit2gtk-driver` on Bookworm and `webkitgtk-webdriver` on Trixie. All provide
+`WebKitWebDriver` on PATH and depend on the matching WebKitGTK 4.1 runtime.
+Provisioning checks binary discovery and equal installed package versions
+before attempting native acceptance. Debian installs `dbus-daemon` and
+`dbus-bin`, then checks `dbus-daemon`, `dbus-send` and `dbus-run-session`.
+Ubuntu continues to request the release-available `dbus` package and check the
+same commands.
 
-The release publish job depends on all three successful runtime jobs. Failed
-or unavailable runners, an unsatisfied dependency, absent WebDriver, loader
-failure or scenario failure block publication; they are not skipped support.
+The release publish job depends on the reusable workflow completing every
+Ubuntu and Debian runtime matrix entry successfully. A failed or unavailable
+runner, unsatisfied dependency, absent WebDriver, loader failure or scenario
+failure blocks publication; it is not skipped support.
 The build-job checksums cover the same package and inventories later published.
 
 ## Prerequisites

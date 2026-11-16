@@ -20,8 +20,8 @@ const outputs = [
   'dist/apps/desktop/browser/index.html',
 ];
 
-test('Ubuntu CI provisions discoverable D-Bus and release-specific, version-matched WebDriver', async (t) => {
-  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/ubuntu-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
+test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriver packages', async (t) => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(step, 'Missing runtime prerequisite step');
   assert.match(step, /UBUNTU_RELEASE: \$\{\{ matrix\.ubuntu \}\}/);
@@ -33,6 +33,8 @@ test('Ubuntu CI provisions discoverable D-Bus and release-specific, version-matc
   await mkdir(bin);
   const commands = {
     sudo: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
+    'apt-get': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
+    dpkg: '#!/bin/sh\n[ "$1" = --print-architecture ] && printf "amd64\\n"\n',
     cargo: '#!/bin/sh\nprintf "cargo %s\\n" "$*" >> "$COMMAND_LOG"\n',
     WebKitWebDriver: '#!/bin/sh\nexit 99\n',
     'dbus-daemon': '#!/bin/sh\nexit 99\n',
@@ -93,6 +95,35 @@ esac
   for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
     assert.ok(build.stdout.includes(join(bin, tool)), `Missing Jammy discovery check for ${tool}`);
   }
+
+  const debianStep = workflow.match(/      - name: Install Debian runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
+  assert.ok(debianStep, 'Missing Debian runtime prerequisite step');
+  assert.match(debianStep, /DEBIAN_RELEASE: \$\{\{ matrix\.debian \}\}/);
+  const debianScript = debianStep.split('        run: |\n')[1]?.replace(/^          /gm, '');
+  assert.ok(debianScript, 'Missing Debian runtime prerequisite commands');
+  for (const [release, expected] of [['12', 'webkit2gtk-driver'], ['13', 'webkitgtk-webdriver']]) {
+    const log = join(root, `debian-${release}`);
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
+      DEBIAN_RELEASE: release, RUNTIME_VERSION: '2.52.0-1' };
+    const result = spawnSync('bash', ['-c', debianScript], { encoding: 'utf8', env });
+    assert.equal(result.status, 0, result.stderr);
+    for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
+      assert.ok(result.stdout.includes(join(bin, tool)), `Missing Debian discovery check for ${tool}`);
+    }
+    const calls = await readFile(log, 'utf8');
+    assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0`));
+    assert.match(calls, /dbus-daemon dbus-bin/);
+    assert.match(calls, /cargo install tauri-driver --locked --version 2\.0\.6/);
+    const mismatch = spawnSync('bash', ['-c', debianScript], {
+      encoding: 'utf8', env: { ...env, COMMAND_LOG: `${log}-mismatch`, RUNTIME_VERSION: '2.50.0-1' },
+    });
+    assert.notEqual(mismatch.status, 0);
+    assert.match(mismatch.stderr, /WebKitWebDriver and WebKitGTK runtime versions differ/);
+    assert.doesNotMatch(await readFile(`${log}-mismatch`, 'utf8'), /cargo/);
+  }
+  assert.match(workflow, /debian: \["12", "13"\]/);
+  assert.match(workflow, /apt-get install --yes --no-remove "\$package"/);
+  assert.match(workflow, /sha256sum --check SHA256SUMS/);
 });
 
 test('Jammy CI restores known dpkg hooks after successful and failed fixture runs', async (t) => {

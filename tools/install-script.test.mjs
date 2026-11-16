@@ -137,7 +137,7 @@ test('requires separately provisioned Git without asking APT to upgrade stock Ja
   assert.match(accepted.stdout, /APT simulation/);
 });
 
-for (const [id, release] of [['ubuntu', '24.04'], ['ubuntu', '26.04'], ['debian', '12']]) {
+for (const [id, release] of [['ubuntu', '24.04'], ['ubuntu', '26.04'], ['debian', '12'], ['debian', '13']]) {
   test(`lets APT resolve Git on ${id} ${release}, whether Git is absent or already supported`, () => {
     const run = gitPrerequisiteFixture(id, release);
     for (const [state, version] of [

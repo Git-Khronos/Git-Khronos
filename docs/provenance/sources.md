@@ -1082,6 +1082,32 @@ The common `dbus` package supplies the native harness commands directly on
 Jammy and through package dependencies on newer releases.
 No source code copied.
 
+## Debian 12 and 13 package qualification
+
+Sources:
+
+- [Bookworm Git 1:2.39.5](https://packages.debian.org/bookworm/amd64/git)
+- [Bookworm glibc 2.36](https://packages.debian.org/bookworm/amd64/libc6)
+- [Bookworm WebKitGTK 4.1 runtime](https://packages.debian.org/bookworm/amd64/libwebkit2gtk-4.1-0)
+- [Bookworm OpenSSL 3 runtime](https://packages.debian.org/bookworm/amd64/libssl3)
+- [Bookworm WebDriver package](https://packages.debian.org/bookworm/amd64/webkit2gtk-driver)
+- [Bookworm WebDriver executable](https://packages.debian.org/bookworm/amd64/webkit2gtk-driver/filelist)
+- [Bookworm D-Bus daemon commands](https://packages.debian.org/bookworm/amd64/dbus-daemon/filelist)
+- [Bookworm D-Bus client commands](https://packages.debian.org/bookworm/amd64/dbus-bin/filelist)
+- [Trixie Git 1:2.47.3](https://packages.debian.org/trixie/amd64/git)
+- [Trixie glibc 2.41](https://packages.debian.org/trixie/amd64/libc6)
+- [Trixie WebKitGTK 4.1 runtime](https://packages.debian.org/trixie/amd64/libwebkit2gtk-4.1-0)
+- [Trixie OpenSSL 3 t64 runtime](https://packages.debian.org/trixie/amd64/libssl3t64)
+- [Trixie WebDriver package](https://packages.debian.org/trixie/amd64/webkitgtk-webdriver)
+- [Trixie WebDriver executable](https://packages.debian.org/trixie/amd64/webkitgtk-webdriver/filelist)
+- [Trixie D-Bus daemon commands](https://packages.debian.org/trixie/amd64/dbus-daemon/filelist)
+- [Trixie D-Bus client commands](https://packages.debian.org/trixie/amd64/dbus-bin/filelist)
+
+Used to identify distribution-provided versions of Git, glibc, WebKitGTK,
+OpenSSL, WebDriver and D-Bus for exact-artifact CI qualification. CI must still
+install and exercise the same Jammy-built package on both releases before
+Debian compatibility is claimed. No source code copied.
+
 ## Native window title updates
 
 Source:

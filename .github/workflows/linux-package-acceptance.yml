@@ -1,4 +1,4 @@
-name: Exact-artifact Ubuntu acceptance
+name: Exact-artifact Linux acceptance
 
 on:
   workflow_call:
@@ -87,6 +87,90 @@ jobs:
         if: always()
         with:
           name: ubuntu-${{ matrix.ubuntu }}-runtime-${{ github.run_id }}
+          path: |
+            test-results/native/
+            ubuntu-package/abi-runtime.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  debian-runtime:
+    name: Installed package on Debian ${{ matrix.debian }}
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:${{ matrix.debian }}-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ["12", "13"]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ubuntu-package
+      - name: Verify the build job's exact artifact checksums
+        working-directory: ubuntu-package
+        run: sha256sum --check SHA256SUMS
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: debian-runtime-${{ matrix.debian }}
+      - name: Install Debian runtime acceptance prerequisites
+        env:
+          DEBIAN_RELEASE: ${{ matrix.debian }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$DEBIAN_RELEASE" in
+            12) webdriver_package=webkit2gtk-driver ;;
+            13) webdriver_package=webkitgtk-webdriver ;;
+            *) echo "Unsupported Debian release: $DEBIAN_RELEASE" >&2; exit 1 ;;
+          esac
+          test "$(dpkg --print-architecture)" = amd64
+          apt-get update
+          apt-get install --yes \
+            "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git git-lfs \
+            openssh-client openssh-server desktop-file-utils libglib2.0-bin \
+            openssl dbus-daemon dbus-bin libssl-dev pkg-config python3 binutils
+          for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
+            command -v "$tool"
+          done
+          python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+          dpkg-query -W "$webdriver_package" libwebkit2gtk-4.1-0
+          if [[ "$(dpkg-query -W -f='${Version}' "$webdriver_package")" != "$(dpkg-query -W -f='${Version}' libwebkit2gtk-4.1-0)" ]]; then
+            echo "WebKitWebDriver and WebKitGTK runtime versions differ." >&2
+            exit 1
+          fi
+          cargo install tauri-driver --locked --version 2.0.6
+      - name: Check Jammy ABI and install the unchanged Debian package
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(ubuntu-package/Git-Khronos_*_amd64.deb)
+          test "${#packages[@]}" -eq 1
+          package="$PWD/${packages[0]}"
+          node tools/check-linux-abi.mjs "$package" > ubuntu-package/abi-runtime.json
+          apt-get install --yes --no-remove "$package"
+          dpkg-query -W git-khronos git libc6 libwebkit2gtk-4.1-0
+          apt-get check
+          printf 'PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
+      - name: Exercise the installed executable with isolated repositories and profile
+        shell: bash
+        run: |
+          python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
+          python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debian-${{ matrix.debian }}-runtime-${{ github.run_id }}
           path: |
             test-results/native/
             ubuntu-package/abi-runtime.json

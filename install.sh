@@ -29,6 +29,8 @@ Usage: install.sh [options]
 Install Git Khronos system-wide on Debian or Ubuntu.
 Release ABI target: Ubuntu 22.04/24.04/26.04 amd64, glibc 2.35 or newer.
 Ubuntu 22.04 needs separately installed Git >=2.39; its stock Git is too old.
+Debian 12/13 are qualification targets; support is not claimed until their
+exact-artifact CI jobs pass.
 On other Debian/Ubuntu releases, APT resolves the package dependencies.
 Older releases and locally built packages can require newer system libraries.
 This script does not add APT sources.

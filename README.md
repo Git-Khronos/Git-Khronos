@@ -71,8 +71,9 @@ the script before running it:
 
 The release pipeline targets **Ubuntu 22.04, 24.04 and 26.04, amd64**, using
 one package built on Ubuntu 22.04 (glibc 2.35). Publication requires the exact
-same package to pass installed-app acceptance on all three releases. This is
-a qualification gate, not evidence that an unrun build or older release works.
+same package to pass installed-app acceptance on all three releases. Debian 12
+and 13 are being added to that exact-artifact qualification; Debian support is
+not claimed until those CI jobs pass.
 
 **Ubuntu 22.04 requires separately provisioned Git 2.39 or newer.** Its stock
 Git 2.34 is insufficient. Newer Git must also be registered with Debian's
@@ -127,7 +128,7 @@ Normal local builds retain their glibc 2.39 floor. The dedicated
 uses the Jammy release overlay with a 2.35 floor, then checks the actual ELF.
 Tauri's generated dependencies are retained; they are not rewritten to make a
 newer-system build appear portable. Local builds are not portable releases.
-The [Ubuntu qualification gates](docs/linux-acceptance.md#ubuntu-release-qualification)
+The [Linux qualification gates](docs/linux-acceptance.md#linux-release-qualification)
 check the artifact rather than weakening these dependencies.
 
 To build and verify the `.deb` without installing it, print the generated
@@ -401,6 +402,13 @@ editing keys. The picker, branch options, and context-menu checkout return focus
 unless it has moved elsewhere; branch mutations are disabled while another
 repository operation is running. Creating a branch at a selected commit or
 reference from its context menu also retains a failed draft for retry.
+Double-click a remote branch, press Enter, or choose **Fetch and check out local
+branch** from its menu to fetch that branch and check out its local counterpart.
+The action creates a tracking branch when needed and otherwise updates only by
+fast-forward. Ahead or diverged local commits are preserved; review divergence
+and choose merge or rebase explicitly. Git refuses checkout or update when local
+changes would be overwritten, and a branch occupied by another worktree remains
+there. Expand a combined graph reference to choose a particular remote.
 Recovery history creates a branch at the chosen commit without switching the
 current branch or changing working files, and keeps failed names available to
 correct and retry.
