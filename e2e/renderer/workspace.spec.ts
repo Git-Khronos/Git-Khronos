@@ -8497,7 +8497,7 @@ test('selects individual changed lines for partial staging and discard', async (
   const confirmation = page.getByRole('alertdialog');
   await expect(confirmation).toContainText('Discard selected lines');
   await expect(confirmation).toContainText('2 selected changed lines');
-  await expect(confirmation).toContainText('Undo can restore the selection');
+  await expect(confirmation).toContainText('Other changes remain intact, and Undo can restore them.');
   await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirmation).toBeHidden();
