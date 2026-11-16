@@ -1,3 +1,10 @@
+git-khronos (0.1.4) unstable; urgency=medium
+
+  * Fetch remote branches and safely check out or fast-forward local branches.
+  * Add Debian 12 and 13 exact-artifact runtime qualification.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Mon, 16 Nov 2026 18:55:07 +0100
+
 git-khronos (0.1.3) unstable; urgency=medium
 
   * Add a reviewed WSL shortcut check and explicit confirmed taskbar repair.

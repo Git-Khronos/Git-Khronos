@@ -97,7 +97,7 @@ bash install.sh             # install the latest release
 Other options:
 
 ```bash
-bash install.sh --version 0.1.3          # a specific release
+bash install.sh --version 0.1.4          # a specific release
 bash install.sh --deb ./Git-Khronos.deb  # a package you already have
 bash install.sh --from-source            # build from source, then install
 bash install.sh --uninstall              # remove; repositories and preferences are kept
