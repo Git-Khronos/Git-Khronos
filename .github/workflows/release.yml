@@ -67,18 +67,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run packaging regressions
         run: |
-          hook=/etc/dpkg/dpkg.cfg.d/needrestart
+          hooks=(needrestart pkg-config-hook-config)
           backup="$(mktemp -d)"
           restore_hook() {
             status=$?
-            if [ -e "$backup/needrestart" ]; then
-              sudo mv -- "$backup/needrestart" "$hook" || status=1
-            fi
+            for hook in "${hooks[@]}"; do
+              if [ -e "$backup/$hook" ]; then
+                sudo mv -- "$backup/$hook" "/etc/dpkg/dpkg.cfg.d/$hook" || status=1
+              fi
+            done
             rmdir -- "$backup" || status=1
             exit "$status"
           }
           trap restore_hook EXIT
-          if [ -e "$hook" ]; then sudo mv -- "$hook" "$backup/needrestart"; fi
+          for hook in "${hooks[@]}"; do
+            if [ -e "/etc/dpkg/dpkg.cfg.d/$hook" ]; then
+              sudo mv -- "/etc/dpkg/dpkg.cfg.d/$hook" "$backup/$hook"
+            fi
+          done
           pnpm nx run desktop:package-test --output-style=static
       - name: Build Debian package
         run: |

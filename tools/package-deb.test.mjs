@@ -95,6 +95,46 @@ esac
   }
 });
 
+test('Jammy CI restores both known dpkg hooks after successful and failed fixture runs', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-ci-hooks-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const hooks = join(root, 'hooks');
+  const bin = join(root, 'bin');
+  const temporary = join(root, 'temporary');
+  for (const directory of [hooks, bin, temporary]) await mkdir(directory);
+  const originals = { needrestart: 'post-invoke=fixture-needrestart\n',
+    'pkg-config-hook-config': 'post-invoke=fixture-pkg-config\n', unrelated: 'preserve\n' };
+  for (const [name, content] of Object.entries(originals)) {
+    await writeFile(join(hooks, name), content, { mode: 0o640 });
+  }
+  await writeFile(join(bin, 'sudo'), '#!/bin/sh\n[ "$1" = mv ] || exit 99\nexec "$@"\n', { mode: 0o755 });
+  await writeFile(join(bin, 'pnpm'), `#!/bin/sh
+[ ! -e "$HOOK_DIRECTORY/needrestart" ] || exit 98
+[ ! -e "$HOOK_DIRECTORY/pkg-config-hook-config" ] || exit 98
+[ -f "$HOOK_DIRECTORY/unrelated" ] || exit 98
+printf 'isolated fixtures\\n'
+exit "$FIXTURE_EXIT"
+`, { mode: 0o755 });
+  for (const file of ['ci.yml', 'release.yml']) {
+    const workflow = (await readFile(join(repositoryRoot, '.github/workflows', file), 'utf8')).replaceAll('\r\n', '\n');
+    const block = workflow.match(/      - name: Run packaging regressions\n        run: \|\n([\s\S]*?)(?=      - )/)?.[1];
+    assert.ok(block, `Missing packaging regression step in ${file}`);
+    const script = block.replace(/^          /gm, '').replaceAll('/etc/dpkg/dpkg.cfg.d', hooks);
+    for (const exit of [0, 7]) {
+      const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], { encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: temporary,
+          HOOK_DIRECTORY: hooks, FIXTURE_EXIT: String(exit) } });
+      assert.equal(result.status, exit, result.stderr);
+      assert.match(result.stdout, /isolated fixtures/);
+      for (const [name, content] of Object.entries(originals)) {
+        assert.equal(await readFile(join(hooks, name), 'utf8'), content);
+        assert.equal((await stat(join(hooks, name))).mode & 0o777, 0o640);
+      }
+      assert.deepEqual(await readdir(temporary), []);
+    }
+  }
+});
+
 async function requireHookFreeDpkg() {
   const files = ['/etc/dpkg/dpkg.cfg', join(homedir(), '.dpkg.cfg')];
   const directory = '/etc/dpkg/dpkg.cfg.d';
