@@ -124,6 +124,16 @@ esac
   assert.match(workflow, /debian: \["12", "13"\]/);
   assert.match(workflow, /apt-get install --yes --no-remove "\$package"/);
   assert.match(workflow, /sha256sum --check SHA256SUMS/);
+  const debianWorkflow = workflow.split('  debian-runtime:\n')[1];
+  assert.ok(debianWorkflow, 'Missing Debian runtime job');
+  const bootstrap = debianWorkflow.match(/      - name: Bootstrap tools for Debian container actions\n([\s\S]*?)(?=      - (?:name:|uses:))/)?.[1];
+  assert.ok(bootstrap, 'Missing Debian container action prerequisites');
+  assert.match(bootstrap, /apt-get install --yes ca-certificates curl git tar xz-utils/);
+  const bootstrapIndex = debianWorkflow.indexOf('Bootstrap tools for Debian container actions');
+  for (const action of ['actions/setup-node@v4', 'dtolnay/rust-toolchain@master', 'Swatinem/rust-cache@v2']) {
+    assert.ok(bootstrapIndex < debianWorkflow.indexOf(action), `Debian bootstrap must precede ${action}`);
+  }
+  assert.match(workflow, /name: debian-\$\{\{ matrix\.debian \}\}-runtime-\$\{\{ github\.run_id \}\}\n\s+path: \|\n\s+test-results\/native\/\*\*\n\s+ubuntu-package\/abi-runtime\.json/);
 });
 
 test('Jammy CI restores known dpkg hooks after successful and failed fixture runs', async (t) => {

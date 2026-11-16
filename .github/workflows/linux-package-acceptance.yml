@@ -114,6 +114,12 @@ jobs:
       - name: Verify the build job's exact artifact checksums
         working-directory: ubuntu-package
         run: sha256sum --check SHA256SUMS
+      - name: Bootstrap tools for Debian container actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install --yes ca-certificates curl git tar xz-utils
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -172,7 +178,7 @@ jobs:
         with:
           name: debian-${{ matrix.debian }}-runtime-${{ github.run_id }}
           path: |
-            test-results/native/
+            test-results/native/**
             ubuntu-package/abi-runtime.json
           if-no-files-found: warn
           retention-days: 14
