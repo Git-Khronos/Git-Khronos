@@ -12,7 +12,7 @@
   }
   @if (referenceAction() || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
     @defer (on immediate) {
-      <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" />
+      <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" (renamed)="handleReferenceRenamed($event)" />
       <gc-fetch-options-dialog [request]="fetchRequest()" (closed)="fetchRequest.set(null)" />
       <gc-worktree-move-dialog [request]="worktreeMoveRequest()" (closed)="worktreeMoveRequest.set(null)" />
       <gc-stash-options-dialog [request]="stashDialog()" (closed)="stashDialog.set(null)" />
@@ -2405,6 +2405,7 @@
       @if (menu.kind === 'tag') {
         <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('push-tag')"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="verifyContextTag()"><span><gc-icon name="check" [size]="13" /></span>Verify tag signature</button>
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('rename-tag')"><span><gc-icon name="edit" [size]="13" /></span>Rename tag…</button>
         <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
         <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('delete-remote-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
       }
@@ -2414,6 +2415,7 @@
       @if (menu.kind === 'remote') {
         <div class="context-divider"></div>
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Manage remote branch</div>
+        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('rename-remote-branch')"><span><gc-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
         <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-remote-branch')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
       }
       @if (menu.kind === 'commit') {

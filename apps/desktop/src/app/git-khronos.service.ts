@@ -52,6 +52,7 @@ import type {
   LfsFetchPreview,
   LfsCheckoutPreview,
   LfsPrunePreview,
+  ReferenceRename,
 } from '@git-khronos/contracts';
 import {
   checkoutHistoryTarget,
@@ -1981,6 +1982,13 @@ export class GitKhronosService {
         { request: { remote, name, kind, delete: deleteReference, expectedOid: expectedOid ?? null } });
     }
 
+    /** Renames a tag (optionally also on a remote) or a branch on a remote. */
+    async renameReference(request: ReferenceRename): Promise<boolean> {
+      const label = request.kind === 'tag' ? request.name : `${request.remote}/${request.name}`;
+      const renamed = request.kind === 'tag' ? request.newName : `${request.remote}/${request.newName}`;
+      return await this.mutate('rename_reference', `Renaming ${label}…`, `Renamed ${label} to ${renamed}`, { request }) === 'success';
+    }
+
     async previewRemoteTag(remote: string, name: string): Promise<string | null> {
       const repository = this.repository();
       if (!repository) return null;
@@ -3569,6 +3577,7 @@ export class GitKhronosService {
       'update_submodule',
       'update_all_submodules',
       'transport_reference',
+      'rename_reference',
       'add_submodule',
       'initialize_submodule',
       'initialize_all_submodules',

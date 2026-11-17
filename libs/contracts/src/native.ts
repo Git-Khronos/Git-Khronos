@@ -361,6 +361,19 @@ gitContext?: RecoveryDraftGitContext | null; revision: string; sequence: number;
  */
 updatedAtMillis: string }
 export type RecoveryDraftSummary = { id: string; repositoryPath: string; path: string; encoding: WorkingTextEncoding; textBytes: string; updatedAtMillis: string; pending: boolean; sequence: number; gitContext: RecoveryDraftGitContext | null }
+export type ReferenceRename = {
+/**
+ * `tag` or `remote-branch`.
+ */
+kind: string; name: string; newName: string; expectedOid: string;
+/**
+ * Remote that owns the branch, or that should also rename the tag.
+ */
+remote: string | null;
+/**
+ * Tag object read from the remote before renaming it there.
+ */
+remoteObject: string | null }
 export type ReferenceTransport = { remote: string; name: string; kind: string; delete: boolean; expectedOid: string | null }
 export type ReflogEntry = { oid: string; selector: string; subject: string; authorName: string; authorEmail: string }
 export type ReflogPage = { entries: ReflogEntry[]; truncated: boolean }
@@ -635,6 +648,7 @@ export function discard_path(args: { repoId: string; path: string; untracked: bo
 export function manage_reference(args: { repoId: string; action: string; name: string; expectedOid?: string | null; message?: string | null; url?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("manage_reference", args); }
 export function configure_remote(args: { repoId: string; previousName?: string | null; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("configure_remote", args); }
 export function transport_reference(args: { repoId: string; request: ReferenceTransport; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("transport_reference", args); }
+export function rename_reference(args: { repoId: string; request: ReferenceRename; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_reference", args); }
 export function preview_remote_tag(args: { repoId: string; remote: string; name: string; operationId: string }): Promise<string> { return TAURI_INVOKE("preview_remote_tag", args); }
 export function stash_selected(args: { repoId: string; options: StashOptions }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_selected", args); }
 export function apply_stash_options(args: { repoId: string; reference: string; expectedOid: string; restoreIndex: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stash_options", args); }
@@ -904,6 +918,7 @@ export type CommandMap = {
   manage_reference: typeof manage_reference;
   configure_remote: typeof configure_remote;
   transport_reference: typeof transport_reference;
+  rename_reference: typeof rename_reference;
   preview_remote_tag: typeof preview_remote_tag;
   stash_selected: typeof stash_selected;
   apply_stash_options: typeof apply_stash_options;

@@ -267,6 +267,8 @@ mod history_walk;
 mod integrity;
 pub use integrity::{IntegrityReport, inspect_integrity};
 mod reference_actions;
+mod reference_rename;
+pub use reference_rename::{RemoteTagLease, rename_remote_branch, rename_tag};
 mod stash_file_restore;
 mod stash_options;
 pub use stash_file_restore::apply_stashed_file;
@@ -284,6 +286,8 @@ mod ordered_revert_tests;
 mod rebase_split_tests;
 #[cfg(test)]
 mod reference_actions_tests;
+#[cfg(test)]
+mod reference_rename_tests;
 #[cfg(test)]
 mod selected_rebase_tests;
 #[cfg(test)]

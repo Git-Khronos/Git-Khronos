@@ -69,7 +69,7 @@ import { GraphViewportComponent } from './graph-viewport.component';
 import { ViewportSizeDirective } from './viewport-size.directive';
 import { WorkingTreeViewportComponent } from './working-tree-viewport.component';
 import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
-import { ReferenceActionDialogComponent, type ReferenceActionRequest } from './reference-action-dialog.component';
+import { ReferenceActionDialogComponent, type ReferenceActionRequest, type ReferenceRenamed } from './reference-action-dialog.component';
 import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
 import { HistorySearchComponent } from './history-search.component';
 import { HistorySearchService } from './history-search.service';
@@ -12438,7 +12438,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     const repositoryId = this.git.activeRepositoryId();
     if (!menu || !repositoryId || this.git.busy()) return;
-    if (action === 'delete-remote-branch' ? menu.kind !== 'remote' : menu.kind !== 'tag') return;
+    const remoteAction = action === 'delete-remote-branch' || action === 'rename-remote-branch';
+    if (remoteAction ? menu.kind !== 'remote' : menu.kind !== 'tag') return;
     const remote = menu.kind === 'remote' ? this.remoteLocationName(menu.label) : undefined;
     const name = menu.kind === 'remote' ? this.remoteBranchLabel(menu.label) : menu.label;
     const returnFocus = this.contextMenuReturnFocus;
@@ -12461,9 +12462,25 @@ export class AppComponent implements OnInit, OnDestroy {
     const wasPinned = this.pinnedBranch() === menu.label;
     this.actionOverlays.close('context');
     await this.git.renameBranch(menu.label, name);
-    if (!this.git.error() && wasPinned) {
+    if (!this.git.error()) this.followRenamedBranch(menu.label, name, wasPinned);
+  }
+
+  /** Keeps per-repository branch preferences attached to a branch after it is renamed. */
+  private followRenamedBranch(previous: string, name: string, wasPinned: boolean): void {
+    if (wasPinned) {
       this.pinnedBranch.set(name);
       this.storePinnedBranch();
+    }
+    if (![...this.hiddenBranches(), ...this.soloBranches()].includes(previous)) return;
+    const rename = (names: string[]) => [...new Set(names.map((branch) => branch === previous ? name : branch))];
+    this.hiddenBranches.update(rename);
+    this.soloBranches.update(rename);
+    this.storeReferenceFilters();
+  }
+
+  protected handleReferenceRenamed(renamed: ReferenceRenamed): void {
+    if (renamed.kind === 'remote-branch' && renamed.remote) {
+      this.followRenamedBranch(`${renamed.remote}/${renamed.name}`, `${renamed.remote}/${renamed.newName}`, false);
     }
   }
 
@@ -12480,10 +12497,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const wasPinned = this.pinnedBranch() === branch;
     this.pendingBranchRename.set(null);
     await this.git.renameBranch(branch, name);
-    if (!this.git.error() && wasPinned) {
-      this.pinnedBranch.set(name);
-      this.storePinnedBranch();
-    }
+    if (!this.git.error()) this.followRenamedBranch(branch, name, wasPinned);
   }
 
   private requestPaletteBranchDelete(branch: string, returnFocus: HTMLElement | null = null): void {

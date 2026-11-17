@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
         (window as any).__referenceCalls.push({ command, args });
         if (command === 'preview_remote_tag') return Promise.resolve('b'.repeat(40));
         if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
-        if (['transport_reference', 'manage_reference', 'configure_remote', 'refresh_repository'].includes(command)) {
+        if (['transport_reference', 'manage_reference', 'configure_remote', 'refresh_repository', 'rename_reference'].includes(command)) {
+          if (command === 'rename_reference' && (window as any).__renameReferenceError) {
+            return Promise.reject((window as any).__renameReferenceError);
+          }
           if (command === 'manage_reference' && (window as any).__referenceSigningError) {
             return Promise.reject({ kind: 'gitFailure', message: 'Configured signing key or tag signature unavailable.' });
           }
@@ -289,4 +292,125 @@ test('renaming a remote saves URL changes in one operation and keeps its prefere
   expect(preferences.icons).not.toHaveProperty('origin');
   expect(preferences.collapsed).not.toContain('origin');
   expect(preferences.collapsed).toContain('team/primary');
+});
+
+test('tag rename validates the new name and can rename the remote copy after checking it', async ({ page }) => {
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const id = git.activeRepositoryId();
+    git.repositories.update((repositories: any[]) => repositories.map((repository) => repository.id !== id ? repository : {
+      ...repository,
+      tags: [...repository.tags, { fullName: 'refs/tags/v0.2.0', name: 'v0.2.0', oid: repository.tags[0].oid }] }));
+  });
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename tag…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Rename tag' });
+  const name = dialog.getByLabel('New name', { exact: true });
+  const confirm = dialog.getByRole('button', { name: 'Rename tag', exact: true });
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue('v0.1.0');
+  await expect(confirm).toBeDisabled();
+  await expect(dialog.getByLabel('Remote', { exact: true })).toHaveCount(0);
+
+  await name.fill('v0.2.0');
+  await expect(dialog.getByRole('alert')).toHaveText('A tag with this name already exists.');
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(confirm).toBeDisabled();
+  await name.fill('bad..name');
+  await expect(dialog.getByRole('alert')).toHaveText('Git does not allow this name.');
+  await name.fill('release/v0.1.0');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(confirm).toBeEnabled();
+
+  await dialog.getByRole('checkbox', { name: 'Also rename the tag on a remote' }).check();
+  const remoteConfirm = dialog.getByRole('button', { name: 'Rename tag here and on remote', exact: true });
+  await expect(remoteConfirm).toBeDisabled();
+  await dialog.getByLabel('Remote', { exact: true }).selectOption('upstream');
+  await dialog.getByRole('button', { name: 'Check remote tag' }).click();
+  await expect(remoteConfirm).toBeEnabled();
+  await remoteConfirm.click();
+  await expect(dialog).toHaveCount(0);
+  const call = await page.evaluate(() => (window as any).__referenceCalls.find((call: any) => call.command === 'rename_reference'));
+  expect(call.args).toMatchObject({ operationId: expect.any(String), request: {
+    kind: 'tag', name: 'v0.1.0', newName: 'release/v0.1.0', remote: 'upstream', remoteObject: 'b'.repeat(40),
+    expectedOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+  } });
+});
+
+test('local-only tag rename sends no remote and keeps the dialog open on failure', async ({ page }) => {
+  await page.evaluate(() => {
+    (window as any).__renameReferenceError = { kind: 'referenceExists', message: "A tag named 'v2' already exists." };
+  });
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename tag…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Rename tag' });
+  await dialog.getByLabel('New name', { exact: true }).fill('v2');
+  await dialog.getByLabel('New name', { exact: true }).press('Enter');
+  await expect(dialog.getByRole('alert')).toContainText('already exists');
+  await expect(dialog.getByLabel('New name', { exact: true })).toHaveValue('v2');
+  const call = await page.evaluate(() => (window as any).__referenceCalls.find((call: any) => call.command === 'rename_reference'));
+  expect(call.args.request).toMatchObject({ kind: 'tag', name: 'v0.1.0', newName: 'v2', remote: null, remoteObject: null });
+  expect(await page.evaluate(() => (window as any).__referenceCalls.some((call: any) => call.command === 'preview_remote_tag'))).toBe(false);
+});
+
+test('remote branch rename pins the remote and commit and carries graph filters to the new name', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.hiddenBranches.set(['origin/docs', 'upstream/docs']);
+    app.soloBranches.set([]);
+  });
+  const remote = page.getByRole('button', { name: 'Remote branch origin/docs', exact: true });
+  await remote.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename branch on remote…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Rename branch on remote' });
+  await expect(dialog.getByLabel('Remote', { exact: true })).toBeDisabled();
+  await expect(dialog).toContainText('Expected remote commit');
+  const name = dialog.getByLabel('New name', { exact: true });
+  await name.fill('main');
+  await expect(dialog.getByRole('alert')).toHaveText('This remote already has a branch with this name.');
+  await name.fill('team/docs');
+  await dialog.getByRole('button', { name: 'Rename remote branch', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const result = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return {
+      call: (window as any).__referenceCalls.find((call: any) => call.command === 'rename_reference'),
+      oid: app.git.repository().branches.find((branch: any) => branch.name === 'origin/docs').oid,
+      hidden: app.hiddenBranches(),
+    };
+  });
+  expect(result.call.args.request).toMatchObject({
+    kind: 'remote-branch', remote: 'origin', name: 'docs', newName: 'team/docs', expectedOid: result.oid, remoteObject: null,
+  });
+  expect(result.hidden).toEqual(['origin/team/docs', 'upstream/docs']);
+});
+test('local branch rename carries hidden and pinned preferences to the new name', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.hiddenBranches.set(['feature/partial-staging', 'origin/docs']);
+    app.soloBranches.set([]);
+    app.pinnedBranch.set('feature/partial-staging');
+    const invoke = (window as any).__TAURI_INTERNALS__.invoke;
+    (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== 'rename_branch') return invoke(command, args);
+      (window as any).__referenceCalls.push({ command, args });
+      return Promise.resolve(app.git.repository());
+    };
+  });
+  await page.getByRole('button', { name: 'Local branch feature/partial-staging' }).click({ button: 'right' });
+  await page.getByLabel('Rename branch', { exact: true }).fill('feature/renamed');
+  await page.getByRole('button', { name: 'Rename', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__referenceCalls
+    .some((call: any) => call.command === 'rename_branch'))).toBe(true);
+  const result = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return {
+      call: (window as any).__referenceCalls.find((call: any) => call.command === 'rename_branch'),
+      hidden: app.hiddenBranches(),
+      pinned: app.pinnedBranch(),
+    };
+  });
+  expect(result.call.args).toMatchObject({ oldName: 'feature/partial-staging', newName: 'feature/renamed' });
+  expect(result.hidden).toEqual(['feature/renamed', 'origin/docs']);
+  expect(result.pinned).toBe('feature/renamed');
 });

@@ -108,6 +108,77 @@ pub async fn transport_reference(
     .await
 }
 
+#[derive(serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceRename {
+    /// `tag` or `remote-branch`.
+    kind: String,
+    name: String,
+    new_name: String,
+    expected_oid: String,
+    /// Remote that owns the branch, or that should also rename the tag.
+    remote: Option<String>,
+    /// Tag object read from the remote before renaming it there.
+    remote_object: Option<String>,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+pub async fn rename_reference(
+    repo_id: String,
+    request: ReferenceRename,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_cancellable_background(
+        repo_id,
+        operation_id,
+        app,
+        move |path, cancellation| match request.kind.as_str() {
+            "tag" => {
+                let remote = match (&request.remote, &request.remote_object) {
+                    (Some(remote), Some(object)) => Some(git_khronos_git_core::RemoteTagLease {
+                        remote,
+                        expected_object: object,
+                    }),
+                    (None, None) => None,
+                    _ => {
+                        return Err(invalid_rename(
+                            "Renaming a tag on a remote needs the remote tag object.",
+                        ));
+                    }
+                };
+                git_khronos_git_core::rename_tag(
+                    path,
+                    &request.name,
+                    &request.new_name,
+                    &request.expected_oid,
+                    remote,
+                    cancellation,
+                )
+            }
+            "remote-branch" => git_khronos_git_core::rename_remote_branch(
+                path,
+                request.remote.as_deref().unwrap_or(""),
+                &request.name,
+                &request.new_name,
+                &request.expected_oid,
+                cancellation,
+            ),
+            _ => Err(invalid_rename("That reference cannot be renamed.")),
+        },
+    )
+    .await
+}
+
+fn invalid_rename(message: &str) -> AppError {
+    AppError {
+        kind: "invalidReferenceAction".into(),
+        message: message.into(),
+        hint: None,
+    }
+}
+
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
 pub async fn preview_remote_tag(

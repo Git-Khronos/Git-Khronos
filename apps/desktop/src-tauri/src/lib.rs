@@ -23,8 +23,8 @@ use git_khronos_git_core::{
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
     delete_branch as git_delete_branch,
-    delete_checkpoint_reference as git_delete_checkpoint_reference, detect_git,
-    delete_original_reference as git_delete_original_reference,
+    delete_checkpoint_reference as git_delete_checkpoint_reference,
+    delete_original_reference as git_delete_original_reference, detect_git,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
     execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
@@ -294,7 +294,8 @@ fn set_window_chrome_scale(percent: u32, app: AppHandle) {
         {
             display_environment::remember_window_chrome(&directory, Some(percent), None);
         }
-        let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_scale(percent));
+        let _ =
+            app.run_on_main_thread(move || display_environment::apply_window_chrome_scale(percent));
     }
     #[cfg(not(target_os = "linux"))]
     let _ = (percent, app);
@@ -302,16 +303,25 @@ fn set_window_chrome_scale(percent: u32, app: AppHandle) {
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn set_window_chrome_colors(background: String, foreground: String, border: String, page: String, app: AppHandle) {
+fn set_window_chrome_colors(
+    background: String,
+    foreground: String,
+    border: String,
+    page: String,
+    app: AppHandle,
+) {
     #[cfg(target_os = "linux")]
-    if let Some(colors) = display_environment::ChromeColors::parse(&background, &foreground, &border, &page) {
+    if let Some(colors) =
+        display_environment::ChromeColors::parse(&background, &foreground, &border, &page)
+    {
         if display_environment::running_under_wsl()
             && let Ok(directory) = app.path().app_config_dir()
         {
             display_environment::remember_window_chrome(&directory, None, Some(colors.clone()));
         }
         paint_window_background(&app, &colors);
-        let _ = app.run_on_main_thread(move || display_environment::apply_window_chrome_colors(colors));
+        let _ =
+            app.run_on_main_thread(move || display_environment::apply_window_chrome_colors(colors));
     }
     #[cfg(not(target_os = "linux"))]
     let _ = (background, foreground, border, page, app);
@@ -1137,7 +1147,9 @@ fn delete_original_reference(
             "The original reference was deleted, but history could not refresh: {}",
             error.message
         ),
-        hint: Some("Refresh the repository to update its history. Do not repeat the deletion.".into()),
+        hint: Some(
+            "Refresh the repository to update its history. Do not repeat the deletion.".into(),
+        ),
     })
 }
 
@@ -4135,6 +4147,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             reference_commands::manage_reference,
             reference_commands::configure_remote,
             reference_commands::transport_reference,
+            reference_commands::rename_reference,
             reference_commands::preview_remote_tag,
             stash_commands::stash_selected,
             stash_commands::apply_stash_options,

@@ -241,7 +241,7 @@ pub fn remote_tag_object(
     Ok(oid)
 }
 
-fn single_push_destination(path: &Path, remote: &str) -> Result<String, AppError> {
+pub(super) fn single_push_destination(path: &Path, remote: &str) -> Result<String, AppError> {
     let output = run_git(path, &["remote", "get-url", "--push", "--all", remote])?;
     ensure_success("read the push destination", &output)?;
     let text = String::from_utf8_lossy(&output.stdout);
