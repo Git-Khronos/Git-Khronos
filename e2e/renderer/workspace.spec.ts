@@ -4429,7 +4429,8 @@ test('manages repository remotes from the reference panel', async ({ page }) => 
   await editRemote.click();
   const editDialog = page.getByRole('dialog', { name: 'Edit Remote' });
   await expect(editDialog.getByLabel('Name')).toHaveValue('origin');
-  await expect(editDialog.getByLabel('Name')).toHaveAttribute('readonly', '');
+  await expect(editDialog.getByLabel('Name')).toBeEditable();
+  await expect(editDialog.getByLabel('Name')).toHaveAccessibleDescription('Renaming also updates remote-tracking branches and the branches that track them.');
   await expect(editDialog.getByLabel('Fetch URL')).toHaveValue('git@github.com:example/git-khronos.git');
   await expect(editDialog.getByLabel('Fetch URL')).toBeFocused();
   await expect(editDialog.getByRole('heading', { name: 'Remote details' })).toHaveCount(0);

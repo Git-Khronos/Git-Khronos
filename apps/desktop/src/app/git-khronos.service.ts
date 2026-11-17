@@ -2125,9 +2125,21 @@ export class GitKhronosService {
     );
   }
 
-  async configureRemote(name: string, fetchUrl: string, pushUrl: string | null, changePush: boolean, add: boolean): Promise<void> {
-    await this.mutate('configure_remote', `Saving remote ${name}…`, `Remote ${name} saved`,
-      { name, fetchUrl, pushUrl, changePush, add });
+  async configureRemote(
+    name: string,
+    fetchUrl: string,
+    pushUrl: string | null,
+    changePush: boolean,
+    add: boolean,
+    previousName: string | null = null,
+  ): Promise<void> {
+    const renaming = !add && !!previousName && previousName !== name;
+    await this.mutate(
+      'configure_remote',
+      renaming ? `Renaming remote ${previousName} to ${name}…` : `Saving remote ${name}…`,
+      renaming ? `Remote ${previousName} renamed to ${name}` : `Remote ${name} saved`,
+      { previousName: renaming ? previousName : null, name, fetchUrl, pushUrl, changePush, add },
+    );
   }
 
   async removeRemote(name: string): Promise<void> {

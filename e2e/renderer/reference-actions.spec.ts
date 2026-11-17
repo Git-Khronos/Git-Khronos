@@ -207,3 +207,86 @@ test('separate push URLs are advanced and save both destinations in one operatio
   const call = await page.evaluate(() => (window as any).__referenceCalls.find((call: any) => call.command === 'configure_remote'));
   expect(call.args).toMatchObject({ name: 'origin', pushUrl: '/local/push-destination.git', changePush: true, add: false });
 });
+
+test('renaming a remote saves URL changes in one operation and keeps its preferences', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    (window as any).__renameFailure = null;
+    const invoke = (window as any).__TAURI_INTERNALS__.invoke;
+    (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== 'configure_remote' || !args.previousName) return invoke(command, args);
+      (window as any).__referenceCalls.push({ command, args });
+      if ((window as any).__renameFailure) return Promise.reject((window as any).__renameFailure);
+      const repository = git.repository();
+      const previous = `${args.previousName}/`;
+      const rename = (name: string | null) => name?.startsWith(previous) ? `${args.name}/${name.slice(previous.length)}` : name;
+      return Promise.resolve({
+        ...repository,
+        remotes: repository.remotes.map((remote: any) => remote.name === args.previousName
+          ? { name: args.name, fetchUrl: args.fetchUrl, pushUrl: args.pushUrl ?? args.fetchUrl }
+          : remote),
+        branches: repository.branches.map((branch: any) => ({
+          ...branch,
+          name: branch.remote ? rename(branch.name) : branch.name,
+          fullName: branch.remote ? `refs/remotes/${rename(branch.name)}` : branch.fullName,
+          upstream: rename(branch.upstream),
+        })),
+      });
+    };
+  });
+
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.hiddenBranches.set(['origin/docs', 'upstream/main']);
+  });
+  await page.getByRole('region', { name: 'Remote origin' })
+    .getByRole('button', { name: 'Collapse remote origin' }).click();
+  await page.getByLabel('Edit remote origin').click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Remote' });
+  const name = dialog.getByLabel('Name', { exact: true });
+  const save = dialog.getByRole('button', { name: 'Save Remote' });
+  await expect(name).toBeEditable();
+
+  await name.fill('upstream');
+  await expect(dialog.getByRole('alert')).toHaveText('Another remote already uses this name.');
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(save).toBeDisabled();
+
+  await page.evaluate(() => {
+    (window as any).__renameFailure = { kind: 'invalidRemoteName', message: "'bad name' cannot be used as a remote name." };
+  });
+  await name.fill('bad name');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.locator('.error-toast')).toContainText('cannot be used as a remote name');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Fetch and push destinations for origin');
+  await expect(page.getByRole('region', { name: 'Remote origin' })).toBeVisible();
+
+  await page.evaluate(() => { (window as any).__renameFailure = null; });
+  await name.fill('team/primary');
+  await dialog.getByLabel('Fetch URL').fill('/local/renamed.git');
+  await dialog.getByLabel('Remote location icon').selectOption('globe');
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+
+  const calls = await page.evaluate(() => (window as any).__referenceCalls
+    .filter((call: any) => call.command === 'configure_remote' || call.command === 'set_remote_url'));
+  expect(calls.at(-1).args).toMatchObject({
+    previousName: 'origin', name: 'team/primary', fetchUrl: '/local/renamed.git', changePush: false, add: false,
+  });
+  expect(calls.filter((call: any) => call.command === 'set_remote_url')).toEqual([]);
+  await expect(page.getByLabel('Edit remote origin')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Remote team/primary' })
+    .getByRole('button', { name: 'Expand remote team/primary' })).toHaveAttribute('aria-expanded', 'false');
+  const preferences = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { icons: app.remoteLocationIcons(), collapsed: app.collapsedRemoteLocations(), hidden: app.hiddenBranches() };
+  });
+  expect(preferences.hidden).toEqual(['team/primary/docs', 'upstream/main']);
+  expect(preferences.icons).toMatchObject({ 'team/primary': 'globe' });
+  expect(preferences.icons).not.toHaveProperty('origin');
+  expect(preferences.collapsed).not.toContain('origin');
+  expect(preferences.collapsed).toContain('team/primary');
+});

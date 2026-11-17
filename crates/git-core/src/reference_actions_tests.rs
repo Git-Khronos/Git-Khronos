@@ -9525,6 +9525,7 @@ fn reference_actions_validate_both_urls_before_changing_configuration() {
     let repository = Repository::new();
     configure_remote_urls(
         &repository.0,
+        None,
         "origin",
         "/original",
         Some("/push"),
@@ -9535,6 +9536,7 @@ fn reference_actions_validate_both_urls_before_changing_configuration() {
     assert!(
         configure_remote_urls(
             &repository.0,
+            None,
             "origin",
             "/changed",
             Some("bad\nurl"),
@@ -9546,10 +9548,192 @@ fn reference_actions_validate_both_urls_before_changing_configuration() {
     let remote = read_remotes(&repository.0).unwrap().remove(0);
     assert_eq!(remote.fetch_url, "/original");
     assert_eq!(remote.push_url, "/push");
-    configure_remote_urls(&repository.0, "origin", "/changed", None, true, false).unwrap();
+    configure_remote_urls(&repository.0, None, "origin", "/changed", None, true, false).unwrap();
     let remote = read_remotes(&repository.0).unwrap().remove(0);
     assert_eq!(remote.fetch_url, "/changed");
     assert_eq!(remote.push_url, "/changed");
+}
+
+fn git_output(repository: &Repository, args: &[&str]) -> String {
+    let output = run_git(&repository.0, args).unwrap();
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+fn fetched_origin_repository() -> Repository {
+    let repository = Repository::new();
+    let bare = repository.0.join("origin.git");
+    run_mutation(
+        &repository.0,
+        &["init", "--bare", bare.to_str().unwrap()],
+        "create remote",
+    )
+    .unwrap();
+    add_remote(&repository.0, "origin", bare.to_str().unwrap()).unwrap();
+    run_mutation(
+        &repository.0,
+        &["push", "-u", "origin", "main"],
+        "publish main",
+    )
+    .unwrap();
+    repository
+}
+
+#[test]
+fn renaming_a_remote_moves_tracking_refs_upstreams_and_applies_url_changes() {
+    let repository = fetched_origin_repository();
+    let oid = repository.oid();
+    configure_remote_urls(
+        &repository.0,
+        Some("origin"),
+        "upstream",
+        "/renamed-fetch",
+        Some("/renamed-push"),
+        true,
+        false,
+    )
+    .unwrap();
+    let remotes = read_remotes(&repository.0).unwrap();
+    assert_eq!(remotes.len(), 1);
+    assert_eq!(remotes[0].name, "upstream");
+    assert_eq!(remotes[0].fetch_url, "/renamed-fetch");
+    assert_eq!(remotes[0].push_url, "/renamed-push");
+    assert_eq!(
+        git_output(&repository, &["rev-parse", "refs/remotes/upstream/main"]),
+        oid
+    );
+    assert!(git_output(&repository, &["for-each-ref", "refs/remotes/origin"]).is_empty());
+    assert_eq!(
+        git_output(&repository, &["config", "branch.main.remote"]),
+        "upstream"
+    );
+    assert_eq!(
+        git_output(
+            &repository,
+            &["rev-parse", "--abbrev-ref", "main@{upstream}"]
+        ),
+        "upstream/main"
+    );
+}
+
+#[test]
+fn renaming_a_remote_accepts_names_git_accepts_with_slashes() {
+    let repository = fetched_origin_repository();
+    let url = read_remotes(&repository.0).unwrap().remove(0).fetch_url;
+    rename_remote(&repository.0, "origin", "team/origin").unwrap();
+    assert_eq!(read_remotes(&repository.0).unwrap()[0].name, "team/origin");
+    assert_eq!(
+        git_output(
+            &repository,
+            &["rev-parse", "--abbrev-ref", "main@{upstream}"]
+        ),
+        "team/origin/main"
+    );
+    configure_remote_urls(
+        &repository.0,
+        Some("team/origin"),
+        "origin",
+        &url,
+        None,
+        false,
+        false,
+    )
+    .unwrap();
+    assert_eq!(read_remotes(&repository.0).unwrap()[0].name, "origin");
+}
+
+#[test]
+fn renaming_a_remote_refuses_duplicate_and_invalid_names_without_changes() {
+    let repository = fetched_origin_repository();
+    add_remote(&repository.0, "backup", "/backup").unwrap();
+    let before = git_output(&repository, &["config", "--local", "--list"]);
+    let duplicate = configure_remote_urls(
+        &repository.0,
+        Some("origin"),
+        "backup",
+        "/changed",
+        None,
+        true,
+        false,
+    )
+    .unwrap_err();
+    assert_eq!(duplicate.kind, "remoteAlreadyExists");
+    for invalid in [
+        "",
+        "bad name",
+        "bad..name",
+        "-flag",
+        "trailing/",
+        "bad~name",
+    ] {
+        let error = configure_remote_urls(
+            &repository.0,
+            Some("origin"),
+            invalid,
+            "/changed",
+            None,
+            true,
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "invalidRemoteName", "{invalid:?}");
+    }
+    let missing = rename_remote(&repository.0, "missing", "other").unwrap_err();
+    assert_eq!(missing.kind, "remoteNotFound");
+    assert_eq!(
+        git_output(&repository, &["config", "--local", "--list"]),
+        before
+    );
+    assert!(!git_output(&repository, &["for-each-ref", "refs/remotes/origin"]).is_empty());
+}
+
+#[test]
+fn renaming_a_remote_reports_failures_before_and_after_the_rename_accurately() {
+    let repository = fetched_origin_repository();
+    let url = read_remotes(&repository.0).unwrap().remove(0).fetch_url;
+    let lock = repository.0.join(".git").join("config.lock");
+    fs::write(&lock, b"").unwrap();
+    let blocked = configure_remote_urls(
+        &repository.0,
+        Some("origin"),
+        "upstream",
+        "/changed",
+        None,
+        false,
+        false,
+    );
+    fs::remove_file(&lock).unwrap();
+    assert!(!blocked.unwrap_err().message.contains("was renamed"));
+    let remote = read_remotes(&repository.0).unwrap().remove(0);
+    assert_eq!(
+        (remote.name.as_str(), remote.fetch_url.as_str()),
+        ("origin", url.as_str())
+    );
+
+    run_mutation(
+        &repository.0,
+        &["config", "--add", "remote.origin.url", "/second"],
+        "add second URL",
+    )
+    .unwrap();
+    let partial = configure_remote_urls(
+        &repository.0,
+        Some("origin"),
+        "upstream",
+        "/changed",
+        None,
+        false,
+        false,
+    )
+    .unwrap_err();
+    assert_eq!(partial.kind, "remoteUrlUpdateFailed");
+    assert!(
+        partial
+            .message
+            .starts_with("Remote 'origin' was renamed to 'upstream', but the fetch URL"),
+        "{}",
+        partial.message
+    );
+    assert_eq!(read_remotes(&repository.0).unwrap()[0].name, "upstream");
 }
 
 #[test]

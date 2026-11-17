@@ -279,8 +279,12 @@ pub fn set_remote_push_url(path: &Path, name: &str, url: Option<&str>) -> Result
         }
     }
 }
+/// Saves the remote dialog. When `rename_from` names an existing remote that
+/// differs from `name`, the rename runs first so the URL updates apply to the
+/// renamed remote. Every input is validated before any configuration changes.
 pub fn configure_remote_urls(
     path: &Path,
+    rename_from: Option<&str>,
     name: &str,
     fetch_url: &str,
     push_url: Option<&str>,
@@ -292,15 +296,49 @@ pub fn configure_remote_urls(
     if let Some(url) = push_url {
         validate_remote_url(url)?;
     }
+    let rename_from = rename_from.filter(|previous| !add && *previous != name);
+    if let Some(previous) = rename_from {
+        validate_remote_rename(path, previous, name)?;
+        rename_remote(path, previous, name)?;
+    }
+    let renamed = rename_from
+        .map(|previous| format!("Remote '{previous}' was renamed to '{name}', but "))
+        .unwrap_or_default();
     if add {
         add_remote(path, name, fetch_url)?;
+    } else if rename_from.is_some() {
+        set_remote_url(path, name, fetch_url).map_err(|error| {
+            AppError::new(
+                "remoteUrlUpdateFailed",
+                format!(
+                    "{renamed}the fetch URL could not be updated. {}",
+                    error.message
+                ),
+                Some("The remote keeps its new name and previous URLs. Review it before retrying."),
+            )
+        })?;
     } else {
         set_remote_url(path, name, fetch_url)?;
     }
     if change_push {
-        set_remote_push_url(path, name, push_url).map_err(|error| AppError::new(
-            "pushUrlUpdateFailed", format!("Fetch URL was saved, but the push URL could not be updated. {}", error.message),
-            Some("The remote now exists with the saved fetch URL. Review its current URLs before retrying.")))?;
+        set_remote_push_url(path, name, push_url).map_err(|error| {
+            let message = if renamed.is_empty() {
+                format!(
+                    "Fetch URL was saved, but the push URL could not be updated. {}",
+                    error.message
+                )
+            } else {
+                format!(
+                    "{renamed}the push URL could not be updated. The fetch URL was saved. {}",
+                    error.message
+                )
+            };
+            AppError::new(
+                "pushUrlUpdateFailed",
+                message,
+                Some("The remote now exists with the saved fetch URL. Review its current URLs before retrying."),
+            )
+        })?;
     }
     Ok(())
 }

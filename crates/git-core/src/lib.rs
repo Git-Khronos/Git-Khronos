@@ -4460,6 +4460,37 @@ pub fn remove_remote(path: &Path, name: &str) -> Result<(), AppError> {
     run_mutation(path, &["remote", "remove", name], "remove that remote")
 }
 
+/// Renames a remote with `git remote rename`, which also moves its
+/// remote-tracking refs and rewrites branch upstream configuration.
+pub fn rename_remote(path: &Path, name: &str, new_name: &str) -> Result<(), AppError> {
+    validate_remote_rename(path, name, new_name)?;
+    if name == new_name {
+        return Ok(());
+    }
+    run_mutation(
+        path,
+        &["remote", "rename", name, new_name],
+        "rename that remote",
+    )
+}
+
+fn validate_remote_rename(path: &Path, name: &str, new_name: &str) -> Result<(), AppError> {
+    validate_remote_name(path, name)?;
+    validate_remote_name(path, new_name)?;
+    let remotes = read_remotes(path)?;
+    if !remotes.iter().any(|remote| remote.name == name) {
+        return Err(remote_not_found(name));
+    }
+    if name != new_name && remotes.iter().any(|remote| remote.name == new_name) {
+        return Err(AppError::new(
+            "remoteAlreadyExists",
+            format!("Remote '{new_name}' already exists."),
+            Some("Choose a name that no other remote uses."),
+        ));
+    }
+    Ok(())
+}
+
 fn require_remote(path: &Path, name: &str) -> Result<(), AppError> {
     if read_remotes(path)?.iter().any(|remote| remote.name == name) {
         return Ok(());

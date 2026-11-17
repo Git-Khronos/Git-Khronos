@@ -632,7 +632,7 @@ export function stage_path(args: { repoId: string; path: string }): Promise<Repo
 export function unstage_path(args: { repoId: string; path: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_path", args); }
 export function discard_path(args: { repoId: string; path: string; untracked: boolean }): Promise<RepositoryStatus> { return TAURI_INVOKE("discard_path", args); }
 export function manage_reference(args: { repoId: string; action: string; name: string; expectedOid?: string | null; message?: string | null; url?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("manage_reference", args); }
-export function configure_remote(args: { repoId: string; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("configure_remote", args); }
+export function configure_remote(args: { repoId: string; previousName?: string | null; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("configure_remote", args); }
 export function transport_reference(args: { repoId: string; request: ReferenceTransport; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("transport_reference", args); }
 export function preview_remote_tag(args: { repoId: string; remote: string; name: string; operationId: string }): Promise<string> { return TAURI_INVOKE("preview_remote_tag", args); }
 export function stash_selected(args: { repoId: string; options: StashOptions }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_selected", args); }

@@ -2109,13 +2109,18 @@
       <section #remoteDialogElement class="repository-dialog remote-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <header class="repository-dialog-header">
           <span class="remote-dialog-mark"><gc-icon name="remote" [size]="17" /></span>
-          <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another Git repository' : 'Fetch and push destinations for ' + remoteName() }}</small></div>
+          <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another Git repository' : 'Fetch and push destinations for ' + remoteDialogOriginalName() }}</small></div>
           <button type="button" aria-label="Close remote dialog" (click)="closeRemoteDialog()"><gc-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitRemote()">
           <div class="repository-form-body">
             <p class="form-help">Save connection settings here. Fetch and push run separately.</p>
-            <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [readonly]="mode === 'edit'" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
+            <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [attr.aria-describedby]="remoteNameTaken() ? 'remote-name-error' : mode === 'edit' ? 'remote-name-help' : null" [attr.aria-invalid]="remoteNameTaken() || null" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
+            @if (remoteNameTaken()) {
+              <p id="remote-name-error" class="form-help field-error" role="alert">Another remote already uses this name.</p>
+            } @else if (mode === 'edit') {
+              <p id="remote-name-help" class="form-help">Renaming also updates remote-tracking branches and the branches that track them.</p>
+            }
             <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteUrl.set($event)" /></label>
             <p id="remote-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
             <details class="form-disclosure">
@@ -2130,7 +2135,7 @@
           </div>
           <footer>
             @if (mode === 'edit') { <button class="remote-remove" type="button" (click)="requestRemoteRemoval()">Remove Remote</button> }
-            <span></span><button type="button" (click)="closeRemoteDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!remoteName().trim() || !remoteUrl().trim() || git.busy()">{{ mode === 'add' ? 'Add Remote' : 'Save Remote' }}</button>
+            <span></span><button type="button" (click)="closeRemoteDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!remoteName().trim() || !remoteUrl().trim() || remoteNameTaken() || git.busy()">{{ mode === 'add' ? 'Add Remote' : 'Save Remote' }}</button>
           </footer>
         </form>
       </section>

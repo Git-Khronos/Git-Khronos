@@ -14,6 +14,7 @@ pub struct ReferenceTransport {
 #[specta::specta]
 pub async fn configure_remote(
     repo_id: String,
+    previous_name: Option<String>,
     name: String,
     fetch_url: String,
     push_url: Option<String>,
@@ -26,6 +27,7 @@ pub async fn configure_remote(
         mutate_and_refresh(&repo_id, &state, |path| {
             git_khronos_git_core::configure_remote_urls(
                 path,
+                previous_name.as_deref(),
                 &name,
                 &fetch_url,
                 push_url.as_deref(),

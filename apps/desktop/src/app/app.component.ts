@@ -999,6 +999,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly submodulePath = signal('');
   protected readonly remoteDialog = signal<RemoteDialogMode | null>(null);
   protected readonly remoteName = signal('');
+  /** Name of the remote being edited; differs from `remoteName` while a rename is pending. */
+  protected readonly remoteDialogOriginalName = signal('');
+  protected readonly remoteNameTaken = computed(() => {
+    const name = this.remoteName().trim();
+    const original = this.remoteDialog() === 'edit' ? this.remoteDialogOriginalName() : null;
+    return !!name && name !== original
+      && !!this.git.repository()?.remotes.some((remote) => remote.name === name);
+  });
   protected readonly remoteUrl = signal('');
   protected readonly remotePushUrl = signal('');
   private initialRemotePushUrl = '';
@@ -6377,6 +6385,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.remoteDialogOpener = this.captureRemoteDialogOpener(returnFocus);
     const hasOrigin = this.git.repository()?.remotes.some((remote) => remote.name === 'origin');
     this.remoteName.set(hasOrigin ? '' : 'origin');
+    this.remoteDialogOriginalName.set('');
     this.remoteUrl.set('');
     this.remotePushUrl.set('');
     this.initialRemotePushUrl = '';
@@ -6388,12 +6397,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openEditRemoteDialog(remote: Remote, returnFocus?: HTMLElement | null): void {
     this.remoteDialogOpener = this.captureRemoteDialogOpener(returnFocus);
     this.remoteName.set(remote.name);
+    this.remoteDialogOriginalName.set(remote.name);
     this.remoteUrl.set(remote.fetchUrl);
     this.remotePushUrl.set(remote.pushUrl === remote.fetchUrl ? '' : remote.pushUrl);
     this.initialRemotePushUrl = this.remotePushUrl();
     this.remoteDialogIcon.set(this.remoteIcon(remote.name));
     this.remoteDialog.set('edit');
-    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
+    setTimeout(() => this.remoteDialogElement()?.nativeElement
+      .querySelector<HTMLInputElement>('input[name="remoteUrl"]')?.focus());
   }
 
   protected closeRemoteDialog(restoreFocus = true): void {
@@ -6406,7 +6417,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected editedRemotePushUrl(): string {
-    return this.git.repository()?.remotes.find((remote) => remote.name === this.remoteName())?.pushUrl
+    return this.git.repository()?.remotes.find((remote) => remote.name === this.remoteDialogOriginalName())?.pushUrl
       || 'the fetch URL';
   }
 
@@ -6414,16 +6425,38 @@ export class AppComponent implements OnInit, OnDestroy {
     const mode = this.remoteDialog();
     const name = this.remoteName().trim();
     const url = this.remoteUrl().trim();
-    if (!mode || !name || !url || this.git.busy()) return;
-    this.setRemoteIcon(name, this.remoteDialogIcon());
+    if (!mode || !name || !url || this.remoteNameTaken() || this.git.busy()) return;
+    const previousName = mode === 'edit' ? this.remoteDialogOriginalName() : null;
+    const renaming = !!previousName && previousName !== name;
+    const icon = this.remoteDialogIcon();
+    const previousRemoteBranches = renaming
+      ? this.git.repository()?.branches
+        .filter((branch) => branch.remote && branch.name.startsWith(`${previousName}/`))
+        .map((branch) => branch.name) ?? []
+      : [];
+    if (!renaming) this.setRemoteIcon(name, icon);
     const repositoryId = this.git.activeRepositoryId();
     const pushUrl = this.remotePushUrl().trim();
-    if (pushUrl !== this.initialRemotePushUrl) {
-      await this.git.configureRemote(name, url, pushUrl || null, true, mode === 'add');
+    if (renaming || pushUrl !== this.initialRemotePushUrl) {
+      await this.git.configureRemote(name, url, pushUrl || null, pushUrl !== this.initialRemotePushUrl,
+        mode === 'add', previousName);
     } else if (mode === 'add') await this.git.addRemote(name, url);
     else await this.git.setRemoteUrl(name, url);
     if (repositoryId !== this.git.activeRepositoryId()) return;
+    if (renaming) {
+      // A rename may succeed even when a later URL update fails, so follow the
+      // refreshed snapshot rather than the reported outcome.
+      const remotes = this.git.repository()?.remotes ?? [];
+      const renamed = remotes.some((remote) => remote.name === name)
+        && !remotes.some((remote) => remote.name === previousName);
+      if (renamed) {
+        this.renameRemoteUiState(previousName, name, previousRemoteBranches);
+        this.remoteDialogOriginalName.set(name);
+      }
+      this.setRemoteIcon(renamed ? name : previousName, icon);
+    }
     if (mode === 'add' && this.git.repository()?.remotes.some(remote => remote.name === name)) {
+      this.remoteDialogOriginalName.set(name);
       this.remoteDialog.set('edit');
     }
     if (!this.git.error()) {
@@ -6432,8 +6465,38 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Moves per-remote preferences stored under a remote's name to its new name. */
+  private renameRemoteUiState(previousName: string, name: string, previousRemoteBranches: string[]): void {
+    const icons = { ...this.remoteLocationIcons() };
+    if (previousName in icons) {
+      icons[name] = icons[previousName];
+      delete icons[previousName];
+      this.remoteLocationIcons.set(icons);
+      try {
+        localStorage.setItem(this.graphPreferenceKey('remote-icons'), JSON.stringify(icons));
+      } catch {
+        // Remote icon choices remain available for this session.
+      }
+    }
+    if (this.collapsedRemoteLocations().includes(previousName)) {
+      this.collapsedRemoteLocations.update((collapsed) => [...new Set(collapsed
+        .map((remote) => remote === previousName ? name : remote))]);
+      this.storeCollapsedRemoteLocations();
+    }
+    if (this.selectedRemoteName() === previousName) this.selectToolbarRemote(name);
+    const branches = new Set(previousRemoteBranches);
+    const rename = (names: string[]) => [...new Set(names.map((branch) => branches.has(branch)
+      ? `${name}/${branch.slice(previousName.length + 1)}`
+      : branch))];
+    if ([...this.hiddenBranches(), ...this.soloBranches()].some((branch) => branches.has(branch))) {
+      this.hiddenBranches.update(rename);
+      this.soloBranches.update(rename);
+      this.storeReferenceFilters();
+    }
+  }
+
   protected requestRemoteRemoval(): void {
-    const name = this.remoteName();
+    const name = this.remoteDialogOriginalName();
     const remote = this.git.repository()?.remotes.find((candidate) => candidate.name === name);
     if (!remote) return;
     this.closeRemoteDialog(false);
@@ -7383,13 +7446,24 @@ export class AppComponent implements OnInit, OnDestroy {
       ?? null;
   }
 
+  /** Configured remote names, longest first, so `team/origin/main` resolves to `team/origin`. */
+  private readonly remoteNamesBySpecificity = computed(() => (this.git.repository()?.remotes ?? [])
+    .map((remote) => remote.name)
+    .sort((left, right) => right.length - left.length));
+
+  private remoteNamePrefixLength(branchName: string): number {
+    const configured = this.remoteNamesBySpecificity()
+      .find((remote) => branchName.startsWith(`${remote}/`));
+    return configured ? configured.length : branchName.indexOf('/');
+  }
+
   protected remoteLocationName(branchName: string): string {
-    const separator = branchName.indexOf('/');
+    const separator = this.remoteNamePrefixLength(branchName);
     return separator > 0 ? branchName.slice(0, separator) : branchName;
   }
 
   protected remoteBranchLabel(branchName: string): string {
-    const separator = branchName.indexOf('/');
+    const separator = this.remoteNamePrefixLength(branchName);
     return separator > 0 ? branchName.slice(separator + 1) : branchName;
   }
 
