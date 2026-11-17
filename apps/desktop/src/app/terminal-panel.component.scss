@@ -5,12 +5,16 @@
 .terminal-panel.minimized { min-height: 32px; grid-template-rows: 32px; }
 .terminal-resizer { position: absolute; z-index: 3; top: -6px; right: 0; left: 0; height: 12px; cursor: row-resize; touch-action: none; }
 .terminal-resizer::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; transform: translateY(-50%); background: transparent; }
+.terminal-resizer::before { content: ''; position: absolute; top: 50%; left: 50%; width: 36px; height: 3px; border-radius: 2px; transform: translate(-50%, -50%); background: var(--terminal-muted-low); opacity: .7; pointer-events: none; }
+.terminal-resizer:hover::before, .terminal-resizer:active::before, .terminal-resizer:focus-visible::before { opacity: 0; }
 .terminal-resizer:hover { background: var(--splitter-hover); }
 .terminal-resizer:active { background: var(--splitter-active); }
 .terminal-resizer:hover::after, .terminal-resizer:active::after { background: var(--purple); }
 .terminal-resizer:focus-visible { background: var(--splitter-hover); outline: none; }
 .terminal-resizer:focus-visible::after { height: 3px; background: var(--focus-ring); }
 header { min-width: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--terminal-divider); background: var(--terminal-header); }
+.terminal-panel:not(.minimized) header { cursor: row-resize; }
+.terminal-tab { cursor: default; }
 .terminal-session-strip { min-width: 0; display: flex; flex: 1; }
 .terminal-tabs-shell { min-width: 0; display: flex; flex: 1; }
 .terminal-tabs { min-width: 0; display: flex; flex: 1; overflow-x: auto; scrollbar-width: none; }

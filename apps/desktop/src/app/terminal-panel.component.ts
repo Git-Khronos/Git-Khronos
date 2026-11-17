@@ -62,7 +62,7 @@ interface TerminalTab extends TerminalInfo {
   template: `
     <section [attr.id]="panelId()" class="terminal-panel" [class.inactive]="!visible()" [class.minimized]="minimized()" [class.profiles-open]="profileLauncherOpen() && terminalProfiles().length > 0 && !minimized()" [style.height.px]="minimized() ? 32 : height()" tabindex="-1" [attr.aria-label]="'Repository terminals for ' + repositoryLabel()">
       @if (!minimized()) { <div class="terminal-resizer" role="separator" tabindex="0" aria-label="Resize terminal" [attr.aria-controls]="panelId()" aria-orientation="horizontal" [attr.aria-valuemin]="terminalMinimumHeight" [attr.aria-valuemax]="maximumHeight()" [attr.aria-valuenow]="height()" [attr.aria-valuetext]="height() + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize($event)" (keydown)="handleResizeKeydown($event)" (dblclick)="resetHeight($event)"></div> }
-      <header>
+      <header (pointerdown)="beginHeaderResize($event)">
         <div class="terminal-session-strip">
           <div class="terminal-tabs-shell">
             @if (tabStripOverflow()) {
@@ -622,6 +622,14 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.resizing = true;
     this.resizeStartY = event.clientY;
     this.resizeStartHeight = this.height();
+  }
+
+  /** Empty header space doubles as a larger drag target than the edge handle. */
+  protected beginHeaderResize(event: PointerEvent): void {
+    if (this.minimized()) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest('button, select, input, a, .terminal-tab')) return;
+    this.beginResize(event);
   }
 
   @HostListener('document:pointermove', ['$event'])

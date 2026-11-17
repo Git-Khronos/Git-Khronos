@@ -5106,6 +5106,40 @@ test('keeps the stage-all action readable at the minimum commit-panel width', as
     element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
+test('resizes the repository terminal by dragging its edge or empty header space', async ({ page }) => {
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
+  const panel = page.getByLabel('Repository terminals');
+  const splitter = page.getByRole('separator', { name: 'Resize terminal' });
+  await expect(splitter).toHaveAttribute('aria-valuenow', '280');
+  expect(await splitter.evaluate((element) => getComputedStyle(element, '::before').width)).toBe('36px');
+  const drag = async (x: number, y: number, dy: number) => {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy, { steps: 4 });
+    await page.mouse.up();
+  };
+
+  let box = (await panel.boundingBox())!;
+  await drag(box.x + box.width / 2, box.y, -100);
+  await expect(splitter).toHaveAttribute('aria-valuenow', '380');
+
+  const header = panel.locator('header');
+  await expect(header).toHaveCSS('cursor', 'row-resize');
+  const tabs = (await panel.locator('.terminal-tabs').boundingBox())!;
+  await drag(tabs.x + tabs.width - 20, tabs.y + tabs.height / 2, 60);
+  await expect(splitter).toHaveAttribute('aria-valuenow', '320');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.terminal.panel-height'))).toBe('320');
+
+  const newTab = (await panel.getByRole('button', { name: 'New terminal tab' }).boundingBox())!;
+  await drag(newTab.x + newTab.width / 2, newTab.y + newTab.height / 2, -80);
+  await expect(splitter).toHaveAttribute('aria-valuenow', '320');
+
+  await panel.getByRole('button', { name: 'Minimize terminal' }).click();
+  box = (await header.boundingBox())!;
+  await drag(box.x + box.width / 2, box.y + box.height / 2, -80);
+  await expect(panel).toHaveCSS('height', '32px');
+});
+
 test('resizes and restores the repository terminal with an accessible splitter', async ({ page }) => {
   const openTerminal = page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)');
   await expect(openTerminal).toHaveAttribute('aria-pressed', 'false');
