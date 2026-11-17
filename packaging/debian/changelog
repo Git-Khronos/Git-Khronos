@@ -1,3 +1,12 @@
+git-khronos (0.1.5) unstable; urgency=medium
+
+  * Rename remotes, local and remote branches, and tags.
+  * Open the repository in the system terminal and resize the terminal panel.
+  * Add a guided dialog to merge, rebase or fast-forward with a preview.
+  * Load more dialogs on demand to keep startup lean.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Tue, 17 Nov 2026 18:24:44 +0100
+
 git-khronos (0.1.4) unstable; urgency=medium
 
   * Fetch remote branches and safely check out or fast-forward local branches.
