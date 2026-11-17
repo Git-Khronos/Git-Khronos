@@ -323,16 +323,6 @@
 .discard-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px; }
 .discard-actions button { background: transparent; color: var(--accent); padding: 4px; font-size: 12px; }
 .discard-selection { width: 24px; height: 24px; margin: 0; accent-color: var(--accent); }
-.capture-actions button { min-height: 28px; padding: 5px 9px; border: 1px solid var(--graph-menu-border); border-radius: 3px; background: var(--graph-menu-surface); color: var(--text); }
-.operation-captures { padding: 12px; border-bottom: 1px solid var(--graph-menu-border); color: var(--text); }
-.operation-captures h3 { margin: 0 0 8px; font-size: 14px; }
-.operation-captures p, .operation-capture small { font-size: 12px; line-height: 1.5; }
-.operation-capture { display: grid; gap: 8px; padding: 12px 0; overflow-wrap: anywhere; border-top: 1px solid var(--graph-menu-border); }
-.capture-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.recovery-capture-form { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--graph-menu-border); }
-.recovery-capture-form label { display: grid; gap: 6px; font-size: 12px; }
-.recovery-capture-form input { min-width: 0; padding: 7px; background: var(--graph-menu-surface); color: var(--text); border: 1px solid var(--graph-menu-border); }
-.recovery-error { color: var(--danger, #ef9cab); overflow-wrap: anywhere; }
 .file-list { max-height: 165px; overflow: auto; background: var(--inspector-list); }
 .unstaged-files-resizer { position: relative; height: 10px; cursor: row-resize; touch-action: none; }
 .unstaged-files-resizer::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; transform: translateY(-50%); background: transparent; }

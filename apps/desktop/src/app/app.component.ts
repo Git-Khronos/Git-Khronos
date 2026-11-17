@@ -32,7 +32,9 @@ import {
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { MergePreviewDialogComponent, type MergePreviewDialogRequest } from './merge-preview-dialog.component';
-import { IntegrateBranchDialogComponent, type IntegrateBranchDialogRequest, type IntegrationChoice } from './integrate-branch-dialog.component';
+import { RecoveryHistoryDialogComponent } from './recovery-history-dialog.component';
+import { IntegrateBranchDialogComponent } from './integrate-branch-dialog.component';
+import type { IntegrateBranchDialogRequest, IntegrationChoice } from './integrate-branch-dialog.component';
 import { TextValueDirective } from './text-value.directive';
 import { type UnlistenFn } from '@tauri-apps/api/event';
 import { events, type BranchComparison } from '@git-khronos/contracts';
@@ -629,7 +631,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -11133,6 +11135,36 @@ export class AppComponent implements OnInit, OnDestroy {
     }[section];
   }
 
+  protected readonly recoveryHistoryView = computed(() => ({
+    git: this.git,
+    savedDiscards: this.savedDiscards,
+    savedDiscardConfirmation: this.savedDiscardConfirmation,
+    savedDiscardsLoading: this.savedDiscardsLoading,
+    recoveryQuery: this.recoveryQuery,
+    recoveryCaptureBusy: this.recoveryCaptureBusy,
+    recoveryCaptureAction: this.recoveryCaptureAction,
+    recoveryCaptureBranch: this.recoveryCaptureBranch,
+    operationRecoveries: this.operationRecoveries,
+    filteredOperationRecoveries: this.filteredOperationRecoveries,
+    filteredRecoveryEntries: this.filteredRecoveryEntries,
+    recoveryBranchEntry: this.recoveryBranchEntry,
+    recoveryBranchName: this.recoveryBranchName,
+    recoveryBranchError: this.recoveryBranchError,
+    closeRecoveryHistory: this.closeRecoveryHistory.bind(this),
+    handleRecoveryHistoryKeydown: this.handleRecoveryHistoryKeydown.bind(this),
+    refreshRecoveryHistory: this.refreshRecoveryHistory.bind(this),
+    openSavedDiscardsFromHistory: this.openSavedDiscardsFromHistory.bind(this),
+    shortOid: this.shortOid.bind(this),
+    beginRecoveryCaptureAction: this.beginRecoveryCaptureAction.bind(this),
+    confirmRecoveryCaptureAction: this.confirmRecoveryCaptureAction.bind(this),
+    cancelRecoveryCaptureAction: this.cancelRecoveryCaptureAction.bind(this),
+    recoveryEntryInGraph: this.recoveryEntryInGraph.bind(this),
+    viewRecoveryEntry: this.viewRecoveryEntry.bind(this),
+    copyRecoveryOid: this.copyRecoveryOid.bind(this),
+    beginRecoveryBranch: this.beginRecoveryBranch.bind(this),
+    createRecoveryBranch: this.createRecoveryBranch.bind(this),
+  }));
+
   protected async openRecoveryHistory(): Promise<void> {
     this.recoveryHistoryReturnFocus = document.querySelector<HTMLElement>('[aria-label="Main menu"]');
     this.recoveryRepositoryId = this.git.activeRepositoryId();
@@ -14364,4 +14396,5 @@ function summarizeFileChanges(files: CommitFile[]): FileChangeStats {
 }
 
 export type GraphRowView = ReturnType<AppComponent['graphRowView']>;
+export type RecoveryHistoryView = ReturnType<AppComponent['recoveryHistoryView']>;
 export type PreferencesDialogView = ReturnType<AppComponent['preferencesDialogView']>;
