@@ -624,6 +624,7 @@ export function read_repository_file_text(args: { repoId: string; path: string; 
 export function load_reflog(args: { repoId: string }): Promise<ReflogPage> { return TAURI_INVOKE("load_reflog", args); }
 export function load_more_changes(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("load_more_changes", args); }
 export function open_repository_in_file_manager(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("open_repository_in_file_manager", args); }
+export function open_external_terminal(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("open_external_terminal", args); }
 export function open_external_url(args: { url: string }): Promise<null> { return TAURI_INVOKE("open_external_url", args); }
 export function toggle_fullscreen(args: {  } = {}): Promise<boolean> { return TAURI_INVOKE("toggle_fullscreen", args); }
 export function stage_all(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_all", args); }
@@ -892,6 +893,7 @@ export type CommandMap = {
   load_reflog: typeof load_reflog;
   load_more_changes: typeof load_more_changes;
   open_repository_in_file_manager: typeof open_repository_in_file_manager;
+  open_external_terminal: typeof open_external_terminal;
   open_external_url: typeof open_external_url;
   toggle_fullscreen: typeof toggle_fullscreen;
   stage_all: typeof stage_all;

@@ -91,6 +91,7 @@ interface TerminalTab extends TerminalInfo {
           <button #profileLauncherButton class="terminal-profiles-button" type="button" aria-label="Choose terminal profile" title="Open a configured terminal profile" [attr.aria-expanded]="profileLauncherOpen() && !minimized()" [attr.aria-controls]="profileLauncherOpen() && !minimized() ? panelId() + '-profiles' : null" [disabled]="!nativeAvailable()" (click)="toggleProfileLauncher()">Profiles</button>
         }
         <span class="terminal-context"><gc-icon name="repo" [size]="11" />{{ repositoryLabel() }}</span>
+        <button class="external-terminal-button" type="button" aria-label="Open in system terminal" title="Open {{ repositoryLabel() }} in the system terminal" [disabled]="!nativeAvailable() || openingExternal()" [attr.aria-busy]="openingExternal()" (click)="openExternalTerminal()"><gc-icon name="external-terminal" [size]="12" /></button>
         <button type="button" [attr.aria-label]="minimized() ? 'Restore terminal' : 'Minimize terminal'" [attr.aria-expanded]="!minimized()" [attr.aria-controls]="terminalBodyId()" title="{{ minimized() ? 'Restore terminal' : 'Minimize terminal' }}" (click)="toggleMinimized()"><gc-icon [name]="minimized() ? 'chevron-up' : 'chevron-down'" [size]="12" /></button>
         <button type="button" title="Hide terminal panel" aria-label="Hide terminal panel" (click)="dismissed.emit()"><gc-icon name="x" [size]="12" /></button>
       </header>
@@ -104,6 +105,7 @@ interface TerminalTab extends TerminalInfo {
         </div>
       }
       <div #terminalBody [attr.id]="terminalBodyId()" class="terminal-body" [hidden]="minimized()">
+        @if (externalError(); as message) { <div class="external-terminal-error" role="alert"><strong>System terminal unavailable</strong><span>{{ message }}</span><button type="button" (click)="externalError.set(null)">Dismiss</button></div> }
         @for (tab of tabs(); track tab.id) {
           <div class="terminal-host" role="tabpanel" [attr.id]="tabPanelId(tab.id)" [attr.aria-labelledby]="tabId(tab.id)" [attr.aria-hidden]="activeId() !== tab.id" [class.active]="activeId() === tab.id" [attr.data-terminal-id]="tab.id"></div>
         }
@@ -144,6 +146,8 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
   protected readonly minimized = signal(false);
   protected readonly opening = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly openingExternal = signal(false);
+  protected readonly externalError = signal<string | null>(null);
   protected readonly failedCloseId = signal<string | null>(null);
   protected readonly failedStartup = signal<{ id: string; message: string } | null>(null);
   protected readonly tabStripOverflow = signal(false);
@@ -264,6 +268,22 @@ export class TerminalPanelComponent implements AfterViewInit, OnDestroy {
     this.tabs.set([]);
     this.pendingOutput.clear();
     this.pendingExits.clear();
+  }
+
+  protected async openExternalTerminal(): Promise<void> {
+    if (!this.nativeAvailable() || this.openingExternal()) return;
+    this.openingExternal.set(true);
+    this.externalError.set(null);
+    try {
+      await ipc.open_external_terminal({ repoId: this.repositoryId() });
+    } catch (cause: unknown) {
+      if (this.destroyed) return;
+      const hint = cause && typeof cause === 'object' && 'hint' in cause && cause.hint ? ` ${String(cause.hint)}` : '';
+      this.externalError.set(`${this.errorMessage(cause)}${hint}`);
+      this.minimized.set(false);
+    } finally {
+      this.openingExternal.set(false);
+    }
   }
 
   protected toggleProfileLauncher(): void {

@@ -213,3 +213,36 @@ for (const width of [320, 700]) {
     await expect(panel.getByRole('tab', { name: `${name} 2`, exact: true })).toBeVisible();
   });
 }
+
+test('opens the system terminal from the terminal panel and reports a missing terminal', async ({ page }) => {
+  await prepare(page);
+  await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
+  const panel = page.locator('gc-terminal-panel');
+  await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
+  const external = panel.getByRole('button', { name: 'Open in system terminal' });
+  await expect(external).toBeEnabled();
+  await external.click();
+  const calls = () => page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_external_terminal'));
+  await expect.poll(calls).toHaveLength(1);
+  const [call] = await calls();
+  expect(call.args).toEqual({ repoId: expect.any(String) });
+  expect(call.args.repoId).toBeTruthy();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  await expect(panel.getByRole('tab')).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const state = window as any;
+    const invoke = state.__TAURI_INTERNALS__.invoke;
+    state.__TAURI_INTERNALS__.invoke = (command: string, args: any) => command === 'open_external_terminal'
+      ? (state.toolCalls.push({ command, args }), Promise.reject({ kind: 'externalTerminalUnavailable', message: 'No system terminal application was found.', hint: 'Set TERMINAL.' }))
+      : invoke(command, args);
+  });
+  await external.click();
+  const alert = panel.getByRole('alert');
+  await expect(alert).toContainText('System terminal unavailable');
+  await expect(alert).toContainText('No system terminal application was found. Set TERMINAL.');
+  await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
+  await expect(external).toBeEnabled();
+  await alert.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(alert).toHaveCount(0);
+});

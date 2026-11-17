@@ -12,6 +12,7 @@ pub struct ReferenceTransport {
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+#[allow(clippy::too_many_arguments)]
 pub async fn configure_remote(
     repo_id: String,
     previous_name: Option<String>,

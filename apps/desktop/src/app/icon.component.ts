@@ -27,6 +27,7 @@ export type IconName =
   | 'maximize'
   | 'more'
   | 'edit'
+  | 'external-terminal'
   | 'eye'
   | 'eye-off'
   | 'panel-left'
@@ -101,6 +102,7 @@ export type IconName =
         @case ('chevron-right') { <path d="m9 18 6-6-6-6"/> }
         @case ('tag') { <path d="M20 13 11 4H4v7l9 9 7-7Z"/><circle cx="7.5" cy="7.5" r=".7" fill="currentColor"/> }
         @case ('terminal') { <rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/> }
+        @case ('external-terminal') { <path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m7 10 3 3-3 3M17 3h4v4M21 3l-6 6"/> }
         @case ('repo') { <path d="M3 5h7l2 2h9v12H3z"/><path d="M8 12h8M8 16h5"/> }
         @case ('folder-git') { <path d="M3 6h7l2 2h9v11H3z"/><circle cx="9" cy="13" r="1"/><circle cx="16" cy="12" r="1"/><circle cx="9" cy="17" r="1"/><path d="M9 14v2m1-2h2a4 4 0 0 0 4-1"/> }
         @case ('copy') { <rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/> }

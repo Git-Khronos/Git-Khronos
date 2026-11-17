@@ -100,6 +100,7 @@ use tauri_specta::Event;
 mod authentication;
 mod branch_workflow_commands;
 mod display_environment;
+mod external_terminal;
 mod file_tool_commands;
 #[cfg(any(target_os = "linux", test))]
 mod file_tool_reviews;
@@ -4123,6 +4124,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             load_reflog,
             load_more_changes,
             open_repository_in_file_manager,
+            external_terminal::open_external_terminal,
             open_external_url,
             toggle_fullscreen,
             stage_all,
