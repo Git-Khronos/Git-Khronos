@@ -6,13 +6,24 @@
 //! process, and Git context variables from the app are not inherited.
 use crate::{AppError, AppState, repository_session};
 use std::ffi::{OsStr, OsString};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::time::Duration;
+use tauri::{AppHandle, Manager};
+
+/// Line printed by launch helpers once the terminal itself has been started.
+const READY_LINE: &str = "started";
+/// Generous because the first PowerShell start on a machine can be slow.
+const READY_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TerminalCandidate {
     pub program: OsString,
     pub arguments: Vec<OsString>,
+    /// When set, the program is a helper that prints [`READY_LINE`] on stdout
+    /// after starting the terminal; it fails if it exits without doing so.
+    pub reports_ready: bool,
 }
 
 impl TerminalCandidate {
@@ -20,7 +31,97 @@ impl TerminalCandidate {
         Self {
             program: program.into(),
             arguments,
+            reports_ready: false,
         }
+    }
+}
+
+/// Quotes one argument for a Windows command line, following the parsing rules
+/// documented for the Microsoft C runtime and `CommandLineToArgvW`.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn windows_argument(argument: &str) -> String {
+    if !argument.is_empty() && !argument.contains([' ', '\t', '\n', '\u{b}', '"']) {
+        return argument.to_owned();
+    }
+    let mut quoted = String::from('"');
+    let mut backslashes = 0;
+    for character in argument.chars() {
+        match character {
+            '\\' => backslashes += 1,
+            '"' => {
+                quoted.push_str(&"\\".repeat(backslashes * 2 + 1));
+                quoted.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                quoted.push_str(&"\\".repeat(backslashes));
+                quoted.push(character);
+                backslashes = 0;
+            }
+        }
+    }
+    quoted.push_str(&"\\".repeat(backslashes * 2));
+    quoted.push('"');
+    quoted
+}
+
+/// Standard base64 (RFC 4648, section 4) with padding.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let group = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        for index in 0..4 {
+            if index <= chunk.len() {
+                encoded.push(ALPHABET[(group >> (18 - 6 * index) & 63) as usize] as char);
+            } else {
+                encoded.push('=');
+            }
+        }
+    }
+    encoded
+}
+
+/// Runs `wt.exe` from Windows PowerShell so the new window can be raised;
+/// see `external_terminal_focus.ps1`.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn focus_helper_script(wt_arguments: &[&str]) -> String {
+    let command_line = wt_arguments
+        .iter()
+        .map(|argument| windows_argument(argument))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // Base64 keeps paths with quotes or other special characters inert.
+    format!(
+        "$terminalArguments = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{}'))\n{}",
+        base64(command_line.as_bytes()),
+        include_str!("external_terminal_focus.ps1")
+    )
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn windows_terminal_focus_helper(wt_arguments: &[&str]) -> TerminalCandidate {
+    let utf16: Vec<u8> = focus_helper_script(wt_arguments)
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    TerminalCandidate {
+        program: "powershell.exe".into(),
+        arguments: [
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-EncodedCommand",
+        ]
+        .map(OsString::from)
+        .into_iter()
+        .chain([OsString::from(base64(&utf16))])
+        .collect(),
+        reports_ready: true,
     }
 }
 
@@ -71,6 +172,15 @@ pub(crate) fn terminal_candidates(
     if let Some(distribution) = &environment.wsl_distribution
         && !repository.to_string_lossy().contains(';')
     {
+        if let Some(repository) = repository.to_str() {
+            candidates.push(windows_terminal_focus_helper(&[
+                "wsl.exe",
+                "-d",
+                distribution,
+                "--cd",
+                repository,
+            ]));
+        }
         candidates.push(TerminalCandidate::new(
             "wt.exe",
             vec![
@@ -228,6 +338,31 @@ fn terminal_command(
     command
 }
 
+/// Waits for a helper to print [`READY_LINE`]; stops it if it never does.
+fn wait_until_ready(child: &mut Child) -> std::io::Result<()> {
+    let stdout = child.stdout.take().expect("helper stdout is piped");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut ready = false;
+        // Keep draining after the ready line so the helper never blocks on output.
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if !ready && line.trim() == READY_LINE {
+                ready = true;
+                let _ = sender.send(());
+            }
+        }
+    });
+    if receiver.recv_timeout(READY_TIMEOUT).is_ok() {
+        return Ok(());
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    Err(std::io::Error::other(
+        "the launch helper ended without starting the terminal",
+    ))
+}
+
 /// Starts the first available terminal and returns the program that was used.
 pub(crate) fn launch_external_terminal(
     repository: &Path,
@@ -246,7 +381,17 @@ pub(crate) fn launch_external_terminal(
         let Some(executable) = find_program(&candidate.program, search_path) else {
             continue;
         };
-        match terminal_command(&executable, &candidate, repository).spawn() {
+        let mut command = terminal_command(&executable, &candidate, repository);
+        if candidate.reports_ready {
+            command.stdout(Stdio::piped());
+        }
+        let started = command.spawn().and_then(|mut child| {
+            if candidate.reports_ready {
+                wait_until_ready(&mut child)?;
+            }
+            Ok(child)
+        });
+        match started {
             Ok(mut child) => {
                 // The terminal is user-owned; only reap it so no zombie remains.
                 std::thread::spawn(move || {
@@ -274,18 +419,21 @@ pub(crate) fn launch_external_terminal(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-pub fn open_external_terminal(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), AppError> {
-    let session = repository_session(&repo_id, &state)?;
-    let search_path = std::env::var_os("PATH");
-    launch_external_terminal(
-        &session.path,
-        &TerminalEnvironment::current(),
-        search_path.as_deref(),
-    )
-    .map(|_| ())
+pub async fn open_external_terminal(repo_id: String, app: AppHandle) -> Result<(), AppError> {
+    // Launch helpers can take a moment; keep that off the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let search_path = std::env::var_os("PATH");
+        launch_external_terminal(
+            &session.path,
+            &TerminalEnvironment::current(),
+            search_path.as_deref(),
+        )
+        .map(|_| ())
+    })
+    .await
+    .map_err(crate::background_task_error)?
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -316,15 +464,17 @@ mod tests {
         }
         /// Installs a fake terminal that records its argv, cwd and Git context.
         fn install(&self, name: &str) {
-            let path = self.bin().join(name);
-            std::fs::write(
-                &path,
-                format!(
-                    "#!/bin/sh\n{{ pwd; echo \"GIT_DIR=${{GIT_DIR-unset}}\"; for a in \"$@\"; do echo \"arg=$a\"; done; }} > '{}'\n",
+            self.install_script(
+                name,
+                &format!(
+                    "{{ pwd; echo \"GIT_DIR=${{GIT_DIR-unset}}\"; for a in \"$@\"; do echo \"arg=$a\"; done; }} > '{}'",
                     self.record().display()
                 ),
-            )
-            .unwrap();
+            );
+        }
+        fn install_script(&self, name: &str, body: &str) {
+            let path = self.bin().join(name);
+            std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         fn wait_for_record(&self) -> Vec<String> {
@@ -366,12 +516,14 @@ mod tests {
         };
         let candidates = terminal_candidates(repository, &environment);
         assert_eq!(
-            names(&candidates)[..3],
-            ["my-term", "wt.exe", "x-terminal-emulator"]
+            names(&candidates)[..4],
+            ["my-term", "powershell.exe", "wt.exe", "x-terminal-emulator"]
         );
         assert!(candidates[0].arguments.is_empty());
+        assert!(candidates[1].reports_ready);
+        assert!(!candidates[2].reports_ready);
         assert_eq!(
-            candidates[1].arguments,
+            candidates[2].arguments,
             ["wsl.exe", "-d", "DEV", "--cd", "/work/repo"].map(OsString::from)
         );
         let konsole = candidates.iter().find(|c| c.program == "konsole").unwrap();
@@ -397,6 +549,87 @@ mod tests {
         };
         let candidates = terminal_candidates(Path::new("/work/a;b"), &environment);
         assert!(!names(&candidates).contains(&"wt.exe".to_owned()));
+        assert!(!names(&candidates).contains(&"powershell.exe".to_owned()));
+    }
+
+    #[test]
+    fn windows_arguments_and_base64_follow_their_specifications() {
+        assert_eq!(windows_argument("/work/repo"), "/work/repo");
+        assert_eq!(windows_argument(""), "\"\"");
+        assert_eq!(windows_argument("/a b"), "\"/a b\"");
+        assert_eq!(windows_argument("a\"b"), "\"a\\\"b\"");
+        assert_eq!(windows_argument("a\\\"b c"), "\"a\\\\\\\"b c\"");
+        assert_eq!(windows_argument("dir\\ x\\"), "\"dir\\ x\\\\\"");
+        assert_eq!(windows_argument("no\\space\\"), "no\\space\\");
+        // RFC 4648 section 10 test vectors.
+        for (input, expected) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
+            assert_eq!(base64(input.as_bytes()), expected);
+        }
+    }
+
+    #[test]
+    fn wsl_focus_helper_embeds_the_quoted_windows_terminal_command_line() {
+        let wt_arguments = ["wsl.exe", "--cd", "/work/it's a \"repo\""];
+        let script = focus_helper_script(&wt_arguments);
+        let expected = base64(r#"wsl.exe --cd "/work/it's a \"repo\"""#.as_bytes());
+        assert!(script.starts_with(&format!(
+            "$terminalArguments = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{expected}'))\n"
+        )));
+        assert!(script.ends_with(include_str!("external_terminal_focus.ps1")));
+
+        let helper = windows_terminal_focus_helper(&wt_arguments);
+        assert_eq!(helper.program, "powershell.exe");
+        assert!(helper.reports_ready);
+        let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(
+            helper.arguments,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-EncodedCommand"
+            ]
+            .map(OsString::from)
+            .into_iter()
+            .chain([OsString::from(base64(&utf16))])
+            .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn helper_must_report_ready_or_the_next_terminal_is_used() {
+        let fixture = Fixture::new();
+        let environment = TerminalEnvironment {
+            preferred: None,
+            wsl_distribution: Some("DEV".into()),
+        };
+        let search = fixture.bin().into_os_string();
+        let plain = fixture.0.join("plain repo");
+        std::fs::create_dir(&plain).unwrap();
+        fixture.install("wt.exe");
+        fixture.install_script("powershell.exe", "echo 'not ready'; exit 1");
+        let used = launch_external_terminal(&plain, &environment, Some(&search)).unwrap();
+        assert_eq!(used, fixture.bin().join("wt.exe"));
+        assert_eq!(fixture.wait_for_record()[0], plain.display().to_string());
+
+        std::fs::remove_file(fixture.record()).unwrap();
+        let record = fixture.record().display().to_string();
+        fixture.install_script(
+            "powershell.exe",
+            &format!("echo started; {{ pwd; echo GIT_DIR=; }} > '{record}'; sleep 1; echo more"),
+        );
+        let used = launch_external_terminal(&plain, &environment, Some(&search)).unwrap();
+        assert_eq!(used, fixture.bin().join("powershell.exe"));
+        assert_eq!(fixture.wait_for_record()[0], plain.display().to_string());
     }
 
     #[test]
