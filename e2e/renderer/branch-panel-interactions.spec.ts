@@ -386,7 +386,8 @@ test('keeps branch reference navigation and context menus available during a mut
   await expect(local).toHaveClass(/tip-selected/);
   await local.click({ button: 'right' });
   const menu = page.locator('.context-menu');
-  await expect(menu.getByRole('menuitem', { name: /^Merge / })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: /^Merge \S+ into / })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: /^Merge or rebase into / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: /^Copy / })).toBeEnabled();
   await page.keyboard.press('Escape');
 
@@ -409,7 +410,8 @@ test('keeps branch reference navigation and context menus available during a mut
   await expect(graphLocal).toBeEnabled();
   await expect(stack.locator('.grouped-reference-location.remote').first()).toBeEnabled();
   await graphLocal.click({ button: 'right' });
-  await expect(menu.getByRole('menuitem', { name: /^Merge / })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: /^Merge \S+ into / })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: /^Merge or rebase into / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: /^Copy / })).toBeEnabled();
   await page.evaluate(() => window.__completeBranchMutation());
   await expect(form).toHaveCount(0);

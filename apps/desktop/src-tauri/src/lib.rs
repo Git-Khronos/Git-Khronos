@@ -1733,6 +1733,19 @@ async fn preview_merge(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+fn compare_branches(
+    repo_id: String,
+    target: String,
+    source: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<git_khronos_git_core::BranchComparison, AppError> {
+    with_repository(&repo_id, &state, |path| {
+        git_khronos_git_core::compare_branches(path, &target, &source)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn prepare_merge_rebase(
     repo_id: String,
     source: String,
@@ -4202,6 +4215,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             continue_rebase,
             begin_rebase_split,
             preview_merge,
+            compare_branches,
             load_hosting_page,
             load_hosted_review,
             branch_workflow_commands::load_branch_workflow,

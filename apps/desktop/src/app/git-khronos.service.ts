@@ -5,7 +5,7 @@ import type { IncomingLinksController } from './incoming-links-controller';
 import type { RepositoryFileActionLifecycle } from './repository-file-actions';
 import { Injectable, computed, signal } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
-import { ipc } from '@git-khronos/contracts';
+import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
@@ -1711,6 +1711,11 @@ export class GitKhronosService {
       this.error.set(`The original reference was deleted, but history could not refresh: ${result.refreshError} Refresh the repository before deciding on further actions. Do not repeat the deletion.`);
       this.activity.set('Original reference deleted; history needs refreshing');
     }
+  }
+
+  /** Read-only comparison of two local branches; never changes repository state. */
+  compareBranches(repoId: string, target: string, source: string): Promise<BranchComparison> {
+    return ipc.compare_branches({ repoId, target, source });
   }
 
   async integrateBranch(name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {

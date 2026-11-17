@@ -32,9 +32,10 @@ import {
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { MergePreviewDialogComponent, type MergePreviewDialogRequest } from './merge-preview-dialog.component';
+import { IntegrateBranchDialogComponent, type IntegrateBranchDialogRequest, type IntegrationChoice } from './integrate-branch-dialog.component';
 import { TextValueDirective } from './text-value.directive';
 import { type UnlistenFn } from '@tauri-apps/api/event';
-import { events } from '@git-khronos/contracts';
+import { events, type BranchComparison } from '@git-khronos/contracts';
 import { StashDeleteDialogComponent, type StashDeleteRequest } from './stash-delete-dialog.component';
 import { FileBlameComponent } from './file-blame.component';
 import { FileHistoryComponent } from './file-history.component';
@@ -628,7 +629,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -838,6 +839,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editedCommitDescription = signal('');
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
+  protected readonly integrationRequest = signal<IntegrateBranchDialogRequest | null>(null);
+  /** Relationship between the dragged and target branches, shown in the drop menu. */
+  protected readonly branchDropComparison = signal<BranchComparison | null>(null);
   protected readonly actionOverlays = new OverlayController<ActionOverlay>();
   protected readonly contextMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -3427,6 +3431,7 @@ export class AppComponent implements OnInit, OnDestroy {
       { id: 'reopen-tab', group: 'Repository', label: 'Reopen Closed Repository', detail: this.git.recentlyClosedRepositoryPath() ?? 'No repository tab has been closed this session', shortcut: `${this.primaryShortcutKey} Shift T`, enabled: !!this.git.recentlyClosedRepositoryPath() && !busy, icon: 'redo' },
       { id: 'refresh', group: 'Repository', label: 'Refresh Repository', detail: 'Reload status, references, and history', enabled: !!repository && !busy, icon: 'refresh' },
       { id: 'branch-workflows', group: 'Branch', label: 'Branch workflows', detail: 'Configure, start and finish features, releases and hotfixes', enabled: !!repository && !repository.bare && !busy, icon: 'merge' },
+      { id: 'integrate-branch', group: 'Branch', label: `Merge or rebase into ${repository?.status.branch ?? 'current branch'}…`, detail: 'Bring another branch\'s changes in: fast-forward, merge, rebase or squash', enabled: !!repository?.status.branch && !busy, icon: 'merge' },
       { id: 'merge-preview', group: 'Branch', label: 'Preview merge conflicts', detail: 'Inspect committed branch tips without starting a merge', enabled: !!repository?.headOid && !busy, icon: 'merge' },
       { id: 'maintenance', group: 'Repository', label: 'Perform Repository Maintenance', detail: 'Check integrity, pack refs/commit graph; no pruning', enabled: !!repository && !busy, icon: 'settings' },
       { id: 'undo', group: 'Edit', label: this.git.undoLabel() ?? 'Undo', detail: this.git.undoLabel() ? 'Reverse the latest supported repository action' : 'No supported repository action to undo', shortcut: this.undoShortcut, enabled: !!this.git.undoLabel() && !busy, icon: 'undo' },
@@ -4082,6 +4087,60 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  protected openIntegrationDialog(source?: string, returnFocus: HTMLElement | null = null, target?: string): void {
+    const repository = this.git.repository();
+    const receiving = target ?? repository?.status.branch;
+    if (!repository || !receiving || this.git.busy()) return;
+    this.actionOverlays.close('context');
+    this.integrationRequest.set({ repositoryId: repository.id, target: receiving, source, returnFocus });
+  }
+
+  protected openContextIntegration(): void {
+    const menu = this.contextMenu();
+    if (!menu || menu.kind !== 'branch') return;
+    const returnFocus = this.contextMenuReturnFocus;
+    const current = this.git.repository()?.status.branch;
+    this.dismissGraphActionMenu();
+    this.openIntegrationDialog(menu.label === current ? undefined : menu.label, returnFocus);
+  }
+
+  protected openIntegrationFromToolbarMenu(): void {
+    const returnFocus = this.toolbarMenuReturnFocus;
+    this.closeToolbarMenus();
+    this.openIntegrationDialog(undefined, returnFocus);
+  }
+
+  protected async handleIntegrationChoice(choice: IntegrationChoice): Promise<void> {
+    const request = this.integrationRequest();
+    if (!request || this.git.busy()) return;
+    this.integrationRequest.set(null);
+    if (choice.strategy === 'interactive') {
+      await this.openInteractiveRebase(choice.target, choice.source);
+      return;
+    }
+    await this.checkoutThenIntegrate(choice.target, choice.source, choice.strategy);
+  }
+
+  protected openIntegrationFromDrop(): void {
+    const operation = this.branchDropMenu();
+    if (!operation) return;
+    const returnFocus = this.branchDropMenuReturnFocus;
+    this.dismissBranchDropMenu();
+    this.openIntegrationDialog(operation.source, returnFocus, operation.target);
+  }
+
+  /** Switches to `checkout` when needed, then integrates `integrate` into it. */
+  private async checkoutThenIntegrate(checkout: string, integrate: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
+    const repositoryId = this.git.activeRepositoryId();
+    if (this.git.repository()?.status.branch !== checkout) {
+      const result = await this.git.checkout(checkout);
+      if (result?.status !== 'success'
+        || this.git.activeRepositoryId() !== repositoryId
+        || this.git.repository()?.status.branch !== checkout) return;
+    }
+    await this.git.integrateBranch(integrate, strategy);
+  }
+
   protected previewContextMerge(): void {
     const menu = this.contextMenu();
     const branch = this.git.repository()?.branches.find(branch => branch.name === menu?.label);
@@ -4118,7 +4177,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       return;
     }
-    if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview() || this.mergePreviewRequest() || this.workspaceCenterRequest() || this.branchWorkflowRequest()) return;
+    if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview() || this.mergePreviewRequest() || this.integrationRequest() || this.workspaceCenterRequest() || this.branchWorkflowRequest()) return;
     // Disabling a focused item can move focus out of the menu. Its local
     // keydown handler may then never receive Tab, but dismissal must still work.
     if (event.key === 'Tab' && this.workspaceMenuOpen()) {
@@ -8173,7 +8232,34 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(VIEWPORT_MENU_GUTTER, preferredPosition.y),
     });
     this.settleBranchDropMenuPosition(source, target, preferredPosition);
+    void this.loadBranchDropComparison(source, target);
   }
+
+  private async loadBranchDropComparison(source: string, target: string): Promise<void> {
+    const repoId = this.git.activeRepositoryId();
+    this.branchDropComparison.set(null);
+    if (!repoId) return;
+    try {
+      const comparison = await this.git.compareBranches(repoId, target, source);
+      const menu = this.branchDropMenu();
+      if (menu?.source === source && menu.target === target && this.git.activeRepositoryId() === repoId) {
+        this.branchDropComparison.set(comparison);
+      }
+    } catch {
+      // The menu still offers every action; Git validates each one when it runs.
+    }
+  }
+
+  /** Plain-language relationship and the suggested drop action, when known. */
+  protected readonly branchDropAdvice = computed(() => {
+    const operation = this.branchDropMenu();
+    const comparison = this.branchDropComparison();
+    if (!operation || !comparison || comparison.source !== operation.source || comparison.target !== operation.target) return null;
+    const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
+    if (!comparison.incomingCount) return { text: `${operation.target} already has every commit from ${operation.source}.`, recommended: null, fastForwardBlocked: false };
+    if (!comparison.outgoingCount) return { text: `${operation.target} is ${commits(comparison.incomingCount)} behind and can move forward.`, recommended: 'ff-only' as const, fastForwardBlocked: false };
+    return { text: `Both changed: ${commits(comparison.incomingCount)} to bring in, ${commits(comparison.outgoingCount)} only on ${operation.target}.`, recommended: 'merge' as const, fastForwardBlocked: true };
+  });
 
   protected finishBranchDrag(): void {
     this.draggedBranch.set(null);
@@ -8202,17 +8288,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async runBranchDrop(strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
     const operation = this.branchDropMenu();
     if (!operation || this.git.busy()) return;
-    const repositoryId = this.git.activeRepositoryId();
     this.dismissBranchDropMenu();
     const checkout = strategy === 'rebase' ? operation.source : operation.target;
     const integrate = strategy === 'rebase' ? operation.target : operation.source;
-    if (this.git.repository()?.status.branch !== checkout) {
-      const result = await this.git.checkout(checkout);
-      if (result?.status !== 'success'
-        || this.git.activeRepositoryId() !== repositoryId
-        || this.git.repository()?.status.branch !== checkout) return;
-    }
-    await this.git.integrateBranch(integrate, strategy);
+    await this.checkoutThenIntegrate(checkout, integrate, strategy);
   }
 
   protected async openInteractiveRebaseFromDrop(): Promise<void> {
@@ -10532,6 +10611,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'reopen-tab': await this.reopenClosedRepository(); break;
       case 'refresh': await this.git.refresh(); break;
       case 'merge-preview': this.openMergePreview(paletteReturnFocus); break;
+      case 'integrate-branch': this.openIntegrationDialog(undefined, paletteReturnFocus); break;
       case 'maintenance': await this.git.performRepositoryMaintenance(); break;
       case 'undo': await this.git.undo(); break;
       case 'redo': await this.git.redo(); break;

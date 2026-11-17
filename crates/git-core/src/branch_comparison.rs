@@ -1,0 +1,131 @@
+use super::*;
+
+/// Commits listed per side; counts are always complete.
+const LISTED_COMMITS: usize = 20;
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparedCommit {
+    pub oid: String,
+    pub subject: String,
+    pub author: String,
+    pub timestamp: i64,
+}
+
+/// How two local branches relate, read without touching HEAD, the index or
+/// the working tree. `incoming` commits exist only on `source`; `outgoing`
+/// commits exist only on `target`.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchComparison {
+    pub target: String,
+    pub source: String,
+    pub target_oid: String,
+    pub source_oid: String,
+    pub merge_base: Option<String>,
+    pub incoming_count: u32,
+    pub outgoing_count: u32,
+    /// Outgoing commits already reachable from a remote-tracking branch;
+    /// rebasing would rewrite commits other people may have.
+    pub outgoing_published: u32,
+    pub incoming: Vec<ComparedCommit>,
+    pub outgoing: Vec<ComparedCommit>,
+}
+
+pub fn compare_branches(
+    path: &Path,
+    target: &str,
+    source: &str,
+) -> Result<BranchComparison, AppError> {
+    validate_branch_name(path, target)?;
+    validate_branch_name(path, source)?;
+    let target_ref = format!("refs/heads/{target}");
+    let source_ref = format!("refs/heads/{source}");
+    let target_oid = branch_tip(path, &target_ref, target)?;
+    let source_oid = branch_tip(path, &source_ref, source)?;
+    let base = run_git(path, &["merge-base", &target_oid, &source_oid])?;
+    let merge_base = match base.status.code() {
+        Some(0) => Some(String::from_utf8_lossy(&base.stdout).trim().to_owned()),
+        Some(1) => None,
+        _ => {
+            ensure_success("find the common history", &base)?;
+            None
+        }
+    };
+    let incoming_range = format!("{target_oid}..{source_oid}");
+    let outgoing_range = format!("{source_oid}..{target_oid}");
+    let incoming_count = count(path, &[&incoming_range])?;
+    let outgoing_count = count(path, &[&outgoing_range])?;
+    let unpublished = count(path, &[&outgoing_range, "--not", "--remotes"])?;
+    Ok(BranchComparison {
+        target: target.to_owned(),
+        source: source.to_owned(),
+        target_oid,
+        source_oid,
+        merge_base,
+        incoming_count,
+        outgoing_count,
+        outgoing_published: outgoing_count.saturating_sub(unpublished),
+        incoming: list(path, &incoming_range)?,
+        outgoing: list(path, &outgoing_range)?,
+    })
+}
+
+fn branch_tip(path: &Path, reference: &str, name: &str) -> Result<String, AppError> {
+    let spec = format!("{reference}^{{commit}}");
+    let output = run_git(path, &["rev-parse", "--verify", "--quiet", &spec])?;
+    if !output.status.success() {
+        return Err(AppError::new(
+            "branchNotFound",
+            format!("The branch {name} no longer exists."),
+            Some("Refresh the repository and choose the branches again."),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn count(path: &Path, range: &[&str]) -> Result<u32, AppError> {
+    let mut args = vec!["rev-list", "--count"];
+    args.extend_from_slice(range);
+    let output = run_git(path, &args)?;
+    ensure_success("count commits between the branches", &output)?;
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .map_err(|_| {
+            AppError::new(
+                "branchComparisonIncomplete",
+                "Git did not return a commit count.",
+                None,
+            )
+        })
+}
+
+fn list(path: &Path, range: &str) -> Result<Vec<ComparedCommit>, AppError> {
+    let limit = format!("--max-count={LISTED_COMMITS}");
+    let output = run_git(
+        path,
+        &[
+            "-c",
+            "log.showSignature=false",
+            "log",
+            "--no-color",
+            &limit,
+            "--format=%H%x1f%an%x1f%ct%x1f%s",
+            range,
+        ],
+    )?;
+    ensure_success("list commits between the branches", &output)?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(4, '\u{1f}');
+            Some(ComparedCommit {
+                oid: fields.next()?.to_owned(),
+                author: fields.next()?.to_owned(),
+                timestamp: fields.next()?.parse().ok()?,
+                subject: fields.next().unwrap_or_default().to_owned(),
+            })
+        })
+        .collect())
+}

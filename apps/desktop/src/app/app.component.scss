@@ -558,7 +558,10 @@
 .branch-drop-menu > button span { display: grid; gap: 2px; min-width: 0; }
 .branch-drop-menu > button strong { color: #d8d7e3; font-size: var(--font-size-body); font-weight: 650; }
 .branch-drop-menu > button small { overflow: hidden; color: #8d8c9e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.branch-drop-menu > footer { display: flex; justify-content: flex-end; padding: 6px 8px; border-top: 1px solid #3b3a50; }
+.branch-drop-advice { margin: 0; padding: 7px 11px; border-bottom: 1px solid #3b3a50; color: #c9c7da; font-size: 12px; }
+.branch-drop-menu .drop-badge { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #2f5a45; color: #aef0c8; font-size: 11px; font-style: normal; font-weight: 700; }
+.branch-drop-menu > footer { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px; border-top: 1px solid #3b3a50; }
+.branch-drop-menu > footer .drop-compare { margin-right: auto; color: #b5aaff; }
 .branch-drop-menu > footer button { padding: 4px 8px; border-radius: 3px; background: transparent; color: #918fa4; font-size: 12px; }
 .branch-drop-menu > footer button:hover,
 .branch-drop-menu > footer button:focus-visible { background: #3a394f; color: white; outline: none; }

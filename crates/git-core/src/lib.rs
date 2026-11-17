@@ -266,7 +266,9 @@ mod git_failure_hints;
 mod history_walk;
 mod integrity;
 pub use integrity::{IntegrityReport, inspect_integrity};
+mod branch_comparison;
 mod reference_actions;
+pub use branch_comparison::{BranchComparison, ComparedCommit, compare_branches};
 mod reference_rename;
 pub use reference_rename::{RemoteTagLease, rename_remote_branch, rename_tag};
 mod stash_file_restore;
@@ -276,6 +278,8 @@ pub use stash_options::{
     StashOptions, apply_stash_with_index, create_branch_from_stash, stash_and_checkout,
     stash_with_options,
 };
+#[cfg(test)]
+mod branch_comparison_tests;
 #[cfg(all(test, unix))]
 mod literal_file_tests;
 #[cfg(test)]

@@ -417,6 +417,7 @@
                 <b>{{ currentBranchStateLabel() }}</b>
               </header>
               <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openBranchCreatorFromToolbarMenu()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
+              <button type="button" role="menuitem" [disabled]="git.busy() || !currentBranch()" (click)="openIntegrationFromToolbarMenu()"><gc-icon name="merge" [size]="13" /><span><strong>Merge or rebase into {{ currentBranch()?.name ?? 'current branch' }}…</strong><small>Choose a branch and see what will happen</small></span></button>
               <div class="menu-separator"></div>
               <div class="menu-caption">Local branches</div>
               @for (branch of visibleBranches(); track branch.fullName) {
@@ -2176,7 +2177,7 @@
         (retentionConfirmed)="confirmLfsRetentionPrune()" />
     }
   }
-  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {
+  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !integrationRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {
     @defer (on immediate) { <gc-error-toast [error]="error" (logRequested)="openErrorActivityLog()" /> }
   }
   @if (!workspaceCenterRequest() && !fileContentDialog() && !repositoryHistorySearch()?.opened() && !git.conflictDetails() && git.backgroundOperationWarnings().length) {
@@ -2348,13 +2349,14 @@
       (click)="$event.stopPropagation()"
       (keydown)="handleBranchDropMenuKeydown($event)"
     >
-      <header><span><gc-icon name="branch" [size]="15" /></span><div><small>Move branch history</small><strong>{{ operation.source }} → {{ operation.target }}</strong></div></header>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('ff-only')"><gc-icon name="merge" [size]="14" /><span><strong>Fast-forward {{ operation.target }}</strong><small>Move {{ operation.target }} to {{ operation.source }} only when linear</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }}</strong><small>Preserve the source branch history</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage the combined result for one commit</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay source commits on the target</small></span></button>
+      <header><span><gc-icon name="branch" [size]="15" /></span><div><small>Bring {{ operation.source }} into {{ operation.target }}</small><strong>{{ operation.source }} → {{ operation.target }}</strong></div></header>
+      @if (branchDropAdvice(); as advice) { <p class="branch-drop-advice" role="status">{{ advice.text }}</p> }
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('ff-only')"><gc-icon name="merge" [size]="14" /><span><strong>Fast-forward {{ operation.target }} @if (branchDropAdvice()?.recommended === 'ff-only') { <em class="drop-badge">Recommended</em> }</strong><small>{{ branchDropAdvice()?.fastForwardBlocked ? 'Not possible: ' + operation.target + ' has its own commits' : 'Move ' + operation.target + ' forward to ' + operation.source + ' without a new commit' }}</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }} @if (branchDropAdvice()?.recommended === 'merge') { <em class="drop-badge">Recommended</em> }</strong><small>Add a merge commit; keeps both histories as they are</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage all changes as one new commit you write</small></span></button>
+      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay {{ operation.source }}'s commits on top; they get new IDs</small></span></button>
       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, combine, or drop source commits</small></span></button>
-      <footer><button type="button" (click)="dismissBranchDropMenu(true)">Cancel</button></footer>
+      <footer><button type="button" class="drop-compare" (click)="openIntegrationFromDrop()">Compare and choose…</button><button type="button" (click)="dismissBranchDropMenu(true)">Cancel</button></footer>
     </section>
   }
   @if (contextMenu(); as menu) {
@@ -2396,6 +2398,9 @@
       <button type="button" role="menuitem" (click)="copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
         <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
       </button>
+      @if (menu.kind === 'branch' && git.repository()?.status?.branch) {
+        <button type="button" role="menuitem" data-integration-entry [disabled]="git.busy()" (click)="openContextIntegration()"><span><gc-icon name="merge" [size]="13" /></span>{{ menu.label === git.repository()?.status?.branch ? 'Merge or rebase another branch into ' + menu.label + '…' : 'Merge or rebase into ' + git.repository()?.status?.branch + '…' }}</button>
+      }
       @if (menu.kind === 'commit') {
         <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="compareContextCommitWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
       }
@@ -2857,10 +2862,11 @@
       <section #branchConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="branch-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleBranchConfirmationKeydown($event)">
         <div class="confirmation-icon" [class.danger]="action.kind === 'delete'"><gc-icon [name]="action.kind === 'delete' ? 'trash' : 'refresh'" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase current branch' }}</span>
+          <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase ' + (git.repository()?.status?.branch ?? 'current branch') + ' onto' }}</span>
           <h2 id="branch-confirmation-title">{{ action.branch }}</h2>
           @if (action.kind === 'rebase') {
             <p>This rewrites commits by rebasing {{ git.repository()?.status?.branch }} onto {{ action.branch }}.</p>
+            <p>Your commits are replayed on top of {{ action.branch }} and get new IDs. If they were already pushed, collaborators will need to update. If a conflict stops the rebase, resolve it and continue, or abort to go back.</p>
           } @else if (action.unmerged) {
             <p class="unmerged-branch-warning"><gc-icon name="warning" [size]="14" />This branch has commits that are not merged into its upstream or the current branch.</p>
             <p>Deleting it anyway leaves those commits on no branch. Git Khronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
@@ -2989,6 +2995,10 @@
   </div>
   @if (git.busy()) { <div class="progress-line" aria-label="Operation in progress"></div> }
 </div>
+
+@if (integrationRequest(); as request) {
+  <gc-integrate-branch-dialog [request]="request" (closed)="integrationRequest.set(null)" (chosen)="handleIntegrationChoice($event)" />
+}
 
 @if (mergePreviewRequest(); as request) {
   @defer (on immediate) {

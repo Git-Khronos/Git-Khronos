@@ -35,6 +35,17 @@ export type AppError = { kind: string; message: string; hint: string | null }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
+/**
+ * How two local branches relate, read without touching HEAD, the index or
+ * the working tree. `incoming` commits exist only on `source`; `outgoing`
+ * commits exist only on `target`.
+ */
+export type BranchComparison = { target: string; source: string; targetOid: string; sourceOid: string; mergeBase: string | null; incomingCount: number; outgoingCount: number;
+/**
+ * Outgoing commits already reachable from a remote-tracking branch;
+ * rebasing would rewrite commits other people may have.
+ */
+outgoingPublished: number; incoming: ComparedCommit[]; outgoing: ComparedCommit[] }
 export type BranchWorkflowBinding = { branch: string; expectedOid: string | null; createAt: string | null }
 export type BranchWorkflowControl = { action: "continue"; retry: boolean } | { action: "abort" } | { action: "acknowledge" }
 export type BranchWorkflowFinishOptions = { mergePolicy: BranchWorkflowMergePolicy; mergeMessage: string | null; tag: BranchWorkflowTagRequest | null; deleteTopic: boolean }
@@ -67,6 +78,7 @@ export type CommitIdentity = { name: string; email: string }
 export type CommitPolicy = { signOff: boolean; allowEmpty: boolean; author?: CommitIdentity | null; committer?: CommitIdentity | null }
 export type CommitSignature = { status: string; signer: string | null; key: string | null; fingerprint: string | null; trust: string | null }
 export type CommitSummary = { oid: string; parents: string[]; authorName: string; authorEmail: string; authoredAt: string; subject: string; description: string; decorations: string[] }
+export type ComparedCommit = { oid: string; subject: string; author: string; timestamp: number }
 export type ConflictDetails = { path: string; ancestor: string | null; current: string | null; incoming: string | null; output: string | null; binary: boolean; truncated: boolean; state: string; editable: boolean; currentExists: boolean; incomingExists: boolean; submodule: boolean }
 export type DiscardFileToolReviewRequest = { contextId: string; token: string; purpose: FileToolReviewPurpose }
 export type DiscardFileToolSessionRequest = { contextId: string; token: string; operationId: string; finishedUsingFiles: boolean }
@@ -703,6 +715,7 @@ export function execute_interactive_rebase(args: { repoId: string; source: strin
 export function continue_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_rebase", args); }
 export function begin_rebase_split(args: { repoId: string; expectedHead: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("begin_rebase_split", args); }
 export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
+export function compare_branches(args: { repoId: string; target: string; source: string }): Promise<BranchComparison> { return TAURI_INVOKE("compare_branches", args); }
 export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
 export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
 export function load_branch_workflow(args: { repoId: string; operationId: string }): Promise<BranchWorkflowView> { return TAURI_INVOKE("load_branch_workflow", args); }
@@ -973,6 +986,7 @@ export type CommandMap = {
   continue_rebase: typeof continue_rebase;
   begin_rebase_split: typeof begin_rebase_split;
   preview_merge: typeof preview_merge;
+  compare_branches: typeof compare_branches;
   load_hosting_page: typeof load_hosting_page;
   load_hosted_review: typeof load_hosted_review;
   load_branch_workflow: typeof load_branch_workflow;

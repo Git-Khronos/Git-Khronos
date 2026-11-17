@@ -1374,6 +1374,8 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
   expect(await branchMenu.locator('.toolbar-menu-context b').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(branchMenu.getByRole('menuitem', { name: /Create branch/ })).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(branchMenu.getByRole('menuitem', { name: /Merge or rebase into main/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(branchMenu.getByRole('menuitem', { name: /main Current branch/ })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(branchToggle).toBeFocused();
@@ -6941,6 +6943,7 @@ test('exposes consistent remote branch actions wherever a reference appears', as
     'Share repository context…',
     'Copy remote branch name',
     'Compare with working directory',
+    'Rename branch on remote…',
     'Delete branch on remote…',
     'Create branch here…',
     'Create tag here…',
