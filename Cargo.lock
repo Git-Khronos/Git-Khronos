@@ -1542,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "git-khronos-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "getrandom 0.3.4",
  "git-khronos-git-core",
@@ -1566,7 +1566,7 @@ dependencies = [
 
 [[package]]
 name = "git-khronos-git-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "aho-corasick",
  "base64 0.22.1",

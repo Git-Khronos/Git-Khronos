@@ -1,3 +1,10 @@
+git-khronos (0.1.6) unstable; urgency=medium
+
+  * Reload the window when its page renderer crashes on Linux instead of
+    leaving a blank, unreachable instance.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Wed, 18 Nov 2026 10:38:17 +0100
+
 git-khronos (0.1.5) unstable; urgency=medium
 
   * Rename remotes, local and remote branches, and tags.
