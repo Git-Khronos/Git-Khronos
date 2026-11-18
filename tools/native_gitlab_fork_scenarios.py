@@ -2,7 +2,39 @@
 import json
 from pathlib import Path
 import re
+import time
 import uuid
+
+
+def _open_repository_dialog(driver, timeout=30):
+    """Reacquire replaced entry controls; never replay an uncertain click."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        element = driver.script("""const visible = e => e.getClientRects().length
+          && getComputedStyle(e).visibility === 'visible'
+          && !e.matches(':disabled') && !e.closest('[inert]');
+          return [...document.querySelectorAll('[aria-label="New repository tab"]')].find(visible)
+            || [...document.querySelectorAll('gc-welcome-launcher button')].find(e =>
+              visible(e) && e.querySelector('strong')?.textContent.trim() === 'Clone repository')
+            || null;""")
+        if element:
+            identifier = element['element-6066-11e4-a52e-4f735466cecf']
+            try:
+                driver.request('POST', driver.path('element/' + identifier + '/click'), {})
+                return
+            except RuntimeError as error:
+                # Both HTTP-error envelopes and successful HTTP error values
+                # occur in Driver.request. Only explicit stale refusal is safe.
+                try:
+                    detail = json.loads(str(error))
+                except (ValueError, TypeError):
+                    raise error
+                if isinstance(detail, dict) and isinstance(detail.get('value'), dict):
+                    detail = detail['value']
+                if not isinstance(detail, dict) or detail.get('error') != 'stale element reference':
+                    raise
+        time.sleep(0.1)
+    raise TimeoutError('Repository dialog entry control did not remain available for a click')
 
 
 def gitlab_reviewed_forks(driver, fixtures, repository, report):
@@ -41,13 +73,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         driver.script("const e=document.querySelector(arguments[0]);e.value=arguments[1];e.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
 
     def catalogue():
-        driver.wait("return !!document.querySelector('[aria-label=\"New repository tab\"]')?.getClientRects().length || [...document.querySelectorAll('gc-welcome-launcher button')].some(e=>e.getClientRects().length && e.querySelector('strong')?.textContent.trim()==='Clone repository')")
-        if driver.script("return !!document.querySelector('[aria-label=\"New repository tab\"]')?.getClientRects().length"):
-            driver.click('[aria-label="New repository tab"]')
-        else:
-            element = driver.script("return [...document.querySelectorAll('gc-welcome-launcher button')].find(e=>e.getClientRects().length && e.querySelector('strong')?.textContent.trim()==='Clone repository')")
-            identifier = element['element-6066-11e4-a52e-4f735466cecf']
-            driver.request('POST', driver.path('element/' + identifier + '/click'), {})
+        _open_repository_dialog(driver)
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
         driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
         button('Browse GitLab projects', 'gc-repository-dialog')
