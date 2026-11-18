@@ -2712,6 +2712,275 @@ pub fn update_head_message(
     run_mutation(path, &args, "update the commit message")
 }
 
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitAuthorInput {
+    pub name: String,
+    pub email: String,
+}
+
+const MAX_EDITED_HISTORY_COMMITS: usize = 5_000;
+
+/// Changes the message and author of `target_oid`, which must be HEAD or one
+/// of its ancestors. Later commits are recreated with their original trees,
+/// authors and messages, so the index and working tree are left untouched.
+pub fn edit_commit(
+    path: &Path,
+    expected_head: &str,
+    target_oid: &str,
+    message: &str,
+    author: &CommitAuthorInput,
+    skip_hooks: bool,
+) -> Result<(), AppError> {
+    validate_commit_oid(expected_head)?;
+    validate_commit_oid(target_oid)?;
+    let state = repository_operation_state(path)?;
+    if state.merge
+        || state.history.is_some()
+        || state.rebase
+        || state.rebase_split.is_some()
+        || state.mail_patch
+        || state.bisect
+    {
+        return Err(AppError::new(
+            "operationInProgress",
+            "Commits can't be edited while another Git operation is in progress.",
+            Some("Finish or abort the current operation, then try again."),
+        ));
+    }
+    if message.trim().is_empty() {
+        return Err(AppError::new(
+            "invalidCommitMessage",
+            "A commit message is required.",
+            None,
+        ));
+    }
+    if message.len() > MAX_COMMIT_MESSAGE_BYTES {
+        return Err(AppError::new(
+            "invalidCommitMessage",
+            "The commit message is too long.",
+            None,
+        ));
+    }
+    let name = author.name.trim();
+    let email = author.email.trim();
+    validate_author_part(name, "name")?;
+    validate_author_part(email, "email")?;
+
+    let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
+    ensure_success("read the current commit", &head)?;
+    if String::from_utf8_lossy(&head.stdout).trim() != expected_head {
+        return Err(AppError::new(
+            "staleCommit",
+            "HEAD changed before the commit could be edited.",
+            Some("Refresh the repository and try again."),
+        ));
+    }
+    let identity = format!("{name} <{email}>");
+    if target_oid == expected_head {
+        let date = run_git(path, &["log", "-1", "--format=%ad", "--date=raw", "HEAD"])?;
+        ensure_success("read the author date", &date)?;
+        let date = format!("@{}", String::from_utf8_lossy(&date.stdout).trim());
+        let mut args = vec!["commit", "--amend", "--only"];
+        if skip_hooks {
+            args.push("--no-verify");
+        }
+        args.extend(["--author", &identity, "--date", &date, "-m", message]);
+        return run_mutation(path, &args, "edit the commit");
+    }
+
+    let ancestor = run_git(
+        path,
+        &["merge-base", "--is-ancestor", target_oid, expected_head],
+    )?;
+    if !ancestor.status.success() {
+        return Err(AppError::new(
+            "commitNotInHistory",
+            "Only commits in the current history can be edited.",
+            Some("Check out a branch that contains this commit, then try again."),
+        ));
+    }
+    let range = format!("{target_oid}..{expected_head}");
+    let descendants = run_git(
+        path,
+        &[
+            "rev-list",
+            "--topo-order",
+            "--reverse",
+            "--ancestry-path",
+            &range,
+        ],
+    )?;
+    ensure_success("list the commits to rewrite", &descendants)?;
+    let descendants = String::from_utf8_lossy(&descendants.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if descendants.len() >= MAX_EDITED_HISTORY_COMMITS {
+        return Err(AppError::new(
+            "historyTooLong",
+            "Too many later commits would have to be rewritten.",
+            Some("Use an interactive rebase for edits this far back."),
+        ));
+    }
+    let cleaned = run_git_with_input_output(path, &["stripspace"], message.as_bytes())?;
+    ensure_success("clean up the commit message", &cleaned)?;
+    let sign = run_git(path, &["config", "--type=bool", "commit.gpgSign"])?;
+    let sign = sign.status.success() && String::from_utf8_lossy(&sign.stdout).trim() == "true";
+
+    let mut rewritten = std::collections::HashMap::<String, String>::new();
+    for oid in std::iter::once(target_oid.to_owned()).chain(descendants) {
+        let raw = run_git(path, &["cat-file", "commit", &oid])?;
+        ensure_success("read a commit", &raw)?;
+        let original = parse_raw_commit(&raw.stdout)?;
+        let edited = oid == target_oid;
+        let tree = original.tree.clone();
+        let mut args = vec![];
+        if let Some(encoding) = original.encoding.as_deref().filter(|_| !edited) {
+            args.extend(["-c".to_owned(), format!("i18n.commitEncoding={encoding}")]);
+        }
+        args.extend(["commit-tree".to_owned(), tree]);
+        for parent in &original.parents {
+            args.push("-p".into());
+            args.push(rewritten.get(parent).unwrap_or(parent).clone());
+        }
+        if sign {
+            args.push("-S".into());
+        }
+        args.extend(["-F".into(), "-".into()]);
+        let (author_name, author_email) = if edited {
+            (name.to_owned(), email.to_owned())
+        } else {
+            (original.author_name.clone(), original.author_email.clone())
+        };
+        let author_date = format!("@{}", original.author_date);
+        let environment = [
+            ("GIT_AUTHOR_NAME", std::ffi::OsStr::new(&author_name)),
+            ("GIT_AUTHOR_EMAIL", std::ffi::OsStr::new(&author_email)),
+            ("GIT_AUTHOR_DATE", std::ffi::OsStr::new(&author_date)),
+        ];
+        let input = if edited {
+            cleaned.stdout.as_slice()
+        } else {
+            original.message.as_slice()
+        };
+        let arguments = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let created = run_git_with_input_environment(path, &arguments, input, &environment)?;
+        ensure_success("rewrite a commit", &created)?;
+        let created = String::from_utf8_lossy(&created.stdout).trim().to_owned();
+        validate_commit_oid(&created)?;
+        rewritten.insert(oid, created);
+    }
+    let new_head = rewritten
+        .get(expected_head)
+        .cloned()
+        .ok_or_else(|| AppError::new("rewriteFailed", "The edited history is incomplete.", None))?;
+    let reflog = format!(
+        "Git Khronos: edit commit {}",
+        &target_oid[..12.min(target_oid.len())]
+    );
+    let branch = run_git(path, &["symbolic-ref", "-q", "HEAD"])?;
+    let branch = String::from_utf8_lossy(&branch.stdout).trim().to_owned();
+    let output = if branch.is_empty() {
+        run_git(
+            path,
+            &[
+                "update-ref",
+                "--no-deref",
+                "-m",
+                &reflog,
+                "HEAD",
+                &new_head,
+                expected_head,
+            ],
+        )?
+    } else {
+        run_git(
+            path,
+            &[
+                "update-ref",
+                "-m",
+                &reflog,
+                &branch,
+                &new_head,
+                expected_head,
+            ],
+        )?
+    };
+    if !output.status.success() {
+        return Err(AppError::new(
+            "staleCommit",
+            "HEAD changed before the edited history could be saved.",
+            Some("Refresh the repository and try again. Nothing was changed."),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_author_part(value: &str, label: &str) -> Result<(), AppError> {
+    if value.is_empty() || value.len() > 1_024 || value.contains(['<', '>', '\n', '\r', '\0']) {
+        return Err(AppError::new(
+            "invalidAuthor",
+            format!("Enter a valid author {label}."),
+            Some(
+                "Author names and emails can't be empty or contain angle brackets or line breaks.",
+            ),
+        ));
+    }
+    Ok(())
+}
+
+struct RawCommit {
+    tree: String,
+    parents: Vec<String>,
+    author_name: String,
+    author_email: String,
+    author_date: String,
+    encoding: Option<String>,
+    message: Vec<u8>,
+}
+
+fn parse_raw_commit(raw: &[u8]) -> Result<RawCommit, AppError> {
+    let invalid = || AppError::new("invalidCommit", "Git returned an unreadable commit.", None);
+    let split = raw
+        .windows(2)
+        .position(|pair| pair == b"\n\n")
+        .ok_or_else(invalid)?;
+    let headers = std::str::from_utf8(&raw[..split]).map_err(|_| invalid())?;
+    let mut commit = RawCommit {
+        tree: String::new(),
+        parents: Vec::new(),
+        author_name: String::new(),
+        author_email: String::new(),
+        author_date: String::new(),
+        encoding: None,
+        message: raw[split + 2..].to_vec(),
+    };
+    for line in headers.lines().filter(|line| !line.starts_with(' ')) {
+        let (key, value) = line.split_once(' ').unwrap_or((line, ""));
+        match key {
+            "tree" => commit.tree = value.to_owned(),
+            "parent" => commit.parents.push(value.to_owned()),
+            "encoding" => commit.encoding = Some(value.to_owned()),
+            "author" => {
+                let open = value.find(" <").ok_or_else(invalid)?;
+                let close = value.rfind("> ").ok_or_else(invalid)?;
+                if close < open {
+                    return Err(invalid());
+                }
+                commit.author_name = value[..open].to_owned();
+                commit.author_email = value[open + 2..close].to_owned();
+                commit.author_date = value[close + 2..].to_owned();
+            }
+            _ => {}
+        }
+    }
+    if commit.tree.is_empty() || commit.author_date.is_empty() {
+        return Err(invalid());
+    }
+    Ok(commit)
+}
+
 pub fn checkout_branch(path: &Path, name: &str) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
     run_mutation(path, &["switch", "--", name], "switch branches")
@@ -9321,6 +9590,18 @@ mod tests {
         fn write(&self, path: &str, content: &str) {
             fs::write(self.path.join(path), content).expect("write fixture file");
         }
+
+        /// Returns stdout without asserting success, so probes such as
+        /// `symbolic-ref -q` can report an empty answer.
+        fn git_output(&self, args: &[&str]) -> String {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&self.path)
+                .args(args)
+                .output()
+                .expect("run Git in test repository");
+            String::from_utf8(output.stdout).expect("UTF-8 Git output")
+        }
     }
 
     #[test]
@@ -15738,6 +16019,225 @@ mod tests {
                 .kind,
             "staleCommit"
         );
+    }
+
+    #[test]
+    fn edits_the_head_author_and_keeps_the_author_date() {
+        let repository = TestRepository::new();
+        repository.write("a.txt", "a\n");
+        stage_all(&repository.path).unwrap();
+        commit(
+            &repository.path,
+            "Head\n\nCo-authored-by: Bob <bob@example.test>",
+        )
+        .unwrap();
+        let head = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        let date = repository.git_output(&["log", "-1", "--format=%ad", "--date=raw"]);
+        let author = CommitAuthorInput {
+            name: "Grace".into(),
+            email: "grace@example.test".into(),
+        };
+        edit_commit(&repository.path, &head, &head, "Head", &author, false).unwrap();
+        assert_eq!(
+            repository
+                .git_output(&["log", "-1", "--format=%an <%ae>|%B"])
+                .trim(),
+            "Grace <grace@example.test>|Head"
+        );
+        assert_eq!(
+            repository.git_output(&["log", "-1", "--format=%ad", "--date=raw"]),
+            date
+        );
+    }
+
+    #[test]
+    fn removes_a_co_author_from_an_older_commit_and_preserves_later_history() {
+        let repository = TestRepository::new();
+        repository.write("a.txt", "a\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Root").unwrap();
+        repository.write("a.txt", "b\n");
+        stage_all(&repository.path).unwrap();
+        commit(
+            &repository.path,
+            "Target\n\nBody\n\nCo-authored-by: Bob <bob@example.test>",
+        )
+        .unwrap();
+        let target = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        repository.git(&["switch", "-q", "-c", "side"]);
+        repository.write("side.txt", "side\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Side").unwrap();
+        repository.git(&["switch", "-q", "-"]);
+        repository.write("c.txt", "c\n");
+        stage_all(&repository.path).unwrap();
+        repository.git(&[
+            "-c",
+            "user.name=Later",
+            "-c",
+            "user.email=later@example.test",
+            "commit",
+            "-q",
+            "-m",
+            "Later\n\nKeep me",
+        ]);
+        repository.git(&["merge", "-q", "--no-ff", "-m", "Merge side", "side"]);
+        let before_trees =
+            repository.git_output(&["log", "--format=%T %an %ad %s", "--date=raw", "HEAD"]);
+        let head = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        repository.write("dirty.txt", "untracked\n");
+        repository.write("a.txt", "modified\n");
+        repository.git(&["add", "a.txt"]);
+        let status = repository.git_output(&["status", "--porcelain"]);
+        let original = repository.git_output(&["log", "-1", "--format=%an|%ae", &target]);
+        let (name, email) = original.trim().split_once('|').unwrap();
+        let author = CommitAuthorInput {
+            name: name.into(),
+            email: email.into(),
+        };
+
+        edit_commit(
+            &repository.path,
+            &head,
+            &target,
+            "Target\n\nBody\n",
+            &author,
+            false,
+        )
+        .unwrap();
+
+        let after_trees =
+            repository.git_output(&["log", "--format=%T %an %ad %s", "--date=raw", "HEAD"]);
+        assert_eq!(after_trees, before_trees);
+        assert_eq!(
+            repository
+                .git_output(&["log", "-1", "--format=%B", "HEAD^2~1"])
+                .trim(),
+            "Target\n\nBody"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["log", "-1", "--format=%B", "HEAD^1"])
+                .trim(),
+            "Later\n\nKeep me"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["log", "-1", "--format=%an", "HEAD^1"])
+                .trim(),
+            "Later"
+        );
+        assert_ne!(
+            repository.git_output(&["rev-parse", "side"]),
+            repository.git_output(&["rev-parse", "HEAD^2"])
+        );
+        assert_eq!(repository.git_output(&["status", "--porcelain"]), status);
+        assert!(
+            repository
+                .git_output(&["log", "--format=%B"])
+                .find("Co-authored-by")
+                .is_none()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .trim(),
+            "main"
+        );
+        assert_eq!(
+            edit_commit(&repository.path, &head, &target, "Stale", &author, false)
+                .unwrap_err()
+                .kind,
+            "staleCommit"
+        );
+    }
+
+    #[test]
+    fn edits_an_older_commit_on_a_detached_head_and_rejects_invalid_input() {
+        let repository = TestRepository::new();
+        for name in ["One", "Two", "Three"] {
+            repository.write("a.txt", name);
+            stage_all(&repository.path).unwrap();
+            commit(&repository.path, name).unwrap();
+        }
+        repository.git(&["switch", "-q", "--detach"]);
+        let head = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        let target = repository
+            .git_output(&["rev-parse", "HEAD~2"])
+            .trim()
+            .to_owned();
+        let valid = CommitAuthorInput {
+            name: "Ada".into(),
+            email: "ada@example.test".into(),
+        };
+        for (author, message, kind) in [
+            (
+                CommitAuthorInput {
+                    name: "".into(),
+                    email: "x@example.test".into(),
+                },
+                "One",
+                "invalidAuthor",
+            ),
+            (
+                CommitAuthorInput {
+                    name: "A <b>".into(),
+                    email: "x@example.test".into(),
+                },
+                "One",
+                "invalidAuthor",
+            ),
+            (valid.clone(), " \n", "invalidCommitMessage"),
+        ] {
+            assert_eq!(
+                edit_commit(&repository.path, &head, &target, message, &author, false)
+                    .unwrap_err()
+                    .kind,
+                kind
+            );
+        }
+        let unrelated = repository
+            .git_output(&["commit-tree", "HEAD^{tree}", "-m", "Elsewhere"])
+            .trim()
+            .to_owned();
+        assert_eq!(
+            edit_commit(&repository.path, &head, &unrelated, "x", &valid, false)
+                .unwrap_err()
+                .kind,
+            "commitNotInHistory"
+        );
+        assert_eq!(repository.git_output(&["rev-parse", "HEAD"]).trim(), head);
+
+        edit_commit(
+            &repository.path,
+            &head,
+            &target,
+            "Renamed one",
+            &valid,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            repository
+                .git_output(&["log", "--format=%s|%an", "HEAD"])
+                .trim()
+                .lines()
+                .last()
+                .unwrap(),
+            "Renamed one|Ada"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["log", "--format=%s", "-2", "HEAD"])
+                .trim(),
+            "Three\nTwo"
+        );
+        assert!(
+            repository
+                .git_output(&["symbolic-ref", "-q", "HEAD"])
+                .is_empty()
+        );
+        assert_eq!(repository.git_output(&["rev-parse", "main"]).trim(), head);
     }
 
     #[test]

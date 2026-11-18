@@ -837,6 +837,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly signCommit = signal(false);
   protected readonly pushAfterCommit = signal(false);
   protected readonly commitMessageEditing = signal(false);
+  protected readonly editedCommitOid = signal<string | null>(null);
+  protected readonly editedCommitAuthorName = signal('');
+  protected readonly editedCommitAuthorEmail = signal('');
   protected readonly editedCommitSummary = signal('');
   protected readonly editedCommitDescription = signal('');
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
@@ -9563,18 +9566,69 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected canEditSelectedCommitMessage(): boolean {
-    const repository = this.git.repository();
     const commit = this.selectedCommitData();
-    return !!repository?.headOid && !this.repositoryOperation().rebaseSplit && commit?.oid === repository.headOid;
+    return !!commit && this.canEditCommit(commit.oid);
   }
 
   protected canEditContextCommitMessage(): boolean {
     const menu = this.contextMenu();
-    return menu?.kind === 'commit'
-      && menu.oids.length === 1
-      && !this.repositoryOperation().rebaseSplit
-      && menu.oid === this.git.repository()?.headOid;
+    return menu?.kind === 'commit' && menu.oids.length === 1 && this.canEditCommit(menu.oid);
   }
+
+  /** HEAD and its loaded ancestors can be edited when no other Git operation is in progress. */
+  private canEditCommit(oid: string): boolean {
+    const operation = this.repositoryOperation();
+    if (operation.rebaseSplit || operation.mergeInProgress || operation.historyOperation || operation.rebaseInProgress
+      || operation.mailPatchInProgress || operation.bisectInProgress) return false;
+    return this.headAncestors().has(oid);
+  }
+
+  private readonly headAncestors = computed(() => this.loadedAncestors([this.git.repository()?.headOid ?? '']));
+
+  private loadedAncestors(tips: string[]): Set<string> {
+    const commits = this.graphCommitByOid();
+    const reachable = new Set<string>();
+    const pending = tips.filter(Boolean);
+    while (pending.length) {
+      const oid = pending.pop()!;
+      const commit = commits.get(oid);
+      if (reachable.has(oid) || !commit) continue;
+      reachable.add(oid);
+      pending.push(...commit.parents);
+    }
+    return reachable;
+  }
+
+  /** Later commits on the current history that are recreated when the edited commit changes. */
+  protected readonly editedCommitRewriteCount = computed(() => {
+    const target = this.editedCommitOid();
+    const ancestors = this.headAncestors();
+    if (!target || !ancestors.has(target)) return 0;
+    const commits = this.graphCommitByOid();
+    const children = new Map<string, string[]>();
+    for (const oid of ancestors) {
+      for (const parent of commits.get(oid)?.parents ?? []) {
+        if (ancestors.has(parent)) children.set(parent, [...(children.get(parent) ?? []), oid]);
+      }
+    }
+    const descendants = new Set<string>();
+    const pending = [...(children.get(target) ?? [])];
+    while (pending.length) {
+      const oid = pending.pop()!;
+      if (descendants.has(oid)) continue;
+      descendants.add(oid);
+      pending.push(...(children.get(oid) ?? []));
+    }
+    return descendants.size;
+  });
+
+  protected readonly editedCommitIsPublished = computed(() => {
+    const oid = this.editedCommitOid();
+    const repository = this.git.repository();
+    if (!oid || !repository) return false;
+    if (oid === repository.headOid && this.selectedHeadIsPublished()) return true;
+    return this.loadedAncestors(repository.branches.filter((branch) => branch.remote).map((branch) => branch.oid)).has(oid);
+  });
 
   protected selectedHeadIsPublished(): boolean {
     const repository = this.git.repository();
@@ -9591,6 +9645,9 @@ export class AppComponent implements OnInit, OnDestroy {
       ? commitMessageBody(details.message)
       : commit.description;
     const parsed = parseCoAuthors(body);
+    this.editedCommitOid.set(commit.oid);
+    this.editedCommitAuthorName.set(commit.authorName);
+    this.editedCommitAuthorEmail.set(commit.authorEmail);
     this.editedCommitSummary.set(commit.subject);
     this.editedCommitDescription.set(parsed.body);
     this.editedCommitCoAuthors.set(parsed.authors);
@@ -9599,6 +9656,12 @@ export class AppComponent implements OnInit, OnDestroy {
       this.editedCommitSummaryInput()?.nativeElement.focus();
       this.editedCommitSummaryInput()?.nativeElement.select();
     });
+  }
+
+  /** Opens the editor with one co-author already removed, so the change is reviewed before it is saved. */
+  protected removeSelectedCommitCoAuthor(email: string): void {
+    if (!this.commitMessageEditing()) this.beginCommitMessageEdit();
+    if (this.commitMessageEditing()) this.removeEditedCommitCoAuthor(email);
   }
 
   protected editContextCommitMessage(): void {
@@ -9611,6 +9674,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected cancelCommitMessageEdit(): void {
     this.commitMessageEditing.set(false);
+    this.editedCommitOid.set(null);
+    this.editedCommitAuthorName.set('');
+    this.editedCommitAuthorEmail.set('');
     this.editedCommitSummary.set('');
     this.editedCommitDescription.set('');
     this.editedCommitCoAuthors.set([]);
@@ -9620,21 +9686,53 @@ export class AppComponent implements OnInit, OnDestroy {
     this.editedCommitCoAuthors.update((authors) => authors.filter((author) => author.email !== email));
   }
 
+  protected editedCommitAuthorValid(): boolean {
+    const valid = (value: string) => !!value.trim() && !/[<>\r\n]/.test(value);
+    return valid(this.editedCommitAuthorName()) && valid(this.editedCommitAuthorEmail());
+  }
+
   protected async submitCommitMessageEdit(): Promise<void> {
     const repository = this.git.repository();
-    const expectedOid = this.selectedCommitData()?.oid;
+    const target = this.editedCommitOid();
+    const commit = target ? this.graphCommitByOid().get(target) : null;
     const summary = this.editedCommitSummary().trim();
-    if (!repository || !expectedOid || expectedOid !== repository.headOid || !summary || this.git.busy()) return;
+    if (!repository?.headOid || !target || !commit || !summary || !this.editedCommitAuthorValid() || this.git.busy()) return;
     const trailers = this.editedCommitCoAuthors()
       .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
       .join('\n');
     const message = [summary, this.editedCommitDescription().trim(), trailers]
       .filter(Boolean)
       .join('\n\n');
-    if (!await this.git.updateHeadMessage(expectedOid, message)) return;
+    const author = { name: this.editedCommitAuthorName().trim(), email: this.editedCommitAuthorEmail().trim() };
+    const authorUnchanged = author.name === commit.authorName && author.email === commit.authorEmail;
+    const headOid = repository.headOid;
+    const updated = target === headOid && authorUnchanged
+      ? await this.git.updateHeadMessage(headOid, message)
+      : await this.git.editCommit(target, message, author);
+    if (!updated) return;
+    // The edited commit keeps its distance from HEAD, so select its replacement.
+    const distance = this.firstParentDistance(headOid, target);
     this.cancelCommitMessageEdit();
-    const updatedOid = this.git.repository()?.headOid;
-    if (updatedOid) this.selectCommit(updatedOid);
+    const updatedHead = this.git.repository()?.headOid;
+    const replacement = updatedHead && distance !== null ? this.firstParentAncestor(updatedHead, distance) : updatedHead;
+    if (replacement) this.selectCommit(replacement);
+  }
+
+  private firstParentDistance(from: string, target: string): number | null {
+    const commits = this.graphCommitByOid();
+    let oid: string | undefined = from;
+    for (let distance = 0; oid; distance += 1) {
+      if (oid === target) return distance;
+      oid = commits.get(oid)?.parents[0];
+    }
+    return null;
+  }
+
+  private firstParentAncestor(from: string, distance: number): string | null {
+    const commits = this.graphCommitByOid();
+    let oid: string | undefined = from;
+    for (let step = 0; oid && step < distance; step += 1) oid = commits.get(oid)?.parents[0];
+    return oid ?? null;
   }
 
   protected toggleAmend(enabled: boolean): void {

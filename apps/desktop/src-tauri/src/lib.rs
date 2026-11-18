@@ -1,11 +1,11 @@
 use git_khronos_git_core::{
-    AppError, CancellationToken, CommitComparison, CommitDetails, CommitFileDiff,
-    CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions, FileBlameLine,
-    FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep, MINIMUM_GIT_VERSION,
-    ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic, TagDetails, TrackedFileSearch,
-    WorkingTreeFileDiff, abort_merge as git_abort_merge, abort_rebase as git_abort_rebase,
-    add_remote as git_add_remote, add_submodule as git_add_submodule,
-    apply_stash_checked as git_apply_stash,
+    AppError, CancellationToken, CommitAuthorInput, CommitComparison, CommitDetails,
+    CommitFileDiff, CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions,
+    FileBlameLine, FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep,
+    MINIMUM_GIT_VERSION, ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic,
+    TagDetails, TrackedFileSearch, WorkingTreeFileDiff, abort_merge as git_abort_merge,
+    abort_rebase as git_abort_rebase, add_remote as git_add_remote,
+    add_submodule as git_add_submodule, apply_stash_checked as git_apply_stash,
     apply_working_tree_hunk_with_preview as git_apply_working_tree_hunk,
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     begin_rebase_split as git_begin_rebase_split, checkout_branch as git_checkout_branch,
@@ -26,6 +26,7 @@ use git_khronos_git_core::{
     delete_checkpoint_reference as git_delete_checkpoint_reference,
     delete_original_reference as git_delete_original_reference, detect_git,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
+    edit_commit as git_edit_commit,
     execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
     fetch_remote_cancellable as git_fetch_remote_cancellable,
@@ -1045,6 +1046,29 @@ fn update_head_message(
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
         git_update_head_message(path, &expected_oid, &message, skip_hooks)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+fn edit_commit(
+    repo_id: String,
+    expected_head: String,
+    target_oid: String,
+    message: String,
+    author: CommitAuthorInput,
+    skip_hooks: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_edit_commit(
+            path,
+            &expected_head,
+            &target_oid,
+            &message,
+            &author,
+            skip_hooks,
+        )
     })
 }
 
@@ -4178,6 +4202,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             ignore_path,
             commit_changes,
             update_head_message,
+            edit_commit,
             checkout_branch,
             checkout_remote_branch,
             sync_checkout_remote_branch,

@@ -9,6 +9,7 @@ import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
+  CommitAuthorInput,
   CommitComparison,
   CommitDetails,
   CommitFile,
@@ -1335,6 +1336,23 @@ export class GitKhronosService {
     const afterOid = this.repositories().find(candidate => candidate.id === repository.id)?.headOid;
     this.recordHeadChange(repository.id, expectedOid, 'Edit Commit Message');
     return !!afterOid;
+  }
+
+  /** Changes the message and author of HEAD or one of its ancestors; later commits keep their content. */
+  async editCommit(targetOid: string, message: string, author: CommitAuthorInput): Promise<boolean> {
+    if (!message.trim() || !author.name.trim() || !author.email.trim()) return false;
+    const repository = this.repository();
+    const expectedHead = repository?.headOid;
+    if (!repository || !expectedHead) return false;
+    const outcome = await this.mutate(
+      'edit_commit',
+      'Editing commit…',
+      'Commit updated',
+      { expectedHead, targetOid, message: message.trim(), author: { name: author.name.trim(), email: author.email.trim() }, skipHooks: false },
+    );
+    if (outcome !== 'success') return false;
+    this.recordHeadChange(repository.id, expectedHead, 'Edit Commit');
+    return true;
   }
 
   undo(): Promise<void> {

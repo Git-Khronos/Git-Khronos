@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const operations = ['checkout', 'checkoutRemote', 'updateHeadMessage', 'cherryPick', 'revertCommit', 'revertCommits', 'commit', 'renameBranch'];
+const operations = ['checkout', 'checkoutRemote', 'updateHeadMessage', 'editCommit', 'cherryPick', 'revertCommit', 'revertCommits', 'commit', 'renameBranch'];
 for (const { operation, unrelatedError } of operations.flatMap(operation =>
   [false, true].map(unrelatedError => ({ operation, unrelatedError })))) {
   test(`${operation} records undo targets after a tab switch${unrelatedError ? ' with an unrelated inspection error' : ''}`, async ({ page }) => {
@@ -33,6 +33,7 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
         checkout: () => git.checkout('feature/partial-staging'),
         checkoutRemote: () => git.checkoutRemote('origin/release'),
         updateHeadMessage: () => git.updateHeadMessage(repository.headOid, 'Edited title'),
+        editCommit: () => git.editCommit(repository.commits[3].oid, 'Edited title', { name: 'Ada', email: 'ada@example.test' }),
         cherryPick: () => git.cherryPick([repository.commits[3].oid]),
         revertCommit: () => git.revertCommit(repository.commits[3].oid),
         revertCommits: () => git.revertCommits(repository.commits.slice(2, 4).map((commit: any) => commit.oid)),
@@ -61,7 +62,7 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
     expect(result.active).toBe('other-history');
     expect(result.otherEntry).toBeNull();
     expect(result.error).toBe(unrelatedError ? 'Other repository inspection failed' : null);
-    if (operation === 'commit' || operation === 'updateHeadMessage') expect(result.outcome).toBe(true);
+    if (['commit', 'updateHeadMessage', 'editCommit'].includes(operation)) expect(result.outcome).toBe(true);
     if (operation === 'renameBranch') {
       expect(result.entry).toMatchObject({ kind: 'rename-branch', beforeName: 'main', afterName: 'renamed-main' });
       expect(result.calls.filter((call: any) => call.command === 'rename_branch').at(-1).args)

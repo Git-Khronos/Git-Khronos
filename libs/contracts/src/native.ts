@@ -69,6 +69,7 @@ export type BranchWorkflowView = { state: BranchWorkflowState; finish: BranchWor
 export type BundleRequest = { file: string; fingerprint: string; bytes: number; tips: BundleTip[] }
 export type BundleReview = { request: BundleRequest; verification: string }
 export type BundleTip = { reference: string; oid: string }
+export type CommitAuthorInput = { name: string; email: string }
 export type CommitComparison = { baseOid: string; targetOid: string; workingTree: boolean; files: CommitFile[] }
 export type CommitDetails = { oid: string; message: string; signature: CommitSignature; files: CommitFile[]; filesTruncated: boolean }
 export type CommitFile = { status: string; path: string; previousPath: string | null; additions: number | null; deletions: number | null }
@@ -675,6 +676,7 @@ export function forget_saved_discard(args: { repoId: string; id: string; expecte
 export function ignore_path(args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("ignore_path", args); }
 export function commit_changes(args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("commit_changes", args); }
 export function update_head_message(args: { repoId: string; expectedOid: string; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
+export function edit_commit(args: { repoId: string; expectedHead: string; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("edit_commit", args); }
 export function checkout_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
 export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
 export function sync_checkout_remote_branch(args: { repoId: string; name: string; operationId: string }): Promise<RemoteCheckoutResult> { return TAURI_INVOKE("sync_checkout_remote_branch", args); }
@@ -946,6 +948,7 @@ export type CommandMap = {
   ignore_path: typeof ignore_path;
   commit_changes: typeof commit_changes;
   update_head_message: typeof update_head_message;
+  edit_commit: typeof edit_commit;
   checkout_branch: typeof checkout_branch;
   checkout_remote_branch: typeof checkout_remote_branch;
   sync_checkout_remote_branch: typeof sync_checkout_remote_branch;
