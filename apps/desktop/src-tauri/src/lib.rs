@@ -116,6 +116,8 @@ mod hosted_repository_commands;
 mod hosting_commands;
 mod incoming_repository_links;
 mod recovery_commands;
+#[cfg(any(target_os = "linux", test))]
+mod renderer_recovery;
 mod repository_file_commands;
 mod repository_link_commands;
 mod terminal_profile_commands;
@@ -4050,6 +4052,7 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "linux")]
             {
+                renderer_recovery::install(app.handle());
                 display_environment::show_wsl_window_buttons();
                 if let Ok(directory) = app.path().app_config_dir()
                     && let Some(colors) = display_environment::apply_saved_window_chrome(&directory)

@@ -1561,6 +1561,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-specta",
  "tokio",
+ "webkit2gtk",
 ]
 
 [[package]]
