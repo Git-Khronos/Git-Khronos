@@ -2010,3 +2010,16 @@ can reacquire their target after that refusal. Missing or obscured controls,
 transport loss and other errors remain failures. Write/submit helpers are not
 globally retried, and native clicks are not replaced with injected JavaScript.
 The cited WebDriver 2 text is a working draft. No implementation code copied.
+## WSLg invisible-window troubleshooting
+
+Sources:
+
+- https://github.com/microsoft/wslg/issues/1456
+- https://github.com/microsoft/WSL/issues/41903
+
+Used for: distinguishing WSLg shared-memory transport errors and copy-mode
+invisible windows from application/WebKit rendering failures. The README gives
+an explicitly disruptive, user-run restart recovery step, not an automatic
+system change or a guarantee of permanent repair. Local diagnosis independently
+observed the shared-memory I/O error, disabled graphics redirection, copy-mode
+window title and rendered X11 app pixels. No external source code copied.

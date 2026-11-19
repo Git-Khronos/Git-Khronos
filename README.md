@@ -245,6 +245,24 @@ installed toolchain or system libraries.
 
 #### Experimental WSL display defaults on dev
 
+If a launch creates a taskbar entry but no visible window, do not diagnose it
+from `libEGL`/DRI3 warnings alone. Check `/mnt/wslg/weston.log` for a shared-memory
+`Input/output error` followed by `use_gfxredir = 0`, and the Windows window title
+for `[WARN:COPY MODE]`. This combination matches an upstream
+[WSLg invisible-window report](https://github.com/microsoft/wslg/issues/1456)
+and [shared-memory transport failure](https://github.com/microsoft/WSL/issues/41903).
+The application can have fully rendered X11 pixels while Windows shows no
+usable window. Reinstalling the app or changing its shortcut is not a repair
+for that transport failure.
+
+After saving work and stopping jobs in **all WSL distributions**, run
+`wsl --shutdown` in **Windows PowerShell**, then reopen the app or distribution.
+This stops all WSL processes, including development servers and terminals; it
+must not be run automatically by the app or installer. Check the new WSLg log
+and visible window afterward: a restart is a recovery attempt, not proof of a
+permanent fix. App-local WebKit compositing workarounds address a different
+failure mode and are not a verified repair for this shared-memory error.
+
 The `dev` branch includes WSL-specific changes awaiting real WSLg validation.
 When GTK reports an empty or `menu:close` decoration layout, Git Khronos
 requests minimize, maximize, and close buttons for its own process. Other
