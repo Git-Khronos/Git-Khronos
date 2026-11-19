@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
         (window as any).__referenceCalls.push({ command, args });
         if (command === 'preview_remote_tag') return Promise.resolve('b'.repeat(40));
         if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
-        if (['transport_reference', 'manage_reference', 'configure_remote', 'refresh_repository', 'rename_reference'].includes(command)) {
+        if (['transport_reference', 'manage_reference', 'configure_remote', 'refresh_repository', 'rename_reference', 'create_tag', 'set_branch_upstream'].includes(command)) {
           if (command === 'rename_reference' && (window as any).__renameReferenceError) {
             return Promise.reject((window as any).__renameReferenceError);
           }
@@ -61,6 +61,155 @@ test('signed tag refusal preserves the annotation and opt-in for explicit retry'
   expect(attempts).toHaveLength(2);
   expect(attempts[1].args).toEqual(attempts[0].args);
 });
+
+test('a stale tag editor cannot dispatch into a newly selected repository', async ({ page }) => {
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+  await dialog.getByLabel('Tag name', { exact: true }).fill('source-only');
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const other = { ...git.repository(), id: 'other-tag-repository', path: '/workspace/other-tag-repository' };
+    git.repositories.update((repositories: any[]) => [...repositories, other]);
+    git.activeRepositoryId.set(other.id);
+    // Invoke before Angular's repository-change effect retires the old review.
+    await app.submitTagCreation();
+  });
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__referenceCalls
+    .filter((entry: any) => ['create_tag', 'manage_reference'].includes(entry.command)))).toEqual([]);
+});
+
+test('a stale upstream editor cannot change an identically named branch in another repository', async ({ page }) => {
+  await page.locator('.branch-item').filter({ hasText: /^main/ }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Change upstream…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Set upstream for main' });
+  await expect(dialog.getByLabel('Upstream branch')).toHaveValue('origin/main');
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const other = { ...git.repository(), id: 'other-upstream-repository', path: '/workspace/other-upstream-repository' };
+    git.repositories.update((repositories: any[]) => [...repositories, other]);
+    git.activeRepositoryId.set(other.id);
+    await app.confirmBranchUpstream('upstream/main');
+  });
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__referenceCalls
+    .filter((entry: any) => entry.command === 'set_branch_upstream'))).toEqual([]);
+});
+
+test('source path changes retire a tag review even when the repository ID stays the same', async ({ page }) => {
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+  await dialog.getByLabel('Tag name', { exact: true }).fill('do-not-dispatch');
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    git.repositories.update((repositories: any[]) => repositories.map(repository =>
+      repository.id === git.activeRepositoryId() ? { ...repository, path: '/workspace/changed-path' } : repository));
+    await app.submitTagCreation();
+  });
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__referenceCalls
+    .some((entry: any) => ['create_tag', 'manage_reference'].includes(entry.command)))).toBe(false);
+});
+
+test('valid tag and upstream reviews retain their original native command payloads', async ({ page }) => {
+  const source = await page.evaluate(() => {
+    const repository = (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository();
+    return { id: repository.id, oid: repository.tags[0].oid };
+  });
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+  const tag = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+  await tag.getByLabel('Tag name', { exact: true }).fill('new-local-tag');
+  await tag.getByRole('button', { name: 'Create Tag', exact: true }).click();
+  await expect(tag).toHaveCount(0);
+  await page.locator('.branch-item').filter({ hasText: /^main/ }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Change upstream…' }).click();
+  const upstream = page.getByRole('dialog', { name: 'Set upstream for main' });
+  await upstream.getByLabel('Upstream branch').selectOption('upstream/main');
+  await upstream.getByRole('button', { name: 'Set Upstream', exact: true }).click();
+  await expect(upstream).toHaveCount(0);
+  const writes = await page.evaluate(() => (window as any).__referenceCalls
+    .filter((entry: any) => ['create_tag', 'set_branch_upstream'].includes(entry.command)));
+  expect(writes).toEqual([
+    { command: 'create_tag', args: { repoId: source.id, name: 'new-local-tag', oid: source.oid, message: null } },
+    { command: 'set_branch_upstream', args: { repoId: source.id, branch: 'main', upstream: 'upstream/main' } },
+  ]);
+});
+
+test('a completed tag write cannot close or clear a replacement draft', async ({ page }) => {
+  await page.evaluate(() => {
+    const host = window as any;
+    const invoke = host.__TAURI_INTERNALS__.invoke;
+    host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => command === 'manage_reference'
+      ? new Promise(resolve => { host.__finishOwnedTag = () => invoke(command, args).then(resolve); })
+      : invoke(command, args);
+  });
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+  let dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+  await dialog.getByLabel('Tag name', { exact: true }).fill('first-tag');
+  await dialog.getByRole('radio', { name: /Annotated/ }).check();
+  await dialog.getByLabel('Tag message', { exact: true }).fill('First annotation');
+  await dialog.getByRole('checkbox', { name: 'Sign this tag with the configured Git key' }).check();
+  await dialog.getByRole('button', { name: 'Create Tag', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__finishOwnedTag)).toBe('function');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.showTagCreator(app.git.repository().headOid, 'replacement review');
+    app.contextTagName.set('keep-this-new-draft');
+  });
+  dialog = page.getByRole('dialog', { name: 'Create tag at replacement review' });
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => (window as any).__finishOwnedTag());
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect(dialog.getByLabel('Tag name', { exact: true })).toHaveValue('keep-this-new-draft');
+  await expect(dialog).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__referenceCalls
+    .filter((entry: any) => entry.command === 'manage_reference'))).toHaveLength(1);
+});
+
+for (const mode of ['hold', 'fail'] as const) {
+  test(`reference editor preserves a keyboard escape when its chunk ${mode === 'hold' ? 'loads late' : 'fails'}`, async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (!source.includes('TagCreationDialogComponent') || !source.includes('BranchUpstreamDialogComponent')) {
+        await route.fulfill({ response, body: source }); return;
+      }
+      await held;
+      if (mode === 'hold') await route.fulfill({ response, body: source });
+      else await route.abort();
+    });
+    await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+    const loading = page.getByRole('dialog', { name: 'Loading reference editor' });
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    if (mode === 'hold') {
+      await page.keyboard.press('Escape');
+      await expect(loading).toHaveCount(0);
+      release();
+      await expect(page.getByRole('dialog', { name: 'Create tag at v0.1.0' })).toHaveCount(0);
+    } else {
+      release();
+      const failed = page.getByRole('dialog', { name: 'Reference editor unavailable' });
+      await expect(failed.getByRole('button', { name: 'Close' })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(failed).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => (window as any).__referenceCalls
+      .filter((entry: any) => ['create_tag', 'manage_reference'].includes(entry.command)))).toEqual([]);
+  });
+}
 
 for (const refused of [false, true]) {
   test(`tag verification ${refused ? 'refusal' : 'success'} reports Git's result without tag transport`, async ({ page }) => {
@@ -414,3 +563,33 @@ test('local branch rename carries hidden and pinned preferences to the new name'
   expect(result.hidden).toEqual(['feature/renamed', 'origin/docs']);
   expect(result.pinned).toBe('feature/renamed');
 });
+
+for (const editor of ['tag', 'upstream'] as const) {
+  test(`a retired ${editor} editor cannot swallow the next global shortcut before its DOM is removed`, async ({ page }) => {
+    if (editor === 'tag') {
+      await page.keyboard.press('Control+P');
+      await page.getByRole('combobox', { name: 'Search commands' }).fill('create tag');
+      await page.getByRole('option').filter({ hasText: 'Create Tag' }).click();
+    } else {
+      await page.locator('.branch-item').filter({ hasText: /^main/ }).first().click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Change upstream…' }).click();
+    }
+    const dialog = page.getByRole('dialog', { name: editor === 'tag' ? /Create tag at/ : 'Set upstream for main' });
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    // Deliver the next key in the closing DOM's lifetime, before Angular's
+    // removal frame. No delays, forced rendering, or mutation command retries.
+    const stillConnected = await dialog.evaluate(element => {
+      const cancel = [...element.querySelectorAll<HTMLButtonElement>('button')]
+        .find(button => button.textContent?.trim() === 'Cancel')!;
+      cancel.click();
+      cancel.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+      return cancel.isConnected;
+    });
+    expect(stillConnected).toBe(true);
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__referenceCalls
+      .filter((entry: any) => ['create_tag', 'manage_reference', 'set_branch_upstream'].includes(entry.command)))).toEqual([]);
+  });
+}

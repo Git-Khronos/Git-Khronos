@@ -27,6 +27,7 @@ from xml.sax.saxutils import quoteattr
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from native_webdriver_errors import stale_element_refusal
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -253,6 +254,26 @@ class Driver:
         element = self.request("POST", self.path("element"), {"using": "css selector", "value": selector})
         identifier = element["element-6066-11e4-a52e-4f735466cecf"]
         self.request("POST", self.path(f"element/{identifier}/click"), {})
+
+    def click_navigation(self, selector, text=None, *, scroll=False, timeout=3):
+        """Reacquire navigation controls only after an explicit stale refusal.
+
+        Ordinary click helpers and all write/review/submit callers keep their
+        no-replay behavior. A missing, ambiguous, obscured control or any lost
+        reply remains a failure, not a reason to dispatch another click.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if text is None:
+                    return self.click(selector)
+                if scroll:
+                    return self.click_scrolled_text(selector, text)
+                return self.click_text(selector, text)
+            except RuntimeError as error:
+                if not stale_element_refusal(error) or time.monotonic() >= deadline:
+                    raise
+            time.sleep(0.1)
 
     def click_text(self, selector, text):
         elements = self.script("return [...document.querySelectorAll(arguments[0])].filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible' && element.textContent.trim() === arguments[1]);", selector, text)

@@ -1,0 +1,18 @@
+@let model = view();
+<div class="confirmation-backdrop" (click)="model.close()">
+      <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Set upstream for {{ model.target.branch }}" (submit)="$event.preventDefault(); model.confirm()" (click)="$event.stopPropagation()" (keydown)="model.key($event)">
+        <div class="confirmation-icon"><gc-icon name="remote" [size]="19" /></div>
+        <div class="confirmation-copy">
+          <span>Branch tracking</span>
+          <h2>{{ model.target.branch }}</h2>
+          <p>Choose the remote branch used by Pull, Push, and ahead/behind status.</p>
+          <label class="upstream-picker">Upstream branch<select name="branchUpstream" [disabled]="model.busy()" aria-label="Upstream branch" [value]="model.choice()" (change)="model.choice.set($any($event.target).value)">
+            @for (branch of model.branches(); track branch.fullName) { <option [value]="branch.name" [selected]="model.choice() === branch.name">{{ branch.name }}</option> }
+          </select></label>
+        </div>
+        <footer>
+          @if (model.target.current) { <button type="button" class="remove-upstream" [disabled]="model.busy()" (click)="model.confirm(null)">Unset {{ model.target.current }}</button> }
+          <span></span><button type="button" (click)="model.close()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!model.choice() || model.busy()">Set Upstream</button>
+        </footer>
+      </form>
+    </div>

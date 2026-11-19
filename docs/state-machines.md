@@ -32,6 +32,68 @@ values, native capability tokens, or user draft contents in transition logs.
 
 ## Implemented transition ownership
 
+### Deferred graph action presentation
+
+The graph action menu's optional template and exclusive form styles live in
+`GraphActionMenuComponent`. The root retains the overlay request, source scope,
+Git callbacks, menu DOM handle, keyboard navigation, outside-click dismissal and
+return-focus target. The child receives a typed presentation view; it does not
+own operations or replay commands.
+
+Loading and failed imports expose a root-owned cancel/close action. Once actual
+content renders, the root refits it against the viewport and statusbar rather
+than retaining the smaller loading placeholder's dimensions. Keyboard focus
+transfers from a removed loading action to an enabled action, without forcing
+focus into pointer-opened menus. A replaced or retired request remains governed
+by the root; resolving an old code import does not recreate the old request.
+
+Coverage: renderer `deferred-graph-actions.spec.ts`, existing
+`context-menu-interactions.spec.ts` and `reference-actions.spec.ts`.
+
+### Source-bound tag and upstream editors
+
+`pendingTagTarget` and `pendingBranchUpstream` remain independent root-owned
+requests with captured repository ID and path. Deferred presentation components
+read narrow views; they do not own Git writes or introduce a durable journal.
+A scope effect retires mismatched requests, but submission independently checks
+the owner before dispatch, including the interval before that effect runs.
+
+Tag completion checks both request identity and source ownership before clearing
+its fields, so a completed old write cannot dismiss a replacement draft.
+Editable controls are disabled during a native operation. Cancel can retire the
+review without replaying its command; the service still owns the original write
+receipt. Once a request is retired, its still-mounted form ignores local
+keyboard handling until Angular removes it, allowing the next global shortcut
+to reach its owner instead of being swallowed by a closing editor. Missing editor chunks expose keyboard-contained loading/failure escapes
+and never submit a command. Native signing failures retain the original draft
+and require an explicit retry.
+
+Coverage: renderer `reference-actions.spec.ts` includes cross-repository and
+same-ID/path-change refusals, replacement drafts, normal payloads, signing
+failure and late/failed editor imports.
+
+### Occupied local-branch navigation
+
+`AppComponent.checkoutWorktreeRequest` owns the transient source repository ID,
+source path, requested branch, registered owner path and return-focus target.
+Sidebar, graph, picker, palette and local-branch context actions share this
+review. Current branches are no-ops; available branches still use native Git.
+Compound checkout-then-integrate and reviewed history mutations retain their
+original checkout semantics; navigation must not silently continue those writes
+in another repository.
+
+The deferred review permits explicit navigation only after refreshing the
+source and rechecking the exact owner path, branch and non-prunable status.
+Changed ownership or failed inspection stays in review with an error; there is
+no fallback checkout, force option, repair or automatic replay. Closing or
+changing the active repository retires the request; a late read cannot navigate.
+Opening the owner uses the existing repository navigation path so source commit
+drafts are saved. Git remains authoritative if occupancy changes before an
+ordinary native checkout.
+
+Coverage: `repository-location.spec.ts`, renderer
+`branch-checkout-worktree.spec.ts` and existing branch-panel interaction tests.
+
 ### Transient overlays (F46)
 
 `OverlayController<T>` owns a read-only `activeOverlay` signal, a discriminated

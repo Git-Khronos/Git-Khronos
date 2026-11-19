@@ -86,7 +86,7 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     status = fixtures.git(repository, "status", "--porcelain=v1")
     assert driver.invoke("gitlab_connections") == []
     assert requests() == []
-    driver.click('[aria-label="New repository tab"]')
+    driver.click_navigation('[aria-label="New repository tab"]')
     driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
     driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
     button("Browse GitLab projects")

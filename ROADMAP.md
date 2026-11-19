@@ -62,7 +62,10 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [ ] AppImage and Debian packages with checksums, SBOM, and signed updates
   (Debian and RPM bundles build locally. They declare a dependency on Git ≥ 2.39,
   recommend OpenSSH and Git LFS, and ship the license and third-party notices.
-  AppImage, published checksums, SBOM and signed updates remain)
+  The release workflow implements package and source CycloneDX inventories,
+  SHA256SUMS, and publication gated on exact-package Linux runtime acceptance.
+  This describes workflow implementation, not a verified latest release.
+  AppImage and signed updates remain)
 - [ ] English accessibility review and externalized UI strings
   (an automated structural audit covers names, labels, dialogs, ARIA references,
   focusability and reading order in 16 preview states and open overlays;

@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import time
 import uuid
+from native_webdriver_errors import stale_element_refusal
 
 
 def _open_repository_dialog(driver, timeout=30):
@@ -25,13 +26,7 @@ def _open_repository_dialog(driver, timeout=30):
             except RuntimeError as error:
                 # Both HTTP-error envelopes and successful HTTP error values
                 # occur in Driver.request. Only explicit stale refusal is safe.
-                try:
-                    detail = json.loads(str(error))
-                except (ValueError, TypeError):
-                    raise error
-                if isinstance(detail, dict) and isinstance(detail.get('value'), dict):
-                    detail = detail['value']
-                if not isinstance(detail, dict) or detail.get('error') != 'stale element reference':
+                if not stale_element_refusal(error):
                     raise
         time.sleep(0.1)
     raise TimeoutError('Repository dialog entry control did not remain available for a click')
@@ -66,7 +61,12 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
     def button(text, scope='gc-gitlab-projects'):
         selector = scope + ' button'
         driver.wait('return [...document.querySelectorAll(' + json.dumps(selector) + ')].some(e => e.getClientRects().length && !e.matches(":disabled") && e.textContent.trim() === ' + json.dumps(text) + ')')
-        driver.click_scrolled_text(selector, text)
+        if text in {'Browse GitLab projects', 'Return from forks to GitLab projects',
+                    'Return from outcomes to GitLab projects', 'Open saved fork outcomes',
+                    'Inspect saved fork outcomes'}:
+            driver.click_navigation(selector, text, scroll=True)
+        else:
+            driver.click_scrolled_text(selector, text)
 
     def fill(selector, value, event='input'):
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ') && !document.querySelector(' + json.dumps(selector) + ').matches(":disabled")')
@@ -75,7 +75,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
     def catalogue():
         _open_repository_dialog(driver)
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+        driver.click_navigation('gc-repository-dialog [role=tab]', 'Clone')
         button('Browse GitLab projects', 'gc-repository-dialog')
         driver.wait("return !!document.querySelector('#gitlab-origin') && !document.querySelector('#gitlab-origin').matches(':disabled')")
 

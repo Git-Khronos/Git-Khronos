@@ -5,20 +5,171 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
-## Current qualification boundary
+## Source review update — 2026-11-19
 
-The current source includes the streaming ignore-rule fix, reviewed Rust and
-frontend notices, and the selective performance/readiness branch integration.
-Source checks and the complete renderer suite pass (1,205 cases, zero failures
-or retries), alongside unit, LFS, packaging and native-harness tests.
+The release workflow now generates package and source CycloneDX inventories
+and `SHA256SUMS`, verifies those checksums, and gates publication on the
+reusable exact-package Linux runtime acceptance workflow. The roadmap's older
+statement that SBOM and checksum generation are entirely pending is superseded
+by that source evidence. AppImage and signed-update delivery remain separate.
+
+This is a static workflow review, not a new release approval: no current remote
+run, published asset, installed desktop journey, or platform acceptance result
+was verified during this update. The historical artifact hashes and test
+results below retain their original dates and scopes.
+
+## Earlier local branch-navigation and startup checks — 2026-11-19
+
+The working tree on `dev` now offers explicit navigation for occupied local
+branches, with fresh ownership inspection, retained source drafts and keyboard
+loading/failure escapes. Local validation passed 262 TypeScript unit tests,
+the graph TypeScript check, and 100 renderer cases across branch navigation,
+branch-panel interactions, deferred background UI and terminal lifecycle. These
+are source/Chromium checks, not acceptance of a newly packaged native app.
+
+Production build statistics measured 1,448,541 initial bytes before this work
+and 1,448,465 afterward, including the new UI. Browser sample/detail/diff
+builders are now in an 8,899-byte non-initial chunk; existing xterm base CSS
+loads with the terminal, reducing initial CSS from 192,888 to 189,268 bytes.
+This offsets the new UI's startup cost; it is not a substantial reduction in
+the whole initial bundle or a measured startup-latency improvement.
+
+The normal `desktop:build` gate and its production-preview guard passed (67
+JavaScript assets). No budget was raised: initial warning/error thresholds
+remain 900 kB/1.45 MB and component styles remain 76 kB/80 kB. Both warnings
+remain: initial size is about 1.448 MB and root component styles about 77.97 kB.
+Only 1,535 bytes remain below the initial hard limit, so further shell/template
+decomposition is still needed before substantial new eager UI is added. The
+baseline statistics came from a successful Angular compile whose enclosing Nx
+command rejected caching an output outside the workspace; it is not recorded
+as a successful baseline Nx gate. The final gate used a workspace-local output.
+
+## Follow-up reference-editor and harness checks — 2026-11-19
+
+Tag and upstream reviews now capture their source repository ID and path,
+retire stale scopes and check ownership again before dispatch. Tag completion
+cannot clear a replacement review's draft. The forms and their exclusive styles
+are deferred presentation components; root-owned requests and native Git remain
+authoritative. The icon renderer binds three primitive types to the original
+53 geometries, with independent geometry hashes and rendered-SVG parity checks.
+
+The stable final local gate passed 265 TypeScript unit tests, 95 native-harness
+tests, the graph TypeScript check, and 142 renderer cases with zero retries.
+The renderer gate used a fresh server on an isolated port and serial CI settings.
+Input fingerprints matched before and after validation. An earlier intervening
+run had one graph-loading failure while inputs changed; it was not accepted as
+final evidence, and the failure is not attributed exclusively to those edits.
+Final evidence is under `target/local-review/stable-renderer` and
+`target/local-review/stable-renderer-report`; source fingerprints are alongside
+them. These are local source/Chromium checks, not packaged native acceptance.
+
+The normal production build and preview guard passed for 68 JavaScript assets.
+Initial size is now 1,443,922 bytes, down 4,543 bytes from the preceding local
+batch, leaving 6,078 bytes before the unchanged 1.45 MB hard limit. Root component
+styles are 75,990 bytes: the component-style warning is cleared, but only by
+10 bytes at its unchanged 76 kB warning threshold. Deferred form styling,
+consolidated adjacent equivalent CSS rules and the smaller icon renderer improve
+headroom without a budget increase. The overall 900 kB initial-bundle warning
+remains; this is not completion of the larger shell-decomposition work or a
+measured startup-latency improvement. These measurements supersede the earlier
+local size/headroom figures above, not any artifact qualification below.
+
+The native harness adds opt-in navigation-only stale-refusal reacquisition and
+shares its structured error parser with the GitLab catalogue opener. Generic
+write/submit clicks, ambiguous/obscured controls, lost replies and other failures
+are not globally retried. Packaged native acceptance still needs to qualify
+these helper changes; no system installation or remote CI run occurred.
+
+## Deferred graph action menu checks — 2026-11-19
+
+The graph action menu is now an on-demand presentation component. The root still
+owns requests, Git callbacks, menu positioning, keyboard handling and focus
+restoration. Loading/failure escapes cannot dispatch commands. Renderer coverage
+includes late and failed imports, loaded-content refitting and scoped styling,
+keyboard focus transfer, replacement targets and retired repository requests.
+
+A fresh isolated server with serial CI settings and zero retries passed all
+87 selected renderer cases. The 265 TypeScript unit tests, graph TypeScript
+check, normal production build and preview guard (69 JavaScript assets) passed.
+Application/test input fingerprints matched across the final renderer run.
+Evidence is under `target/local-review/graph-menu-final-renderer` and
+`target/local-review/graph-menu-final-report`, with validation fingerprints under
+`target/local-review`. An earlier 84-pass/2-fail renderer run exposed two new
+fixture mistakes (expecting a browser-preview-disabled action to receive focus,
+and clicking a hover-hidden overflow control); those fixtures were corrected,
+without retries or application changes, before the passing frozen-input run.
+
+`dist/graph-menu-review/browser-stats.json` measures 1,422,880 initial bytes,
+down 21,042 bytes from the preceding local batch. The 23,120-byte graph action
+JavaScript chunk is non-initial. Root component CSS is 74,680 bytes, leaving
+1,320 bytes below the unchanged 76 kB warning. Initial hard-limit headroom is
+27,120 bytes at the unchanged 1.45 MB limit. These figures supersede the local
+size figures above; the overall 900 kB warning still remains. No startup-latency
+benchmark, packaged native qualification, commit, push, release or installation
+is implied by these source/Chromium checks.
+
+## Final local maintenance qualification — 2026-11-19
+
+The frozen final source passed **2,029 renderer cases** on a fresh isolated
+server with two workers and zero retries. All application/test fingerprints
+matched before and after the full run. The preceding serial run passed 2,023
+cases and failed four: three fixtures assumed the old immediate DOM parent,
+repository-name-only status text, or synchronous sample diffs; one exposed a
+real editor-close keyboard race. Tests now measure the visible menu, assert
+both repository name and path, and wait for enabled navigation controls without
+changing the existing busy guard. Two deterministic regressions failed before
+the keyboard fix and passed afterwards. Retired tag/upstream forms no longer
+swallow a global shortcut before Angular removes their DOM.
+
+The final production build, preview guard (69 JavaScript assets), 265 TypeScript
+unit tests and graph typecheck passed again after that fix. Unchanged Rust
+sources passed 1,268 tests with 50 existing ignored tests; packaging regressions
+passed 84 tests and the native harness passed 95. No budget or dependency was
+changed. Final initial assets total **1,422,950 bytes**, leaving 27,050 bytes
+under the 1.45 MB hard limit; root CSS remains 74,680 bytes. The 900 kB initial
+warning remains. These figures supersede earlier local measurements above.
+
+The rebuilt and verified local Debian package is preserved at
+`target/local-review/qualification/artifacts/final/Git-Khronos_0.1.6_amd64.deb`:
+
+- Package SHA-256: `598c623a07dca2fc1c5af25ee9a6ffb84e625aad4c70a4c5a06bfcc2d1feaa72`.
+- Extracted executable SHA-256: `8821a5b3c33c78b2a65961a3bc19df12efe8f0d09d9e4483c40786b824ca5daa`.
+- GitLab catalogue/fork/HTTPS/SSH acceptance: **45 scenarios passed**,
+  `final-native/gitlab-1795113050566603551/report.json`.
+- Full native acceptance: **229 scenarios passed**,
+  `final-native/full-1795113142929576340/report.json`.
+
+Both native reports record identical package and executable hashes. Paths above
+are relative to `target/local-review/qualification` unless written in full.
+Renderer evidence is in `final-full-renderer` and `final-full-renderer-report`;
+input fingerprints and `final-native-qualification.json` bind the local evidence.
+The first package and all failed attempts remain preserved separately. Native
+provisioning initially failed on WSLg's read-only filesystem socket mount, then
+on a locally extracted OpenSSH helper's missing `libwrap.so.0`. A verified,
+high-numbered abstract-socket Xvfb launcher and locally extracted matching tools
+resolved those environment failures; no app/harness workaround or system
+package installation was used. `tools-manifest.json` records the local tools.
+
+This is extracted-package qualification on the local Ubuntu 26.04 host, not
+Jammy ABI, system-installed, Windows, multi-distribution release or remote CI
+qualification. No release tag, release publication or app installation was
+performed. Subsequent source changes require their own qualification.
+
+## Historical qualification boundary — 2026-10-30
+
+The source reviewed in the 2026-10-30 audit included the streaming ignore-rule
+fix, reviewed Rust and frontend notices, and the selective performance/readiness
+branch integration. At that checkpoint, source checks and the complete renderer
+suite passed (1,205 cases, zero failures or retries), alongside unit, LFS,
+packaging and native-harness tests.
 The final Debian artifact has SHA-256
 `efa425efbc83c2da9fdf5fe520c544845f37d6606f557e675a5c223cef00d14d`
 and passes verification and all 10 native smoke scenarios. Full/environment/
 performance acceptance of older artifacts below does not qualify this new
 artifact. Windows acceptance has not been run. No system package was changed.
 
-See [the branch integration audit](branch-integration-2026-10-30.md) for exact
-current artifact paths and validation evidence. The dated records below retain
+See [the branch integration audit](branch-integration-2026-10-30.md) for that
+checkpoint's artifact paths and validation evidence. The dated records below retain
 the earlier qualification history and its limits.
 
 ## Latest packaged executable and frontend-notice qualification

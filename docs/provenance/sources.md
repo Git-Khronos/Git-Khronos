@@ -1989,3 +1989,24 @@ Sources:
 Used for: property keys, COM interface contracts (including IShellLinkW
 SetPath/SetArguments for split-path repair) and the observed defects.
 No source code copied.
+
+## Worktree-aware branch navigation
+
+Source: https://git-scm.com/docs/git-worktree
+
+Used for the behavioral requirement that a local branch already checked out
+in another worktree must not be forcibly checked out again. The application
+offers explicit navigation to the existing checkout and rechecks registration
+data before opening it. Git remains authoritative for actual checkout commands.
+No source code or third-party interface text copied.
+
+## Native navigation click refusal handling
+
+Source: https://www.w3.org/TR/webdriver2/#element-click
+
+Used for the independently implemented WebDriver navigation helper's handling
+of structured stale-element errors. Only explicitly selected navigation controls
+can reacquire their target after that refusal. Missing or obscured controls,
+transport loss and other errors remain failures. Write/submit helpers are not
+globally retried, and native clicks are not replaced with injected JavaScript.
+The cited WebDriver 2 text is a working draft. No implementation code copied.

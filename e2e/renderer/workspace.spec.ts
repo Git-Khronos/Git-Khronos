@@ -3189,7 +3189,7 @@ test('groups local branch actions into scannable workflow sections', async ({ pa
   await expect(menu.getByRole('menuitem', { name: 'Checkout branch' })).toBeFocused();
   await expect(menu).toHaveCSS('width', '312px');
   expect(await menu.getByRole('menuitem').evaluateAll((items) => items.every((item) =>
-    item.getBoundingClientRect().width <= item.parentElement!.getBoundingClientRect().width,
+    item.getBoundingClientRect().width <= item.closest('[role="menu"]')!.getBoundingClientRect().width,
   ))).toBe(true);
 });
 
@@ -7553,7 +7553,8 @@ test('makes branch synchronization state explicit and actionable in the status b
   const statusbar = page.locator('.statusbar');
   const statusActions = statusbar.locator('button');
   const repository = statusbar.locator('.status-repository');
-  await expect(repository).toHaveText('git-khronos');
+  await expect(repository.locator('strong')).toHaveText('git-khronos');
+  await expect(repository.locator('.status-repository-path')).toHaveText('/home/maya/projects/git-khronos');
   await expect(repository).toHaveAttribute('title', '/home/maya/projects/git-khronos');
   await expect(repository).toHaveAttribute('aria-label', 'Repository git-khronos, /home/maya/projects/git-khronos');
   expect(await statusActions.count()).toBeGreaterThan(0);
@@ -8551,11 +8552,14 @@ test('navigates unstaged and staged files from the central diff', async ({ page 
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.html');
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.html');
 
+  await expect(navigation.getByRole('button', { name: 'Next changed file' })).toBeEnabled();
   await page.keyboard.press('Alt+ArrowDown');
   await expect(navigation).toContainText('2 of 4 files');
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.scss');
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.scss');
+  await expect(navigation.getByRole('button', { name: 'Next changed file' })).toBeEnabled();
   await page.keyboard.press('Alt+ArrowDown');
+  await expect(navigation.getByRole('button', { name: 'Next changed file' })).toBeEnabled();
   await page.keyboard.press('Alt+ArrowDown');
   await expect(navigation).toContainText('4 of 4 files');
   await expect(diff.locator('.diff-file-identity')).toHaveAttribute('title', 'apps/desktop/src/app/app.component.ts');

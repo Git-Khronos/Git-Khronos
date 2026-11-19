@@ -1,3 +1,4 @@
+import { TerminalBaseStylesComponent } from './terminal-base-styles.component';
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -58,8 +59,9 @@ interface TerminalTab extends TerminalInfo {
 
 @Component({
   selector: 'gc-terminal-panel',
-  imports: [IconComponent],
+  imports: [IconComponent, TerminalBaseStylesComponent],
   template: `
+    <gc-terminal-base-styles />
     <section [attr.id]="panelId()" class="terminal-panel" [class.inactive]="!visible()" [class.minimized]="minimized()" [class.profiles-open]="profileLauncherOpen() && terminalProfiles().length > 0 && !minimized()" [style.height.px]="minimized() ? 32 : height()" tabindex="-1" [attr.aria-label]="'Repository terminals for ' + repositoryLabel()">
       @if (!minimized()) { <div class="terminal-resizer" role="separator" tabindex="0" aria-label="Resize terminal" [attr.aria-controls]="panelId()" aria-orientation="horizontal" [attr.aria-valuemin]="terminalMinimumHeight" [attr.aria-valuemax]="maximumHeight()" [attr.aria-valuenow]="height()" [attr.aria-valuetext]="height() + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize($event)" (keydown)="handleResizeKeydown($event)" (dblclick)="resetHeight($event)"></div> }
       <header (pointerdown)="beginHeaderResize($event)">

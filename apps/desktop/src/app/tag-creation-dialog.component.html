@@ -1,0 +1,21 @@
+@let model = view();
+<div class="confirmation-backdrop" (click)="model.close()">
+      <form novalidate class="confirmation-dialog tag-creation-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-creation-title" (submit)="$event.preventDefault(); model.submit()" (click)="$event.stopPropagation()" (keydown)="model.key($event)">
+        <div class="confirmation-icon"><gc-icon name="tag" [size]="19" /></div>
+        <div class="confirmation-copy">
+          <span>Create tag</span>
+          <h2 id="tag-creation-title">Create tag at {{ model.target.label }}</h2>
+          <p>Place a tag at commit <code>{{ model.shortOid(model.target.oid) }}</code>.</p>
+          <label class="tag-name-field">Tag name<input name="tagName" [disabled]="model.busy()" autocomplete="off" autofocus placeholder="v1.0.0" [gcTextValue]="model.name()" (gcTextValueChange)="model.name.set($event)" /></label>
+          <div class="tag-kind-options" role="radiogroup" aria-label="Tag type">
+            <label [class.selected]="model.kind() === 'lightweight'"><input type="radio" [disabled]="model.busy()" name="tagKind" value="lightweight" [checked]="model.kind() === 'lightweight'" (change)="model.kind.set('lightweight')" /><span><strong>Lightweight</strong><small>A simple name pointing to this commit</small></span></label>
+            <label [class.selected]="model.kind() === 'annotated'"><input type="radio" [disabled]="model.busy()" name="tagKind" value="annotated" [checked]="model.kind() === 'annotated'" (change)="model.kind.set('annotated')" /><span><strong>Annotated</strong><small>Store tagger information and a release message</small></span></label>
+          </div>
+          @if (model.kind() === 'annotated') {
+            <label class="tag-name-field">Tag message<textarea name="tagMessage" [disabled]="model.busy()" rows="3" placeholder="Release notes" [gcTextValue]="model.message()" (gcTextValueChange)="model.message.set($event)"></textarea></label>
+            <label><input type="checkbox" [disabled]="model.busy()" name="signTag" [checked]="model.signed()" (change)="model.signed.set($any($event.target).checked)" /> Sign this tag with the configured Git key</label>
+          }
+        </div>
+        <footer><button type="button" (click)="model.close()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!model.name().trim() || (model.kind() === 'annotated' && !model.message().trim()) || model.busy()">Create Tag</button></footer>
+      </form>
+    </div>

@@ -1,3 +1,4 @@
+import { GraphActionMenuComponent } from './graph-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
 import { SavedDiscardListComponent } from './saved-discard-list.component';
 import { FileConfirmationDetailsComponent, type PendingFileAction } from './file-confirmation-details.component';
@@ -65,6 +66,9 @@ import type {
 import { GitKhronosService, type RepositoryWorkspace } from './git-khronos.service';
 import { OverlayController } from './overlay-controller';
 import { repositoryOperationState } from './repository-operation';
+import { branchCheckoutOwner, repositoryLocationLabel } from './repository-location';
+import { TagCreationDialogComponent, BranchUpstreamDialogComponent } from './reference-edit-dialogs.component';
+import { CheckoutWorktreeDialogComponent, type CheckoutWorktreeRequest } from './checkout-worktree-dialog.component';
 import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
@@ -385,6 +389,9 @@ interface PendingBranchAction {
 }
 
 interface PendingBranchUpstream {
+  repositoryId: string;
+  repositoryPath: string;
+  returnFocus: HTMLElement | null;
   branch: string;
   current: string | null;
 }
@@ -632,7 +639,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 @Component({
   selector: 'gc-root',
   imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
-    DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -690,6 +697,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly graphSettingsPanel = viewChild<ElementRef<HTMLElement>>('graphSettingsPanel');
   private readonly graphColumns = viewChild<ElementRef<HTMLElement>>('graphColumns');
   private readonly actionMenuElement = viewChild<ElementRef<HTMLElement>>('actionMenuElement');
+  private readonly graphMenuLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('graphMenuLoaderClose');
+  private readonly graphMenuLoaderFocus = afterRenderEffect(() => {
+    const escape = this.graphMenuLoaderClose()?.nativeElement;
+    if (escape && this.contextMenuReturnFocus && document.activeElement === document.body) escape.focus();
+  });
   private readonly fileActionMenuElement = viewChild<ElementRef<HTMLElement>>('fileActionMenuElement');
   private readonly sidebarActionMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarActionMenuElement');
   private readonly sidebarContextMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarContextMenuElement');
@@ -1042,7 +1054,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly contextBranchError = signal<string | null>(null);
   private contextMenuGeneration = 0;
   protected readonly contextTagName = signal('');
-  protected readonly pendingTagTarget = signal<{ oid: string; label: string } | null>(null);
+  protected readonly pendingTagTarget = signal<{
+    oid: string; label: string; repositoryId: string; repositoryPath: string; returnFocus: HTMLElement | null;
+  } | null>(null);
   protected readonly tagCreationKind = signal<'lightweight' | 'annotated'>('lightweight');
   protected readonly tagCreationMessage = signal('');
   protected readonly contextRenameName = signal('');
@@ -1065,6 +1079,48 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingStoredReferenceDelete = signal<PendingStoredReferenceDelete | null>(null);
   protected readonly pendingBranchUpstream = signal<PendingBranchUpstream | null>(null);
   protected readonly branchUpstreamChoice = signal('');
+  protected readonly tagCreationView = computed(() => ({
+    target: this.pendingTagTarget()!, name: this.contextTagName, kind: this.tagCreationKind,
+    message: this.tagCreationMessage, signed: this.signNewTag, busy: this.git.busy,
+    shortOid: this.shortOid.bind(this), submit: this.submitTagCreation.bind(this),
+    close: () => this.closeReferenceEditor('tag'),
+    key: (event: KeyboardEvent) => this.handleReferenceEditorKey(event, 'tag'),
+  }));
+  protected readonly branchUpstreamView = computed(() => ({
+    target: this.pendingBranchUpstream()!, choice: this.branchUpstreamChoice,
+    branches: this.remoteUpstreamBranches, busy: this.git.busy,
+    confirm: this.confirmBranchUpstream.bind(this), close: () => this.closeReferenceEditor('upstream'),
+    key: (event: KeyboardEvent) => this.handleReferenceEditorKey(event, 'upstream'),
+  }));
+  private readonly referenceEditorLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('referenceEditorLoaderClose');
+  private readonly referenceEditorLoaderFocus = afterRenderEffect(() => this.referenceEditorLoaderClose()?.nativeElement.focus());
+  private readonly referenceEditorScope = effect(() => {
+    const tag = this.pendingTagTarget();
+    const upstream = this.pendingBranchUpstream();
+    if (tag && !this.ownsReferenceEditor(tag)) untracked(() => this.pendingTagTarget.set(null));
+    if (upstream && !this.ownsReferenceEditor(upstream)) untracked(() => this.pendingBranchUpstream.set(null));
+  });
+
+  private ownsReferenceEditor(target: { repositoryId: string; repositoryPath: string }): boolean {
+    const repository = this.git.repository();
+    return repository?.id === target.repositoryId && repository.path === target.repositoryPath;
+  }
+
+  protected closeReferenceEditor(kind: 'tag' | 'upstream'): void {
+    const target = kind === 'tag' ? this.pendingTagTarget() : this.pendingBranchUpstream();
+    if (kind === 'tag') this.pendingTagTarget.set(null);
+    else this.pendingBranchUpstream.set(null);
+    if (target && this.ownsReferenceEditor(target)) this.restoreDialogFocus(target.returnFocus);
+  }
+
+  protected handleReferenceEditorKey(event: KeyboardEvent, kind: 'tag' | 'upstream'): void {
+    // Closing retires the request before Angular removes its DOM. An obsolete
+    // form must not swallow the next global shortcut in that render interval.
+    if (kind === 'tag' ? !this.pendingTagTarget() : !this.pendingBranchUpstream()) return;
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeReferenceEditor(kind); }
+    else this.cycleDialogFocus(event.currentTarget as HTMLElement, event);
+  }
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
   protected readonly publishRemote = signal('');
   protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
@@ -1512,6 +1568,56 @@ export class AppComponent implements OnInit, OnDestroy {
     return repository.headOid ? `Detached ${shortLabel(repository.headOid)}` : this.git.repositoryLabel(repository);
   }
 
+  protected repositoryTabLabel(repository: RepositorySnapshot): string {
+    return repositoryLocationLabel({ path: repository.path, label: this.git.repositoryLabel(repository) },
+      this.git.repositories().map(tab => ({ path: tab.path, label: this.git.repositoryLabel(tab) })));
+  }
+
+  protected readonly checkoutWorktreeRequest = signal<CheckoutWorktreeRequest | null>(null);
+  private readonly checkoutWorktreeLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('checkoutWorktreeLoaderClose');
+  private readonly checkoutWorktreeLoaderFocus = afterRenderEffect(() => {
+    this.checkoutWorktreeLoaderClose()?.nativeElement.focus();
+  });
+
+  protected handleCheckoutLoaderKey(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeCheckoutWorktree(); }
+    else this.cycleDialogFocus(event.currentTarget as HTMLElement, event);
+  }
+
+  protected async checkoutBranch(name: string, returnFocus?: HTMLElement | null) {
+    const repository = this.git.repository();
+    if (!repository || this.git.busy() || this.checkoutWorktreeRequest()) return null;
+    if (repository.status.branch === name) return null;
+    const owner = branchCheckoutOwner(repository, name);
+    if (!owner) {
+      const result = await this.git.checkout(name);
+      if (result?.status === 'error' && this.git.repository()?.id === repository.id && result.error) {
+        this.git.error.set(`Checkout ${name} in ${repository.path}: ${result.error}`);
+      }
+      return result;
+    }
+    this.checkoutWorktreeRequest.set({ repositoryId: repository.id, repositoryPath: repository.path,
+      branch: name, worktreePath: owner.path, prunable: owner.prunable,
+      returnFocus: returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null) });
+    return null;
+  }
+
+  protected closeCheckoutWorktree(): void {
+    const target = this.checkoutWorktreeRequest()?.returnFocus;
+    this.checkoutWorktreeRequest.set(null);
+    this.restoreDialogFocus(target?.isConnected ? target : this.toolbarBranchToggle()?.nativeElement ?? null);
+  }
+
+  protected async openCheckoutWorktree(path: string): Promise<void> {
+    const request = this.checkoutWorktreeRequest();
+    const repository = this.git.repository();
+    if (!request || request.worktreePath !== path || repository?.id !== request.repositoryId
+      || repository.path !== request.repositoryPath) return;
+    this.checkoutWorktreeRequest.set(null);
+    await this.openRepositoryPath(path);
+  }
+
   private resizeTarget: 'sidebar' | 'details' | null = null;
   private resizePanelChanged = false;
   private readonly resizePointer = new ResizePointer();
@@ -1773,6 +1879,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.savedDiscardsRepositoryId.set(null);
         this.savedDiscardsReturnFocus = null;
         this.referenceAction.set(null);
+        this.checkoutWorktreeRequest.set(null);
         this.stashDialog.set(null);
         this.rebaseRequest++;
         this.interactiveRebase.set(null);
@@ -2967,10 +3074,60 @@ export class AppComponent implements OnInit, OnDestroy {
     return slots;
   });
 
+  protected readonly graphActionMenuView = computed(() => ({
+    git: this.git,
+    canCreateContextWorktree: this.canCreateContextWorktree.bind(this),
+    canEditContextCommitMessage: this.canEditContextCommitMessage.bind(this),
+    canStartBisectAt: this.canStartBisectAt.bind(this),
+    checkoutContextTarget: this.checkoutContextTarget.bind(this),
+    closeContextBranchCreator: this.closeContextBranchCreator.bind(this),
+    compareContextCommitWithWorkingTree: this.compareContextCommitWithWorkingTree.bind(this),
+    compareContextReferenceWithWorkingTree: this.compareContextReferenceWithWorkingTree.bind(this),
+    contextBranchCreatorOpen: this.contextBranchCreatorOpen,
+    contextBranchError: this.contextBranchError,
+    contextBranchName: this.contextBranchName,
+    contextBranchUpstream: this.contextBranchUpstream.bind(this),
+    contextRenameName: this.contextRenameName,
+    copyContextValue: this.copyContextValue.bind(this),
+    createContextBranch: this.createContextBranch.bind(this),
+    editContextCommitMessage: this.editContextCommitMessage.bind(this),
+    handleContextBranchCreatorKeydown: this.handleContextBranchCreatorKeydown.bind(this),
+    hideContextBranch: this.hideContextBranch.bind(this),
+    integrateContextBranch: this.integrateContextBranch.bind(this),
+    isBranchHidden: this.isBranchHidden.bind(this),
+    isBranchPinned: this.isBranchPinned.bind(this),
+    isBranchSoloed: this.isBranchSoloed.bind(this),
+    openContextBranchCreator: this.openContextBranchCreator.bind(this),
+    openContextIntegration: this.openContextIntegration.bind(this),
+    openContextTagCreator: this.openContextTagCreator.bind(this),
+    openContextWorktreeDialog: this.openContextWorktreeDialog.bind(this),
+    openInteractiveRebaseFromContext: this.openInteractiveRebaseFromContext.bind(this),
+    openMergeRebase: this.openMergeRebase.bind(this),
+    openRootRebase: this.openRootRebase.bind(this),
+    openSelectedRebase: this.openSelectedRebase.bind(this),
+    openStashOptions: this.openStashOptions.bind(this),
+    previewContextMerge: this.previewContextMerge.bind(this),
+    remoteUpstreamBranches: this.remoteUpstreamBranches,
+    renameContextBranch: this.renameContextBranch.bind(this),
+    requestBisectFromContext: this.requestBisectFromContext.bind(this),
+    requestBranchAction: this.requestBranchAction.bind(this),
+    requestBranchUpstream: this.requestBranchUpstream.bind(this),
+    requestHistoryAction: this.requestHistoryAction.bind(this),
+    requestReferenceAction: this.requestReferenceAction.bind(this),
+    requestStoredReferenceDelete: this.requestStoredReferenceDelete.bind(this),
+    shareRepositoryContext: this.shareRepositoryContext.bind(this),
+    shortOid: this.shortOid.bind(this),
+    soloContextBranch: this.soloContextBranch.bind(this),
+    toggleContextBranchPin: this.toggleContextBranchPin.bind(this),
+    unsetContextBranchUpstream: this.unsetContextBranchUpstream.bind(this),
+    verifyContextTag: this.verifyContextTag.bind(this),
+  }));
+
   // Stable callbacks keep row inputs unchanged during scrolling. Signals read through these
   // callbacks still notify each row when selection, columns, references, or preferences change.
   protected readonly graphRowView = computed(() => ({
     git: this.git,
+    checkoutBranch: this.checkoutBranch.bind(this),
     activeCommitSearchOid: this.activeCommitSearchOid.bind(this),
     allowBranchDrop: this.allowBranchDrop.bind(this),
     authorMarkerStyle: this.authorMarkerStyle.bind(this),
@@ -4154,6 +4311,29 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    if (this.pendingTagTarget() || this.pendingBranchUpstream()) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeReferenceEditor(this.pendingBranchUpstream() ? 'upstream' : 'tag');
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        this.referenceEditorLoaderClose()?.nativeElement.focus();
+      }
+      return;
+    }
+    // A key can arrive between the activation click and the deferred dialog's
+    // first render. Keep its escape route available during that focus gap.
+    if (this.checkoutWorktreeRequest()) {
+      if (event.key === 'Escape' && !this.git.busy()) {
+        event.preventDefault();
+        this.closeCheckoutWorktree();
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        (this.checkoutWorktreeLoaderClose()?.nativeElement
+          ?? document.querySelector<HTMLElement>('gc-checkout-worktree-dialog button:not(:disabled), gc-checkout-worktree-dialog [role=dialog]'))?.focus();
+      }
+      return;
+    }
     if (event.key === 'Escape' && this.pendingStoredReferenceDelete()) {
       event.preventDefault();
       this.dismissStoredReferenceConfirmation(true);
@@ -4257,11 +4437,6 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeForcePush();
       return;
     }
-    if (event.key === 'Escape' && this.pendingTagTarget()) {
-      event.preventDefault();
-      this.pendingTagTarget.set(null);
-      return;
-    }
     if (event.key === 'Escape' && this.pendingWorkspaceDelete()) {
       event.preventDefault();
       this.closeWorkspaceDelete();
@@ -4360,11 +4535,6 @@ export class AppComponent implements OnInit, OnDestroy {
     if (event.key === 'Escape' && this.pendingBranchRename()) {
       event.preventDefault();
       this.pendingBranchRename.set(null);
-      return;
-    }
-    if (event.key === 'Escape' && this.pendingBranchUpstream()) {
-      event.preventDefault();
-      this.pendingBranchUpstream.set(null);
       return;
     }
     if (event.key === 'Escape' && this.pendingPublishBranch()) {
@@ -5740,7 +5910,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (branch.remote) await this.git.checkoutRemote(branch.name);
-    else await this.git.checkout(branch.name);
+    else await this.checkoutBranch(branch.name, this.toolbarBranchToggle()?.nativeElement);
     restoreFocus();
   }
 
@@ -7251,6 +7421,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private canRestoreFocusFrom(container: Element | null): boolean {
+    if (this.checkoutWorktreeRequest()) return false;
     const active = document.activeElement;
     return !active || active === document.body || active === document.documentElement
       || !active.isConnected || !!container?.contains(active);
@@ -7755,7 +7926,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pinnedReferenceStackOid.set(null);
     this.upwardReferenceStackOid.set(null);
     if (branch) {
-      if (!branch.current) void this.git.checkout(branch.name);
+      if (!branch.current) void this.checkoutBranch(branch.name);
     } else if (remote) {
       void this.git.checkoutRemote(remote.label);
     }
@@ -8904,7 +9075,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.hoveredCommitOid.set(null);
-    await this.git.checkout(branch.name);
+    await this.checkoutBranch(branch.name);
   }
 
   protected selectCommit(oid: string): void {
@@ -10632,7 +10803,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (action.id.startsWith('local-branch:')) {
-      await this.git.checkout(action.id.slice('local-branch:'.length));
+      await this.checkoutBranch(action.id.slice('local-branch:'.length));
       return;
     }
     if (action.id.startsWith('remote-branch:')) {
@@ -11162,7 +11333,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = this.toolbarMenuReturnFocus;
     const repositoryId = this.git.activeRepositoryId();
     this.closeToolbarMenus();
-    if (!branch.current) await this.git.checkout(branch.name);
+    if (!branch.current) await this.checkoutBranch(branch.name, target);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.git.activeRepositoryId() === repositoryId && !this.branchMenuOpen()
         && this.canRestoreFocusFrom(menu) && target?.isConnected && !target.matches(':disabled')) {
@@ -11459,21 +11630,24 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private showTagCreator(oid: string, label: string): void {
+    const repository = this.git.repository();
+    if (!repository) return;
     this.contextTagName.set('');
     this.signNewTag.set(false);
     this.tagCreationKind.set('lightweight');
     this.tagCreationMessage.set('');
-    this.pendingTagTarget.set({ oid, label });
+    this.pendingTagTarget.set({ oid, label, repositoryId: repository.id, repositoryPath: repository.path,
+      returnFocus: this.captureSecondaryConfirmationOpener(this.contextMenuReturnFocus) });
   }
 
   protected async submitTagCreation(): Promise<void> {
     const target = this.pendingTagTarget();
     const name = this.contextTagName().trim();
     const message = this.tagCreationKind() === 'annotated' ? this.tagCreationMessage().trim() : null;
-    if (!target || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
+    if (!target || !this.ownsReferenceEditor(target) || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
     if (this.signNewTag() && message) await this.git.manageReference('signed-tag', name, { expectedOid: target.oid, message });
     else await this.git.createTag(name, target.oid, message);
-    if (!this.git.error()) {
+    if (this.pendingTagTarget() === target && this.ownsReferenceEditor(target) && !this.git.error()) {
       this.pendingTagTarget.set(null);
       this.contextTagName.set('');
       this.tagCreationMessage.set('');
@@ -12541,7 +12715,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     this.dismissGraphActionMenu();
     const generation = this.contextMenuGeneration;
-    if (menu.kind === 'branch') await this.git.checkout(menu.label);
+    if (menu.kind === 'branch') await this.checkoutBranch(menu.label, target);
     else if (menu.kind === 'commit') await this.git.checkoutCommit(menu.oid);
     else if (menu.kind === 'remote') await this.git.checkoutRemote(menu.label);
     else this.selectCommit(menu.oid);
@@ -12725,19 +12899,22 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestBranchUpstream(): void {
     const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'branch') return;
+    const repository = this.git.repository();
+    if (!repository || !menu || menu.kind !== 'branch') return;
     const branch = this.git.repository()?.branches.find((candidate) => !candidate.remote && candidate.name === menu.label);
     const options = this.remoteUpstreamBranches();
     if (!branch || !options.length) return;
     const sameName = options.find((candidate) => candidate.name.endsWith(`/${branch.name}`));
     this.branchUpstreamChoice.set(branch.upstream ?? sameName?.name ?? options[0].name);
-    this.pendingBranchUpstream.set({ branch: branch.name, current: branch.upstream });
+    this.pendingBranchUpstream.set({ branch: branch.name, current: branch.upstream,
+      repositoryId: repository.id, repositoryPath: repository.path,
+      returnFocus: this.captureSecondaryConfirmationOpener(this.contextMenuReturnFocus) });
     this.actionOverlays.close('context');
   }
 
   protected async confirmBranchUpstream(upstream: string | null = this.branchUpstreamChoice()): Promise<void> {
     const pending = this.pendingBranchUpstream();
-    if (!pending || this.git.busy() || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
+    if (!pending || !this.ownsReferenceEditor(pending) || this.git.busy() || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
     this.pendingBranchUpstream.set(null);
     await this.git.setBranchUpstream(pending.branch, upstream);
   }
@@ -13437,6 +13614,18 @@ export class AppComponent implements OnInit, OnDestroy {
     )));
   }
 
+  protected graphActionMenuReady(): void {
+    const menu = this.contextMenu();
+    const element = this.actionMenuElement()?.nativeElement;
+    if (!menu || !element?.querySelector('gc-graph-action-menu')) return;
+    // The first measurement may have sized the loading escape. Refit the actual
+    // content and transfer focus only if the user is still inside this menu.
+    const focusMenu = element.contains(document.activeElement)
+      || (document.activeElement === document.body && this.contextMenuReturnFocus !== null);
+    element.classList.remove('positioned');
+    this.settleGraphActionMenuPosition('context', `${menu.kind}:${menu.oid}`, menu, focusMenu);
+  }
+
   private settleGraphActionMenuPosition(
     target: 'context' | 'stash',
     key: string,
@@ -13516,7 +13705,7 @@ export class AppComponent implements OnInit, OnDestroy {
     )));
   }
 
-  private dismissGraphActionMenu(restoreFocus = false): void {
+  protected dismissGraphActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.contextMenuReturnFocus : null;
     const menu = this.actionMenuElement()?.nativeElement ?? null;
     this.contextMenuGeneration += 1;
@@ -14496,3 +14685,9 @@ function summarizeFileChanges(files: CommitFile[]): FileChangeStats {
 export type GraphRowView = ReturnType<AppComponent['graphRowView']>;
 export type RecoveryHistoryView = ReturnType<AppComponent['recoveryHistoryView']>;
 export type PreferencesDialogView = ReturnType<AppComponent['preferencesDialogView']>;
+
+export type TagCreationView = ReturnType<AppComponent['tagCreationView']>;
+export type BranchUpstreamView = ReturnType<AppComponent['branchUpstreamView']>;
+
+export type GraphActionMenuView = ReturnType<AppComponent['graphActionMenuView']>;
+export type GraphActionMenuContext = NonNullable<ReturnType<AppComponent['contextMenu']>>;

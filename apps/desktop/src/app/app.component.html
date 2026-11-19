@@ -10,6 +10,15 @@
       </div>
     }
   }
+  @if (checkoutWorktreeRequest(); as request) {
+    @defer (on immediate) {
+      <gc-checkout-worktree-dialog [request]="request" (closed)="closeCheckoutWorktree()" (opened)="openCheckoutWorktree($event)" />
+    } @placeholder {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading checkout review" (keydown)="handleCheckoutLoaderKey($event)"><p role="status">Loading checkout review. No checkout command has been run.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Checkout review unavailable" (keydown)="handleCheckoutLoaderKey($event)"><p role="alert">Checkout review could not load. No checkout command has been run. Close and restart to retry.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Close</button></section></div>
+    }
+  }
   @if (referenceAction() || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
     @defer (on immediate) {
       <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" (renamed)="handleReferenceRenamed($event)" />
@@ -172,11 +181,11 @@
                   (auxclick)="closeTabOnMiddleClick($event, tab.id)"
                   (contextmenu)="openRepositoryTabMenu($event, tab.id)"
                 >
-                  <button class="repo-tab-main" type="button" role="tab" aria-controls="repository-workspace" aria-haspopup="menu" aria-keyshortcuts="Control+Tab Control+Shift+Tab Control+Shift+PageUp Control+Shift+PageDown Meta+Shift+PageUp Meta+Shift+PageDown" [attr.aria-label]="git.repositoryLabel(tab) + (group.grouped ? ', ' + (tab.status.branch ? 'branch ' + tab.status.branch : repositoryTabCompactLabel(tab)) : '') + (tab.status.entryCount ? ', ' + tab.status.entryCount + ' uncommitted ' + (tab.status.entryCount === 1 ? 'change' : 'changes') : '')" [attr.title]="git.repositoryLabel(tab) + (group.grouped ? ' — ' + repositoryTabCompactLabel(tab) : '') + ' — ' + tab.path" [attr.data-repository-tab-id]="tab.id" [attr.aria-selected]="tab.id === repo.id" [attr.tabindex]="tab.id === repo.id ? 0 : -1" (click)="activateRepository(tab.id)" (keydown)="handleRepositoryTabKeydown($event, tab.id)">
-                    <span class="tab-repo-icon"><gc-icon name="branch" [size]="14" /></span><strong><span class="repo-tab-full-label">{{ git.repositoryLabel(tab) }}</span><span class="repo-tab-compact-label">{{ repositoryTabCompactLabel(tab) }}</span></strong>
+                  <button class="repo-tab-main" type="button" role="tab" aria-controls="repository-workspace" aria-haspopup="menu" aria-keyshortcuts="Control+Tab Control+Shift+Tab Control+Shift+PageUp Control+Shift+PageDown Meta+Shift+PageUp Meta+Shift+PageDown" [attr.aria-label]="repositoryTabLabel(tab) + (group.grouped ? ', ' + (tab.status.branch ? 'branch ' + tab.status.branch : repositoryTabCompactLabel(tab)) : '') + (tab.status.entryCount ? ', ' + tab.status.entryCount + ' uncommitted ' + (tab.status.entryCount === 1 ? 'change' : 'changes') : '')" [attr.title]="repositoryTabLabel(tab) + (group.grouped ? ' — ' + repositoryTabCompactLabel(tab) : '') + ' — ' + tab.path" [attr.data-repository-tab-id]="tab.id" [attr.aria-selected]="tab.id === repo.id" [attr.tabindex]="tab.id === repo.id ? 0 : -1" (click)="activateRepository(tab.id)" (keydown)="handleRepositoryTabKeydown($event, tab.id)">
+                    <span class="tab-repo-icon"><gc-icon name="branch" [size]="14" /></span><strong><span class="repo-tab-full-label">{{ repositoryTabLabel(tab) }}</span><span class="repo-tab-compact-label">{{ repositoryTabCompactLabel(tab) }}</span></strong>
                     @if (tab.status.entryCount) { <i aria-hidden="true" title="{{ tab.status.entryCount }} uncommitted {{ tab.status.entryCount === 1 ? 'change' : 'changes' }}">{{ tab.status.entryCount }}</i> }
                   </button>
-                  <button class="tab-close" type="button" title="Close {{ git.repositoryLabel(tab) }} ({{ primaryShortcutKey }}+W)" aria-label="Close {{ git.repositoryLabel(tab) }}" aria-keyshortcuts="Control+W Meta+W" [attr.tabindex]="tab.id === repo.id ? 0 : -1" (click)="closeRepositoryFromTabButton($event, tab.id)"><gc-icon name="x" [size]="12" /></button>
+                  <button class="tab-close" type="button" title="Close {{ repositoryTabLabel(tab) }} ({{ primaryShortcutKey }}+W)" aria-label="Close {{ repositoryTabLabel(tab) }}" aria-keyshortcuts="Control+W Meta+W" [attr.tabindex]="tab.id === repo.id ? 0 : -1" (click)="closeRepositoryFromTabButton($event, tab.id)"><gc-icon name="x" [size]="12" /></button>
                 </div>
               }
             </div>
@@ -194,9 +203,9 @@
               <div class="tab-list-heading">Open repositories <b>{{ git.repositories().length }}</b></div>
               <div class="tab-list-scroll">
                 @for (tab of git.repositories(); track tab.id; let index = $index) {
-                  <button type="button" role="menuitemradio" [attr.aria-checked]="tab.id === repo.id" [attr.aria-keyshortcuts]="index < 9 ? 'Control+' + (index + 1) + ' Meta+' + (index + 1) : null" [attr.title]="git.repositoryLabel(tab) + ' — ' + repositoryTabCompactLabel(tab) + ' — ' + tab.path" [class.active]="tab.id === repo.id" (click)="selectRepositoryTab(tab.id)">
+                  <button type="button" role="menuitemradio" [attr.aria-checked]="tab.id === repo.id" [attr.aria-keyshortcuts]="index < 9 ? 'Control+' + (index + 1) + ' Meta+' + (index + 1) : null" [attr.title]="repositoryTabLabel(tab) + ' — ' + repositoryTabCompactLabel(tab) + ' — ' + tab.path" [class.active]="tab.id === repo.id" (click)="selectRepositoryTab(tab.id)">
                     <gc-icon [name]="tab.id === repo.id ? 'check' : 'folder-git'" [size]="13" />
-                    <span><strong>{{ git.repositoryLabel(tab) }}</strong><small><b class="tab-list-branch" [attr.title]="repositoryTabCompactLabel(tab)">{{ repositoryTabCompactLabel(tab) }}</b><i aria-hidden="true">·</i><span>{{ tab.path }}</span></small></span><kbd>{{ index < 9 ? primaryShortcutKey + ' ' + (index + 1) : '' }}</kbd>
+                    <span><strong>{{ repositoryTabLabel(tab) }}</strong><small><b class="tab-list-branch" [attr.title]="repositoryTabCompactLabel(tab)">{{ repositoryTabCompactLabel(tab) }}</b><i aria-hidden="true">·</i><span>{{ tab.path }}</span></small></span><kbd>{{ index < 9 ? primaryShortcutKey + ' ' + (index + 1) : '' }}</kbd>
                   </button>
                 }
               </div>
@@ -707,7 +716,7 @@
                     (mouseenter)="previewReference(branch.oid)"
                     (mouseleave)="previewReference(null)"
                     (click)="jumpToReference($event, branch.oid)"
-                    (dblclick)="branch.current ? null : git.checkout(branch.name)"
+                    (dblclick)="branch.current ? null : checkoutBranch(branch.name)"
                     (dragstart)="startBranchDrag($event, branch.name)"
                     (dragover)="allowBranchDrop($event, branch.name)"
                     (drop)="dropBranch($event, branch.name)"
@@ -1558,7 +1567,7 @@
                     aria-haspopup="menu"
                     title="{{ branch.current ? 'Current branch ' + branch.name : 'Double-click to checkout ' + branch.name }}{{ branch.tracking ? ' · ' + branch.tracking : '' }}"
                     (click)="jumpToReference($event, branch.oid)"
-                    (dblclick)="branch.current ? null : git.checkout(branch.name)"
+                    (dblclick)="branch.current ? null : checkoutBranch(branch.name)"
                     (keydown)="handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
                     (contextmenu)="openBranchMenu($event, branch.name, branch.oid)"
                   ><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="9" />{{ decorationLabel(decoration) }}@if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ branchTrackingLabel(branch.tracking) }}</small> }</button>
@@ -1595,7 +1604,7 @@
                       <span class="grouped-reference-locations">
                         @for (location of group.locations; track location.decoration) {
                           @if (branchForDecoration(location.decoration); as branch) {
-                            <button class="grouped-reference-location local lane-color-{{ graphLaneColor(commit.oid) }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" (click)="jumpToReference($event, branch.oid)" (dblclick)="branch.current ? null : git.checkout(branch.name)" (keydown)="handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
+                            <button class="grouped-reference-location local lane-color-{{ graphLaneColor(commit.oid) }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" (click)="jumpToReference($event, branch.oid)" (dblclick)="branch.current ? null : checkoutBranch(branch.name)" (keydown)="handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
                           } @else if (location.kind === 'remote') {
                             <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to fetch and check out the local branch" (click)="jumpToReference($event, commit.oid)" (keydown)="handleReferenceActionKeydown($event, 'remote', location.label, commit.oid)" (keydown.enter)="checkoutRemoteBranch($event, location.label)" (dblclick)="checkoutRemoteBranch($event, location.label)" (contextmenu)="openRemoteMenu($event, location.label, commit.oid)"><gc-icon [name]="remoteIconForDecoration(location.decoration)" [size]="10" /></button>
                           } @else if (location.kind === 'tag') {
@@ -1940,7 +1949,7 @@
       }
     }
     <footer class="statusbar">
-      <span class="status-repository" [attr.aria-label]="'Repository ' + git.repositoryLabel(repo) + ', ' + repo.path" [title]="repo.path"><gc-icon name="repo" [size]="10" /><strong>{{ git.repositoryLabel(repo) }}</strong></span>
+      <span class="status-repository" [attr.aria-label]="'Repository ' + git.repositoryLabel(repo) + ', ' + repo.path" [title]="repo.path"><gc-icon name="repo" [size]="10" /><strong>{{ git.repositoryLabel(repo) }}</strong><span class="status-repository-path">{{ repo.path }}</span></span>
       @if (currentBranch(); as branch) {
         <button class="status-branch" type="button" aria-label="View current branch {{ branch.name }} tip" title="View {{ branch.name }} at {{ shortOid(branch.oid) }}" (click)="jumpToReference($event, branch.oid)"><gc-icon name="branch" [size]="10" />{{ branch.name }}</button>
       } @else if (repo.headOid; as headOid) {
@@ -2391,135 +2400,14 @@
       (click)="$event.stopPropagation()"
       (keydown)="handleContextMenuKeydown($event)"
     >
-      <div class="context-heading">
-        <span class="context-heading-eyebrow">{{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'Commit' : menu.oids.length + ' selected commits') : menu.kind === 'tag' ? 'Tag' : menu.kind === 'remote' ? 'Remote branch' : menu.kind === 'checkpoint' ? 'Copilot checkpoint' : menu.kind === 'original' ? 'Original reference' : 'Branch' }}@if (menu.kind === 'commit' && menu.oids.length === 1) { <code>{{ shortOid(menu.oid) }}</code> }</span>
-        <strong [attr.title]="menu.kind === 'commit' && menu.oids.length > 1 ? null : menu.label">{{ menu.kind === 'commit' && menu.oids.length > 1 ? 'Oldest to newest' : menu.label }}</strong>
-      </div>
-      @if (menu.kind === 'commit') {
-        <div class="context-section-label" aria-hidden="true">Inspect or checkout</div>
-      } @else if (menu.kind === 'branch') {
-        <div class="context-section-label" aria-hidden="true">Switch and inspect</div>
-      } @else if (menu.kind === 'remote') {
-        <div class="context-section-label" aria-hidden="true">Checkout and inspect</div>
-      }
-      @if (menu.kind === 'original') {
-        <button type="button" role="menuitem" (click)="copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy original reference</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestStoredReferenceDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete original reference…</button>
-      } @else if (menu.kind === 'checkpoint') {
-        <button type="button" role="menuitem" (click)="copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy checkpoint reference</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="requestStoredReferenceDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
-      } @else {
-      <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === git.repository()?.status?.branch)" (click)="checkoutContextTarget()">
-        <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Fetch and check out local branch' : menu.label === git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
-      </button>
-      <button type="button" role="menuitem" [disabled]="git.busy() || git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="shareRepositoryContext()"><span><gc-icon name="copy" [size]="13" /></span>Share repository context…</button>
-      <button type="button" role="menuitem" (click)="copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
-        <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
-      </button>
-      @if (menu.kind === 'branch' && git.repository()?.status?.branch) {
-        <button type="button" role="menuitem" data-integration-entry [disabled]="git.busy()" (click)="openContextIntegration()"><span><gc-icon name="merge" [size]="13" /></span>{{ menu.label === git.repository()?.status?.branch ? 'Merge or rebase another branch into ' + menu.label + '…' : 'Merge or rebase into ' + git.repository()?.status?.branch + '…' }}</button>
-      }
-      @if (menu.kind === 'commit') {
-        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="compareContextCommitWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
-      }
-      @if (menu.kind === 'branch' && menu.label !== git.repository()?.status?.branch && git.repository()?.status?.entryCount) {
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('switch')"><span><gc-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>
-      }
-      @if (menu.kind === 'tag') {
-        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('push-tag')"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="verifyContextTag()"><span><gc-icon name="check" [size]="13" /></span>Verify tag signature</button>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('rename-tag')"><span><gc-icon name="edit" [size]="13" /></span>Rename tag…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.remotes?.length" (click)="requestReferenceAction('delete-remote-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
-      }
-      @if (menu.kind === 'branch' || menu.kind === 'remote') {
-        <button type="button" role="menuitem" (click)="compareContextReferenceWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
-      }
-      @if (menu.kind === 'remote') {
-        <div class="context-divider"></div>
-        <div class="context-section-label context-section-label-danger" aria-hidden="true">Manage remote branch</div>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('rename-remote-branch')"><span><gc-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestReferenceAction('delete-remote-branch')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
-      }
-      @if (menu.kind === 'commit') {
-        <div class="context-divider"></div>
-        <div class="context-section-label" aria-hidden="true">History operations</div>
-        @if (canEditContextCommitMessage()) {
-          <button type="button" role="menuitem" (click)="editContextCommitMessage()"><span><gc-icon name="edit" [size]="13" /></span>Edit author, message or co-authors…</button>
-        }
-        <button type="button" role="menuitem" (click)="requestHistoryAction('cherry-pick')"><span><gc-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" (click)="requestHistoryAction('revert')"><span><gc-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.status?.branch" (click)="openSelectedRebase()"><span><gc-icon name="edit" [size]="13" /></span>{{ menu.oids.length === 1 ? 'Edit history from this commit…' : 'Edit selected range…' }}</button>
-        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1 || !canStartBisectAt(menu.oid)" (click)="requestBisectFromContext()"><span><gc-icon name="history" [size]="13" /></span>Start bisect from here…</button>
-        <div class="context-divider"></div>
-        <div class="context-section-label context-section-label-danger" aria-hidden="true">Move current branch</div>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="requestHistoryAction('reset')"><span><gc-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
-      } @else if (menu.kind === 'branch') {
-        <button type="button" role="menuitem" [disabled]="git.busy() || !git.repository()?.headOid" (click)="previewContextMerge()"><span><gc-icon name="merge" [size]="13" /></span>Preview merge conflicts…</button>
-        <div class="context-divider"></div>
-        <div class="context-section-label" aria-hidden="true">Tracking and worktrees</div>
-        <button type="button" role="menuitem" [disabled]="!remoteUpstreamBranches().length" (click)="requestBranchUpstream()"><span><gc-icon name="remote" [size]="13" /></span>{{ contextBranchUpstream(menu.label) ? 'Change upstream…' : 'Set upstream…' }}</button>
-        @if (contextBranchUpstream(menu.label)) {
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="unsetContextBranchUpstream()"><span><gc-icon name="x" [size]="13" /></span>Unset upstream <small>{{ contextBranchUpstream(menu.label) }}</small></button>
-        }
-        <button type="button" role="menuitem" [disabled]="!canCreateContextWorktree()" (click)="openContextWorktreeDialog()"><span><gc-icon name="folder-git" [size]="13" /></span>Create worktree</button>
-        <div class="context-divider"></div>
-        <div class="context-section-label" aria-hidden="true">Graph visibility</div>
-        <button type="button" role="menuitem" (click)="hideContextBranch()"><span><gc-icon [name]="isBranchHidden(menu.label) ? 'eye' : 'eye-off'" [size]="13" /></span>{{ isBranchHidden(menu.label) ? 'Show' : 'Hide' }} in graph</button>
-        <button type="button" role="menuitem" (click)="soloContextBranch()"><span><gc-icon name="eye" [size]="13" /></span>{{ isBranchSoloed(menu.label) ? 'Unsolo' : 'Solo' }} branch</button>
-        <button type="button" role="menuitem" (click)="toggleContextBranchPin()"><span><gc-icon name="pin" [size]="13" /></span>{{ isBranchPinned(menu.label) ? 'Unpin from left' : 'Pin to left' }}</button>
-        <div class="context-divider"></div>
-        <div class="context-section-label" aria-hidden="true">History and integration</div>
-        @if (menu.label === git.repository()?.status?.branch) {
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRootRebase()"><span><gc-icon name="edit" [size]="13" /></span>Edit entire history, including root…</button>
-        } @else {
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}</button>
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openMergeRebase()"><span><gc-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
-          <div class="context-divider"></div>
-          <div class="context-section-label" aria-hidden="true">Integrate into {{ git.repository()?.status?.branch }}</div>
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('ff-only')"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ git.repository()?.status?.branch }} to {{ menu.label }}</button>
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('merge')"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
-          <button type="button" role="menuitem" [disabled]="git.busy()" (click)="integrateContextBranch('squash')"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ menu.label }} into {{ git.repository()?.status?.branch }}</button>
-          <button type="button" role="menuitem" (click)="requestBranchAction('rebase')"><span><gc-icon name="refresh" [size]="13" /></span>Rebase {{ git.repository()?.status?.branch }} onto {{ menu.label }}…</button>
-        }
-        <div class="context-divider"></div>
-        <div class="context-section-label" aria-hidden="true">Manage branch</div>
-        <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); renameContextBranch()">
-          <label for="context-rename-name">Rename branch</label>
-          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gcTextValue]="contextRenameName()" (gcTextValueChange)="contextRenameName.set($event)" /><button type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === menu.label || git.busy()">Rename</button></div>
-        </form>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === git.repository()?.status?.branch" (click)="requestBranchAction('delete')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch…</button>
-      }
-      <div class="context-divider"></div>
-      @if (menu.kind === 'commit') {
-        <div class="context-section-label" aria-hidden="true">Create reference</div>
-      } @else if (menu.kind === 'branch') {
-        <div class="context-section-label" aria-hidden="true">Create reference at branch tip</div>
-      }
-      @if (contextBranchCreatorOpen()) {
-        <form novalidate class="context-branch-form context-create-branch-form" aria-label="Create branch here" (submit)="$event.preventDefault(); createContextBranch()" (keydown)="handleContextBranchCreatorKeydown($event)">
-          <label for="context-branch-name">Create branch here</label>
-          <div>
-            <input
-              id="context-branch-name"
-              name="contextBranchName"
-              placeholder="Branch name"
-              autocomplete="off"
-              [disabled]="git.busy()"
-              [attr.aria-invalid]="contextBranchError() ? 'true' : null"
-              [attr.aria-describedby]="contextBranchError() ? 'context-branch-error' : null"
-              [gcTextValue]="contextBranchName()"
-              (gcTextValueChange)="contextBranchName.set($event); contextBranchError.set(null)"
-            />
-            <button type="submit" [disabled]="!contextBranchName().trim() || git.busy()">Create</button>
-            <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="closeContextBranchCreator($event)"><gc-icon name="x" [size]="10" /></button>
-          </div>
-          @if (contextBranchError()) { <p id="context-branch-error" class="context-branch-error" role="alert">{{ contextBranchError() }}</p> }
-        </form>
-      } @else {
-        <button data-create-context-branch type="button" role="menuitem" [disabled]="git.busy()" (click)="openContextBranchCreator($event)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
-      }
-      <button type="button" role="menuitem" (click)="openContextTagCreator()"><span><gc-icon name="tag" [size]="13" /></span>Create tag here…</button>
+      @defer (on immediate) {
+        <gc-graph-action-menu [context]="menu" [presenter]="graphActionMenuView()" (ready)="graphActionMenuReady()" />
+      } @placeholder {
+        <p role="status">Loading actions…</p>
+        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="dismissGraphActionMenu(true)">Cancel</button>
+      } @error {
+        <p role="alert">Actions could not load. Close and restart to retry. No command was run.</p>
+        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="dismissGraphActionMenu(true)">Close</button>
       }
     </div>
   }
@@ -2816,27 +2704,14 @@
       </section>
     </div>
   }
-  @if (pendingTagTarget(); as target) {
-    <div class="confirmation-backdrop" (click)="pendingTagTarget.set(null)">
-      <form novalidate class="confirmation-dialog tag-creation-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-creation-title" (submit)="$event.preventDefault(); submitTagCreation()" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon"><gc-icon name="tag" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Create tag</span>
-          <h2 id="tag-creation-title">Create tag at {{ target.label }}</h2>
-          <p>Place a tag at commit <code>{{ shortOid(target.oid) }}</code>.</p>
-          <label class="tag-name-field">Tag name<input name="tagName" autocomplete="off" autofocus placeholder="v1.0.0" [gcTextValue]="contextTagName()" (gcTextValueChange)="contextTagName.set($event)" /></label>
-          <div class="tag-kind-options" role="radiogroup" aria-label="Tag type">
-            <label [class.selected]="tagCreationKind() === 'lightweight'"><input type="radio" name="tagKind" value="lightweight" [checked]="tagCreationKind() === 'lightweight'" (change)="tagCreationKind.set('lightweight')" /><span><strong>Lightweight</strong><small>A simple name pointing to this commit</small></span></label>
-            <label [class.selected]="tagCreationKind() === 'annotated'"><input type="radio" name="tagKind" value="annotated" [checked]="tagCreationKind() === 'annotated'" (change)="tagCreationKind.set('annotated')" /><span><strong>Annotated</strong><small>Store tagger information and a release message</small></span></label>
-          </div>
-          @if (tagCreationKind() === 'annotated') {
-            <label class="tag-name-field">Tag message<textarea name="tagMessage" rows="3" placeholder="Release notes" [gcTextValue]="tagCreationMessage()" (gcTextValueChange)="tagCreationMessage.set($event)"></textarea></label>
-            <label><input type="checkbox" name="signTag" [checked]="signNewTag()" (change)="signNewTag.set($any($event.target).checked)" /> Sign this tag with the configured Git key</label>
-          }
-        </div>
-        <footer><button type="button" (click)="pendingTagTarget.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextTagName().trim() || (tagCreationKind() === 'annotated' && !tagCreationMessage().trim()) || git.busy()">Create Tag</button></footer>
-      </form>
-    </div>
+  @if (pendingTagTarget()) {
+    @defer (on immediate) {
+      <gc-tag-creation-dialog [view]="tagCreationView()" />
+    } @placeholder {
+      <ng-container [ngTemplateOutlet]="referenceEditorFallback" [ngTemplateOutletContext]="{ kind: 'tag', failed: false }" />
+    } @error {
+      <ng-container [ngTemplateOutlet]="referenceEditorFallback" [ngTemplateOutletContext]="{ kind: 'tag', failed: true }" />
+    }
   }
   @if (pendingStashDelete(); as request) {
     @defer (on immediate) {
@@ -2897,24 +2772,14 @@
       </section>
     </div>
   }
-  @if (pendingBranchUpstream(); as pending) {
-    <div class="confirmation-backdrop" (click)="pendingBranchUpstream.set(null)">
-      <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Set upstream for {{ pending.branch }}" (submit)="$event.preventDefault(); confirmBranchUpstream()" (click)="$event.stopPropagation()">
-        <div class="confirmation-icon"><gc-icon name="remote" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Branch tracking</span>
-          <h2>{{ pending.branch }}</h2>
-          <p>Choose the remote branch used by Pull, Push, and ahead/behind status.</p>
-          <label class="upstream-picker">Upstream branch<select name="branchUpstream" aria-label="Upstream branch" [value]="branchUpstreamChoice()" (change)="branchUpstreamChoice.set($any($event.target).value)">
-            @for (branch of remoteUpstreamBranches(); track branch.fullName) { <option [value]="branch.name" [selected]="branchUpstreamChoice() === branch.name">{{ branch.name }}</option> }
-          </select></label>
-        </div>
-        <footer>
-          @if (pending.current) { <button type="button" class="remove-upstream" [disabled]="git.busy()" (click)="confirmBranchUpstream(null)">Unset {{ pending.current }}</button> }
-          <span></span><button type="button" (click)="pendingBranchUpstream.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!branchUpstreamChoice() || git.busy()">Set Upstream</button>
-        </footer>
-      </form>
-    </div>
+  @if (pendingBranchUpstream()) {
+    @defer (on immediate) {
+      <gc-branch-upstream-dialog [view]="branchUpstreamView()" />
+    } @placeholder {
+      <ng-container [ngTemplateOutlet]="referenceEditorFallback" [ngTemplateOutletContext]="{ kind: 'upstream', failed: false }" />
+    } @error {
+      <ng-container [ngTemplateOutlet]="referenceEditorFallback" [ngTemplateOutletContext]="{ kind: 'upstream', failed: true }" />
+    }
   }
   @if (recoveryHistoryOpen()) {
     @defer (on immediate) {
@@ -2974,3 +2839,12 @@
     <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Branch workflows unavailable" (keydown)="handleBranchWorkflowLoaderKey($event)"><p role="alert">Could not load branch workflows. Close and reopen to retry.</p><button #branchWorkflowLoaderClose type="button" (click)="closeBranchWorkflowLoader()">Close</button></section></div>
   }
 }
+
+<ng-template #referenceEditorFallback let-kind="kind" let-failed="failed">
+  <div class="confirmation-backdrop">
+    <section class="confirmation-dialog" role="dialog" aria-modal="true" [attr.aria-label]="failed ? 'Reference editor unavailable' : 'Loading reference editor'" (keydown)="handleReferenceEditorKey($event, kind)">
+      <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'Reference editor could not load. No command was run. Close and restart to retry.' : 'Loading reference editor. No command has been run.' }}</p>
+      <button #referenceEditorLoaderClose type="button" (click)="closeReferenceEditor(kind)">{{ failed ? 'Close' : 'Cancel' }}</button>
+    </section>
+  </div>
+</ng-template>

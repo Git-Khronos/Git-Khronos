@@ -37,6 +37,11 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
     const host = window;
     const app = host.ng.getComponent(document.querySelector('gc-root'));
     let snapshot = structuredClone(app.git.repository());
+    // These journeys exercise checkout of available branches. Occupied-branch
+    // navigation has separate real-interaction coverage in branch-checkout-worktree.
+    snapshot.worktrees = snapshot.worktrees.filter(worktree => worktree.current);
+    app.git.repositories.update(repositories => repositories.map(repository =>
+      repository.id === snapshot.id ? snapshot : repository));
     let shouldFail = fail;
     host.__branchCalls = [];
     host.__otherCalls = [];
