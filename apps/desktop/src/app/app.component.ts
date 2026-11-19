@@ -285,6 +285,11 @@ type GraphDateFormat = 'compact' | 'relative' | 'iso';
 type RemoteLocationIcon = 'remote' | 'server' | 'globe' | 'link';
 type RemoteDialogMode = 'add' | 'edit';
 
+interface RepositoryEditorOwner {
+  readonly repositoryId: string;
+  readonly repositoryPath: string;
+}
+
 interface RemoteBranchGroup extends Remote {
   branches: Branch[];
   branchCount: number;
@@ -993,6 +998,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly repositoryDialog = signal<RepositoryDialogMode | null>(null);
   protected readonly repositoryDialogFocusRequest = signal(0);
   protected readonly worktreeDialogOpen = signal(false);
+  protected readonly worktreeEditorOwner = signal<RepositoryEditorOwner | null>(null);
   protected readonly worktreeBranch = signal('');
   protected readonly worktreeBase = signal('');
   protected readonly worktreeParent = signal('');
@@ -1016,9 +1022,11 @@ export class AppComponent implements OnInit, OnDestroy {
     return active?.kind === 'referencePane' ? active.value : null;
   });
   protected readonly submoduleDialogOpen = signal(false);
+  protected readonly submoduleEditorOwner = signal<RepositoryEditorOwner | null>(null);
   protected readonly submoduleUrl = signal('');
   protected readonly submodulePath = signal('');
   protected readonly remoteDialog = signal<RemoteDialogMode | null>(null);
+  protected readonly remoteEditorOwner = signal<RepositoryEditorOwner | null>(null);
   protected readonly remoteName = signal('');
   /** Name of the remote being edited; differs from `remoteName` while a rename is pending. */
   protected readonly remoteDialogOriginalName = signal('');
@@ -1033,6 +1041,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private initialRemotePushUrl = '';
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
   protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
+  protected readonly remoteRemovalOwner = signal<RepositoryEditorOwner | null>(null);
   protected readonly pendingLfsPrune = signal(false);
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
   protected readonly lfsPruneReviewing = signal(false);
@@ -1097,11 +1106,27 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly referenceEditorScope = effect(() => {
     const tag = this.pendingTagTarget();
     const upstream = this.pendingBranchUpstream();
-    if (tag && !this.ownsReferenceEditor(tag)) untracked(() => this.pendingTagTarget.set(null));
-    if (upstream && !this.ownsReferenceEditor(upstream)) untracked(() => this.pendingBranchUpstream.set(null));
+    if (tag && !this.ownsRepositoryScope(tag)) untracked(() => this.pendingTagTarget.set(null));
+    if (upstream && !this.ownsRepositoryScope(upstream)) untracked(() => this.pendingBranchUpstream.set(null));
   });
 
-  private ownsReferenceEditor(target: { repositoryId: string; repositoryPath: string }): boolean {
+  private readonly repositorySetupScope = effect(() => {
+    const worktree = this.worktreeEditorOwner();
+    const submodule = this.submoduleEditorOwner();
+    const remote = this.remoteEditorOwner();
+    const removal = this.remoteRemovalOwner();
+    if (worktree && !this.ownsRepositoryScope(worktree)) untracked(() => this.closeWorktreeDialog(false));
+    if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
+    if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
+    if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
+  });
+
+  private captureRepositoryEditorOwner(): RepositoryEditorOwner | null {
+    const repository = this.git.repository();
+    return repository ? { repositoryId: repository.id, repositoryPath: repository.path } : null;
+  }
+
+  private ownsRepositoryScope(target: { repositoryId: string; repositoryPath: string }): boolean {
     const repository = this.git.repository();
     return repository?.id === target.repositoryId && repository.path === target.repositoryPath;
   }
@@ -1110,7 +1135,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = kind === 'tag' ? this.pendingTagTarget() : this.pendingBranchUpstream();
     if (kind === 'tag') this.pendingTagTarget.set(null);
     else this.pendingBranchUpstream.set(null);
-    if (target && this.ownsReferenceEditor(target)) this.restoreDialogFocus(target.returnFocus);
+    if (target && this.ownsRepositoryScope(target)) this.restoreDialogFocus(target.returnFocus);
   }
 
   protected handleReferenceEditorKey(event: KeyboardEvent, kind: 'tag' | 'upstream'): void {
@@ -1732,6 +1757,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private worktreeDialogOpener: HTMLElement | null = null;
   private submoduleDialogOpener: HTMLElement | null = null;
   private remoteDialogOpener: HTMLElement | null = null;
+  private remoteRemovalOpener: HTMLElement | null = null;
   private secondaryConfirmationOpener: HTMLElement | null = null;
   protected readonly preferencesDialogView = computed(() => ({
     preferencesSection: this.preferencesSection,
@@ -6398,6 +6424,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openWorktreeDialog(returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    this.worktreeEditorOwner.set(owner);
     const repository = this.git.repository();
     if (!repository) return;
     this.worktreeDialogOpener = this.captureDialogOpener(returnFocus);
@@ -6413,13 +6442,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${branch.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement()));
+    setTimeout(() => {
+      if (this.worktreeEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.worktreeDialogElement());
+    });
   }
 
   protected canCreateContextWorktree(): boolean {
     const menu = this.contextMenu();
     const repository = this.git.repository();
-    if (!menu || menu.kind !== 'branch' || !repository) return false;
+    if (!menu || menu.kind !== 'branch' || !repository || menu.repositoryId !== repository.id) return false;
     const branch = repository.branches.find((candidate) => !candidate.remote && candidate.name === menu.label);
     return !!branch
       && !branch.current
@@ -6430,6 +6461,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.contextMenu();
     const repository = this.git.repository();
     if (!menu || menu.kind !== 'branch' || !repository || !this.canCreateContextWorktree()) return;
+    const owner: RepositoryEditorOwner = { repositoryId: repository.id, repositoryPath: repository.path };
+    this.worktreeEditorOwner.set(owner);
     this.worktreeDialogOpener = this.contextMenuReturnFocus ?? this.captureDialogOpener();
     const parent = repository.path.replace(/[\\/][^\\/]+$/, '') || repository.path;
     this.actionOverlays.close('context');
@@ -6440,24 +6473,35 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${menu.label.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.worktreeDialogElement()));
+    setTimeout(() => {
+      if (this.worktreeEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.worktreeDialogElement());
+    });
   }
 
-  protected closeWorktreeDialog(restoreFocus = true): void {
+  protected closeWorktreeDialog(restoreFocus = true, expectedOwner = this.worktreeEditorOwner()): void {
+    if (this.worktreeEditorOwner() !== expectedOwner) return;
+    this.worktreeEditorOwner.set(null);
     const opener = this.worktreeDialogOpener;
     this.worktreeDialogOpen.set(false);
     this.worktreeDialogOpener = null;
     if (restoreFocus) this.restoreDialogFocus(opener);
   }
 
-  protected async chooseWorktreeParent(): Promise<void> {
+  protected async chooseWorktreeParent(expectedOwner = this.worktreeEditorOwner()): Promise<void> {
+    const owner = this.worktreeEditorOwner();
+    if (owner !== expectedOwner || !owner || !this.ownsRepositoryScope(owner) || this.git.busy()) return;
     const selected = await this.git.chooseDirectory('Choose a parent folder for the worktree');
-    if (selected) this.worktreeParent.set(selected);
+    if (selected && this.worktreeEditorOwner() === owner && this.ownsRepositoryScope(owner) && !this.git.busy()) {
+      this.worktreeParent.set(selected);
+    }
   }
 
-  protected async submitWorktree(): Promise<void> {
+  protected async submitWorktree(expectedOwner = this.worktreeEditorOwner()): Promise<void> {
+    const owner = this.worktreeEditorOwner();
+    if (owner !== expectedOwner || !owner || !this.ownsRepositoryScope(owner) || !this.worktreeDialogOpen() || this.git.busy()) return;
     const branch = this.worktreeBranch().trim();
     const source = this.worktreeCreationSource();
+    if (!branch || (!source && !this.worktreeBase()) || !this.worktreeParent() || !this.worktreeFolder().trim()) return;
     const openTerminal = !source && this.worktreeHandoff() === 'terminal';
     const created = source
       ? await this.git.createWorktreeForBranch(
@@ -6471,13 +6515,15 @@ export class AppComponent implements OnInit, OnDestroy {
         branch,
         this.worktreeBase(),
       );
-    if (!created) return;
+    if (!created || this.worktreeEditorOwner() !== owner || !this.ownsRepositoryScope(owner)) return;
     const worktree = this.git.repository()?.worktrees.find((candidate) => candidate.branch === (source ?? branch));
     this.closeWorktreeDialog(false);
     if (worktree) {
       await this.openWorktree(worktree.path);
       const repositoryId = this.git.activeRepositoryId();
-      if (openTerminal && repositoryId && !this.git.error()) this.showTerminalForRepository(repositoryId);
+      if (openTerminal && repositoryId && this.git.repository()?.path === worktree.path && !this.git.error()) {
+        this.showTerminalForRepository(repositoryId);
+      }
     }
   }
 
@@ -6601,14 +6647,21 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openSubmoduleDialog(returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    this.submoduleEditorOwner.set(owner);
     this.submoduleDialogOpener = this.captureDialogOpener(returnFocus);
     this.submoduleUrl.set('');
     this.submodulePath.set('');
     this.submoduleDialogOpen.set(true);
-    setTimeout(() => this.focusFirstEditableControl(this.submoduleDialogElement()));
+    setTimeout(() => {
+      if (this.submoduleEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.submoduleDialogElement());
+    });
   }
 
-  protected closeSubmoduleDialog(restoreFocus = true): void {
+  protected closeSubmoduleDialog(restoreFocus = true, expectedOwner = this.submoduleEditorOwner()): void {
+    if (this.submoduleEditorOwner() !== expectedOwner) return;
+    this.submoduleEditorOwner.set(null);
     const opener = this.submoduleDialogOpener;
     this.submoduleDialogOpen.set(false);
     this.submoduleDialogOpener = null;
@@ -6616,6 +6669,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openAddRemoteDialog(returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    this.remoteEditorOwner.set(owner);
     this.remoteDialogOpener = this.captureRemoteDialogOpener(returnFocus);
     const hasOrigin = this.git.repository()?.remotes.some((remote) => remote.name === 'origin');
     this.remoteName.set(hasOrigin ? '' : 'origin');
@@ -6625,10 +6681,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.initialRemotePushUrl = '';
     this.remoteDialogIcon.set('remote');
     this.remoteDialog.set('add');
-    setTimeout(() => this.focusFirstEditableControl(this.remoteDialogElement()));
+    setTimeout(() => {
+      if (this.remoteEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.remoteDialogElement());
+    });
   }
 
   protected openEditRemoteDialog(remote: Remote, returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    this.remoteEditorOwner.set(owner);
     this.remoteDialogOpener = this.captureRemoteDialogOpener(returnFocus);
     this.remoteName.set(remote.name);
     this.remoteDialogOriginalName.set(remote.name);
@@ -6637,17 +6698,22 @@ export class AppComponent implements OnInit, OnDestroy {
     this.initialRemotePushUrl = this.remotePushUrl();
     this.remoteDialogIcon.set(this.remoteIcon(remote.name));
     this.remoteDialog.set('edit');
-    setTimeout(() => this.remoteDialogElement()?.nativeElement
-      .querySelector<HTMLInputElement>('input[name="remoteUrl"]')?.focus());
+    setTimeout(() => {
+      if (this.remoteEditorOwner() === owner && this.ownsRepositoryScope(owner)) {
+        const element = this.remoteDialogElement()?.nativeElement;
+        (element?.querySelector<HTMLElement>('input[name="remoteUrl"]:not(:disabled)')
+          ?? element?.querySelector<HTMLElement>('footer button:not(:disabled)'))?.focus();
+      }
+    });
   }
 
-  protected closeRemoteDialog(restoreFocus = true): void {
+  protected closeRemoteDialog(restoreFocus = true, expectedOwner = this.remoteEditorOwner()): void {
+    if (this.remoteEditorOwner() !== expectedOwner) return;
+    this.remoteEditorOwner.set(null);
     const opener = this.remoteDialogOpener;
     this.remoteDialog.set(null);
-    if (restoreFocus) {
-      this.remoteDialogOpener = null;
-      this.restoreDialogFocus(opener);
-    }
+    this.remoteDialogOpener = null;
+    if (restoreFocus) this.restoreDialogFocus(opener);
   }
 
   protected editedRemotePushUrl(): string {
@@ -6655,7 +6721,9 @@ export class AppComponent implements OnInit, OnDestroy {
       || 'the fetch URL';
   }
 
-  protected async submitRemote(): Promise<void> {
+  protected async submitRemote(expectedOwner = this.remoteEditorOwner()): Promise<void> {
+    const owner = this.remoteEditorOwner();
+    if (owner !== expectedOwner || !owner || !this.ownsRepositoryScope(owner)) return;
     const mode = this.remoteDialog();
     const name = this.remoteName().trim();
     const url = this.remoteUrl().trim();
@@ -6676,7 +6744,8 @@ export class AppComponent implements OnInit, OnDestroy {
         mode === 'add', previousName);
     } else if (mode === 'add') await this.git.addRemote(name, url);
     else await this.git.setRemoteUrl(name, url);
-    if (repositoryId !== this.git.activeRepositoryId()) return;
+    if (repositoryId !== this.git.activeRepositoryId() || !this.ownsRepositoryScope(owner)) return;
+    const sameReview = this.remoteEditorOwner() === owner && !!this.remoteDialog();
     if (renaming) {
       // A rename may succeed even when a later URL update fails, so follow the
       // refreshed snapshot rather than the reported outcome.
@@ -6685,10 +6754,11 @@ export class AppComponent implements OnInit, OnDestroy {
         && !remotes.some((remote) => remote.name === previousName);
       if (renamed) {
         this.renameRemoteUiState(previousName, name, previousRemoteBranches);
-        this.remoteDialogOriginalName.set(name);
+        if (sameReview) this.remoteDialogOriginalName.set(name);
       }
       this.setRemoteIcon(renamed ? name : previousName, icon);
     }
+    if (!sameReview) return;
     if (mode === 'add' && this.git.repository()?.remotes.some(remote => remote.name === name)) {
       this.remoteDialogOriginalName.set(name);
       this.remoteDialog.set('edit');
@@ -6729,33 +6799,44 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected requestRemoteRemoval(): void {
+  protected requestRemoteRemoval(expectedOwner = this.remoteEditorOwner()): void {
+    const owner = this.remoteEditorOwner();
+    if (owner !== expectedOwner || !owner || !this.ownsRepositoryScope(owner) || !this.remoteDialog() || this.git.busy()) return;
     const name = this.remoteDialogOriginalName();
     const remote = this.git.repository()?.remotes.find((candidate) => candidate.name === name);
     if (!remote) return;
+    const opener = this.remoteDialogOpener;
     this.closeRemoteDialog(false);
+    this.remoteRemovalOpener = opener;
+    this.remoteRemovalOwner.set({ ...owner });
     this.pendingRemoteRemoval.set(remote);
   }
 
-  protected closeRemoteRemoval(): void {
-    const opener = this.remoteDialogOpener;
+  protected closeRemoteRemoval(restoreFocus = true, expectedOwner = this.remoteRemovalOwner()): void {
+    if (this.remoteRemovalOwner() !== expectedOwner) return;
+    this.remoteRemovalOwner.set(null);
+    const opener = this.remoteRemovalOpener;
     this.pendingRemoteRemoval.set(null);
-    this.remoteDialogOpener = null;
-    this.restoreDialogFocus(opener);
+    this.remoteRemovalOpener = null;
+    if (restoreFocus) this.restoreDialogFocus(opener);
   }
 
-  protected async confirmRemoteRemoval(): Promise<void> {
+  protected async confirmRemoteRemoval(expectedOwner = this.remoteRemovalOwner()): Promise<void> {
     const remote = this.pendingRemoteRemoval();
-    if (!remote || this.git.busy()) return;
+    const owner = this.remoteRemovalOwner();
+    if (owner !== expectedOwner || !remote || !owner || !this.ownsRepositoryScope(owner) || this.git.busy()) return;
     this.closeRemoteRemoval();
     await this.git.removeRemote(remote.name);
   }
 
-  protected async submitSubmodule(): Promise<void> {
+  protected async submitSubmodule(expectedOwner = this.submoduleEditorOwner()): Promise<void> {
+    const owner = this.submoduleEditorOwner();
+    if (owner !== expectedOwner || !owner || !this.ownsRepositoryScope(owner) || !this.submoduleDialogOpen() || this.git.busy()) return;
     const url = this.submoduleUrl().trim();
     const path = this.submodulePath().trim();
     if (!url || !path || this.git.busy()) return;
-    if (await this.git.addSubmodule(url, path)) {
+    if (await this.git.addSubmodule(url, path)
+      && this.submoduleEditorOwner() === owner && this.ownsRepositoryScope(owner)) {
       this.closeSubmoduleDialog();
       this.showSubmodulePane();
     }
@@ -6799,9 +6880,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private focusFirstEditableControl(dialog?: ElementRef<HTMLElement>): void {
-    dialog?.nativeElement
-      ?.querySelector<HTMLElement>('input:not([readonly]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
-      ?.focus();
+    const element = dialog?.nativeElement;
+    (element?.querySelector<HTMLElement>('input:not([readonly]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
+      ?? element?.querySelector<HTMLElement>('footer button:not(:disabled)')
+      ?? element?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
   }
 
   private focusConfirmationCancel(dialog?: ElementRef<HTMLElement>): void {
@@ -11644,10 +11726,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = this.pendingTagTarget();
     const name = this.contextTagName().trim();
     const message = this.tagCreationKind() === 'annotated' ? this.tagCreationMessage().trim() : null;
-    if (!target || !this.ownsReferenceEditor(target) || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
+    if (!target || !this.ownsRepositoryScope(target) || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
     if (this.signNewTag() && message) await this.git.manageReference('signed-tag', name, { expectedOid: target.oid, message });
     else await this.git.createTag(name, target.oid, message);
-    if (this.pendingTagTarget() === target && this.ownsReferenceEditor(target) && !this.git.error()) {
+    if (this.pendingTagTarget() === target && this.ownsRepositoryScope(target) && !this.git.error()) {
       this.pendingTagTarget.set(null);
       this.contextTagName.set('');
       this.tagCreationMessage.set('');
@@ -12914,7 +12996,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmBranchUpstream(upstream: string | null = this.branchUpstreamChoice()): Promise<void> {
     const pending = this.pendingBranchUpstream();
-    if (!pending || !this.ownsReferenceEditor(pending) || this.git.busy() || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
+    if (!pending || !this.ownsRepositoryScope(pending) || this.git.busy() || (upstream !== null && !this.remoteUpstreamBranches().some((branch) => branch.name === upstream))) return;
     this.pendingBranchUpstream.set(null);
     await this.git.setBranchUpstream(pending.branch, upstream);
   }

@@ -7,6 +7,61 @@ artifacts, not checked-in or published reports.
 
 ## Source review update — 2026-11-19
 
+### Repository setup scope and packaged worktree navigation
+
+The next local batch binds worktree, submodule and remote setup reviews to the
+repository ID, checkout path and individual opening. Retired rendered controls
+cannot submit a replacement request or overwrite its draft; asynchronous picker
+and operation replies cannot close or navigate a newer review. Captions identify
+the captured checkout, and busy forms retain an enabled dismissal/focus target.
+Native Git and operation receipts remain authoritative; these transient UI
+owners are not native mutation capabilities.
+
+Frozen application inputs passed 139 focused renderer cases plus 33 workspace
+journeys, 265 TypeScript unit tests, graph typechecking, the production build and
+preview guard. This is 172 targeted renderer cases, not a fresh full renderer
+suite. Evidence is under `target/local-review/setup-scope/lease-final`,
+`lease-final-report`, `workspace` and `workspace-report`; the UI input manifest is
+`target/local-review/setup-scope/ui-before.sha256`. Initial size is 1,428,024
+bytes (21,976 below the unchanged hard limit); root styles remain 74,680 bytes.
+The 900 kB initial-bundle warning remains. No budget or dependency was changed.
+
+The native runner adds three actual linked-worktree journeys: canceling an
+occupied-branch review, explicitly opening its owning checkout, and refusing
+navigation after that ownership changes. Both dirty checkouts' files, refs,
+configuration and per-worktree indices are compared, not merely toast text.
+The focused worktree suite passed 21 scenarios and the GitLab suite passed 45
+against the preserved new package under
+`target/local-review/setup-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`, SHA-256
+`dab37ee0c9307dccae7b6596223c35bb9f814af72d6e807192e059bc90fd4467`.
+Reports are under `target/local-review/setup-scope/native/`.
+
+CI run `44614222982` for the preceding `88b5f58` checkpoint failed in the
+partial-discard acceptance observation: diff disappearance could satisfy its
+wait before command feedback arrived. The runner now clicks the visible enabled
+confirmation once and requires the closed confirmation plus the rendered exact
+native refusal before inspecting unchanged disk/index/recovery state. A second
+undo observation likewise no longer accepts an unrelated stage control. No
+mutation retry, timeout extension or native implementation change was added.
+All 101 runner unit tests passed, including independent evaluation of the actual
+read-only observation predicate against pending, unrelated and hidden feedback.
+
+The exact failed CI package, SHA-256
+`8a540f297664949359f52c73a62bc62759d7690760d8cbf99a599c06523bbe21`, passed
+232 native scenarios locally with those stricter observations. Its report is
+`target/local-review/setup-scope/strict-validation/ci-artifact/full-1795127584580992079/report.json`.
+This unchanged-artifact result is local Ubuntu 26.04 evidence, not a passing
+remote Jammy run or distribution matrix. Strict full acceptance of the new
+package also passed all 232 scenarios, with unchanged UI and runner input
+fingerprints. Its report is
+`target/local-review/setup-scope/strict-validation/new-package/full-1795128083121918554/report.json`;
+the packaged executable SHA-256 is
+`48f6cf5e252ede3baf9b9db14017f86c7290113042adf0da28bedcb4dcfa35f7`.
+Neither a release nor system-installed desktop integration is established by
+these extracted-package checks. A separate read-only/no-op renderer diagnostic
+then confirmed that setup dialogs leak ambient commit and palette shortcuts;
+that follow-up is not fixed or qualified by this batch.
+
 The release workflow now generates package and source CycloneDX inventories
 and `SHA256SUMS`, verifies those checksums, and gates publication on the
 reusable exact-package Linux runtime acceptance workflow. The roadmap's older

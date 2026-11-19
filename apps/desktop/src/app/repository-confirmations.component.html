@@ -2,7 +2,7 @@
   @if (remote(); as candidate) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-remote-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
       <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
-      <div class="confirmation-copy"><span>Remove remote</span><h2 id="remove-remote-title">{{ candidate.name }}</h2><p>This removes the remote configuration and its remote-tracking branches. The remote repository itself is not deleted.</p></div>
+      <div class="confirmation-copy"><span>Remove remote</span><h2 id="remove-remote-title">{{ candidate.name }}</h2>@if (remoteRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }<p>This removes the remote configuration and its remote-tracking branches. The remote repository itself is not deleted.</p></div>
       <footer><button type="button" (click)="remoteClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="remoteConfirmed.emit()">Remove Remote</button></footer>
     </section>
   } @else if (sparseAction(); as action) {

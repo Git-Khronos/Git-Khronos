@@ -18,3 +18,5 @@ footer .confirm-action { border-color: #4a8f7c; background: var(--accent); color
 footer .confirm-action.danger { border-color: #a84e67; background: #a84e67; color: white; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.repository-editor-source { overflow-wrap: anywhere; }

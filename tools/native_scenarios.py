@@ -13,6 +13,7 @@ import time
 import uuid
 import zlib
 from native_acceptance import open_ui, run
+from native_ui_conditions import wait_closed_confirmation_refusal
 from native_fork_remote_scenarios import hosted_fork_remote_attachment
 from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
@@ -4271,8 +4272,7 @@ def file_workflows(driver, fixtures, report):
     assert replacement != saved
     capture.write_bytes(replacement)
     driver.click(undo)
-    driver.wait("""return document.querySelector('.error-toast')?.textContent.includes('capture changed')
-        || !!document.querySelector('[aria-label="Stage fixture.txt"]')""")
+    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('capture changed')")
     assert file.read_text() == original, "Toolbar undo applied a replaced recovery capture"
     assert capture.read_bytes() == replacement
     assert driver.script("return document.querySelector('.error-toast')?.textContent || ''").find(
@@ -4295,10 +4295,12 @@ def file_workflows(driver, fixtures, report):
     driver.click_text('[aria-label="Selected line actions"] button', 'Discard')
     driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
     file.write_text("later external native edit\n")
-    driver.click_text('[role="alertdialog"] button', 'Discard selected lines')
-    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('changed') || !document.querySelector('[aria-label=\"Diff viewer\"]')")
+    # A filesystem refresh can retire the diff independently of this command.
+    # Click one painted, enabled control and observe the actual refusal before
+    # inspecting disk. Never replay a discard or accept diff disappearance.
+    driver.click_visible('[role="alertdialog"] button', 'Discard selected lines')
+    wait_closed_confirmation_refusal(driver, 'The file or index changed after this diff was opened.')
     assert file.read_text() == "later external native edit\n", "Partial discard replaced edits made after its confirmation opened"
-    assert driver.script("return !!document.querySelector('.error-toast')?.textContent.includes('changed')")
     assert not fixtures.git(repository, "diff", "--cached", "--name-only")
     assert len(driver.invoke("load_discard_recoveries", repoId=repo_id)) == 1
     report["scenarios"].append("native-ui-partial-discard-refuses-stale-patch")

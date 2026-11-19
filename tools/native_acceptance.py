@@ -1005,7 +1005,7 @@ def main():
     version, expected_package_name = expected_debian_package()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools"), default="smoke")
+    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools", "worktrees"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
                         help="Run /usr/bin/git-khronos after byte verification against the package (CI only)")
@@ -1129,6 +1129,9 @@ def main():
             if args.suite in ("full", "environment"):
                 from native_scenarios import full_toolkit
                 full_toolkit(driver, fixtures, repository, repo_id, report)
+            if args.suite in ("full", "environment", "worktrees"):
+                from native_worktree_scenarios import occupied_branch_navigation
+                occupied_branch_navigation(driver, fixtures, report)
             if outside is not None:
                 assert (outside / ".git/index").read_bytes() == outside_index
                 assert fixtures.git(outside, "rev-parse", "HEAD") == outside_head

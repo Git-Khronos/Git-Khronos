@@ -2079,103 +2079,110 @@
     </div>
   }
   @if (worktreeDialogOpen()) {
-    <div class="repository-backdrop" (click)="closeWorktreeDialog()">
+    @let worktreeOwner = worktreeEditorOwner();
+    <div class="repository-backdrop" (click)="closeWorktreeDialog(true, worktreeOwner)">
       <section #worktreeDialogElement class="repository-dialog worktree-dialog" role="dialog" aria-modal="true" aria-labelledby="worktree-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <header class="repository-dialog-header">
           <span class="worktree-dialog-mark"><gc-icon name="folder-git" [size]="17" /></span>
           <div><strong id="worktree-dialog-title">Create Worktree</strong><small>Check out a branch in another working directory</small></div>
-          <button type="button" aria-label="Close worktree setup" (click)="closeWorktreeDialog()"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close worktree setup" (click)="closeWorktreeDialog(true, worktreeOwner)"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitWorktree()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitWorktree(worktreeOwner)">
           <div class="repository-form-body">
+            <p class="form-help repository-editor-source">Checkout: <code>{{ worktreeOwner?.repositoryPath }}</code></p>
             <p class="form-help">{{ worktreeCreationSource() ? 'Create a working directory for ' + worktreeCreationSource() + '.' : 'Choose a new branch, its starting point, and a folder.' }}</p>
             @if (worktreeCreationSource()) {
-              <label>Branch<input name="worktreeBranch" readonly [gcTextValue]="worktreeBranch()" /></label>
+              <label>Branch<input [disabled]="git.busy()" name="worktreeBranch" readonly [gcTextValue]="worktreeBranch()" /></label>
             } @else {
               <div class="worktree-dialog-fields">
-                <label>Branch name<input name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="worktreeBranch()" (gcTextValueChange)="worktreeBranch.set($event)" /></label>
-                <label>Base branch<select name="worktreeBase" [value]="worktreeBase()" (change)="worktreeBase.set($any($event.target).value)">
+                <label>Branch name<input [disabled]="git.busy()" name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="worktreeBranch()" (gcTextValueChange)="worktreeOwner === worktreeEditorOwner() && worktreeBranch.set($event)" /></label>
+                <label>Base branch<select [disabled]="git.busy()" name="worktreeBase" [value]="worktreeBase()" (change)="worktreeOwner === worktreeEditorOwner() && worktreeBase.set($any($event.target).value)">
                   @if (!git.repository()?.status?.branch) { <option value="HEAD" [selected]="worktreeBase() === 'HEAD'">HEAD</option> }
                   @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name" [selected]="worktreeBase() === branch.name">{{ branch.name }}</option> } }
                 </select></label>
               </div>
-              <label>After creating<select name="worktreeHandoff" [value]="worktreeHandoff()" (change)="worktreeHandoff.set($any($event.target).value)">
+              <label>After creating<select [disabled]="git.busy()" name="worktreeHandoff" [value]="worktreeHandoff()" (change)="worktreeOwner === worktreeEditorOwner() && worktreeHandoff.set($any($event.target).value)">
                 <option value="none">Open the worktree</option>
                 <option value="terminal">Open the worktree and a terminal</option>
               </select><small class="worktree-field-note">The terminal starts in the new worktree.</small></label>
             }
-            <label>Worktree location<div class="path-picker"><input name="worktreeParent" readonly [gcTextValue]="worktreeParent()" /><button type="button" (click)="chooseWorktreeParent()">Browse</button></div></label>
-            <label>Folder name<input name="worktreeFolder" autocomplete="off" [gcTextValue]="worktreeFolder()" (gcTextValueChange)="worktreeFolder.set($event)" /></label>
+            <label>Worktree location<div class="path-picker"><input [disabled]="git.busy()" name="worktreeParent" readonly [gcTextValue]="worktreeParent()" /><button type="button" [disabled]="git.busy()" (click)="chooseWorktreeParent(worktreeOwner)">Browse</button></div></label>
+            <label>Folder name<input [disabled]="git.busy()" name="worktreeFolder" autocomplete="off" [gcTextValue]="worktreeFolder()" (gcTextValueChange)="worktreeOwner === worktreeEditorOwner() && worktreeFolder.set($event)" /></label>
           </div>
-          <footer><button type="button" (click)="closeWorktreeDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!worktreeBranch().trim() || (!worktreeCreationSource() && !worktreeBase()) || !worktreeParent() || !worktreeFolder().trim() || git.busy()">Create worktree</button></footer>
+          <footer><button type="button" (click)="closeWorktreeDialog(true, worktreeOwner)">Cancel</button><button class="primary" type="submit" [disabled]="!worktreeBranch().trim() || (!worktreeCreationSource() && !worktreeBase()) || !worktreeParent() || !worktreeFolder().trim() || git.busy()">Create worktree</button></footer>
         </form>
       </section>
     </div>
   }
   @if (submoduleDialogOpen()) {
-    <div class="repository-backdrop" (click)="closeSubmoduleDialog()">
+    @let submoduleOwner = submoduleEditorOwner();
+    <div class="repository-backdrop" (click)="closeSubmoduleDialog(true, submoduleOwner)">
       <section #submoduleDialogElement class="repository-dialog submodule-dialog" role="dialog" aria-modal="true" aria-labelledby="submodule-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <header class="repository-dialog-header">
           <span class="submodule-dialog-mark"><gc-icon name="repo" [size]="17" /></span>
           <div><strong id="submodule-dialog-title">Add Submodule</strong><small>Reference another repository at a fixed commit</small></div>
-          <button type="button" aria-label="Close add submodule dialog" (click)="closeSubmoduleDialog()"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close add submodule dialog" (click)="closeSubmoduleDialog(true, submoduleOwner)"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitSubmodule()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitSubmodule(submoduleOwner)">
           <div class="repository-form-body">
-            <label>Remote URL<input name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="submodule-url-help" [gcTextValue]="submoduleUrl()" (gcTextValueChange)="submoduleUrl.set($event)" /></label>
+            <p class="form-help repository-editor-source">Checkout: <code>{{ submoduleOwner?.repositoryPath }}</code></p>
+            <label>Remote URL<input [disabled]="git.busy()" name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="submodule-url-help" [gcTextValue]="submoduleUrl()" (gcTextValueChange)="submoduleOwner === submoduleEditorOwner() && submoduleUrl.set($event)" /></label>
             <p id="submodule-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
-            <label>Name / Path<input name="submodulePath" autocomplete="off" placeholder="vendor/library" aria-describedby="submodule-path-help" [gcTextValue]="submodulePath()" (gcTextValueChange)="submodulePath.set($event)" /></label>
+            <label>Name / Path<input [disabled]="git.busy()" name="submodulePath" autocomplete="off" placeholder="vendor/library" aria-describedby="submodule-path-help" [gcTextValue]="submodulePath()" (gcTextValueChange)="submoduleOwner === submoduleEditorOwner() && submodulePath.set($event)" /></label>
             <p id="submodule-path-help" class="form-help">Folder inside the current repository, such as vendor/library.</p>
           </div>
-          <footer><button type="button" (click)="closeSubmoduleDialog()">Cancel</button><button class="primary add-submodule" type="submit" [disabled]="!submoduleUrl().trim() || !submodulePath().trim() || git.busy()">Add Submodule</button></footer>
+          <footer><button type="button" (click)="closeSubmoduleDialog(true, submoduleOwner)">Cancel</button><button class="primary add-submodule" type="submit" [disabled]="!submoduleUrl().trim() || !submodulePath().trim() || git.busy()">Add Submodule</button></footer>
         </form>
       </section>
     </div>
   }
   @if (remoteDialog(); as mode) {
-    <div class="repository-backdrop" (click)="closeRemoteDialog()">
+    @let remoteOwner = remoteEditorOwner();
+    <div class="repository-backdrop" (click)="closeRemoteDialog(true, remoteOwner)">
       <section #remoteDialogElement class="repository-dialog remote-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <header class="repository-dialog-header">
           <span class="remote-dialog-mark"><gc-icon name="remote" [size]="17" /></span>
           <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another Git repository' : 'Fetch and push destinations for ' + remoteDialogOriginalName() }}</small></div>
-          <button type="button" aria-label="Close remote dialog" (click)="closeRemoteDialog()"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close remote dialog" (click)="closeRemoteDialog(true, remoteOwner)"><gc-icon name="x" [size]="14" /></button>
         </header>
-        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitRemote()">
+        <form novalidate class="repository-form" (submit)="$event.preventDefault(); submitRemote(remoteOwner)">
           <div class="repository-form-body">
+            <p class="form-help repository-editor-source">Checkout: <code>{{ remoteOwner?.repositoryPath }}</code></p>
             <p class="form-help">Save connection settings here. Fetch and push run separately.</p>
-            <label>Name<input name="remoteName" autocomplete="off" placeholder="origin" [attr.aria-describedby]="remoteNameTaken() ? 'remote-name-error' : mode === 'edit' ? 'remote-name-help' : null" [attr.aria-invalid]="remoteNameTaken() || null" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteName.set($event)" /></label>
+            <label>Name<input [disabled]="git.busy()" name="remoteName" autocomplete="off" placeholder="origin" [attr.aria-describedby]="remoteNameTaken() ? 'remote-name-error' : mode === 'edit' ? 'remote-name-help' : null" [attr.aria-invalid]="remoteNameTaken() || null" [gcTextValue]="remoteName()" (gcTextValueChange)="remoteOwner === remoteEditorOwner() && remoteName.set($event)" /></label>
             @if (remoteNameTaken()) {
               <p id="remote-name-error" class="form-help field-error" role="alert">Another remote already uses this name.</p>
             } @else if (mode === 'edit') {
               <p id="remote-name-help" class="form-help">Renaming also updates remote-tracking branches and the branches that track them.</p>
             }
-            <label>Fetch URL<input name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteUrl.set($event)" /></label>
+            <label>Fetch URL<input [disabled]="git.busy()" name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gcTextValue]="remoteUrl()" (gcTextValueChange)="remoteOwner === remoteEditorOwner() && remoteUrl.set($event)" /></label>
             <p id="remote-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
             <details class="form-disclosure">
               <summary>Advanced: separate push destination</summary>
               <div class="form-disclosure-body">
                 @if (mode === 'edit') { <p class="form-help remote-push-note">Push currently uses {{ editedRemotePushUrl() }}.</p> }
-                <label>Push URL<input name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" aria-describedby="remote-push-help" [gcTextValue]="remotePushUrl()" (gcTextValueChange)="remotePushUrl.set($event)" /></label>
+                <label>Push URL<input [disabled]="git.busy()" name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" aria-describedby="remote-push-help" [gcTextValue]="remotePushUrl()" (gcTextValueChange)="remoteOwner === remoteEditorOwner() && remotePushUrl.set($event)" /></label>
                 <p id="remote-push-help" class="form-help">Leave empty to use the fetch URL. This changes where branches and tags are sent, not fetched.</p>
               </div>
             </details>
-            <label>Location icon<select name="remoteIcon" aria-label="Remote location icon" [value]="remoteDialogIcon()" (change)="remoteDialogIcon.set($any($event.target).value)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value" [selected]="remoteDialogIcon() === option.value">{{ option.label }}</option> }</select></label>
+            <label>Location icon<select [disabled]="git.busy()" name="remoteIcon" aria-label="Remote location icon" [value]="remoteDialogIcon()" (change)="remoteOwner === remoteEditorOwner() && remoteDialogIcon.set($any($event.target).value)">@for (option of remoteIconOptions; track option.value) { <option [value]="option.value" [selected]="remoteDialogIcon() === option.value">{{ option.label }}</option> }</select></label>
           </div>
           <footer>
-            @if (mode === 'edit') { <button class="remote-remove" type="button" (click)="requestRemoteRemoval()">Remove Remote</button> }
-            <span></span><button type="button" (click)="closeRemoteDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!remoteName().trim() || !remoteUrl().trim() || remoteNameTaken() || git.busy()">{{ mode === 'add' ? 'Add Remote' : 'Save Remote' }}</button>
+            @if (mode === 'edit') { <button class="remote-remove" type="button" [disabled]="git.busy()" (click)="requestRemoteRemoval(remoteOwner)">Remove Remote</button> }
+            <span></span><button type="button" (click)="closeRemoteDialog(true, remoteOwner)">Cancel</button><button class="primary" type="submit" [disabled]="!remoteName().trim() || !remoteUrl().trim() || remoteNameTaken() || git.busy()">{{ mode === 'add' ? 'Add Remote' : 'Save Remote' }}</button>
           </footer>
         </form>
       </section>
     </div>
   }
   @if (pendingRemoteRemoval() || pendingSparseCheckoutAction() || pendingWorktreeAction() || pendingForcePush() || pendingPublishBranch()) {
+    @let removalOwner = remoteRemovalOwner();
     @defer (on immediate) {
-      <gc-repository-confirmations [remote]="pendingRemoteRemoval()"
+      <gc-repository-confirmations [remote]="pendingRemoteRemoval()" [remoteRepositoryPath]="removalOwner?.repositoryPath ?? null"
         [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseCheckoutPathCount()"
         [forcePush]="pendingForcePush()" [worktree]="pendingWorktreeAction()" [forceWorktreeRemoval]="forceWorktreeRemoval()"
         [publishBranch]="pendingPublishBranch()?.branch ?? null" [publishRemote]="publishRemote()"
-        (remoteClosed)="closeRemoteRemoval()" (remoteConfirmed)="confirmRemoteRemoval()"
+        (remoteClosed)="closeRemoteRemoval(true, removalOwner)" (remoteConfirmed)="confirmRemoteRemoval(removalOwner)"
         (sparseClosed)="closeSparseCheckoutConfirmation()" (sparseConfirmed)="confirmSparseCheckoutAction()"
         (worktreeClosed)="closeWorktreeRemoval()" (worktreeConfirmed)="confirmWorktreeRemoval()" (worktreeForceChanged)="forceWorktreeRemoval.set($event)"
         (forcePushClosed)="closeForcePush()" (forcePushConfirmed)="confirmForcePush()"

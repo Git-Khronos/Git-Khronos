@@ -31,6 +31,7 @@ export class RepositoryConfirmationsComponent {
   protected readonly git = inject(GitKhronosService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly remote = input<Remote | null>(null);
+  readonly remoteRepositoryPath = input<string | null>(null);
   readonly sparseAction = input<'set' | 'disable' | null>(null);
   readonly sparsePathCount = input(0);
   readonly forcePush = input<ForcePushReview | null>(null);

@@ -97,6 +97,34 @@ runner, unsatisfied dependency, absent WebDriver, loader failure or scenario
 failure blocks publication; it is not skipped support.
 The build-job checksums cover the same package and inventories later published.
 
+## Focused linked-worktree navigation acceptance
+
+From the repository root, the `worktrees` suite runs the normal packaged smoke
+checks plus three real-UI cases for an occupied local branch:
+
+```sh
+package=$(task --silent package:deb:path)
+pnpm nx exec -p desktop --excludeTaskDependencies -- \
+  python3 "$PWD/tools/native_acceptance.py" --suite worktrees --headless --package "$package"
+```
+
+The same cases are included in `full` and `environment`. They create only owned
+temporary linked checkouts and dirty tracked/untracked files. Cancel must leave
+both checkouts unchanged; explicit navigation must open the registered owner
+without checking out a branch or changing Git data. A real Git ownership change
+after review must be refused, without a fallback checkout. Retained evidence
+includes both checkouts' HEAD/ref/config/index/file hashes and before/after Git
+status, resolving each linked checkout's actual index rather than treating its
+`.git` pointer file as a directory. No personal repository or installed app is
+used, and the default driver still uses one private Xvfb display and session bus.
+
+Read-only completion observations are not mutation retries. In particular,
+partial-discard refusal acceptance waits for the confirmation to close and the
+exact native refusal to render before checking file/index/recovery invariants;
+diff disappearance alone cannot complete that gate. Regression tests evaluate
+that predicate against pending, unrelated and hidden feedback using the already
+required Node runtime. No native write is replayed and no timeout is increased.
+
 ## Prerequisites
 
 - the pinned Node, pnpm, and Rust toolchains;

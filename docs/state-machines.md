@@ -50,6 +50,40 @@ by the root; resolving an old code import does not recreate the old request.
 Coverage: renderer `deferred-graph-actions.spec.ts`, existing
 `context-menu-interactions.spec.ts` and `reference-actions.spec.ts`.
 
+### Source-bound repository setup reviews
+
+Worktree creation (new or existing branch), submodule addition, remote editing
+and remote removal retain independent root-owned repository ID/path and request
+object identities. Submission checks that owner synchronously before dispatch;
+a scope effect alone cannot protect the interval before Angular runs it.
+Changing the repository or changing its path retires only the mismatched review.
+
+Each form captures its rendered owner with `@let` and passes that lease to
+submission, browse and dismissal handlers. Input/change callbacks also compare
+the rendered lease with the current request. Replacing a request before a render
+therefore cannot let an old control submit into, overwrite or dismiss the new
+review. The lease is transient UI intent, not a native Git capability or journal.
+
+Creation completion checks the original request and source before opening a
+worktree, and terminal handoff additionally requires the destination path to be
+active. Late directory choices cannot overwrite a replacement review. Remote
+rename preferences can follow a confirmed rename in the still-active source
+without rewriting replacement editor fields. Native operation/activity ownership
+and confirmed write receipts remain with the service; closing a review does not
+cancel or replay its operation.
+
+Editors and remote-removal confirmation display the captured checkout path.
+Editable and destructive setup controls are disabled during native work, while
+Cancel/Close remain available. Delayed initial focus checks the owning request
+and offers a safe cancel target when inputs are disabled. Remote editing and
+remote-removal confirmation have separate return-focus owners.
+
+Coverage: `repository-setup-scope.spec.ts` exercises pre-effect repository/path
+changes, outgoing rendered controls, valid native payloads, closed reviews,
+replacement drafts, late write receipts, independent focus, and directory
+choices. Existing reference, worktree, workspace and accessibility journeys
+remain part of the local targeted gate.
+
 ### Source-bound tag and upstream editors
 
 `pendingTagTarget` and `pendingBranchUpstream` remain independent root-owned
