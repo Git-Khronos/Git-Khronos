@@ -78,11 +78,23 @@ Cancel/Close remain available. Delayed initial focus checks the owning request
 and offers a safe cancel target when inputs are disabled. Remote editing and
 remote-removal confirmation have separate return-focus owners.
 
+These setup review signals also own keyboard routing before their first render
+or initial focus. Ambient commit, stage/unstage, undo/redo, fetch, navigation,
+terminal and palette shortcuts cannot run behind the review. Modified Enter is
+consumed so it cannot implicitly activate a focused button or submit the form;
+plain Enter, native text editing, the local Tab cycle and Escape remain usable.
+After dismissal the retired DOM does not retain this keyboard ownership.
+
 Coverage: `repository-setup-scope.spec.ts` exercises pre-effect repository/path
 changes, outgoing rendered controls, valid native payloads, closed reviews,
 replacement drafts, late write receipts, independent focus, and directory
 choices. Existing reference, worktree, workspace and accessibility journeys
 remain part of the local targeted gate.
+`setup-dialog-keyboard.spec.ts` additionally covers real control key presses,
+pre-render focus gaps and events from outgoing controls after dismissal. The
+packaged `setup-keyboard` suite checks actual staged/untracked fixture data,
+HEAD, refs, per-worktree index/config bytes and a commit-hook attempt marker;
+it does not replace Git operations with renderer mocks.
 
 ### Source-bound tag and upstream editors
 

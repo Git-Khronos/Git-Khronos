@@ -5,6 +5,47 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Local setup keyboard isolation — 2026-11-20
+
+The root now blocks ambient shortcuts while worktree, submodule, remote editing
+or remote-removal reviews own keyboard intent. Modified Enter cannot implicitly
+submit or activate a focused button; plain Enter, native text editing, local Tab
+cycling and Escape remain available. Retired DOM cannot retain the guard after
+dismissal. This is a seven-line root routing change, not a global shortcut rewrite.
+
+The initial renderer probe found ten failing focused-control cases. A stronger
+pre-render probe using an HTMLElement event target found five additional
+failures; the earlier document-target probe was insufficient because downstream
+target handling expects an element. The final gate passed all 126 selected
+renderer cases, including adjacent reference, worktree and setup ownership
+coverage, with zero retries. All 265 TypeScript unit tests, graph typechecking,
+the production build/preview guard and 103 runner unit tests passed. Source
+fingerprints and renderer evidence are under `target/local-review/setup-keyboard/`.
+Initial production bytes are 1,428,199 (21,801 below the unchanged hard limit).
+The initial-bundle warning remains; no budget, dependency or Rust source changed.
+
+The preserved package is
+`target/local-review/setup-keyboard/artifacts/Git-Khronos_0.1.6_amd64.deb`, SHA-256
+`47948584cfe3c150efcea4e1cdb87b46960d2150cbfaeab286139bcdb878b5e2`;
+packaged executable SHA-256
+`c022687252c4b3c126693ccc7d229a09d7f2946d7901d35d99ebb5a7e2c92a65`.
+The new focused `setup-keyboard` suite passed all 21 scenarios in
+`target/local-review/setup-keyboard/native-green/setup-keyboard-1795131695351675889/report.json`.
+The same final checks on the previous immutable package recorded a real commit
+attempt (refused by the owned fixture hook) and a background command palette:
+`target/local-review/setup-keyboard/native-red-evidence/setup-keyboard-1795131674804864416/report.json`.
+An earlier fixture run stopped at an ambiguous input selector before sending
+shortcuts; it is not evidence of a product failure. Neither renderer mocks nor
+the hook marker alone establish data preservation: the green native run also
+compares HEAD, refs, index/config bytes and staged/untracked file contents.
+
+This bounded follow-up has not rerun the entire renderer or full native suite;
+the preceding 232-scenario full-package result below belongs to its older
+artifact. No release or system installation was performed for this follow-up.
+Separately, the user confirmed that restarting WSL restored both CLI and pinned
+launches. The new WSLg log reports `use_gfxredir = 1`; later Mesa/EGL warnings do
+not by themselves identify the selected renderer or prove an application failure.
+
 ## Source review update — 2026-11-19
 
 ### Repository setup scope and packaged worktree navigation

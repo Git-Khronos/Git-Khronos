@@ -4646,6 +4646,13 @@ export class AppComponent implements OnInit, OnDestroy {
       this.workingTreeOptionsOpen.set(false);
       return;
     }
+    // These reviews own keyboard intent even before their first render/focus.
+    // Keep native text editing, plain Enter and the local Tab trap intact, but
+    // never let a setup review dispatch ambient Git or navigation commands.
+    if (this.worktreeDialogOpen() || this.submoduleDialogOpen() || this.remoteDialog() || this.pendingRemoteRemoval()) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') event.preventDefault();
+      return;
+    }
     const command = event.ctrlKey || event.metaKey;
     const key = event.key.toLocaleLowerCase();
     const target = event.target as HTMLElement | null;

@@ -5,6 +5,26 @@ application extracted from the Debian package. It does not install the package, 
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
 
+## Focused setup keyboard check
+
+Use the existing runner with a reviewed package to check that setup inputs do
+not dispatch ambient commit/stage or palette shortcuts:
+
+```sh
+pnpm nx exec -p desktop --excludeTaskDependencies -- python3 "$PWD/tools/native_acceptance.py" \
+  --suite setup-keyboard --headless --package "$PWD/target/release/bundle/deb/Git-Khronos_0.1.6_amd64.deb"
+```
+
+This includes the ordinary smoke journeys plus worktree, submodule and remote
+setup checks. A disposable repository has both staged and untracked contents
+and a background commit draft. A local refusing hook records any attempted
+commit; no personal repository or hook is used. Each keyboard chord is sent
+once through WebDriver actions. Read-only rendering/readiness observations
+precede independent disk/index/config/ref comparisons; shortcuts are never
+replayed after an uncertain reply. The full/environment suites include these
+checks too. Renderer coverage separately exercises editing, Tab, Escape,
+replacement DOM and the pre-render focus gap.
+
 ## Linux release qualification
 
 The current release qualification target is Ubuntu 22.04 (Jammy), 24.04 (Noble)
