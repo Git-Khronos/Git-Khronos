@@ -2215,13 +2215,13 @@ export class GitKhronosService {
     );
   }
 
-  async stashSelected(options: StashOptions): Promise<void> {
-    await this.mutate('stash_selected', 'Saving selected changes…', 'Selected changes stashed', { options });
+  async stashSelected(options: StashOptions): Promise<boolean> {
+    return await this.mutate('stash_selected', 'Saving selected changes…', 'Selected changes stashed', { options }) === 'success';
   }
 
-  async applyStashOptions(reference: string, expectedOid: string, restoreIndex: boolean): Promise<void> {
-    await this.mutate('apply_stash_options', `Restoring ${reference}…`, `${reference} restored; stash kept`,
-      { reference, expectedOid, restoreIndex });
+  async applyStashOptions(reference: string, expectedOid: string, restoreIndex: boolean): Promise<boolean> {
+    return await this.mutate('apply_stash_options', `Restoring ${reference}…`, `${reference} restored; stash kept`,
+      { reference, expectedOid, restoreIndex }) === 'success';
   }
 
   async applyStashedFile(stash: StashEntry, file: CommitFile, repositoryId: string): Promise<boolean> {
@@ -2232,14 +2232,14 @@ export class GitKhronosService {
       }) === 'success';
   }
 
-  async branchFromStash(reference: string, expectedOid: string, name: string): Promise<void> {
-    await this.mutate('branch_from_stash', `Restoring ${reference} on ${name}…`,
-      `Created ${name}; original stash kept`, { reference, expectedOid, name });
+  async branchFromStash(reference: string, expectedOid: string, name: string): Promise<boolean> {
+    return await this.mutate('branch_from_stash', `Restoring ${reference} on ${name}…`,
+      `Created ${name}; original stash kept`, { reference, expectedOid, name }) === 'success';
   }
 
-  async stashCheckout(name: string, expectedHead: string, expectedTarget: string, message: string): Promise<void> {
-    await this.mutate('stash_checkout', `Saving changes before checkout of ${name}…`,
-      `Checked out ${name}; previous changes saved in stash`, { name, expectedHead, expectedTarget, message });
+  async stashCheckout(name: string, expectedHead: string, expectedTarget: string, message: string): Promise<boolean> {
+    return await this.mutate('stash_checkout', `Saving changes before checkout of ${name}…`,
+      `Checked out ${name}; previous changes saved in stash`, { name, expectedHead, expectedTarget, message }) === 'success';
   }
 
   async popStash(stash: StashEntry | undefined, repositoryId: string): Promise<boolean> {

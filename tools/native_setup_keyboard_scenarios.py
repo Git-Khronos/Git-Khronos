@@ -156,3 +156,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
     assert not marker.exists()
     assert driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value') == draft
     report['scenarios'].append('native-context-branch-rename-roundtrip-preserves-index-config-and-draft')
+
+    from native_stash_review_scenarios import stash_review_workflows
+    stash_review_workflows(driver, fixtures, report)

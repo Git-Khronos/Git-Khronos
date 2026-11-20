@@ -865,6 +865,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commitDescription = signal('');
   protected readonly stashMessage = signal('');
   protected readonly stashDialog = signal<StashDialogRequest | null>(null);
+  protected readonly ownsStashDialog = (request: StashDialogRequest): boolean =>
+    this.stashDialog() === request && this.ownsRepositoryScope(request);
+
+  protected closeStashDialog(request: StashDialogRequest, restoreFocus = true): void {
+    if (this.stashDialog() !== request) return;
+    this.stashDialog.set(null);
+    if (restoreFocus) queueMicrotask(() => {
+      const opener = request.returnFocus;
+      if (!this.stashDialog() && this.ownsRepositoryScope(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+    });
+  }
   protected readonly coAuthors = signal<CoAuthor[]>([]);
   protected readonly coAuthorPickerOpen = signal(false);
   protected readonly coAuthorName = signal('');
@@ -1150,6 +1161,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const branchReview = this.pendingBranchAction();
     const rename = this.pendingBranchRename();
     const reference = this.referenceAction();
+    const stash = this.stashDialog();
     const publish = this.pendingPublishBranch();
     const force = this.pendingForcePush();
     const lfs = this.lfsPruneReview();
@@ -1159,6 +1171,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
     if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
+    if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
@@ -1224,8 +1237,9 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected handleReferenceActionLoaderKey(event: KeyboardEvent, request: ReferenceActionRequest | null): void {
-    if (this.referenceAction() !== request || (request && !this.ownsReferenceAction(request))) return;
+  protected handleReferenceActionLoaderKey(event: KeyboardEvent, request: ReferenceActionRequest | null, stash: StashDialogRequest | null): void {
+    if (this.referenceAction() !== request || (request && !this.ownsReferenceAction(request))
+      || this.stashDialog() !== stash || (stash && !this.ownsStashDialog(stash))) return;
     this.handleReferenceLoaderKey(event, 'action');
   }
   protected readonly signNewTag = signal(false);
@@ -6697,9 +6711,10 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeDeferredGitAction(request = this.referenceAction()): void {
-    if (this.referenceAction() !== request) return;
+  protected closeDeferredGitAction(request = this.referenceAction(), stash = this.stashDialog()): void {
+    if (this.referenceAction() !== request || this.stashDialog() !== stash) return;
     if (request) { this.closeReferenceAction(request); return; }
+    if (stash) { this.closeStashDialog(stash); return; }
     const opener = (this.referenceAction() ?? this.fetchRequest() ?? this.worktreeMoveRequest() ?? this.stashDialog())?.returnFocus;
     this.referenceAction.set(null);
     this.fetchRequest.set(null);
@@ -12136,7 +12151,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.close('stash');
     this.workingTreeOptionsOpen.set(false);
     this.git.error.set(null);
-    this.stashDialog.set({ action, repositoryId: repository.id, stash, branch,
+    this.stashDialog.set({ action, repositoryId: repository.id, repositoryPath: repository.path, stash, branch,
       headOid: repository.headOid ?? undefined, message: this.stashMessage(), returnFocus });
   }
 
@@ -12518,13 +12533,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private openStashFileDialog(file: CommitFile, oid: string, repositoryId: string, returnFocus: HTMLElement | null): void {
     if (this.git.busy() || !this.git.requireRecoveryRepository(repositoryId)) return;
+    const repository = this.git.repository();
+    if (!repository || repository.id !== repositoryId) return;
     const stash = this.selectedStash();
     if (!stash || stash.oid !== oid || this.git.commitDetails()?.oid !== oid || !this.git.inspectedStashReference()) {
       this.git.error.set('The selected stash changed. Refresh and review the file again.');
       return;
     }
     this.git.error.set(null);
-    this.stashDialog.set({ action: 'apply-file', repositoryId, stash, file, returnFocus });
+    this.stashDialog.set({ action: 'apply-file', repositoryId, repositoryPath: repository.path, stash, file, returnFocus });
   }
 
   private async inspectContextCommitFile(): Promise<boolean> {

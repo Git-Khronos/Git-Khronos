@@ -974,6 +974,16 @@ rename-back must change only the reviewed branch reference, preserve the index,
 config and dirty files, and leave the commit-attempt hook marker absent. The
 palette dialog must display its checkout and initially focus the name field.
 
+The setup-keyboard suite also runs the five advanced stash review entry points
+in an owned repository. Saving must retain distinct staged, unstaged and
+untracked contents in the actual stash parents while leaving HEAD unchanged.
+Index-restoring apply must reproduce the original index tree and working bytes;
+selected-file apply must leave index bytes and the stash unchanged and exclude
+the other saved file. Branch-from-stash must preserve the original stash while
+restoring its state, and stash-before-switch must retain both old and newly
+saved work. The oracle also checks configuration, HEAD and a refusing commit-hook
+marker. Test-only owned-file resets separate cases; no app action is replayed.
+
 The remote-review suite additionally exercises all six tag/remote-reference
 review actions through their actual UI. An owned annotated tag is pushed,
 renamed locally and remotely after a fresh exact-object check, deleted remotely,

@@ -126,3 +126,14 @@ test('late remote-tag read cannot qualify a replacement reference review', async
   await expect(dialog.getByRole('button', { name: 'Delete remote reference', exact: true })).toBeDisabled();
   await expect(dialog).toContainText('Check the remote tag before confirming deletion.');
 });
+
+test('an outgoing reference name field cannot leave text in a replacement review', async ({ page }) => {
+  const dialog = await open(page, 'rename-tag');
+  await dialog.getByRole('textbox', { name: 'New name' }).fill('v0.1.0');
+  await page.evaluate(() => {
+    const field = document.querySelector<HTMLInputElement>('#reference-new-name')!;
+    (window as any).__refScope.open('rename-tag');
+    field.value = 'owned-outgoing-text'; field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(dialog.getByRole('textbox', { name: 'New name' })).toHaveValue('v0.1.0');
+});

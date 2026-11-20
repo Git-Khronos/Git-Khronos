@@ -29,7 +29,7 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (request(); as target) {
+    @for (target of reviews(); track target) {
       <div class="backdrop" (click)="close(target)">
         <section #dialog role="alertdialog" aria-modal="true" aria-labelledby="reference-action-title"
           aria-describedby="reference-action-description" (click)="$event.stopPropagation()" (keydown)="handleKey($event, target)">
@@ -118,6 +118,8 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
 export class ReferenceActionDialogComponent {
   readonly git = inject(GitKhronosService);
   readonly request = input<ReferenceActionRequest | null>(null);
+  // Form-control instances belong to a review, not merely to this loaded chunk.
+  readonly reviews = computed(() => { const request = this.request(); return request ? [request] : []; });
   readonly ownsRequest = input.required<(request: ReferenceActionRequest) => boolean>();
   readonly closed = output<ReferenceActionRequest>();
   readonly renamed = output<ReferenceRenamed>();

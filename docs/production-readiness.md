@@ -5,6 +5,62 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Advanced stash scope and keyed review forms — 2026-11-20
+
+The new stash renderer probe reproduced seven failures against the previous
+source: five same-ID/path replacements dispatched a stale stash action, and
+outgoing confirm/cancel consumed a replacement review. Ten controls passed in
+that same run, including all five valid actions; evidence is retained at
+`target/local-review/stash-scope/renderer-red/`.
+
+Advanced save, apply-with-index, selected-file apply, branch-from-stash and
+stash-before-switch now retain source ID/path and root-owned request identity.
+Loaded and loading/error controls share that lease. Draft controls/payloads stay
+frozen during native work, modifier shortcuts cannot escape into the commit
+draft, and actual mutation outcomes govern dismissal even if another action
+clears the global error during recovery inspection. Native stash/head/target
+leases and Git semantics are unchanged.
+
+A later 71-case probe passed 70 cases but exposed another real UI-state defect:
+ignoring an obsolete `ngModelChange` protects signals but can leave its internal
+control text visible when the new model's reset value is unchanged. A separate
+reference-name probe reproduced the same problem. Both components now key their
+form view by request identity. Evidence is retained in `renderer-final/` and
+`reference-field-red/`; neither failed attempt is labeled qualified.
+Final source passed all 72 selected renderer cases at
+`target/local-review/stash-scope/renderer-final-keyed/`, all 265 TypeScript tests,
+graph typechecking, production build/preview guard and 107 runner tests.
+No contracts, dependencies, workflow, version or budgets changed; the initial
+size warning remains.
+
+Preserved package:
+`target/local-review/stash-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `ddbc37c18739efd154f95cf49fb62fdbafa52ccc60bf9d25bbded5b1ea821409`;
+executable SHA-256
+`67e98f4678ab830096fd94c208fbb214c04d9b875b0cc70dfc1e144579a898f2`.
+It passed all 30 focused setup-keyboard scenarios at
+`target/local-review/stash-scope/native/setup-keyboard-1795150993917232269/report.json`,
+including real UI save/index restore/file apply/branch/switch and independent
+checks of exact stash parents, index trees, working bytes, retained stash,
+unchanged HEAD/config and absent commit-attempt marker.
+Full inherited-environment qualification passed all 258 scenarios at
+`target/local-review/stash-scope/native/environment-1795151056653895494/report.json`,
+identifying the same package/executable hashes. The full suite contains the 30
+focused cases; these are not 288 unique scenarios. Runtime/runner inputs still
+match `target/local-review/stash-scope/inputs.sha256`. This is local Ubuntu
+26.04 extracted-package evidence, not installed or cross-platform proof.
+
+Two earlier native helpers stopped after 25 and 26 scenarios, before completing
+these new UI gates (`setup-keyboard-1795150767818213115` and
+`setup-keyboard-1795150896209625098`). The first did not open the review after a
+descendant label click; the final helper activates its parent menu button and
+records a trusted click. The next generic WIP-row center landed on its nested
+stash-message input, and an ambiguous Commit summary label also matched the
+non-input inspector section. The final helper uses the actual Working Directory
+button and unique `#commit-summary` input with read-only readiness. Compiled
+inputs did not change during these Python-only corrections. No click replay,
+application repair, timeout increase, system installation or release occurred.
+
 ## Deferred-menu branding selector and CI checkpoint — 2026-11-20
 
 CI run [44667069442](https://github.com/Git-Khronos/Git-Khronos/actions/runs/44667069442)

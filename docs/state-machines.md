@@ -105,6 +105,32 @@ reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/
 working-byte checks and a commit-attempt marker.
 
+### Source-bound advanced stash reviews and form lifetimes
+
+Advanced stash save, index-restoring apply, selected-file apply, branch-from-stash
+and stash-before-switch requests retain checkout ID/path and their original
+immutable stash/head/target metadata. Root ownership is consulted synchronously
+by the deferred child, including the interval before Angular updates its inputs.
+Scope changes retire the review without focusing another checkout. Captured
+confirm/cancel, draft-change and shared loading/error escapes cannot consume a
+replacement stash review. Native work freezes its option controls and payload;
+its actual mutation result, not a subsequently cleared global error, determines
+successful dismissal. Retiring UI intent does not cancel or lose native receipts.
+
+Each stash and tag/reference request also owns its form-control instances. Their
+loaded components key the rendered view by request identity. Ignoring an obsolete
+`ngModelChange` event protects signal state but is not sufficient to reset the
+DOM: an unchanged model reset value can leave the old control's internal value
+visible. Replacing the keyed view prevents that stale text from carrying into a
+new review while preserving normal edits throughout one request's lifetime.
+
+Coverage: `stash-review-scope.spec.ts`, stash option/file/action/delete/preview
+journeys, and the outgoing-field regression in `reference-action-scope.spec.ts`.
+Packaged stash review acceptance verifies real save/index restore/file apply/
+branch/switch through their UI against independent index trees, exact saved Git
+objects and working bytes. Fixture-only resets separate restoration cases; they
+are not automatic application repair or write retries.
+
 ### Source-bound tag and remote-reference actions
 
 Tag push/deletion/rename and remote-branch deletion/rename capture the original
