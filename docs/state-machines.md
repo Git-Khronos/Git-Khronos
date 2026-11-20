@@ -30,6 +30,23 @@ write receipts just because their panel closed. Unknown outcomes require
 inspection and fresh review, not automatic replay. Never record credential
 values, native capability tokens, or user draft contents in transition logs.
 
+## Selected Git process context
+
+The UI-selected checkout remains authoritative when spawning Git or its owned
+terminal/file-tool/hosting children. The shared native environment boundary
+removes inherited repository/index selectors, pathspec reinterpretation flags,
+and legacy `GIT_CONFIG`, which can redirect config queries without redirecting
+ordinary Git commands. Explicit internal alternate indexes are applied after
+sanitization. System/global configuration and command-count policy remain user
+authority, not application-owned defaults. This is process-context isolation,
+not a lock against concurrent external configuration edits.
+
+Coverage: `git_environment_context.rs` uses isolated child processes to verify
+selected identity reads, actual commit author, local identity writes and native
+push-review evidence while preserving unrelated config bytes and valid policy.
+Packaged inherited-environment acceptance independently checks the selected
+identity and the outside fixture's config, index, HEAD and working bytes.
+
 ## Implemented transition ownership
 
 ### Source-bound branch, sparse-checkout and worktree-removal reviews

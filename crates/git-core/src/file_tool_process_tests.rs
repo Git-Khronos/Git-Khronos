@@ -51,7 +51,7 @@ fn wait_file(path: &Path) {
 fn file_tool_process_preserves_literal_argv_cwd_and_user_config_but_clears_repository_and_prompt_bridges()
  {
     let f = Fixture::new();
-    let mut command = f.command("import json,os,pathlib,sys\npathlib.Path('record.json').write_text(json.dumps({'args':sys.argv[1:],'cwd':os.getcwd(),'selectors':{key:os.getenv(key) for key in ['GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE','GIT_LITERAL_PATHSPECS','GIT_GLOB_PATHSPECS','GIT_NOGLOB_PATHSPECS','GIT_ICASE_PATHSPECS']},'bridge':{key:os.getenv(key) for key in ['GIT_ASKPASS','SSH_ASKPASS','SSH_ASKPASS_REQUIRE','GIT_KHRONOS_ASKPASS_TOKEN','GIT_KHRONOS_ASKPASS_EXTRA']},'config':os.getenv('GIT_CONFIG_GLOBAL')}))\n");
+    let mut command = f.command("import json,os,pathlib,sys\npathlib.Path('record.json').write_text(json.dumps({'args':sys.argv[1:],'cwd':os.getcwd(),'selectors':{key:os.getenv(key) for key in ['GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE','GIT_CONFIG','GIT_LITERAL_PATHSPECS','GIT_GLOB_PATHSPECS','GIT_NOGLOB_PATHSPECS','GIT_ICASE_PATHSPECS']},'bridge':{key:os.getenv(key) for key in ['GIT_ASKPASS','SSH_ASKPASS','SSH_ASKPASS_REQUIRE','GIT_KHRONOS_ASKPASS_TOKEN','GIT_KHRONOS_ASKPASS_EXTRA']},'config':os.getenv('GIT_CONFIG_GLOBAL')}))\n");
     let args = [
         "",
         "literal 'é'",

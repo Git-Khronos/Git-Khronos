@@ -968,11 +968,13 @@ A separate held read must return the native timeout before a 20-second fixture
 fallback releases the gate, with the recorded owned Git PID already reaped.
 
 `pnpm nx run desktop:native-environment` runs the full native suite with inherited
-repository-routing and pathspec overrides pointing at another owned fixture.
+repository-routing, legacy `GIT_CONFIG`, and pathspec overrides pointing at
+another owned fixture.
 The independent Git oracle keeps its clean environment; only the application
-process and driver inherit the overrides. The outside fixture's HEAD, index, and
-working contents must remain unchanged. Conflicting outside attributes expose
-cross-worktree attribute lookup even if an index fallback would otherwise hide
+process and driver inherit the overrides. A distinct outside identity must not
+shadow the selected repository's native identity. The outside fixture's HEAD,
+index, config bytes, and working contents must remain unchanged. Conflicting
+outside attributes expose cross-worktree attribute lookup even if an index fallback would otherwise hide
 it. This is separate from ordinary full and performance acceptance.
 
 Passing headless acceptance proves behavior of the extracted production

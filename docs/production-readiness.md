@@ -5,6 +5,41 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Inherited Git config-file selector isolation — 2026-11-20
+
+A real packaged regression on the previous `deb037a3` package completed all 18
+smoke scenarios, then failed the independent selected-identity check: the native
+snapshot returned `Unselected outside identity` from the unrelated owned
+repository instead of `Native Fixture`. Evidence is retained at
+`target/local-review/git-config-context/old-package-native/smoke-1795145506751745427/report.json`.
+No hosted service, personal repository or configuration was modified.
+
+The shared process boundary now removes legacy `GIT_CONFIG` as well as existing
+repository/index/pathspec selectors. It preserves system/global/count policy,
+credentials and explicit internal alternate-index overrides. Two real
+child-process regressions failed against the old core at the changed review
+fingerprint assertion and pass with the fix; they additionally exercise actual
+selected-author commits and local identity writes, retaining outside/system/
+global config bytes. The full core library passed 1,047 tests (37 existing
+ignored), terminal-context and eight external-terminal tests passed, all-target
+workspace Clippy passed, and all 107 Python runner tests passed.
+
+The newly built package is retained at
+`target/local-review/git-config-context/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `220e3aa9b531b0c4810d144a1f694485d57bb43455fa37a7799dbb7b5fb5d518`.
+Packaged inherited-environment qualification passed all 245 scenarios:
+`target/local-review/git-config-context/native/environment-1795145962977416503/report.json`.
+The same artifact passed all 26 focused inherited remote-review scenarios:
+`target/local-review/git-config-context/native/remote-reviews-1795145929132925820/report.json`.
+These overlap; they are not 271 unique scenarios. Both reports identify executable
+SHA-256 `312d97743440476336d0cd3b0411885ccd6212983356d372246c231d11bf2c04`.
+The independent oracle confirms the selected identity and unchanged outside
+config/index/HEAD/working bytes. Runtime and runner inputs still match
+`target/local-review/git-config-context/inputs.sha256`. This is local Ubuntu
+26.04 extracted-package evidence, not installed or cross-distribution proof.
+No frontend behavior, generated contracts, dependencies, workflow, version or
+budgets changed. No system installation or release was performed.
+
 ## Native force-push configuration preflight — 2026-11-20
 
 A red core regression demonstrated that changing an owned remote's push URL
@@ -65,10 +100,8 @@ completed successfully: checks/full renderer, Windows boundaries, Jammy
 package/native/catalogue, and installed Ubuntu 22.04/24.04/26.04 and Debian
 12/13. That qualifies its own commit/artifact, not this newer local package.
 This batch is local Ubuntu 26.04 extracted-package acceptance; no system
-installation or release was performed. A separate follow-up audit has retained
-a local CLI reproduction showing that legacy `GIT_CONFIG` can affect config
-queries differently from remote queries; native environment-context hardening
-for that variable remains to be investigated and qualified separately.
+installation or release was performed. The separately tracked legacy `GIT_CONFIG` environment-context follow-up is
+recorded above; the force-push package is not relabeled as containing that fix.
 
 ## Deferred main-menu presentation — 2026-11-20
 

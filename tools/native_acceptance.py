@@ -1060,12 +1060,15 @@ def main():
         outside = None
         if args.suite == "environment" or args.inherited_git_environment:
             outside = fixtures.repository("inherited-environment-outside", 1)
+            fixtures.git(outside, "config", "user.name", "Unselected outside identity")
+            fixtures.git(outside, "config", "user.email", "outside@example.test")
             (outside / ".gitattributes").write_text("* -diff\n")
             fixtures.git(outside, "add", ".gitattributes")
             fixtures.git(outside, "commit", "-qm", "Conflicting outside attributes")
             (outside / "fixture.txt").write_bytes(b"unselected outside contents\n")
             outside_index = (outside / ".git/index").read_bytes()
             outside_head = fixtures.git(outside, "rev-parse", "HEAD")
+            outside_config = (outside / ".git/config").read_bytes()
         extracted = fixtures.root / "package"
         run("dpkg-deb", "-x", str(package), str(extracted))
         executable = extracted / "usr/bin/git-khronos"
@@ -1117,6 +1120,7 @@ def main():
                     "GIT_COMMON_DIR": str(outside / ".git"),
                     "GIT_WORK_TREE": str(outside),
                     "GIT_INDEX_FILE": str(outside / ".git/index"),
+                    "GIT_CONFIG": str(outside / ".git/config"),
                     "GIT_LITERAL_PATHSPECS": "1", "GIT_GLOB_PATHSPECS": "1",
                     "GIT_NOGLOB_PATHSPECS": "1", "GIT_ICASE_PATHSPECS": "1",
                 })
@@ -1138,6 +1142,13 @@ def main():
                     time.sleep(0.1)
             driver.start(executable)
             repository, repo_id = smoke(driver, fixtures, report)
+            if outside is not None:
+                view = driver.invoke("refresh_repository", repoId=repo_id)
+                for field in ("name", "email"):
+                    expected = fixtures.git(repository, "config", "user." + field)
+                    assert expected != fixtures.git(outside, "config", "user." + field)
+                    assert view["identity"][field] == expected, (field, view["identity"], expected)
+                report["scenarios"].append("native-inherited-config-file-cannot-shadow-selected-identity")
             if args.suite == "gitlab":
                 from native_gitlab_scenarios import gitlab_catalogue
                 gitlab_catalogue(driver, fixtures, repository, report)
@@ -1163,6 +1174,7 @@ def main():
                 assert (outside / ".git/index").read_bytes() == outside_index
                 assert fixtures.git(outside, "rev-parse", "HEAD") == outside_head
                 assert (outside / "fixture.txt").read_bytes() == b"unselected outside contents\n"
+                assert (outside / ".git/config").read_bytes() == outside_config
                 report["scenarios"].append("native-inherited-git-environment-cannot-redirect-repositories-or-paths")
             if args.suite == "performance":
                 performance(driver, fixtures, report)

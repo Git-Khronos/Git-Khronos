@@ -8889,11 +8889,12 @@ pub fn is_explicit_bare_repository(path: &Path) -> bool {
 }
 
 /// Inherited shell overrides that must not replace a UI-selected Git context.
-pub const GIT_CONTEXT_ENVIRONMENT_VARIABLES: [&str; 8] = [
+pub const GIT_CONTEXT_ENVIRONMENT_VARIABLES: [&str; 9] = [
     "GIT_DIR",
     "GIT_WORK_TREE",
     "GIT_COMMON_DIR",
     "GIT_INDEX_FILE",
+    "GIT_CONFIG",
     "GIT_LITERAL_PATHSPECS",
     "GIT_GLOB_PATHSPECS",
     "GIT_NOGLOB_PATHSPECS",
@@ -8908,7 +8909,8 @@ pub(crate) fn git_in(path: &Path) -> Command {
     }
     command.arg("-C").arg(path);
     // UI commands choose their repository and exact paths explicitly. Shell
-    // overrides must not redirect its index/worktree or reinterpret path magic.
+    // overrides must not redirect its index/worktree/config file or reinterpret path magic.
+    // System/global/count configuration remains the user's Git policy.
     // Internal callers can still set a scoped alternate index after this step.
     for variable in GIT_CONTEXT_ENVIRONMENT_VARIABLES {
         command.env_remove(variable);

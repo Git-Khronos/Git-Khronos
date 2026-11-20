@@ -1182,11 +1182,16 @@ Source: [Git command and environment documentation](https://git-scm.com/docs/git
 
 Used for interpreting repository-routing and pathspec environment variables.
 Internal Git commands clear inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
-and `GIT_INDEX_FILE`, plus the four `GIT_*_PATHSPECS` flags, before applying their
-explicit repository and path selections. Scoped internal alternate indexes and
-explicit bare-repository access are applied afterward. Normal Git configuration
-and authentication environment are retained. Independently written isolated
-process tests verify these boundaries. The in-process attribute engine explicitly
+and `GIT_INDEX_FILE`, the legacy `GIT_CONFIG` file selector, plus the four
+`GIT_*_PATHSPECS` flags, before applying their explicit repository and path
+selections. Scoped internal alternate indexes and explicit bare-repository
+access are applied afterward. Normal Git configuration
+and authentication environment are retained, including `GIT_CONFIG_SYSTEM`,
+`GIT_CONFIG_GLOBAL`, and `GIT_CONFIG_COUNT` policy. Independently written isolated
+process tests verify these boundaries. Child-process integration tests exercise
+real identity reads, commits, local identity writes, and push-review fingerprints
+with a conflicting inherited config file; they preserve the outside config and
+valid system/global/count policy. The in-process attribute engine explicitly
 sets its selected working directory after opening, so inherited `GIT_WORK_TREE`
 cannot substitute another repository's attribute files. No source code was
 copied or adapted.
