@@ -5,6 +5,28 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Deferred-menu branding selector and CI checkpoint — 2026-11-20
+
+CI run [44667069442](https://github.com/Git-Khronos/Git-Khronos/actions/runs/44667069442)
+at `70aafcb` completed with one renderer failure in the final shard: the chrome
+identity test looked for `.app-menu-popover > header img.brand-mark`, but the
+header now belongs inside `gc-main-menu-content`. Windows boundaries, source
+checks, Jammy package/native/catalogue and all five installed Ubuntu/Debian jobs
+passed for that earlier commit/artifact; the overall run is not green.
+
+The same failed selector was reproduced locally at
+`target/local-review/main-menu/identity-red/`; a decoded CI failure excerpt is
+retained in `target/local-review/main-menu/ci-44667069442/`.
+Only the direct-child assumption was removed. The original menu-header logo,
+exact asset URL, empty decorative alt and completed nonzero image assertions
+remain, with no retry or timeout increase. The corrected identity journey and
+all seven deferred-menu journeys passed together (eight cases) at
+`target/local-review/main-menu/identity-final/`.
+This is test-only; it does not change the previously qualified compiled package.
+The newer three local correctness commits have their own evidence below and
+still require current CI qualification after their normal `dev` push. No system
+installation or release was performed.
+
 ## Source-bound tag and remote-reference reviews — 2026-11-20
 
 The new renderer regression reproduced ten failures against the previous source:

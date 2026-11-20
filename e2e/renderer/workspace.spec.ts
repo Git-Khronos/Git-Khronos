@@ -53,7 +53,7 @@ test('uses the Git Khronos identity throughout the application chrome', async ({
   await page.getByRole('button', { name: 'Main menu' }).click();
   const menu = page.getByRole('menu', { name: 'Git Khronos menu' });
   await expect(menu).toContainText('Git Khronos');
-  await expectLogo('.app-menu-popover > header img.brand-mark');
+  await expectLogo('.app-menu-popover header img.brand-mark');
   await menu.getByRole('menuitem', { name: /Manage Repositories/ }).click();
   await expect(page.getByRole('dialog', { name: 'Repository management' })).toBeVisible();
   await expectLogo('.repository-dialog-header img.brand-mark');
