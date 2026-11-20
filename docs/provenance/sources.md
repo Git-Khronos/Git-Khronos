@@ -2039,3 +2039,27 @@ an explicitly disruptive, user-run restart recovery step, not an automatic
 system change or a guarantee of permanent repair. Local diagnosis independently
 observed the shared-memory I/O error, disabled graphics redirection, copy-mode
 window title and rendered X11 app pixels. No external source code copied.
+
+## Requested application update modes and trust boundaries
+
+Sources:
+
+- https://v2.tauri.app/plugin/updater/
+- https://docs.rs/tauri-plugin-updater/2.14.1/tauri_plugin_updater/
+- https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/updater
+
+Used for planned capability/platform and signature-verification requirements,
+including current Debian/RPM support and reviewing Linux privilege fallbacks.
+The upstream plugin is Apache-2.0 OR MIT; no dependency has been added yet.
+No source code or interface text copied. The separate functional specification
+records the user's manual/opt-in automatic-update requirement, not a completed
+or published update system.
+
+## Local-only unstaged line counts
+
+Source: https://git-scm.com/docs/git/2.45.0
+
+Used for the documented no-lazy-fetch environment guard. The implementation
+adds independently tested command-level transport refusal as a fallback for
+older supported Git. Policies are scoped to this optional read and never
+persistently rewrite user configuration. No external source code copied.
