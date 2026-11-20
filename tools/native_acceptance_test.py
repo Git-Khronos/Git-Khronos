@@ -544,6 +544,43 @@ class FixtureTests(unittest.TestCase):
                 with self.assertRaises(ValueError): driver.click_scrolled_text("button", "Load recovered text into editor")
                 request.assert_not_called()
 
+    def test_navigation_readiness_captures_the_first_ready_element_before_one_click(self):
+        driver = Driver('http://127.0.0.1:1'); driver.session = 'owned'
+        element = {'element-6066-11e4-a52e-4f735466cecf': 'ready-navigation'}
+        with patch.object(driver, 'script', side_effect=[[], [], [element]]) as script, \
+                patch.object(driver, 'wait', wraps=driver.wait) as wait, \
+                patch.object(driver, 'request', side_effect=[{'interactable': True}, None]) as request, \
+                patch('native_acceptance.time.sleep'):
+            driver.click_scrolled_text('button', 'Open discarded-change recovery…', wait_for_ready=True)
+        self.assertEqual(script.call_count, 3)
+        wait.assert_called_once()
+        self.assertEqual(wait.call_args.kwargs, {})  # No longer deadline than the replaced presence wait.
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args.args, ('POST', '/session/owned/element/ready-navigation/click', {}))
+
+    def test_navigation_readiness_still_refuses_ambiguity_and_times_out_without_a_click(self):
+        driver = Driver('http://127.0.0.1:1'); driver.session = 'owned'
+        element = {'element-6066-11e4-a52e-4f735466cecf': 'ambiguous'}
+        with patch.object(driver, 'script', return_value=[element, element]), patch.object(driver, 'request') as request:
+            with self.assertRaises(ValueError):
+                driver.click_scrolled_text('button', 'Owned navigation', wait_for_ready=True)
+            request.assert_not_called()
+        with patch.object(driver, 'script', return_value=[]), patch.object(driver, 'request') as request, \
+                patch('native_acceptance.time.monotonic', side_effect=[0, 0, 31]), patch('native_acceptance.time.sleep'):
+            with self.assertRaises(TimeoutError):
+                driver.click_scrolled_text('button', 'Owned navigation', wait_for_ready=True)
+            request.assert_not_called()
+
+    def test_navigation_readiness_does_not_replay_a_lost_click_reply(self):
+        driver = Driver('http://127.0.0.1:1'); driver.session = 'owned'
+        element = {'element-6066-11e4-a52e-4f735466cecf': 'owned-navigation'}
+        with patch.object(driver, 'script', return_value=[element]) as script, \
+                patch.object(driver, 'request', side_effect=[{'interactable': True}, RemoteDisconnected('Lost reply')]) as request:
+            with self.assertRaises(RemoteDisconnected):
+                driver.click_scrolled_text('button', 'Owned navigation', wait_for_ready=True)
+        self.assertEqual(script.call_count, 1)
+        self.assertEqual(request.call_count, 2)
+
     def test_scrolled_text_click_refuses_a_clipped_or_obscured_target_without_clicking(self):
         driver = Driver("http://127.0.0.1:1"); driver.session = "owned"
         element = {"element-6066-11e4-a52e-4f735466cecf": "recovery-button"}

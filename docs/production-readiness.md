@@ -5,6 +5,61 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Source-bound publish, force-push and LFS reviews — 2026-11-20
+
+Publish, force-push and exact/retention LFS cleanup reviews now capture their
+source checkout and per-opening identity. Dispatch, outgoing selectors and
+remote-editor handoff refuse retired/replaced or mismatched ID/path requests.
+Old preview success/failure/loading completion cannot replace a newer LFS
+review; preview arrival preserves focus already inside the dialog. Shared
+confirmation loading/error controls carry their rendered request leases.
+Native pinned force-with-lease object IDs and mutation receipts remain intact.
+
+The frozen-input renderer gate passed 289 selected cases; seven additional
+affected workspace journeys passed separately (296 executions, not an entire
+renderer run). All 265 TypeScript unit tests, graph typechecking, production
+build/preview guard and 106 native-runner unit tests passed. The initial red
+probe included a force-positive fixture mistake: browser-preview mode bypassed
+IPC. Corrected positive cases exercise intercepted native IPC, rather than
+treating that fixture failure as a product regression.
+
+Preserved package:
+`target/local-review/remote-review-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `cb7b217ff76bc686b0e7a7ada7962e74714c32bdc115320f0e3e6096dc9fa30b`;
+packaged executable SHA-256
+`edf0fba58dc5bf35c84188bc9d424687c86c90930cb2c4df2bade9326f602347`.
+The focused remote-review suite passed 22 scenarios:
+`target/local-review/remote-review-scope/native/remote-reviews-1795138539441345512/report.json`.
+It proves actual publishing, stale pinned-lease refusal after a concurrent
+local-bare remote update, a successful fresh force review, and exact removal of
+a real unreferenced LFS cache object. Staged/untracked data and index remain
+unchanged. Its first attempt stopped because the fixture had not initialized
+LFS; only the fixture was corrected before rerunning the same package.
+The setup/keyboard suite passed 23 scenarios:
+`target/local-review/remote-review-scope/native/setup-keyboard-1795138564641706944/report.json`.
+These focused suites share the ordinary 18 smoke scenarios, not 45 unique
+scenarios. UI and runner input manifests matched. Initial production size is
+1,436,774 bytes, leaving 13,226 before the unchanged hard limit; the warning
+remains. Root component CSS is unchanged. No dependency, budget or Rust source
+changed, and no system installation or release was performed.
+
+Separately, previous checkpoint `9c2eaaa` CI run
+[44648780920](https://github.com/Git-Khronos/Git-Khronos/actions/runs/44648780920)
+passed Jammy build/native/catalogue, Windows boundaries and installed Ubuntu
+24.04/26.04 and Debian 12/13 checks. Installed Ubuntu 22.04 failed before the
+discarded-recovery opener click: the presence/enable wait was followed by a
+separate lookup that found no laid-out match. Its screenshot alone does not
+establish the exact transient cause. The opener now uses one exact read-only
+readiness lookup, with the same default deadline and single native delivery;
+missing/ambiguous controls and uncertain replies remain failures, not retries.
+The unchanged CI artifact (package SHA-256
+`7b58ee626c6795fde933d28457ccf8862b3891e4155e415fbbff81bfa71b4dc1`)
+passed 18 local extracted-package smoke scenarios with that runner:
+`target/local-review/remote-review-scope/ci-artifact-recheck/smoke-1795138073607001524/report.json`.
+This local Ubuntu 26.04 recheck does not prove the installed Jammy job passes.
+The previous checkpoint's full renderer CI was still running when checked;
+neither that run nor this local batch is release approval.
+
 ## Source-bound destructive reviews — 2026-11-20
 
 Branch deletion/rebase, sparse checkout and worktree-removal requests now retain

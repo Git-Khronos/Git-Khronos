@@ -301,6 +301,15 @@ interface SparseCheckoutReview extends RepositoryReviewScope {
 }
 
 type PendingWorktreeRemoval = WorktreeRemovalReview & RepositoryReviewScope;
+type PendingForcePushReview = ForcePushReview & RepositoryReviewScope;
+
+interface RepositoryConfirmationLease {
+  remote: RepositoryEditorOwner | null;
+  sparse: SparseCheckoutReview | null;
+  worktree: PendingWorktreeRemoval | null;
+  force: PendingForcePushReview | null;
+  publish: PendingPublishBranch | null;
+}
 
 interface RemoteBranchGroup extends Remote {
   branches: Branch[];
@@ -413,7 +422,7 @@ interface PendingBranchUpstream {
   current: string | null;
 }
 
-interface PendingPublishBranch {
+interface PendingPublishBranch extends RepositoryReviewScope {
   branch: string;
 }
 
@@ -1053,7 +1062,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
   protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
   protected readonly remoteRemovalOwner = signal<RepositoryEditorOwner | null>(null);
-  protected readonly pendingLfsPrune = signal(false);
+  protected readonly lfsPruneReview = signal<RepositoryReviewScope | null>(null);
+  protected readonly pendingLfsPrune = computed(() => this.lfsPruneReview() !== null);
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
   protected readonly lfsPruneReviewing = signal(false);
   protected readonly pendingSparseCheckoutReview = signal<SparseCheckoutReview | null>(null);
@@ -1130,6 +1140,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const sparseReview = this.pendingSparseCheckoutReview();
     const worktreeRemoval = this.pendingWorktreeAction();
     const branchReview = this.pendingBranchAction();
+    const publish = this.pendingPublishBranch();
+    const force = this.pendingForcePush();
+    const lfs = this.lfsPruneReview();
     if (worktree && !this.ownsRepositoryScope(worktree)) untracked(() => this.closeWorktreeDialog(false));
     if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
     if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
@@ -1137,6 +1150,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
     if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
+    if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
+    if (force && !this.ownsRepositoryScope(force)) untracked(() => this.closeForcePush(false, force));
+    if (lfs && !this.ownsRepositoryScope(lfs)) untracked(() => this.closeLfsPrune(false, lfs));
   });
 
   private captureRepositoryEditorOwner(): RepositoryEditorOwner | null {
@@ -1292,7 +1308,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly lfsPatternLockable = signal(false);
   protected readonly sparseCheckoutPaths = signal('');
   protected readonly sparseCheckoutIndex = signal(true);
-  protected readonly pendingForcePush = signal<ForcePushReview | null>(null);
+  protected readonly pendingForcePush = signal<PendingForcePushReview | null>(null);
   protected readonly terminalFontFamily = signal(this.readTerminalFontFamily());
   protected readonly terminalFontSize = signal(this.readTerminalNumber('font-size', 13, [10, 11, 12, 13, 14, 16, 18]));
   protected readonly terminalLineHeight = signal(this.readTerminalNumber('line-height', 1.25, [1, 1.15, 1.25, 1.4, 1.5]));
@@ -6653,17 +6669,24 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected closeRepositoryConfirmation(sparseReview = this.pendingSparseCheckoutReview(), worktreeReview = this.pendingWorktreeAction()): void {
-    if (this.pendingRemoteRemoval()) this.closeRemoteRemoval();
-    else if (this.pendingSparseCheckoutAction()) this.closeSparseCheckoutConfirmation(true, sparseReview);
-    else if (this.pendingWorktreeAction()) this.closeWorktreeRemoval(true, worktreeReview);
-    else if (this.pendingForcePush()) this.closeForcePush();
-    else this.closePublishBranch();
+  private repositoryConfirmationLease(): RepositoryConfirmationLease {
+    return { remote: this.remoteRemovalOwner(), sparse: this.pendingSparseCheckoutReview(),
+      worktree: this.pendingWorktreeAction(), force: this.pendingForcePush(), publish: this.pendingPublishBranch() };
   }
 
-  protected handleConfirmationLoaderKey(event: KeyboardEvent, sparseReview = this.pendingSparseCheckoutReview(), worktreeReview = this.pendingWorktreeAction()): void {
+  protected closeRepositoryConfirmation(lease = this.repositoryConfirmationLease()): void {
+    if (this.pendingRemoteRemoval()) this.closeRemoteRemoval(true, lease.remote);
+    else if (this.pendingSparseCheckoutAction()) this.closeSparseCheckoutConfirmation(true, lease.sparse);
+    else if (this.pendingWorktreeAction()) this.closeWorktreeRemoval(true, lease.worktree);
+    else if (this.pendingForcePush()) this.closeForcePush(true, lease.force);
+    else this.closePublishBranch(true, lease.publish);
+  }
+
+  protected handleConfirmationLoaderKey(event: KeyboardEvent, lease = this.repositoryConfirmationLease()): void {
+    if (!this.pendingRemoteRemoval() && !this.pendingSparseCheckoutAction() && !this.pendingWorktreeAction()
+      && !this.pendingForcePush() && !this.pendingPublishBranch()) return;
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryConfirmation(sparseReview, worktreeReview); }
+    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryConfirmation(lease); }
     if (event.key === 'Tab') { event.preventDefault(); this.confirmationLoaderClose()?.nativeElement.focus(); }
   }
 
@@ -11259,47 +11282,52 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected requestLfsPrune(returnFocus?: HTMLElement | null): void {
-    this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(returnFocus);
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    const request = { ...owner, returnFocus: this.captureSecondaryConfirmationOpener(returnFocus) };
     this.toolbarOverlays.close('lfs');
-    this.pendingLfsPrune.set(true);
+    this.lfsPruneReview.set(request);
     this.lfsPrunePreview.set(null);
-    void this.reviewLfsPrune();
+    this.lfsPruneReviewing.set(true);
+    void this.reviewLfsPrune(request);
   }
 
-  private async reviewLfsPrune(): Promise<void> {
-    const repositoryId = this.git.activeRepositoryId();
-    if (!repositoryId) return;
-    this.lfsPruneReviewing.set(true);
+  private async reviewLfsPrune(request: RepositoryReviewScope): Promise<void> {
     let preview: LfsPrunePreview | null = null;
     try {
-      preview = await this.git.previewLfsPrune(repositoryId);
+      preview = await this.git.previewLfsPrune(request.repositoryId);
     } finally {
-      this.lfsPruneReviewing.set(false);
+      if (this.lfsPruneReview() === request) this.lfsPruneReviewing.set(false);
     }
-    if (!this.pendingLfsPrune() || this.git.activeRepositoryId() !== repositoryId) return;
+    if (this.lfsPruneReview() !== request || !this.ownsRepositoryScope(request)) return;
     if (!preview) {
-      this.closeLfsPrune();
+      this.closeLfsPrune(true, request);
       return;
     }
     this.lfsPrunePreview.set(preview);
   }
 
-  protected closeLfsPrune(): void {
-    this.pendingLfsPrune.set(false);
+  protected closeLfsPrune(restoreFocus = true, expected = this.lfsPruneReview()): void {
+    if (this.lfsPruneReview() !== expected) return;
+    this.lfsPruneReview.set(null);
     this.lfsPrunePreview.set(null);
-    this.finishSecondaryConfirmation();
+    this.lfsPruneReviewing.set(false);
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 
-  protected async confirmLfsPrune(): Promise<void> {
+  protected async confirmLfsPrune(expected = this.lfsPruneReview()): Promise<void> {
+    const request = this.lfsPruneReview();
     const preview = this.lfsPrunePreview();
-    const repositoryId = this.git.activeRepositoryId();
-    if (!preview?.objects.length || !repositoryId) return;
-    this.closeLfsPrune();
-    await this.git.pruneLfsObjects(preview, repositoryId);
+    if (!request || request !== expected || !this.ownsRepositoryScope(request)
+      || this.git.busy() || this.lfsPruneReviewing() || !preview?.objects.length) return;
+    this.closeLfsPrune(true, request);
+    await this.git.pruneLfsObjects(preview, request.repositoryId);
   }
 
-  protected async confirmLfsRetentionPrune(): Promise<void> {
-    this.closeLfsPrune();
+  protected async confirmLfsRetentionPrune(expected = this.lfsPruneReview()): Promise<void> {
+    const request = this.lfsPruneReview();
+    if (!request || request !== expected || !this.ownsRepositoryScope(request) || this.git.busy() || this.lfsPruneReviewing()) return;
+    this.closeLfsPrune(true, request);
     await this.git.lfs('lfs_prune');
   }
 
@@ -11368,9 +11396,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!branch || this.git.busy()) return;
     if (!remote || !targetBranch) {
       if (!branch.upstream) {
-        this.publishRemote.set('');
-        this.secondaryConfirmationOpener = opener;
-        this.pendingPublishBranch.set({ branch: branch.name });
+        this.openPublishBranchReview(branch.name, '', opener);
       }
       return;
     }
@@ -11378,9 +11404,14 @@ export class AppComponent implements OnInit, OnDestroy {
       void this.git.remote('push_repository', { remote: remote.name, branch: targetBranch });
       return;
     }
-    this.publishRemote.set(remote.name);
-    this.secondaryConfirmationOpener = opener;
-    this.pendingPublishBranch.set({ branch: branch.name });
+    this.openPublishBranchReview(branch.name, remote.name, opener);
+  }
+
+  private openPublishBranchReview(branch: string, remote: string, returnFocus: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
+    this.publishRemote.set(remote);
+    this.pendingPublishBranch.set({ ...owner, returnFocus, branch });
   }
 
   protected requestForcePush(): void {
@@ -11399,9 +11430,10 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     this.git.error.set(null);
-    this.secondaryConfirmationOpener = opener;
     this.pendingForcePush.set({
       repositoryId: repository.id,
+      repositoryPath: repository.path,
+      returnFocus: opener,
       branchRef: branch.fullName,
       branchName: branch.name,
       remote: remote.name,
@@ -11411,10 +11443,10 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected async confirmForcePush(): Promise<void> {
+  protected async confirmForcePush(expected = this.pendingForcePush()): Promise<void> {
     const review = this.pendingForcePush();
-    if (!review || this.git.busy()) return;
-    this.closeForcePush();
+    if (!review || review !== expected || !this.ownsRepositoryScope(review) || this.git.busy()) return;
+    this.closeForcePush(true, review);
     if (this.git.activeRepositoryId() !== review.repositoryId || this.currentBranch()?.fullName !== review.branchRef) {
       this.git.error.set('The repository or branch changed after force-push review. Reopen the confirmation and review the current target.');
       return;
@@ -11431,22 +11463,36 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
 
-  protected closeForcePush(): void {
+  protected closeForcePush(restoreFocus = true, expected = this.pendingForcePush()): void {
+    if (this.pendingForcePush() !== expected) return;
     this.pendingForcePush.set(null);
-    this.finishSecondaryConfirmation();
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 
-  protected async confirmPublishBranch(): Promise<void> {
+  protected setPublishRemote(value: string, expected = this.pendingPublishBranch()): void {
+    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    this.publishRemote.set(value);
+  }
+
+  protected openPublishRemoteEditor(expected = this.pendingPublishBranch()): void {
+    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    this.closePublishBranch(false, expected);
+    this.openAddRemoteDialog(expected.returnFocus);
+  }
+
+  protected async confirmPublishBranch(expected = this.pendingPublishBranch()): Promise<void> {
     const pending = this.pendingPublishBranch();
     const remote = this.publishRemote();
-    if (!pending || !this.git.repository()?.remotes.some((candidate) => candidate.name === remote)) return;
-    this.closePublishBranch();
+    if (!pending || pending !== expected || !this.ownsRepositoryScope(pending) || this.git.busy()
+      || !this.git.repository()?.remotes.some((candidate) => candidate.name === remote)) return;
+    this.closePublishBranch(true, pending);
     await this.git.publishBranch(remote, pending.branch);
   }
 
-  protected closePublishBranch(restoreFocus = true): void {
+  protected closePublishBranch(restoreFocus = true, expected = this.pendingPublishBranch()): void {
+    if (this.pendingPublishBranch() !== expected) return;
     this.pendingPublishBranch.set(null);
-    this.finishSecondaryConfirmation(restoreFocus);
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected async checkoutFromToolbar(branch: Branch): Promise<void> {
@@ -13402,7 +13448,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private restoreRepositoryReviewFocus(review: RepositoryReviewScope): void {
     queueMicrotask(() => {
-      if (!this.ownsRepositoryScope(review) || this.pendingBranchAction() || this.pendingSparseCheckoutReview() || this.pendingWorktreeAction()) return;
+      if (!this.ownsRepositoryScope(review) || this.pendingBranchAction() || this.pendingSparseCheckoutReview()
+        || this.pendingWorktreeAction() || this.pendingForcePush() || this.pendingPublishBranch() || this.lfsPruneReview()) return;
       if (review.returnFocus?.isConnected) review.returnFocus.focus({ preventScroll: true });
     });
   }

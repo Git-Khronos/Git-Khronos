@@ -282,9 +282,17 @@ class Driver:
         identifier = elements[0]["element-6066-11e4-a52e-4f735466cecf"]
         self.request("POST", self.path(f"element/{identifier}/click"), {})
 
-    def click_scrolled_text(self, selector, text):
+    def click_scrolled_text(self, selector, text, *, wait_for_ready=False):
         """Scroll normally, verify the painted hit target, then click exactly once."""
-        elements = self.script("return [...document.querySelectorAll(arguments[0])].filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible' && !element.matches(':disabled') && !element.closest('[inert]') && element.textContent.trim() === arguments[1]);", selector, text)
+        lookup = """(selector, text) => [...document.querySelectorAll(selector)].filter(element =>
+          element.getClientRects().length && getComputedStyle(element).visibility === 'visible'
+          && !element.matches(':disabled') && !element.closest('[inert]') && element.textContent.trim() === text)"""
+        if wait_for_ready:
+            # Capture the ready element in the same read-only poll. A separate
+            # DOM-presence wait can finish before the control is actually laid out.
+            elements = self.wait(f"return ({lookup})({json.dumps(selector)}, {json.dumps(text)});")
+        else:
+            elements = self.script(f"return ({lookup})(arguments[0], arguments[1]);", selector, text)
         if len(elements) != 1:
             raise ValueError(f"Expected one enabled {selector!r} with text {text!r}, found {len(elements)}")
         element = elements[0]
@@ -833,9 +841,8 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.wait("""return [...document.querySelectorAll('.app-menu-popover [role=menuitem] strong')]
       .some(element => element.textContent.trim() === 'Recovery History')""")
     driver.click_text(".app-menu-popover [role=menuitem] strong", "Recovery History")
-    driver.wait("""return !!document.querySelector(
-      '.recovery-dialog .operation-captures[aria-label="Discarded changes"] button:not(:disabled)')""")
-    driver.click_scrolled_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.click_scrolled_text('.recovery-dialog .operation-captures[aria-label="Discarded changes"] button',
+                               'Open discarded-change recovery…', wait_for_ready=True)
     driver.wait("""return document.querySelector('.saved-discards-dialog [aria-label="Files in this capture"]')
       ?.textContent.includes('native-recovery-file.bin')""")
     driver.wait("return document.activeElement?.matches('[data-saved-discards-close]')")
@@ -1005,7 +1012,7 @@ def main():
     version, expected_package_name = expected_debian_package()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools", "worktrees", "setup-keyboard"), default="smoke")
+    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools", "worktrees", "setup-keyboard", "remote-reviews"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
                         help="Run /usr/bin/git-khronos after byte verification against the package (CI only)")
@@ -1135,6 +1142,9 @@ def main():
             if args.suite in ("full", "environment", "setup-keyboard"):
                 from native_setup_keyboard_scenarios import setup_keyboard_isolation
                 setup_keyboard_isolation(driver, fixtures, report)
+            if args.suite in ("full", "environment", "remote-reviews"):
+                from native_remote_review_scenarios import remote_review_workflows
+                remote_review_workflows(driver, fixtures, report)
             if outside is not None:
                 assert (outside / ".git/index").read_bytes() == outside_index
                 assert fixtures.git(outside, "rev-parse", "HEAD") == outside_head

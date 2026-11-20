@@ -2179,38 +2179,41 @@
     @let removalOwner = remoteRemovalOwner();
     @let sparseReview = pendingSparseCheckoutReview();
     @let worktreeReview = pendingWorktreeAction();
+    @let forceReview = pendingForcePush();
+    @let publishReview = pendingPublishBranch();
+    @let confirmationLease = { remote: removalOwner, sparse: sparseReview, worktree: worktreeReview, force: forceReview, publish: publishReview };
     @defer (on immediate) {
       <gc-repository-confirmations [remote]="pendingRemoteRemoval()" [remoteRepositoryPath]="removalOwner?.repositoryPath ?? null"
         [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseReview?.paths.length ?? 0" [sparseRepositoryPath]="sparseReview?.repositoryPath ?? null"
-        [forcePush]="pendingForcePush()" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
-        [publishBranch]="pendingPublishBranch()?.branch ?? null" [publishRemote]="publishRemote()"
+        [forcePush]="forceReview" [forcePushRepositoryPath]="forceReview?.repositoryPath ?? null" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
+        [publishBranch]="publishReview?.branch ?? null" [publishRepositoryPath]="publishReview?.repositoryPath ?? null" [publishRemote]="publishRemote()"
         (remoteClosed)="closeRemoteRemoval(true, removalOwner)" (remoteConfirmed)="confirmRemoteRemoval(removalOwner)"
         (sparseClosed)="closeSparseCheckoutConfirmation(true, sparseReview)" (sparseConfirmed)="confirmSparseCheckoutAction(sparseReview)"
         (worktreeClosed)="closeWorktreeRemoval(true, worktreeReview)" (worktreeConfirmed)="confirmWorktreeRemoval(worktreeReview)" (worktreeForceChanged)="setWorktreeRemovalForce($event, worktreeReview)"
-        (forcePushClosed)="closeForcePush()" (forcePushConfirmed)="confirmForcePush()"
-        (publishClosed)="closePublishBranch()" (publishConfirmed)="confirmPublishBranch()"
-        (publishRemoteChanged)="publishRemote.set($event)" (publishAddRemote)="closePublishBranch(false); openAddRemoteDialog()" />
+        (forcePushClosed)="closeForcePush(true, forceReview)" (forcePushConfirmed)="confirmForcePush(forceReview)"
+        (publishClosed)="closePublishBranch(true, publishReview)" (publishConfirmed)="confirmPublishBranch(publishReview)"
+        (publishRemoteChanged)="setPublishRemote($event, publishReview)" (publishAddRemote)="openPublishRemoteEditor(publishReview)" />
     } @loading {
-      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading confirmation" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, sparseReview, worktreeReview)">
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(confirmationLease)">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading confirmation" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, confirmationLease)">
           <p class="confirmation-loader-copy" role="status">Loading confirmation…</p>
-          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">Cancel</button></footer>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(confirmationLease)">Cancel</button></footer>
         </section>
       </div>
     } @error {
-      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Confirmation unavailable" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, sparseReview, worktreeReview)">
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(confirmationLease)">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Confirmation unavailable" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, confirmationLease)">
           <p class="confirmation-loader-copy" role="alert">The confirmation could not load. Restart the app before retrying. No action was run.</p>
-          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">Close</button></footer>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(confirmationLease)">Close</button></footer>
         </section>
       </div>
     }
   }
-  @if (pendingLfsPrune()) {
+  @if (lfsPruneReview(); as lfsReview) {
     @defer (on immediate) {
-      <gc-lfs-prune-dialog [preview]="lfsPrunePreview()" [reviewing]="lfsPruneReviewing()"
-        (closed)="closeLfsPrune()" (confirmed)="confirmLfsPrune()"
-        (retentionConfirmed)="confirmLfsRetentionPrune()" />
+      <gc-lfs-prune-dialog [preview]="lfsPrunePreview()" [reviewing]="lfsPruneReviewing()" [repositoryPath]="lfsReview.repositoryPath"
+        (closed)="closeLfsPrune(true, lfsReview)" (confirmed)="confirmLfsPrune(lfsReview)"
+        (retentionConfirmed)="confirmLfsRetentionPrune(lfsReview)" />
     }
   }
   @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !integrationRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {

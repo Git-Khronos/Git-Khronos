@@ -36,6 +36,7 @@
       <div class="confirmation-copy">
         <span>Rewrite upstream history</span>
         <h2 id="force-push-title">Force push {{ review.branchName }}</h2>
+        @if (forcePushRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
         <p>Push local commit <code [title]="review.expectedHeadOid">{{ review.expectedHeadOid.slice(0, 12) }}</code> to <strong>{{ review.remote }}/{{ review.remoteBranch }}</strong> only if it still points to the fetched commit <code [title]="review.expectedRemoteOid">{{ review.expectedRemoteOid.slice(0, 12) }}</code>.</p>
         <p>Git uses a pinned <code>--force-with-lease</code>. If the remote changed after the fetch, the push is rejected even if a background fetch updates the local tracking ref.</p>
       </div>
@@ -47,13 +48,14 @@
       <div class="confirmation-copy">
         <span>Publish branch</span>
         <h2>{{ branch }}</h2>
+        @if (publishRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
         <p>Push this branch and remember the selected remote as its upstream for future Pull and Push actions.</p>
         @if (git.repository()?.remotes?.length) {
-          <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [value]="publishRemote()" (change)="publishRemoteChanged.emit($any($event.target).value)">
+          <label class="upstream-picker">Remote<select name="publishRemote" aria-label="Publish remote" [disabled]="git.busy()" [value]="publishRemote()" (change)="publishRemoteChanged.emit($any($event.target).value)">
             @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name" [selected]="publishRemote() === remote.name">{{ remote.name }}</option> }
           </select></label>
         } @else {
-          <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" (click)="publishAddRemote.emit()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
+          <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" [disabled]="git.busy()" (click)="publishAddRemote.emit()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
         }
       </div>
       <footer><span></span><button type="button" (click)="publishClosed.emit()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!publishRemote() || git.busy()">Publish Branch</button></footer>

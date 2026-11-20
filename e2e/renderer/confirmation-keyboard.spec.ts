@@ -20,15 +20,16 @@ async function openReview(page: Page, review: Review, gap = false) {
     app.git.redoLabel = () => 'Owned redo';
     app.changesOpen.set(true);
     const requests: Record<Review, [string, any]> = {
-      'force-push': ['pendingForcePush', { repositoryId: repository.id, branchRef: 'refs/heads/dev', branchName: 'dev',
+      'force-push': ['pendingForcePush', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+        branchRef: 'refs/heads/dev', branchName: 'dev',
         remote: 'origin', remoteBranch: 'refs/heads/dev', expectedRemoteOid: oid, expectedHeadOid: oid }],
       'worktree-removal': ['pendingWorktreeAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
         path: '/owned/checkout', branch: 'owned-review', deleteBranch: false, changes: 0 }],
       sparse: ['pendingSparseCheckoutReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
         action: 'disable', paths: [], sparseIndex: false }],
-      publish: ['pendingPublishBranch', { branch: repository.status.branch }],
+      publish: ['pendingPublishBranch', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null, branch: repository.status.branch }],
       'workspace-delete': ['pendingWorkspaceDelete', { id: 'owned-review', name: 'Owned workspace' }],
-      'lfs-prune': ['pendingLfsPrune', true],
+      'lfs-prune': ['lfsPruneReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null }],
       file: ['pendingFileAction', { kind: 'ignore', path: 'owned.txt', untracked: true, repositoryId: repository.id }],
       branch: ['pendingBranchAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
         kind: 'delete', branch: 'owned-review' }],
@@ -82,7 +83,7 @@ for (const review of reviews) {
       const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
       const target = document.activeElement!;
       const signal = (window as any).__confirmationSignal;
-      app[signal].set(signal === 'pendingLfsPrune' ? false : null);
+      app[signal].set(null);
       target.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }));
     });
     expect(await intents(page)).toEqual(['openCommandPalette']);

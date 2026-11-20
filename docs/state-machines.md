@@ -65,6 +65,29 @@ an owned branch, checks unrelated staged/untracked contents and index/config
 bytes, and requires the native recovery receipt. Refusing every valid command
 would therefore not satisfy the acceptance gate.
 
+### Source-bound publish, force-push and LFS cleanup reviews
+
+Publishing, force-push and LFS cleanup capture repository ID/path and their own
+return-focus target. Confirmation checks source scope, rendered request identity
+and busy state before dispatch. Publish remote selection and the handoff to the
+remote editor use the same guard. Force-push keeps the existing pinned local
+and remote object IDs and native force-with-lease authority unchanged.
+
+Each LFS preview belongs to one review instance: an older success, failure or
+loading completion cannot overwrite or close a replacement. Preview arrival
+does not steal focus from a control already inside the dialog. Exact cleanup
+uses the captured repository and reviewed preview; native receipts survive UI
+retirement. Shared confirmation loading/error controls capture all their request
+leases, and a retired loader stops intercepting ambient keyboard events.
+
+Coverage: `remote-cleanup-review-scope.spec.ts` checks source/path changes,
+outgoing controls, positive IPC payloads, remote-editor handoff and overlapping
+preview completion. The packaged `remote-reviews` suite publishes to an owned
+local bare repository, proves a stale lease refuses a concurrent remote update,
+then proves a fresh review succeeds. It also removes a real aged unreferenced
+LFS cache object while checking unrelated refs, staged/untracked data and index.
+These UI scopes are not remote endpoint capabilities or a new native journal.
+
 ### Confirmation keyboard ownership
 
 Force-push, worktree removal, sparse checkout, branch publishing, workspace

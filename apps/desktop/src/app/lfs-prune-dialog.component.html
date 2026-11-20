@@ -4,6 +4,7 @@
     <div class="confirmation-copy">
       <span>Clean Git LFS storage</span>
       <h2 id="prune-lfs-title">Remove unreferenced LFS objects?</h2>
+      @if (repositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
       @if (preview(); as result) {
         @if (result.objects.length) {
           <p><strong>{{ result.objects.length }} {{ result.objects.length === 1 ? 'object' : 'objects' }} · {{ formatSize(result.totalSize) }}</strong> in local LFS storage {{ result.objects.length === 1 ? 'is' : 'are' }} not referenced by any Git object: no branch, tag, stash, reflog, index or unreachable commit points to {{ result.objects.length === 1 ? 'it' : 'them' }}.</p>

@@ -35,6 +35,31 @@ changes opener use the existing single-delivery scrolling helper. It waits for
 ordinary rendering turns, scrolls normally and verifies the enabled painted hit
 target before one native click; it never injects activation or replays a mutation.
 
+The discarded-changes opener opts into a read-only readiness poll that captures
+the exact enabled, laid-out, visible, non-inert text match in that same poll.
+It replaces a separate DOM-presence wait and second lookup, without extending
+the default deadline. Ambiguous matches still fail before clicking; a lost
+scroll or click response is not replayed. Runner unit tests cover readiness,
+ambiguity, permanent absence and single delivery after an uncertain reply.
+
+## Focused remote and LFS review check
+
+```sh
+pnpm nx exec -p desktop --excludeTaskDependencies -- python3 "$PWD/tools/native_acceptance.py" \
+  --suite remote-reviews --headless --package "$PWD/target/release/bundle/deb/Git-Khronos_0.1.6_amd64.deb"
+```
+
+This includes smoke plus real publish, force-with-lease refusal, fresh reviewed
+force-push and exact LFS cleanup journeys. All push destinations are owned local
+bare fixtures, checked before use; no hosted remote is written. A concurrent
+fixture commit advances the bare remote after review, and the original pinned
+lease must refuse it. A new review after fetching must succeed, so blanket
+refusal cannot pass. Git LFS must be available; the LFS fixture is initialized
+locally before creating an aged unreferenced cache object. Cleanup must remove
+that object without altering unrelated refs, staged/untracked contents, index
+or configuration. A refusing commit hook detects accidental background commits.
+The full/environment suites include these checks too.
+
 ## Linux release qualification
 
 The current release qualification target is Ubuntu 22.04 (Jammy), 24.04 (Noble)

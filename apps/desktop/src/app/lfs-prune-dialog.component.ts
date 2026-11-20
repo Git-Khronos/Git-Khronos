@@ -14,6 +14,7 @@ export class LfsPruneDialogComponent {
   protected readonly git = inject(GitKhronosService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly preview = input<LfsPrunePreview | null>(null);
+  readonly repositoryPath = input<string | null>(null);
   readonly reviewing = input(false);
   readonly closed = output<void>();
   readonly confirmed = output<void>();
@@ -22,7 +23,11 @@ export class LfsPruneDialogComponent {
   constructor() {
     effect(() => {
       this.preview();
-      setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLButtonElement>('footer button')?.focus());
+      setTimeout(() => {
+        const dialog = this.dialog()?.nativeElement;
+        // A late preview must not take focus away from the user's chosen section.
+        if (dialog && !dialog.contains(document.activeElement)) dialog.querySelector<HTMLButtonElement>('footer button')?.focus();
+      });
     });
   }
 
