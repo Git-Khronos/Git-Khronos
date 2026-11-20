@@ -105,9 +105,10 @@
       } @else if (menu.kind === 'branch') {
         <div class="context-section-label" aria-hidden="true">Create reference at branch tip</div>
       }
-      @if (view.contextBranchCreatorOpen()) {
-        <form novalidate class="context-branch-form context-create-branch-form" aria-label="Create branch here" (submit)="$event.preventDefault(); view.createContextBranch()" (keydown)="view.handleContextBranchCreatorKeydown($event)">
+      @for (request of view.contextBranchCreatorReviews(); track request) {
+        <form novalidate class="context-branch-form context-create-branch-form" aria-label="Create branch here" (submit)="$event.preventDefault(); view.createContextBranch(request)" (keydown)="view.handleContextBranchCreatorKeydown($event, request)">
           <label for="context-branch-name">Create branch here</label>
+          <p class="context-branch-source">Checkout: <code>{{ request.repositoryPath }}</code></p>
           <div>
             <input
               id="context-branch-name"
@@ -118,15 +119,15 @@
               [attr.aria-invalid]="view.contextBranchError() ? 'true' : null"
               [attr.aria-describedby]="view.contextBranchError() ? 'context-branch-error' : null"
               [gcTextValue]="view.contextBranchName()"
-              (gcTextValueChange)="view.contextBranchName.set($event); view.contextBranchError.set(null)"
+              (gcTextValueChange)="view.changeContextBranchName($event, request)"
             />
             <button type="submit" [disabled]="!view.contextBranchName().trim() || view.git.busy()">Create</button>
-            <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="view.closeContextBranchCreator($event)"><gc-icon name="x" [size]="10" /></button>
+            <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="view.closeContextBranchCreator($event, request)"><gc-icon name="x" [size]="10" /></button>
           </div>
           @if (view.contextBranchError()) { <p id="context-branch-error" class="context-branch-error" role="alert">{{ view.contextBranchError() }}</p> }
         </form>
-      } @else {
-        <button data-create-context-branch type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openContextBranchCreator($event)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
+      } @empty {
+        <button data-create-context-branch type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openContextBranchCreator($event, menu)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
       }
       <button type="button" role="menuitem" (click)="view.openContextTagCreator()"><span><gc-icon name="tag" [size]="13" /></span>Create tag here…</button>
       }

@@ -30,3 +30,4 @@
 .context-branch-form .context-branch-cancel { width: 28px; flex: 0 0 28px; display: grid; place-items: center; padding: 0; border: 1px solid var(--graph-menu-control-border); background: var(--graph-menu-control); color: var(--graph-menu-text); }
 .context-branch-form .context-branch-cancel:hover, .context-branch-form .context-branch-cancel:focus-visible { border-color: var(--overlay-border); background: var(--graph-menu-control-hover); color: white; }
 :host > .context-heading { position: sticky; z-index: 1; top: -5px; margin: -5px -5px 4px; padding: 11px 14px 8px; border-bottom: 1px solid var(--overlay-divider); background: var(--overlay-surface); }
+.context-branch-source { margin: 0 0 6px; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }

@@ -201,3 +201,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     from native_deferred_review_scenarios import deferred_review_workflows
     deferred_review_workflows(driver, fixtures, report)
+
+    from native_context_branch_scenarios import context_branch_workflow
+    context_branch_workflow(driver, fixtures, report)

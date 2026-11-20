@@ -377,6 +377,13 @@ interface ContextMenuState {
   label: string;
 }
 
+interface ContextBranchCreation extends RepositoryEditorOwner {
+  readonly menuGeneration: number;
+  readonly revision: number;
+  readonly menuKind: ContextMenuState['kind'];
+  readonly oid: string;
+}
+
 interface PendingStoredReferenceDelete {
   kind: 'checkpoint' | 'original';
   repoId: string;
@@ -1125,7 +1132,11 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly terminalRepositoryIds = signal<string[]>([]);
   protected readonly activityLogTab = signal<ActivityLogTab>('repository');
   protected readonly contextBranchName = signal('');
-  protected readonly contextBranchCreatorOpen = signal(false);
+  protected readonly contextBranchCreator = signal<ContextBranchCreation | null>(null);
+  protected readonly contextBranchCreatorReviews = computed(() => {
+    const request = this.contextBranchCreator(); return request ? [request] : [];
+  });
+  private contextBranchCreatorRevision = 0;
   protected readonly contextBranchError = signal<string | null>(null);
   private contextMenuGeneration = 0;
   protected readonly contextTagName = signal('');
@@ -1186,6 +1197,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const worktreeRemoval = this.pendingWorktreeAction();
     const branchReview = this.pendingBranchAction();
     const rename = this.pendingBranchRename();
+    const contextCreation = this.contextBranchCreator();
     const reference = this.referenceAction();
     const stash = this.stashDialog();
     const fetch = this.fetchRequest();
@@ -1203,6 +1215,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
+    if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
     if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
@@ -3275,7 +3288,8 @@ export class AppComponent implements OnInit, OnDestroy {
     closeContextBranchCreator: this.closeContextBranchCreator.bind(this),
     compareContextCommitWithWorkingTree: this.compareContextCommitWithWorkingTree.bind(this),
     compareContextReferenceWithWorkingTree: this.compareContextReferenceWithWorkingTree.bind(this),
-    contextBranchCreatorOpen: this.contextBranchCreatorOpen,
+    contextBranchCreatorReviews: this.contextBranchCreatorReviews,
+    changeContextBranchName: this.changeContextBranchName.bind(this),
     contextBranchError: this.contextBranchError,
     contextBranchName: this.contextBranchName,
     contextBranchUpstream: this.contextBranchUpstream.bind(this),
@@ -13080,15 +13094,25 @@ export class AppComponent implements OnInit, OnDestroy {
     }));
   }
 
-  protected async createContextBranch(): Promise<void> {
+  private ownsContextBranchCreator(request: ContextBranchCreation | null): request is ContextBranchCreation {
     const menu = this.contextMenu();
-    const name = this.contextBranchName().trim();
-    if (!menu || !name || this.git.busy()) return;
-    const generation = this.contextMenuGeneration;
-    const repositoryId = this.git.repository()?.id;
+    return !!request && this.contextBranchCreator() === request && this.ownsRepositoryScope(request)
+      && this.contextMenuGeneration === request.menuGeneration && menu?.kind === request.menuKind
+      && menu.oid === request.oid && menu.repositoryId === request.repositoryId && menu.repositoryPath === request.repositoryPath;
+  }
+
+  protected changeContextBranchName(value: string, request: ContextBranchCreation): void {
+    if (!this.ownsContextBranchCreator(request) || this.git.busy()) return;
+    this.contextBranchName.set(value);
     this.contextBranchError.set(null);
-    const result = await this.git.createBranchAt(name, menu.oid);
-    if (generation !== this.contextMenuGeneration || this.git.repository()?.id !== repositoryId || !this.contextMenu() || !result) return;
+  }
+
+  protected async createContextBranch(request = this.contextBranchCreator()): Promise<void> {
+    const name = this.contextBranchName().trim();
+    if (!this.ownsContextBranchCreator(request) || !name || this.git.busy()) return;
+    this.contextBranchError.set(null);
+    const result = await this.git.createBranchAt(name, request.oid, request.repositoryId);
+    if (!this.ownsContextBranchCreator(request) || !result) return;
     if (result.status === 'success') {
       this.contextBranchName.set('');
       this.dismissGraphActionMenu(true);
@@ -13098,7 +13122,7 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => requestAnimationFrame(() => {
       const active = this.contextMenu();
       const element = this.actionMenuElement()?.nativeElement;
-      if (generation !== this.contextMenuGeneration || !active || !element) return;
+      if (!this.ownsContextBranchCreator(request) || !active || !element) return;
       this.actionOverlays.open({ kind: 'context', value: { ...active, ...this.fittedMenuPosition(element, active) } }, this.contextMenuReturnFocus);
       if (this.canRestoreFocusFrom(element)) {
         element.querySelector<HTMLInputElement>('#context-branch-name')?.focus({ preventScroll: true });
@@ -13107,30 +13131,35 @@ export class AppComponent implements OnInit, OnDestroy {
     }));
   }
 
-  protected openContextBranchCreator(event: Event): void {
+  protected openContextBranchCreator(event: Event, menu = this.contextMenu()): void {
     event.preventDefault();
     event.stopPropagation();
-    const menu = this.contextMenu();
-    if (!menu) return;
+    const owner = this.captureRepositoryEditorOwner();
+    if (!menu || this.contextMenu() !== menu || !owner || menu.repositoryId !== owner.repositoryId
+      || menu.repositoryPath !== owner.repositoryPath) return;
+    const request: ContextBranchCreation = { ...owner, menuGeneration: this.contextMenuGeneration,
+      revision: ++this.contextBranchCreatorRevision, menuKind: menu.kind, oid: menu.oid };
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
-    this.contextBranchCreatorOpen.set(true);
-    this.settleGraphActionMenuPosition(
-      'context',
-      `${menu.kind}:${menu.oid}`,
-      { x: menu.x, y: menu.y },
-      false,
-    );
+    this.contextBranchName.set('');
+    this.contextBranchError.set(null);
+    this.contextBranchCreator.set(request);
+    this.settleGraphActionMenuPosition('context', `${menu.kind}:${menu.oid}`, { x: menu.x, y: menu.y }, false);
     queueMicrotask(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-      const active = this.contextMenu();
-      if (active?.kind !== menu.kind || active.oid !== menu.oid || !this.contextBranchCreatorOpen()) return;
+      if (!this.ownsContextBranchCreator(request)) return;
       this.actionMenuElement()?.nativeElement.querySelector<HTMLInputElement>('#context-branch-name')?.focus();
     })));
   }
 
-  protected handleContextBranchCreatorKeydown(event: KeyboardEvent): void {
+  protected handleContextBranchCreatorKeydown(event: KeyboardEvent, request = this.contextBranchCreator()): void {
+    if (!this.ownsContextBranchCreator(request)) return;
     event.stopPropagation();
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey
+      || event.shiftKey || event.repeat || event.isComposing)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape') {
-      this.closeContextBranchCreator(event);
+      this.closeContextBranchCreator(event, request);
       return;
     }
     if (event.key !== 'Tab') return;
@@ -13143,24 +13172,20 @@ export class AppComponent implements OnInit, OnDestroy {
     controls[event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length].focus();
   }
 
-  protected closeContextBranchCreator(event?: Event): void {
+  protected closeContextBranchCreator(event?: Event, request = this.contextBranchCreator()): void {
     event?.preventDefault();
     event?.stopPropagation();
-    const menu = this.contextMenu();
-    if (!menu) return;
+    if (!this.ownsContextBranchCreator(request)) return;
+    const menu = this.contextMenu()!;
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
     this.contextBranchName.set('');
-    this.contextBranchCreatorOpen.set(false);
-    this.settleGraphActionMenuPosition(
-      'context',
-      `${menu.kind}:${menu.oid}`,
-      { x: menu.x, y: menu.y },
-      false,
-    );
+    this.contextBranchCreator.set(null);
+    this.contextBranchError.set(null);
+    this.settleGraphActionMenuPosition('context', `${menu.kind}:${menu.oid}`, { x: menu.x, y: menu.y }, false);
     queueMicrotask(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-      this.actionMenuElement()?.nativeElement
-        .querySelector<HTMLElement>('[data-create-context-branch]')
-        ?.focus();
+      if (this.contextBranchCreator() || this.contextBranchCreatorRevision !== request.revision
+        || this.contextMenuGeneration !== request.menuGeneration || !this.ownsRepositoryScope(request)) return;
+      this.actionMenuElement()?.nativeElement.querySelector<HTMLElement>('[data-create-context-branch]')?.focus();
     })));
   }
 
@@ -13778,7 +13803,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.contextMenuReturnFocus = null;
     }
     this.contextBranchName.set('');
-    this.contextBranchCreatorOpen.set(false);
+    this.contextBranchCreator.set(null);
     this.contextBranchError.set(null);
     this.contextTagName.set('');
     this.contextRenameName.set(kind === 'branch' ? label : '');
@@ -14118,7 +14143,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.actionMenuElement()?.nativeElement ?? null;
     this.contextMenuGeneration += 1;
     this.actionOverlays.close('context');
-    this.contextBranchCreatorOpen.set(false);
+    this.contextBranchCreator.set(null);
     this.actionOverlays.close('stash');
     this.contextBranchError.set(null);
     this.contextMenuReturnFocus = null;

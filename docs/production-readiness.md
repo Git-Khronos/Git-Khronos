@@ -5,6 +5,25 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Context branch-creation request scope — local, native gate pending
+
+The original nine-case renderer probe reproduced eight failures: two source
+changes still dispatched, outgoing confirm/cancel/field events consumed newer
+creators, and modified/repeated/composing Enter left default submission enabled.
+The valid selected-tip control passed. Evidence is retained under
+`target/local-review/context-branch/renderer-red/`.
+
+The creator now has one typed source/tip/menu-generation request instead of an
+independent open flag. Keyed form instances and rendered request arguments scope
+confirm/cancel/field/keyboard events, and source changes retire the menu. Late
+results and focus callbacks cannot consume a reopened creator, including a
+same-menu close/reopen cycle. Submitted fields freeze during native work, while
+plain Enter and explicit retry remain supported. Source checkout is disclosed.
+The final 102 renderer cases, 265 TypeScript tests, strict graph types and 107
+Python harness tests passed. The new owned native context-creation helper
+compiled but has not yet run against a rebuilt package. This source change is
+not yet packaged-qualified, installed or released.
+
 ## Palette-rename Enter defaults and native shortcut diagnostics — 2026-11-20
 
 Hosted run `44676314454` lost the palette-rename review after its modifier-key
