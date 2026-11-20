@@ -1,5 +1,6 @@
-"""Packaged updater entry point and missing-trust refusal, without installation."""
+"""Packaged updater trust boundaries, without networking or installation."""
 import json
+import os
 from native_worktree_scenarios import checkout_footprint
 
 
@@ -15,13 +16,33 @@ def application_updates_workflow(driver, fixtures, report):
     driver.click('[aria-label="Main menu"]')
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
     modal = 'gc-application-updates-dialog [role=dialog]'
-    driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("signing key")')
+    expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
+    driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
     state = driver.script('''const dialog = document.querySelector(arguments[0]);
       const automatic = dialog.querySelector('input[type=checkbox]');
       const check = [...dialog.querySelectorAll('button')].find(b => b.textContent.trim() === 'Check for updates');
       return {text: dialog.textContent, automatic: automatic.checked,
         automaticDisabled: automatic.disabled, checkDisabled: check.disabled,
         installButtons: [...dialog.querySelectorAll('button')].filter(b => b.textContent.includes('Install verified')).length};''', modal)
+    if expect_trust:
+        status = driver.request('POST', driver.path('execute/async'), {'script': """
+          const done = arguments[arguments.length - 1];
+          window.__TAURI_INTERNALS__.invoke('application_update_status')
+            .then(done, e => done({failure: String(e)}));""", 'args': []})
+        assert status['configured'] is True and status['canCheck'] is True, status
+        assert status['automatic'] is False and status['offerId'] is None, status
+        assert not status['canDownload'] and not status['canInstall'], status
+        assert not state['automatic'] and not state['automaticDisabled'] and not state['checkDisabled']
+        assert state['installButtons'] == 0
+        report['applicationUpdates'] = {'source': str(repository), 'configuredUi': state,
+                                        'nativeStatus': status}
+        driver.click_visible(modal + ' button', 'Close')
+        driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
+        driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')
+        assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+        report['scenarios'].append('native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer')
+        return
+
     assert state['automatic'] is False and state['automaticDisabled']
     assert state['checkDisabled'] and state['installButtons'] == 0
     assert 'Running version' in state['text'] and 'not configured' in state['text']

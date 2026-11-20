@@ -1544,16 +1544,19 @@ dependencies = [
 name = "git-khronos-desktop"
 version = "0.1.6"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.3.4",
  "git-khronos-git-core",
  "gtk",
  "libc",
+ "minisign-verify",
  "notify",
  "portable-pty",
  "reqwest",
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "specta",
  "specta-typescript",
  "tauri",

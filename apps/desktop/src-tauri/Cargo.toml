@@ -52,3 +52,8 @@ tempfile = "=3.27.0"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+base64 = "=0.22.1"
+minisign-verify = "=0.3.0"
+sha2 = "=0.10.9"

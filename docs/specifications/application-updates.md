@@ -146,3 +146,41 @@ The rebuilt Debian checkpoint containing the restart reconciliation passed all
 `476ff5a913b25079c7d21e5e7b0bfd7b6bb8f5388004b7dbfe23012227f7dc76`.
 This also rechecks the packaged menu and native fail-closed behavior without a
 publisher key. It does not qualify a live signed download or privileged install.
+
+## Preparing signed Debian release assets locally
+
+A release-key custodian should keep the encrypted private key and its passphrase
+outside Git and arrange separately protected recovery copies before distributing
+builds that pin the public key. Never commit the private key, pass it on a command
+line, or put it in the build environment. Set `GIT_KHRONOS_UPDATER_PUBLIC_KEY`
+from the public key when building; the Debian build receipt binds that value to
+the resulting package. Check the release version, pinned key, and exact-artifact
+qualification before signing. Provide the passphrase through the signer's
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` environment only for the signing process.
+
+With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,
+`STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
+
+```sh
+pnpm exec tauri signer sign --private-key-path "$PRIVATE_KEY_FILE" \
+  --app-version "$VERSION" "$PACKAGE"
+cargo run --locked -p git-khronos-desktop --example stage-debian-update -- \
+  "$PACKAGE" "$PACKAGE.sig" "$PUBLIC_KEY_FILE" "$STAGING_PARENT" \
+  "$QUALIFIED_PACKAGE_SHA256"
+```
+
+The stager prints a new directory containing the verified package, a
+`latest.json` manifest, and `update-assets.sha256`. It streams the signed bytes
+into owned staging, checks the exact qualified digest, and rejects mismatched
+package metadata, architecture, and signed version. No signing secret is needed
+for staging. Publication is a separate operation: the matching release tag and
+asset name must agree with the staged URL. The current release workflow does not
+publish these assets automatically.
+
+A local publisher-key-enabled Debian candidate passed 271 native environment
+scenarios and was signed and staged unchanged. Debian SHA-256:
+`157db654c7759d9a99bbf55d59ad56b33efcd21336d37a3a8eb18c841d24ce00`.
+The configured-trust scenario replaces the two unconfigured-trust cases for
+this variant. It verifies that automatic updates remain off and that a pinned
+key alone does not create an installable offer. No release was published and
+this qualification did not exercise a live download or privileged install.
