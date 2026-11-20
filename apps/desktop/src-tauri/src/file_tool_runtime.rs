@@ -19,6 +19,11 @@ pub struct FileToolState {
     reviews: Mutex<ReviewStore<Payload>>,
     sessions: Mutex<HashMap<String, Arc<Session>>>,
 }
+impl FileToolState {
+    pub(crate) fn has_open_contexts(&self) -> bool {
+        self.sessions.lock().map_or(true, |sessions| sessions.values().any(|session| !session.closed.load(Ordering::Acquire)))
+    }
+}
 struct Session {
     requested_at_millis: String,
     id: String,

@@ -21,6 +21,9 @@ async function setup(page: Page, template: string | null, unavailable = false): 
     (window as any).__commitTemplate = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
+      // Optional recap reads are not template changes or Git writes.
+      if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
+        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
       if (command === 'refresh_repository') {
         const snapshot = { ...git.repository(), commitTemplate: fixture.nextTemplate, commitTemplateError: null };
         return fixture.holdRefresh ? new Promise(resolve => { fixture.finishRefresh = () => resolve(snapshot); }) : Promise.resolve(snapshot);
@@ -63,7 +66,7 @@ test('template reload requires confirmation, preserves literal headings and leav
   await expect(page.getByLabel('Add Signed-off-by trailer', { exact: true })).toBeChecked();
   await expect(page.locator('.coauthor-chips')).toContainText('Template Partner');
   expect(await page.evaluate(() => (window as any).__commitTemplate.calls.filter((call: any) =>
-    call.command !== 'refresh_repository_status' && call.command !== 'refresh_repository_metadata'))).toEqual([]);
+    call.command !== 'working_tree_change_summary' && call.command !== 'refresh_repository_status' && call.command !== 'refresh_repository_metadata'))).toEqual([]);
 });
 
 test('unreadable template remains visible and refresh repair preserves the entered draft until confirmed reload', async ({ page }) => {
@@ -86,7 +89,7 @@ test('unreadable template remains visible and refresh repair preserves the enter
   await page.keyboard.press('Escape');
   await expect(help).toBeFocused();
   expect(await page.evaluate(() => (window as any).__commitTemplate.calls.map((call: any) => call.command)
-    .filter((command: string) => command !== 'refresh_repository_status' && command !== 'refresh_repository_metadata'))).toEqual(['refresh_repository']);
+    .filter((command: string) => command !== 'working_tree_change_summary' && command !== 'refresh_repository_status' && command !== 'refresh_repository_metadata'))).toEqual(['refresh_repository']);
 });
 
 test('template confirmation does not carry into another repository and reload is disabled while committing', async ({ page }) => {
@@ -149,5 +152,5 @@ test('template chunk failure leaves a usable draft and explicit feedback without
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Draft survives import failure');
   await expect(page.locator('.commit-form button[type=submit]')).toBeEnabled();
   expect(await page.evaluate(() => (window as any).__commitTemplate.calls.filter((call: any) =>
-    call.command !== 'refresh_repository_status' && call.command !== 'refresh_repository_metadata'))).toEqual([]);
+    call.command !== 'working_tree_change_summary' && call.command !== 'refresh_repository_status' && call.command !== 'refresh_repository_metadata'))).toEqual([]);
 });

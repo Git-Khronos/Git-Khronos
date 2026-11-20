@@ -13,6 +13,10 @@ const cargo = process.env.CARGO_TARGET_DIR ? resolve(process.cwd(), process.env.
 const receiptPath = join(cargo, 'release/.git-khronos-package-build.v1.json');
 const pendingPath = `${receiptPath}.pending`;
 const [action, checksum] = process.argv.slice(2);
+// Public trust is a compiled input, even when Task's file checksum is unchanged.
+// Fingerprint the value without recording unrelated environment or signing keys.
+const buildConfiguration = { updaterPublicKeySha256: createHash('sha256')
+  .update(process.env.GIT_KHRONOS_UPDATER_PUBLIC_KEY ?? '').digest('hex') };
 const fail = (message) => { throw new Error(message); };
 const exists = async (path) => { try { await lstat(path); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
 
@@ -72,7 +76,8 @@ async function outputDigests() {
   return outputs;
 }
 function validBase(value) {
-  return value && typeof value === 'object' && value.version === 1 && value.checksum === checksum && value.workspace === root && value.cargoTarget === cargo;
+  return value && typeof value === 'object' && value.version === 1 && value.checksum === checksum && value.workspace === root && value.cargoTarget === cargo
+    && JSON.stringify(value.buildConfiguration) === JSON.stringify(buildConfiguration);
 }
 async function main() {
   if (!['begin', 'complete', 'check'].includes(action) || !/^[A-Za-z0-9_:+/=.-]{1,256}$/.test(checksum ?? '')) fail('Usage: package-build-receipt.mjs {begin|complete|check} <Task source checksum>');
@@ -85,7 +90,7 @@ async function main() {
     await mkdir(dirname(pendingPath), { recursive: true });
     const owner = await processIdentity(process.ppid);
     if (!owner) fail('The package build owner is no longer available.');
-    await atomicJson(pendingPath, { version: 1, checksum, workspace: root, cargoTarget: cargo, owner, attempt: randomUUID() });
+    await atomicJson(pendingPath, { version: 1, checksum, workspace: root, cargoTarget: cargo, buildConfiguration, owner, attempt: randomUUID() });
     return;
   }
   if (action === 'complete') {
@@ -94,7 +99,7 @@ async function main() {
     const outputs = await outputDigests();
     const current = await readJson(pendingPath);
     if (current.attempt !== pending.attempt || !validBase(current)) fail('The pending package build changed before completion.');
-    await atomicJson(receiptPath, { version: 1, checksum, workspace: root, cargoTarget: cargo, outputs, recordedAt: new Date().toISOString() });
+    await atomicJson(receiptPath, { version: 1, checksum, workspace: root, cargoTarget: cargo, buildConfiguration, outputs, recordedAt: new Date().toISOString() });
     await rm(pendingPath);
     console.log('Recorded completed Debian package build receipt.');
     return;

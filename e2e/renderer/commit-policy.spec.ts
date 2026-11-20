@@ -13,6 +13,8 @@ async function setup(page: Page, staged: number): Promise<void> {
     (window as any).__commitPolicy = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
+        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
       if (command === 'commit_changes') {
         if (fixture.diagnostic) return Promise.reject(fixture.diagnostic);
         if (fixture.invalidIdentity) return Promise.reject({ kind: 'invalidCommitIdentity', message: 'Enter a nonempty name and an explicit email for each enabled commit identity override. Repository configuration is not changed.' });
@@ -500,5 +502,5 @@ test('repository failure guidance is visible with original errors, retained draf
   }
   const commands = await page.evaluate(() => (window as any).__commitPolicy.calls.map((call: any) => call.command));
   expect(commands.filter((command: string) => command === 'commit_changes')).toHaveLength(4);
-  expect(commands.every((command: string) => ['commit_changes', 'refresh_repository', 'refresh_repository_status', 'refresh_repository_metadata'].includes(command))).toBe(true);
+  expect(commands.every((command: string) => ['commit_changes', 'refresh_repository', 'refresh_repository_status', 'refresh_repository_metadata', 'working_tree_change_summary'].includes(command))).toBe(true);
 });

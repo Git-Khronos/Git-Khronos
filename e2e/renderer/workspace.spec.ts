@@ -149,6 +149,8 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
       invoke: (command: string, args: Record<string, unknown> = {}) => {
         const state = (window as any).__cancelOperationTest;
         state.calls.push({ command, args });
+        if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
+          uncountedFiles: snapshot.status.unstaged + snapshot.status.untracked, partial: true });
         if (command === 'fetch_repository') {
           state.attempts += 1;
           return new Promise((_, reject) => state.rejectFetch.push(reject));
@@ -185,9 +187,11 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
       error: state.git.error(),
       commands: state.calls
         .map((call: { command: string }) => call.command)
-        .filter((command: string) => command !== 'refresh_repository_status'),
+        .filter((command: string) => command !== 'refresh_repository_status' && command !== 'working_tree_change_summary'),
       completedStatus: state.calls.some((call: { command: string }) => call.command === 'refresh_repository_status'),
-      cancellationMatchesOperation: state.calls[0].args.operationId === state.calls[1].args.operationId,
+      cancellationMatchesOperation: typeof state.calls.find((call: any) => call.command === 'fetch_repository')?.args.operationId === 'string'
+        && state.calls.find((call: any) => call.command === 'fetch_repository')?.args.operationId
+          === state.calls.find((call: any) => call.command === 'cancel_git_operation')?.args.operationId,
     };
   })).toEqual({
     activity: 'Operation canceled; repository state refreshed',

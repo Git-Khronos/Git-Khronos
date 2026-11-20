@@ -1145,3 +1145,17 @@ test('package verification allows only the single Tauri Deb bundle marker transf
   await f.put('usr/bin/git-khronos', original.replace('_VAR_UNK', '_VAR_RPM')); f.build();
   assert.notEqual(f.verify().status, 0);
 });
+
+
+test('package cache binds the compiled updater public key including removing trust', async (t) => {
+  const f = await fixture(t); f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: '' });
+  let previous = await f.builds();
+  f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: 'owned-public-key-A' });
+  assert.equal(await f.builds(), ++previous);
+  f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: 'owned-public-key-A' });
+  assert.equal(await f.builds(), previous, 'unchanged trust may reuse a verified completed build');
+  f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: 'owned-public-key-B' });
+  assert.equal(await f.builds(), ++previous);
+  f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: '' });
+  assert.equal(await f.builds(), ++previous, 'removing trust must not reuse a previously trusted binary');
+});

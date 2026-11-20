@@ -10,6 +10,7 @@ import { RepositoryLinkDialogComponent, type RepositoryLinkDialogRequest } from 
 import { FileContentDialogComponent, type FileContentDialogRequest } from './file-content-dialog.component';
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
 import { WindowsLauncherComponent } from './windows-launcher.component';
+import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } from './application-updates-dialog.component';
 import { WindowsLauncherService } from './windows-launcher.service';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
@@ -686,7 +687,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -802,6 +803,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitKhronosService);
+  private readonly applicationUpdatesDialog = viewChild<ApplicationUpdatesDialogComponent>('applicationUpdatesDialog');
+  protected readonly applicationUpdatesRequest = signal<ApplicationUpdatesRequest | null>(null);
+  protected readonly ownsApplicationUpdates = (request: ApplicationUpdatesRequest): boolean => this.applicationUpdatesRequest() === request;
+  private applicationUpdatesSequence = 0;
+  private readonly applicationUpdatesLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('applicationUpdatesLoaderClose');
+
   protected readonly repositoryOperation = computed(() => repositoryOperationState(this.git.repository()?.status));
   protected readonly historySearch = inject(HistorySearchService);
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
@@ -3278,6 +3285,7 @@ export class AppComponent implements OnInit, OnDestroy {
     openKeyboardShortcuts: this.openKeyboardShortcuts.bind(this),
     openPreferences: this.openPreferences.bind(this),
     openWindowsLauncher: this.openWindowsLauncher.bind(this),
+    openApplicationUpdates: this.openApplicationUpdates.bind(this),
   }));
 
   protected readonly graphActionMenuView = computed(() => ({
@@ -4521,6 +4529,16 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected handleShortcut(event: KeyboardEvent): void {
+    const updates = this.applicationUpdatesRequest();
+    if (updates) {
+      if (event.key === 'Escape') { event.preventDefault(); this.closeApplicationUpdates(updates); }
+      else if (event.key === 'Tab') {
+        event.preventDefault();
+        (this.applicationUpdatesLoaderClose()?.nativeElement ?? document.querySelector<HTMLElement>('gc-application-updates-dialog button:not(:disabled), gc-application-updates-dialog [role=dialog]'))?.focus();
+      } else if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
+      return;
+    }
+
     if (this.pendingTagTarget() || this.pendingBranchUpstream()) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -12540,6 +12558,34 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.closeEditorDraftRecovery(); }
     else if (event.key === 'Tab') { event.preventDefault(); this.editorDraftRecoveryLoaderClose()?.nativeElement.focus(); }
+  }
+
+  protected openApplicationUpdates(): void {
+    if (this.applicationUpdatesRequest() || this.fileContentDialog()) return;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnFocus = active?.closest('[role=menu]')
+      ? document.querySelector<HTMLElement>('[aria-label="Main menu"]') : active;
+    const request: ApplicationUpdatesRequest = { id: ++this.applicationUpdatesSequence, returnFocus };
+    this.appMenuOpen.set(false);
+    this.applicationUpdatesRequest.set(request);
+    afterNextRender(() => { if (this.ownsApplicationUpdates(request)) this.applicationUpdatesLoaderClose()?.nativeElement.focus(); }, { injector: this.injector });
+  }
+
+  protected closeApplicationUpdates(request: ApplicationUpdatesRequest): void {
+    if (!this.ownsApplicationUpdates(request) || this.applicationUpdatesDialog()?.updates.installing()) return;
+    this.applicationUpdatesRequest.set(null);
+    queueMicrotask(() => {
+      if (!this.applicationUpdatesRequest() && this.applicationUpdatesSequence === request.id && request.returnFocus?.isConnected
+        && !request.returnFocus.closest('[inert]')) request.returnFocus.focus();
+    });
+  }
+
+  protected handleApplicationUpdatesLoaderKey(event: KeyboardEvent, request: ApplicationUpdatesRequest): void {
+    if (!this.ownsApplicationUpdates(request)) return;
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeApplicationUpdates(request); }
+    else if (event.key === 'Tab') { event.preventDefault(); this.applicationUpdatesLoaderClose()?.nativeElement.focus(); }
+    else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat || event.isComposing)) event.preventDefault();
   }
 
   protected openWindowsLauncher(): void {

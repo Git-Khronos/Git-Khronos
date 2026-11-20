@@ -14,5 +14,8 @@ const alias = Object.fromEntries(
 
 export default defineConfig({
   resolve: { alias },
+  // No root tsconfig.json exists: explicitly share Angular's legacy decorator
+  // mode with Vite/Oxc when unit tests import a real injectable service.
+  oxc: { decorator: { legacy: Boolean(config.compilerOptions.experimentalDecorators) } },
   test: { maxWorkers: 2, exclude: [...configDefaults.exclude, '**/target/**'] },
 });

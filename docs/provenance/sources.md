@@ -2050,8 +2050,11 @@ Sources:
 
 Used for planned capability/platform and signature-verification requirements,
 including current Debian/RPM support and reviewing Linux privilege fallbacks.
-The upstream plugin is Apache-2.0 OR MIT; no dependency has been added yet.
-No source code or interface text copied. The separate functional specification
+The upstream plugin is Apache-2.0 OR MIT; the desktop manifest pins 2.14.1
+using native TLS. The initial desktop Cargo check passed. The six added packages
+have declared MIT/Apache-2.0-compatible license choices and canonical repositories
+verified through Cargo metadata; existing locked packages were not upgraded.
+Full dependency/notice qualification and runtime integration are pending. No source code or interface text copied. The separate functional specification
 records the user's manual/opt-in automatic-update requirement, not a completed
 or published update system.
 
@@ -2063,3 +2066,15 @@ Used for the documented no-lazy-fetch environment guard. The implementation
 adds independently tested command-level transport refusal as a fallback for
 older supported Git. Policies are scoped to this optional read and never
 persistently rewrite user configuration. No external source code copied.
+
+
+## OS authorization for application updates
+
+- https://www.freedesktop.org/software/polkit/docs/latest/pkexec.1.html
+- https://manpages.debian.org/trixie/dpkg/dpkg.1.en.html
+
+Used for the documented authorization-refusal statuses, program-status
+passthrough, disabling the textual authentication-agent fallback, and dpkg's
+restricted exit-status range. Only the fixed Debian installer maps 126/127 to a
+pre-execution refusal; other ambiguous outcomes remain unconfirmed. Independently
+implemented behavior; no upstream source code or documentation text copied.

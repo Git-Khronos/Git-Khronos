@@ -10,6 +10,7 @@
 
 
 export const events = __makeEvents__<{
+applicationUpdateChanged: ApplicationUpdateChanged,
 gitAuthenticationDismissed: GitAuthenticationDismissed,
 gitAuthenticationPrompt: GitAuthenticationPrompt,
 incomingRepositoryLinksChanged: IncomingRepositoryLinksChanged,
@@ -17,6 +18,7 @@ repositoryChanged: RepositoryChanged,
 terminalExit: TerminalExit,
 terminalOutput: TerminalOutput
 }>({
+applicationUpdateChanged: "application-update-changed",
 gitAuthenticationDismissed: "git-authentication-dismissed",
 gitAuthenticationPrompt: "git-authentication-prompt",
 incomingRepositoryLinksChanged: "incoming-repository-links-changed",
@@ -32,6 +34,8 @@ terminalOutput: "terminal-output"
 /** user-defined types **/
 
 export type AppError = { kind: string; message: string; hint: string | null }
+export type ApplicationUpdateChanged = { state: ApplicationUpdateStatus }
+export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
@@ -484,6 +488,7 @@ export type TerminalOutput = { sessionId: string; data: number[] }
 export type ToolProfile = { version: number; id: string; name: string; role: ToolRole; executable: string; arguments: string[] }
 export type ToolRole = "editor" | "diff" | "merge" | "terminal"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
+export type UpdatePhase = "unconfigured" | "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "installed" | "refused" | "uncertain" | "failed"
 export type WindowsLauncherInspection = { supported: boolean; interopUnavailable: boolean; message: string | null; distribution: string | null; appIdentity: string | null; identitySource: string | null; conflictingIdentities: string[];
 /**
  * Launcher used by every working Git Khronos shortcut, when they agree.
@@ -839,6 +844,12 @@ export function compare_commit_with_working_tree(args: { repoId: string; baseOid
 export function compare_commit_file_with_working_tree(args: { repoId: string; baseOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file_with_working_tree", args); }
 export function inspect_working_tree_file(args: { repoId: string; path: string; staged: boolean }): Promise<WorkingTreeFileDiff> { return TAURI_INVOKE("inspect_working_tree_file", args); }
 export function working_tree_change_summary(args: { repoId: string }): Promise<WorkingTreeChangeSummary> { return TAURI_INVOKE("working_tree_change_summary", args); }
+export function application_update_status(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("application_update_status", args); }
+export function set_automatic_application_updates(args: { enabled: boolean }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("set_automatic_application_updates", args); }
+export function check_application_update(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("check_application_update", args); }
+export function download_application_update(args: { offerId: string }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("download_application_update", args); }
+export function install_application_update(args: { offerId: string }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("install_application_update", args); }
+export function inspect_application_update(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("inspect_application_update", args); }
 export function inspect_file_history(args: { repoId: string; revision: string; path: string }): Promise<FileHistoryEntry[]> { return TAURI_INVOKE("inspect_file_history", args); }
 export function search_repository_history(args: { repoId: string; query: HistoryQuery; cursor?: HistoryCursor | null; operationId: string }): Promise<HistorySearchPage> { return TAURI_INVOKE("search_repository_history", args); }
 export function inspect_file_history_page(args: { repoId: string; revision: string; path: string; cursor?: FileHistoryCursor | null; operationId: string }): Promise<FileHistoryPage> { return TAURI_INVOKE("inspect_file_history_page", args); }
@@ -1113,6 +1124,12 @@ export type CommandMap = {
   compare_commit_file_with_working_tree: typeof compare_commit_file_with_working_tree;
   inspect_working_tree_file: typeof inspect_working_tree_file;
   working_tree_change_summary: typeof working_tree_change_summary;
+  application_update_status: typeof application_update_status;
+  set_automatic_application_updates: typeof set_automatic_application_updates;
+  check_application_update: typeof check_application_update;
+  download_application_update: typeof download_application_update;
+  install_application_update: typeof install_application_update;
+  inspect_application_update: typeof inspect_application_update;
   inspect_file_history: typeof inspect_file_history;
   search_repository_history: typeof search_repository_history;
   inspect_file_history_page: typeof inspect_file_history_page;

@@ -94,6 +94,10 @@
           "git-khronos"
         ]
       }
+    },
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true
     }
   }
 }

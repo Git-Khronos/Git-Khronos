@@ -772,3 +772,41 @@ generation/context guards. Their inventory entries identify existing tests and
 risks, not a completed migration or new exhaustive characterization. These
 domain-specific migrations require separate behavioral coverage; no generic
 state wrapper should erase error distinctions, accepted writes, or capabilities.
+
+### Application update intent, consent and installation receipts
+
+Application updates are application-global, not a repository mutation lifecycle.
+`application_update_model.rs` separates offered/verified package state, automatic
+consent epochs and accepted installation receipts. Manual actions do not require
+automatic consent. Opt-out retires future automatic intent but cannot discard an
+already admitted install's actual outcome. A durable prepared receipt precedes
+OS invocation; uncertain persistence or installer outcome blocks automatic replay
+across restart. Native installer outcomes and package/version observations, not a download or
+renderer acknowledgment, govern installation confirmation. Worker failure after admission becomes
+inspectable uncertainty rather than an indefinitely busy UI; late worker failure
+cannot overwrite an already confirmed native outcome.
+
+The native controller owns HTTPS sources, pinned publisher trust, opaque offer
+IDs, bounded downloaded bytes, signed-version verification and installer paths.
+Read-only package inspection has output/time limits and owns its decompressor
+process group. Linux authorization uses fixed OS programs and the registered
+system authentication agent, without a textual-password fallback. Debian auth
+refusal is distinct from potentially partial installer failure; ambiguous
+outcomes remain uncertain. Windows self-installation is still disabled pending
+a safe restart boundary. Missing publisher trust is fail-closed, not permission
+to trust a key supplied in a manifest.
+
+The deferred Updates review captures a request identity and restores only its
+own opener. Native state survives presentation closure. Pending install IPC is
+one-shot before a status event arrives; out-of-order native responses cannot
+replace newer revisions. Preference widgets reflect confirmed native state even
+when a write is refused or its response is lost. Browser preview never initiates
+an updater request. The native scheduler, not renderer timers or local storage,
+owns opt-in automatic checks and safe installation admission.
+
+Coverage: native `application_update` policy, signature/version binding, bounded
+transport, real signed inert package metadata and receipt/worker fault tests;
+`application-updates.service.spec.ts`; renderer `application-updates.spec.ts`;
+and packaged `native_application_updates_scenarios.py`. Production signing-key
+provisioning and release publication are separate operations. Platform and exact
+artifact acceptance are not implied by fixture-only test results.

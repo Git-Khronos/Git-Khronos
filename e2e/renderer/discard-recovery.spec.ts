@@ -483,6 +483,8 @@ for (const selected of [false, true]) {
       (window as any).__TAURI_INTERNALS__ = {
         invoke: (command: string, args: any) => {
           test.calls.push({ command, args });
+          if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
+            uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
           if (command === 'preview_discard') {
             if (selected) return Promise.reject({
               kind: 'repositoryFileRefused',
@@ -521,7 +523,7 @@ for (const selected of [false, true]) {
         (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
         .toContain('selected nested path cannot be discarded safely');
       const preview = await page.evaluate(() => (window as any).__discardTest.calls.filter(
-        (call: { command: string }) => call.command !== 'refresh_repository_status'));
+        (call: { command: string }) => call.command !== 'refresh_repository_status' && call.command !== 'working_tree_change_summary'));
       expect(preview).toEqual([{ command: 'preview_discard', args: {
         repoId: expect.any(String), paths: [path],
       } }]);
@@ -539,7 +541,7 @@ for (const selected of [false, true]) {
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
     await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
     const preview = await page.evaluate(() => (window as any).__discardTest.calls.filter(
-      (call: { command: string }) => call.command !== 'refresh_repository_status'));
+      (call: { command: string }) => call.command !== 'refresh_repository_status' && call.command !== 'working_tree_change_summary'));
     expect(preview).toEqual([{ command: 'preview_discard', args: {
       repoId: expect.any(String), paths: selected ? [path] : null,
     } }]);
@@ -1191,6 +1193,8 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         (window as any).__recoveryCalls.push({ command, args });
+        if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
+          uncountedFiles: app.git.repository().status.unstaged + app.git.repository().status.untracked, partial: true });
         if (command === 'load_discard_recoveries') return Promise.resolve(records);
         if (command === 'forget_saved_discard') {
           records = records.filter(record => record.id !== args.id);
@@ -1230,7 +1234,7 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
   const result = await page.evaluate(() => ({
     repositoryId: (window as any).__recoveryRepositoryId,
     calls: (window as any).__recoveryCalls.filter(
-      (call: { command: string }) => call.command !== 'refresh_repository_status'),
+      (call: { command: string }) => call.command !== 'refresh_repository_status' && call.command !== 'working_tree_change_summary'),
   }));
   expect(result.repositoryId).toEqual(expect.any(String));
   const load = { command: 'load_discard_recoveries', args: { repoId: result.repositoryId } };

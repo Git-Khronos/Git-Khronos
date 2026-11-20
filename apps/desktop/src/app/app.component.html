@@ -107,7 +107,7 @@
         [primaryShortcutKey]="primaryShortcutKey" [favoriteShortcut]="favoriteShortcut"
         (repositoryChosen)="chooseRepository()" (repositoryManagerOpened)="openRepositoryManager($event)"
         (closedRepositoryReopened)="reopenClosedRepository()" (favoriteOpened)="openFavoriteRepository($event)"
-        (repositoryOpened)="openRepositoryPath($event)" (themeToggled)="toggleAppTheme()" (editorDraftRecoveryOpened)="openEditorDraftRecovery()" />
+        (repositoryOpened)="openRepositoryPath($event)" (themeToggled)="toggleAppTheme()" (editorDraftRecoveryOpened)="openEditorDraftRecovery()" (applicationUpdatesOpened)="openApplicationUpdates()" />
     }
   } @else if (git.repository(); as repo) {
     <header class="chrome">
@@ -2249,6 +2249,15 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading editor draft recovery" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="status">Loading recovery controls…</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Cancel</button></section></div>
     } @error {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Editor draft recovery unavailable" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="alert">Recovery controls could not load. Stored copies were preserved. Restart to try again.</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Close</button></section></div>
+    }
+  }
+  @if (applicationUpdatesRequest(); as request) {
+    @defer (on immediate) {
+      <gc-application-updates-dialog #applicationUpdatesDialog [request]="request" [ownsRequest]="ownsApplicationUpdates" (closed)="closeApplicationUpdates($event)" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Updates" (keydown)="handleApplicationUpdatesLoaderKey($event, request)"><p role="status">Loading Updates…</p><button #applicationUpdatesLoaderClose type="button" (click)="closeApplicationUpdates(request)">Cancel</button></section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Updates panel unavailable" (keydown)="handleApplicationUpdatesLoaderKey($event, request)"><p role="alert">The Updates panel could not load. Close it and restart to retry. Enabled automatic updates have independent native state.</p><button #applicationUpdatesLoaderClose type="button" (click)="closeApplicationUpdates(request)">Close</button></section></div>
     }
   }
   @if (windowsLauncherOpen()) {

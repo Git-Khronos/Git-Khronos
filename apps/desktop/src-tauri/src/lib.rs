@@ -122,6 +122,8 @@ mod renderer_recovery;
 mod repository_file_commands;
 mod repository_link_commands;
 mod terminal_profile_commands;
+mod application_update_model;
+mod application_updates;
 mod windows_launcher;
 mod working_file_commands;
 
@@ -4074,7 +4076,9 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new()
+            .pubkey(option_env!("GIT_KHRONOS_UPDATER_PUBLIC_KEY").unwrap_or("")).build());
     // Under WSL the saved theme is applied at document start, so the first
     // paint uses the saved theme instead of the default one.
     #[cfg(target_os = "linux")]
@@ -4088,6 +4092,7 @@ pub fn run() {
         builder
     };
     builder
+        .manage(application_updates::ApplicationUpdates::default())
         .manage(authentication::AuthenticationState::default())
         .manage(working_file_commands::EditorState::default())
         .manage(working_file_commands::recovery::RecoveryState::default())
@@ -4110,6 +4115,7 @@ pub fn run() {
                 }
             }
             bindings.mount_events(app);
+            application_updates::start(app.handle().clone());
             app.state::<gitlab_commands::GitLabAccounts>()
                 .start_cleanup();
             incoming_repository_links::install_listener(app.handle())?;
@@ -4124,6 +4130,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .events(tauri_specta::collect_events![
             RepositoryChanged,
+            application_updates::ApplicationUpdateChanged,
             incoming_repository_links::IncomingRepositoryLinksChanged,
             TerminalOutput,
             TerminalExit,
@@ -4385,6 +4392,12 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             compare_commit_file_with_working_tree,
             inspect_working_tree_file,
             working_tree_change_summary,
+            application_updates::application_update_status,
+            application_updates::set_automatic_application_updates,
+            application_updates::check_application_update,
+            application_updates::download_application_update,
+            application_updates::install_application_update,
+            application_updates::inspect_application_update,
             inspect_file_history,
             search_repository_history,
             inspect_file_history_page,

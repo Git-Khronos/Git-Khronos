@@ -48,7 +48,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
     ):
         if field is None:
             driver.context_click(opener)
-            driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…')
+            driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…', wait_for_ready=True)
         else:
             driver.click_visible(opener)
         driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
@@ -86,7 +86,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
     # simply refusing every confirmation would not satisfy the requirement.
     heads_before = fixtures.git(repository, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads').splitlines()
     driver.context_click('[aria-label="Local branch owned-keyboard-branch"]')
-    driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…')
+    driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…', wait_for_ready=True)
     modal = '[aria-labelledby="branch-confirmation-title"]'
     driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
     assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', modal)
@@ -207,3 +207,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     from native_unstaged_summary_scenarios import unstaged_summary_workflow
     unstaged_summary_workflow(driver, fixtures, report)
+
+    from native_application_updates_scenarios import application_updates_workflow
+    application_updates_workflow(driver, fixtures, report)
