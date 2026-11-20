@@ -2721,17 +2721,18 @@
       </form>
     </div>
   }
-  @if (pendingBranchRename(); as branch) {
-    <div class="confirmation-backdrop" (click)="pendingBranchRename.set(null)">
-      <form novalidate class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Rename branch {{ branch }}" (submit)="$event.preventDefault(); confirmPaletteBranchRename()" (click)="$event.stopPropagation()">
+  @if (pendingBranchRename(); as request) {
+    <div class="confirmation-backdrop" (click)="closeBranchRename(true, request)">
+      <form novalidate class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Rename branch {{ request.branch }}" (submit)="$event.preventDefault(); confirmPaletteBranchRename(request)" (click)="$event.stopPropagation()" (keydown)="handleBranchRenameKey($event, request)">
         <div class="confirmation-icon"><gc-icon name="edit" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Rename local branch</span>
-          <h2>{{ branch }}</h2>
+          <h2>{{ request.branch }}</h2>
+          <p class="form-help repository-editor-source">Checkout: <code>{{ request.repositoryPath }}</code></p>
           <p>Enter the new branch name. Existing commits and working-tree changes remain unchanged.</p>
-          <input class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [gcTextValue]="contextRenameName()" (gcTextValueChange)="contextRenameName.set($event)" autofocus />
+          <input #branchRenameInput class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [gcTextValue]="contextRenameName()" (gcTextValueChange)="contextRenameName.set($event)" autofocus />
         </div>
-        <footer><button type="button" (click)="pendingBranchRename.set(null)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === branch || git.busy()">Rename Branch</button></footer>
+        <footer><button type="button" (click)="closeBranchRename(true, request)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === request.branch || git.busy()">Rename Branch</button></footer>
       </form>
     </div>
   }

@@ -5,6 +5,56 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Source-bound local branch rename — 2026-11-20
+
+A renderer regression sent `rename_branch` to repository B when an old palette
+rename form was confirmed in the interval before the repository-change effect.
+The same-ID/path-replacement variant also dispatched incorrectly. Separate held
+success cases changed the new source's pinned/hidden/solo preferences, and
+outgoing confirm/cancel controls consumed a replacement request. The corrected
+red run records six failing cases and one valid-action pass at
+`target/local-review/branch-rename/renderer-red-corrected/`; an earlier probe
+also contained an incorrect expected undo-kind spelling, corrected separately.
+
+Palette rename now owns branch, source ID/path, request identity and return
+focus. Confirmation checks these synchronously and refuses busy submission;
+scope changes retire the review without focusing the wrong checkout. The form
+shows its source and isolates keyboard navigation/shortcuts. Context-menu local
+rename checks its rendered menu/source too. Both entry points consume the
+actual service mutation outcome and update preferences only for the matching
+active source. Source-owned undo receipts remain recorded after tab switches.
+No native Git semantics, contracts, dependencies, workflow or version changed.
+
+Final source passed 101 affected rename/reference/branch-panel renderer cases,
+23 operation-history cases and the owning command-palette journey (125 total,
+not a whole-renderer run), all 265 TypeScript tests, graph typechecking and 107
+runner tests. The production build and preview guard passed under unchanged
+budgets; the initial-size warning remains. A glob-quoting attempt selected no
+unit tests, and an Nx comma-argument issue selected no palette test; both were
+corrected and the actual passing counts above are from the subsequent runs.
+
+Candidate package:
+`target/local-review/branch-rename/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `8a89b23661b0ba9830658473929192e7fdec62fa2f76d7bfb6339aeade188283`.
+The candidate passed all 25 focused setup-keyboard scenarios at
+`target/local-review/branch-rename/native/setup-keyboard-1795147536000806453/report.json`,
+including actual palette/context rename round trips and shortcut isolation.
+Executable SHA-256 is
+`0db209aedcb2ec4c3a8c3e53d7e2e47980e0220678d7932a0725c81e45a6f258`.
+Full inherited-environment qualification passed all 247 scenarios at
+`target/local-review/branch-rename/native/environment-1795147569822088839/report.json`,
+with the same package/executable hashes. This includes the focused 25 scenarios;
+it is not 272 unique cases. Both actual rename entry points preserve staged and
+untracked contents, index/config bytes and the commit draft. Final inputs still
+match `target/local-review/branch-rename/inputs.sha256`. This is local Ubuntu
+26.04 extracted-package proof, not system-installed or cross-platform proof. Only Python native selector/
+scroll readiness changed after build start, not compiled code. The first native
+attempt stopped after 24 scenarios before clicking the below-fold context Rename
+button; its screenshot/report remain at `setup-keyboard-1795147461901684309`.
+The final helper uses the existing normal-scroll/hit-target check and one click,
+not action replay or a larger timeout.
+No system installation or release was performed.
+
 ## Inherited Git config-file selector isolation — 2026-11-20
 
 A real packaged regression on the previous `deb037a3` package completed all 18

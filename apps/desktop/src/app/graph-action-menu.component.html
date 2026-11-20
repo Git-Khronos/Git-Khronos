@@ -93,7 +93,7 @@
         }
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Manage branch</div>
-        <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); view.renameContextBranch()">
+        <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); view.renameContextBranch(menu)">
           <label for="context-rename-name">Rename branch</label>
           <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gcTextValue]="view.contextRenameName()" (gcTextValueChange)="view.contextRenameName.set($event)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
         </form>

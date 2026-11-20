@@ -1655,9 +1655,9 @@ export class GitKhronosService {
     return this.runBranchMutation(() => this.mutateWithResult('checkout_commit', 'Checking out commit…', 'Checked out commit', { oid }));
   }
 
-  async renameBranch(oldName: string, newName: string): Promise<void> {
+  async renameBranch(oldName: string, newName: string): Promise<boolean> {
     const normalized = newName.trim();
-    if (!normalized) return;
+    if (!normalized) return false;
     const repositoryId = this.activeRepositoryId();
     const outcome = await this.mutate('rename_branch', `Renaming ${oldName}…`, `Renamed ${oldName} to ${normalized}`, {
       oldName,
@@ -1667,6 +1667,7 @@ export class GitKhronosService {
     if (repositoryId && outcome === 'success' && entry) {
       this.operationHistory.update((history) => ({ ...history, [repositoryId]: entry }));
     }
+    return outcome === 'success';
   }
 
   async setBranchUpstream(branch: string, upstream: string | null): Promise<void> {

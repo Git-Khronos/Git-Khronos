@@ -967,6 +967,13 @@ deadline, and rejects overflow rather than returning a partial list.
 A separate held read must return the native timeout before a 20-second fixture
 fallback releases the gate, with the recorded owned Git PID already reaped.
 
+The setup-keyboard suite also exercises local branch renaming through the real
+command palette and context menu. Modifier shortcuts must not submit a pending
+rename or commit the staged draft. Explicit palette rename and context-menu
+rename-back must change only the reviewed branch reference, preserve the index,
+config and dirty files, and leave the commit-attempt hook marker absent. The
+palette dialog must display its checkout and initially focus the name field.
+
 `pnpm nx run desktop:native-environment` runs the full native suite with inherited
 repository-routing, legacy `GIT_CONFIG`, and pathspec overrides pointing at
 another owned fixture.

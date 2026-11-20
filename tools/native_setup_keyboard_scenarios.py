@@ -106,3 +106,53 @@ def setup_keyboard_isolation(driver, fixtures, report):
         'recoveryCount': len(recoveries), 'commitAttempted': marker.exists(),
     }
     report['scenarios'].append('native-ui-confirmed-branch-delete-preserves-staged-state-and-recovery-receipt')
+
+    fixtures.git(repository, 'branch', 'owned-palette-rename')
+    open_ui(driver, repository)
+    driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
+      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+    driver.wait(ready)
+    rename_before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
+    _chord(driver, 'p')
+    driver.wait("return !!document.querySelector('gc-command-palette input')")
+    driver.script('''const field = document.querySelector('gc-command-palette input');
+      field.value = 'Rename owned-palette-rename'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
+    driver.click_visible('gc-command-palette [role=option] strong', 'Rename owned-palette-rename')
+    modal = 'form[aria-label="Rename branch owned-palette-rename"]'
+    driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
+    assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', modal)
+    driver.wait("return document.activeElement?.name === 'branchRenameName'")
+    driver.script('''const field = document.querySelector('[name=branchRenameName]');
+      field.value = 'owned-palette-renamed'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
+    _chord(driver, '\ue007')
+    _chord(driver, '\ue007', shift=True)
+    _chord(driver, 'p')
+    driver.request('POST', driver.path('execute/async'), {'script': '''
+      const done = arguments[arguments.length - 1];
+      requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
+    ''', 'args': []})
+    assert driver.script('return !!document.querySelector(arguments[0])', modal)
+    assert not driver.script('return !!document.querySelector("gc-command-palette")')
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')) == rename_before
+    assert not marker.exists()
+    driver.click_visible(modal + ' .confirm-action', 'Rename Branch')
+    driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
+    driver.wait('return !!document.querySelector(\'[aria-label="Local branch owned-palette-renamed"]\')')
+    renamed = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
+    expected_refs = rename_before['references'].replace(' refs/heads/owned-palette-rename', ' refs/heads/owned-palette-renamed')
+    assert sorted(renamed['references'].splitlines()) == sorted(expected_refs.splitlines())
+    for key in ('head', 'branch', 'status', 'indexSha256', 'configSha256', 'files'):
+        assert renamed[key] == rename_before[key], 'Palette branch rename changed unrelated data: ' + key
+    assert not marker.exists()
+    report['scenarios'].append('native-palette-branch-rename-isolates-shortcuts-and-preserves-dirty-state')
+
+    driver.context_click('[aria-label="Local branch owned-palette-renamed"]')
+    driver.wait("return !!document.querySelector('#context-rename-name')")
+    driver.script('''const field = document.querySelector('#context-rename-name');
+      field.value = 'owned-palette-rename'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
+    driver.click_scrolled_text('.context-branch-form button[type=submit]', 'Rename', wait_for_ready=True)
+    driver.wait('return !!document.querySelector(\'[aria-label="Local branch owned-palette-rename"]\')')
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')) == rename_before
+    assert not marker.exists()
+    assert driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value') == draft
+    report['scenarios'].append('native-context-branch-rename-roundtrip-preserves-index-config-and-draft')

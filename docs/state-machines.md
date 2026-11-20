@@ -82,6 +82,29 @@ an owned branch, checks unrelated staged/untracked contents and index/config
 bytes, and requires the native recovery receipt. Refusing every valid command
 would therefore not satisfy the acceptance gate.
 
+### Source-bound local branch renaming
+
+The palette rename request captures its branch, repository ID/path and opener.
+Repository/path changes retire it; confirmation independently checks scope and
+rendered request identity before dispatch, including the pre-effect interval.
+Outgoing confirm/cancel controls cannot consume a replacement request. Busy
+confirmation cannot close the request or start another mutation. The dialog
+shows the selected checkout, contains keyboard focus/shortcuts and restores its
+opener only while that source still owns the UI.
+
+Context-menu local rename also checks the rendered menu identity and captured
+repository ID/path. Both entry points consume the service's actual mutation
+outcome rather than a later global error signal. Successful operations retain
+source-owned undo history even after a tab switch; only matching active-source
+completion may update pinned/hidden/solo preferences. A changed pin is not
+silently restored while the rename is in flight. These UI guards do not lock
+Git against external reference edits or replace native branch semantics.
+
+Coverage: `branch-rename-scope.spec.ts`, `operation-history-lifecycle.spec.ts`,
+reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
+explicit palette/context rename round trips with independent ref/index/config/
+working-byte checks and a commit-attempt marker.
+
 ### Source-bound publish, force-push and LFS cleanup reviews
 
 Publishing, force-push and LFS cleanup capture repository ID/path and their own
