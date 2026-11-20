@@ -864,6 +864,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commitMessage = signal('');
   protected readonly commitDescription = signal('');
   protected readonly stashMessage = signal('');
+  private stashMessageRevision = 0;
   protected readonly stashDialog = signal<StashDialogRequest | null>(null);
   protected readonly ownsStashDialog = (request: StashDialogRequest): boolean =>
     this.stashDialog() === request && this.ownsRepositoryScope(request);
@@ -3332,7 +3333,8 @@ export class AppComponent implements OnInit, OnDestroy {
     selectedWorktreePath: this.selectedWorktreePath.bind(this),
     selectWorktreeGraphRow: this.selectWorktreeGraphRow.bind(this),
     shortOid: this.shortOid.bind(this),
-    stashCurrentChanges: this.stashCurrentChanges.bind(this),
+    handleInlineStashKeydown: this.handleInlineStashKeydown.bind(this),
+    updateStashMessage: this.updateStashMessage.bind(this),
     stashMessage: this.stashMessage,
     showAuthorColumn: this.showAuthorColumn.bind(this),
     showBranchColumn: this.showBranchColumn.bind(this),
@@ -7449,11 +7451,33 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected async stashCurrentChanges(): Promise<void> {
+  protected updateStashMessage(message: string, repositoryId: string, repositoryPath: string): void {
+    if (!this.ownsRepositoryScope({ repositoryId, repositoryPath })) return;
+    this.stashMessageRevision++;
+    this.stashMessage.set(message);
+  }
+
+  protected handleInlineStashKeydown(event: KeyboardEvent, repositoryId: string, repositoryPath: string): void {
+    event.stopPropagation();
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    if (!event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+      void this.stashCurrentChanges({ repositoryId, repositoryPath });
+    }
+  }
+
+  protected async stashCurrentChanges(expectedOwner?: RepositoryEditorOwner): Promise<void> {
     const repository = this.git.repository();
-    if (!repository?.status.entryCount || this.git.busy()) return;
-    await this.git.stash(this.stashMessage());
-    if (!this.git.error()) this.stashMessage.set('');
+    if (!repository?.status.entryCount || this.git.busy() || (expectedOwner && !this.ownsRepositoryScope(expectedOwner))) return;
+    const owner = { repositoryId: repository.id, repositoryPath: repository.path };
+    const message = this.stashMessage();
+    const revision = this.stashMessageRevision;
+    const stashed = await this.git.stash(message);
+    // A confirmed write consumes only its own draft. Editing away and back to
+    // the same text is still a newer intent; global errors are not its receipt.
+    if (stashed && this.ownsRepositoryScope(owner) && revision === this.stashMessageRevision && this.stashMessage() === message) {
+      this.updateStashMessage('', owner.repositoryId, owner.repositoryPath);
+    }
   }
 
   protected coAuthorSuggestions(): CoAuthor[] {

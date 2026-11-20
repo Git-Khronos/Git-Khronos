@@ -105,6 +105,28 @@ reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/
 working-byte checks and a commit-attempt marker.
 
+### Inline stash keyboard intent and draft consumption
+
+The WIP stash-message editor passes its rendered checkout ID/path with Enter.
+Only a non-repeated, non-composing, unmodified Enter may start a stash; other
+keys remain editing input rather than background application shortcuts. A stale
+rendered editor cannot dispatch against a newly selected checkout. Modifier-key
+controls were already safe under the previous filtered Enter binding and remain
+negative controls, not evidence of a newly fixed modifier-key regression.
+
+Immediate stash completion consumes only the captured source and draft revision,
+using its actual mutation outcome. Typing a new message, including editing away
+and back to identical text, retires the earlier consumption intent. A newer draft
+or a refused/cancelled operation cannot be erased merely because the global
+error was cleared. This does not add persistent per-repository stash drafts or a
+new native lifecycle; Git and the existing operation receipts remain authoritative.
+
+Coverage: `inline-stash-keyboard.spec.ts` checks composition/repeat flags, source
+changes, newer/same-text drafts, refusal inspection and a valid plain Enter.
+Packaged acceptance separately checks real modifier-key isolation and a single
+plain-Enter stash with exact index/worktree/untracked objects and unchanged HEAD.
+Synthetic composing-event tests do not qualify a physical IME on every platform.
+
 ### Source-bound advanced stash reviews and form lifetimes
 
 Advanced stash save, index-restoring apply, selected-file apply, branch-from-stash

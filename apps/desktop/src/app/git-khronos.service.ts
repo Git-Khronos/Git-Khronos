@@ -2205,14 +2205,14 @@ export class GitKhronosService {
     await this.mutate('pull_repository', 'Pulling…', 'Pull complete', { strategy, remote, branch });
   }
 
-  async stash(message = ''): Promise<void> {
+  async stash(message = ''): Promise<boolean> {
     const name = message.trim();
-    await this.mutate(
+    return await this.mutate(
       'stash_changes',
       name ? `Stashing “${name}”…` : 'Stashing changes…',
       name ? `Stash “${name}” created` : 'Changes stashed',
       { message: name || null },
-    );
+    ) === 'success';
   }
 
   async stashSelected(options: StashOptions): Promise<boolean> {

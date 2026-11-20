@@ -17,7 +17,7 @@
                 <span class="commit-main wip-commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" title="{{ wip.worktree.changes }} changed {{ wip.worktree.changes === 1 ? 'file' : 'files' }} in {{ wip.worktree.path }}">
                   <span class="commit-copy">
                     @if (wip.worktree.current) {
-                      <span class="wip-message-field"><b>//</b><input aria-label="Stash message" maxlength="500" placeholder="WIP" [gcTextValue]="view.stashMessage()" (gcTextValueChange)="view.stashMessage.set($event)" (click)="$event.stopPropagation()" (keydown.enter)="$event.preventDefault(); view.stashCurrentChanges()" (keydown)="$event.stopPropagation()" /></span>
+                      <span class="wip-message-field"><b>//</b><input aria-label="Stash message" maxlength="500" placeholder="WIP" [gcTextValue]="view.stashMessage()" (gcTextValueChange)="view.updateStashMessage($event, repo.id, repo.path)" (click)="$event.stopPropagation()" (keydown)="view.handleInlineStashKeydown($event, repo.id, repo.path)" /></span>
                     } @else {
                       <span class="subject wip-subject"><b>//</b> WIP</span>
                     }

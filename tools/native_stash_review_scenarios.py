@@ -149,3 +149,63 @@ def stash_review_workflows(driver, fixtures, report):
     safe('switch', 'main')
     report['stashReviewWorkflows'] = {'source': str(repository), 'networkRemoteUsed': False,
         'originalHead': head, 'originalIndexTree': index_tree, 'reviewedStash': stash, 'actions': evidence}
+
+    inline = fixtures.repository('inline-stash-keyboard', commits=2)
+    inline_file = inline / 'fixture.txt'
+    inline_note = inline / 'untracked-note.txt'
+    inline_base = inline_file.read_bytes()
+    inline_staged = b'Owned inline staged contents.\n'
+    inline_working = b'Owned inline staged and unstaged contents.\n'
+    inline_untracked = b'Owned inline untracked contents.\n'
+    inline_file.write_bytes(inline_staged)
+    fixtures.git(inline, 'add', 'fixture.txt')
+    inline_index_tree = fixtures.git(inline, 'write-tree')
+    inline_file.write_bytes(inline_working)
+    inline_note.write_bytes(inline_untracked)
+    working_oid = fixtures.git(inline, 'hash-object', '--stdin', input=inline_working)
+    untracked_oid = fixtures.git(inline, 'hash-object', '--stdin', input=inline_untracked)
+    inline_marker = inline / '.git/inline-stash-commit-attempted'
+    inline_hook = inline / '.git/hooks/pre-commit'
+    inline_hook.write_text('#!/bin/sh\nprintf attempted > "$(git rev-parse --git-path inline-stash-commit-attempted)"\nexit 1\n')
+    inline_hook.chmod(0o700)
+    open_ui(driver, inline)
+    driver.wait("return !!document.querySelector('#commit-summary')")
+    driver.script('''const field = document.querySelector('#commit-summary');
+      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+    driver.click_visible('input[aria-label="Stash message"]')
+    inline_message = 'Owned inline keyboard save'
+    driver.script('''const field = document.querySelector('input[aria-label="Stash message"]');
+      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', inline_message)
+    inline_before = checkout_footprint(fixtures, inline, ('fixture.txt', 'untracked-note.txt'))
+    _chord(driver, '\ue007')
+    _chord(driver, '\ue007', shift=True)
+    driver.request('POST', driver.path('execute/async'), {'script': '''
+      const done = arguments[arguments.length - 1];
+      requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
+    ''', 'args': []})
+    assert checkout_footprint(fixtures, inline, ('fixture.txt', 'untracked-note.txt')) == inline_before
+    assert not inline_marker.exists()
+    assert driver.script("return document.querySelector('#commit-summary').value") == draft
+    report['scenarios'].append('native-inline-stash-modifier-enter-preserves-dirty-state-and-commit-draft')
+
+    # The same focused control must retain its explicit plain-Enter action.
+    driver.key('\ue007')
+    driver.wait('return document.querySelector(".activity-status")?.textContent.includes(' + json.dumps('Stash “' + inline_message + '” created') + ')')
+    inline_stash = fixtures.git(inline, 'rev-parse', 'refs/stash')
+    assert fixtures.git(inline, 'rev-parse', inline_stash + '^1') == inline_before['head']
+    assert fixtures.git(inline, 'rev-parse', inline_stash + '^2^{tree}') == inline_index_tree
+    assert fixtures.git(inline, 'rev-parse', inline_stash + ':fixture.txt') == working_oid
+    assert fixtures.git(inline, 'rev-parse', inline_stash + '^3:untracked-note.txt') == untracked_oid
+    assert inline_message in fixtures.git(inline, 'log', '-1', '--format=%s', 'refs/stash')
+    assert fixtures.git(inline, 'rev-parse', 'HEAD') == inline_before['head']
+    assert fixtures.git(inline, 'branch', '--show-current') == inline_before['branch']
+    assert fixtures.git(inline, 'status', '--porcelain=v1') == ''
+    assert hashlib.sha256((inline / '.git/config').read_bytes()).hexdigest() == inline_before['configSha256']
+    assert inline_file.read_bytes() == inline_base and not inline_note.exists()
+    assert not inline_marker.exists()
+    assert driver.script("return document.querySelector('#commit-summary').value") == draft
+    report['scenarios'].append('native-inline-stash-plain-enter-saves-exact-index-working-and-untracked-objects-once')
+    report['inlineStashKeyboard'] = {'source': str(inline), 'before': inline_before,
+        'savedStash': inline_stash, 'savedIndexTree': inline_index_tree,
+        'savedWorkingBlob': working_oid, 'savedUntrackedBlob': untracked_oid,
+        'commitAttempted': inline_marker.exists()}

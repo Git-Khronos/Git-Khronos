@@ -5,6 +5,43 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Inline stash keyboard and draft-consumption guards — 2026-11-20
+
+The original 15-case renderer probe reproduced nine failures: repeat/composing
+Enter dispatched a stash, outgoing editor events targeted a replacement source,
+and late success or a cleared global failure erased a newer draft. The five
+modifier-key controls and valid plain Enter already passed; the initial suspicion
+about modifier shortcuts was not confirmed. Red evidence is retained at
+`target/local-review/inline-stash/renderer-red/`.
+
+The editor now supplies rendered source ID/path and rejects repeat/composing
+Enter while preserving its explicit plain-Enter action. Immediate stash
+completion consumes only its actual successful source and captured message
+revision. New edits, including same-text ABA edits, survive late completion;
+refused/cancelled operations do not clear the draft from a global error signal.
+No persistent draft system, native command semantics or IPC contract changed.
+
+All 44 focused inline-stash/advanced-review/keyboard renderer cases and the
+owning workspace journey passed (45 executions), along with 265 TypeScript
+tests, graph typechecking, production build/preview guard and 107 runner tests.
+The preserved package is
+`target/local-review/inline-stash/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `a76786cafe636e32e963791685c73a3f11decb427a3a8c8aaf5d10fdeef7b41a`;
+executable SHA-256
+`1d20f76910b35671c0ae27ae6635a0b1817c47db1ee9885eb1b6eccdd90b043e`.
+It passed all 32 focused setup-keyboard scenarios at
+`target/local-review/inline-stash/native/setup-keyboard-1795152375404980083/report.json`,
+including actual modifier Enter preservation and plain Enter capture of distinct
+staged/working/untracked objects without changing HEAD/config or committing the
+draft. Full inherited-environment qualification passed all 260 scenarios at
+`target/local-review/inline-stash/native/environment-1795152406979334713/report.json`
+with the same package/executable hashes. These include the 32 focused cases;
+they are not 292 unique scenarios. Runtime/runner inputs still match
+`target/local-review/inline-stash/inputs.sha256`. This is local Ubuntu 26.04
+extracted-package proof, not installed or cross-platform qualification.
+No version, dependencies, workflow or budgets changed. No installation or
+release was performed.
+
 ## Advanced stash scope and keyed review forms — 2026-11-20
 
 The new stash renderer probe reproduced seven failures against the previous

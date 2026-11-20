@@ -974,6 +974,13 @@ rename-back must change only the reviewed branch reference, preserve the index,
 config and dirty files, and leave the commit-attempt hook marker absent. The
 palette dialog must display its checkout and initially focus the name field.
 
+The inline WIP stash-message editor has a separate owned-fixture gate. Ctrl+Enter
+and Ctrl+Shift+Enter must preserve dirty/index/reference bytes and the commit
+draft; ordinary Enter must create one stash containing the exact staged tree,
+working blob and untracked blob, without moving HEAD or running the normal
+commit hook. This native gate does not emulate a physical IME; composition and
+repeat-event flags have separate renderer coverage.
+
 The setup-keyboard suite also runs the five advanced stash review entry points
 in an owned repository. Saving must retain distinct staged, unstaged and
 untracked contents in the actual stash parents while leaving HEAD unchanged.
