@@ -159,3 +159,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     from native_stash_review_scenarios import stash_review_workflows
     stash_review_workflows(driver, fixtures, report)
+
+    from native_deferred_review_scenarios import deferred_review_workflows
+    deferred_review_workflows(driver, fixtures, report)

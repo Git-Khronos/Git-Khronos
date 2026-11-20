@@ -991,6 +991,17 @@ restoring its state, and stash-before-switch must retain both old and newly
 saved work. The oracle also checks configuration, HEAD and a refusing commit-hook
 marker. Test-only owned-file resets separate cases; no app action is replayed.
 
+The setup-keyboard suite additionally exercises explicit fetch and linked-worktree
+reviews. With only owned local remotes, ordinary fetch must update the branch
+without importing tags or pruning an obsolete tracking ref; explicit prune must
+remove that ref without changing local heads/tags or dirty/index/config bytes.
+A file-transport depth-one clone must deepen by exactly one commit, then complete
+its history to match the owned remote, preserving its checkout data throughout.
+Actual move and external-move repair must preserve both dirty checkouts, linked
+index bytes, untracked and ignored files, and source configuration. The repair
+oracle checks the final registration path separately from working bytes. This
+does not qualify a physical directory chooser; picker races have renderer tests.
+
 The remote-review suite additionally exercises all six tag/remote-reference
 review actions through their actual UI. An owned annotated tag is pushed,
 renamed locally and remotely after a fresh exact-object check, deleted remotely,

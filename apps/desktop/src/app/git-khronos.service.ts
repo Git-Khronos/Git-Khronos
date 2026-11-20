@@ -631,12 +631,12 @@ export class GitKhronosService {
     }
   }
 
-  async chooseDirectory(title: string): Promise<string | null> {
+  async chooseDirectory(title: string, current: () => boolean = () => true): Promise<string | null> {
     try {
       const selected = await open({ directory: true, multiple: false, title });
-      return typeof selected === 'string' ? selected : null;
+      return current() && typeof selected === 'string' ? selected : null;
     } catch (error: unknown) {
-      this.error.set(this.formatError(error));
+      if (current()) this.error.set(this.formatError(error));
       return null;
     }
   }

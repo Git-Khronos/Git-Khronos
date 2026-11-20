@@ -109,9 +109,7 @@ test('repository switch prevents old worktree move submission', async ({ page })
     git.activeRepositoryId.set('other');
   });
   const dialog = page.getByRole('dialog', { name: 'Move linked worktree' });
-  await dialog.getByLabel('New folder name').fill('not moved');
-  await expect(dialog.getByRole('alert')).toContainText('active repository changed');
-  await expect(dialog.getByRole('button', { name: 'Move worktree', exact: true })).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__worktreeMove.calls.some((entry: any) => entry.command === 'move_worktree'))).toBe(false);
 });
 

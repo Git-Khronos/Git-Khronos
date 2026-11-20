@@ -300,6 +300,13 @@ interface PendingBranchRename extends RepositoryReviewScope {
   readonly branch: string;
 }
 
+interface DeferredGitActionLease {
+  readonly reference: ReferenceActionRequest | null;
+  readonly fetch: FetchDialogRequest | null;
+  readonly worktree: WorktreeMoveRequest | null;
+  readonly stash: StashDialogRequest | null;
+}
+
 interface SparseCheckoutReview extends RepositoryReviewScope {
   readonly action: 'set' | 'disable';
   readonly paths: string[];
@@ -872,9 +879,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeStashDialog(request: StashDialogRequest, restoreFocus = true): void {
     if (this.stashDialog() !== request) return;
     this.stashDialog.set(null);
+    const focusLease = this.deferredGitActionLease();
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (!this.stashDialog() && this.ownsRepositoryScope(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
   protected readonly coAuthors = signal<CoAuthor[]>([]);
@@ -1049,6 +1057,23 @@ export class AppComponent implements OnInit, OnDestroy {
     return active?.kind === 'worktree' ? active.value : null;
   });
   protected readonly worktreeMoveRequest = signal<WorktreeMoveRequest | null>(null);
+  protected readonly ownsWorktreeMove = (request: WorktreeMoveRequest): boolean =>
+    this.worktreeMoveRequest() === request && this.ownsRepositoryScope(request);
+
+  protected closeWorktreeMove(request: WorktreeMoveRequest, movedPath?: string, restoreFocus = true): void {
+    if (this.worktreeMoveRequest() !== request) return;
+    this.worktreeMoveRequest.set(null);
+    const focusLease = this.deferredGitActionLease();
+    if (restoreFocus) afterNextRender(() => {
+      if (!this.canRestoreDeferredFocus(focusLease, request)) return;
+      const opener = request.returnFocus;
+      const replacement = movedPath ? [...document.querySelectorAll<HTMLButtonElement>('button[data-worktree-path]')]
+        .find(button => button.dataset['worktreePath'] === movedPath) : null;
+      if (opener?.isConnected && opener.getClientRects().length && !opener.closest('[inert]')) opener.focus();
+      else if (replacement?.getClientRects().length) replacement.focus();
+      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
+    }, { injector: this.injector });
+  }
   protected readonly worktreeRegistrationRequest = signal<WorktreeRegistrationRequest | null>(null);
   protected readonly documentation = inject(GitDocumentationService);
   protected readonly lfsTrackingRequest = signal<LfsTrackingRequest | null>(null);
@@ -1163,6 +1188,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const rename = this.pendingBranchRename();
     const reference = this.referenceAction();
     const stash = this.stashDialog();
+    const fetch = this.fetchRequest();
+    const move = this.worktreeMoveRequest();
     const publish = this.pendingPublishBranch();
     const force = this.pendingForcePush();
     const lfs = this.lfsPruneReview();
@@ -1172,6 +1199,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
     if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
+    if (fetch && !this.ownsRepositoryScope(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
+    if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
@@ -1232,16 +1261,36 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeReferenceAction(request: ReferenceActionRequest, restoreFocus = true): void {
     if (this.referenceAction() !== request) return;
     this.referenceAction.set(null);
+    const focusLease = this.deferredGitActionLease();
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (!this.referenceAction() && this.ownsRepositoryScope(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
 
-  protected handleReferenceActionLoaderKey(event: KeyboardEvent, request: ReferenceActionRequest | null, stash: StashDialogRequest | null): void {
-    if (this.referenceAction() !== request || (request && !this.ownsReferenceAction(request))
-      || this.stashDialog() !== stash || (stash && !this.ownsStashDialog(stash))) return;
-    this.handleReferenceLoaderKey(event, 'action');
+  private ownsDeferredGitActionLease(lease: DeferredGitActionLease): boolean {
+    return this.deferredGitActionLease() === lease
+      && (!lease.reference || this.ownsReferenceAction(lease.reference))
+      && (!lease.fetch || this.ownsFetchOptions(lease.fetch))
+      && (!lease.worktree || this.ownsWorktreeMove(lease.worktree))
+      && (!lease.stash || this.ownsStashDialog(lease.stash));
+  }
+
+  private canRestoreDeferredFocus(lease: DeferredGitActionLease, owner: RepositoryEditorOwner): boolean {
+    // A newer review retires this focus intent even if it closes before render.
+    return this.deferredGitActionLease() === lease
+      && !(lease.reference || lease.fetch || lease.worktree || lease.stash)
+      && this.ownsRepositoryScope(owner);
+  }
+
+  protected handleDeferredGitActionLoaderKey(event: KeyboardEvent, lease: DeferredGitActionLease): void {
+    if (!this.ownsDeferredGitActionLease(lease)) return;
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeDeferredGitAction(lease); }
+    else if (event.key === 'Tab') {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('button')?.focus();
+    }
   }
   protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
@@ -1250,6 +1299,21 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly stashRenameMessage = signal('');
   protected readonly conflictOutput = signal('');
   protected readonly fetchRequest = signal<FetchDialogRequest | null>(null);
+  protected readonly ownsFetchOptions = (request: FetchDialogRequest): boolean =>
+    this.fetchRequest() === request && this.ownsRepositoryScope(request);
+  protected readonly deferredGitActionLease = computed<DeferredGitActionLease>(() => ({
+    reference: this.referenceAction(), fetch: this.fetchRequest(), worktree: this.worktreeMoveRequest(), stash: this.stashDialog(),
+  }));
+
+  protected closeFetchOptions(request: FetchDialogRequest, restoreFocus = true): void {
+    if (this.fetchRequest() !== request) return;
+    this.fetchRequest.set(null);
+    const focusLease = this.deferredGitActionLease();
+    if (restoreFocus) queueMicrotask(() => {
+      const opener = request.returnFocus;
+      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+    });
+  }
   private conflictReturnFocus: HTMLElement | null = null;
   private conflictActionRequest = 0;
   protected readonly forceBranchDelete = signal(false);
@@ -6305,11 +6369,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openFetchOptions(returnFocus: HTMLElement | null = null): void {
-    const repositoryId = this.git.activeRepositoryId();
-    if (!repositoryId || this.git.busy()) return;
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner || this.git.busy()) return;
     const opener = returnFocus ?? document.querySelector<HTMLButtonElement>('button[aria-label="Pull options"]');
     this.toolbarOverlays.close('pull');
-    this.fetchRequest.set({ repositoryId, returnFocus: opener });
+    this.fetchRequest.set({ ...owner, returnFocus: opener });
   }
 
   protected openFetchOptionsFromToolbar(): void {
@@ -6666,19 +6730,19 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openWorktreeMove(worktree: Worktree): void {
-    const repositoryId = this.git.activeRepositoryId();
-    if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || worktree.prunable || this.isWorktreeOpen(worktree.path)) return;
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner || this.git.busy() || worktree.current || worktree.locked || worktree.prunable || this.isWorktreeOpen(worktree.path)) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
     this.actionOverlays.close('worktree');
-    this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus });
+    this.worktreeMoveRequest.set({ ...owner, worktree, returnFocus });
   }
 
   protected openWorktreeRepair(worktree: Worktree): void {
-    const repositoryId = this.git.activeRepositoryId();
-    if (!repositoryId || this.git.busy() || worktree.current || worktree.locked || this.isWorktreeOpen(worktree.path)) return;
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner || this.git.busy() || worktree.current || worktree.locked || this.isWorktreeOpen(worktree.path)) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
     this.actionOverlays.close('worktree');
-    this.worktreeMoveRequest.set({ repositoryId, worktree, returnFocus, repair: true });
+    this.worktreeMoveRequest.set({ ...owner, worktree, returnFocus, repair: true });
   }
 
   protected openWorktreeRegistrationReview(submodules?: boolean, returnFocus?: HTMLElement | null): void {
@@ -6713,19 +6777,12 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeDeferredGitAction(request = this.referenceAction(), stash = this.stashDialog()): void {
-    if (this.referenceAction() !== request || this.stashDialog() !== stash) return;
-    if (request) { this.closeReferenceAction(request); return; }
-    if (stash) { this.closeStashDialog(stash); return; }
-    const opener = (this.referenceAction() ?? this.fetchRequest() ?? this.worktreeMoveRequest() ?? this.stashDialog())?.returnFocus;
-    this.referenceAction.set(null);
-    this.fetchRequest.set(null);
-    this.worktreeMoveRequest.set(null);
-    this.stashDialog.set(null);
-    setTimeout(() => {
-      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
-      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
-    });
+  protected closeDeferredGitAction(lease = this.deferredGitActionLease()): void {
+    if (!this.ownsDeferredGitActionLease(lease)) return;
+    if (lease.reference) this.closeReferenceAction(lease.reference);
+    else if (lease.fetch) this.closeFetchOptions(lease.fetch);
+    else if (lease.worktree) this.closeWorktreeMove(lease.worktree);
+    else if (lease.stash) this.closeStashDialog(lease.stash);
   }
 
   protected handleReferenceLoaderKey(event: KeyboardEvent, kind: 'documentation' | 'worktree' | 'action' | 'history'): void {

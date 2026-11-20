@@ -105,6 +105,33 @@ reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/
 working-byte checks and a commit-attempt marker.
 
+### Shared deferred fetch and worktree review ownership
+
+Fetch options and linked-worktree move/repair capture the checkout ID/path and
+request identity. Their deferred children consult synchronous root ownership,
+not only possibly stale child inputs. Scope changes retire the review; outgoing
+confirm/cancel/field events cannot act on its replacement. Keyed form views
+prevent obsolete ngModel state from surviving a request reset. Busy native work
+freezes the submitted payload; successful native outcomes govern dismissal.
+
+Directory selection has a separate generation and source predicate. Replacing a
+request releases its presentation-level choosing state, without letting an old
+picker result, error or finally block affect a newer picker. Suppressing retired
+picker feedback does not discard any native Git mutation receipt.
+
+The shared deferred loader captures all four request pointers (reference, fetch,
+worktree and stash). Its escape/keyboard handlers require that exact lease and
+source. Closing a loaded review captures the post-close lease for focus return:
+any newer review, including an open/close ABA cycle, retires the old focus intent.
+Native operations remain independent of these transient presentation leases.
+
+Coverage: `deferred-action-scope.spec.ts`, fetch options/result lifecycle,
+worktree move/repair, reference/stash scope and deferred-background journeys.
+Packaged `native_deferred_review_scenarios.py` checks actual fetch/prune/deepen/
+complete and dirty linked-worktree move/repair against independent Git oracles.
+Picker interleavings are renderer coverage, not physical directory-picker or
+cross-platform acceptance.
+
 ### Inline stash keyboard intent and draft consumption
 
 The WIP stash-message editor passes its rendered checkout ID/path with Enter.

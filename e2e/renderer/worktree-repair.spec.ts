@@ -150,9 +150,7 @@ test('repository switch prevents repairing an old repository registration', asyn
     git.activeRepositoryId.set('other');
   });
   const dialog = page.getByRole('dialog', { name: 'Repair moved worktree' });
-  await dialog.getByLabel('Actual moved worktree directory').fill('/workspace/reconnected');
-  await expect(dialog.getByRole('alert')).toContainText('active repository changed');
-  await expect(dialog.getByRole('button', { name: 'Repair registration', exact: true })).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__worktreeRepair.calls.some((entry: any) => entry.command === 'repair_worktree'))).toBe(false);
 });
 

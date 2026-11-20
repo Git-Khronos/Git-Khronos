@@ -114,7 +114,7 @@ test('compact dialog traps focus, resets prune on reopen, and returns toolbar fo
   await expect(dialog.getByRole('checkbox')).not.toBeChecked();
 });
 
-test('repository switch refuses old-dialog submission with an explanatory message', async ({ page }) => {
+test('repository switch retires the old fetch review without dispatch', async ({ page }) => {
   await setup(page);
   await openOptions(page);
   await page.evaluate(() => {
@@ -125,8 +125,7 @@ test('repository switch refuses old-dialog submission with an explanatory messag
     git.activeRepositoryId.set('different');
   });
   const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
-  await expect(dialog.getByRole('alert')).toContainText('active repository changed');
-  await expect(dialog.getByRole('button', { name: 'Fetch branches', exact: true })).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__fetchFixture.calls.some((call: any) => call.command === 'fetch_branches'))).toBe(false);
 });
 

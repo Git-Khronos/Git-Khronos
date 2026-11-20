@@ -5,6 +5,54 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Deferred fetch/worktree scope and shared focus leases — 2026-11-20
+
+The original 17-case renderer probe reproduced 14 failures. Three same-ID/path
+changes dispatched against the replacement checkout; three ID-switch cases
+already refused mutation but left retired reviews visible. Outgoing controls
+consumed replacements, and stale picker completion/error/finally affected newer
+presentation state. Red evidence is retained at
+`target/local-review/deferred-scope/renderer-red/`. A separate two-case probe
+also reproduced an old reference/stash focus callback briefly focusing its
+opener after a new fetch review opened (`focus-red/`). Final focus alone hid
+that transient focus theft; the tests count actual focus events.
+
+Fetch and worktree reviews now capture ID/path and request identity, check root
+ownership synchronously, key their form instances and freeze submitted controls.
+Directory selection checks its request and generation for result, error and
+cleanup. Shared deferred loading/error handlers retain the whole four-review
+lease. Post-close focus restoration requires the captured empty lease and source,
+so a newer review retires that earlier focus intent. Native Git receipt ownership,
+IPC contracts and command semantics are unchanged.
+
+The final 99 renderer cases passed at
+`target/local-review/deferred-scope/renderer-final-focus/`, along with 265
+TypeScript tests, strict graph types and 107 Python harness tests. The changed
+native helper also compiled. The production Debian build passed; its preserved
+package is
+`target/local-review/deferred-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `9f35d41d4d73cf761beadf01789701527ebd3e074da8ad7cacd24af3cd70047d`;
+extracted executable SHA-256
+`0464a818062624b83f10529d888a8f679e9bf1ce355988f9aceb26cf20e22807`.
+Focused setup-keyboard acceptance passed all 38 scenarios at
+`target/local-review/deferred-scope/native/setup-keyboard-1795155121885684121/report.json`.
+Its six new native cases verify fetch/prune/deepen/complete and linked-worktree
+move/repair with independent Git/data oracles. Full inherited-environment
+qualification then passed all 266 scenarios at
+`target/local-review/deferred-scope/native/environment-1795155178918772053/report.json`
+against the same package and executable hashes. The full suite includes the
+focused cases, not 304 unique scenarios. All captured runtime, helper and e2e
+inputs still match `target/local-review/deferred-scope/inputs.sha256` after both
+runs. No Python correction or application action replay was needed for these
+native runs. No system install, version change or release is implied.
+
+Hosted run `44676314454` at `70a809d` finished with renderer and Windows checks
+passing, but packaged native acceptance failed in the palette-rename shortcut
+probe (`native_setup_keyboard_scenarios.py:134`, dialog unexpectedly absent).
+Catalogue and downstream installed-distribution jobs did not run. That older
+hosted failure is not repaired merely by the current local focused pass; it
+requires separate diagnosis and hosted verification.
+
 ## Inline stash keyboard and draft-consumption guards — 2026-11-20
 
 The original 15-case renderer probe reproduced nine failures: repeat/composing
