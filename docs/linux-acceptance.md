@@ -974,6 +974,13 @@ rename-back must change only the reviewed branch reference, preserve the index,
 config and dirty files, and leave the commit-attempt hook marker absent. The
 palette dialog must display its checkout and initially focus the name field.
 
+Palette-rename shortcut acceptance additionally checks actual Enter-key default
+cancellation. The report retains each chord's delivered modifier flags, target,
+final default-prevented state, focus/submit events and independent checkout
+footprint before proceeding to the next chord. A failed chord is never replayed.
+This distinguishes a browser-default submission from a lost modifier or focus
+change without treating an absent final dialog as the complete diagnosis.
+
 The inline WIP stash-message editor has a separate owned-fixture gate. Ctrl+Enter
 and Ctrl+Shift+Enter must preserve dirty/index/reference bytes and the commit
 draft; ordinary Enter must create one stash containing the exact staged tree,

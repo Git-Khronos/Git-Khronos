@@ -5,6 +5,52 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Palette-rename Enter defaults and native shortcut diagnostics — 2026-11-20
+
+Hosted run `44676314454` lost the palette-rename review after its modifier-key
+sequence. Local native runs had kept the dialog open, so that exact hosted
+submission is not a locally reproduced result. Investigation did establish an
+independent missing guard: the form stopped propagation but left implicit Enter
+submission enabled. Six new renderer cancellation probes failed while the 12
+existing cases and new plain-Enter control passed (13 controls). Evidence:
+`target/local-review/rename-enter/renderer-red/`.
+
+The strengthened native probe against the unchanged prior package
+`9f35d41d4d73cf761beadf01789701527ebd3e074da8ad7cacd24af3cd70047d`
+then failed on actual Control+Enter default cancellation at
+`target/local-review/rename-enter/native-red-final/setup-keyboard-1795155962494259502/report.json`.
+It observed the correct Control flag and focused input, unchanged Git data and
+an open dialog, but `defaultPrevented: false`. This proves the cancellation gap,
+not that the local engine actually submitted or that every hosted failure has
+that cause. An initial diagnostic pass retained capture-phase microtask state;
+the final probe instead reads the original Event after dispatch, avoiding
+microtask checkpoints before bubbling handlers.
+
+The palette form now cancels modified, repeated and composing Enter while
+preserving ordinary Enter and explicit submit. The native runner retains bounded
+per-chord key/focus/submit evidence and independent Git footprints, stops on the
+first failed chord and never replays it. No timeout, retry, dependency, native
+Git semantics or workflow changed. The final renderer run passed all 58
+rename/inline-stash/deferred-scope cases, plus 265 TypeScript tests, strict graph
+types and 107 Python runner tests; the edited helper compiled. The production
+Debian build passed and is preserved under
+`target/local-review/rename-enter/artifacts/Git-Khronos_0.1.6_amd64.deb`, SHA-256
+`4d800a650bc8de427a761c5649249bc59be4fa078280defb5fc1f50bc36d6083`.
+Extracted executable SHA-256 is
+`b951a657469cba6ae55f94b60b93d6ee805bc3978fe088d68fd30a19049d6ab1`.
+Focused acceptance passed all 38 scenarios at
+`target/local-review/rename-enter/native/setup-keyboard-1795156220159009704/report.json`.
+Actual Control+Enter and Control+Shift+Enter now report default cancellation;
+all three chords preserve the dialog and exact checkout footprint, followed by
+successful explicit palette/context rename. Full inherited-environment acceptance
+then passed all 266 scenarios against the same package/executable at
+`target/local-review/rename-enter/native/environment-1795156265724091110/report.json`.
+The full suite includes the 38 focused cases. All captured source, helper and
+renderer inputs still match `target/local-review/rename-enter/inputs.sha256`
+after qualification. Synthetic composition flags do not qualify a physical IME,
+and local passing tests do not replace hosted Jammy verification. No installation
+or release was performed.
+
 ## Deferred fetch/worktree scope and shared focus leases — 2026-11-20
 
 The original 17-case renderer probe reproduced 14 failures. Three same-ID/path

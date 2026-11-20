@@ -124,17 +124,56 @@ def setup_keyboard_isolation(driver, fixtures, report):
     driver.wait("return document.activeElement?.name === 'branchRenameName'")
     driver.script('''const field = document.querySelector('[name=branchRenameName]');
       field.value = 'owned-palette-renamed'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
-    _chord(driver, '\ue007')
-    _chord(driver, '\ue007', shift=True)
-    _chord(driver, 'p')
-    driver.request('POST', driver.path('execute/async'), {'script': '''
-      const done = arguments[arguments.length - 1];
-      requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
-    ''', 'args': []})
-    assert driver.script('return !!document.querySelector(arguments[0])', modal)
-    assert not driver.script('return !!document.querySelector("gc-command-palette")')
-    assert checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')) == rename_before
-    assert not marker.exists()
+    # Passive event evidence distinguishes a dropped modifier/focus move from
+    # browser-default submission. Never replay a chord after a failed assertion.
+    driver.script('''window.__ownedRenameKeyEvents = [];
+      window.__ownedRenameKeyObserver = event => {
+        if (window.__ownedRenameKeyEvents.length >= 80) return;
+        const target = event.target;
+        const item = { type: event.type, key: event.key || null,
+          ctrl: !!event.ctrlKey, shift: !!event.shiftKey, meta: !!event.metaKey,
+          alt: !!event.altKey, name: target?.name || null, id: target?.id || null,
+          tag: target?.tagName || null, event };
+        window.__ownedRenameKeyEvents.push(item);
+      };
+      for (const type of ['keydown', 'keyup', 'focusin', 'submit'])
+        document.addEventListener(type, window.__ownedRenameKeyObserver, true);''')
+    rename_chords = []
+    report['setupKeyboardIsolation']['paletteRenameShortcuts'] = rename_chords
+    try:
+        for label, key, shift in (('Control+Enter', '\ue007', False),
+                                  ('Control+Shift+Enter', '\ue007', True),
+                                  ('Control+p', 'p', False)):
+            _chord(driver, key, shift=shift)
+            driver.request('POST', driver.path('execute/async'), {'script': '''
+              const done = arguments[arguments.length - 1];
+              requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
+            ''', 'args': []})
+            observation = driver.script('''return {
+              modalOpen: !!document.querySelector(arguments[0]),
+              paletteOpen: !!document.querySelector('gc-command-palette'),
+              activeName: document.activeElement?.name || null,
+              events: window.__ownedRenameKeyEvents.splice(0).map(({ event, ...item }) =>
+                ({ ...item, defaultPrevented: event.defaultPrevented })),
+            }''', modal)
+            observation.update({'chord': label,
+                'checkout': checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')),
+                'commitAttempted': marker.exists()})
+            rename_chords.append(observation)
+            assert observation['modalOpen'], label + ' submitted or dismissed the rename review'
+            assert not observation['paletteOpen'], label + ' opened a background palette'
+            assert observation['checkout'] == rename_before, label + ' changed owned Git data'
+            assert not observation['commitAttempted'], label + ' attempted a native commit'
+            if key == '\ue007':
+                enter_events = [event for event in observation['events']
+                                if event['type'] == 'keydown' and event['key'] == 'Enter']
+                assert enter_events, label + ' did not deliver an observed Enter keydown'
+                assert all(event['defaultPrevented'] for event in enter_events), \
+                    label + ' left browser-default form submission enabled'
+    finally:
+        driver.script('''for (const type of ['keydown', 'keyup', 'focusin', 'submit'])
+          document.removeEventListener(type, window.__ownedRenameKeyObserver, true);
+          delete window.__ownedRenameKeyObserver; delete window.__ownedRenameKeyEvents;''')
     driver.click_visible(modal + ' .confirm-action', 'Rename Branch')
     driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
     driver.wait('return !!document.querySelector(\'[aria-label="Local branch owned-palette-renamed"]\')')

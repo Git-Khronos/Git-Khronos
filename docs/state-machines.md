@@ -100,6 +100,16 @@ completion may update pinned/hidden/solo preferences. A changed pin is not
 silently restored while the rename is in flight. These UI guards do not lock
 Git against external reference edits or replace native branch semantics.
 
+The palette rename form explicitly cancels browser-default Enter submission for
+modifier chords, repeated keys and composition. Stopping propagation alone
+isolates background shortcuts but does not cancel a browser's implicit form
+submission. Plain Enter and explicit confirmation remain supported. Renderer
+coverage checks both default cancellation and the valid submission path; native
+acceptance records the delivered key flags, final default-prevented state,
+focus/submit events and checkout footprint after each single chord. Event state
+is read after dispatch completes, not from a capture-phase microtask that could
+run before the form's bubbling listener.
+
 Coverage: `branch-rename-scope.spec.ts`, `operation-history-lifecycle.spec.ts`,
 reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/

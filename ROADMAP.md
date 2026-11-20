@@ -15,8 +15,10 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Fetch, pull, and push through configured Git credentials
 - [x] Configurable background fetch and remote-reference refresh
 - [x] Explicit one/all-remotes branch fetch with opt-in tracking-branch pruning
-  (custom/tag refspec isolation and cancellation are qualified with real Git
-  fixtures and renderer journeys; packaged qualification remains pending)
+  (custom/tag refspec isolation and cancellation have real Git fixtures and
+  renderer journeys; owned-local-remote packaged acceptance additionally checks
+  ordinary fetch/prune and shallow deepen/complete without dirty-checkout changes;
+  real hosted-service and installed-platform qualification remain separate)
 - [x] Per-repository operation serialization and redacted errors
 - [x] Real-repository parser and mutation tests
 - [x] File and commit diffs
@@ -143,9 +145,12 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Guided bisect with good, bad, skip, and reset controls
 - [x] Worktrees, submodules, and explicit commit signing through configured Git keys
 - [x] Reviewed linked-worktree move preserving dirty files and branch occupancy
-  (native fixtures and renderer journeys; packaged acceptance remains)
+  (native fixtures, renderer journeys and owned packaged-UI acceptance preserve
+  both dirty checkouts, linked index bytes, untracked and ignored files)
 - [x] Verified registration repair after external linked-worktree directory moves
-  (scoped link checks and explicit unsupported cases; packaged acceptance remains)
+  (scoped link checks and explicit unsupported cases; owned packaged-UI acceptance
+  verifies actual registration repair without changing either dirty checkout;
+  physical directory-picker and cross-platform qualification remain separate)
 - [x] Commit signature verification in the inspector
 - [x] Effective repository signing configuration diagnostics
 - [x] Explicit per-draft sign-off and unchanged-tree commit permission

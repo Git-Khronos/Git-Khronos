@@ -167,3 +167,33 @@ for (const change of ['repository', 'path']) {
     expect(await page.evaluate(() => (window as any).__renameScope.calls.filter((call: any) => call.command === 'rename_branch'))).toEqual([]);
   });
 }
+
+for (const [kind, flags] of Object.entries({
+  control: { ctrlKey: true }, meta: { metaKey: true }, alt: { altKey: true },
+  shift: { shiftKey: true }, repeated: { repeat: true }, composing: { isComposing: true },
+})) {
+  test(`palette rename cancels ${kind} Enter browser-default submission`, async ({ page }) => {
+    await page.evaluate(() => (window as any).__renameScope.open());
+    const field = page.getByRole('dialog', { name: /^Rename branch / }).getByRole('textbox');
+    await expect(field).toBeFocused();
+    const result = await field.evaluate((input, flags) => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...flags });
+      return { allowedDefault: input.dispatchEvent(event), cancelled: event.defaultPrevented };
+    }, flags);
+    // Chromium can ignore a chord that another engine may submit. Verify the
+    // cancellation contract directly, not only one engine's implicit behavior.
+    expect(result).toEqual({ allowedDefault: false, cancelled: true });
+    await expect(field).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__renameScope.calls.filter((call: any) => call.command === 'rename_branch'))).toEqual([]);
+  });
+}
+
+test('plain Enter still confirms the palette branch rename once', async ({ page }) => {
+  await page.evaluate(() => (window as any).__renameScope.open());
+  const field = page.getByRole('dialog', { name: /^Rename branch / }).getByRole('textbox');
+  await expect(field).toBeFocused();
+  await field.press('Enter');
+  await expect(page.getByRole('dialog', { name: /^Rename branch / })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__renameScope.calls.filter((call: any) => call.command === 'rename_branch')))
+    .toMatchObject([{ args: { oldName: 'feature/partial-staging', newName: 'renamed-topic' } }]);
+});

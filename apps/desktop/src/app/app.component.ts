@@ -13249,6 +13249,12 @@ export class AppComponent implements OnInit, OnDestroy {
   protected handleBranchRenameKey(event: KeyboardEvent, request: PendingBranchRename): void {
     if (this.pendingBranchRename() !== request || !this.ownsRepositoryScope(request)) return;
     event.stopPropagation();
+    // Stopping propagation does not cancel WebKit's implicit form submission.
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey
+      || event.shiftKey || event.repeat || event.isComposing)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape') { event.preventDefault(); this.closeBranchRename(true, request); }
     else this.cycleDialogFocus(event.currentTarget as HTMLElement, event);
   }
