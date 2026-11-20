@@ -2695,7 +2695,7 @@
   }
   @if (pendingBisectStart(); as bisect) {
     <div class="confirmation-backdrop" (click)="pendingBisectStart.set(null)">
-      <section class="confirmation-dialog bisect-dialog" role="alertdialog" aria-modal="true" aria-labelledby="bisect-dialog-title" (click)="$event.stopPropagation()">
+      <section class="confirmation-dialog bisect-dialog" role="alertdialog" aria-modal="true" aria-labelledby="bisect-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
         <div class="confirmation-icon"><gc-icon name="history" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Start binary search</span>

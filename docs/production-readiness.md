@@ -5,6 +5,47 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Local confirmation keyboard isolation — 2026-11-20
+
+The next bounded batch extends the keyboard guard to eleven confirmation
+families, repairs retired history-dialog event handling, and traps Tab inside
+bisect startup. Its renderer probe found 22 failures before the guard changes;
+a separate bisect probe confirmed focus escaping. The final frozen-input gate
+passed 144 selected renderer cases, including explicit Enter, Tab/Escape,
+focus gaps, retired controls and adjacent shortcut/reference/state-machine
+journeys. All 265 TypeScript unit tests, graph typechecking, production build
+and preview guard, and 103 native runner unit tests passed. Initial production
+size is 1,428,658 bytes, leaving 21,342 below the unchanged hard limit; the
+initial-bundle warning remains. No dependency, budget or Rust source changed.
+
+Preserved package:
+`target/local-review/confirmation-keyboard/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `190e3ba96183916200122ebad406c262fa49b06e8f4e6ddaea5de08b81327646`;
+packaged executable SHA-256
+`2689b676a6ab0b11c7cf158aa9c5c69ce7298dbdc8ad0a211b1d2462a75b130f`.
+All 22 focused native scenarios passed in
+`target/local-review/confirmation-keyboard/native-green/setup-keyboard-1795133948805242058/report.json`.
+The same final checks on the preceding immutable package recorded a real
+commit attempt, refused by the owned hook, and background palette activation
+from a branch-deletion review:
+`target/local-review/confirmation-keyboard/native-red-qualified/setup-keyboard-1795133928337458748/report.json`.
+The existing setup-form protections passed in both packages. This is not a
+fresh entire renderer/native-suite result or a release approval.
+
+Earlier fixture runs stopped at an incomplete menu label, an off-screen Delete
+control, or an unobserved discarded-recovery navigation. They do not establish
+the new confirmation bug. Both navigation controls now use the already tested
+single-delivery scrolling/hit-target helper, with no timeout increase or
+mutation retry. The final red/green comparisons use identical runner inputs;
+UI and runner input manifests are retained alongside the reports.
+
+A separate renderer diagnostic refused every native request but recorded wrong
+destination `repoId` payloads after an active-repository switch for branch
+deletion, sparse-checkout disable and worktree removal. Its three failures are
+under `target/local-review/confirmation-keyboard/scope-probe-output/`. This is
+an unfixed follow-up at this checkpoint, not acceptance of cross-repository
+confirmation safety; native commands were not executed by that diagnostic.
+
 ## Local setup keyboard isolation — 2026-11-20
 
 The root now blocks ambient shortcuts while worktree, submodule, remote editing

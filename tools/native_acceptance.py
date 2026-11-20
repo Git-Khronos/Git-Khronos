@@ -835,7 +835,7 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.click_text(".app-menu-popover [role=menuitem] strong", "Recovery History")
     driver.wait("""return !!document.querySelector(
       '.recovery-dialog .operation-captures[aria-label="Discarded changes"] button:not(:disabled)')""")
-    driver.click_text(".recovery-dialog button", "Open discarded-change recovery…")
+    driver.click_scrolled_text(".recovery-dialog button", "Open discarded-change recovery…")
     driver.wait("""return document.querySelector('.saved-discards-dialog [aria-label="Files in this capture"]')
       ?.textContent.includes('native-recovery-file.bin')""")
     driver.wait("return document.activeElement?.matches('[data-saved-discards-close]')")

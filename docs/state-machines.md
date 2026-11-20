@@ -32,6 +32,24 @@ values, native capability tokens, or user draft contents in transition logs.
 
 ## Implemented transition ownership
 
+### Confirmation keyboard ownership
+
+Force-push, worktree removal, sparse checkout, branch publishing, workspace
+deletion, LFS pruning, file actions, branch actions, stored-reference deletion,
+bisect startup and history reviews suppress ambient document shortcuts while
+their own independent request is present, including the pre-render focus gap.
+This is a derived keyboard guard, not a shared review state, native authority or
+new lifecycle store. Plain Enter can activate a focused explicit confirmation;
+modified Enter cannot submit or activate it implicitly. Existing text editing,
+Tab and Escape handling remain local. Bisect startup uses the common modal Tab
+trap. A retired history review stops intercepting keys before its DOM disappears.
+
+Coverage: `confirmation-keyboard.spec.ts` checks all eleven request families,
+focus gaps, retired DOM, Tab/Escape and explicit Enter. The packaged
+`setup-keyboard` suite additionally opens a real branch-deletion review and
+checks that background commit/staging/palette shortcuts preserve the owned
+checkout and commit draft, without reaching the local commit-hook marker.
+
 ### Deferred graph action presentation
 
 The graph action menu's optional template and exclusive form styles live in

@@ -29,6 +29,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
     hook = repository / '.git/hooks/pre-commit'
     hook.write_text('#!/bin/sh\nprintf attempted > "$(git rev-parse --git-path setup-shortcut-hook-ran)"\nexit 1\n')
     hook.chmod(0o700)
+    fixtures.git(repository, 'branch', 'owned-keyboard-branch')
     open_ui(driver, repository)
     draft = 'Setup dialogs must not commit this draft'
     driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
@@ -42,10 +43,19 @@ def setup_keyboard_isolation(driver, fixtures, report):
         ('worktree', '[aria-label="Create worktree"]', '.worktree-dialog', 'worktreeBranch'),
         ('submodule', '[aria-label="Add submodule"]', '.submodule-dialog', 'submoduleUrl'),
         ('remote', '[aria-label="Add remote"]', '.remote-dialog', 'remoteName'),
+        ('branch-delete', '[aria-label="Local branch owned-keyboard-branch"]',
+         '[aria-labelledby="branch-confirmation-title"]', None),
     ):
-        driver.click_visible(opener)
+        if field is None:
+            driver.context_click(opener)
+            driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…')
+        else:
+            driver.click_visible(opener)
         driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
-        driver.click_visible(modal + ' input[name="' + field + '"]')
+        if field is None:
+            driver.script('document.querySelector(arguments[0]).focus()', modal + ' [data-branch-dialog-cancel]')
+        else:
+            driver.click_visible(modal + ' input[name="' + field + '"]')
         _chord(driver, '\ue007')
         _chord(driver, '\ue007', shift=True)
         _chord(driver, 'p')

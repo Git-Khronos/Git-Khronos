@@ -16,7 +16,7 @@ pnpm nx exec -p desktop --excludeTaskDependencies -- python3 "$PWD/tools/native_
 ```
 
 This includes the ordinary smoke journeys plus worktree, submodule and remote
-setup checks. A disposable repository has both staged and untracked contents
+setup checks and a branch-deletion confirmation. A disposable repository has both staged and untracked contents
 and a background commit draft. A local refusing hook records any attempted
 commit; no personal repository or hook is used. Each keyboard chord is sent
 once through WebDriver actions. Read-only rendering/readiness observations
@@ -24,6 +24,11 @@ precede independent disk/index/config/ref comparisons; shortcuts are never
 replayed after an uncertain reply. The full/environment suites include these
 checks too. Renderer coverage separately exercises editing, Tab, Escape,
 replacement DOM and the pre-render focus gap.
+
+The branch menu's off-screen Delete action and Recovery History's discarded
+changes opener use the existing single-delivery scrolling helper. It waits for
+ordinary rendering turns, scrolls normally and verifies the enabled painted hit
+target before one native click; it never injects activation or replays a mutation.
 
 ## Linux release qualification
 
