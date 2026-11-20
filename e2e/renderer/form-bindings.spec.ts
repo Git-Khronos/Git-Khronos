@@ -90,30 +90,33 @@ test('keeps commit text, options, and co-author data synchronized', async ({ pag
   await expect(description).toHaveValue('');
 });
 
-test('submits and clears the working-tree stash message', async ({ page }) => {
-  await page.goto('/?stash-message=Initial');
-  const stashMessage = page.getByRole('textbox', { name: 'Stash message' });
-  await expect(stashMessage).toHaveValue('Initial');
-  await page.evaluate(() => {
-    const root = document.querySelector('gc-root');
-    if (!root) throw new Error('Application root not found');
-    const app = (window as Window & {
-      ng: {
-        getComponent(element: Element): {
-          git: { stash(message: string): Promise<void> };
+for (const success of [true, false]) {
+  test(`${success ? 'clears a successful' : 'retains a refused'} working-tree stash message`, async ({ page }) => {
+    await page.goto('/?stash-message=Initial');
+    const stashMessage = page.getByRole('textbox', { name: 'Stash message' });
+    await expect(stashMessage).toHaveValue('Initial');
+    await page.evaluate(success => {
+      const root = document.querySelector('gc-root');
+      if (!root) throw new Error('Application root not found');
+      const app = (window as Window & {
+        ng: {
+          getComponent(element: Element): {
+            git: { stash(message: string): Promise<boolean> };
+          };
         };
+      }).ng.getComponent(root);
+      app.git.stash = async (message) => {
+        sessionStorage.setItem('form-test-stash', message);
+        return success;
       };
-    }).ng.getComponent(root);
-    app.git.stash = async (message) => {
-      sessionStorage.setItem('form-test-stash', message);
-    };
-  });
+    }, success);
 
-  await stashMessage.fill('Save current work');
-  await stashMessage.press('Enter');
-  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('form-test-stash'))).toBe('Save current work');
-  await expect(stashMessage).toHaveValue('');
-});
+    await stashMessage.fill('Save current work');
+    await stashMessage.press('Enter');
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('form-test-stash'))).toBe('Save current work');
+    await expect(stashMessage).toHaveValue(success ? '' : 'Save current work');
+  });
+}
 
 test('keeps repository identity submission free of native email validation', async ({ page }) => {
   await page.getByTitle('Repository Git identity').click();

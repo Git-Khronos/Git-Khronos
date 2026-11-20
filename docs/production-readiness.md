@@ -5,7 +5,20 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
-## Unstaged Files line recap — local, package qualification pending
+## Hosted form-binding mock contract correction — 2026-11-20
+
+Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native
+palette-rename shortcut assertion targeted by `76cf51b`, and one renderer stash
+form-binding case. Its mock still returned `void` after `stash` acquired an
+actual boolean mutation outcome. Locally the exact old test reproduced the
+failure under `target/local-review/stash-form-contract/renderer-red/`.
+The mock now returns a typed boolean and exercises both successful draft
+consumption and refused-draft retention. Product behavior was not weakened to
+accept undefined success. All 39 owning form/inline-stash/rename renderer cases
+and strict graph-test types passed. This follow-up changes no packaged runtime
+input, timeout or retry. Hosted verification of the queued fixes remains pending.
+
+## Unstaged Files line recap — full local package gate passed
 
 The Unstaged Files header now has an additions/deletions recap matching the
 commit recap's notation. Its separate native read compares tracked files against
