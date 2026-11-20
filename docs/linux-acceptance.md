@@ -5,6 +5,12 @@ application extracted from the Debian package. It does not install the package, 
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
 
+The main-menu smoke journey waits for the actual deferred menu content and its
+focused Manage Repositories action before Tab dismissal. A loading/error escape
+does not qualify the finished menu. The report records header/scroll-area layout
+and checks that the menu remains inside the native viewport. Renderer checks
+separately hold/fail its module request and exercise compact-height scrolling.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do

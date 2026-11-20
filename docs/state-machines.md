@@ -106,6 +106,26 @@ focus gaps, retired DOM, Tab/Escape and explicit Enter. The packaged
 checks that background commit/staging/palette shortcuts preserve the owned
 checkout and commit draft, without reaching the local commit-hook marker.
 
+### Deferred main-menu presentation
+
+`MainMenuContentComponent` owns optional menu markup and its exclusive styles;
+the root retains the open flag, service/action callbacks, outside dismissal,
+keyboard navigation, opener and return focus. The root menu container remains
+available while its content loads or fails, with a real keyboard-reachable
+Cancel/Close action. No Git command is dispatched by loading menu code.
+
+Content readiness transfers focus from the opener or retired loading control,
+but not from a control outside the menu. Closing the menu removes the deferred
+view, so late imports cannot resurrect it. Tab excludes outgoing controls before
+resuming normal focus order; retired DOM stops intercepting menu navigation.
+The content styles preserve the existing scroll area and compact-height rules.
+
+Coverage: `deferred-main-menu.spec.ts` holds/fails the actual module request and
+checks escapes, late content, outside focus, Tab/Shift+Tab and retired DOM.
+Workspace menu journeys exercise existing actions and compact/full-height
+layout. Packaged smoke waits for the focused real Manage Repositories action,
+not the loading escape, before measuring menu layout and testing Tab dismissal.
+
 ### Deferred graph action presentation
 
 The graph action menu's optional template and exclusive form styles live in

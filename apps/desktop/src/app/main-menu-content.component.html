@@ -1,0 +1,37 @@
+@let vm = presenter();
+<header>
+  <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" />
+  <span><strong>Git Khronos</strong><small>{{ vm.git.repositoryLabel(vm.repository) }}</small></span>
+</header>
+<div class="app-menu-scroll">
+  <div class="app-menu-section">
+    <span>Repositories</span>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openRepositoryManager()"><gc-icon name="repo" [size]="14" /><span><strong>Manage Repositories</strong><small>Open tabs and recent repositories</small></span></button>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.chooseRepository()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open Repository</strong><small>Choose a local working copy</small></span><kbd>{{ vm.primaryShortcutKey }} ⇧ O</kbd></button>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openRepositoryManager('clone')"><gc-icon name="copy" [size]="14" /><span><strong>Clone Repository</strong><small>Clone from a remote URL</small></span></button>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openRepositoryManager('init')"><gc-icon name="plus" [size]="14" /><span><strong>Initialize Repository</strong><small>Create a new local repository</small></span></button>
+    <button type="button" role="menuitem" [disabled]="!vm.git.recentlyClosedRepositoryPath() || vm.git.busy()" (click)="vm.appMenuOpen.set(false); vm.reopenClosedRepository()"><gc-icon name="redo" [size]="14" /><span><strong>Reopen Closed Repository</strong><small>{{ vm.git.recentlyClosedRepositoryPath() ?? 'No repository closed this session' }}</small></span><kbd>{{ vm.primaryShortcutKey }} ⇧ T</kbd></button>
+  </div>
+  <div class="app-menu-section">
+    <span>Current Repository</span>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.git.openRepositoryInFileManager()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open in File Manager</strong><small>{{ vm.repository.path }}</small></span></button>
+    <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.toggleTerminal()"><gc-icon name="terminal" [size]="14" /><span><strong>Terminal</strong><small>Open repository terminal tabs</small></span><kbd>{{ vm.alternateShortcutKey }} T / {{ vm.primaryShortcutKey }} `</kbd></button>
+    <button type="button" role="menuitem" [disabled]="vm.git.busy() || !!vm.fileContentDialog()" (click)="vm.openFileTools()"><gc-icon name="terminal" [size]="14" /><span><strong>External file tools</strong><small>Inspect commands and retained comparison files</small></span></button>
+    <button type="button" role="menuitem" [disabled]="!!vm.fileContentDialog()" (click)="vm.openEditorDraftRecovery()"><gc-icon name="history" [size]="14" /><span><strong>Editor draft recovery</strong><small>Inspect retained unsaved text</small></span></button>
+    <button type="button" role="menuitem" [disabled]="vm.git.busy()" (click)="vm.openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Find saved changes and previous commit positions</small></span></button>
+  </div>
+  <div class="app-menu-section">
+    <span>Edit</span>
+    <button type="button" role="menuitem" [disabled]="!vm.git.undoLabel() || vm.git.busy()" (click)="vm.appMenuOpen.set(false); vm.git.undo()"><gc-icon name="undo" [size]="14" /><span><strong>{{ vm.git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the latest supported repository action</small></span><kbd>{{ vm.undoShortcut }}</kbd></button>
+    <button type="button" role="menuitem" [disabled]="!vm.git.redoLabel() || vm.git.busy()" (click)="vm.appMenuOpen.set(false); vm.git.redo()"><gc-icon name="redo" [size]="14" /><span><strong>{{ vm.git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the last repository action that was undone</small></span><kbd>{{ vm.redoShortcut }}</kbd></button>
+  </div>
+</div>
+<div class="app-menu-section compact app-menu-application">
+  <span>Application</span>
+  <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openCommandPalette()"><gc-icon name="search" [size]="14" /><span><strong>Command Palette</strong></span><kbd>{{ vm.primaryShortcutKey }} P</kbd></button>
+  <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openKeyboardShortcuts()"><gc-icon name="keyboard" [size]="14" /><span><strong>Keyboard Shortcuts</strong></span><kbd>{{ vm.primaryShortcutKey }} /</kbd></button>
+  <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openPreferences()"><gc-icon name="settings" [size]="14" /><span><strong>Preferences</strong></span></button>
+  @if (vm.windowsLauncherAvailable()) {
+    <button type="button" role="menuitem" (click)="vm.openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>{{ vm.windowsLauncher.status() }}</small></span></button>
+  }
+</div>

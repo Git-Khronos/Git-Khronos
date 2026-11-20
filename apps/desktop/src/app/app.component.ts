@@ -1,3 +1,4 @@
+import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
 import { SavedDiscardListComponent } from './saved-discard-list.component';
@@ -664,7 +665,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -3133,6 +3134,30 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     return slots;
   });
+
+  protected readonly mainMenuView = computed(() => ({
+    repository: this.git.repository()!,
+    git: this.git,
+    appMenuOpen: this.appMenuOpen,
+    fileContentDialog: this.fileContentDialog,
+    primaryShortcutKey: this.primaryShortcutKey,
+    alternateShortcutKey: this.alternateShortcutKey,
+    undoShortcut: this.undoShortcut,
+    redoShortcut: this.redoShortcut,
+    windowsLauncherAvailable: this.windowsLauncherAvailable,
+    windowsLauncher: this.windowsLauncher,
+    openRepositoryManager: this.openRepositoryManager.bind(this),
+    chooseRepository: this.chooseRepository.bind(this),
+    reopenClosedRepository: this.reopenClosedRepository.bind(this),
+    toggleTerminal: this.toggleTerminal.bind(this),
+    openFileTools: this.openFileTools.bind(this),
+    openEditorDraftRecovery: this.openEditorDraftRecovery.bind(this),
+    openRecoveryHistory: this.openRecoveryHistory.bind(this),
+    openCommandPalette: this.openCommandPalette.bind(this),
+    openKeyboardShortcuts: this.openKeyboardShortcuts.bind(this),
+    openPreferences: this.openPreferences.bind(this),
+    openWindowsLauncher: this.openWindowsLauncher.bind(this),
+  }));
 
   protected readonly graphActionMenuView = computed(() => ({
     git: this.git,
@@ -10283,11 +10308,28 @@ export class AppComponent implements OnInit, OnDestroy {
     this.appMenuOpen.set(open);
     if (open) {
       if (this.windowsLauncherAvailable()) void this.windowsLauncher.refresh();
-      setTimeout(() => document.querySelector<HTMLElement>('.app-menu-popover [role="menuitem"]')?.focus());
+      setTimeout(() => this.mainMenuContentReady());
+    }
+  }
+
+  private readonly mainMenuLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('mainMenuLoaderClose');
+  private readonly mainMenuLoaderFocus = afterRenderEffect(() => {
+    const close = this.mainMenuLoaderClose()?.nativeElement;
+    if (close && this.appMenuOpen() && (document.activeElement === this.appMenuToggle()?.nativeElement
+      || document.activeElement === document.body)) close.focus();
+  });
+
+  protected mainMenuContentReady(): void {
+    if (!this.appMenuOpen()) return;
+    const menu = document.querySelector<HTMLElement>('.app-menu-popover');
+    const active = document.activeElement;
+    if (active === document.body || active === this.appMenuToggle()?.nativeElement || menu?.contains(active)) {
+      menu?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
     }
   }
 
   protected handleAppMenuKeydown(event: KeyboardEvent): void {
+    if (!this.appMenuOpen()) return;
     const menu = event.currentTarget as HTMLElement;
     const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')]
       .filter((item) => !item.hasAttribute('disabled'));
@@ -14880,3 +14922,5 @@ export type BranchUpstreamView = ReturnType<AppComponent['branchUpstreamView']>;
 
 export type GraphActionMenuView = ReturnType<AppComponent['graphActionMenuView']>;
 export type GraphActionMenuContext = NonNullable<ReturnType<AppComponent['contextMenu']>>;
+
+export type MainMenuView = ReturnType<AppComponent['mainMenuView']>;

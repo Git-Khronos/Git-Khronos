@@ -5,6 +5,42 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Deferred main-menu presentation — 2026-11-20
+
+Optional main-menu markup and exclusive styles now load on demand. The root
+retains its actions, open state, outside dismissal, keyboard navigation and
+focus ownership. Real Cancel/Close controls remain available while code loads
+or fails. Late content cannot reopen a retired menu or take outside focus;
+normal Tab/Shift+Tab and compact-height scrolling remain covered.
+
+The frozen-input gate passed 142 selected renderer cases, plus four affected
+workspace/menu journeys (146 executions, not a full renderer run). All 265
+TypeScript tests, graph typechecking, production build/preview guard and 107
+native-runner tests passed. New fixture probes were corrected for browser-chrome
+Shift+Tab, ambient document versus retired-menu event handling and an outside
+pointer target covered by the menu; those were not product regressions.
+
+Initial production assets decreased from 1,436,774 to 1,430,842 bytes: 5,932
+bytes saved, with 19,158 headroom under the unchanged hard limit. The 10,690-byte
+main-menu chunk is outside the initial static import closure. This measures
+initial assets, not total download size or a benchmarked startup-time gain.
+The warning remains. Root component CSS, dependencies and Rust source did not
+change; only the menu's exclusive global styles moved to its optional component.
+
+Preserved package:
+`target/local-review/main-menu/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `5e7894e90be9d14c5220448d774f478418780ea464d5824300c541907e8ea4a7`;
+packaged executable SHA-256
+`49e33388e764ef921343e7783b77d77c3960d1d3a4e2bd4d8ae06e109200b6f4`.
+All 18 packaged smoke scenarios passed:
+`target/local-review/main-menu/native/smoke-1795140062762921601/report.json`.
+The native menu check requires focused real content, not the loading escape,
+before measuring its header/scroll area and testing Tab. Its recorded bounds
+are top 36, bottom 826 within a 900-pixel viewport. UI and runner fingerprints
+matched after qualification. This is local extracted-package acceptance, not
+a new full native run, installed desktop qualification or release approval.
+No system installation or release was performed.
+
 ## Source-bound publish, force-push and LFS reviews — 2026-11-20
 
 Publish, force-push and exact/retention LFS cleanup reviews now capture their

@@ -753,6 +753,20 @@ def menu_tab_focus(driver, report):
         driver.script("document.activeElement.setAttribute('data-native-menu-tab-target', '')")
         try:
             driver.click(toggle)
+            if menu == ".app-menu-popover":
+                # Loading/error escapes are also menuitems. Qualify the actual
+                # deferred content, not merely focus inside its placeholder.
+                driver.wait("""return [...document.querySelectorAll('.app-menu-popover gc-main-menu-content [role=menuitem]')]
+                  .some(element => element.textContent.includes('Manage Repositories') && element === document.activeElement)""")
+                layout = driver.script("""const menu = document.querySelector('.app-menu-popover');
+                  const content = menu.querySelector('gc-main-menu-content');
+                  const bounds = menu.getBoundingClientRect();
+                  return {headerHeight: content.querySelector('header').getBoundingClientRect().height,
+                    scrollHeight: content.querySelector('.app-menu-scroll').clientHeight,
+                    top: bounds.top, bottom: bounds.bottom, viewportHeight: innerHeight};""")
+                assert layout['headerHeight'] > 0 and layout['scrollHeight'] > 0, layout
+                assert 0 <= layout['top'] < layout['bottom'] <= layout['viewportHeight'], layout
+                report['mainMenuLayout'] = layout
             driver.wait(f"return document.querySelector({json.dumps(menu)})?.contains(document.activeElement)")
             driver.key("\ue004")
             driver.wait(f"return !document.querySelector({json.dumps(menu)})", 2)

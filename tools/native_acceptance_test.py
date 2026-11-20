@@ -17,7 +17,7 @@ from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
-    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
+    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable, menu_tab_focus,
 )
 
 
@@ -63,6 +63,21 @@ class PackageIdentityTests(unittest.TestCase):
             report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
             self.assertFalse(report["passed"])
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
+
+
+class MainMenuReadinessTests(unittest.TestCase):
+    def test_loading_menu_does_not_qualify_the_actual_content_or_send_its_tab(self):
+        driver = MagicMock()
+        driver.script.return_value = True
+        driver.wait.side_effect = [True, True, TimeoutError('Only the loading escape was rendered')]
+        report = {'scenarios': []}
+        with self.assertRaisesRegex(TimeoutError, 'loading escape'):
+            menu_tab_focus(driver, report)
+        self.assertIn('gc-main-menu-content', driver.wait.call_args.args[0])
+        self.assertIn('Manage Repositories', driver.wait.call_args.args[0])
+        self.assertEqual(driver.key.call_count, 3)  # Workspace baseline/dismissal, then main-menu baseline only.
+        self.assertNotIn('mainMenuLayout', report)
+        self.assertEqual(report['scenarios'], [])
 
 
 class TerminalCspTests(unittest.TestCase):

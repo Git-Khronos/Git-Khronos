@@ -117,42 +117,15 @@
         </button>
         @if (appMenuOpen()) {
           <div class="app-menu-popover" role="menu" aria-label="Git Khronos menu" (click)="$event.stopPropagation()" (keydown)="handleAppMenuKeydown($event)">
-            <header>
-              <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" />
-              <span><strong>Git Khronos</strong><small>{{ git.repositoryLabel(repo) }}</small></span>
-            </header>
-            <div class="app-menu-scroll">
-              <div class="app-menu-section">
-                <span>Repositories</span>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openRepositoryManager()"><gc-icon name="repo" [size]="14" /><span><strong>Manage Repositories</strong><small>Open tabs and recent repositories</small></span></button>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); chooseRepository()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open Repository</strong><small>Choose a local working copy</small></span><kbd>{{ primaryShortcutKey }} ⇧ O</kbd></button>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openRepositoryManager('clone')"><gc-icon name="copy" [size]="14" /><span><strong>Clone Repository</strong><small>Clone from a remote URL</small></span></button>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openRepositoryManager('init')"><gc-icon name="plus" [size]="14" /><span><strong>Initialize Repository</strong><small>Create a new local repository</small></span></button>
-                <button type="button" role="menuitem" [disabled]="!git.recentlyClosedRepositoryPath() || git.busy()" (click)="appMenuOpen.set(false); reopenClosedRepository()"><gc-icon name="redo" [size]="14" /><span><strong>Reopen Closed Repository</strong><small>{{ git.recentlyClosedRepositoryPath() ?? 'No repository closed this session' }}</small></span><kbd>{{ primaryShortcutKey }} ⇧ T</kbd></button>
-              </div>
-              <div class="app-menu-section">
-                <span>Current Repository</span>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); git.openRepositoryInFileManager()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open in File Manager</strong><small>{{ repo.path }}</small></span></button>
-                <button type="button" role="menuitem" (click)="appMenuOpen.set(false); toggleTerminal()"><gc-icon name="terminal" [size]="14" /><span><strong>Terminal</strong><small>Open repository terminal tabs</small></span><kbd>{{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</kbd></button>
-                <button type="button" role="menuitem" [disabled]="git.busy() || !!fileContentDialog()" (click)="openFileTools()"><gc-icon name="terminal" [size]="14" /><span><strong>External file tools</strong><small>Inspect commands and retained comparison files</small></span></button>
-                <button type="button" role="menuitem" [disabled]="!!fileContentDialog()" (click)="openEditorDraftRecovery()"><gc-icon name="history" [size]="14" /><span><strong>Editor draft recovery</strong><small>Inspect retained unsaved text</small></span></button>
-                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openRecoveryHistory()"><gc-icon name="history" [size]="14" /><span><strong>Recovery History</strong><small>Find saved changes and previous commit positions</small></span></button>
-              </div>
-              <div class="app-menu-section">
-                <span>Edit</span>
-                <button type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="appMenuOpen.set(false); git.undo()"><gc-icon name="undo" [size]="14" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the latest supported repository action</small></span><kbd>{{ undoShortcut }}</kbd></button>
-                <button type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="appMenuOpen.set(false); git.redo()"><gc-icon name="redo" [size]="14" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the last repository action that was undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
-              </div>
-            </div>
-            <div class="app-menu-section compact app-menu-application">
-              <span>Application</span>
-              <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openCommandPalette()"><gc-icon name="search" [size]="14" /><span><strong>Command Palette</strong></span><kbd>{{ primaryShortcutKey }} P</kbd></button>
-              <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openKeyboardShortcuts()"><gc-icon name="keyboard" [size]="14" /><span><strong>Keyboard Shortcuts</strong></span><kbd>{{ primaryShortcutKey }} /</kbd></button>
-              <button type="button" role="menuitem" (click)="appMenuOpen.set(false); openPreferences()"><gc-icon name="settings" [size]="14" /><span><strong>Preferences</strong></span></button>
-              @if (windowsLauncherAvailable()) {
-                <button type="button" role="menuitem" (click)="openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>{{ windowsLauncher.status() }}</small></span></button>
-              }
-            </div>
+            @defer (on immediate) {
+              <gc-main-menu-content [presenter]="mainMenuView()" (ready)="mainMenuContentReady()" />
+            } @loading {
+              <p class="app-menu-loading" role="status">Loading menu…</p>
+              <button #mainMenuLoaderClose class="app-menu-loading-close" type="button" role="menuitem" (click)="closeAppMenu(true)">Cancel</button>
+            } @error {
+              <p class="app-menu-loading" role="alert">The menu could not load. Restart Git Khronos before retrying.</p>
+              <button #mainMenuLoaderClose class="app-menu-loading-close" type="button" role="menuitem" (click)="closeAppMenu(true)">Close</button>
+            }
           </div>
         }
         <ng-container *ngTemplateOutlet="workspaceControl"></ng-container>
