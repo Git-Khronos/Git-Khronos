@@ -174,6 +174,8 @@ fn native_idle(app: &AppHandle) -> bool {
 }
 fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
     let idle = native_idle(app);
+    let format = installer::format();
+    let install_blocker = installer::install_blocker(format);
     with_runtime(app, |runtime| {
         let model = &runtime.model;
         Ok(ApplicationUpdateStatus {
@@ -181,7 +183,7 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             phase: model.phase,
             running_version: env!("CARGO_PKG_VERSION").into(),
             installed_version: runtime.installed_version.clone(),
-            package_format: installer::format().map(str::to_owned),
+            package_format: format.map(str::to_owned),
             configured: model.configured,
             automatic: model.preferences.automatic,
             offer_id: model.offer.as_ref().map(|offer| offer.token.clone()),
@@ -190,7 +192,11 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             verified: model.verified,
             downloaded_bytes: runtime.downloaded,
             total_bytes: runtime.total,
-            message: runtime.message.clone(),
+            message: if model.phase == UpdatePhase::Ready && model.verified {
+                install_blocker.map_or_else(|| runtime.message.clone(), str::to_owned)
+            } else {
+                runtime.message.clone()
+            },
             storage_error: runtime.storage_error.clone(),
             can_check: model.configured
                 && !model.busy()
@@ -201,7 +207,7 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
                 && model.offer.is_some(),
             can_install: model.configured
                 && idle
-                && !cfg!(windows)
+                && install_blocker.is_none()
                 && model.verified
                 && runtime.bytes.is_some()
                 && runtime.storage_error.is_none()
@@ -533,6 +539,9 @@ fn install_blocking(
     })?;
     let format =
         installer::format().ok_or_else(|| error("This application bundle cannot self-update."))?;
+    if let Some(message) = installer::install_blocker(Some(format)) {
+        return Err(error(message));
+    }
     let prepared = match installer::refuse_downgrade(format, &update.version)
         .and_then(|()| installer::prepare(&update, &bytes, format))
     {
@@ -735,10 +744,9 @@ pub fn start(app: AppHandle) {
                     return Ok(None);
                 }
                 let origin = runtime.model.automatic_origin();
-                if cfg!(windows) && runtime.model.phase == UpdatePhase::Ready {
-                    return Ok(None);
-                }
-                if runtime.model.can_automatically_install() && !cfg!(windows) && native_idle(&app)
+                if runtime.model.can_automatically_install()
+                    && installer::install_blocker(installer::format()).is_none()
+                    && native_idle(&app)
                 {
                     return Ok(runtime
                         .model

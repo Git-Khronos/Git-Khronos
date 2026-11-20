@@ -184,3 +184,11 @@ The configured-trust scenario replaces the two unconfigured-trust cases for
 this variant. It verifies that automatic updates remain off and that a pinned
 key alone does not create an installable offer. No release was published and
 this qualification did not exercise a live download or privileged install.
+
+On Linux, a verified package can be downloaded even if the desktop cannot
+authorize an in-app installation. For Debian and RPM, a missing or unusable
+`/usr/bin/pkexec` disables the install action and suppresses automatic installer
+dispatch; checking and signature verification still work. The dialog explains
+that users can install the official release package with their system package
+manager instead. This check does not imply that a functioning polkit session
+exists, and there is no password-collection or `sudo` fallback.

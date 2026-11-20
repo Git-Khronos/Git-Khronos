@@ -21,6 +21,37 @@ pub(super) fn format() -> Option<&'static str> {
 }
 
 #[cfg(target_os = "linux")]
+const PKEXEC: &str = "/usr/bin/pkexec";
+
+#[cfg(target_os = "linux")]
+fn package_authorizer_available(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+/// Detect a missing authorization launcher without running anything. A launcher
+/// on disk does not prove there is an active polkit session or authorization.
+pub(super) fn install_blocker(format: Option<&str>) -> Option<&'static str> {
+    if cfg!(windows) {
+        return Some(
+            "This Windows build cannot install an update in place. Use the official release installer.",
+        );
+    }
+    #[cfg(target_os = "linux")]
+    if matches!(format, Some("deb" | "rpm"))
+        && !package_authorizer_available(std::path::Path::new(PKEXEC))
+    {
+        return Some(
+            "The package was verified, but this session does not have the system authorization launcher (pkexec). Install the official release package with your system package manager.",
+        );
+    }
+    format
+        .is_none()
+        .then_some("This application bundle cannot self-update.")
+}
+
+#[cfg(target_os = "linux")]
 fn query(program: &str, args: &[&std::ffi::OsStr]) -> Result<String, String> {
     let mut command = Command::new(program);
     command.args(args);
@@ -269,7 +300,7 @@ fn privileged_command(package_format: &str, path: &std::path::Path) -> Command {
     } else {
         ("/usr/bin/rpm", "-U")
     };
-    let mut command = Command::new("/usr/bin/pkexec");
+    let mut command = Command::new(PKEXEC);
     command
         .arg("--disable-internal-agent")
         .arg(program)
@@ -311,7 +342,7 @@ pub(super) fn install(
     prepared: PreparedPackage,
 ) -> InstallOutcome {
     // Reverify immediately before the installation boundary, not only download.
-    if cfg!(windows) {
+    if install_blocker(Some(package_format)).is_some() {
         return InstallOutcome::RefusedBeforeExecution;
     }
     if update.verify(bytes).is_err() {
@@ -343,6 +374,23 @@ pub(super) fn install(
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn application_update_package_authorizer_requires_an_executable_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let area = tempfile::tempdir().unwrap();
+        let fixture = area.path().join("launcher");
+        assert!(!package_authorizer_available(&fixture));
+        assert!(!package_authorizer_available(area.path()));
+        std::fs::write(&fixture, b"not an actual launcher").unwrap();
+        std::fs::set_permissions(&fixture, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(!package_authorizer_available(&fixture));
+        std::fs::set_permissions(&fixture, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(package_authorizer_available(&fixture));
+        assert!(install_blocker(None).is_some());
+        assert!(install_blocker(Some("appimage")).is_none());
+    }
+
     use std::os::unix::process::ExitStatusExt;
 
     #[test]
