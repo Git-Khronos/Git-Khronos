@@ -204,3 +204,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     from native_context_branch_scenarios import context_branch_workflow
     context_branch_workflow(driver, fixtures, report)
+
+    from native_unstaged_summary_scenarios import unstaged_summary_workflow
+    unstaged_summary_workflow(driver, fixtures, report)

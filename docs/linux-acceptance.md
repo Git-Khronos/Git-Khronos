@@ -1009,6 +1009,15 @@ index bytes, untracked and ignored files, and source configuration. The repair
 oracle checks the final registration path separately from working bytes. This
 does not qualify a physical directory chooser; picker races have renderer tests.
 
+The setup-keyboard suite also verifies the Unstaged Files line recap through the
+packaged UI. An independently constructed fixture contains different staged and
+unstaged replacements, a deleted tracked file, untracked text without a final
+newline, and binary data. The initial recap must be +4/−3 with one uncounted
+binary file and no checkout/index/config changes from reading it. Explicitly
+staging the mixed tracked file must change the recap to +2/−2 without moving
+HEAD or other references or changing working bytes. This checks index-relative
+counts rather than reusing HEAD/commit totals.
+
 The remote-review suite additionally exercises all six tag/remote-reference
 review actions through their actual UI. An owned annotated tag is pushed,
 renamed locally and remotely after a fresh exact-object check, deleted remotely,

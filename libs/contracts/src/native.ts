@@ -514,6 +514,7 @@ export type WindowsShortcutRepair = { path: string; plan: WindowsShortcutRepairP
 export type WindowsShortcutRepairPlan = { target: string | null; arguments: string | null; appIdentity: string | null }
 export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
+export type WorkingTreeChangeSummary = { additions: number; deletions: number; uncountedFiles: number; partial: boolean }
 export type WorkingTreeEntry = { path: string; indexStatus: string; worktreeStatus: string; conflicted: boolean }
 export type WorkingTreeFileDiff = { path: string; staged: boolean; patch: string; truncated: boolean }
 export type Worktree = { path: string; oid: string; branch: string | null; current: boolean; locked: boolean; prunable: boolean; statusLoaded: boolean; changes: number; ahead: number; behind: number }
@@ -837,6 +838,7 @@ export function compare_commit_file(args: { repoId: string; baseOid: string; tar
 export function compare_commit_with_working_tree(args: { repoId: string; baseOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commit_with_working_tree", args); }
 export function compare_commit_file_with_working_tree(args: { repoId: string; baseOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file_with_working_tree", args); }
 export function inspect_working_tree_file(args: { repoId: string; path: string; staged: boolean }): Promise<WorkingTreeFileDiff> { return TAURI_INVOKE("inspect_working_tree_file", args); }
+export function working_tree_change_summary(args: { repoId: string }): Promise<WorkingTreeChangeSummary> { return TAURI_INVOKE("working_tree_change_summary", args); }
 export function inspect_file_history(args: { repoId: string; revision: string; path: string }): Promise<FileHistoryEntry[]> { return TAURI_INVOKE("inspect_file_history", args); }
 export function search_repository_history(args: { repoId: string; query: HistoryQuery; cursor?: HistoryCursor | null; operationId: string }): Promise<HistorySearchPage> { return TAURI_INVOKE("search_repository_history", args); }
 export function inspect_file_history_page(args: { repoId: string; revision: string; path: string; cursor?: FileHistoryCursor | null; operationId: string }): Promise<FileHistoryPage> { return TAURI_INVOKE("inspect_file_history_page", args); }
@@ -1110,6 +1112,7 @@ export type CommandMap = {
   compare_commit_with_working_tree: typeof compare_commit_with_working_tree;
   compare_commit_file_with_working_tree: typeof compare_commit_file_with_working_tree;
   inspect_working_tree_file: typeof inspect_working_tree_file;
+  working_tree_change_summary: typeof working_tree_change_summary;
   inspect_file_history: typeof inspect_file_history;
   search_repository_history: typeof search_repository_history;
   inspect_file_history_page: typeof inspect_file_history_page;

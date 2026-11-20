@@ -1227,7 +1227,7 @@
             </section>
           }
           <section class="file-section unstaged-section">
-            <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [disabled]="!unstagedEntries().length || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
+            <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><gc-working-tree-summary [repositoryId]="repo.id" [repositoryPath]="repo.path" [status]="repo.status" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [disabled]="!unstagedEntries().length || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
             @if (discardSelectionMode()) {
               <div class="discard-actions" role="group" aria-label="Select unstaged files for discard">
                 <span>Select files below</span>

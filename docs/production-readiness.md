@@ -5,7 +5,72 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
-## Context branch-creation request scope — local, native gate pending
+## Unstaged Files line recap — local, package qualification pending
+
+The Unstaged Files header now has an additions/deletions recap matching the
+commit recap's notation. Its separate native read compares tracked files against
+the index and includes untracked text without loading every patch. Binary or
+uncounted files and partial results are explicitly disclosed. Staged-only edits
+do not inflate the unstaged totals. Read failures are unavailable, not zero;
+one in-flight read coalesces newer status snapshots and rejects retired-source
+results. No dependency, external tool or writable Git command was added.
+
+Seven targeted renderer cases cover totals/disclosure, collapse, read coalescing,
+source/path retirement, retry, clean reset and a narrow header. The final 70-case
+renderer run additionally covers working-tree lifecycle/virtualization, new-file
+staging and the two current branch-scope families. A 250-pixel header screenshot
+was inspected at `target/local-review/unstaged-summary/narrow-header.png`.
+`desktop:test` passed 265 TypeScript tests, 201 desktop native unit tests,
+1,051 core unit tests and ordinary integration tests, with their existing ignores
+retained. Four new real-Git `unstaged_summary` core tests cover mixed index/
+worktree changes, deletion, untracked text/binary, unborn/staged-only state,
+bounded untracked input and a symlink blob without opening its target.
+`desktop:check` passed the development build, workspace/all-target Cargo check
+and Clippy; generated IPC freshness/types and 107 Python harness tests passed.
+The production Debian build passed. The preserved package is
+`target/local-review/unstaged-summary/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `7bcc24401ee2f18f4c67925858f0d026d84f12481137ccd6cb8a619f7f60deb1`;
+extracted executable SHA-256
+`44377dae6067b324c077650b6db198e4a8b9baeaaf4d5e9de3ba021c278ff946`.
+Focused native acceptance passed all 42 scenarios at
+`target/local-review/unstaged-summary/native/setup-keyboard-1795158440410887690/report.json`.
+The actual recap was +4/−3 before staging and +2/−2 afterwards, with the binary
+exclusion disclosed and independent data-preservation checks passing. The new
+context-branch creation gate below also passed on this package. Captured inputs
+matched `target/local-review/unstaged-summary/inputs.sha256` for that candidate.
+Its full inherited-environment run then failed after 62 scenarios at
+`target/local-review/unstaged-summary/native/environment-1795158503457282646/report.json`:
+the optional new diff read attempted a promised missing-object fetch during the
+existing direct-content preview sentinel. The focused pass is not full
+qualification. A new real-Git regression reproduced the fetch, then passed after
+a thread-scoped local-only read policy was added. It sets Git's no-lazy-fetch
+environment guard and command-level transport refusal, including configured
+protocol policies, without changing repository configuration. An explicit
+fallback test removes the environment guard and still blocks the owned helper;
+after scope exit the ordinary Git control invokes it, proving both the sentinel
+and policy retirement. All six `unstaged_summary` core cases now pass, including
+custom protocol override and unwind restoration. The workspace test rerun passed
+1,052 core cases plus its existing desktop/TypeScript/integration gates; the sixth
+focused policy test was then added and passed separately. Final workspace/all-
+target check and Clippy passed with that test present. No runtime/UI/e2e input
+was changed during the replacement package qualification.
+
+The replacement package is
+`target/local-review/unstaged-summary/artifacts/local-only/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `37682d2bea13893245010053e50ea5cfefb10fd4e8ddc965cf0522cdf2b6fdf8`;
+extracted executable SHA-256
+`91896551cbcfcb01b728c7f7865225d330939c6b3b66ed2a1975b4b6dfa6e4fd`.
+All 42 focused native scenarios passed at
+`target/local-review/unstaged-summary/native-local-only/setup-keyboard-1795159527469188616/report.json`.
+The new fingerprint `target/local-review/unstaged-summary/inputs-local-only.sha256`
+still matches. Full inherited-environment acceptance passed all 270 scenarios at
+`target/local-review/unstaged-summary/native-local-only/environment-1795159611051553182/report.json`
+against this exact replacement, including the direct-content missing-object
+sentinel that exposed the first candidate's regression. The full suite includes
+the 42 focused scenarios, not 312 unique cases. The failed first candidate
+remains preserved separately. No install or release occurred.
+
+## Context branch-creation request scope — focused native gate passed
 
 The original nine-case renderer probe reproduced eight failures: two source
 changes still dispatched, outgoing confirm/cancel/field events consumed newer
@@ -21,8 +86,13 @@ same-menu close/reopen cycle. Submitted fields freeze during native work, while
 plain Enter and explicit retry remain supported. Source checkout is disclosed.
 The final 102 renderer cases, 265 TypeScript tests, strict graph types and 107
 Python harness tests passed. The new owned native context-creation helper
-compiled but has not yet run against a rebuilt package. This source change is
-not yet packaged-qualified, installed or released.
+subsequently passed in the 42-case focused packaged run above. It isolated real
+modifier chords and created/switched to the exact reviewed tip, preserving dirty
+index/config/working data and a commit draft without invoking a commit hook.
+The first full candidate failed in the direct-content no-fetch sentinel as
+described above; the rebuilt local-only package then passed the full 270-case
+gate, including both context-creation scenarios. This is not installed or released
+software.
 
 ## Palette-rename Enter defaults and native shortcut diagnostics — 2026-11-20
 

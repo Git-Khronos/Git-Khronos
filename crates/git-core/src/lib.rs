@@ -17,6 +17,8 @@ mod configured_tools;
 mod discard;
 mod file_content;
 mod file_statistics;
+mod working_tree_summary;
+pub use working_tree_summary::{WorkingTreeChangeSummary, working_tree_change_summary};
 mod file_tool_model;
 mod ignore_rules;
 mod original_references;
@@ -8908,6 +8910,7 @@ pub(crate) fn git_in(path: &Path) -> Command {
         command.arg("--no-lazy-fetch");
     }
     command.arg("-C").arg(path);
+    working_tree_summary::configure_read_command(&mut command);
     // UI commands choose their repository and exact paths explicitly. Shell
     // overrides must not redirect its index/worktree/config file or reinterpret path magic.
     // System/global/count configuration remains the user's Git policy.

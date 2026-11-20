@@ -1727,3 +1727,118 @@ fn inherited_repository_routing_cannot_redirect_selected_repository_operations()
         );
     }
 }
+
+#[test]
+fn unstaged_summary_counts_index_relative_edits_untracked_and_deleted_lines() {
+    let repository = Repository::new();
+    repository.write("tracked.txt", b"old\nretained\n");
+    repository.write("deleted.txt", b"gone\nline\n");
+    repository.commit("Base");
+    repository.write("tracked.txt", b"staged\nretained\n");
+    repository.git(&["add", "tracked.txt"]);
+    repository.write("tracked.txt", b"unstaged\nretained\nextra\n");
+    fs::remove_file(repository.0.join("deleted.txt")).unwrap();
+    repository.write(":(glob)*.txt", b"new\nno-final-newline");
+    repository.write("binary.dat", b"binary\0data");
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let summary = working_tree_change_summary(&repository.0).unwrap();
+    assert_eq!((summary.additions, summary.deletions), (4, 3));
+    assert_eq!(summary.uncounted_files, 1);
+    assert!(!summary.partial);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+}
+
+#[test]
+fn unstaged_summary_excludes_staged_only_changes_and_handles_unborn_repositories() {
+    let repository = Repository::new();
+    repository.write("staged.txt", b"staged\n");
+    repository.git(&["add", "staged.txt"]);
+    let summary = working_tree_change_summary(&repository.0).unwrap();
+    assert_eq!((summary.additions, summary.deletions, summary.uncounted_files), (0, 0, 0));
+    repository.write("staged.txt", b"staged\nworking\n");
+    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 1);
+}
+
+#[test]
+fn unstaged_summary_discloses_bounded_untracked_files_without_reading_them() {
+    let repository = Repository::new();
+    let file = fs::File::create(repository.0.join("large.txt")).unwrap();
+    file.set_len(17 * 1024 * 1024).unwrap();
+    let summary = working_tree_change_summary(&repository.0).unwrap();
+    assert_eq!(summary.additions, 0);
+    assert_eq!(summary.uncounted_files, 1);
+    assert!(summary.partial);
+}
+
+#[cfg(unix)]
+#[test]
+fn unstaged_summary_counts_symlink_blob_without_opening_its_target() {
+    let repository = Repository::new();
+    std::os::unix::fs::symlink("/outside/never-open-this-target", repository.0.join("link")).unwrap();
+    let summary = working_tree_change_summary(&repository.0).unwrap();
+    assert_eq!((summary.additions, summary.deletions), (1, 0));
+    assert!(!summary.partial);
+}
+
+#[cfg(unix)]
+#[test]
+fn unstaged_summary_never_fetches_a_promised_missing_index_blob() {
+    use std::os::unix::fs::PermissionsExt;
+    let repository = Repository::new();
+    repository.write("tracked.txt", b"old\n");
+    repository.commit("Base");
+    let oid = String::from_utf8(repository.git(&["rev-parse", "HEAD:tracked.txt"])).unwrap().trim().to_owned();
+    repository.write("tracked.txt", b"working\n");
+    let remote = repository.0.join(".git/owned-promisor.git");
+    repository.git(&["init", "--bare", remote.to_str().unwrap()]);
+    let marker = repository.0.join(".git/unexpected-fetch");
+    let helper = repository.0.join(".git/owned-upload-pack");
+    fs::write(&helper, format!("#!/bin/sh\nprintf attempted > '{}'\nexit 1\n", marker.display())).unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+    for (key, value) in [
+        ("extensions.partialClone", "owned"), ("remote.owned.promisor", "true"),
+        ("remote.owned.url", remote.to_str().unwrap()), ("remote.owned.uploadpack", helper.to_str().unwrap()),
+        ("protocol.file.allow", "always"),
+    ] { repository.git(&["config", key, value]); }
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let config = fs::read(repository.0.join(".git/config")).unwrap();
+    let object = repository.0.join(".git/objects").join(&oid[..2]).join(&oid[2..]);
+    fs::remove_file(&object).unwrap();
+    assert!(working_tree_change_summary(&repository.0).is_err());
+    assert!(!marker.exists(), "Optional unstaged totals attempted an implicit fetch");
+    assert!(!object.exists());
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
+    // Simulate Git versions that ignore the environment guard. The temporary
+    // protocol policy must still defeat the repository's explicit file=always.
+    working_tree_summary::with_local_reads(&repository.0, || {
+        let fallback = git_in(&repository.0).args(["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--"])
+            .env_remove("GIT_NO_LAZY_FETCH").output().unwrap();
+        assert!(!fallback.status.success());
+        assert!(!marker.exists());
+        Ok(())
+    }).unwrap();
+    let control = git_in(&repository.0).args(["cat-file", "-t", &oid]).env_remove("GIT_NO_LAZY_FETCH").output().unwrap();
+    assert!(!control.status.success());
+    assert_eq!(fs::read(marker).unwrap(), b"attempted");
+}
+
+#[test]
+fn unstaged_summary_transport_policy_is_scoped_and_restores_custom_protocols_after_unwind() {
+    let repository = Repository::new();
+    repository.git(&["config", "protocol.owned.allow", "always"]);
+    repository.git(&["config", "protocol.file.allow", "always"]);
+    let result = std::panic::catch_unwind(|| {
+        working_tree_summary::with_local_reads(&repository.0, || -> Result<(), AppError> {
+            for key in ["protocol.owned.allow", "protocol.file.allow", "protocol.allow"] {
+                assert_eq!(repository.git(&["config", "--get", key]), b"never\n");
+            }
+            panic!("Owned inspection unwind");
+        }).unwrap();
+    });
+    assert!(result.is_err());
+    for key in ["protocol.owned.allow", "protocol.file.allow"] {
+        assert_eq!(repository.git(&["config", "--get", key]), b"always\n");
+    }
+    assert!(!git_in(&repository.0).args(["config", "--get", "protocol.allow"]).output().unwrap().status.success());
+}

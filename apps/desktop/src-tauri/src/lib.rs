@@ -2820,6 +2820,15 @@ fn compare_commit_file_with_working_tree(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn working_tree_change_summary(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::WorkingTreeChangeSummary, AppError> {
+    with_repository_background_read(repo_id, app, git_khronos_git_core::working_tree_change_summary).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn inspect_working_tree_file(
     repo_id: String,
     path: String,
@@ -4375,6 +4384,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             compare_commit_with_working_tree,
             compare_commit_file_with_working_tree,
             inspect_working_tree_file,
+            working_tree_change_summary,
             inspect_file_history,
             search_repository_history,
             inspect_file_history_page,

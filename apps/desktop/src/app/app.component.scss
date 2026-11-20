@@ -852,3 +852,6 @@
 .graph-row-fallback { display: flex; padding-inline: 14px; color: var(--muted); font-size: 12px; cursor: default; }
 
 .workspace-control:has(.incoming-link-inbox) { display: flex; align-items: center; gap: 4px; }
+
+.unstaged-section > .file-section-title { height: auto; min-height: 33px; gap: 8px; }
+.file-section-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
