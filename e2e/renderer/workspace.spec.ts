@@ -4247,6 +4247,9 @@ test('confirms rewritten history before force pushing with a lease', async ({ pa
   await cancel.press('Tab');
   await expect(forcePush).toBeFocused();
   await forcePush.press('Tab');
+  const destinations = confirmation.getByRole('list', { name: 'Configured push destinations' });
+  await expect(destinations).toBeFocused();
+  await destinations.press('Tab');
   await expect(cancel).toBeFocused();
   await cancel.press('Escape');
   await expect(confirmation).toHaveCount(0);

@@ -34,11 +34,21 @@ test.beforeEach(async ({ page }) => {
       lfs: { available: true, enabled: true, version: 'git-lfs/3.7.1', trackedFiles: 2 } })));
     (window as any).__remoteReviewCalls = [];
     (window as any).__previewReplies = [];
+    (window as any).__destinationReplies = [];
     (window as any).__preview = (letter = 'a') => ({ objects: [{ oid: letter.repeat(64), size: 2048 }],
       totalSize: 2048, remaining: 0, referenced: 1, recent: 0 });
     (window as any).__sourceId = git.repository().id;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       (window as any).__remoteReviewCalls.push({ command, args });
+      if (command === 'review_push_destination') {
+        if ((window as any).__holdDestinations) return new Promise((resolve, reject) => {
+          (window as any).__destinationReplies.push({
+            resolve: () => resolve({ state: 'd'.repeat(64), destinations: ['Owned destination fixture'] }),
+            reject: () => reject({ kind: 'pushDestinationUnavailable', message: 'Owned destination inspection refusal' }),
+          });
+        });
+        return Promise.resolve({ state: 'd'.repeat(64), destinations: ['Owned destination fixture'] });
+      }
       if (command === 'lfs_prune_preview') {
         if ((window as any).__holdPreviews) return new Promise((resolve, reject) => {
           (window as any).__previewReplies.push({ resolve: (letter: string) => resolve((window as any).__preview(letter)),
@@ -88,7 +98,7 @@ for (const review of reviews) {
     const force = review === 'force' ? await page.evaluate(() => {
       const review = (window as any).ng.getComponent(document.querySelector('gc-root')).pendingForcePush();
       return { remote: review.remote, branch: review.remoteBranch,
-        expectedRemoteOid: review.expectedRemoteOid, expectedHeadOid: review.expectedHeadOid };
+        expectedRemoteOid: review.expectedRemoteOid, expectedHeadOid: review.expectedHeadOid, expectedDestinationState: 'd'.repeat(64) };
     }) : null;
     await page.locator(selector(review)).click();
     const actual = await calls(page);
@@ -201,5 +211,55 @@ test('a valid Add Remote handoff retains its publish source checkout', async ({ 
   });
   expect(owner.repositoryId).toBe(await page.evaluate(() => (window as any).__sourceId));
   await expect(editor).toContainText(owner.repositoryPath);
+  expect(await calls(page)).toEqual([]);
+});
+
+
+for (const retirement of ['cancel', 'repository', 'path']) {
+  test(`a late force destination review cannot reopen its ${retirement} source`, async ({ page }) => {
+    await page.evaluate(() => (window as any).__holdDestinations = true);
+    const modal = await open(page, 'force');
+    await expect(modal.getByRole('status')).toHaveText('Reviewing configured push destinations…');
+    await expect(modal.getByRole('button', { name: 'Force Push with Lease', exact: true })).toBeDisabled();
+    await expect.poll(() => page.evaluate(() => (window as any).__destinationReplies.length)).toBe(1);
+    if (retirement === 'cancel') await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+    else await page.evaluate(retirement => (window as any).__changeRemoteScope(retirement), retirement);
+    await expect(modal).not.toBeVisible();
+    await page.evaluate(() => (window as any).__destinationReplies[0].resolve());
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    await expect(modal).not.toBeVisible();
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).forcePushDestination())).toBeNull();
+    expect(await calls(page)).toEqual([]);
+  });
+}
+
+test('a failed force destination inspection preserves the error and dispatches no push', async ({ page }) => {
+  await page.evaluate(() => (window as any).__holdDestinations = true);
+  const modal = await open(page, 'force');
+  await expect(modal.getByRole('button', { name: 'Force Push with Lease', exact: true })).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => (window as any).__destinationReplies.length)).toBe(1);
+  await page.evaluate(() => (window as any).__destinationReplies[0].reject());
+  await expect(modal).not.toBeVisible();
+  await expect(page.locator('gc-error-toast')).toContainText('Owned destination inspection refusal');
+  expect(await calls(page)).toEqual([]);
+});
+
+
+test('the reviewed push destination list participates in the confirmation keyboard cycle', async ({ page }) => {
+  const modal = await open(page, 'force');
+  const list = modal.getByRole('list', { name: 'Configured push destinations' });
+  await expect(list).toContainText('Owned destination fixture');
+  const cancel = modal.getByRole('button', { name: 'Cancel', exact: true });
+  await cancel.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(list).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(modal.getByRole('button', { name: 'Force Push with Lease', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(list).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(modal).not.toBeVisible();
   expect(await calls(page)).toEqual([]);
 });

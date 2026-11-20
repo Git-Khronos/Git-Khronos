@@ -60,11 +60,26 @@ force-push and exact LFS cleanup journeys. All push destinations are owned local
 bare fixtures, checked before use; no hosted remote is written. A concurrent
 fixture commit advances the bare remote after review, and the original pinned
 lease must refuse it. A new review after fetching must succeed, so blanket
-refusal cannot pass. Git LFS must be available; the LFS fixture is initialized
+refusal cannot pass. The suite also changes an owned push URL after confirmation
+opens: both local bare destinations must remain unchanged, even when they share
+the reviewed base commit. A fresh review must then write only the explicitly
+reviewed replacement destination. The UI shows a redacted label for every
+Git-expanded push URL and explains multi-destination partial failure;
+native confirmation requires its configuration fingerprint as well as the
+commit-ID lease. This is launch preflight, not an endpoint lock.
+
+Git LFS must be available; the LFS fixture is initialized
 locally before creating an aged unreferenced cache object. Cleanup must remove
 that object without altering unrelated refs, staged/untracked contents, index
 or configuration. A refusing commit hook detects accidental background commits.
 The full/environment suites include these checks too.
+
+Cold application restarts discard the main menu's loaded module. Editor draft
+recovery and the committed-merge palette journey therefore use the existing
+visible-target polling helper for their actual menu item, followed by one native
+click. Merely opening the menu can expose its loading escape before these items
+exist. Missing/ambiguous controls and uncertain click replies remain failures;
+there is no injected activation, longer configured deadline or action replay.
 
 ## Linux release qualification
 

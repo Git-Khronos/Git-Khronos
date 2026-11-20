@@ -38,6 +38,7 @@ async function openReview(page: Page, review: Review, gap = false) {
       history: ['pendingHistoryAction', { kind: 'cherry-pick', oid, oids: [oid], label: 'Owned commit' }],
     };
     app.publishRemote.set('origin');
+    if (review === 'force-push') app.forcePushDestination.set({ state: 'd'.repeat(64), destinations: ['Owned destination fixture'] });
     const [signal, request] = requests[review];
     (window as any).__confirmationSignal = signal;
     app[signal].set(request);
@@ -91,7 +92,7 @@ for (const review of reviews) {
 
   test(`${review} keeps Tab in the review and Escape dismisses it`, async ({ page }) => {
     const modal = await openReview(page, review);
-    const controls = modal.locator('button:visible:not(:disabled), input:visible:not(:disabled), select:visible:not(:disabled), summary:visible');
+    const controls = modal.locator('button:visible:not(:disabled), input:visible:not(:disabled), select:visible:not(:disabled), summary:visible, [tabindex="0"]:visible');
     await controls.last().focus();
     await page.keyboard.press('Tab');
     await expect(controls.first()).toBeFocused();

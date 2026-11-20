@@ -1,3 +1,4 @@
+import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
@@ -1310,6 +1311,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly sparseCheckoutPaths = signal('');
   protected readonly sparseCheckoutIndex = signal(true);
   protected readonly pendingForcePush = signal<PendingForcePushReview | null>(null);
+  protected readonly forcePushDestination = signal<PushDestinationReview | null>(null);
   protected readonly terminalFontFamily = signal(this.readTerminalFontFamily());
   protected readonly terminalFontSize = signal(this.readTerminalNumber('font-size', 13, [10, 11, 12, 13, 14, 16, 18]));
   protected readonly terminalLineHeight = signal(this.readTerminalNumber('line-height', 1.25, [1, 1.15, 1.25, 1.4, 1.5]));
@@ -11472,7 +11474,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     this.git.error.set(null);
-    this.pendingForcePush.set({
+    const request: PendingForcePushReview = {
       repositoryId: repository.id,
       repositoryPath: repository.path,
       returnFocus: opener,
@@ -11482,12 +11484,23 @@ export class AppComponent implements OnInit, OnDestroy {
       remoteBranch,
       expectedRemoteOid: tracking.oid,
       expectedHeadOid: branch.oid,
-    });
+    };
+    this.forcePushDestination.set(null);
+    this.pendingForcePush.set(request);
+    void this.reviewForcePushDestination(request);
+  }
+
+  private async reviewForcePushDestination(request: PendingForcePushReview): Promise<void> {
+    const destination = await this.git.reviewPushDestination(request.remote, request.repositoryId);
+    if (this.pendingForcePush() !== request || !this.ownsRepositoryScope(request)) return;
+    if (!destination) { this.closeForcePush(true, request); return; }
+    this.forcePushDestination.set(destination);
   }
 
   protected async confirmForcePush(expected = this.pendingForcePush()): Promise<void> {
     const review = this.pendingForcePush();
-    if (!review || review !== expected || !this.ownsRepositoryScope(review) || this.git.busy()) return;
+    const destination = this.forcePushDestination();
+    if (!review || review !== expected || !destination || !this.ownsRepositoryScope(review) || this.git.busy()) return;
     this.closeForcePush(true, review);
     if (this.git.activeRepositoryId() !== review.repositoryId || this.currentBranch()?.fullName !== review.branchRef) {
       this.git.error.set('The repository or branch changed after force-push review. Reopen the confirmation and review the current target.');
@@ -11502,12 +11515,14 @@ export class AppComponent implements OnInit, OnDestroy {
       review.remoteBranch,
       review.expectedRemoteOid,
       review.expectedHeadOid,
+      destination.state,
     );
   }
 
   protected closeForcePush(restoreFocus = true, expected = this.pendingForcePush()): void {
     if (this.pendingForcePush() !== expected) return;
     this.pendingForcePush.set(null);
+    this.forcePushDestination.set(null);
     if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 

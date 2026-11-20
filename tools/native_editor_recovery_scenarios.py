@@ -72,7 +72,7 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
 
     def recovery_panel():
         driver.click('[aria-label="Main menu"]')
-        driver.click_text('[role=menuitem] strong', 'Editor draft recovery')
+        driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Editor draft recovery')
         driver.wait("return !!document.querySelector('gc-editor-draft-recovery [role=dialog]')")
 
     open_ui(driver, repository)

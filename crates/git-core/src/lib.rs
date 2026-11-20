@@ -10,6 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod push_destination;
+pub use push_destination::{PushDestinationReview, review_push_destination};
+
 mod configured_tools;
 mod discard;
 mod file_content;
@@ -4359,6 +4362,7 @@ pub fn push_force_with_lease_to_remote(
     branch: &str,
     expected_remote_oid: &str,
     expected_head_oid: &str,
+    expected_destination_state: &str,
 ) -> Result<(), AppError> {
     push_force_with_reviewed_lease(
         path,
@@ -4366,6 +4370,7 @@ pub fn push_force_with_lease_to_remote(
         branch,
         expected_remote_oid,
         expected_head_oid,
+        expected_destination_state,
         None,
     )
 }
@@ -4376,6 +4381,7 @@ pub fn push_force_with_lease_to_remote_cancellable(
     branch: &str,
     expected_remote_oid: &str,
     expected_head_oid: &str,
+    expected_destination_state: &str,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
     push_force_with_reviewed_lease(
@@ -4384,6 +4390,7 @@ pub fn push_force_with_lease_to_remote_cancellable(
         branch,
         expected_remote_oid,
         expected_head_oid,
+        expected_destination_state,
         Some(cancellation),
     )
 }
@@ -4394,10 +4401,12 @@ fn push_force_with_reviewed_lease(
     branch: &str,
     expected_remote_oid: &str,
     expected_head_oid: &str,
+    expected_destination_state: &str,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
     validate_remote_name(path, remote)?;
     require_remote(path, remote)?;
+    push_destination::require_reviewed_destination(path, remote, expected_destination_state)?;
     validate_branch_name(path, branch)?;
     validate_commit_oid(expected_remote_oid)?;
     validate_commit_oid(expected_head_oid)?;
@@ -12669,6 +12678,203 @@ mod tests {
     }
 
     #[test]
+    fn force_push_review_refuses_a_rebound_push_destination() {
+        for mode in ["pushurl", "pushInsteadOf", "insteadOf"] {
+            let repository = TestRepository::new();
+            repository.write("story.txt", "reviewed remote base\n");
+            stage_all(&repository.path).unwrap();
+            commit(&repository.path, "Reviewed remote base").unwrap();
+            let base = snapshot(&repository.path).unwrap().head_oid.unwrap();
+            let remotes = repository.path.join(".git/owned-force-destinations");
+            fs::create_dir_all(&remotes).unwrap();
+            let first = remotes.join("first.git");
+            let second = remotes.join("second.git");
+            for remote in [&first, &second] {
+                let output = run_git(
+                    &repository.path,
+                    &["init", "--bare", remote.to_str().unwrap()],
+                )
+                .unwrap();
+                ensure_success("initialize owned bare fixture", &output).unwrap();
+            }
+            repository.git(&["remote", "add", "origin", first.to_str().unwrap()]);
+            publish_branch(&repository.path, "origin", "main").unwrap();
+            repository.git(&["push", second.to_str().unwrap(), "HEAD:refs/heads/main"]);
+            if mode != "pushurl" {
+                repository.git(&["config", "remote.origin.url", "owned-destination:"]);
+                let key = format!("url.{}.{mode}", first.display());
+                repository.git(&["config", &key, "owned-destination:"]);
+            }
+            assert_eq!(
+                remote_url(&repository.path, "origin", true).unwrap(),
+                first.to_str().unwrap()
+            );
+            let destination = review_push_destination(&repository.path, "origin")
+                .unwrap()
+                .state;
+            repository.write("story.txt", "reviewed replacement commit\n");
+            stage_all(&repository.path).unwrap();
+            commit(&repository.path, "Reviewed replacement commit").unwrap();
+            let head = snapshot(&repository.path).unwrap().head_oid.unwrap();
+            // Both destinations have the reviewed object ID, so an OID lease alone
+            // cannot identify the destination the user originally reviewed.
+            if mode == "pushurl" {
+                repository.git(&[
+                    "remote",
+                    "set-url",
+                    "--push",
+                    "origin",
+                    second.to_str().unwrap(),
+                ]);
+            } else {
+                repository.git(&[
+                    "config",
+                    "--unset",
+                    &format!("url.{}.{mode}", first.display()),
+                ]);
+                repository.git(&[
+                    "config",
+                    &format!("url.{}.{mode}", second.display()),
+                    "owned-destination:",
+                ]);
+            }
+            let result = push_force_with_lease_to_remote(
+                &repository.path,
+                "origin",
+                "main",
+                &base,
+                &head,
+                &destination,
+            );
+            let tip = |remote: &Path| {
+                let output = run_git(remote, &["rev-parse", "refs/heads/main"]).unwrap();
+                ensure_success("inspect owned bare fixture", &output).unwrap();
+                String::from_utf8(output.stdout).unwrap().trim().to_owned()
+            };
+            assert_eq!(tip(&first), base, "The original remote changed");
+            assert_eq!(
+                tip(&second),
+                base,
+                "The rebound remote was written without a new destination review"
+            );
+            assert!(result.is_err(), "Changed destination was accepted");
+            let fresh = review_push_destination(&repository.path, "origin").unwrap();
+            push_force_with_lease_to_remote(
+                &repository.path,
+                "origin",
+                "main",
+                &base,
+                &head,
+                &fresh.state,
+            )
+            .unwrap();
+            assert_eq!(tip(&first), base);
+            assert_eq!(tip(&second), head);
+        }
+    }
+
+    #[test]
+    fn force_push_review_covers_added_destinations_and_fresh_multi_url_push() {
+        for suffix in ["pushurl", "url"] {
+            let repository = TestRepository::new();
+            repository.write("story.txt", "remote base\n");
+            stage_all(&repository.path).unwrap();
+            commit(&repository.path, "Remote base").unwrap();
+            let base = snapshot(&repository.path).unwrap().head_oid.unwrap();
+            let root = repository.path.join(".git/owned-multi-push");
+            fs::create_dir_all(&root).unwrap();
+            let first = root.join("first.git");
+            let second = root.join("second.git");
+            for remote in [&first, &second] {
+                let output = run_git(
+                    &repository.path,
+                    &["init", "--bare", remote.to_str().unwrap()],
+                )
+                .unwrap();
+                ensure_success("initialize owned multi-push fixture", &output).unwrap();
+            }
+            repository.git(&["remote", "add", "origin", first.to_str().unwrap()]);
+            publish_branch(&repository.path, "origin", "main").unwrap();
+            repository.git(&["push", second.to_str().unwrap(), "HEAD:refs/heads/main"]);
+            repository.write("story.txt", "replacement\n");
+            stage_all(&repository.path).unwrap();
+            commit(&repository.path, "Replacement").unwrap();
+            let head = snapshot(&repository.path).unwrap().head_oid.unwrap();
+            let old = review_push_destination(&repository.path, "origin").unwrap();
+            let key = format!("remote.origin.{suffix}");
+            if suffix == "pushurl" {
+                repository.git(&["config", "--add", &key, first.to_str().unwrap()]);
+            }
+            repository.git(&["config", "--add", &key, second.to_str().unwrap()]);
+            let before = fs::read(repository.path.join(".git/index")).unwrap();
+            let error = push_force_with_lease_to_remote(
+                &repository.path,
+                "origin",
+                "main",
+                &base,
+                &head,
+                &old.state,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind, "staleForcePush");
+            for remote in [&first, &second] {
+                let output = run_git(remote, &["rev-parse", "refs/heads/main"]).unwrap();
+                assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), base);
+            }
+            let fresh = review_push_destination(&repository.path, "origin").unwrap();
+            assert_eq!(
+                fresh.destinations,
+                vec![first.to_str().unwrap(), second.to_str().unwrap()]
+            );
+            push_force_with_lease_to_remote(
+                &repository.path,
+                "origin",
+                "main",
+                &base,
+                &head,
+                &fresh.state,
+            )
+            .unwrap();
+            for remote in [&first, &second] {
+                let output = run_git(remote, &["rev-parse", "refs/heads/main"]).unwrap();
+                assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), head);
+            }
+            assert_eq!(
+                fs::read(repository.path.join(".git/index")).unwrap(),
+                before
+            );
+        }
+    }
+
+    #[test]
+    fn force_push_destination_review_refuses_incomplete_or_ambiguous_configuration() {
+        let repository = TestRepository::new();
+        repository.git(&["remote", "add", "origin", "/owned/local-destination"]);
+        review_push_destination(&repository.path, "origin").unwrap();
+        repository.git(&["config", "remote.origin.url", "/owned/first\n/owned/second"]);
+        assert_eq!(
+            review_push_destination(&repository.path, "origin")
+                .unwrap_err()
+                .kind,
+            "pushDestinationUnavailable"
+        );
+        repository.git(&["config", "remote.origin.url", "/owned/local-destination"]);
+        let config = repository.path.join(".git/config");
+        let mut contents = fs::read_to_string(&config).unwrap();
+        contents.push_str(&format!(
+            "\n[owned]\n  setting = {}\n",
+            "x".repeat(256 * 1024)
+        ));
+        fs::write(&config, contents).unwrap();
+        assert_eq!(
+            review_push_destination(&repository.path, "origin")
+                .unwrap_err()
+                .kind,
+            "pushDestinationUnavailable"
+        );
+    }
+
+    #[test]
     fn force_push_with_lease_rejects_an_update_fetched_after_confirmation() {
         let repository = TestRepository::new();
         repository.write("story.txt", "first\n");
@@ -12746,6 +12952,9 @@ mod tests {
             "main",
             &reviewed_remote_oid,
             &expected_head_oid,
+            &review_push_destination(&repository.path, "origin")
+                .unwrap()
+                .state,
         )
         .expect_err("the stale lease must reject the force push");
         assert_eq!(error.kind, "gitFailure");
@@ -12766,6 +12975,9 @@ mod tests {
             "main",
             &unseen_oid,
             &expected_head_oid,
+            &review_push_destination(&repository.path, "origin")
+                .unwrap()
+                .state,
         )
         .expect("the lease should succeed when the reviewed remote commit still matches");
         let updated_remote_oid = Command::new("git")
@@ -12827,6 +13039,9 @@ mod tests {
             "main",
             &reviewed_oid,
             &reviewed_oid,
+            &review_push_destination(&repository.path, "origin")
+                .unwrap()
+                .state,
         )
         .expect_err("the local head change must invalidate the review");
         assert_eq!(error.kind, "staleForcePush");

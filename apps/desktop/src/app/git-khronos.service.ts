@@ -1,3 +1,4 @@
+import type { PushDestinationReview } from '@git-khronos/contracts';
 import { repositoryOperationState } from './repository-operation';
 import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
@@ -1982,11 +1983,18 @@ export class GitKhronosService {
       { options });
   }
 
+  reviewPushDestination(remote: string, repositoryId: string): Promise<PushDestinationReview | null> {
+    if (this.browserPreview()) return Promise.resolve({ state: 'browser-preview', destinations: ['Browser preview: no push will run'] });
+    return this.readRepository(repositoryId, 'Reviewing configured push destinations…',
+      () => ipc.review_push_destination({ repoId: repositoryId, remote }));
+  }
+
   async forcePushWithLease(
     remote: string,
     branch: string,
     expectedRemoteOid: string,
     expectedHeadOid: string,
+    expectedDestinationState: string,
   ): Promise<void> {
     if (!this.repository()) return;
     if (this.browserPreview()) {
@@ -1997,7 +2005,7 @@ export class GitKhronosService {
       'force_push_repository',
       'Force pushing with lease…',
       'Force push with lease complete',
-      { remote, branch, expectedRemoteOid, expectedHeadOid },
+      { remote, branch, expectedRemoteOid, expectedHeadOid, expectedDestinationState },
     );
   }
 

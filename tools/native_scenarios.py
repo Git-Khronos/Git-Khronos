@@ -1842,7 +1842,7 @@ def committed_merge_preview(driver, fixtures, original_repository, report):
         assert result["request"] == request
         report["scenarios"].append("native-committed-merge-preview-exact-refs-and-conflict-paths")
         driver.click('[aria-label="Main menu"]')
-        driver.click_text('.app-menu-popover strong', 'Command Palette')
+        driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Command Palette')
         driver.wait("return !!document.querySelector('gc-command-palette input')")
         driver.script("""
           const input = document.querySelector('gc-command-palette input');

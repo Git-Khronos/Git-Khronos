@@ -1,9 +1,74 @@
 # Production-readiness review
 
-Snapshot: 2026-10-31. This is an evidence-bounded work-in-progress
+Snapshot: 2026-11-20. This is an evidence-bounded work-in-progress
 review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
+
+## Native force-push configuration preflight — 2026-11-20
+
+A red core regression demonstrated that changing an owned remote's push URL
+after review wrote a second bare repository with the same base commit: a pinned
+commit lease alone does not bind the destination configuration. Force review
+now captures native configuration evidence and every Git-expanded push URL.
+Confirmation rechecks that evidence before launching Git. The UI retains source
+and request identity through the async inspection, disables confirmation until
+ready, presents redacted destination labels and warns about multi-destination
+partial failure. The existing pinned local/remote OIDs, named-remote transport,
+hooks and credential policy are unchanged. This is optimistic launch preflight,
+not an immutable endpoint capability, DNS/configuration lock or atomic push
+across multiple servers. Any enumerated Git configuration change conservatively
+requires a fresh review.
+
+Final validation passed 301 selected renderer cases, nine affected workspace
+journeys and two minimum/compact-window layout cases (312 executions, not a
+whole renderer run). The layout probes retain all 128 long destination labels
+and a usable keyboard cycle at the native 780x560 minimum. All 265 TypeScript
+tests, graph typechecking, generated-contract checks, workspace/all-target
+Clippy, production build/preview guard and 107 runner tests passed. The complete
+core library run passed 1,047 tests; 37 existing tests remain ignored for their
+separate gates. Core regressions cover push-URL and URL-rewrite rebinding,
+multiple push URLs and multi-URL fallback, valid fresh pushes, bounded metadata
+refusal and privacy-preserving labels. SCP/IPv6/local addresses and literal URI
+case/path segments are preserved rather than URI-normalized.
+
+Final preserved package:
+`target/local-review/force-destination/label-fix/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `deb037a3054e3f59c251575e126f4a94f43a4c6c2fc3c5761acdd430dc0d04bd`;
+packaged executable SHA-256
+`6aca138de8d7153a4af22fa7fcaee9f925766b5ae951f2f1eb3cbac73db39cb4`.
+It passed 24 focused remote-review scenarios and all 243 full native scenarios:
+`target/local-review/force-destination/label-fix/native/remote-reviews-1795144023707511760/report.json`
+and
+`target/local-review/force-destination/label-fix/native/full-1795144049224119584/report.json`.
+The full run includes the focused scenarios; they are not 267 unique cases.
+Actual UI/native checks reject an owned URL rebind without writing either bare
+remote, then accept a fresh explicit review of the replacement while preserving
+staged/untracked data and index/config bytes. Runtime/core/renderer fingerprints
+match `label-inputs.sha256`. Initial production assets are 1,431,729 bytes,
+leaving 18,271 under the unchanged hard limit; the warning remains. Root
+component CSS, dependencies, version and workflow configuration did not change.
+
+An earlier full attempt stopped after 40 scenarios because the editor recovery
+helper immediately looked up a menu item during a cold restart's loading state;
+no item click had been attempted. Editor recovery and the merge-palette journey
+now wait for their actual visible item before one native click, without action
+replay or longer configured deadlines. The workspace force test also includes
+the newly keyboard-reachable destination list instead of assuming only two
+controls. The final full run above passed after these adjustments. The earlier
+package and failed evidence remain retained separately, not substituted for the
+final artifact.
+
+Previous source checkpoint `7bdf185` CI run
+[44656039197](https://github.com/Git-Khronos/Git-Khronos/actions/runs/44656039197)
+completed successfully: checks/full renderer, Windows boundaries, Jammy
+package/native/catalogue, and installed Ubuntu 22.04/24.04/26.04 and Debian
+12/13. That qualifies its own commit/artifact, not this newer local package.
+This batch is local Ubuntu 26.04 extracted-package acceptance; no system
+installation or release was performed. A separate follow-up audit has retained
+a local CLI reproduction showing that legacy `GIT_CONFIG` can affect config
+queries differently from remote queries; native environment-context hardening
+for that variable remains to be investigated and qualified separately.
 
 ## Deferred main-menu presentation — 2026-11-20
 

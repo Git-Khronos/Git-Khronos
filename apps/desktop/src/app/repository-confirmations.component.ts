@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, input, output, viewChild } from '@angular/core';
-import type { Remote } from '@git-khronos/contracts';
+import type { Remote, PushDestinationReview } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
@@ -39,6 +39,7 @@ export class RepositoryConfirmationsComponent {
   readonly sparseAction = input<'set' | 'disable' | null>(null);
   readonly sparsePathCount = input(0);
   readonly forcePush = input<ForcePushReview | null>(null);
+  readonly forcePushDestination = input<PushDestinationReview | null>(null);
   readonly worktree = input<WorktreeRemovalReview | null>(null);
   readonly forceWorktreeRemoval = input(false);
   readonly publishBranch = input<string | null>(null);
@@ -79,7 +80,7 @@ export class RepositoryConfirmationsComponent {
   protected handleKey(event: KeyboardEvent): void {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return; }
     if (event.key !== 'Tab') return;
-    const controls = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')];
+    const controls = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')];
     if (!controls.length) return;
     const index = controls.indexOf(document.activeElement as HTMLElement);
     event.preventDefault();

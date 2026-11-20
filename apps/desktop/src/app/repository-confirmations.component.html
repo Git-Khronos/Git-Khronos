@@ -39,8 +39,16 @@
         @if (forcePushRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
         <p>Push local commit <code [title]="review.expectedHeadOid">{{ review.expectedHeadOid.slice(0, 12) }}</code> to <strong>{{ review.remote }}/{{ review.remoteBranch }}</strong> only if it still points to the fetched commit <code [title]="review.expectedRemoteOid">{{ review.expectedRemoteOid.slice(0, 12) }}</code>.</p>
         <p>Git uses a pinned <code>--force-with-lease</code>. If the remote changed after the fetch, the push is rejected even if a background fetch updates the local tracking ref.</p>
+        @if (forcePushDestination(); as destination) {
+          <p>Configured push {{ destination.destinations.length === 1 ? 'destination' : 'destinations' }} (credentials omitted):</p>
+          <ul class="force-push-destinations" tabindex="0" aria-label="Configured push destinations">
+            @for (target of destination.destinations; track $index) { <li><code>{{ target }}</code></li> }
+          </ul>
+          @if (destination.destinations.length > 1) { <p>Git pushes to each destination. A later failure can leave earlier destinations updated; inspect the results before retrying.</p> }
+          <p>Git configuration is re-checked before starting the push. A change requires a new review.</p>
+        } @else { <p role="status">Reviewing configured push destinations…</p> }
       </div>
-      <footer><button type="button" (click)="forcePushClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="forcePushConfirmed.emit()">Force Push with Lease</button></footer>
+      <footer><button type="button" (click)="forcePushClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || !forcePushDestination()" (click)="forcePushConfirmed.emit()">Force Push with Lease</button></footer>
     </section>
   } @else if (publishBranch(); as branch) {
     <form #dialog novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ branch }}" (submit)="$event.preventDefault(); publishConfirmed.emit()" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">

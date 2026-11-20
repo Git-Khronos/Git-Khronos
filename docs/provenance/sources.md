@@ -1,5 +1,16 @@
 # Informational sources
 
+## Reviewed force-push destination configuration
+
+- [Git remote URL inspection](https://git-scm.com/docs/git-remote)
+- [Git push leases and multiple destinations](https://git-scm.com/docs/git-push)
+
+Used for complete push-URL enumeration, Git-owned URL rewriting, multiple-URL
+fallback behavior and commit-ID lease semantics. The native configuration
+fingerprint, redacted labels, request ownership and local-bare regressions are
+independently implemented. No external source code was copied. The preflight
+does not claim to lock an endpoint or make pushes to multiple servers atomic.
+
 ## Reviewed original-reference deletion
 
 - [Git reference update semantics](https://git-scm.com/docs/git-update-ref)

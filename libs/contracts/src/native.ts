@@ -339,6 +339,10 @@ export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedForkRemote = { token: string; plan: HostedForkRemotePlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
+/**
+ * Read-only configuration evidence, not a persistent mutation capability.
+ */
+export type PushDestinationReview = { state: string; destinations: string[] }
 export type RasterMetadata = { mime: string;
 /**
  * Encoded dimensions; the browser may apply EXIF orientation when displaying.
@@ -788,7 +792,8 @@ export function sparse_checkout_reapply(args: { repoId: string }): Promise<Repos
 export function sparse_checkout_disable(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_disable", args); }
 export function pull_repository(args: { repoId: string; strategy?: string | null; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pull_repository", args); }
 export function push_repository(args: { repoId: string; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("push_repository", args); }
-export function force_push_repository(args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }
+export function review_push_destination(args: { repoId: string; remote: string }): Promise<PushDestinationReview> { return TAURI_INVOKE("review_push_destination", args); }
+export function force_push_repository(args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; expectedDestinationState: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }
 export function publish_branch(args: { repoId: string; remote: string; branch: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("publish_branch", args); }
 export function add_remote(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("add_remote", args); }
 export function set_remote_url(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_remote_url", args); }
@@ -1060,6 +1065,7 @@ export type CommandMap = {
   sparse_checkout_disable: typeof sparse_checkout_disable;
   pull_repository: typeof pull_repository;
   push_repository: typeof push_repository;
+  review_push_destination: typeof review_push_destination;
   force_push_repository: typeof force_push_repository;
   publish_branch: typeof publish_branch;
   add_remote: typeof add_remote;

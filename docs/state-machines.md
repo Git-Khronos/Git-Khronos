@@ -88,6 +88,42 @@ then proves a fresh review succeeds. It also removes a real aged unreferenced
 LFS cache object while checking unrelated refs, staged/untracked data and index.
 These UI scopes are not remote endpoint capabilities or a new native journal.
 
+Force-push additionally obtains a native `PushDestinationReview` before enabling
+confirmation. The native owner fingerprints complete effective Git configuration
+and Git-expanded push URLs, bound to source path and remote name; it returns
+only an opaque digest and credential/query-redacted destination labels. It reads
+all push URLs, including the multiple fetch-URL fallback, not merely the first
+URL shown in the ordinary repository summary. Incomplete, control-containing or
+oversized metadata is refused rather than silently truncated (256 KiB per read,
+128 destinations). The request identity/path guard also owns this async preview:
+retired results cannot reopen a review or populate another source's destination.
+
+Labels preserve Git's SCP/IPv6 address syntax, literal local paths and URI case,
+escapes and path segments instead of normalizing them through a general URI
+serializer. URI userinfo, query and fragment details are omitted for privacy;
+custom helper addresses use a generic label. These labels are presentation,
+never replacement transport URLs.
+
+Native confirmation rechecks that configuration evidence before starting the
+push, alongside the existing local/remote commit leases. Normal Git transport,
+hooks and credential policy remain in charge; no endpoint is substituted and no
+configuration is rewritten to force a match. This is optimistic launch preflight,
+not an immutable endpoint capability or a lock against a concurrent external
+configuration/DNS change after validation. Any effective Git configuration
+change conservatively requires a new review, even if unrelated to the remote.
+Multiple destinations remain supported; Git can update earlier destinations
+before a later failure, so the review warns to inspect results before retrying.
+The destination list participates in the modal keyboard cycle.
+
+Core regressions prove stale explicit push URLs, `insteadOf`/`pushInsteadOf`
+rewrites and added destinations refuse without writing either owned bare remote;
+fresh single/multiple-destination reviews still push. A red regression against
+the old implementation wrote the rebound bare remote despite the pinned commit
+lease. Renderer coverage exercises native review payloads, pending/refused
+inspection, retired previews and keyboard access. Packaged qualification must
+also exercise refusal after an actual local URL rebind and a fresh successful
+review; renderer IPC interception alone is not proof of native refusal.
+
 ### Confirmation keyboard ownership
 
 Force-push, worktree removal, sparse checkout, branch publishing, workspace

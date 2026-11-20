@@ -57,12 +57,13 @@ def remote_review_workflows(driver, fixtures, report):
     before_force = snapshot()
     force = 'gc-repository-confirmations [aria-labelledby="force-push-title"]'
 
-    def open_force(expected_remote):
+    def open_force(expected_remote, expected_local=child):
         driver.click_visible('[aria-label="Push options"]')
         driver.click_visible('.push-menu button:not(:disabled) strong', 'Force Push with Lease…')
         driver.wait('return !!document.querySelector(' + json.dumps(force) + ')')
         text = driver.script('return document.querySelector(arguments[0]).textContent', force)
-        assert str(repository) in text and expected_remote[:12] in text and child[:12] in text, text
+        assert str(repository) in text and expected_remote[:12] in text and expected_local[:12] in text, text
+        driver.wait('return !!document.querySelector(' + json.dumps(force + ' .force-push-destinations') + ')')
 
     open_force(original['head'])
     remote_tree = fixtures.git(remote, 'rev-parse', 'refs/heads/main^{tree}')
@@ -86,6 +87,37 @@ def remote_review_workflows(driver, fixtures, report):
     _preserved(before_fresh, snapshot())
     assert not marker.exists()
     report['scenarios'].append('native-fresh-force-review-pushes-reviewed-head-to-owned-local-remote')
+
+    # An OID lease alone also matches a fork at the same base. Rebind only the
+    # owned fixture's push URL after review and require refusal before any push.
+    rebound = fixtures.root / 'owned-rebound-review-remote.git'
+    fixtures.git(fixtures.root, 'clone', '--bare', str(remote), str(rebound))
+    assert fixtures.git(rebound, 'rev-parse', 'refs/heads/main') == child
+    rebound_head = fixtures.git(repository, 'commit-tree', tree, '-p', child, '-m', 'Owned rebound destination review')
+    fixtures.git(repository, 'update-ref', 'refs/heads/main', rebound_head)
+    open_ui(driver, repository)
+    open_force(child, rebound_head)
+    fixtures.git(repository, 'remote', 'set-url', '--push', 'origin', str(rebound))
+    assert fixtures.git(repository, 'remote', 'get-url', '--push', 'origin') == str(rebound)
+    before_rebound = snapshot()
+    driver.click_visible(force + ' .confirm-action', 'Force Push with Lease')
+    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('push destinations changed')")
+    assert fixtures.git(remote, 'rev-parse', 'refs/heads/main') == child
+    assert fixtures.git(rebound, 'rev-parse', 'refs/heads/main') == child
+    _preserved(before_rebound, snapshot())
+    report['scenarios'].append('native-force-review-refuses-rebound-owned-push-url-before-either-remote-is-written')
+
+    open_ui(driver, repository)
+    open_force(child, rebound_head)
+    assert str(rebound) in driver.script('return document.querySelector(arguments[0]).textContent', force)
+    driver.click_visible(force + ' .confirm-action', 'Force Push with Lease')
+    driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Force push with lease complete')")
+    assert fixtures.git(rebound, 'rev-parse', 'refs/heads/main') == rebound_head
+    assert fixtures.git(remote, 'rev-parse', 'refs/heads/main') == child
+    _preserved(before_rebound, snapshot())
+    assert not marker.exists()
+    report['scenarios'].append('native-fresh-force-review-writes-only-explicitly-reviewed-rebound-local-destination')
+    fixtures.git(repository, 'config', '--unset', 'remote.origin.pushurl')
 
     # The actual toolbar only exposes LFS actions for initialized repositories.
     # Initialize this owned fixture before taking the preservation snapshot;
@@ -117,5 +149,6 @@ def remote_review_workflows(driver, fixtures, report):
         'source': str(repository), 'localBareRemote': str(remote), 'networkRemoteUsed': False,
         'original': original, 'published': published, 'reviewedHead': child,
         'rejectedRemoteHead': remote_child, 'finalRemoteHead': fixtures.git(remote, 'rev-parse', 'refs/heads/main'),
+        'reboundLocalBareRemote': str(rebound), 'finalReboundHead': fixtures.git(rebound, 'rev-parse', 'refs/heads/main'),
         'beforeLfs': before_lfs, 'afterLfs': after_lfs, 'removedLfsOid': oid, 'commitAttempted': marker.exists(),
     }

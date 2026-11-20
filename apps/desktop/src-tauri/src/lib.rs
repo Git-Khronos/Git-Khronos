@@ -2369,12 +2369,27 @@ async fn push_repository(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn review_push_destination(
+    repo_id: String,
+    remote: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::PushDestinationReview, AppError> {
+    with_repository_background(repo_id, app, move |path| {
+        git_khronos_git_core::review_push_destination(path, &remote)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+#[allow(clippy::too_many_arguments)]
 async fn force_push_repository(
     repo_id: String,
     remote: String,
     branch: String,
     expected_remote_oid: String,
     expected_head_oid: String,
+    expected_destination_state: String,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -2389,6 +2404,7 @@ async fn force_push_repository(
                 &branch,
                 &expected_remote_oid,
                 &expected_head_oid,
+                &expected_destination_state,
                 cancellation,
             )
         },
@@ -4314,6 +4330,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             sparse_checkout_disable,
             pull_repository,
             push_repository,
+            review_push_destination,
             force_push_repository,
             publish_branch,
             add_remote,

@@ -2158,7 +2158,7 @@
     @defer (on immediate) {
       <gc-repository-confirmations [remote]="pendingRemoteRemoval()" [remoteRepositoryPath]="removalOwner?.repositoryPath ?? null"
         [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseReview?.paths.length ?? 0" [sparseRepositoryPath]="sparseReview?.repositoryPath ?? null"
-        [forcePush]="forceReview" [forcePushRepositoryPath]="forceReview?.repositoryPath ?? null" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
+        [forcePush]="forceReview" [forcePushDestination]="forcePushDestination()" [forcePushRepositoryPath]="forceReview?.repositoryPath ?? null" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
         [publishBranch]="publishReview?.branch ?? null" [publishRepositoryPath]="publishReview?.repositoryPath ?? null" [publishRemote]="publishRemote()"
         (remoteClosed)="closeRemoteRemoval(true, removalOwner)" (remoteConfirmed)="confirmRemoteRemoval(removalOwner)"
         (sparseClosed)="closeSparseCheckoutConfirmation(true, sparseReview)" (sparseConfirmed)="confirmSparseCheckoutAction(sparseReview)"
