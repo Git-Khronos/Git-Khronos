@@ -152,3 +152,6 @@ def remote_review_workflows(driver, fixtures, report):
         'reboundLocalBareRemote': str(rebound), 'finalReboundHead': fixtures.git(rebound, 'rev-parse', 'refs/heads/main'),
         'beforeLfs': before_lfs, 'afterLfs': after_lfs, 'removedLfsOid': oid, 'commitAttempted': marker.exists(),
     }
+
+    from native_reference_review_scenarios import reference_review_workflows
+    reference_review_workflows(driver, fixtures, report)

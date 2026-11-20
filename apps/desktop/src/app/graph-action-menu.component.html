@@ -35,11 +35,11 @@
         <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openStashOptions('switch')"><span><gc-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>
       }
       @if (menu.kind === 'tag') {
-        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('push-tag')"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('push-tag', menu)"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
         <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.verifyContextTag()"><span><gc-icon name="check" [size]="13" /></span>Verify tag signature</button>
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-tag')"><span><gc-icon name="edit" [size]="13" /></span>Rename tag…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('delete-remote-tag')"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-tag', menu)"><span><gc-icon name="edit" [size]="13" /></span>Rename tag…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-tag', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('delete-remote-tag', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
       }
       @if (menu.kind === 'branch' || menu.kind === 'remote') {
         <button type="button" role="menuitem" (click)="view.compareContextReferenceWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
@@ -47,8 +47,8 @@
       @if (menu.kind === 'remote') {
         <div class="context-divider"></div>
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Manage remote branch</div>
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-remote-branch')"><span><gc-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-remote-branch')"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-remote-branch', menu)"><span><gc-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-remote-branch', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
       }
       @if (menu.kind === 'commit') {
         <div class="context-divider"></div>

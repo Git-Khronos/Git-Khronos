@@ -2014,15 +2014,15 @@ export class GitKhronosService {
       action: 'delete-tag' | 'signed-tag' | 'verify-tag' | 'set-push-url',
       name: string,
       extra: { expectedOid?: string; message?: string; url?: string | null } = {},
-    ): Promise<void> {
-      await this.mutate('manage_reference', 'Updating Git reference…',
+    ): Promise<boolean> {
+      return await this.mutate('manage_reference', 'Updating Git reference…',
         action === 'verify-tag' ? 'Tag signature verified by Git' : 'Git reference updated',
-        { action, name, ...extra });
+        { action, name, ...extra }) === 'success';
     }
 
-    async transportReference(remote: string, name: string, kind: 'tag' | 'branch', deleteReference: boolean, expectedOid?: string): Promise<void> {
-      await this.mutate('transport_reference', 'Updating selected remote reference…', 'Remote reference updated',
-        { request: { remote, name, kind, delete: deleteReference, expectedOid: expectedOid ?? null } });
+    async transportReference(remote: string, name: string, kind: 'tag' | 'branch', deleteReference: boolean, expectedOid?: string): Promise<boolean> {
+      return await this.mutate('transport_reference', 'Updating selected remote reference…', 'Remote reference updated',
+        { request: { remote, name, kind, delete: deleteReference, expectedOid: expectedOid ?? null } }) === 'success';
     }
 
     /** Renames a tag (optionally also on a remote) or a branch on a remote. */

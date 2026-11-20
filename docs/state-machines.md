@@ -105,6 +105,33 @@ reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/
 working-byte checks and a commit-attempt marker.
 
+### Source-bound tag and remote-reference actions
+
+Tag push/deletion/rename and remote-branch deletion/rename capture the original
+checkout ID/path, exact reference and return-focus target. The root retires
+mismatched reviews and independently owns their identity. The deferred child
+checks a synchronous root ownership predicate as well as its input: parent
+request replacement can precede Angular's input update. Rendered action, close,
+field-change, preview and cancel-operation handlers cannot consume a replacement
+review during that interval. Deferred loading/failure escapes retain the same
+reference request identity.
+
+Remote-tag read results require the same request, source, destination and read
+generation. Successful mutation outcomes, not the later global error signal,
+control dismissal. Remote-rename presentation events retain their request and
+are emitted/applied only while it still owns that source; native mutation and
+activity receipts are not discarded by retiring a dialog. Focus restoration is
+source-checked and cannot steal focus from a replacement reference review.
+Ordinary Enter may confirm a valid rename; modifier Enter and background palette
+shortcuts do not silently submit it or reach the staged commit draft.
+
+Coverage: `reference-action-scope.spec.ts` exercises all six actions, same-ID path
+replacement, outgoing controls, held completion/read results and shortcut
+isolation. `native_reference_review_scenarios.py` exercises actual annotated-tag
+push/rename/delete and remote-branch rename/delete through the packaged UI using
+only an owned local bare remote. Independent Git checks preserve the annotated
+object, unrelated local heads, dirty files/index/config and the staged draft.
+
 ### Source-bound publish, force-push and LFS cleanup reviews
 
 Publishing, force-push and LFS cleanup capture repository ID/path and their own

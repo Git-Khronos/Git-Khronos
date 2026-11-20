@@ -5,6 +5,55 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Source-bound tag and remote-reference reviews — 2026-11-20
+
+The new renderer regression reproduced ten failures against the previous source:
+all six tag/remote-reference actions dispatched after a same-ID checkout-path
+replacement, outgoing confirm/cancel consumed a replacement review, and held
+remote rename success changed the replacement source's hidden/solo filters.
+Six valid-action controls passed in the same red run, retained at
+`target/local-review/reference-scope/renderer-red/`.
+
+The request now retains source ID/path and root-owned identity. Deferred child
+handlers consult that root ownership synchronously, not only the child's input,
+which may still hold the previous request before the next render. Menu handoff,
+loaded/failed/loading escapes, name/remote changes, read results and operation
+cancellation share the reference lease. Remote-rename UI events retain their
+source and cannot update another checkout's preferences. Explicit service
+mutation outcomes determine dismissal; global errors cannot turn a refused
+mutation into apparent success. Native Git authority, leases and receipts remain
+unchanged. Ordinary Enter works; modifier Enter and background commands cannot
+escape the review into the staged draft.
+
+Final source passed 65 focused renderer cases (reference scopes/actions, local
+rename and deferred graph/background UI), all 265 TypeScript tests, graph
+typechecking and 107 runner tests. The first attempted build exposed Angular's
+modifier-key binding `$event` type as `Event`, not `KeyboardEvent`; an explicit
+runtime keyboard-event check corrected this, and the final production build
+passed. The earlier compile failure is not presented as a product regression.
+The size warning remains under unchanged budgets. No dependencies, contracts,
+workflow or version changed.
+
+The preserved candidate package is
+`target/local-review/reference-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `3f45f2f05e8e7f62b39df38d77ed3754a6393a0fcc793195fe4743f2dda5ae98`;
+executable SHA-256
+`f868488b64b6a7d35b90b20617f434f3b0abed0da6771a31077472093552e032`.
+It passed all 30 focused remote-review scenarios at
+`target/local-review/reference-scope/native/remote-reviews-1795149009944758364/report.json`.
+Full inherited-environment qualification passed all 253 scenarios at
+`target/local-review/reference-scope/native/environment-1795149050993079403/report.json`,
+identifying the same package/executable hashes. The full suite contains the 30
+focused cases; these are not 283 unique scenarios. Runtime/runner inputs still
+match `target/local-review/reference-scope/inputs.sha256`. This is local Ubuntu
+26.04 extracted-package qualification, not installed or cross-platform proof. After build
+start, only the Python recovery oracle was corrected to inspect the actual native
+recovery refs, not the separate operation-recovery journal; compiled inputs did
+not change. New native UI scenarios cover
+all six actual actions using an owned annotated tag and local bare remote,
+including fresh remote-tag checks, recovery and unchanged dirty checkout data.
+No installation or release was performed.
+
 ## Source-bound local branch rename — 2026-11-20
 
 A renderer regression sent `rename_branch` to repository B when an old palette

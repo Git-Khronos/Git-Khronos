@@ -974,6 +974,16 @@ rename-back must change only the reviewed branch reference, preserve the index,
 config and dirty files, and leave the commit-attempt hook marker absent. The
 palette dialog must display its checkout and initially focus the name field.
 
+The remote-review suite additionally exercises all six tag/remote-reference
+review actions through their actual UI. An owned annotated tag is pushed,
+renamed locally and remotely after a fresh exact-object check, deleted remotely,
+then deleted locally with recovery retained. An owned remote branch is renamed
+and deleted without moving local heads. The independent oracle checks original
+tag-object identity and unchanged dirty files, index/config and staged draft;
+a refusing commit hook records any accidental commit attempt. Modifier shortcuts
+in the rename field must not submit or open background commands. Every remote
+is an owned local bare repository; no hosted reference is written.
+
 `pnpm nx run desktop:native-environment` runs the full native suite with inherited
 repository-routing, legacy `GIT_CONFIG`, and pathspec overrides pointing at
 another owned fixture.

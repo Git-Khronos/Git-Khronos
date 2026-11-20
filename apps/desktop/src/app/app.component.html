@@ -19,24 +19,25 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Checkout review unavailable" (keydown)="handleCheckoutLoaderKey($event)"><p role="alert">Checkout review could not load. No checkout command has been run. Close and restart to retry.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Close</button></section></div>
     }
   }
-  @if (referenceAction() || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
+  @let deferredReference = referenceAction();
+  @if (deferredReference || fetchRequest() || worktreeMoveRequest() || stashDialog()) {
     @defer (on immediate) {
-      <gc-reference-action-dialog [request]="referenceAction()" (closed)="referenceAction.set(null)" (renamed)="handleReferenceRenamed($event)" />
+      <gc-reference-action-dialog [request]="deferredReference" [ownsRequest]="ownsReferenceAction" (closed)="closeReferenceAction($event)" (renamed)="handleReferenceRenamed($event)" />
       <gc-fetch-options-dialog [request]="fetchRequest()" (closed)="fetchRequest.set(null)" />
       <gc-worktree-move-dialog [request]="worktreeMoveRequest()" (closed)="worktreeMoveRequest.set(null)" />
       <gc-stash-options-dialog [request]="stashDialog()" (closed)="stashDialog.set(null)" />
     } @loading {
       <div class="confirmation-backdrop">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Git action" (keydown)="handleReferenceLoaderKey($event, 'action')">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Git action" (keydown)="handleReferenceActionLoaderKey($event, deferredReference)">
           <p role="status">Loading Git action…</p>
-          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction()">Cancel</button>
+          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction(deferredReference)">Cancel</button>
         </section>
       </div>
     } @error {
       <div class="confirmation-backdrop">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Git action unavailable" (keydown)="handleReferenceLoaderKey($event, 'action')">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Git action unavailable" (keydown)="handleReferenceActionLoaderKey($event, deferredReference)">
           <p role="alert">Git action could not load. Restart to retry. No command was run by this panel.</p>
-          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction()">Close</button>
+          <button #actionLoaderClose type="button" (click)="closeDeferredGitAction(deferredReference)">Close</button>
         </section>
       </div>
     }

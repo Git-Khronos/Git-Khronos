@@ -1149,6 +1149,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const worktreeRemoval = this.pendingWorktreeAction();
     const branchReview = this.pendingBranchAction();
     const rename = this.pendingBranchRename();
+    const reference = this.referenceAction();
     const publish = this.pendingPublishBranch();
     const force = this.pendingForcePush();
     const lfs = this.lfsPruneReview();
@@ -1158,6 +1159,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
     if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
+    if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
     if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
@@ -1210,6 +1212,22 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   private savedDiscardsReturnFocus: HTMLElement | null = null;
   protected readonly referenceAction = signal<ReferenceActionRequest | null>(null);
+  protected readonly ownsReferenceAction = (request: ReferenceActionRequest): boolean =>
+    this.referenceAction() === request && this.ownsRepositoryScope(request);
+
+  protected closeReferenceAction(request: ReferenceActionRequest, restoreFocus = true): void {
+    if (this.referenceAction() !== request) return;
+    this.referenceAction.set(null);
+    if (restoreFocus) queueMicrotask(() => {
+      const opener = request.returnFocus;
+      if (!this.referenceAction() && this.ownsRepositoryScope(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+    });
+  }
+
+  protected handleReferenceActionLoaderKey(event: KeyboardEvent, request: ReferenceActionRequest | null): void {
+    if (this.referenceAction() !== request || (request && !this.ownsReferenceAction(request))) return;
+    this.handleReferenceLoaderKey(event, 'action');
+  }
   protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
   protected readonly stashRenameTarget = signal<StashEntry | null>(null);
@@ -6679,7 +6697,9 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeDeferredGitAction(): void {
+  protected closeDeferredGitAction(request = this.referenceAction()): void {
+    if (this.referenceAction() !== request) return;
+    if (request) { this.closeReferenceAction(request); return; }
     const opener = (this.referenceAction() ?? this.fetchRequest() ?? this.worktreeMoveRequest() ?? this.stashDialog())?.returnFocus;
     this.referenceAction.set(null);
     this.fetchRequest.set(null);
@@ -13053,10 +13073,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.showTagCreator(menu.oid, menu.label);
   }
 
-  protected requestReferenceAction(action: ReferenceActionRequest['action']): void {
-    const menu = this.contextMenu();
-    const repositoryId = this.git.activeRepositoryId();
-    if (!menu || !repositoryId || this.git.busy()) return;
+  protected requestReferenceAction(action: ReferenceActionRequest['action'], menu = this.contextMenu()): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!menu || this.contextMenu() !== menu || !owner || menu.repositoryId !== owner.repositoryId
+      || menu.repositoryPath !== owner.repositoryPath || this.git.busy()) return;
     const remoteAction = action === 'delete-remote-branch' || action === 'rename-remote-branch';
     if (remoteAction ? menu.kind !== 'remote' : menu.kind !== 'tag') return;
     const remote = menu.kind === 'remote' ? this.remoteLocationName(menu.label) : undefined;
@@ -13064,7 +13084,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const returnFocus = this.contextMenuReturnFocus;
     this.actionOverlays.close('context');
     this.git.dismissError();
-    this.referenceAction.set({ action, repositoryId, name, oid: menu.oid, remote, returnFocus });
+    this.referenceAction.set({ action, ...owner, name, oid: menu.oid, remote, returnFocus });
   }
 
   protected async verifyContextTag(): Promise<void> {
@@ -13100,7 +13120,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleReferenceRenamed(renamed: ReferenceRenamed): void {
-    if (renamed.kind === 'remote-branch' && renamed.remote) {
+    if (this.ownsRepositoryScope(renamed.request) && renamed.kind === 'remote-branch' && renamed.remote) {
       this.followRenamedBranch(`${renamed.remote}/${renamed.name}`, `${renamed.remote}/${renamed.newName}`, false);
     }
   }

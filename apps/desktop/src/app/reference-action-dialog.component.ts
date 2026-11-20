@@ -6,6 +6,7 @@ import { GitHelpComponent } from './git-help.component';
 export interface ReferenceActionRequest {
   action: 'push-tag' | 'delete-tag' | 'delete-remote-tag' | 'delete-remote-branch' | 'rename-tag' | 'rename-remote-branch';
   repositoryId: string;
+  repositoryPath: string;
   name: string;
   oid: string;
   remote?: string;
@@ -13,6 +14,7 @@ export interface ReferenceActionRequest {
 }
 
 export interface ReferenceRenamed {
+  request: ReferenceActionRequest;
   kind: 'tag' | 'remote-branch';
   remote?: string;
   name: string;
@@ -28,9 +30,9 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (request(); as target) {
-      <div class="backdrop" (click)="close()">
+      <div class="backdrop" (click)="close(target)">
         <section #dialog role="alertdialog" aria-modal="true" aria-labelledby="reference-action-title"
-          aria-describedby="reference-action-description" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
+          aria-describedby="reference-action-description" (click)="$event.stopPropagation()" (keydown)="handleKey($event, target)">
           <h2 id="reference-action-title">{{ title() }}</h2>
           <p id="reference-action-description">
             @if (target.action === 'delete-tag') {
@@ -51,24 +53,25 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
               Git refuses deletion if the remote reference has moved from the expected object.
             }
           </p>
+          <p class="source">Checkout: <code>{{ target.repositoryPath }}</code></p>
           <code>{{ target.action === 'rename-remote-branch' ? target.remote + '/' + target.name : target.name }}</code>
           @if (renaming()) {
             <label for="reference-new-name">New name</label>
             <input id="reference-new-name" name="referenceNewName" autocomplete="off" spellcheck="false"
-              [ngModel]="newName()" (ngModelChange)="newName.set($event)" [disabled]="git.busy()"
+              [ngModel]="newName()" (ngModelChange)="changeName($event, target)" [disabled]="git.busy()"
               [attr.aria-invalid]="nameProblem() ? 'true' : null"
               [attr.aria-describedby]="nameProblem() ? 'reference-new-name-problem' : null"
-              (keydown.enter)="confirm()" />
+              (keydown.enter)="$event.preventDefault(); confirmFromKeyboard($event, target)" />
             @if (nameProblem(); as problem) { <p id="reference-new-name-problem" class="error" role="alert">{{ problem }}</p> }
           }
           @if (target.action === 'rename-tag' && (git.repository()?.remotes?.length ?? 0) > 0) {
             <label class="check"><input type="checkbox" name="referenceRenameRemote" [ngModel]="renameOnRemote()"
-              (ngModelChange)="toggleRemoteRename($event)" [disabled]="git.busy()" />Also rename the tag on a remote</label>
+              (ngModelChange)="toggleRemoteRename($event, target)" [disabled]="git.busy()" />Also rename the tag on a remote</label>
           }
           <gc-git-help [topic]="target.action === 'delete-remote-branch' || target.action === 'rename-remote-branch' ? 'push' : 'tag'" label="Learn about local and remote references…" />
           @if (target.action !== 'delete-tag' && (target.action !== 'rename-tag' || renameOnRemote())) {
             <label for="reference-remote">Remote</label>
-              <select id="reference-remote" name="referenceRemote" [ngModel]="remote()" (ngModelChange)="changeRemote($event)"
+              <select id="reference-remote" name="referenceRemote" [ngModel]="remote()" (ngModelChange)="changeRemote($event, target)"
                 [disabled]="git.busy() || target.action === 'delete-remote-branch' || target.action === 'rename-remote-branch'">
                 @for (candidate of git.repository()?.remotes ?? []; track candidate.name) {
                   <option [value]="candidate.name">{{ candidate.name }}</option>
@@ -77,7 +80,7 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
             <p class="destination">{{ destination() || 'No remote configured' }}</p>
           }
           @if (target.action === 'delete-remote-tag' || (target.action === 'rename-tag' && renameOnRemote())) {
-            <button type="button" [disabled]="!remote() || git.busy()" (click)="checkRemoteTag()">Check remote tag</button>
+            <button type="button" [disabled]="!remote() || git.busy()" (click)="checkRemoteTag(target)">Check remote tag</button>
             <p>{{ remoteExpected() ? 'Expected remote object: ' + remoteExpected()
               : target.action === 'rename-tag' ? 'Check the remote tag before renaming it there.' : 'Check the remote tag before confirming deletion.' }}</p>
           } @else if (target.action === 'delete-remote-branch' || target.action === 'rename-remote-branch') {
@@ -85,10 +88,10 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
           }
           @if (git.error()) { <p class="error" role="alert">{{ git.error() }}</p> }
           <footer>
-            @if (git.busy()) { <button type="button" (click)="git.cancelActiveOperation()">Cancel operation</button> }
-            <button type="button" data-reference-cancel [disabled]="git.busy()" (click)="close()">Cancel</button>
+            @if (git.busy()) { <button type="button" (click)="cancelOperation(target)">Cancel operation</button> }
+            <button type="button" data-reference-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
             <button type="button" [class.danger]="target.action !== 'push-tag' && !renaming()"
-              [disabled]="!canConfirm() || git.busy()" (click)="confirm()">
+              [disabled]="!canConfirm() || git.busy()" (click)="confirm(target)">
               {{ confirmLabel() }}
             </button>
           </footer>
@@ -115,12 +118,14 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
 export class ReferenceActionDialogComponent {
   readonly git = inject(GitKhronosService);
   readonly request = input<ReferenceActionRequest | null>(null);
-  readonly closed = output<void>();
+  readonly ownsRequest = input.required<(request: ReferenceActionRequest) => boolean>();
+  readonly closed = output<ReferenceActionRequest>();
   readonly renamed = output<ReferenceRenamed>();
   readonly remote = signal('');
   readonly remoteExpected = signal<string | null>(null);
   readonly newName = signal('');
   readonly renameOnRemote = signal(false);
+  private remoteReadGeneration = 0;
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly renaming = computed(() => {
     const action = this.request()?.action;
@@ -163,7 +168,7 @@ export class ReferenceActionDialogComponent {
     candidate.name === this.remote())?.pushUrl);
   readonly canConfirm = computed(() => {
     const target = this.request();
-    if (!target || target.repositoryId !== this.git.activeRepositoryId()) return false;
+    if (!this.owns(target)) return false;
     if (this.renaming()) {
       if (this.newName().trim() === target.name || this.nameProblem()) return false;
       if (target.action === 'rename-remote-branch') return !!this.destination();
@@ -177,12 +182,13 @@ export class ReferenceActionDialogComponent {
     effect(() => {
       const target = this.request();
       if (!target) return;
+      this.remoteReadGeneration++;
       this.remote.set(target.remote ?? untracked(() => this.git.repository()?.remotes[0]?.name ?? ''));
       this.remoteExpected.set(null);
       this.newName.set(target.name);
       this.renameOnRemote.set(false);
       setTimeout(() => {
-        if (this.request() !== target) return;
+        if (!this.owns(target)) return;
         const field = this.dialog()?.nativeElement.querySelector<HTMLInputElement>('#reference-new-name');
         if (field) {
           field.focus();
@@ -194,56 +200,79 @@ export class ReferenceActionDialogComponent {
     });
   }
 
-  changeRemote(remote: string): void {
+  private owns(target: ReferenceActionRequest | null): target is ReferenceActionRequest {
+    const repository = this.git.repository();
+    return !!target && this.request() === target && this.ownsRequest()(target)
+      && repository?.id === target.repositoryId && repository.path === target.repositoryPath;
+  }
+
+  changeName(name: string, target = this.request()): void {
+    if (this.owns(target) && !this.git.busy()) this.newName.set(name);
+  }
+
+  changeRemote(remote: string, target = this.request()): void {
+    if (!this.owns(target) || this.git.busy()) return;
+    this.remoteReadGeneration++;
     this.remote.set(remote);
     this.remoteExpected.set(null);
   }
 
-  toggleRemoteRename(enabled: boolean): void {
+  toggleRemoteRename(enabled: boolean, target = this.request()): void {
+    if (!this.owns(target) || this.git.busy()) return;
+    this.remoteReadGeneration++;
     this.renameOnRemote.set(enabled);
     this.remoteExpected.set(null);
   }
 
-  async checkRemoteTag(): Promise<void> {
-    const target = this.request();
+  async checkRemoteTag(target = this.request()): Promise<void> {
+    if (!this.owns(target) || this.git.busy()) return;
     const remote = this.remote();
-    if (!target) return;
+    const generation = ++this.remoteReadGeneration;
     const oid = await this.git.previewRemoteTag(remote, target.name);
-    if (this.request() === target && this.remote() === remote) this.remoteExpected.set(oid);
+    if (this.owns(target) && generation === this.remoteReadGeneration && this.remote() === remote) this.remoteExpected.set(oid);
   }
 
-  async confirm(): Promise<void> {
-    const target = this.request();
-    if (!target || !this.canConfirm() || this.git.busy()) return;
+  confirmFromKeyboard(event: Event, target: ReferenceActionRequest): void {
+    if (event instanceof KeyboardEvent && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) void this.confirm(target);
+  }
+
+  async confirm(target = this.request()): Promise<void> {
+    if (!this.owns(target) || !this.canConfirm() || this.git.busy()) return;
+    let succeeded: boolean;
     if (this.renaming()) {
       const newName = this.newName().trim();
       const kind = target.action === 'rename-tag' ? 'tag' : 'remote-branch';
       const remote = kind === 'remote-branch' || this.renameOnRemote() ? this.remote() : undefined;
-      const renamed = await this.git.renameReference({
+      succeeded = await this.git.renameReference({
         kind, name: target.name, newName, expectedOid: target.oid,
         remote: remote ?? null,
         remoteObject: kind === 'tag' && remote ? this.remoteExpected() : null,
       });
-      if (renamed) this.renamed.emit({ kind, remote, name: target.name, newName });
+      if (succeeded && this.owns(target)) this.renamed.emit({ request: target, kind, remote, name: target.name, newName });
     } else if (target.action === 'delete-tag') {
-      await this.git.manageReference('delete-tag', target.name, { expectedOid: target.oid });
+      succeeded = await this.git.manageReference('delete-tag', target.name, { expectedOid: target.oid });
     } else {
-      await this.git.transportReference(this.remote(), target.name,
+      succeeded = await this.git.transportReference(this.remote(), target.name,
         target.action === 'delete-remote-branch' ? 'branch' : 'tag', target.action !== 'push-tag',
         target.action === 'delete-remote-branch' || target.action === 'push-tag' ? target.oid : this.remoteExpected() ?? undefined);
     }
-    if (!this.git.error() && this.request() === target) this.close();
+    if (succeeded && this.owns(target)) this.close(target);
   }
 
-  close(): void {
-    if (this.git.busy()) return;
-    const opener = this.request()?.returnFocus;
-    this.closed.emit();
-    setTimeout(() => { if (opener?.isConnected) opener.focus(); });
+  close(target = this.request()): void {
+    if (!this.owns(target) || this.git.busy()) return;
+    this.remoteReadGeneration++;
+    this.closed.emit(target);
   }
 
-  handleKey(event: KeyboardEvent): void {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); }
+  cancelOperation(target: ReferenceActionRequest): void {
+    if (this.owns(target)) void this.git.cancelActiveOperation();
+  }
+
+  handleKey(event: KeyboardEvent, target = this.request()): void {
+    if (!this.owns(target)) return;
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.close(target); }
     if (event.key !== 'Tab') return;
     const controls = Array.from(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled])') ?? []);
     const index = controls.indexOf(document.activeElement as HTMLElement);
