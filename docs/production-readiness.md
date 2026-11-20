@@ -38,7 +38,13 @@ LFS; only the fixture was corrected before rerunning the same package.
 The setup/keyboard suite passed 23 scenarios:
 `target/local-review/remote-review-scope/native/setup-keyboard-1795138564641706944/report.json`.
 These focused suites share the ordinary 18 smoke scenarios, not 45 unique
-scenarios. UI and runner input manifests matched. Initial production size is
+scenarios. The same unchanged package then passed all 241 full native scenarios
+in 9m 16s:
+`target/local-review/remote-review-scope/native/full-1795138602497703360/report.json`.
+This full run includes the new remote/LFS journeys and existing branch,
+worktree, history, recovery, file-tool, hosting-fixture and transport checks;
+it does not turn local fixtures into live hosted-service qualification.
+UI and runner input manifests matched after the full run. Initial production size is
 1,436,774 bytes, leaving 13,226 before the unchanged hard limit; the warning
 remains. Root component CSS is unchanged. No dependency, budget or Rust source
 changed, and no system installation or release was performed.
