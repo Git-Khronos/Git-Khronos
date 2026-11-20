@@ -32,6 +32,39 @@ values, native capability tokens, or user draft contents in transition logs.
 
 ## Implemented transition ownership
 
+### Source-bound branch, sparse-checkout and worktree-removal reviews
+
+Branch deletion/rebase and worktree removal requests capture the repository ID,
+checkout path and return-focus target with their review data. Sparse checkout
+uses one scoped request containing its action, selected paths and sparse-index
+choice; the older scalar action view is derived from that request. Later edits
+to a preferences draft cannot change the reviewed sparse payload or count.
+These UI records are transient intent, not native mutation capabilities.
+
+A scope effect retires mismatched requests without restoring focus into another
+checkout. Confirmation independently checks ID/path and request identity before
+calling the service, including the pre-effect interval. Rendered request aliases
+are passed to confirm/cancel and force-choice handlers, so an outgoing control
+cannot consume or alter a replacement review. Loading/error dismissals preserve
+those sparse/worktree leases too. Each review displays its captured checkout.
+
+Branch and sparse reviews keep their identity while a native operation is in
+flight. Native work disables confirmation and force inputs; closing a review
+retires UI intent, not the operation. Late branch refusals cannot reopen a
+canceled review or replace a newer one, and late sparse completion cannot reload
+another checkout's draft or close its review. Worktree force choice is captured
+before dismissal resets the control. Focus restoration is source-checked again
+when its microtask runs and yields to a newer scoped review. Native service
+operation receipts remain authoritative even after UI retirement.
+
+Coverage: `repository-confirmation-scope.spec.ts` exercises repository switches,
+same-ID path changes, valid native payloads, outgoing confirm/cancel/force
+controls, captured sparse settings, busy cancellation and late completions.
+The packaged keyboard suite additionally performs a real explicit deletion of
+an owned branch, checks unrelated staged/untracked contents and index/config
+bytes, and requires the native recovery receipt. Refusing every valid command
+would therefore not satisfy the acceptance gate.
+
 ### Confirmation keyboard ownership
 
 Force-push, worktree removal, sparse checkout, branch publishing, workspace

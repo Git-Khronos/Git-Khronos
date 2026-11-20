@@ -30,7 +30,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
     hook.write_text('#!/bin/sh\nprintf attempted > "$(git rev-parse --git-path setup-shortcut-hook-ran)"\nexit 1\n')
     hook.chmod(0o700)
     fixtures.git(repository, 'branch', 'owned-keyboard-branch')
-    open_ui(driver, repository)
+    repo_id = open_ui(driver, repository)
     draft = 'Setup dialogs must not commit this draft'
     driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
       field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
@@ -81,3 +81,28 @@ def setup_keyboard_isolation(driver, fixtures, report):
         driver.key('\ue00c')
         driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
         report['scenarios'].append('native-' + kind + '-setup-shortcuts-preserve-staged-state-and-commit-draft')
+
+    # The scoped review must still support an explicit valid native action;
+    # simply refusing every confirmation would not satisfy the requirement.
+    heads_before = fixtures.git(repository, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads').splitlines()
+    driver.context_click('[aria-label="Local branch owned-keyboard-branch"]')
+    driver.click_scrolled_text('.graph-action-menu button', 'Delete branch…')
+    modal = '[aria-labelledby="branch-confirmation-title"]'
+    driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
+    assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', modal)
+    driver.click_visible(modal + ' .confirm-action', 'Delete branch')
+    driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
+    heads_after = fixtures.git(repository, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads').splitlines()
+    assert heads_after == [line for line in heads_before if not line.startswith('refs/heads/owned-keyboard-branch ')]
+    after_delete = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
+    for key in ('head', 'branch', 'status', 'indexSha256', 'configSha256', 'files'):
+        assert after_delete[key] == before[key], 'Explicit branch deletion changed unrelated checkout data: ' + key
+    assert not marker.exists()
+    assert driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value') == draft
+    recoveries = driver.invoke('load_operation_recoveries', repoId=repo_id)
+    assert recoveries, 'Explicit branch deletion did not retain its native recovery receipt'
+    report['setupKeyboardIsolation']['explicitBranchDeletion'] = {
+        'headsBefore': heads_before, 'headsAfter': heads_after, 'checkout': after_delete,
+        'recoveryCount': len(recoveries), 'commitAttempted': marker.exists(),
+    }
+    report['scenarios'].append('native-ui-confirmed-branch-delete-preserves-staged-state-and-recovery-receipt')

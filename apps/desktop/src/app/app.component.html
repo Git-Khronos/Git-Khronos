@@ -2177,29 +2177,31 @@
   }
   @if (pendingRemoteRemoval() || pendingSparseCheckoutAction() || pendingWorktreeAction() || pendingForcePush() || pendingPublishBranch()) {
     @let removalOwner = remoteRemovalOwner();
+    @let sparseReview = pendingSparseCheckoutReview();
+    @let worktreeReview = pendingWorktreeAction();
     @defer (on immediate) {
       <gc-repository-confirmations [remote]="pendingRemoteRemoval()" [remoteRepositoryPath]="removalOwner?.repositoryPath ?? null"
-        [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseCheckoutPathCount()"
-        [forcePush]="pendingForcePush()" [worktree]="pendingWorktreeAction()" [forceWorktreeRemoval]="forceWorktreeRemoval()"
+        [sparseAction]="pendingSparseCheckoutAction()" [sparsePathCount]="sparseReview?.paths.length ?? 0" [sparseRepositoryPath]="sparseReview?.repositoryPath ?? null"
+        [forcePush]="pendingForcePush()" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
         [publishBranch]="pendingPublishBranch()?.branch ?? null" [publishRemote]="publishRemote()"
         (remoteClosed)="closeRemoteRemoval(true, removalOwner)" (remoteConfirmed)="confirmRemoteRemoval(removalOwner)"
-        (sparseClosed)="closeSparseCheckoutConfirmation()" (sparseConfirmed)="confirmSparseCheckoutAction()"
-        (worktreeClosed)="closeWorktreeRemoval()" (worktreeConfirmed)="confirmWorktreeRemoval()" (worktreeForceChanged)="forceWorktreeRemoval.set($event)"
+        (sparseClosed)="closeSparseCheckoutConfirmation(true, sparseReview)" (sparseConfirmed)="confirmSparseCheckoutAction(sparseReview)"
+        (worktreeClosed)="closeWorktreeRemoval(true, worktreeReview)" (worktreeConfirmed)="confirmWorktreeRemoval(worktreeReview)" (worktreeForceChanged)="setWorktreeRemovalForce($event, worktreeReview)"
         (forcePushClosed)="closeForcePush()" (forcePushConfirmed)="confirmForcePush()"
         (publishClosed)="closePublishBranch()" (publishConfirmed)="confirmPublishBranch()"
         (publishRemoteChanged)="publishRemote.set($event)" (publishAddRemote)="closePublishBranch(false); openAddRemoteDialog()" />
     } @loading {
-      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation()">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading confirmation" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event)">
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading confirmation" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, sparseReview, worktreeReview)">
           <p class="confirmation-loader-copy" role="status">Loading confirmation…</p>
-          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation()">Cancel</button></footer>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">Cancel</button></footer>
         </section>
       </div>
     } @error {
-      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation()">
-        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Confirmation unavailable" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event)">
+      <div class="confirmation-backdrop" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Confirmation unavailable" (click)="$event.stopPropagation()" (keydown)="handleConfirmationLoaderKey($event, sparseReview, worktreeReview)">
           <p class="confirmation-loader-copy" role="alert">The confirmation could not load. Restart the app before retrying. No action was run.</p>
-          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation()">Close</button></footer>
+          <footer><button #confirmationLoaderClose type="button" (click)="closeRepositoryConfirmation(sparseReview, worktreeReview)">Close</button></footer>
         </section>
       </div>
     }
@@ -2758,12 +2760,13 @@
     </div>
   }
   @if (pendingBranchAction(); as action) {
-    <div class="confirmation-backdrop" (click)="dismissBranchConfirmation(true)">
-      <section #branchConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="branch-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleBranchConfirmationKeydown($event)">
+    <div class="confirmation-backdrop" (click)="dismissBranchConfirmation(true, action)">
+      <section #branchConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="branch-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleBranchConfirmationKeydown($event, action)">
         <div class="confirmation-icon" [class.danger]="action.kind === 'delete'"><gc-icon [name]="action.kind === 'delete' ? 'trash' : 'refresh'" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase ' + (git.repository()?.status?.branch ?? 'current branch') + ' onto' }}</span>
           <h2 id="branch-confirmation-title">{{ action.branch }}</h2>
+          <p class="form-help repository-editor-source">Checkout: <code>{{ action.repositoryPath }}</code></p>
           @if (action.kind === 'rebase') {
             <p>This rewrites commits by rebasing {{ git.repository()?.status?.branch }} onto {{ action.branch }}.</p>
             <p>Your commits are replayed on top of {{ action.branch }} and get new IDs. If they were already pushed, collaborators will need to update. If a conflict stops the rebase, resolve it and continue, or abort to go back.</p>
@@ -2772,10 +2775,10 @@
             <p>Deleting it anyway leaves those commits on no branch. Git Khronos saves the branch tip in <strong>Recovery History</strong> first, so you can restore it later.</p>
           } @else {
             <p>Git refuses to delete an unmerged branch unless force deletion is enabled. The branch tip is saved in <strong>Recovery History</strong> first, so you can restore it later.</p>
-            <label class="force-delete-option"><input type="checkbox" [checked]="forceBranchDelete()" (change)="forceBranchDelete.set($any($event.target).checked)" /> Force delete even when the branch is not merged</label>
+            <label class="force-delete-option"><input type="checkbox" [disabled]="git.busy()" [checked]="forceBranchDelete()" (change)="setBranchForceDelete($any($event.target).checked, action)" /> Force delete even when the branch is not merged</label>
           }
         </div>
-        <footer><button type="button" data-branch-dialog-cancel (click)="dismissBranchConfirmation(true)">Cancel</button><button class="confirm-action" [class.danger]="action.kind === 'delete'" type="button" [disabled]="git.busy()" (click)="confirmBranchAction()">{{ action.kind === 'delete' ? (action.unmerged ? 'Delete anyway' : 'Delete branch') : 'Rebase' }}</button></footer>
+        <footer><button type="button" data-branch-dialog-cancel (click)="dismissBranchConfirmation(true, action)">Cancel</button><button class="confirm-action" [class.danger]="action.kind === 'delete'" type="button" [disabled]="git.busy()" (click)="confirmBranchAction(action)">{{ action.kind === 'delete' ? (action.unmerged ? 'Delete anyway' : 'Delete branch') : 'Rebase' }}</button></footer>
       </section>
     </div>
   }

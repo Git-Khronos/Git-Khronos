@@ -5,6 +5,50 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Source-bound destructive reviews — 2026-11-20
+
+Branch deletion/rebase, sparse checkout and worktree-removal requests now retain
+their original repository ID/path and independent return-focus ownership.
+Sparse action, paths and sparse-index choice form one captured request rather
+than reading a mutable preferences draft at confirmation time. Source effects
+retire mismatches, while synchronous dispatch checks and rendered object leases
+also protect pre-effect repository/path changes, outgoing confirm/cancel/force
+controls and replacement requests. Busy branch/sparse reviews retain identity
+until completion; cancellation retires presentation without canceling native
+work or replaying it. Late results cannot replace a newer review or its draft.
+Checkout captions identify the captured source. The underlying service captures
+its repository snapshot synchronously before awaiting native work; native Git
+and operation receipts remain authoritative.
+
+The new regression suite passed all 27 cases. The final frozen-input renderer
+gate passed 207 selected cases, with another 11 affected workspace journeys
+passing separately (218 executions total). All 265 TypeScript unit tests,
+graph typechecking, production build/preview guard and 103 runner unit tests
+passed. The first red gate also exposed an incorrect fixture field name for
+the sparse-index argument; final expectations use the actual `sparseIndex`
+contract. The wrong-destination failures described in the earlier diagnostic
+below are addressed by these source-bound request checks, not by skipping
+valid native dispatch.
+
+Preserved package:
+`target/local-review/confirmation-scope/artifacts/Git-Khronos_0.1.6_amd64.deb`,
+SHA-256 `7cf287db2fe224c2b0b0831f2b78a763c50ef89c062a318f9f08ea79d9de55f3`;
+packaged executable SHA-256
+`084e434d3cd27de03057338968dec77d10ac77f93834d56f6991c6787bd1e0fb`.
+The focused setup/review suite passed 23 scenarios, including explicit native
+branch deletion with preserved dirty/staged data and one recovery receipt:
+`target/local-review/confirmation-scope/native/setup-keyboard-1795135512580665523/report.json`.
+The same package passed 21 linked-worktree scenarios:
+`target/local-review/confirmation-scope/native/worktrees-1795135533368406171/report.json`.
+The ordinary smoke scenarios overlap between those two reports; they are not
+44 unique scenarios. UI and runner fingerprints matched their retained input
+manifests. Build size is 1,431,679 initial bytes, leaving 18,321 before the
+unchanged hard limit. No budget, dependency or Rust source was changed.
+
+These are local Ubuntu 26.04 extracted-package checks, not a fresh entire
+renderer/native suite, installed desktop acceptance, remote Linux matrix or
+release approval. No installation or release was performed for this batch.
+
 ## Local confirmation keyboard isolation — 2026-11-20
 
 The next bounded batch extends the keyboard guard to eleven confirmation

@@ -25,6 +25,11 @@ replayed after an uncertain reply. The full/environment suites include these
 checks too. Renderer coverage separately exercises editing, Tab, Escape,
 replacement DOM and the pre-render focus gap.
 
+The suite then explicitly confirms deletion of the owned test branch. It checks
+the remaining branch refs, HEAD, staged/untracked contents, index/config bytes,
+commit draft and native recovery receipt. This proves valid reviewed commands
+still work; keyboard isolation must not be implemented by refusing all commands.
+
 The branch menu's off-screen Delete action and Recovery History's discarded
 changes opener use the existing single-delivery scrolling helper. It waits for
 ordinary rendering turns, scrolls normally and verifies the enabled painted hit

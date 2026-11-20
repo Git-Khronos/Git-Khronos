@@ -11,6 +11,7 @@
       <div class="confirmation-copy">
         <span>{{ action === 'disable' ? 'Disable sparse checkout' : 'Update sparse checkout' }}</span>
         <h2 id="sparse-checkout-title">{{ action === 'disable' ? 'Restore the complete working tree?' : 'Apply this directory selection?' }}</h2>
+        @if (sparseRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
         <p>@if (action === 'disable') { Git will restore every tracked file. This can take time and use substantial disk space in a large repository. } @else if (sparsePathCount()) { Git will keep {{ sparsePathCount() }} selected {{ sparsePathCount() === 1 ? 'directory' : 'directories' }} plus root-level files in the working tree. Changed or conflicted files stay and are listed. } @else { No directories are selected, so only root-level files will remain in the working tree. Changed or conflicted files stay and are listed. }</p>
       </div>
       <footer><button type="button" (click)="sparseClosed.emit()">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy()" (click)="sparseConfirmed.emit()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
@@ -21,9 +22,10 @@
       <div class="confirmation-copy">
         <span>{{ action.deleteBranch ? 'Remove worktree and delete branch' : 'Remove worktree' }}</span>
         <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
+        @if (worktreeRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }
         <p>{{ action.deleteBranch ? 'Remove this working directory and delete its branch. The branch tip is saved in Recovery History first.' : 'Detach and delete this working directory. Shared Git history is not removed.' }}</p>
         @if (action.changes) {
-          <label class="force-delete-option"><input type="checkbox" [checked]="forceWorktreeRemoval()" (change)="worktreeForceChanged.emit($any($event.target).checked)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
+          <label class="force-delete-option"><input type="checkbox" [disabled]="git.busy()" [checked]="forceWorktreeRemoval()" (change)="worktreeForceChanged.emit($any($event.target).checked)" /> Force removal and discard {{ action.changes }} uncommitted {{ action.changes === 1 ? 'file' : 'files' }}</label>
         }
       </div>
       <footer><button type="button" (click)="worktreeClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="action.changes > 0 && !forceWorktreeRemoval()" (click)="worktreeConfirmed.emit()">{{ action.deleteBranch ? 'Remove and delete branch' : 'Remove worktree' }}</button></footer>

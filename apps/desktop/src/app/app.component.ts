@@ -290,6 +290,18 @@ interface RepositoryEditorOwner {
   readonly repositoryPath: string;
 }
 
+interface RepositoryReviewScope extends RepositoryEditorOwner {
+  readonly returnFocus: HTMLElement | null;
+}
+
+interface SparseCheckoutReview extends RepositoryReviewScope {
+  readonly action: 'set' | 'disable';
+  readonly paths: string[];
+  readonly sparseIndex: boolean;
+}
+
+type PendingWorktreeRemoval = WorktreeRemovalReview & RepositoryReviewScope;
+
 interface RemoteBranchGroup extends Remote {
   branches: Branch[];
   branchCount: number;
@@ -386,7 +398,7 @@ interface PendingBisectStart {
   badLabel: string;
 }
 
-interface PendingBranchAction {
+interface PendingBranchAction extends RepositoryReviewScope {
   kind: 'rebase' | 'delete';
   branch: string;
   /** Set after Git refused a safe delete; confirming then force-deletes the branch. */
@@ -809,7 +821,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
-  private branchActionReturnFocus: HTMLElement | null = null;
   private storedReferenceActionReturnFocus: HTMLElement | null = null;
   private fileActionReturnFocus: HTMLElement | null = null;
   private readonly graphCommitChildrenByOid = computed(() => {
@@ -1045,8 +1056,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingLfsPrune = signal(false);
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
   protected readonly lfsPruneReviewing = signal(false);
-  protected readonly pendingSparseCheckoutAction = signal<'set' | 'disable' | null>(null);
-  protected readonly pendingWorktreeAction = signal<WorktreeRemovalReview | null>(null);
+  protected readonly pendingSparseCheckoutReview = signal<SparseCheckoutReview | null>(null);
+  protected readonly pendingSparseCheckoutAction = computed(() => this.pendingSparseCheckoutReview()?.action ?? null);
+  protected readonly pendingWorktreeAction = signal<PendingWorktreeRemoval | null>(null);
   protected readonly forceWorktreeRemoval = signal(false);
   protected readonly activityLogOpen = signal(false);
   protected readonly recoveryHistoryOpen = signal(false);
@@ -1115,10 +1127,16 @@ export class AppComponent implements OnInit, OnDestroy {
     const submodule = this.submoduleEditorOwner();
     const remote = this.remoteEditorOwner();
     const removal = this.remoteRemovalOwner();
+    const sparseReview = this.pendingSparseCheckoutReview();
+    const worktreeRemoval = this.pendingWorktreeAction();
+    const branchReview = this.pendingBranchAction();
     if (worktree && !this.ownsRepositoryScope(worktree)) untracked(() => this.closeWorktreeDialog(false));
     if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
     if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
+    if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
+    if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
+    if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
   });
 
   private captureRepositoryEditorOwner(): RepositoryEditorOwner | null {
@@ -6091,39 +6109,38 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected requestSparseCheckoutUpdate(returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
     const opener = this.captureSecondaryConfirmationOpener(returnFocus);
+    const paths = this.sparseCheckoutPaths().split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    const sparseIndex = this.sparseCheckoutIndex();
     this.closePreferences(false);
-    this.secondaryConfirmationOpener = opener;
-    this.pendingSparseCheckoutAction.set('set');
+    this.pendingSparseCheckoutReview.set({ ...owner, returnFocus: opener, action: 'set', paths, sparseIndex });
   }
 
   protected requestSparseCheckoutDisable(returnFocus?: HTMLElement | null): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
     const opener = this.captureSecondaryConfirmationOpener(returnFocus);
     this.toolbarOverlays.close('sparseCheckout');
     this.closePreferences(false);
-    this.secondaryConfirmationOpener = opener;
-    this.pendingSparseCheckoutAction.set('disable');
+    this.pendingSparseCheckoutReview.set({ ...owner, returnFocus: opener, action: 'disable', paths: [], sparseIndex: false });
   }
 
-  protected closeSparseCheckoutConfirmation(): void {
-    this.pendingSparseCheckoutAction.set(null);
-    this.finishSecondaryConfirmation();
+  protected closeSparseCheckoutConfirmation(restoreFocus = true, expected = this.pendingSparseCheckoutReview()): void {
+    if (this.pendingSparseCheckoutReview() !== expected) return;
+    this.pendingSparseCheckoutReview.set(null);
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 
-  protected async confirmSparseCheckoutAction(): Promise<void> {
-    const action = this.pendingSparseCheckoutAction();
-    if (!action) return;
-    this.closeSparseCheckoutConfirmation();
-    if (action === 'disable') {
-      await this.git.disableSparseCheckout();
-      return;
-    }
-    const paths = this.sparseCheckoutPaths()
-      .split(/\r?\n/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-    await this.git.setSparseCheckout(paths, this.sparseCheckoutIndex());
-    if (!this.git.error()) this.loadSparseCheckoutDraft();
+  protected async confirmSparseCheckoutAction(expected = this.pendingSparseCheckoutReview()): Promise<void> {
+    const review = this.pendingSparseCheckoutReview();
+    if (!review || review !== expected || !this.ownsRepositoryScope(review) || this.git.busy()) return;
+    if (review.action === 'disable') await this.git.disableSparseCheckout();
+    else await this.git.setSparseCheckout([...review.paths], review.sparseIndex);
+    if (this.pendingSparseCheckoutReview() !== review || !this.ownsRepositoryScope(review)) return;
+    this.closeSparseCheckoutConfirmation(true, review);
+    if (review.action === 'set' && !this.git.error()) this.loadSparseCheckoutDraft();
   }
 
   protected async reapplySparseCheckout(): Promise<void> {
@@ -6636,17 +6653,17 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected closeRepositoryConfirmation(): void {
+  protected closeRepositoryConfirmation(sparseReview = this.pendingSparseCheckoutReview(), worktreeReview = this.pendingWorktreeAction()): void {
     if (this.pendingRemoteRemoval()) this.closeRemoteRemoval();
-    else if (this.pendingSparseCheckoutAction()) this.closeSparseCheckoutConfirmation();
-    else if (this.pendingWorktreeAction()) this.closeWorktreeRemoval();
+    else if (this.pendingSparseCheckoutAction()) this.closeSparseCheckoutConfirmation(true, sparseReview);
+    else if (this.pendingWorktreeAction()) this.closeWorktreeRemoval(true, worktreeReview);
     else if (this.pendingForcePush()) this.closeForcePush();
     else this.closePublishBranch();
   }
 
-  protected handleConfirmationLoaderKey(event: KeyboardEvent): void {
+  protected handleConfirmationLoaderKey(event: KeyboardEvent, sparseReview = this.pendingSparseCheckoutReview(), worktreeReview = this.pendingWorktreeAction()): void {
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryConfirmation(); }
+    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryConfirmation(sparseReview, worktreeReview); }
     if (event.key === 'Tab') { event.preventDefault(); this.confirmationLoaderClose()?.nativeElement.focus(); }
   }
 
@@ -6965,11 +6982,14 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected requestWorktreeRemoval(worktree: Worktree, deleteBranch: boolean): void {
-    this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(this.sidebarActionMenuReturnFocus);
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner || !this.git.repository()?.worktrees.some(candidate => candidate.path === worktree.path)) return;
+    const returnFocus = this.captureSecondaryConfirmationOpener(this.sidebarActionMenuReturnFocus);
     this.actionOverlays.close('worktree');
     this.sidebarActionMenuReturnFocus = null;
     this.forceWorktreeRemoval.set(false);
     this.pendingWorktreeAction.set({
+      ...owner, returnFocus,
       path: worktree.path,
       branch: worktree.branch,
       deleteBranch,
@@ -6977,19 +6997,27 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeWorktreeRemoval(): void {
+  protected closeWorktreeRemoval(restoreFocus = true, expected = this.pendingWorktreeAction()): void {
+    if (this.pendingWorktreeAction() !== expected) return;
     this.pendingWorktreeAction.set(null);
-    this.finishSecondaryConfirmation();
+    this.forceWorktreeRemoval.set(false);
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
   }
 
-  protected async confirmWorktreeRemoval(): Promise<void> {
+  protected setWorktreeRemovalForce(value: boolean, expected = this.pendingWorktreeAction()): void {
+    if (!expected || this.pendingWorktreeAction() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    this.forceWorktreeRemoval.set(value);
+  }
+
+  protected async confirmWorktreeRemoval(expected = this.pendingWorktreeAction()): Promise<void> {
     const action = this.pendingWorktreeAction();
-    if (!action) return;
-    this.closeWorktreeRemoval();
+    if (!action || action !== expected || !this.ownsRepositoryScope(action) || this.git.busy()) return;
+    const force = action.changes > 0 && this.forceWorktreeRemoval();
+    this.closeWorktreeRemoval(true, action);
     await this.git.removeWorktree(
       action.path,
       action.deleteBranch,
-      action.changes > 0 && this.forceWorktreeRemoval(),
+      force,
     );
   }
 
@@ -13029,7 +13057,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestBranchAction(kind: PendingBranchAction['kind']): void {
     const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'branch' || menu.label === this.git.repository()?.status.branch) return;
+    const repository = this.git.repository();
+    if (!menu || menu.kind !== 'branch' || !repository || menu.repositoryId !== repository.id || menu.label === repository.status.branch) return;
     const returnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
     this.forceBranchDelete.set(false);
@@ -13105,24 +13134,30 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected async confirmBranchAction(): Promise<void> {
+  protected setBranchForceDelete(value: boolean, expected = this.pendingBranchAction()): void {
+    if (!expected || this.pendingBranchAction() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    this.forceBranchDelete.set(value);
+  }
+
+  protected async confirmBranchAction(expected = this.pendingBranchAction()): Promise<void> {
     const action = this.pendingBranchAction();
-    if (!action || this.git.busy()) return;
-    const returnFocus = this.branchActionReturnFocus;
-    this.dismissBranchConfirmation(false);
-    if (action.kind === 'rebase') await this.git.integrateBranch(action.branch, 'rebase');
-    else {
-      const wasPinned = this.pinnedBranch() === action.branch;
-      const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete());
-      if (outcome === 'notMerged') {
-        this.forceBranchDelete.set(false);
-        this.openBranchConfirmation({ kind: 'delete', branch: action.branch, unmerged: true }, returnFocus);
-        return;
-      }
-      if (outcome === 'deleted' && wasPinned) {
-        this.pinnedBranch.set(null);
-        this.storePinnedBranch();
-      }
+    if (!action || action !== expected || !this.ownsRepositoryScope(action) || this.git.busy()) return;
+    if (action.kind === 'rebase') {
+      await this.git.integrateBranch(action.branch, 'rebase');
+      if (this.pendingBranchAction() === action && this.ownsRepositoryScope(action)) this.dismissBranchConfirmation(false, action);
+      return;
+    }
+    const wasPinned = this.pinnedBranch() === action.branch;
+    const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete());
+    if (this.pendingBranchAction() !== action || !this.ownsRepositoryScope(action)) return;
+    if (outcome === 'notMerged') {
+      this.openBranchConfirmation({ kind: 'delete', branch: action.branch, unmerged: true }, action.returnFocus);
+      return;
+    }
+    this.dismissBranchConfirmation(false, action);
+    if (outcome === 'deleted' && wasPinned && this.pinnedBranch() === action.branch) {
+      this.pinnedBranch.set(null);
+      this.storePinnedBranch();
     }
   }
 
@@ -13277,11 +13312,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cycleDialogFocus(this.historyConfirmationDialog()?.nativeElement, event);
   }
 
-  protected handleBranchConfirmationKeydown(event: KeyboardEvent): void {
+  protected handleBranchConfirmationKeydown(event: KeyboardEvent, expected = this.pendingBranchAction()): void {
+    if (!expected || this.pendingBranchAction() !== expected) {
+      if (this.pendingBranchAction()) event.stopPropagation();
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      this.dismissBranchConfirmation(true);
+      this.dismissBranchConfirmation(true, expected);
       return;
     }
     this.cycleDialogFocus(this.branchConfirmationDialog()?.nativeElement, event);
@@ -13354,26 +13393,34 @@ export class AppComponent implements OnInit, OnDestroy {
     }));
   }
 
-  protected dismissBranchConfirmation(restoreFocus = true): void {
-    const target = restoreFocus ? this.branchActionReturnFocus : null;
+  protected dismissBranchConfirmation(restoreFocus = true, expected = this.pendingBranchAction()): void {
+    if (this.pendingBranchAction() !== expected) return;
     this.pendingBranchAction.set(null);
-    this.branchActionReturnFocus = null;
-    if (target?.isConnected) {
-      queueMicrotask(() => target.focus({ preventScroll: true }));
-    }
+    this.forceBranchDelete.set(false);
+    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+  }
+
+  private restoreRepositoryReviewFocus(review: RepositoryReviewScope): void {
+    queueMicrotask(() => {
+      if (!this.ownsRepositoryScope(review) || this.pendingBranchAction() || this.pendingSparseCheckoutReview() || this.pendingWorktreeAction()) return;
+      if (review.returnFocus?.isConnected) review.returnFocus.focus({ preventScroll: true });
+    });
   }
 
   private openBranchConfirmation(
-    action: PendingBranchAction,
+    action: Pick<PendingBranchAction, 'kind' | 'branch' | 'unmerged'>,
     returnFocus: HTMLElement | null = null,
   ): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
     const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    this.branchActionReturnFocus = returnFocus ?? activeElement;
-    this.pendingBranchAction.set(action);
+    const request: PendingBranchAction = { ...action, ...owner, returnFocus: returnFocus ?? activeElement };
+    this.forceBranchDelete.set(false);
+    this.pendingBranchAction.set(request);
     queueMicrotask(() => requestAnimationFrame(() => {
-      if (this.pendingBranchAction() !== action) return;
+      if (this.pendingBranchAction() !== request || !this.ownsRepositoryScope(request)) return;
       this.branchConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-branch-dialog-cancel]')
         ?.focus();
