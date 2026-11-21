@@ -48,14 +48,14 @@ behavioral cases during the audit; grouping does not remove any listed action.
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the
    [submodule guide](https://help.gitkraken.com/gitkraken-desktop/submodules/).
-3. **Remaining workspace actions:** bulk clone and locate, conversion
+3. **Remaining workspace actions:** bulk clone, conversion
    of local groups to shared groups, and status aggregation for unopened
    repositories remain unimplemented. Bulk fetch, pull and open report
    per-repository outcomes. Bulk close removes reviewed open tabs from this
    workspace without touching Git data or files. Saved but unopened paths
    remain in Repository overview with individual retry, locate and remove
-   actions plus reviewed bulk removal. Locate replaces one entry in place;
-   bulk locate remains open.
+   actions plus reviewed bulk removal. Locate replaces paths in place;
+   selecting several prompts for one explicit replacement per path.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to
@@ -337,7 +337,7 @@ implemented in-app capability.
 | W03 | Save/switch identities, accounts, preferences and tab sets; explicitly choose local/global identity sync without silent Git or credential changes | Partial: named commit identity templates only |
 | W04 | Provide local and shared team/repository collaboration views and discovery | Discovery and implementation required |
 | W05 | Configure terminal/editor/diff/merge programs, repository setup commands and defaults | Partial: terminal profiles retain explicit launch and defaults; the former dedicated agent launcher was removed. The [external file-tool candidate](specifications/external-file-tools.md) supports reviewed editor/comparison/merge launches and separate merge save/stage/cleanup. Earlier Linux package evidence predates this removal; restart storage management and reviewed setup workflows remain open. See the [independent tool specification](specifications/configured-tools.md) |
-| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: fetch, pull, open, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Local overview can retry or locate an individual saved path. Bulk clone/locate and group conversion remain missing |
+| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: fetch, pull, open, locate, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Bulk locate opens one folder chooser per path; it does not guess mappings. Bulk clone and group conversion remain missing |
 
 ## UX, platform and delivery requirements
 

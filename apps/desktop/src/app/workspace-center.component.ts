@@ -12,7 +12,7 @@ import { BackgroundOperationWarningsComponent } from './background-operation-war
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
 interface SavedPathsRemoval { workspaceId: string; scope: string; paths: readonly string[] }
-interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
+interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove' | 'locate'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
   selector: 'gc-workspace-center',
@@ -44,7 +44,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           }
           @if (bulkRunning() && bulkStopRequested()) { <p role="status">The current operation can finish. No further repositories will be started.</p> }
           <ul>@for (result of bulkResults(); track result.id + result.action) {
-            <li>@if (result.action === 'remove') { <code>{{ result.path }}</code> } @else { <strong>{{ git.pathLabel(result.path) }}</strong> } — {{ result.status }}{{ result.detail ? ': ' + result.detail : '' }}</li>
+            <li>@if (result.action === 'remove' || result.action === 'locate') { <code>{{ result.path }}</code> } @else { <strong>{{ git.pathLabel(result.path) }}</strong> } — {{ result.status }}{{ result.detail ? ': ' + result.detail : '' }}</li>
           }</ul></aside>
         }
         <div class="repositories" aria-label="Workspace repositories">
@@ -71,8 +71,11 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
               <div class="tools">
                 <button type="button" [disabled]="overviewBusy() || selectedUnopenedPaths().length === unopenedPaths().length" (click)="selectedSavedPaths.set(unopenedPaths())">Select all saved paths</button>
                 <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="selectedSavedPaths.set([])">Clear saved path selection</button>
+                <button type="button" [disabled]="overviewBusy() || git.browserPreview() || !selectedUnopenedPaths().length"
+                  aria-describedby="locate-saved-paths-hint" (click)="locateSelectedPaths($event)">Locate selected saved paths ({{ selectedUnopenedPaths().length }})…</button>
                 <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="reviewSavedRemoval($event)">Remove selected saved paths ({{ selectedUnopenedPaths().length }})…</button>
               </div>
+              <p id="locate-saved-paths-hint">Choose one new folder per selected path. Cancel stops any remaining prompts; saved replacements stay in place.</p>
               <ul>@for (path of unopenedPaths(); track path) {
                 <li><label class="saved-path"><input type="checkbox" [attr.aria-label]="'Select saved path ' + path" [checked]="selectedSavedPaths().includes(path)" [disabled]="overviewBusy()" (change)="toggleSavedPath(path, $any($event.target).checked)" /><code>{{ path }}</code></label>
                   <div class="tools">
@@ -267,6 +270,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   private fileQueryTimer: ReturnType<typeof setTimeout> | null = null;
   private filePanelActive = false;
   private fileBinding: { repositoryId: string; path: string } | null = null;
+  private locationRequest: object | null = null;
   private destroyed = false;
   readonly draftError = computed(() => {
     if (!validIdentityProfile({ id: this.editingId() ?? 'new', label: this.label().trim(), name: this.name().trim(), email: this.email().trim() })) return 'Enter a label, name and email without control characters.';
@@ -513,46 +517,88 @@ export class WorkspaceCenterComponent implements OnDestroy {
     this.close();
     this.savedRepositoryRequested.emit(path);
   }
-  async locateSavedPath(path: string, event: MouseEvent): Promise<void> {
+  locateSavedPath(path: string, event: MouseEvent): Promise<void> {
+    return this.locatePaths([path], event, false);
+  }
+  locateSelectedPaths(event: MouseEvent): Promise<void> {
+    return this.locatePaths(this.selectedUnopenedPaths(), event, true);
+  }
+  private async locatePaths(paths: readonly string[], event: MouseEvent, batch: boolean): Promise<void> {
     if (this.destroyed || this.suspended() || this.reviewPending() || this.overviewBusy() || this.git.browserPreview()
-      || this.request().workspaceId !== this.git.activeWorkspaceId() || !this.unopenedPaths().includes(path)) return;
+      || this.request().workspaceId !== this.git.activeWorkspaceId() || !paths.length
+      || paths.some(path => !this.unopenedPaths().includes(path))) return;
     const request = this.request();
-    const scope = this.git.activeRepositoryReadScope();
+    const location = this.locationRequest = {};
     const opener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
     this.savedPathNotice.set('');
     this.savedPathError.set('');
-    this.locatingPath.set(path);
     this.openingRepositories.set(true);
-    const owns = () => !this.destroyed && this.locatingPath() === path && this.request() === request
+    const owns = () => !this.destroyed && this.locationRequest === location && this.request() === request
+      && request.workspaceId === this.git.activeWorkspaceId()
       && !this.suspended() && this.panel() === 'overview';
-    const current = () => owns() && this.git.activeRepositoryReadScope() === scope;
-    let replaced = false;
+    if (batch) this.bulkResults.set(paths.map(path => ({ id: path, path, action: 'locate', status: 'pending', detail: null })));
+    let replaced = 0;
     try {
-      const choice = await open({ directory: true, multiple: false, title: `Locate the new folder for ${this.git.pathLabel(path)}` });
-      if (!current() || typeof choice !== 'string' || !choice || this.git.busy()) return;
-      const result = await this.openRepository()(choice, { path, current });
-      if (!owns()) return;
-      if (result.status === 'success') {
-        replaced = true;
-        this.savedPathNotice.set(result.path === path
-          ? `Opened ${path}.` : `Replaced the saved path with ${result.path} in this workspace.`);
-      } else if (result.status === 'error') {
-        this.savedPathError.set(result.error ?? 'The repository could not be opened. The saved path was not replaced.');
+      for (const [index, path] of paths.entries()) {
+        if (!owns()) return;
+        if (!this.unopenedPaths().includes(path)) {
+          if (batch) this.setBulkResult(path, 'locate', 'cancelled', 'The saved path changed or is already open.');
+          continue;
+        }
+        this.locatingPath.set(path);
+        if (batch) this.setBulkResult(path, 'locate', 'running', 'Choose a replacement folder.');
+        const scope = this.git.activeRepositoryReadScope();
+        const current = () => owns() && this.git.activeRepositoryReadScope() === scope;
+        const label = batch ? `${path} (${index + 1} of ${paths.length})` : this.git.pathLabel(path);
+        const result = await this.pickSavedReplacement(path, label, current);
+        if (!owns()) return;
+        if (result.status === 'success') {
+          replaced++;
+          const detail = result.path === path ? `Opened ${path}.` : `Replaced the saved path with ${result.path} in this workspace.`;
+          if (batch) this.setBulkResult(path, 'locate', 'success', detail);
+          else this.savedPathNotice.set(detail);
+          if (this.git.activeRepositoryId() === result.repositoryId && this.git.repository()?.path === result.path) continue;
+        } else if (result.status === 'error') {
+          const detail = result.error ?? 'The repository could not be opened. The saved path was not replaced.';
+          if (batch) this.setBulkResult(path, 'locate', 'error', detail);
+          else this.savedPathError.set(detail);
+          if (current()) continue;
+        } else if (batch) {
+          this.setBulkResult(path, 'locate', 'cancelled', result.error ?? 'The saved path was not replaced.');
+        }
+        if (batch) this.bulkResults.update(results => results.map(result => result.action === 'locate' && result.status === 'pending'
+          ? { ...result, status: 'cancelled', detail: 'Stopped before choosing a folder for this path.' } : result));
+        break;
       }
-    } catch (error: unknown) {
-      if (current()) this.savedPathError.set(this.git.formatError(error));
+      if (batch) this.savedPathNotice.set(`Located ${replaced} of ${paths.length} selected repositories. Review the results above.`);
     } finally {
       if (!this.destroyed) {
         const restoreFocus = owns();
+        this.locationRequest = null;
         this.locatingPath.set(null);
         this.openingRepositories.set(false);
         if (restoreFocus) afterNextRender(() => {
           if (this.destroyed || this.suspended() || this.request() !== request || this.panel() !== 'overview'
             || (document.activeElement !== document.body && document.activeElement !== opener)) return;
-          if (!replaced && opener?.isConnected && !opener.disabled) opener.focus();
+          if (batch) this.bulkResultsTitle()?.nativeElement.focus();
+          else if (!replaced && opener?.isConnected && !opener.disabled) opener.focus();
           else this.focusFirst();
         }, { injector: this.injector });
       }
+    }
+  }
+  private async pickSavedReplacement(path: string, label: string, current: () => boolean): Promise<OpenRepositoryResult> {
+    const retired = { status: 'cancelled' as const, error: 'The checkout or workspace changed.' };
+    const busy = { status: 'cancelled' as const, error: 'Another repository operation started.' };
+    if (this.git.busy()) return busy;
+    try {
+      const choice = await open({ directory: true, multiple: false, title: `Locate the new folder for ${label}` });
+      if (!current()) return retired;
+      if (typeof choice !== 'string' || !choice) return { status: 'cancelled', error: 'No replacement folder chosen.' };
+      if (this.git.busy()) return busy;
+      return await this.openRepository()(choice, { path, current });
+    } catch (error: unknown) {
+      return current() ? { status: 'error', error: this.git.formatError(error) } : retired;
     }
   }
   removeSavedPath(path: string): void {
@@ -748,6 +794,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     if (this.destroyed) return;
     if (this.pendingFileDelete()) { this.cancelDelete(); return; }
     if (this.pendingTabsClose() || this.pendingSavedRemoval()) { this.cancelWorkspaceReview(); return; }
+    this.locationRequest = null;
     this.locatingPath.set(null);
     const opener = this.request().returnFocus; this.closed.emit();
     if (restoreFocus) setTimeout(() => {

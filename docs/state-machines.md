@@ -67,6 +67,12 @@ canonical path already in the same workspace leaves membership alone.
 Other layouts are unchanged. `workspace-center.spec.ts` covers these replies,
 late picker cancellation and draft handoff.
 
+Bulk locate freezes the selected paths in layout order and prompts for
+each replacement separately. Folder-picker cancellation stops all remaining
+prompts without undoing confirmed replacements. Invalid choices leave
+their old path saved and report an individual error. Closing the overview
+retires the current assignment as well as undispatched prompts.
+
 Selection for removing unopened entries is independent of the open-tab
 selection. Confirmation revalidates the entire reviewed set against the
 owning workspace and the currently open tabs before changing any

@@ -468,6 +468,82 @@ test('closing the overview retires both the folder picker and a pending relocati
   });
 });
 
+test('locates selected checkouts in saved order and stops remaining prompts when the chooser is cancelled', async ({ page }) => {
+  await installSavedPathPicker(page);
+  const chosenPaths = [movedPath, '/saved/offline', '/saved/invalid', '/saved/cancelled', '/saved/not-started'];
+  await page.evaluate(paths => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.workspaces.update((items: any[]) => items.map(item => item.id === git.activeWorkspaceId() ? {
+      ...item, repositoryPaths: [fixture.first.path, ...paths, fixture.second.path],
+    } : item));
+  }, chosenPaths);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('button', { name: 'Select all saved paths' }).click();
+  const locate = saved.getByRole('button', { name: 'Locate selected saved paths (5)…' });
+  await expect(locate).toHaveAccessibleDescription(/Cancel stops any remaining prompts/);
+  await locate.click();
+  const results = dialog.getByRole('complementary', { name: 'Repository action results' });
+  await expect(results.getByRole('listitem').first()).toContainText('running: Choose a replacement folder');
+  await chooseRelocationFolder(page, '/alias/first replacement');
+  await expect(results.getByRole('listitem').first()).toContainText('success: Replaced the saved path with /owned/new location');
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    fixture.replacement = { ...fixture.replacement, id: 'second-moved-checkout', path: '/owned/second location' };
+  });
+  await chooseRelocationFolder(page, '/alias/second replacement');
+  await expect(results.getByRole('listitem').nth(1)).toContainText('success: Replaced the saved path with /owned/second location');
+  await page.evaluate(() => { (window as any).__center.failOpen = true; });
+  await chooseRelocationFolder(page, '/alias/not-a-repository');
+  await expect(results.getByRole('listitem').nth(2)).toContainText('error: Not a Git repository');
+  await chooseRelocationFolder(page, null);
+  await expect(results.getByRole('listitem').nth(3)).toContainText('cancelled: No replacement folder chosen');
+  await expect(results.getByRole('listitem').nth(4)).toContainText('cancelled: Stopped before choosing a folder');
+  await expect(saved).toContainText('Located 2 of 5 selected repositories');
+  const state = await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const layouts = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
+    return { current: layouts.find((ws: any) => ws.id === git.activeWorkspaceId()).repositoryPaths,
+      other: layouts.find((ws: any) => ws.id === 'other-layout').repositoryPaths,
+      active: git.repository().path, picked: fixture.calls.filter((entry: any) => entry.command === 'plugin:dialog|open').map((entry: any) => entry.options),
+      opened: fixture.calls.filter((entry: any) => entry.command === 'open_repository').map((entry: any) => entry.path) };
+  });
+  expect(state).toEqual({
+    current: ['/owned/alpha', '/owned/new location', '/owned/second location', ...chosenPaths.slice(2), '/owned/beta'],
+    other: [movedPath], active: '/owned/second location',
+    picked: chosenPaths.slice(0, 4).map((path, index) => ({
+      directory: true, multiple: false, title: `Locate the new folder for ${path} (${index + 1} of 5)`,
+    })),
+    opened: ['/alias/first replacement', '/alias/second replacement', '/alias/not-a-repository'],
+  });
+});
+
+test('closing a batch keeps a late native open from applying and never prompts for the next path', async ({ page }) => {
+  await installSavedPathPicker(page);
+  await page.evaluate(() => { (window as any).__center.holdOpen = true; });
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Select all saved paths' }).click();
+  await dialog.getByRole('button', { name: 'Locate selected saved paths (2)…' }).click();
+  await chooseRelocationFolder(page, '/alias/held');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishOpen)).toBe('function');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => (window as any).__center.finishOpen());
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  const state = await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return { paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
+      titles: fixture.calls.filter((entry: any) => entry.command === 'plugin:dialog|open').map((entry: any) => entry.options.title) };
+  });
+  expect(state).toEqual({
+    paths: ['/owned/alpha', movedPath, '/saved/offline', '/owned/beta'], active: '/owned/alpha',
+    titles: [`Locate the new folder for ${movedPath} (1 of 2)`],
+  });
+});
+
 test('refreshes every local repository, retains failed cached rows and performs no transport', async ({ page }) => {
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
