@@ -240,6 +240,16 @@ prefix on blank context lines. Full and inherited-environment acceptance
 run the same checks.
 The focused reproduction does not replace the release matrix.
 
+## Focused commit rewrite review
+
+Use `--suite commit-rewrite --headless --installed --package "$PACKAGE"`
+in a disposable environment with the exact package already installed.
+Both native edit commands must reject a review for another branch at the
+same HEAD. A subsequent edit through the installed commit inspector must
+rewrite only the checked-out branch, select the replacement commit, and
+preserve the other branch, commit trees, index, config and working bytes.
+This focused reproduction does not replace the release matrix.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a
