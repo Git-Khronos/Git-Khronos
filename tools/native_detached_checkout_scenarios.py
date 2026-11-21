@@ -51,8 +51,47 @@ def guarded_checkout_targets(driver, fixtures, report):
     report['scenarios'].append('native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file')
 
 
+def context_rebase_preserves_sibling(driver, fixtures, report):
+    repository = fixtures.repository('context-rebase-scope', commits=2)
+    fixtures.git(repository, 'config', 'rebase.updateRefs', 'true')
+    fixtures.git(repository, 'switch', '-c', 'owned-upstream')
+    (repository / 'upstream-note.txt').write_text('Owned upstream change.\n')
+    fixtures.git(repository, 'add', '--', 'upstream-note.txt')
+    fixtures.git(repository, 'commit', '-qm', 'Advance owned upstream independently')
+    upstream = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'switch', 'main')
+    for name in ('first-local.txt', 'second-local.txt'):
+        (repository / name).write_text('Owned local data in ' + name + '.\n')
+        fixtures.git(repository, 'add', '--', name)
+        fixtures.git(repository, 'commit', '-qm', 'Add ' + name)
+    fixtures.git(repository, 'branch', 'owned-sibling', 'HEAD^')
+    sibling = fixtures.git(repository, 'rev-parse', 'refs/heads/owned-sibling')
+    old_head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    open_ui(driver, repository)
+    branch = '#reference-section-local [aria-label="Local branch owned-upstream"]'
+    dialog = '[role=alertdialog][aria-labelledby=branch-confirmation-title]'
+    driver.wait(f'return !!document.querySelector({json.dumps(branch)})?.getClientRects().length')
+    driver.context_click(branch)
+    driver.click_scrolled_text('.context-menu button', 'Rebase main onto owned-upstream…', wait_for_ready=True)
+    driver.wait(f'return !!document.querySelector({json.dumps(dialog)})?.getClientRects().length')
+    assert 'rebasing main onto owned-upstream' in driver.script(
+        'return document.querySelector(arguments[0]).textContent', dialog)
+    driver.click_scrolled_text(dialog + ' button', 'Rebase', wait_for_ready=True)
+    driver.wait(f'return !document.querySelector({json.dumps(dialog)})')
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    assert head != old_head and fixtures.git(repository, 'rev-parse', 'HEAD^^') == upstream
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert fixtures.git(repository, 'rev-parse', 'refs/heads/owned-upstream') == upstream
+    assert fixtures.git(repository, 'rev-parse', 'refs/heads/owned-sibling') == sibling, (
+        'The context rebase rewrote a sibling branch that the user did not review')
+    assert fixtures.git(repository, 'config', 'rebase.updateRefs') == 'true'
+    assert fixtures.git(repository, 'status', '--porcelain') == ''
+    report['scenarios'].append('native-context-rebase-preserves-unreviewed-sibling-branches')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
+    context_rebase_preserves_sibling(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

@@ -82,6 +82,48 @@ test('context menu integration sends the exact source and receiving checkout to 
     .toMatchObject([{ args: expected }]);
 });
 
+async function openRebaseReview(page: Page) {
+  await openIntegrationMenu(page);
+  await page.getByRole('menuitem', { name: 'Rebase main onto feature/partial-staging…', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+  await expect(dialog).toContainText('rebasing main onto feature/partial-staging');
+  return dialog;
+}
+
+for (const side of ['source', 'checkout']) {
+  test(`context rebase review refuses a changed ${side} before dispatch`, async ({ page }) => {
+    const dialog = await openRebaseReview(page);
+    await page.evaluate(side => {
+      const s = (window as any).__contextBranchScope;
+      s.git.repositories.update((items: any[]) => items.map(item => {
+        if (item.id !== s.repository.id) return item;
+        return side === 'checkout' ? { ...item, status: { ...item.status, branch: 'release' } }
+          : { ...item, branches: item.branches.map((branch: any) =>
+            branch.name === 'feature/partial-staging' ? { ...branch, oid: 'd'.repeat(40) } : branch) };
+      }));
+    }, side);
+    await expect(dialog).toContainText('rebasing main onto feature/partial-staging');
+    await dialog.getByRole('button', { name: 'Rebase', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch'))).toEqual([]);
+    await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.git.error())).toContain('Open the branch menu again');
+  });
+}
+
+test('context rebase review sends its exact two tips to native', async ({ page }) => {
+  const dialog = await openRebaseReview(page);
+  const expected = await page.evaluate(() => {
+    const s = (window as any).__contextBranchScope;
+    return {
+      strategy: 'rebase', name: 'feature/partial-staging', repoId: s.repository.id,
+      review: { sourceBranch: 'feature/partial-staging', receivingBranch: 'main', receivingOid: s.repository.headOid,
+        sourceOid: s.repository.branches.find((branch: any) => branch.name === 'feature/partial-staging').oid },
+    };
+  });
+  await dialog.getByRole('button', { name: 'Rebase', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch')))
+    .toMatchObject([{ args: expected }]);
+});
+
 for (const change of ['repository', 'path']) {
   test(`context branch creation rejects a pre-effect ${change} change`, async ({ page }) => {
     await open(page);

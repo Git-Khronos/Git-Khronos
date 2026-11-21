@@ -3152,6 +3152,16 @@ SHA-256 `9d22a1fb6e3f207463ff1e67f27e432d1c32a60006c6f0decf48ac4ff573646a`.
 Evidence is under `target/local-review/updater/jammy-builder/safe-integration-release.7M68nsCX/`.
 This is focused evidence, not full qualification of that or later packages.
 
+An installed replay on that same `ca3a347` package reproduced a separate
+context-menu rebase bug: with Git's `rebase.updateRefs` enabled, confirming a
+rebase also moved an unreviewed sibling branch. The renderer now sends the
+frozen branch pair through the existing reviewed native command, which
+leaves the sibling unchanged and retains the user's Git setting. Three
+browser regressions failed on the old renderer, then all 69 focused
+browser checks and the production build passed on the fix. The installed
+sibling-preservation check is required for future release candidates; the
+updated package's installed evidence is not yet available.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

@@ -442,12 +442,14 @@ interface PendingBisectStart {
   badLabel: string;
 }
 
-interface PendingBranchAction extends RepositoryReviewScope {
-  kind: 'rebase' | 'delete';
+type BranchAction = { kind: 'rebase'; branch: string; integration: ContextBranchIntegration } | {
+  kind: 'delete';
   branch: string;
   /** Set after Git refused a safe delete; confirming then force-deletes the branch. */
   unmerged?: boolean;
-}
+};
+
+type PendingBranchAction = RepositoryReviewScope & BranchAction;
 
 interface PendingBranchUpstream {
   repositoryId: string;
@@ -3510,7 +3512,8 @@ export class AppComponent implements OnInit, OnDestroy {
     remoteUpstreamBranches: this.remoteUpstreamBranches,
     renameContextBranch: this.renameContextBranch.bind(this),
     requestBisectFromContext: this.requestBisectFromContext.bind(this),
-    requestBranchAction: this.requestBranchAction.bind(this),
+    requestContextBranchDelete: this.requestContextBranchDelete.bind(this),
+    requestContextRebase: this.requestContextRebase.bind(this),
     requestBranchUpstream: this.requestBranchUpstream.bind(this),
     requestHistoryAction: this.requestHistoryAction.bind(this),
     requestReferenceAction: this.requestReferenceAction.bind(this),
@@ -13816,30 +13819,52 @@ export class AppComponent implements OnInit, OnDestroy {
     integration: ContextBranchIntegration,
   ): Promise<void> {
     if (this.contextMenu()?.integration !== integration || this.git.busy()) return;
+    this.actionOverlays.close('context');
+    await this.applyContextIntegration(strategy, integration);
+  }
+
+  private contextIntegrationMatches(integration: ContextBranchIntegration): boolean {
     const repository = this.git.repository();
     const review = integration.review;
-    this.actionOverlays.close('context');
-    if (integration.scope !== this.git.activeRepositoryReadScope()
-      || !this.reviewedBranchPairMatches(review)
-      || repository?.status.branch !== review.target
-      || repository.headOid !== review.targetOid) {
+    return integration.scope === this.git.activeRepositoryReadScope()
+      && repository?.status.branch === review.target
+      && repository.headOid === review.targetOid
+      && this.reviewedBranchPairMatches(review);
+  }
+
+  private async applyContextIntegration(
+    strategy: 'merge' | 'ff-only' | 'squash' | 'rebase', integration: ContextBranchIntegration,
+  ): Promise<void> {
+    if (!this.contextIntegrationMatches(integration)) {
       this.git.error.set('The repository, receiving checkout, or source branch changed. Open the branch menu again.');
       return;
     }
+    const review = integration.review;
     await this.git.integrateBranch(review.source, strategy, {
       receivingBranch: review.target, receivingOid: review.targetOid,
       sourceBranch: review.source, sourceOid: review.sourceOid,
     });
   }
 
-  protected requestBranchAction(kind: PendingBranchAction['kind']): void {
+  protected requestContextRebase(integration: ContextBranchIntegration): void {
+    if (this.contextMenu()?.integration !== integration || this.git.busy()) return;
+    const returnFocus = this.contextMenuReturnFocus;
+    this.dismissGraphActionMenu();
+    if (!this.contextIntegrationMatches(integration)) {
+      this.git.error.set('The repository, receiving checkout, or source branch changed. Open the branch menu again.');
+      return;
+    }
+    this.openBranchConfirmation({ kind: 'rebase', branch: integration.review.source, integration }, returnFocus);
+  }
+
+  protected requestContextBranchDelete(): void {
     const menu = this.contextMenu();
     const repository = this.git.repository();
     if (!menu || menu.kind !== 'branch' || !repository || menu.repositoryId !== repository.id || menu.label === repository.status.branch) return;
     const returnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
     this.forceBranchDelete.set(false);
-    this.openBranchConfirmation({ kind, branch: menu.label }, returnFocus);
+    this.openBranchConfirmation({ kind: 'delete', branch: menu.label }, returnFocus);
   }
 
   protected requestStoredReferenceDelete(): void {
@@ -13920,7 +13945,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const action = this.pendingBranchAction();
     if (!action || action !== expected || !this.ownsRepositoryScope(action) || this.git.busy()) return;
     if (action.kind === 'rebase') {
-      await this.git.integrateBranch(action.branch, 'rebase');
+      await this.applyContextIntegration('rebase', action.integration);
       if (this.pendingBranchAction() === action && this.ownsRepositoryScope(action)) this.dismissBranchConfirmation(false, action);
       return;
     }
@@ -14202,7 +14227,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private openBranchConfirmation(
-    action: Pick<PendingBranchAction, 'kind' | 'branch' | 'unmerged'>,
+    action: BranchAction,
     returnFocus: HTMLElement | null = null,
   ): void {
     const owner = this.captureRepositoryEditorOwner();

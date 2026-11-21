@@ -697,12 +697,15 @@ mutation lock. It rechecks the reviewed receiver after the preflight and still
 integrates the exact reviewed source commit. These checks do not lock external
 Git clients or file edits between the preflight and Git startup. The
 ignored-file preflight does not apply to rebase or Pull integrations.
-Direct merge, squash, and fast-forward from the branch context menu carry a
+Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating
 with a refresh. The renderer refuses a changed checkout or tip before
 dispatch; native checks the same identities against Git. A detached or
-unborn checkout does not offer these direct integrations.
+unborn checkout does not offer these direct integrations. The rebase
+confirmation retains the same review rather than resampling the current
+checkout, and native replay does not update sibling branch refs even if
+Git's `rebase.updateRefs` is enabled.
 
 ### Commit rewrite review ownership
 

@@ -2348,11 +2348,11 @@
       <section #branchConfirmationDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="branch-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleBranchConfirmationKeydown($event, action)">
         <div class="confirmation-icon" [class.danger]="action.kind === 'delete'"><gc-icon [name]="action.kind === 'delete' ? 'trash' : 'refresh'" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase ' + (git.repository()?.status?.branch ?? 'current branch') + ' onto' }}</span>
+          <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase ' + action.integration.review.target + ' onto' }}</span>
           <h2 id="branch-confirmation-title">{{ action.branch }}</h2>
           <p class="form-help repository-editor-source">Checkout: <code>{{ action.repositoryPath }}</code></p>
           @if (action.kind === 'rebase') {
-            <p>This rewrites commits by rebasing {{ git.repository()?.status?.branch }} onto {{ action.branch }}.</p>
+            <p>This rewrites commits by rebasing {{ action.integration.review.target }} onto {{ action.branch }}.</p>
             <p>Your commits are replayed on top of {{ action.branch }} and get new IDs. If they were already pushed, collaborators will need to update. If a conflict stops the rebase, resolve it and continue, or abort to go back.</p>
           } @else if (action.unmerged) {
             <p class="unmerged-branch-warning"><gc-icon name="warning" [size]="14" />This branch has commits that are not merged into its upstream or the current branch.</p>
