@@ -184,6 +184,20 @@ test('the installed rewrite review needs both the stale refusal and the real edi
   }
 });
 
+test('GitLab catalogue-only evidence cannot qualify an installed platform without fork restart recovery', () => {
+  const fixtures = matrixFixtures();
+  const forkRestart = 'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay';
+  for (const gitlab of fixtures.filter(report => report.suite === 'gitlab')) {
+    const partial = { ...gitlab, scenarios: gitlab.scenarios.filter(scenario => scenario !== forkRestart) };
+    // Reported success on this and every other platform is not a substitute.
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== gitlab), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(({ distribution, suite }) => ({
+      distribution, suite,
+    })), [{ distribution: gitlab.linuxDistribution, suite: 'gitlab' }]);
+  }
+});
+
 test('the release matrix refuses incomplete watcher, trust, and incoming-link reports', () => {
   const fixtures = matrixFixtures().map(report => {
     if (report.suite === 'watcher-refresh') return { ...report, scenarios: ['ordinary-smoke'] };

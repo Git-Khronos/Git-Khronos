@@ -13,7 +13,10 @@ const MAX_REPORTS = 512;
 const MAX_DISCOVERY_DEPTH = 12;
 const MAX_DISCOVERY_ENTRIES = 10_000;
 const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository';
-const GITLAB_SCENARIO = 'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree';
+const GITLAB_SCENARIOS = [
+  'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree',
+  'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay',
+];
 
 // Keep the local checklist aligned with linux-package-acceptance.yml. It
 // checks retained runtime evidence, not the hosted job or publisher key.
@@ -62,7 +65,7 @@ const UBUNTU_NOBLE_REVIEWS = [
 
 const RELEASE_MATRIX = [
   ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIO],
-  ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIO],
+  ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIOS],
   ['ubuntu', '22.04', 'watcher-refresh', [
     'native-packed-ref-refresh-replays-read-after-held-status',
     'native-loose-ref-refresh-converges-during-continuous-watcher-events',
@@ -74,14 +77,14 @@ const RELEASE_MATRIX = [
     'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
   ], true],
   ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
-  ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIO],
+  ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIOS],
   ...UBUNTU_NOBLE_REVIEWS.map(([suite, scenarios]) => ['ubuntu', '24.04', suite, scenarios]),
   ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
-  ['ubuntu', '26.04', 'gitlab', GITLAB_SCENARIO],
+  ['ubuntu', '26.04', 'gitlab', GITLAB_SCENARIOS],
   ['debian', '12', 'incoming-links', 'native-incoming-cold-saved-promisor-restoration-and-patch-read-never-fetch-with-independent-positive-control', true],
-  ['debian', '12', 'gitlab', GITLAB_SCENARIO],
+  ['debian', '12', 'gitlab', GITLAB_SCENARIOS],
   ['debian', '13', 'smoke', SMOKE_SCENARIO],
-  ['debian', '13', 'gitlab', GITLAB_SCENARIO],
+  ['debian', '13', 'gitlab', GITLAB_SCENARIOS],
 ];
 
 export async function expandAcceptanceReports(args) {

@@ -2611,3 +2611,26 @@ latency benchmark.
 All 93 selected renderer cases passed, including held/failed/retired imports,
 compact layout, keyboard routing, stale control refusal and valid setup writes.
 The build and renderer evidence is under `target/local-review/setup-deferral/`.
+
+## GitLab catalogue restart and exact-package recheck — 2026-11-21
+
+The original Ubuntu 24.04 run of the `e3ccb77` installer did not open the
+Clone tab after WebDriver acknowledged the entry click. Separate observations
+showed the old harness choosing the transient welcome action while the saved
+workspace was still restoring. They did not reproduce the original failed
+delivery. The harness now waits for the painted workspace toolbar button and
+only reacquires it after an explicit stale-element refusal. A click without
+the resulting dialog remains a failure, not a reason to click again.
+
+Two independent Ubuntu 24.04 installs of the same `Git-Khronos_0.1.6_amd64.deb`
+passed all 47 GitLab scenarios each with the revised harness. The exact
+installer SHA-256 is
+`b50ec3a33ab34c8927e53bfb38ea6c32ac5bf2876c0f1af1606e628a2e9faa9e`.
+The strict local release verifier passed all 28 checks, including the new
+explicit fork restart recovery requirement on all five userspaces. The
+original failure remains in `deferred-editor-release.5F54Lmes/noble-smoke/`
+under `target/local-review/updater/jammy-builder/`; the separate passing
+reports and `verified-release-fork-restart.json` are under
+`target/local-review/gitlab-restored-entry.4SdfGShs/`.
+This qualifies those package bytes with a fixture public key only. It does
+not qualify later app changes, sign an update or publish a release.

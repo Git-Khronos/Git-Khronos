@@ -418,6 +418,10 @@ requires its SHA-256 to equal the package's extracted executable. Repositories,
 profile, Xvfb display and session bus remain private fixtures. Reports retain
 the package/executable hashes, actual executable path, runtime platform and
 Linux userspace distribution separately (a container may share the host kernel).
+The GitLab release check requires both catalogue read-only preservation and
+fork recovery after a real app restart without replaying credentials or the
+provider request. The installed fork scenario waits for the restored workspace
+toolbar before clicking, rather than using the transient startup launcher.
 On Debian 12, the incoming-link suite includes smoke and also verifies cold
 saved-tab restoration with the distribution's Git 2.39 and an inherited Git
 context. Acceptance is not limited to the newer Git used by the Jammy builder.
