@@ -70,23 +70,26 @@ for ABI and runtime gates.
 
 ### Debian
 
-**Debian 12 (Bookworm) and Debian 13 (Trixie) are pending exact-artifact CI
-qualification.** Do not treat Debian as supported until both release jobs pass
-with the same Jammy-built package, including the real APT dependency install and
-installed-app acceptance. In particular, Trixie's `libssl3t64` must satisfy the
-package dependency. No Debian runtime qualification has been performed locally.
+Debian 12 (Bookworm) and Debian 13 (Trixie) are release qualification targets.
+Local candidate checks have passed both distributions, including real APT
+installation and native app tests. That does not qualify other package bytes:
+verify that both hosted release jobs passed for the exact public installer
+before relying on it on Debian.
 
 ### Installer options
 
 ```bash
 bash install.sh --version <version>  # install a specific published release
+bash install.sh --deb ./Git-Khronos.deb --dry-run  # preview an existing local package
 bash install.sh --deb ./Git-Khronos.deb
 bash install.sh --from-source
 bash install.sh --uninstall
 ```
 
 Run `bash install.sh --help` for all options. The source-build and local-package
-paths are not a substitute for release qualification.
+paths are not a substitute for release qualification. For a local package,
+check its SHA-256 against the candidate's build receipt before previewing or
+installing it.
 
 ## Quick start
 

@@ -373,7 +373,9 @@ qualification targets in the reusable workflow. This change does not itself
 establish Debian support: claim it only after both Debian jobs pass on the same
 artifact and their reports are retained. GitHub does not provide Debian-hosted
 runners, so those jobs run in official Debian container images on an Ubuntu
-hosted runner. No Debian runtime qualification was performed locally.
+hosted runner. Retained [local candidate results](production-readiness.md#full-late-clone-package-matrix--2026-11-21)
+include passing exact-artifact checks on both Debian releases. These checks
+do not establish that a different or publicly released build passed.
 
 Debian's release package data shows Bookworm's glibc 2.36 and Git 1:2.39.5,
 and Trixie's glibc 2.41 and Git 1:2.47.3; both meet the package's glibc 2.35
