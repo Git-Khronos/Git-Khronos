@@ -94,11 +94,7 @@ pub(super) fn content_git(
     args: &[&str],
     limit: usize,
 ) -> Result<(Output, bool), AppError> {
-    // Fetch-free inspection must fail closed on Git versions without this flag.
-    let mut guarded = Vec::with_capacity(args.len() + 1);
-    guarded.push("--no-lazy-fetch");
-    guarded.extend_from_slice(args);
-    run_git_with_stdout_limit(path, &guarded, limit)
+    without_lazy_fetch(|| run_git_with_stdout_limit(path, args, limit))
 }
 
 pub(super) fn metadata_git(path: &Path, args: &[&str]) -> Result<Vec<u8>, AppError> {

@@ -239,6 +239,17 @@ diff disappearance alone cannot complete that gate. Regression tests evaluate
 that predicate against pending, unrelated and hidden feedback using the already
 required Node runtime. No native write is replayed and no timeout is increased.
 
+## Focused incoming-link restart acceptance
+
+Use `--suite incoming-links --inherited-git-environment --headless --package "$package"`
+with `tools/native_acceptance.py` to isolate existing-process delivery and a cold
+start from a saved workspace. The restart must render the expected repository
+and commit, not merely any graph rows. An owned missing-object control proves
+that ordinary Git would call its configured helper; guarded restoration and
+patch inspection must not call it. A timeout retains the failing view before
+fixture cleanup reopens the original repository. On a disposable installed
+runner, add `--installed` to check the same package bytes used by the full suite.
+
 ## Prerequisites
 
 - the pinned Node, pnpm, and Rust toolchains;

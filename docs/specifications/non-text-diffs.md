@@ -95,8 +95,9 @@ Payloads are bounded to 8 MiB per side, Git entry metadata to 64 KiB, and input
 paths to 16 KiB. File bytes are excluded from the type's debug output and are not
 added to the general repository snapshot or serialized automatically.
 
-Every Git inspection uses `--no-lazy-fetch`. Unsupported Git versions fail closed
-rather than fall back to fetching; compatibility with older Git remains open.
+Every Git inspection uses the shared fetch-free read scope. An empty protocol
+allowlist blocks promisor transport on older supported Git, without requiring
+the newer `--no-lazy-fetch` switch.
 The partial-clone fixture proves that an ordinary Git read would call its owned
 local upload helper, while this reader leaves both the missing object and index
 unchanged. No provider or external network is involved. No new dependency or

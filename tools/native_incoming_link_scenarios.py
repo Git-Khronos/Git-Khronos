@@ -1,4 +1,5 @@
 """Own-scheme startup and singleton delivery through the exact packaged executable."""
+from contextlib import suppress
 import json
 import shlex
 from pathlib import Path
@@ -192,7 +193,27 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         report.setdefault('applicationRestarts', []).append(restart | dict(incomingLink=True))
         wait_count(1)
         report['incomingLinkStorageAfterRestart'] = driver.script("return { tabs: localStorage.getItem('git-khronos.open-repositories.v1'), layouts: localStorage.getItem('git-khronos.workspaces.v1'), active: localStorage.getItem('git-khronos.active-workspace.v1') }")
-        driver.wait("return document.querySelectorAll('.commit-row[data-commit-oid]').length > 0", 60)
+        try:
+            driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === '
+                        + json.dumps(str(repository))
+                        + ' && !!document.querySelector(' + json.dumps(f'.commit-row[data-commit-oid="{head}"]') + ')', 60)
+        except TimeoutError:
+            # The outer failure screenshot is taken after our cleanup reopens the
+            # original repository. Preserve evidence from the failing view here.
+            with suppress(RuntimeError, OSError):
+                report['incomingLinkRestoreFailure'] = driver.script("""
+                  return {
+                    path: document.querySelector('.status-repository-path')?.textContent.trim() ?? null,
+                    tabs: [...document.querySelectorAll('[data-repository-tab-id]')].map(tab => tab.textContent.trim()),
+                    hasCommitRows: !!document.querySelector('.commit-row[data-commit-oid]'),
+                    inboxDisabled: document.querySelector('.incoming-link-inbox')?.disabled ?? null,
+                    restoreMessage: document.querySelector('.error-toast')?.textContent.trim() ?? null,
+                    status: document.querySelector('[data-git-operation-status]')?.textContent.trim() ?? null
+                  };
+                """)
+            with suppress(RuntimeError, OSError):
+                driver.screenshot(Path(report['artifactsDirectory']) / 'incoming-link-cold-restore-failure.png')
+            raise
         assert driver.script("return localStorage.getItem('git-khronos.open-repositories.v1')") == tabs
         assert snapshot()['requests'][0]['payload']['uri'] == uri
         driver.wait('return !document.querySelector(".incoming-link-inbox")?.disabled', 60)

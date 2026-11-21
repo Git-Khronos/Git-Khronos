@@ -137,8 +137,13 @@ URL delivery. G28 remains open.
 
 ## Composed fetch-free read checkpoint
 
-A scoped core policy now applies Git's no-lazy-fetch flag to composed reads on
-one worker without changing the process environment. Nested scopes and unwinding
+The scoped core policy sets `GIT_NO_LAZY_FETCH=1` and an empty
+`GIT_ALLOW_PROTOCOL` for composed local Git commands. Git 2.43 rejects the
+newer `--no-lazy-fetch` switch; the protocol allowlist also keeps older Git
+from contacting a promisor, including when repository configuration allows
+that protocol. Explicit authenticated transport keeps the user's existing
+protocol policy, not the local reader's empty list. The process environment is
+unchanged. Nested scopes and unwinding
 restore the preceding policy. Snapshot reads stay on that worker in this mode,
 so the policy and cancellation context cannot be lost in their usual parallel
 lanes. Normal snapshots retain their existing parallel behavior. The scope does

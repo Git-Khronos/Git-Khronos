@@ -383,6 +383,16 @@ fn repository_link_inspection_missing_promised_object_never_fetches_or_changes_i
 }
 
 #[test]
+fn no_lazy_fetch_scope_can_open_a_saved_local_repository() {
+    let f = Fixture::new();
+    f.commit();
+    let head = f.git(&["rev-parse", "HEAD"]);
+    let data = without_lazy_fetch(|| snapshot(&f.repo)).unwrap();
+    assert_eq!(data.commits.first().unwrap().oid, head);
+    assert!(!data.status.branch.as_deref().unwrap().is_empty());
+}
+
+#[test]
 #[cfg(unix)]
 fn no_lazy_fetch_scopes_are_reentrant_and_restore_behavior_after_unwinding() {
     for outer_panic in [false, true] {

@@ -1740,7 +1740,8 @@ No vendor implementation, proprietary URL grammar or third-party source was copi
 
 ## Composed fetch-free Git reads
 
-- https://git-scm.com/docs/git (`--no-lazy-fetch` behavior)
+- https://git-scm.com/docs/git (`--no-lazy-fetch` and `GIT_NO_LAZY_FETCH` equivalence)
+- https://git-scm.com/docs/git/2.39.0 (`GIT_ALLOW_PROTOCOL` overrides configured protocols)
 
 Used for a project-created, thread-scoped inspection policy and its independently
 written local-promisor tests. Explicit fetch remains a separate user operation.

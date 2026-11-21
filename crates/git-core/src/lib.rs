@@ -9041,9 +9041,19 @@ pub const GIT_CONTEXT_ENVIRONMENT_VARIABLES: [&str; 9] = [
 
 /// Starts a Git command scoped to `path`, the only way repository commands are spawned.
 pub(crate) fn git_in(path: &Path) -> Command {
+    git_command_for(path, false)
+}
+
+fn git_command_for(path: &Path, explicit_transport: bool) -> Command {
     let mut command = Command::new("git");
     if no_lazy_fetch::enabled() {
-        command.arg("--no-lazy-fetch");
+        // Older supported Git rejects the command-line flag. The environment
+        // setting is ignored there, so deny all transports for local readers.
+        // Explicit fetch/push keep the caller's own protocol policy.
+        command.env("GIT_NO_LAZY_FETCH", "1");
+        if !explicit_transport {
+            command.env("GIT_ALLOW_PROTOCOL", "");
+        }
     }
     command.arg("-C").arg(path);
     working_tree_summary::configure_read_command(&mut command);
@@ -9149,7 +9159,7 @@ fn run_transport_with_stdout_limit(
     stdout_limit: Option<usize>,
 ) -> Result<(Output, bool), AppError> {
     authentication::validate_arguments(args)?;
-    let mut command = git_in(path);
+    let mut command = git_command_for(path, true);
     command.arg("-c").arg(if authentication::interactive() {
         "credential.interactive=true"
     } else {

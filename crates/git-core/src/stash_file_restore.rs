@@ -61,9 +61,8 @@ impl ScratchPatch {
         let file = self.file.as_mut().expect("private patch is open");
         file.seek(SeekFrom::End(0))
             .map_err(|error| refused(format!("Could not prepare the selected patch: {error}")))?;
-        let output = git_in(path)
+        let output = without_lazy_fetch(|| git_in(path))
             .args([
-                "--no-lazy-fetch",
                 "--literal-pathspecs",
                 "diff",
                 "--binary",
