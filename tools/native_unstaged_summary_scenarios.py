@@ -20,28 +20,35 @@ def unstaged_summary_workflow(driver, fixtures, report):
     files = ('fixture.txt', 'new-note.txt', 'binary.dat')
     before = checkout_footprint(fixtures, repository, files)
     open_ui(driver, repository)
-    recap = '.unstaged-section gc-working-tree-summary .summary'
+    def recaps(unstaged, staged):
+        # A live status refresh can temporarily replace either recap with the
+        # loading state. Match and capture both elements in the same DOM read.
+        expected = [
+            ('.unstaged-section gc-working-tree-summary .summary',
+             f'{unstaged[0]} additions and {unstaged[1]} deletions in unstaged files; 1 binary or uncounted files excluded'),
+            ('.staged-section gc-working-tree-summary .summary',
+             f'{staged[0]} additions and {staged[1]} deletions in staged files'),
+        ]
+        texts = driver.wait('''
+            const rows = ''' + json.dumps(expected) + ''';
+            const texts = [];
+            for (const [selector, label] of rows) {
+                const row = document.querySelector(selector);
+                if (!row?.getClientRects().length || row.getAttribute("aria-label") !== label) return null;
+                texts.push(row.textContent);
+            }
+            return texts;
+        ''')
+        for text, (additions, deletions) in zip(texts, (unstaged, staged), strict=True):
+            assert f'+{additions}' in text and f'−{deletions}' in text and 'partial' not in text, text
+        return texts
 
-    def counts(additions, deletions):
-        label = f'{additions} additions and {deletions} deletions in unstaged files; 1 binary or uncounted files excluded'
-        driver.wait('return document.querySelector(' + json.dumps(recap) + ')?.getAttribute("aria-label") === ' + json.dumps(label))
-        assert 'partial' not in driver.script('return document.querySelector(arguments[0]).textContent', recap)
-        return driver.script('return document.querySelector(arguments[0]).textContent', recap)
-
-    def staged_counts(additions, deletions):
-        label = f'{additions} additions and {deletions} deletions in staged files'
-        selector = '.staged-section gc-working-tree-summary .summary'
-        driver.wait('return document.querySelector(' + json.dumps(selector) + ')?.getAttribute("aria-label") === ' + json.dumps(label))
-        return driver.script('return document.querySelector(arguments[0]).textContent', selector)
-
-    initial = counts(4, 3)
-    initial_staged = staged_counts(1, 1)
+    initial, initial_staged = recaps((4, 3), (1, 1))
     assert checkout_footprint(fixtures, repository, files) == before
     report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial, 'initialStagedRecap': initial_staged}
     report['scenarios'].append('native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes')
     driver.click_visible('[aria-label="Stage fixture.txt"]')
-    after_stage = counts(2, 2)
-    after_staged = staged_counts(2, 1)
+    after_stage, after_staged = recaps((2, 2), (2, 1))
     assert fixtures.git(repository, 'show', ':fixture.txt') == 'unstaged\nretained\nextra'
     after = checkout_footprint(fixtures, repository, files)
     for key in ('head', 'branch', 'references', 'configSha256', 'files'):
