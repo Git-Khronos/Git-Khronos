@@ -283,7 +283,12 @@ focused suite both with the normal CI invocation and with inherited Git
 environment checks enabled. Those exact-artifact summaries and the
 baseline failure report are retained under
 `target/local-review/updater/jammy-builder/workspace-batch-stop.QCqMqMMd/`.
-This is a focused result, not full release qualification.
+The same package subsequently completed all 279 Ubuntu 22.04 environment
+scenarios and all 14 required release-matrix checks. The strict updater
+preflight accepted these exact installed bytes with the fixture publisher
+key. See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`
+in that directory. This local evidence does not qualify the later workspace
+locate or saved-path bulk removal changes or imply production signing.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
