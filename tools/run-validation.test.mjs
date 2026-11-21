@@ -1,12 +1,66 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
+import { processStart } from './validation-status.mjs';
 
 const launcher = fileURLToPath(new URL('./run-validation.mjs', import.meta.url));
+
+const readStatus = directory => JSON.parse(execFileSync(process.execPath,
+  [launcher, 'status', directory], { encoding: 'utf8' }));
+
+test('validation status verifies live ownership and the real final result', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-status-'));
+  const directory = join(root, 'evidence'), bin = join(root, 'bin'), permit = join(root, 'continue');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
+const fs = require('node:fs');
+const timer = setInterval(() => {
+  if (fs.existsSync(process.env.ALLOW_FINISH)) { clearInterval(timer); process.exit(7); }
+}, 10);
+`, { mode: 0o700 });
+  assert.equal(readStatus(directory).state, 'not-started');
+  const runner = spawn(process.execPath, [launcher, 'run', directory, 'run', 'desktop:fixture'], {
+    cwd: root, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ALLOW_FINISH: permit }, stdio: 'ignore',
+  });
+  const finished = new Promise(resolve => runner.once('exit', (code, signal) => resolve({ code, signal })));
+  t.after(async () => {
+    if (runner.exitCode === null && !runner.signalCode) runner.kill('SIGTERM');
+    await finished;
+    rmSync(root, { recursive: true, force: true });
+  });
+  for (let attempt = 0; attempt < 200 && !existsSync(join(directory, 'started.json')); attempt++) await delay(10);
+  const active = readStatus(directory);
+  assert.equal(active.state, 'running');
+  assert.equal(active.runnerPid, runner.pid);
+  assert.equal(active.runnerStart, processStart(runner.pid));
+  assert.equal(active.log, join(directory, 'output.log'));
+  writeFileSync(permit, '');
+  assert.deepEqual(await finished, { code: 7, signal: null });
+  const result = readStatus(directory);
+  assert.equal(result.state, 'failed');
+  assert.equal(result.exitCode, 7);
+  assert.equal(result.runnerStart, active.runnerStart);
+});
+
+test('validation status distinguishes waiting, stale ownership and unverified legacy receipts', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-status-ownership-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const receipt = join(root, 'preparing.json');
+  const runnerStart = processStart(process.pid);
+  writeFileSync(receipt, JSON.stringify({ runnerPid: process.pid, runnerStart }));
+  assert.equal(readStatus(root).state, 'preparing');
+  writeFileSync(receipt, JSON.stringify({ runnerPid: process.pid, runnerStart: runnerStart + '0' }));
+  assert.equal(readStatus(root).state, 'stopped-without-result');
+  writeFileSync(receipt, JSON.stringify({ runnerPid: process.pid }));
+  assert.equal(readStatus(root).state, 'unverified');
+  writeFileSync(join(root, 'result.json'), JSON.stringify({ exitCode: 143, signal: 'SIGTERM' }));
+  assert.equal(readStatus(root).state, 'interrupted');
+});
 
 test('named validations in one checkout cannot erase another run or caller-owned artifact files', () => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-isolation-'));

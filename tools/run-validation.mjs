@@ -1,15 +1,21 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, openSync, closeSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, openSync, closeSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
+import { processStart, validationStatus } from './validation-status.mjs';
 
 const [mode, runDirectory, ...args] = process.argv.slice(2);
 const useSnapshot = args[0] === '--snapshot';
 const snapshot = useSnapshot ? args.splice(0, 2)[1] : undefined;
-if (!runDirectory || !['start', 'run'].includes(mode)) {
-  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments]');
+if (!runDirectory || !['start', 'run', 'status'].includes(mode)) {
+  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status DIRECTORY');
+}
+if (mode === 'status') {
+  if (useSnapshot || args.length) throw new Error('status accepts only a run directory');
+  writeFileSync(process.stdout.fd, JSON.stringify(validationStatus(resolve(runDirectory)), null, 2) + '\n');
+  process.exit(0);
 }
 if (useSnapshot && (!snapshot || !args.length)) {
   throw new Error('--snapshot needs a Git ref followed by Nx arguments');
@@ -74,6 +80,17 @@ if (mode === 'start') {
       branch: gitValue(['symbolic-ref', '--short', '-q', 'HEAD']),
       status: gitValue(['status', '--porcelain=v1', '--untracked-files=normal']) };
   const started = new Date().toISOString();
+  const runner = { runnerPid: process.pid, runnerStart: processStart(process.pid) };
+  const writeReceipt = (name, data) => {
+    const destination = join(directory, name);
+    const temporary = `${destination}.${process.pid}.tmp`;
+    const file = openSync(temporary, 'wx', 0o600);
+    try {
+      try { writeFileSync(file, JSON.stringify(data, null, 2)); }
+      finally { closeSync(file); }
+      renameSync(temporary, destination);
+    } finally { rmSync(temporary, { force: true }); }
+  };
   const output = openSync(join(directory, 'output.log'), 'wx', 0o600);
   const controller = new AbortController();
   let interrupted;
@@ -85,9 +102,9 @@ if (mode === 'start') {
   let rendererPort;
   const finish = (exitCode, signal, error) => {
     closeSync(output);
-    writeFileSync(join(directory, 'result.json'), JSON.stringify({
-      command, source, started, rendererPort, finished: new Date().toISOString(), exitCode, signal, error,
-    }, null, 2), { mode: 0o600 });
+    writeReceipt('result.json', {
+      ...runner, command, source, started, rendererPort, finished: new Date().toISOString(), exitCode, signal, error,
+    });
     process.exitCode = exitCode ?? 1;
   };
   let outcome;
@@ -102,9 +119,7 @@ if (mode === 'start') {
   };
   try {
     if (commit) {
-      writeFileSync(join(directory, 'preparing.json'), JSON.stringify({
-        runnerPid: process.pid, command, source, started,
-      }, null, 2), { mode: 0o600 });
+      writeReceipt('preparing.json', { ...runner, command, source, started });
       const archive = join(directory, 'snapshot.tar');
       mkdirSync(commandCwd);
       await prepare('Exporting committed source', 'git', [...gitArgs, 'archive', '--format=tar',
@@ -121,9 +136,7 @@ if (mode === 'start') {
     const result = await runOwnedCommand(command[0], command.slice(1), {
       ...ownedOptions,
       onSpawn(child) {
-        writeFileSync(join(directory, 'started.json'), JSON.stringify({
-          runnerPid: process.pid, childPid: child.pid, command, source, started, rendererPort,
-        }, null, 2), { mode: 0o600 });
+        writeReceipt('started.json', { ...runner, childPid: child.pid, command, source, started, rendererPort });
       },
     });
     outcome = [result.code, result.signal, undefined];

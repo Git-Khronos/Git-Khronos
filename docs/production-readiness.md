@@ -2183,6 +2183,14 @@ server during startup of the other. Set `PLAYWRIGHT_PORT` explicitly only
 when the port is deliberately owned by that run. Port selection samples an
 available port; it does not reserve it against unrelated processes.
 
+Inspect a long-running named validation with
+`node tools/run-validation.mjs status <run-directory>`. The JSON receipt
+distinguishes source preparation, a verified live runner, and a final
+result. A retired process with no result is not a pass, and an older live
+receipt without process-start identity is reported as unverified. Reading
+status never starts, restarts, or interrupts a validation. Receipts are
+written atomically so a poll does not read a partial result.
+
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
 The corrected browser-side wait keeps the same three-second readiness deadline
@@ -3185,6 +3193,17 @@ recovery ref namespace reproduced loss of the checkout on the older
 The corrected operation leaves the directory and registration intact. A
 separate fixture refuses branch deletion after checkout removal and verifies
 that the partial outcome is reported and the recovery commit survives.
+
+The previous `4b10b95` package finished its pinned Linux matrix with
+37 required gates and 52 passing reports (SHA-256
+`e24c5391779586eb3b3eceb1dcbf8f464200cbdf97f86567a7e3085126f8ecdb`).
+It predates the later rebase, branch deletion, and worktree recovery fixes.
+The `d52b711` package then passed all seven focused checkout cases,
+including the installed sibling-branch rebase regression. Its SHA-256
+is `c4b2dba8066150b9353c4eb04a98939d64d8506bf472e012068bcc81a82c5124`.
+Neither receipt qualifies the combined `02ff4a7` package; that revision
+passed all source and package-tool tests, but its own installed matrix and
+full browser suite are separate, unfinished validations.
 
 ### Packaged GitLab TLS fixture readiness
 
