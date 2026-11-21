@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 from urllib.error import URLError
 
+from native_acceptance import Driver
 from native_gitlab_fork_scenarios import _open_repository_dialog
 
 
@@ -16,16 +17,18 @@ class CatalogueEntryTests(unittest.TestCase):
         driver = MagicMock()
         driver.script.side_effect = elements
         driver.path.side_effect = lambda suffix: '/session/owned/' + suffix
+        driver.wait.side_effect = lambda *args: Driver.wait(driver, *args)
         return driver
 
-    def test_success_clicks_once_with_a_real_webdriver_request(self):
-        driver = self.driver({ELEMENT: 'welcome'})
+    def test_success_clicks_painted_toolbar_control_once_with_a_real_webdriver_request(self):
+        driver = self.driver({ELEMENT: 'tab'})
         _open_repository_dialog(driver)
-        driver.request.assert_called_once_with('POST', '/session/owned/element/welcome/click', {})
+        driver.request.assert_called_once_with('POST', '/session/owned/element/tab/click', {})
         driver.script.assert_called_once()
         script = driver.script.call_args.args[0]
-        self.assertIn('New repository tab', script)
-        self.assertIn('gc-welcome-launcher button', script)
+        self.assertIn('.tabbar [aria-label="New repository tab"]', script)
+        self.assertIn('elementFromPoint', script)
+        self.assertNotIn('gc-welcome-launcher', script)
         self.assertNotIn('.click(', script)
 
     def test_stale_refusal_reacquires_the_current_entry_for_both_error_shapes(self):
@@ -78,8 +81,10 @@ class CatalogueEntryTests(unittest.TestCase):
 
     def test_repeated_stale_refusals_stop_at_the_deadline(self):
         driver = self.driver({ELEMENT: 'outgoing'})
+        driver.wait.side_effect = None
+        driver.wait.return_value = {ELEMENT: 'outgoing'}
         driver.request.side_effect = RuntimeError(json.dumps({'error': 'stale element reference'}))
-        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 0, 30]), \
+        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 30]), \
                 patch('native_gitlab_fork_scenarios.time.sleep'):
             with self.assertRaises(TimeoutError):
                 _open_repository_dialog(driver)
@@ -87,7 +92,7 @@ class CatalogueEntryTests(unittest.TestCase):
 
     def test_missing_control_stops_at_the_deadline_without_clicking(self):
         driver = self.driver(None)
-        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 0, 30]), \
+        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 0, 0, 30]), \
                 patch('native_gitlab_fork_scenarios.time.sleep'):
             with self.assertRaises(TimeoutError):
                 _open_repository_dialog(driver)

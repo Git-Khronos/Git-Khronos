@@ -7,29 +7,39 @@ import uuid
 from native_webdriver_errors import stale_element_refusal
 
 
+_RESTORED_REPOSITORY_ENTRY = """const button = document.querySelector('.tabbar [aria-label="New repository tab"]');
+  if (!button || !button.getClientRects().length || getComputedStyle(button).visibility !== 'visible'
+    || button.matches(':disabled') || button.closest('[inert]')) return null;
+  const rect = button.getBoundingClientRect();
+  const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+  const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+  return right > left && bottom > top
+    && button.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2)) ? button : null;"""
+
+
 def _open_repository_dialog(driver, timeout=30):
-    """Reacquire replaced entry controls; never replay an uncertain click."""
+    """Enter from the restored workspace, never from the startup launcher."""
+    # Fork scenarios already have saved repositories, including after restart.
+    # The welcome Clone button can disappear between pointer press and release
+    # when restoration finishes. WebDriver can acknowledge the click anyway.
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        element = driver.script("""const visible = e => e.getClientRects().length
-          && getComputedStyle(e).visibility === 'visible'
-          && !e.matches(':disabled') && !e.closest('[inert]');
-          return [...document.querySelectorAll('[aria-label="New repository tab"]')].find(visible)
-            || [...document.querySelectorAll('gc-welcome-launcher button')].find(e =>
-              visible(e) && e.querySelector('strong')?.textContent.trim() === 'Clone repository')
-            || null;""")
-        if element:
-            identifier = element['element-6066-11e4-a52e-4f735466cecf']
-            try:
-                driver.request('POST', driver.path('element/' + identifier + '/click'), {})
-                return
-            except RuntimeError as error:
-                # Both HTTP-error envelopes and successful HTTP error values
-                # occur in Driver.request. Only explicit stale refusal is safe.
-                if not stale_element_refusal(error):
-                    raise
-        time.sleep(0.1)
-    raise TimeoutError('Repository dialog entry control did not remain available for a click')
+    remaining = timeout
+    while remaining > 0:
+        element = driver.wait(_RESTORED_REPOSITORY_ENTRY, remaining)
+        identifier = element['element-6066-11e4-a52e-4f735466cecf']
+        try:
+            driver.request('POST', driver.path('element/' + identifier + '/click'), {})
+            return
+        except RuntimeError as error:
+            # Read-only readiness polling is safe. Only an explicit stale
+            # refusal permits reacquiring and clicking a replacement control.
+            if not stale_element_refusal(error):
+                raise
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(0.1, remaining))
+            remaining = deadline - time.monotonic()
+    raise TimeoutError('Restored repository dialog entry control did not remain available for a click')
 
 
 def gitlab_reviewed_forks(driver, fixtures, repository, report):
