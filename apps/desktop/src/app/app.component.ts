@@ -107,6 +107,7 @@ import { MergeRebaseDialogComponent, type MergeRebaseDialogState } from './merge
 import { GitDocumentationDialogComponent } from './git-documentation-dialog.component';
 import { GitDocumentationService } from './git-documentation.service';
 import { CommitPolicyFieldsComponent } from './commit-policy-fields.component';
+import { CoauthorPickerComponent } from './coauthor-picker.component';
 import { CommitTemplateBannerComponent } from './commit-template-banner.component';
 import { CommitSignatureComponent } from './commit-signature.component';
 import { CommitEditFormComponent, type CommitEditFieldChange, type CommitEditFormView } from './commit-edit-form.component';
@@ -675,7 +676,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -7424,7 +7425,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected coAuthorSuggestions(): CoAuthor[] {
+  protected readonly coAuthorSuggestions = computed(() => {
     const selected = new Set(this.coAuthors().map((author) => author.email.toLowerCase()));
     const authors = new Map<string, CoAuthor>();
     for (const commit of this.git.repository()?.commits ?? []) {
@@ -7432,8 +7433,10 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!email || selected.has(email.toLowerCase())) continue;
       authors.set(email.toLowerCase(), { name: commit.authorName.trim(), email });
     }
-    return [...authors.values()].slice(0, 6);
-  }
+    return [...authors.values()].slice(0, 6).map(author => ({
+      ...author, initials: this.initials(author.name), color: this.authorColor(author.name, author.email),
+    }));
+  });
 
   protected toggleCoAuthorPicker(event: MouseEvent): void {
     event.stopPropagation();

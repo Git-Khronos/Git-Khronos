@@ -1401,7 +1401,7 @@
                   }
                 </div>
               }
-              <button class="add-coauthor" type="button" [attr.aria-expanded]="coAuthorPickerOpen()" (click)="toggleCoAuthorPicker($event)"><gc-icon name="plus" [size]="11" /> Add co-author</button>
+              <button #coAuthorToggle class="add-coauthor" type="button" [attr.aria-expanded]="coAuthorPickerOpen()" (click)="toggleCoAuthorPicker($event)"><gc-icon name="plus" [size]="11" /> Add co-author</button>
               <details #commitPolicyDetails class="commit-policy" (toggle)="commitPolicyOpen.set(commitPolicyDetails.open)">
                 <summary aria-label="Commit policy options">Commit policy</summary>
                 @defer (when commitPolicyOpen()) {
@@ -1416,27 +1416,19 @@
               </details>
               @if (coAuthorPickerOpen()) {
                 <div class="coauthor-picker">
-                  <header><strong>Add co-author</strong><small>Creates a Co-authored-by trailer</small></header>
-                  @if (coAuthorSuggestions().length) {
-                    <div class="coauthor-suggestions">
-                      <small>Repository authors</small>
-                      @for (author of coAuthorSuggestions(); track author.email) {
-                        <button type="button" (click)="addSuggestedCoAuthor(author)"><span class="avatar" [style.--author-color]="authorColor(author.name, author.email)">{{ initials(author.name) }}</span><span><strong>{{ author.name }}</strong><small>{{ author.email }}</small></span><gc-icon name="plus" [size]="10" /></button>
-                      }
+                  @defer (on immediate) {
+                    <gc-coauthor-picker [suggestions]="coAuthorSuggestions()"
+                      [name]="coAuthorName()" [email]="coAuthorEmail()" [canAdd]="canAddManualCoAuthor()"
+                      (nameChanged)="coAuthorName.set($event)" (emailChanged)="coAuthorEmail.set($event)"
+                      (suggested)="addSuggestedCoAuthor($event)" (added)="addManualCoAuthor()" />
+                  } @placeholder {
+                    <p class="coauthor-picker-feedback" role="status">Loading co-author picker…</p>
+                  } @error {
+                    <div class="coauthor-picker-feedback">
+                      <p role="alert">Co-author picker could not load. The commit draft is unchanged. Restart to retry.</p>
+                      <button type="button" (click)="coAuthorPickerOpen.set(false); coAuthorToggle.focus()">Close</button>
                     </div>
                   }
-                  <div class="manual-coauthor">
-                    <small>Other contributor</small>
-                    <label class="manual-coauthor-field">
-                      <span>Name</span>
-                      <input name="coAuthorName" autocomplete="name" [gcTextValue]="coAuthorName()" (gcTextValueChange)="coAuthorName.set($event)" />
-                    </label>
-                    <label class="manual-coauthor-field">
-                      <span>Email</span>
-                      <input type="email" name="coAuthorEmail" autocomplete="email" inputmode="email" spellcheck="false" placeholder="email@example.com" [gcTextValue]="coAuthorEmail()" (gcTextValueChange)="coAuthorEmail.set($event)" />
-                    </label>
-                    <button type="button" [disabled]="!canAddManualCoAuthor()" (click)="addManualCoAuthor()">Add co-author</button>
-                  </div>
                 </div>
               }
             </div>
