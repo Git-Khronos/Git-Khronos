@@ -230,6 +230,13 @@ interface CoAuthor {
   email: string;
 }
 
+interface CommitEditReview {
+  readonly checkoutScope: string;
+  readonly branch: string | null;
+  readonly headOid: string;
+  readonly targetOid: string;
+}
+
 interface CommitDraft {
   readonly submission: object;
   summary: string;
@@ -938,8 +945,10 @@ export class AppComponent implements OnInit, OnDestroy {
       },
     };
   });
-  protected readonly commitMessageEditing = signal(false);
-  protected readonly editedCommitOid = signal<string | null>(null);
+  private readonly commitEditReview = signal<CommitEditReview | null>(null);
+  private readonly commitEditSubmitting = signal<CommitEditReview | null>(null);
+  protected readonly commitMessageEditing = computed(() => this.commitEditReview() !== null);
+  protected readonly editedCommitOid = computed(() => this.commitEditReview()?.targetOid ?? null);
   protected readonly editedCommitAuthorName = signal('');
   protected readonly editedCommitAuthorEmail = signal('');
   protected readonly editedCommitSummary = signal('');
@@ -2221,6 +2230,14 @@ export class AppComponent implements OnInit, OnDestroy {
         const mergeRebase = this.mergeRebaseReview();
         if (mergeRebase && mergeRebase.checkoutScope !== scope) this.mergeRebaseReview.set(null);
       });
+    });
+    effect(() => {
+      const review = this.commitEditReview();
+      // The captured HEAD may change as a result of this very submission.
+      // Its completion still belongs to this editor only on the same checkout.
+      if (review && !this.ownsCommitEdit(review, this.commitEditSubmitting() !== review)) {
+        untracked(() => this.cancelCommitMessageEdit());
+      }
     });
     this.applyAppTheme(this.appTheme());
     afterNextRender(() => {
@@ -10224,20 +10241,27 @@ export class AppComponent implements OnInit, OnDestroy {
   protected beginCommitMessageEdit(): void {
     if (!this.canEditSelectedCommitMessage()) return;
     const commit = this.selectedCommitData();
-    if (!commit) return;
+    const repository = this.git.repository();
+    if (!commit || !repository?.headOid) return;
+    const review: CommitEditReview = {
+      checkoutScope: this.git.activeRepositoryReadScope(),
+      branch: repository.status.branch,
+      headOid: repository.headOid,
+      targetOid: commit.oid,
+    };
     const details = this.git.commitDetails();
     const body = details?.oid === commit.oid
       ? commitMessageBody(details.message)
       : commit.description;
     const parsed = parseCoAuthors(body);
-    this.editedCommitOid.set(commit.oid);
     this.editedCommitAuthorName.set(commit.authorName);
     this.editedCommitAuthorEmail.set(commit.authorEmail);
     this.editedCommitSummary.set(commit.subject);
     this.editedCommitDescription.set(parsed.body);
     this.editedCommitCoAuthors.set(parsed.authors);
-    this.commitMessageEditing.set(true);
+    this.commitEditReview.set(review);
     setTimeout(() => {
+      if (!this.ownsCommitEdit(review, true)) return;
       this.editedCommitSummaryInput()?.nativeElement.focus();
       this.editedCommitSummaryInput()?.nativeElement.select();
     });
@@ -10258,8 +10282,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected cancelCommitMessageEdit(): void {
-    this.commitMessageEditing.set(false);
-    this.editedCommitOid.set(null);
+    this.commitEditReview.set(null);
     this.editedCommitAuthorName.set('');
     this.editedCommitAuthorEmail.set('');
     this.editedCommitSummary.set('');
@@ -10276,12 +10299,25 @@ export class AppComponent implements OnInit, OnDestroy {
     return valid(this.editedCommitAuthorName()) && valid(this.editedCommitAuthorEmail());
   }
 
-  protected async submitCommitMessageEdit(): Promise<void> {
+  private ownsCommitEdit(review: CommitEditReview, requireReviewedHead: boolean): boolean {
     const repository = this.git.repository();
-    const target = this.editedCommitOid();
-    const commit = target ? this.graphCommitByOid().get(target) : null;
+    return this.commitEditReview() === review
+      && this.git.activeRepositoryReadScope() === review.checkoutScope
+      && repository?.status.branch === review.branch
+      && (!requireReviewedHead || repository.headOid === review.headOid);
+  }
+
+  protected async submitCommitMessageEdit(): Promise<void> {
+    const review = this.commitEditReview();
+    if (!review || this.commitEditSubmitting()) return;
+    if (!this.ownsCommitEdit(review, true) || !this.canEditCommit(review.targetOid)) {
+      this.cancelCommitMessageEdit();
+      return;
+    }
+    const { headOid, targetOid } = review;
+    const commit = this.graphCommitByOid().get(targetOid);
     const summary = this.editedCommitSummary().trim();
-    if (!repository?.headOid || !target || !commit || !summary || !this.editedCommitAuthorValid() || this.git.busy()) return;
+    if (!commit || !summary || !this.editedCommitAuthorValid() || this.git.busy()) return;
     const trailers = this.editedCommitCoAuthors()
       .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
       .join('\n');
@@ -10290,17 +10326,21 @@ export class AppComponent implements OnInit, OnDestroy {
       .join('\n\n');
     const author = { name: this.editedCommitAuthorName().trim(), email: this.editedCommitAuthorEmail().trim() };
     const authorUnchanged = author.name === commit.authorName && author.email === commit.authorEmail;
-    const headOid = repository.headOid;
-    const updated = target === headOid && authorUnchanged
-      ? await this.git.updateHeadMessage(headOid, message)
-      : await this.git.editCommit(target, message, author);
-    if (!updated) return;
-    // The edited commit keeps its distance from HEAD, so select its replacement.
-    const distance = this.firstParentDistance(headOid, target);
-    this.cancelCommitMessageEdit();
-    const updatedHead = this.git.repository()?.headOid;
-    const replacement = updatedHead && distance !== null ? this.firstParentAncestor(updatedHead, distance) : updatedHead;
-    if (replacement) this.selectCommit(replacement);
+    // Capture the reviewed graph before a successful rewrite replaces it.
+    const distance = this.firstParentDistance(headOid, targetOid);
+    this.commitEditSubmitting.set(review);
+    try {
+      const updated = targetOid === headOid && authorUnchanged
+        ? await this.git.updateHeadMessage(headOid, message)
+        : await this.git.editCommit(targetOid, message, author);
+      if (!updated || !this.ownsCommitEdit(review, false)) return;
+      this.cancelCommitMessageEdit();
+      const updatedHead = this.git.repository()?.headOid;
+      const replacement = updatedHead && distance !== null ? this.firstParentAncestor(updatedHead, distance) : updatedHead;
+      if (replacement) this.selectCommit(replacement);
+    } finally {
+      this.commitEditSubmitting.set(null);
+    }
   }
 
   private firstParentDistance(from: string, target: string): number | null {

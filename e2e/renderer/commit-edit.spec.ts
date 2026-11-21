@@ -26,7 +26,19 @@ async function installBackend(page: Page): Promise<void> {
             signature: { status: 'none', signer: null, key: null, fingerprint: null, trust: null } };
         }
         host.__editCalls.push({ command, args });
-        if (command === 'edit_commit' || command === 'update_head_message') return { ...snapshot, headOid: 'a'.repeat(40) };
+        if (command === 'edit_commit' || command === 'update_head_message') {
+          if (host.__holdEdit) await new Promise<void>(resolve => { host.__releaseEdit = resolve; });
+          if (!host.__rewriteGraph) return { ...snapshot, headOid: 'a'.repeat(40) };
+          const changes = new Map<string, string>([
+            [snapshot.headOid, 'a'.repeat(40)],
+            [snapshot.commits.find((commit: any) => commit.oid === snapshot.headOid).parents[0], 'b'.repeat(40)],
+            [older, 'c'.repeat(40)],
+          ]);
+          return { ...snapshot, headOid: changes.get(snapshot.headOid), commits: snapshot.commits.map((commit: any) => ({
+            ...commit, oid: changes.get(commit.oid) ?? commit.oid,
+            parents: commit.parents.map((parent: string) => changes.get(parent) ?? parent),
+          })) };
+        }
         if (command === 'move_head') return snapshot;
         throw new Error(`Unexpected command ${command}`);
       },
@@ -102,4 +114,60 @@ test('offers commit editing from the context menu of an older commit', async ({ 
   await page.locator(`.commit-row[data-commit-oid="${older}"]`).click({ button: 'right' });
   await page.locator('.context-menu').getByRole('menuitem', { name: 'Edit author, message or co-authors…' }).click();
   await expect(page.getByRole('form', { name: 'Edit commit' }).getByLabel('Summary')).toHaveValue('Add hunk-level staging actions');
+});
+
+for (const change of ['tip', 'branch', 'visit'] as const) {
+  test(`refuses a commit rewrite after the reviewed checkout ${change} changes`, async ({ page }) => {
+    await page.locator(`.commit-row[data-commit-oid="${older}"]`).click();
+    await page.getByRole('button', { name: /Edit commit/ }).click();
+    const editor = page.getByRole('form', { name: 'Edit commit' });
+    await editor.getByLabel('Summary').fill('Owned draft');
+    await page.evaluate(({ change, older }) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const original = git.repository();
+      if (change === 'visit') {
+        git.repositories.update((items: any[]) => [...items, { ...original, id: 'edit-other', path: '/owned/edit-other' }]);
+        git.activateRepository('edit-other');
+        git.activateRepository(original.id);
+      } else {
+        git.repositories.update((items: any[]) => items.map(item => item.id !== original.id ? item
+          : change === 'tip' ? { ...item, headOid: older }
+          : { ...item, status: { ...item.status, branch: 'another-branch-at-the-same-tip' } }));
+      }
+      // Dispatch while the old form still exists, before reactive cleanup.
+      document.querySelector<HTMLFormElement>('.commit-message-editor')!.requestSubmit();
+    }, { change, older });
+    await expect(editor).toHaveCount(0);
+    expect(await calls(page)).toEqual([]);
+  });
+}
+
+test('a completed rewrite cannot override a newer commit selection', async ({ page }) => {
+  await page.evaluate(() => { (window as any).__holdEdit = true; });
+  await page.locator(`.commit-row[data-commit-oid="${head}"]`).click();
+  await page.getByRole('button', { name: /Edit commit/ }).click();
+  const editor = page.getByRole('form', { name: 'Edit commit' });
+  await editor.getByLabel('Summary').fill('Reviewed new summary');
+  await editor.getByRole('button', { name: 'Save Commit' }).click();
+  await expect.poll(() => calls(page)).toHaveLength(1);
+  await page.locator(`.commit-row[data-commit-oid="${older}"]`).click();
+  await expect(editor).toHaveCount(0);
+  await page.evaluate(() => (window as any).__releaseEdit());
+  await expect.poll(() => page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { busy: app.git.busy(), selected: app.selectedCommit(), head: app.git.repository().headOid };
+  })).toEqual({ busy: false, selected: older, head: 'a'.repeat(40) });
+});
+
+test('selects the replacement of an older commit when its review stays active', async ({ page }) => {
+  await page.evaluate(() => { (window as any).__rewriteGraph = true; });
+  await page.locator(`.commit-row[data-commit-oid="${older}"]`).click();
+  await page.getByRole('button', { name: /Edit commit/ }).click();
+  const editor = page.getByRole('form', { name: 'Edit commit' });
+  await editor.getByLabel('Summary').fill('Reviewed older summary');
+  await editor.getByRole('button', { name: 'Save Commit' }).click();
+  await expect(editor).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit(),
+  )).toBe('c'.repeat(40));
 });

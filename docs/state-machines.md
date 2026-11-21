@@ -421,6 +421,19 @@ tab's draft. An optional push uses
 the original consent only while the same tab, checkout, and branch remain
 active; otherwise the user must review and push explicitly.
 
+### Commit rewrite review ownership
+
+The inline author/message editor reviews a target OID against the active
+checkout visit, branch and HEAD. Before dispatch, a changed checkout or tip
+invalidates the draft rather than authorizing a rewrite against the newer
+history. Git still validates the expected object ID. A successful rewrite
+reconciles the repository through the service, but only the same active
+editor may navigate to the replacement commit. Leaving the editor does not
+undo or discard an already-dispatched mutation.
+
+Renderer coverage: `commit-edit.spec.ts` exercises stale tips, same-tip
+branch changes, away-and-back visits, and selection during an in-flight save.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and
