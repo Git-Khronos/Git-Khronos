@@ -76,7 +76,7 @@ use git_khronos_git_core::{
     discard_plan_fingerprint, discarded_change_recoveries, execute_discard, prepare_discard,
     prepare_partial_discard_with_preview, recover_discarded_changes_reviewed,
 };
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecursiveMode};
 #[cfg(all(test, unix))]
 mod checkpoint_visibility_tests;
 #[cfg(test)]
@@ -123,6 +123,7 @@ mod recovery_commands;
 mod renderer_recovery;
 mod repository_file_commands;
 mod repository_link_commands;
+mod repository_watcher;
 mod terminal_profile_commands;
 mod application_update_model;
 mod application_updates;
@@ -133,7 +134,7 @@ mod working_file_commands;
 struct AppState {
     incoming_links: incoming_repository_links::IncomingRepositoryLinks,
     repositories: Mutex<HashMap<String, Arc<RepositorySession>>>,
-    repository_watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+    repository_watchers: Mutex<HashMap<String, repository_watcher::RepositoryWatcher>>,
     discard_recoveries: Mutex<HashMap<String, DiscardRecovery>>,
     discard_plans: Mutex<HashMap<String, (String, DiscardPlan)>>,
     reset_plans: Mutex<HashMap<String, (String, git_khronos_git_core::ResetPlan)>>,
@@ -477,44 +478,58 @@ fn install_repository_watcher(
     let Ok(watchers) = state.repository_watchers.lock() else {
         return;
     };
-    if watchers.contains_key(repository_id) {
+    if watchers
+        .get(repository_id)
+        .is_some_and(repository_watcher::RepositoryWatcher::is_complete)
+    {
         return;
     }
     drop(watchers);
-    let event_repository_id = repository_id.to_owned();
-    let event_app = app.clone();
-    let Ok(mut watcher) =
-        notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-            let Ok(event) = result else { return };
-            if matches!(event.kind, EventKind::Access(_)) {
+    // Resolve Git metadata outside the watcher lock; Git can block.
+    let metadata = repository_watch_paths(root);
+    let mut paths = vec![(root.to_owned(), RecursiveMode::NonRecursive)];
+    let metadata_discovered = metadata.is_ok();
+    if let Ok(metadata) = metadata {
+        paths.extend(
+            metadata
+                .non_recursive
+                .into_iter()
+                .map(|path| (path, RecursiveMode::NonRecursive)),
+        );
+        paths.extend(
+            metadata
+                .recursive
+                .into_iter()
+                .map(|path| (path, RecursiveMode::Recursive)),
+        );
+    }
+    let Ok(mut watchers) = state.repository_watchers.lock() else {
+        return;
+    };
+    let watcher = match watchers.entry(repository_id.to_owned()) {
+        std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            let event_repository_id = repository_id.to_owned();
+            let event_app = app.clone();
+            let Ok(backend) =
+                notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+                    let Ok(event) = result else { return };
+                    if matches!(event.kind, EventKind::Access(_)) {
+                        return;
+                    }
+                    let _ = RepositoryChanged {
+                        repository_id: event_repository_id.clone(),
+                    }
+                    .emit(&event_app);
+                })
+            else {
                 return;
-            }
-            let _ = RepositoryChanged {
-                repository_id: event_repository_id.clone(),
-            }
-            .emit(&event_app);
-        })
-    else {
-        return;
-    };
-    if watcher.watch(root, RecursiveMode::NonRecursive).is_err() {
-        return;
-    }
-    let Ok(metadata_paths) = repository_watch_paths(root) else {
-        return;
-    };
-    for path in metadata_paths.non_recursive {
-        if watcher.watch(&path, RecursiveMode::NonRecursive).is_err() {
-            return;
+            };
+            entry.insert(repository_watcher::RepositoryWatcher::new(backend))
         }
-    }
-    for path in metadata_paths.recursive {
-        if watcher.watch(&path, RecursiveMode::Recursive).is_err() {
-            return;
-        }
-    }
-    if let Ok(mut watchers) = state.repository_watchers.lock() {
-        watchers.entry(repository_id.to_owned()).or_insert(watcher);
+    };
+    if !watcher.is_complete() {
+        watcher.attach(paths, metadata_discovered);
     }
 }
 

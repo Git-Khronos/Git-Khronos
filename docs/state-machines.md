@@ -51,6 +51,9 @@ Repository watchers observe Git's metadata directories, not its object
 database. In a reftable repository this includes the shared stack and any
 private stack of the selected linked checkout. Watch the directories rather
 than individual files so Git's atomic stack replacement is visible.
+If attaching one path fails, keep the successful paths and try the remaining
+paths. The next native repository open retries only missing registrations.
+The existing status refresh remains the fallback where events are unavailable.
 
 ## Implemented transition ownership
 

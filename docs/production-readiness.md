@@ -537,6 +537,19 @@ readiness polling passed all 47 cases. Clicks and mutation scripts remain
 one-shot. The original report is retained separately from
 `target/local-review/native-watcher-and-poll.mHQRT8hw/bookworm/`.
 
+With that successful Bookworm GitLab rerun and the remaining exact-package
+reports, the strict verifier accepted all 27 checks for the `ff23e25`
+artifact and its fixture publisher key. See
+`verified-release-reviewed-bookworm-rerun.json` in the same parent directory.
+The first attempt still exited nonzero; its failed report was not used as
+release evidence.
+
+The blank-context candidate at `62be3a4`, SHA-256
+`542d65029a86d93bf7c94d9eff4735cffeef123fc08f9e987188a82bb1aa04ab`,
+passed all six installed Ubuntu 24.04 diff cases, including compact
+blank-context discard and recovery. The full matrix is separate from this
+result.
+
 An additional reftable-only fixture with Git 2.53.0 removed a branch
 externally on the same installed diff candidate. Git no longer listed the
 branch, but the Ubuntu 26.04 renderer still showed it. See
@@ -545,6 +558,12 @@ A local native test separately confirmed that a ref-only transaction
 replaced `reftable/tables.list` without modifying HEAD and that the old
 watch list missed that notification. This is distinct from the earlier
 file-backed checkout timeout.
+
+The first reftable candidate build stopped at the new watcher preflight
+with `EMFILE`, before Tauri or a new build receipt. The container had
+a 65,536-descriptor limit; the exact source of the transient exhaustion
+was not measured. Its log is under
+`target/local-review/updater/jammy-builder/reftable-watch-release.AZP8RIjR/`.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
