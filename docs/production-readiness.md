@@ -568,6 +568,17 @@ the first open and applied the compact layout on all three entry paths.
 Measurements are under
 `target/local-review/repository-form-styles.7lafCH55/`.
 
+The Jammy package for `0cdc504` (`ec6dda3f3b4db99ee5804bf86a55aef7b9c03250e055013d62bf4a5e4f958074`)
+passed 99 installed Ubuntu 24.04 scenarios: 50 setup/keyboard and updater
+checks, 45 GitLab checks, three patch-export checks, and one workspace-batch
+check. The staged work directory reused warmed Rust outputs after verifying
+all 1,021 archived files against the source snapshot. That local build took
+5m 19s versus 9m 7s for the preceding archive build; this is an observed
+warm-build result, not a clean-run or CI timing guarantee. See
+`target/local-review/updater/jammy-builder/repository-form-styles.RoJCxyCn/`
+for the hash, build log, and `focused-publisher-trust/installed-focused.json`.
+This is not a full release-matrix or live self-update test.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native
