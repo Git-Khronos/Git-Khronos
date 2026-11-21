@@ -239,8 +239,12 @@ non-owning child of the verified application. A bounded read-only recheck
 now verifies that such a child disappears or changes executable before
 accepting a singleton. The focused same-package Jammy incoming-link run
 passed 26 checks; it did not reproduce the extra child. The original
-failure and separate focused report are retained. The new full Jammy run
-remains distinct from these focused proofs.
+failure and separate focused report are retained. A fresh Jammy full
+run passed all 279 installed environment scenarios. The stronger
+14-check exact-package matrix and publisher-key preflight both passed
+on the same bytes. See `installed-release-matrix.json` and
+`jammy-installed-preflight.sha256` in the candidate directory. These
+results predate the later commit-draft and bulk-open fixes.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
