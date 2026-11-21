@@ -4494,11 +4494,11 @@ pub fn abort_rebase(path: &Path) -> Result<(), AppError> {
 }
 
 pub fn fetch(path: &Path) -> Result<(), AppError> {
-    run_fetch_with_cancellation(path, None).map(|_| ())
+    fetch_all_remotes(path, None)
 }
 
 pub fn fetch_cancellable(path: &Path, cancellation: &CancellationToken) -> Result<(), AppError> {
-    run_fetch_with_cancellation(path, Some(cancellation)).map(|_| ())
+    fetch_all_remotes(path, Some(cancellation))
 }
 
 pub fn fetch_remote(path: &Path, remote: &str) -> Result<(), AppError> {
@@ -4521,8 +4521,7 @@ fn fetch_remote_with_cancellation(
     validate_remote_name(path, remote)?;
     require_remote(path, remote)?;
     let mut args = fetch_command_args();
-    args.retain(|argument| *argument != "--all");
-    args.push(remote);
+    args.extend(["--no-all", "--", remote]);
     let output = run_git_with_cancellation(path, &args, cancellation)?;
     ensure_success("fetch from the selected remote", &output)
 }
@@ -4559,18 +4558,85 @@ pub fn perform_repository_maintenance(path: &Path) -> Result<(), AppError> {
 pub fn fetch_if_needed(path: &Path) -> Result<bool, AppError> {
     let remotes = run_git(path, &["remote"])?;
     ensure_success("list repository remotes", &remotes)?;
-    for remote in String::from_utf8_lossy(&remotes.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|remote| !remote.is_empty())
-    {
+    let remotes = String::from_utf8(remotes.stdout).map_err(|_| {
+        AppError::new(
+            "unsupportedRemoteEncoding",
+            "Remote names must be UTF-8 for background fetching.",
+            None,
+        )
+    })?;
+    if remotes.is_empty() {
+        return Ok(false);
+    }
+    let skipped = background_fetch_skips(path)?;
+    let mut changed = Vec::new();
+    for remote in remotes.lines().filter(|remote| !skipped.contains(*remote)) {
         let preview = run_fetch_preview(path, remote)?;
         if !preview.stdout.is_empty() || !preview.stderr.is_empty() {
-            run_fetch(path)?;
-            return Ok(true);
+            changed.push(remote);
         }
     }
-    Ok(false)
+    // Older supported Git versions don't propagate --no-write-fetch-head to
+    // the child commands started by multi-remote Fetch. Use named invocations.
+    for remote in &changed {
+        let mut args = fetch_command_args();
+        args.extend(["--no-write-fetch-head", "--no-all", "--", remote]);
+        let output = run_git(path, &args)?;
+        ensure_success("fetch remote updates in the background", &output)?;
+    }
+    Ok(!changed.is_empty())
+}
+
+fn background_fetch_skips(path: &Path) -> Result<HashSet<String>, AppError> {
+    let (output, truncated) = run_git_with_stdout_limit_and_cancellation(
+        path,
+        &[
+            "config",
+            "--null",
+            "--type=bool",
+            "--get-regexp",
+            r"^remote\..+\.(skipfetchall|skipdefaultupdate)$",
+        ],
+        128 * 1024,
+        None,
+    )?;
+    if !truncated && output.status.code() == Some(1) && output.stdout.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let unavailable = || {
+        AppError::new(
+            "backgroundFetchPolicyUnavailable",
+            "The list of remotes allowed for background Fetch could not be read. Nothing was fetched.",
+            Some("Review the remote skipFetchAll settings in Git, then retry."),
+        )
+    };
+    if truncated || !output.status.success() {
+        return Err(unavailable());
+    }
+    let records = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
+    let mut skipped = HashSet::new();
+    // Git reports both aliases in configuration order; the last value wins.
+    for record in records
+        .strip_suffix('\0')
+        .ok_or_else(unavailable)?
+        .split('\0')
+    {
+        let (key, value) = record.split_once('\n').ok_or_else(unavailable)?;
+        let (remote, _) = key
+            .strip_prefix("remote.")
+            .and_then(|key| key.rsplit_once('.'))
+            .ok_or_else(unavailable)?;
+        match value {
+            "true" => {
+                skipped.insert(remote.to_owned());
+            }
+            "false" => {
+                skipped.remove(remote);
+            }
+            _ => return Err(unavailable()),
+        }
+    }
+    Ok(skipped)
 }
 
 fn fetch_command_args() -> Vec<&'static str> {
@@ -4584,32 +4650,33 @@ fn fetch_command_args() -> Vec<&'static str> {
         "-c",
         "fetch.negotiationAlgorithm=skipping",
         "fetch",
-        "--all",
-        "--prune",
+        // Only Fetch options may explicitly prune the branch-tracking namespace.
+        "--no-prune",
+        "--no-prune-tags",
         "--no-auto-maintenance",
         "--no-recurse-submodules",
     ]
 }
 
-fn run_fetch(path: &Path) -> Result<Output, AppError> {
-    run_fetch_with_cancellation(path, None)
-}
-
-fn run_fetch_with_cancellation(
+fn fetch_all_remotes(
     path: &Path,
     cancellation: Option<&CancellationToken>,
-) -> Result<Output, AppError> {
-    let args = fetch_command_args();
+) -> Result<(), AppError> {
+    let mut args = fetch_command_args();
+    args.push("--all");
     let output = run_git_with_cancellation(path, &args, cancellation)?;
-    ensure_success("fetch from the remotes", &output)?;
-    Ok(output)
+    ensure_success("fetch from the remotes", &output)
 }
 
 fn run_fetch_preview(path: &Path, remote: &str) -> Result<Output, AppError> {
     let mut args = fetch_command_args();
-    args.retain(|argument| *argument != "--all");
-    args.push("--dry-run");
-    args.push(remote);
+    args.extend([
+        "--dry-run",
+        "--no-write-fetch-head",
+        "--no-all",
+        "--",
+        remote,
+    ]);
     let output = run_git(path, &args)?;
     ensure_success("check for remote updates", &output)?;
     Ok(output)
@@ -13167,6 +13234,121 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(invalid.kind, "invalidFolderName");
 
         fs::remove_dir_all(parent).expect("remove destination parent");
+    }
+
+    #[test]
+    fn ordinary_fetch_keeps_local_tags_and_stale_tracking_refs() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Local seed"]);
+        for name in ["origin", "upstream"] {
+            let remote = repository.path.join(".git").join(format!("{name}.git"));
+            let url = remote.to_str().unwrap();
+            repository.git(&["init", "--bare", url]);
+            repository.git(&["remote", "add", name, url]);
+            repository.git(&["push", name, "HEAD:refs/heads/main"]);
+            repository.git(&["update-ref", &format!("refs/remotes/{name}/gone"), "HEAD"]);
+        }
+        repository.git(&["tag", "-a", "unpublished", "-m", "Only local"]);
+        repository.git(&["config", "fetch.pruneTags", "true"]);
+        repository.git(&["config", "remote.origin.prune", "true"]);
+        repository.git(&["config", "remote.upstream.pruneTags", "true"]);
+        let retained = repository.git_output(&[
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/tags",
+            "refs/remotes/origin/gone",
+            "refs/remotes/upstream/gone",
+        ]);
+        let config = fs::read(repository.path.join(".git/config")).unwrap();
+
+        for remote in [Some("origin"), None] {
+            match remote {
+                Some(remote) => fetch_remote(&repository.path, remote),
+                None => fetch(&repository.path),
+            }
+            .unwrap();
+            let actual = repository.git_output(&[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/tags",
+                "refs/remotes/origin/gone",
+                "refs/remotes/upstream/gone",
+            ]);
+            assert_eq!(actual, retained, "Fetch for {remote:?} must not prune refs");
+        }
+        assert_eq!(
+            fs::read(repository.path.join(".git/config")).unwrap(),
+            config
+        );
+    }
+
+    #[test]
+    fn background_fetch_updates_tracking_refs_without_replacing_fetch_head_or_pruning() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Seed"]);
+        for name in ["origin", "upstream"] {
+            let remote = repository.path.join(".git").join(format!("{name}.git"));
+            let url = remote.to_str().unwrap();
+            repository.git(&["init", "--bare", url]);
+            repository.git(&["remote", "add", name, url]);
+            repository.git(&["push", name, "HEAD:refs/heads/main"]);
+        }
+        let old = repository.git_output(&["rev-parse", "HEAD"]);
+        let fetch_head = repository.path.join(".git/FETCH_HEAD");
+        let user_fetch_head = format!("{}\t\tbranch 'previous-user-choice'\n", old.trim());
+        fs::write(&fetch_head, &user_fetch_head).unwrap();
+        repository.git(&["update-ref", "refs/remotes/origin/gone", "HEAD"]);
+        repository.git(&["tag", "unpublished"]);
+        repository.git(&["config", "fetch.prune", "true"]);
+        repository.git(&["config", "remote.origin.pruneTags", "true"]);
+        let excluded = repository.path.join(".git/not-a-remote");
+        repository.git(&[
+            "remote",
+            "add",
+            "company.Archive",
+            excluded.to_str().unwrap(),
+        ]);
+        repository.git(&["config", "remote.company.Archive.skipFetchAll", "false"]);
+        repository.git(&["config", "remote.company.Archive.skipDefaultUpdate", "on"]);
+        repository.git(&["config", "remote.upstream.skipDefaultUpdate", "yes"]);
+        repository.git(&["config", "remote.upstream.skipFetchAll", "no"]);
+
+        assert!(
+            !fetch_if_needed(&repository.path).unwrap(),
+            "advertised branches are unchanged; stale refs are not a background update"
+        );
+        repository.git(&["commit", "--allow-empty", "-m", "New remote branch"]);
+        let upstream = repository.path.join(".git/upstream.git");
+        // Push to the owned path rather than the configured remote, so the
+        // publisher doesn't update the very tracking ref we expect to fetch.
+        repository.git(&["push", upstream.to_str().unwrap(), "HEAD:refs/heads/new"]);
+        assert!(
+            repository
+                .git_output(&["for-each-ref", "refs/remotes/upstream/new"])
+                .is_empty()
+        );
+        let updated = repository.git_output(&["rev-parse", "HEAD"]);
+        assert!(fetch_if_needed(&repository.path).unwrap());
+        assert_eq!(
+            repository
+                .git_output(&["rev-parse", "refs/remotes/upstream/new"])
+                .trim(),
+            updated.trim()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["rev-parse", "refs/remotes/origin/gone"])
+                .trim(),
+            old.trim()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["rev-parse", "refs/tags/unpublished"])
+                .trim(),
+            old.trim()
+        );
+        assert_eq!(fs::read_to_string(&fetch_head).unwrap(), user_fetch_head);
+        assert!(!fetch_if_needed(&repository.path).unwrap());
     }
 
     #[test]

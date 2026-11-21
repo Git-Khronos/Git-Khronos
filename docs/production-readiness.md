@@ -3061,6 +3061,22 @@ passed. The installed comparison is separate from the already qualified
 `b966672` package; see `scoped-branch-release.8b86T8u7/` under the local
 Jammy builder receipts.
 
+### Ordinary and background Fetch
+
+Against owned local bare repositories the previous default Fetch pruned
+local-only tags and stale remote-tracking branches. Ordinary and background
+Fetch now leave those refs for explicit pruning through Fetch options.
+Foreground Fetch still writes `FETCH_HEAD`; background sync preserves
+it and respects per-remote opt-outs. A Git 2.39.5 probe showed that
+`--all --no-write-fetch-head` could still change the file. Fetching the
+changed remotes by name fixed that case on the same Git version.
+
+The two regression tests passed on Git 2.39.5 and 2.53.0. The broader
+32-test source filter, strict Clippy, the AOT build and 20 focused renderer
+checks passed. Packaged UI and background IPC coverage is in the
+`setup-keyboard` suite; new installer evidence remains separate.
+Source receipts are under `target/local-review/non-pruning-fetch.Cp9KGYCx/`.
+
 ### Branch workflow qualification timing
 
 The isolated Ubuntu 22.04 branch-workflow suite passed all four cases with

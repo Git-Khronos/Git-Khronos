@@ -55,6 +55,15 @@ local branches from same-named tags, and let Git retain ownership of the
 upstream update. The behavior is checked against owned local bare repositories.
 No source code was copied.
 
+## Non-pruning foreground and background Fetch
+
+- [Git fetch pruning and FETCH_HEAD options](https://git-scm.com/docs/git-fetch)
+
+Used to prevent ordinary Fetch from deleting stale refs or local tags
+through configured pruning and to preserve the user's `FETCH_HEAD` during
+background sync. The explicit, separately reviewed branch-pruning flow is
+unchanged. No source code was copied.
+
 ## Reviewed original-reference deletion
 
 - [Git reference update semantics](https://git-scm.com/docs/git-update-ref)

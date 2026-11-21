@@ -80,6 +80,42 @@ def deferred_review_workflows(driver, fixtures, report):
     evidence.append({'source': str(source), 'localBareRemote': str(remote), 'before': before,
                      'afterFetch': after_fetch, 'afterPrune': after_prune, 'remoteHead': remote_head})
 
+    # Ordinary Fetch and background sync must not inherit destructive pruning.
+    # Keep the earlier explicit prune proof above on the same dirty checkout.
+    fixtures.git(source, 'config', 'fetch.prune', 'true')
+    fixtures.git(source, 'config', 'remote.origin.pruneTags', 'true')
+    repo_id = open_ui(driver, source)
+    fetch_ready()
+    fixtures.git(source, 'update-ref', 'refs/remotes/origin/obsolete', base)
+    before_ordinary = checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt'))
+    quick_head = fixtures.git(remote, 'commit-tree', tree, '-p', remote_head, '-m', 'Owned ordinary Fetch')
+    fixtures.git(remote, 'update-ref', 'refs/heads/main', quick_head)
+
+    driver.click_visible('button[aria-label="Fetch all remotes"]')
+    driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Fetch complete')")
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/main') == quick_head
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/obsolete') == base
+    assert fixtures.git(source, 'rev-parse', 'refs/tags/owned-local-sentinel') == base
+    fetch_head = source / '.git/FETCH_HEAD'
+    foreground_fetch_head = fetch_head.read_bytes()
+    assert quick_head.encode() in foreground_fetch_head
+    report['scenarios'].append('native-ordinary-fetch-keeps-stale-tracking-refs-and-local-tags')
+
+    background_head = fixtures.git(remote, 'commit-tree', tree, '-p', quick_head, '-m', 'Owned background Fetch')
+    fixtures.git(remote, 'update-ref', 'refs/heads/main', background_head)
+    assert driver.invoke('sync_repository', repoId=repo_id) is not None
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/main') == background_head
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/obsolete') == base
+    assert fixtures.git(source, 'rev-parse', 'refs/tags/owned-local-sentinel') == base
+    assert fetch_head.read_bytes() == foreground_fetch_head
+    after_background = checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt'))
+    preserved(before_ordinary, after_background)
+    report['scenarios'].append('native-background-fetch-preserves-foreground-fetch-head-and-stale-refs')
+    evidence.append({'source': str(source), 'localBareRemote': str(remote), 'before': before_ordinary,
+                     'afterBackground': after_background, 'ordinaryFetchHead': quick_head,
+                     'backgroundTrackingHead': background_head, 'foregroundFetchHeadPreserved': True})
+    remote_refs = fixtures.git(remote, 'show-ref')  # The shallow fixtures below use this updated source.
+
     shallow = fixtures.root / 'deferred-shallow-review'
     fixtures.git(fixtures.root, 'clone', '--depth=1', remote.resolve().as_uri(), str(shallow))
     (shallow / 'fixture.txt').write_text('Owned staged shallow-review contents.\n')
@@ -109,7 +145,7 @@ def deferred_review_workflows(driver, fixtures, report):
     choose(fetch_modal + ' input[name=fetchHistory][value=complete]')
     confirm_fetch('Fetch and extend history')
     assert fixtures.git(shallow, 'rev-parse', '--is-shallow-repository') == 'false'
-    assert fixtures.git(shallow, 'rev-list', 'HEAD') == fixtures.git(remote, 'rev-list', remote_head)
+    assert fixtures.git(shallow, 'rev-list', 'HEAD') == fixtures.git(remote, 'rev-list', 'refs/heads/main')
     after_complete = checkout_footprint(fixtures, shallow, ('fixture.txt', 'untracked-note.txt'))
     preserved(shallow_before, after_complete)
     assert fixtures.git(shallow, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags') == shallow_refs

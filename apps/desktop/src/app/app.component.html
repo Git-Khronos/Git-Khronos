@@ -420,7 +420,7 @@
                 <span><small>Remote references</small><strong>{{ toolbarRemotes().length }} {{ toolbarRemotes().length === 1 ? 'remote' : 'remotes' }}</strong></span>
                 <b>{{ fetchMenuDetail() }}</b>
               </header>
-              <button type="button" role="menuitem" (click)="toolbarOverlays.close('fetch'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update every configured remote without changing local work</small></span></button>
+              <button type="button" role="menuitem" (click)="toolbarOverlays.close('fetch'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
               <button type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
             </div>
           }

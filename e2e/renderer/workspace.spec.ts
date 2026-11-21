@@ -530,7 +530,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(page.getByRole('button', { name: 'Push 1 commit to origin/main' }).locator('.toolbar-sync-badge')).toHaveCSS('font-size', '12px');
   await expect(page.getByRole('button', { name: 'Pull from origin/main' }).locator('.toolbar-sync-badge')).toHaveCount(0);
   await page.getByRole('button', { name: 'Fetch options' }).click();
-  await expect(page.getByRole('menuitem', { name: /Fetch all remotes/ })).toContainText('Update every configured remote without changing local work');
+  await expect(page.getByRole('menuitem', { name: /Fetch all remotes/ })).toContainText('Fetch updates without pruning');
   await page.keyboard.press('Escape');
   const currentSidebarBranch = page.locator('#reference-section-local').getByRole('button', { name: /Local branch main, current/ });
   const currentSidebarRow = currentSidebarBranch.locator('xpath=..');

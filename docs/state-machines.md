@@ -1226,6 +1226,14 @@ Foreground branch-mutation admission remains a separate lock. Recovery,
 post-write inspection, receipts, and warning delivery are not collapsed into
 the tracker.
 
+Ordinary foreground Fetch and background sync do not prune refs, even when
+Git config enables pruning. Use the explicit branch-only Fetch options to
+prune stale remote-tracking branches. A background fetch also leaves
+`FETCH_HEAD` alone; foreground Fetch still records its result there. These
+commands otherwise continue to use Git's configured fetch mappings. The
+background path skips opt-out remotes and fetches changed remotes by name:
+Git 2.39 does not carry the no-write flag into multi-remote fetch children.
+
 Coverage: `operation-tracker.spec.ts`, `operation-tracker-characterization.spec.ts`,
 `activity-log-concurrency.spec.ts`, `fetch-result-lifecycle.spec.ts`,
 `background-status.spec.ts`, `snapshot-mutation-lifecycle.spec.ts` and

@@ -24,7 +24,7 @@
   <div class="menu-separator toolbar-remote-overflow"></div>
 }
 <div class="menu-caption compact-menu-caption toolbar-repository-overflow" role="separator" aria-label="Repository tools">Repository tools</div>
-<button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.fetchDisabled"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update remote branches without changing local work</small></span></button>
+<button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.fetchDisabled"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
 <button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="activate.emit('fetchOptions')" [disabled]="menu.busy"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
 <button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="menu.terminalShown" (click)="activate.emit('terminal')"><gc-icon name="terminal" [size]="13" /><span><strong>{{ menu.terminalShown ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ menu.alternateShortcut }} T / {{ menu.primaryShortcut }} `</small></span></button>
 <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Operation history">Operation history</div>
