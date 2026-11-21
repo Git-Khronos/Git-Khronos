@@ -3025,6 +3025,16 @@ Failing and passing reports are in
 `target/local-review/updater/jammy-builder/pull-scope-release.Lb6rguwE/focused/results/`,
 respectively. These are focused passes, not complete release qualification.
 
+On that same `b966672` package the first Jammy environment run stopped
+before the hosted fork form opened in the scrolling catalogue. With the
+ready-control click helper (`30bb7b4`), the isolated hosted-fork suite
+passed all six cases, including restart recovery and the separately
+reviewed Git clone. The Debian 12 GitLab recheck likewise passed its
+47 scenarios and recorded one negotiated TLS handshake and one expected
+API request at Connect. See `jammy-hosted-fork.IOr6od5N/` and
+`bookworm-gitlab-tls.OUEpWJgd/` in the same package run. The initial
+failures remain in the original lane reports.
+
 ### Branch workflow qualification timing
 
 The isolated Ubuntu 22.04 branch-workflow suite passed all four cases with
