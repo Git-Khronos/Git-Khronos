@@ -77,6 +77,11 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-retired-repository-read-preserves-active-tab-draft-and-saved-membership',
     'native-current-repository-selection-still-opens-the-chosen-checkout',
   ]],
+  ['detached-checkout', [
+    'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
+    'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
+    'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
+  ]],
 ];
 
 const RELEASE_MATRIX = [

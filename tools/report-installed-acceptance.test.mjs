@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope', 'detached-checkout'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 32);
+  assert.equal(complete.checks.length, 33);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -255,6 +255,21 @@ test('installed Browse must reject a retired reply and still open a fresh select
     const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== open), partial]);
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['repository-open-scope']);
+  }
+});
+
+test('installed detached checkout requires cancel, stale-branch refusal, and a safe explicit switch', () => {
+  const fixtures = matrixFixtures();
+  const detach = fixtures.find(report => report.suite === 'detached-checkout');
+  for (const name of [
+    'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
+    'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
+    'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
+  ]) {
+    const partial = { ...detach, scenarios: detach.scenarios.filter(scenario => scenario !== name) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== detach), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['detached-checkout']);
   }
 });
 

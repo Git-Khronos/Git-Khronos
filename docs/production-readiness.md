@@ -2728,3 +2728,20 @@ Evidence is under
 `target/local-review/updater/jammy-builder/accessible-recap-release.vLwHp41d/focused-installed/`.
 This is focused evidence; it does not qualify those bytes across the matrix
 or verify later Browse ownership changes.
+
+## Installed detached checkout review — 2026-11-21
+
+The `97dcd21` package reproduced an immediate detached checkout from
+**Checkout this commit**, without a review. The `419939d` package passed
+all three detached-checkout scenarios installed on Ubuntu 24.04: Cancel
+preserved branch, index and working files; native Git refused a stale
+review after switching branches at the same commit; and explicit checkout
+preserved branch and tag refs, staged contents, disjoint working edits and
+untracked files. This includes branch/tag name collisions. The isolated
+inherited-Git environment checks also passed on the exact package.
+
+SHA-256:
+`0bc1be6e1a8521bd1d0e5e04ed89b95c156b366bc656336167312a6f86179a57`.
+The paired reports are under `target/local-review/detached-checkout-installed.*`.
+The 33-check release matrix now requires all three results. This is focused
+evidence with fixture trust, not production signing or complete qualification.

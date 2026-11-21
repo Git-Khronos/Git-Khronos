@@ -492,6 +492,10 @@ symbolic branch before asking Git to switch without force. This preflight
 does not lock out independent Git processes. Git retains responsibility for
 refusing conflicting index or working-tree changes. Tags still navigate to
 their commit without checking it out.
+Installed `detached-checkout` covers cancellation, a stale branch at the
+same commit, and an explicit checkout with non-overlapping staged and
+working changes. Branch and tag refs must remain unchanged, including
+when they share a name.
 
 ### Commit rewrite review ownership
 
