@@ -261,7 +261,13 @@ checking the image viewing mode. Its failure screenshot already showed the
 correct single “After” image; the test had read the DOM immediately after
 the click. The updated check waits for the pressed control and the
 expected single image without replaying input. The same installed package
-passed all 30 focused media checks. Full validation is still separate.
+passed all 30 focused media checks. A fresh full Jammy run then passed
+all 279 installed environment scenarios. The exact package passed all
+14 required release-matrix checks and strict installed updater preflight
+with the fixture publisher key. See `installed-release-matrix.json` and
+`jammy-installed-preflight.sha256` in the candidate directory. These
+results do not qualify the later draft handoff, bulk close, or batch-stop
+changes.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
