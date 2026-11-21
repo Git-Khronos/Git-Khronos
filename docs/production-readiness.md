@@ -210,10 +210,17 @@ checkouts retained their refs, index, config and working-file bytes. The
 older `ed9b22c` package failed at the switch with both paths dropped.
 The reports and successful APT simulation are retained in
 `target/local-review/updater/jammy-builder/saved-workspace.1h4ZT3fI/`.
-The focused workspace result is not a release pass: two attempts on these
-bytes failed an earlier smoke check when a deleted untracked file remained
-visible. The separate workspace test does not bypass that gate in the
-release suite. A fresh full matrix is still pending.
+Two initial attempts on these bytes failed an earlier smoke check because
+the deleted untracked file did not disappear before the deadline. The
+focused test did not bypass that gate in the release suite. A fresh Jammy
+run passed all 279 installed environment scenarios, including saved paths.
+Ubuntu 26.04's first GitLab attempt failed a process scan during restart;
+a separate same-bytes run verified the original and replacement using the
+private session bus and passed GitLab (45) and updates (19). The
+original failures remain retained. The exact package passed all 14
+checks in the matrix used for that candidate and strict updater preflight.
+See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`.
+It predates bounded watcher debounce and its new installed burst gate.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
