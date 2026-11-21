@@ -240,6 +240,12 @@ mode, and its own invocation. Closing, switching modes, or starting another
 picker retires the old reply; neither a path nor an error from it may replace
 the shared form draft. A path confirmed while its form is still current
 remains a draft across ordinary closes and reopens.
+Clone (URL or provider review) and Initialize separate navigation ownership
+from the native result. Only the originating form and repository visit may
+activate the new checkout. If that visit retires after dispatch, a confirmed
+creation is saved unopened to the original workspace and recorded in Recent
+repositories (Recent only if the workspace no longer exists). An old result
+cannot close a replacement dialog or replay the native command.
 
 The repository tab menu keeps positioning and keyboard ownership in the
 shell, but loads action content and styles on demand. Escape closes a

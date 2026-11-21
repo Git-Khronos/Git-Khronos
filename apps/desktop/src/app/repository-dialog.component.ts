@@ -39,6 +39,7 @@ export class RepositoryFormDrafts {
         <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" /><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
         <button type="button" aria-label="Close repository management" (click)="close()"><gc-icon name="x" [size]="14" /></button>
       </header>
+      @if (creationNotice(); as notice) { <p class="form-readiness" role="status">{{ notice }}</p> }
       <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleTabKey($event)">
         @if (!cloneOnly()) { <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button> }
         <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="setMode('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
@@ -177,9 +178,11 @@ export class RepositoryDialogComponent {
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly managerRepositoryFilter = viewChild<ElementRef<HTMLInputElement>>('managerRepositoryFilter');
   private destinationPicker = 0;
+  private formVisit = 0;
+  protected readonly creationNotice = signal('');
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.destinationPicker++);
+    inject(DestroyRef).onDestroy(() => { this.formVisit++; this.destinationPicker++; });
     effect(() => {
       const request = this.focusRequest();
       const mode = untracked(this.mode);
@@ -189,12 +192,12 @@ export class RepositoryDialogComponent {
 
   protected close(): void {
     if (!this.ownsRequest()(this.focusRequest())) return;
-    this.destinationPicker++;
+    this.retireForm();
     this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.closed.emit();
   }
   protected toggleHostedMode(): void {
     if (this.git.busy()) return;
-    this.destinationPicker++;
+    this.retireForm();
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
     if (this.hostedMode()) this.hostedBrowser()?.dismiss();
     else this.hostedGeneration.update(generation => generation + 1);
@@ -203,19 +206,19 @@ export class RepositoryDialogComponent {
   protected toggleGitlabMode(): void {
     if (this.git.busy()) return;
     if (this.gitlabMode()) { this.closeGitlabMode(); return; }
-    this.destinationPicker++;
+    this.retireForm();
     this.hostedBrowser()?.dismiss(); this.hostedMode.set(false);
     this.gitlabMode.set(true);
     this.scheduleModeFocus('clone');
   }
   protected closeGitlabMode(): void {
-    this.destinationPicker++;
+    this.retireForm();
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
     this.scheduleModeFocus('clone');
   }
   protected setMode(mode: RepositoryDialogMode): void {
     if (this.cloneOnly() && mode !== 'clone') return;
-    if (mode !== this.mode()) this.destinationPicker++;
+    if (mode !== this.mode()) this.retireForm();
     if (mode !== 'clone') { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false); }
     else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
     this.mode.set(mode);
@@ -332,9 +335,24 @@ export class RepositoryDialogComponent {
     }
   }
 
-  protected async submitClone(): Promise<void> {
-    if (this.hostedMode() || this.gitlabMode() || !this.cloneReady() || this.git.busy()) return;
+  private retireForm(): void {
     this.destinationPicker++;
+    this.formVisit++;
+    this.creationNotice.set('');
+  }
+
+  private creationOwner(mode: 'clone' | 'init'): () => boolean {
+    const owner = this.focusRequest();
+    const visit = this.formVisit;
+    return () => this.formVisit === visit && this.focusRequest() === owner
+      && this.ownsRequest()(owner) && this.mode() === mode;
+  }
+
+  protected async submitClone(): Promise<void> {
+    const current = this.creationOwner('clone');
+    if (!current() || this.hostedMode() || this.gitlabMode() || !this.cloneReady() || this.git.busy()) return;
+    this.destinationPicker++;
+    this.creationNotice.set('');
     const form = this.form;
     this.opening.emit();
     const depth = form.shallowClone() ? Math.max(1, Math.floor(Number(form.cloneDepth()) || 1)) : undefined;
@@ -343,15 +361,23 @@ export class RepositoryDialogComponent {
       form.cloneParentPath(),
       form.cloneFolder(),
       { branch: form.shallowClone() ? form.cloneBranch() : undefined, depth, recurseSubmodules: form.recurseSubmodules() },
+      current,
     );
-    if (opened) this.opened.emit();
+    if (!current()) return;
+    if (opened.status === 'opened') this.opened.emit();
+    else if (opened.status === 'saved') this.creationNotice.set(opened.message);
   }
 
   protected async submitInit(): Promise<void> {
+    const current = this.creationOwner('init');
+    if (!current() || !this.initReady() || this.git.busy()) return;
     this.destinationPicker++;
+    this.creationNotice.set('');
     const form = this.form;
     this.opening.emit();
-    const opened = await this.git.initializeRepository(form.initParentPath(), form.initFolder(), form.initBranch(), form.initReadme());
-    if (opened) this.opened.emit();
+    const opened = await this.git.initializeRepository(form.initParentPath(), form.initFolder(), form.initBranch(), form.initReadme(), current);
+    if (!current()) return;
+    if (opened.status === 'opened') this.opened.emit();
+    else if (opened.status === 'saved') this.creationNotice.set(opened.message);
   }
 }

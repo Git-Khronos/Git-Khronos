@@ -245,6 +245,11 @@ export type OpenRepositoryResult =
   | { status: 'success'; repositoryId: string; path: string }
   | { status: 'error' | 'cancelled'; error: string | null };
 
+type RepositoryCreationResult =
+  | { status: 'opened' }
+  | { status: 'saved'; message: string }
+  | { status: 'error' | 'cancelled'; error: string | null };
+
 export interface SavedRepositoryReplacement {
   path: string;
   current: () => boolean;
@@ -772,55 +777,43 @@ export class GitKhronosService implements OnDestroy {
     parentPath: string,
     folder: string,
     options: { branch?: string; depth?: number; recurseSubmodules?: boolean } = {},
-  ): Promise<boolean> {
+    stillCurrent?: () => boolean,
+  ): Promise<RepositoryCreationResult> {
     const operationId = crypto.randomUUID();
-    await this.run(`Cloning ${folder.trim() || 'repository'}…`, async report => {
-      const snapshot = await ipc.clone_repository({
-        remote: remote.trim(),
-        parentPath,
-        folder: folder.trim(),
-        branch: options.branch?.trim() || null,
-        depth: options.depth ?? null,
-        recurseSubmodules: options.recurseSubmodules ?? false,
-        operationId,
-      });
-      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
-    }, null, operationId);
-    return !this.error();
+    return this.runRepositoryCreation(`Cloning ${folder.trim() || 'repository'}…`, 'Cloned', () => ipc.clone_repository({
+      remote: remote.trim(),
+      parentPath,
+      folder: folder.trim(),
+      branch: options.branch?.trim() || null,
+      depth: options.depth ?? null,
+      recurseSubmodules: options.recurseSubmodules ?? false,
+      operationId,
+    }), operationId, stillCurrent);
   }
 
-  async cloneHostedRepository(contextId: string, token: string, operationId: string): Promise<boolean> {
-    const outcome = await this.run('Cloning reviewed hosted repository…', async report => {
-      const snapshot = await ipc.execute_hosted_clone({ contextId, token, operationId });
-      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
-    }, null, operationId);
-    return outcome === 'success';
+  cloneHostedRepository(contextId: string, token: string, operationId: string, stillCurrent?: () => boolean): Promise<RepositoryCreationResult> {
+    return this.runRepositoryCreation('Cloning reviewed hosted repository…', 'Cloned',
+      () => ipc.execute_hosted_clone({ contextId, token, operationId }), operationId, stillCurrent);
   }
 
-  async cloneGitLabRepository(contextId: string, token: string, operationId: string): Promise<boolean> {
-    const outcome = await this.run('Cloning reviewed GitLab project…', async report => {
-      const snapshot = await ipc.execute_gitlab_clone({ request: { contextId, token, operationId } });
-      this.acceptOpenedRepository(snapshot, `Cloned ${snapshot.name}`, report);
-    }, null, operationId);
-    return outcome === 'success';
+  cloneGitLabRepository(contextId: string, token: string, operationId: string, stillCurrent?: () => boolean): Promise<RepositoryCreationResult> {
+    return this.runRepositoryCreation('Cloning reviewed GitLab project…', 'Cloned',
+      () => ipc.execute_gitlab_clone({ request: { contextId, token, operationId } }), operationId, stillCurrent);
   }
 
-  async initializeRepository(
+  initializeRepository(
     parentPath: string,
     folder: string,
     initialBranch: string,
     createReadme: boolean,
-  ): Promise<boolean> {
-    await this.run('Creating repository…', async report => {
-      const snapshot = await ipc.initialize_repository({
-        parentPath,
-        folder: folder.trim(),
-        initialBranch: initialBranch.trim(),
-        createReadme,
-      });
-      this.acceptOpenedRepository(snapshot, `Created ${snapshot.name}`, report);
-    });
-    return !this.error();
+    stillCurrent?: () => boolean,
+  ): Promise<RepositoryCreationResult> {
+    return this.runRepositoryCreation('Creating repository…', 'Created', () => ipc.initialize_repository({
+      parentPath,
+      folder: folder.trim(),
+      initialBranch: initialBranch.trim(),
+      createReadme,
+    }), null, stillCurrent);
   }
 
   async refresh({ stillCurrent, inlineFailure = false }: {
@@ -3677,6 +3670,49 @@ export class GitKhronosService implements OnDestroy {
     this.deferMetadataRefresh(snapshot.id);
   }
 
+  private async runRepositoryCreation(
+    label: string,
+    verb: 'Cloned' | 'Created',
+    perform: () => Promise<RepositorySnapshot>,
+    operationId: string | null,
+    stillCurrent = () => true,
+  ): Promise<RepositoryCreationResult> {
+    const workspaceId = this.activeWorkspaceId();
+    const scope = this.activeRepositoryReadScope();
+    const current = () => scope === this.activeRepositoryReadScope() && stillCurrent();
+    const result: { settled?: RepositoryCreationResult; failure?: string } = {};
+    const status = await this.run(label, async report => {
+      if (!current()) {
+        report('Repository creation was not started');
+        return;
+      }
+      let snapshot: RepositorySnapshot;
+      try { snapshot = await perform(); }
+      catch (error: unknown) { result.failure = this.formatError(error); throw error; }
+      if (current()) {
+        this.acceptOpenedRepository(snapshot, `${verb} ${snapshot.name}`, report);
+        result.settled = { status: 'opened' };
+        return;
+      }
+      // Native completed a real filesystem operation. Keep the destination
+      // discoverable without opening a tab or touching the new view's draft.
+      this.remember(snapshot.path);
+      const workspace = this.workspaces().find(item => item.id === workspaceId);
+      if (workspace && !workspace.repositoryPaths.includes(snapshot.path)) {
+        this.workspaces.update(items => items.map(item => item.id === workspaceId
+          ? { ...item, repositoryPaths: [...item.repositoryPaths, snapshot.path] } : item));
+        if (this.activeWorkspaceId() === workspaceId) this.persistOpenTabs({ preserveSavedOrder: true });
+        else this.persistWorkspaces();
+      }
+      const message = `${verb} ${snapshot.path}. ${workspace
+        ? `Saved in ${workspace.name}; open it from Repository overview.`
+        : 'Open it from Recent repositories.'}`;
+      report(message);
+      result.settled = { status: 'saved', message };
+    }, null, operationId, true, true, { announceFailure: current });
+    return result.settled ?? { status: status === 'error' ? 'error' : 'cancelled', error: result.failure ?? null };
+  }
+
   // Report completion through the callback; the shared status can belong to
   // another operation by the time this action's promise resolves.
   async run(
@@ -3686,7 +3722,7 @@ export class GitKhronosService implements OnDestroy {
     operationId: string | null = null,
     refreshOnCancel = true,
     changesHistory = true,
-    { announceFailure = true }: { announceFailure?: boolean } = {},
+    { announceFailure = true }: { announceFailure?: boolean | (() => boolean) } = {},
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
@@ -3722,6 +3758,7 @@ export class GitKhronosService implements OnDestroy {
       this.finishActivity(id, 'success', description, startedAt, null);
       return 'success';
     } catch (error: unknown) {
+      const shouldAnnounceFailure = typeof announceFailure === 'function' ? announceFailure() : announceFailure;
       this.lastFailureKind = this.errorKind(error);
       const cancelled = this.isOperationCancelled(error);
       let detail = this.formatError(error);
@@ -3733,13 +3770,13 @@ export class GitKhronosService implements OnDestroy {
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
           detail += ` Repository refresh also failed: ${this.formatError(refreshError)}`;
-          if (announceFailure) this.error.set(detail);
+          if (shouldAnnounceFailure) this.error.set(detail);
           this.activity.set('Operation canceled; repository refresh failed');
         } finally {
           finishRecoveryBarrier?.();
         }
       } else {
-        if (announceFailure) this.error.set(detail);
+        if (shouldAnnounceFailure) this.error.set(detail);
         this.activity.set(cancelled ? 'Operation canceled' : 'Operation failed');
       }
       const status = cancelled ? 'cancelled' : 'error';

@@ -204,6 +204,30 @@ test('a confirmed clone arriving after cancellation remains a truthful completed
   expect(await page.evaluate(() => (window as any).__hostedCatalogue.calls.filter((c: any) => c.command === 'execute_hosted_clone'))).toHaveLength(1);
 });
 
+test('closing a reviewed hosted clone does not activate its late successful checkout', async ({ page }) => {
+  const dialog = await reviewed(page);
+  const original = await page.locator('.status-repository-path').innerText();
+  await page.evaluate(() => { (window as any).__hostedCatalogue.hold = 'execute_hosted_clone'; });
+  await dialog.getByRole('button', { name: 'Clone reviewed repository', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__hostedCatalogue.release)).toBe('function');
+  await dialog.getByRole('button', { name: 'Close repository management', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => { const f = (window as any).__hostedCatalogue; f.hold = ''; f.release(); });
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(dialog.getByRole('button', { name: 'Open owned at /owned/clones/owned', exact: true })).toBeVisible();
+  await expect(page.locator('.status-repository-path')).toHaveText(original);
+  expect(await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const f = (window as any).__hostedCatalogue;
+    return {
+      saved: git.activeWorkspace().repositoryPaths.filter((path: string) => path === f.snapshot.path).length,
+      executions: f.calls.filter((call: any) => call.command === 'execute_hosted_clone').length,
+    };
+  })).toEqual({ saved: 1, executions: 1 });
+});
+
 for (const theme of ['khronos', 'midnight']) test(`${theme} hosted catalogue stays keyboard-contained and readable in a compact window`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);

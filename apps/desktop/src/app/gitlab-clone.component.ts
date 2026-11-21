@@ -135,10 +135,11 @@ export class GitLabCloneComponent implements OnDestroy {
     this.preview.set(null); this.previewBinding = '';
     await this.perform('cloning', async operation => {
       this.opening.emit();
-      const opened = await this.git.cloneGitLabRepository(this.contextId, preview.token, operation.id);
+      const opened = await this.git.cloneGitLabRepository(this.contextId, preview.token, operation.id, () => !this.closing && !this.destroyed && this.operation === operation);
       if (!this.closing && !this.destroyed && this.operation === operation) {
-        if (opened) this.opened.emit();
-        else this.error.set(`${this.git.error() ?? 'The clone result was not confirmed.'} Inspect ${preview.plan.destination} before preparing another clone; do not repeat execution blindly.`);
+        if (opened.status === 'opened') this.opened.emit();
+        else if (opened.status === 'saved') this.notice.set(opened.message);
+        else this.error.set(`${opened.error ?? 'The clone result was not confirmed.'} Inspect ${preview.plan.destination} before preparing another clone; do not repeat execution blindly.`);
       }
     });
   }
@@ -149,7 +150,7 @@ export class GitLabCloneComponent implements OnDestroy {
     try { await action(operation); }
     catch (reason) { if (!this.closing && !this.destroyed && this.operation === operation) this.error.set(this.message(reason, 'The GitLab clone step could not complete. Review its state before retrying.')); }
     finally {
-      if (!this.closing && !this.destroyed && operation.cancelled && !this.error()) this.notice.set(kind === 'cloning'
+      if (!this.closing && !this.destroyed && operation.cancelled && !this.error() && !this.notice()) this.notice.set(kind === 'cloning'
         ? 'Clone cancellation requested. Inspect the destination for partial data before retrying.' : 'GitLab clone request cancelled. Late reviews will be discarded.');
       if (this.operation === operation) { this.operation = null; this.busy.set(null); this.cancelling.set(false); }
       if (!this.destroyed) this.busyChange.emit(false);

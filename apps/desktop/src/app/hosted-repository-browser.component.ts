@@ -204,10 +204,11 @@ export class HostedRepositoryBrowserComponent implements OnDestroy {
     this.preview.set(null);
     await this.perform('Cloning reviewed repository…', async id => {
       this.opening.emit();
-      const opened = await this.git.cloneHostedRepository(this.contextId, preview.token, id);
+      const opened = await this.git.cloneHostedRepository(this.contextId, preview.token, id, () => !this.destroyed && this.operation?.id === id);
       if (!this.destroyed && this.operation?.id === id) {
-        if (opened) this.opened.emit();
-        else this.error.set(this.git.error() ?? 'The clone stopped. Inspect the destination before preparing another clone.');
+        if (opened.status === 'opened') this.opened.emit();
+        else if (opened.status === 'saved') this.notice.set(opened.message);
+        else this.error.set(opened.error ?? 'The clone stopped. Inspect the destination before preparing another clone.');
       }
     });
   }
@@ -219,7 +220,7 @@ export class HostedRepositoryBrowserComponent implements OnDestroy {
     try { await action(operation.id); }
     catch (reason: unknown) { if (!this.destroyed && this.operation === operation) { const error = reason as { message?: string; hint?: string }; this.error.set(error?.message ? `${error.message}${error.hint ? ' ' + error.hint : ''}` : String(reason)); } }
     finally {
-      if (!this.destroyed && operation.cancelled && !this.error()) this.notice.set('Request canceled. Inspect any clone destination before retrying.');
+      if (!this.destroyed && operation.cancelled && !this.error() && !this.notice()) this.notice.set('Request canceled. Inspect any clone destination before retrying.');
       if (this.operation === operation) this.operation = null;
       this.busy.set(false); this.cancelling.set(false);
     }

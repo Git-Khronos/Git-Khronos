@@ -247,6 +247,24 @@ test('clone cancellation addresses only its operation and never restores an exec
   expect(await calls(page, 'execute_gitlab_clone')).toHaveLength(1);
 });
 
+test('closing during GitLab execution keeps a confirmed clone discoverable without activating it', async ({ page }) => {
+  await reviewed(page);
+  const original = await page.locator('.status-repository-path').innerText();
+  await page.evaluate(() => { (window as any).__gitlabClone.hold = 'execute_gitlab_clone'; });
+  await clone(page).getByRole('button', { name: 'Clone reviewed GitLab project', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__gitlabClone.release)).toBe('function');
+  await dialog(page).getByRole('button', { name: 'Close repository management', exact: true }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  await page.evaluate(() => { const f = (window as any).__gitlabClone; f.hold = ''; f.release(); });
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(page.locator('.status-repository-path')).toHaveText(original);
+  expect(await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return git.recentPaths().includes('/owned/clones/owned');
+  })).toBe(true);
+  expect(await calls(page, 'execute_gitlab_clone')).toHaveLength(1);
+});
+
 for (const theme of ['khronos', 'midnight']) test(`${theme} GitLab clone review fits a compact keyboard workflow`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 560 });
   await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
