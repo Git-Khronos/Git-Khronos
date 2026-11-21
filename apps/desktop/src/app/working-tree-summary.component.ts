@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, Directive, effect, inje
 import { ipc, type RepositoryStatus, type WorkingTreeChangeSummary, type WorkingTreeSummaries } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
-type SummaryState = { phase: 'loading' | 'unavailable' | 'preview' } | { phase: 'ready'; value: WorkingTreeChangeSummary };
+type SummaryState = { phase: 'loading' | 'unavailable' | 'preview' }
+  | { phase: 'ready' | 'refreshing'; value: WorkingTreeChangeSummary };
 const EMPTY: SummaryState = { phase: 'ready', value: { additions: 0, deletions: 0, uncountedFiles: 0, partial: false } };
 
 interface Request {
@@ -13,16 +14,23 @@ interface Request {
   contentRevision: number;
 }
 
+function sameSnapshot(first: Request, next: Request): boolean {
+  return first.repositoryId === next.repositoryId && first.repositoryPath === next.repositoryPath
+    && first.checkoutScope === next.checkoutScope && first.status === next.status;
+}
+
 @Component({
   selector: 'gc-working-tree-summary',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
-    @if (current.phase === 'ready') {
-      <span class="summary" role="img" [attr.aria-label]="label(current.value)" [title]="description()">
+    @if (current.phase === 'ready' || current.phase === 'refreshing') {
+      @let refreshing = current.phase === 'refreshing';
+      <span class="summary" role="img" [attr.aria-label]="label(current.value, refreshing)" [title]="description(refreshing)">
         <span>+{{ current.value.additions }}</span><i>−{{ current.value.deletions }}</i>
         @if (current.value.uncountedFiles) { <em>{{ current.value.uncountedFiles }} other</em> }
         @if (current.value.partial) { <em>(partial)</em> }
+        @if (refreshing) { <em aria-hidden="true">…</em> }
       </span>
     } @else if (current.phase === 'loading') {
       <span class="pending" role="status">Counting lines…</span>
@@ -44,19 +52,21 @@ export class WorkingTreeSummaryComponent {
   readonly state = input.required<SummaryState>();
   readonly section = input.required<'staged' | 'unstaged'>();
 
-  description(): string {
+  description(refreshing: boolean): string {
     const basis = this.section() === 'staged'
       ? 'Staged line changes relative to the last commit, or an empty tree before the first commit.'
       : 'Unstaged line changes relative to the index, including untracked text files.';
-    return `${basis} Binary or uncounted files are excluded from line totals.`;
+    return `${basis} Binary or uncounted files are excluded from line totals.`
+      + (refreshing ? ' Updating; showing the last measured totals.' : '');
   }
 
-  label(value: WorkingTreeChangeSummary): string {
+  label(value: WorkingTreeChangeSummary, refreshing: boolean): string {
     const additions = `${value.additions} ${value.additions === 1 ? 'addition' : 'additions'}`;
     const deletions = `${value.deletions} ${value.deletions === 1 ? 'deletion' : 'deletions'}`;
     return `${additions} and ${deletions} in ${this.section()} files`
       + (value.uncountedFiles ? `; ${value.uncountedFiles} binary or uncounted ${value.uncountedFiles === 1 ? 'file' : 'files'} excluded` : '')
-      + (value.partial ? '; partial totals' : '');
+      + (value.partial ? '; partial totals' : '')
+      + (refreshing ? '; updating' : '');
   }
 }
 
@@ -73,11 +83,16 @@ export class WorkingTreeSummariesDirective {
   readonly unstaged = signal<SummaryState>(EMPTY);
   private readonly git = inject(GitKhronosService);
   private desired: Request | null = null;
+  private lastMeasurement: { request: Request; result: WorkingTreeSummaries } | null = null;
   private reading = false;
   private destroyed = false;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => { this.destroyed = true; this.desired = null; });
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
+      this.desired = null;
+      this.lastMeasurement = null;
+    });
     effect(() => {
       const request = {
         repositoryId: this.repositoryId(), repositoryPath: this.repositoryPath(),
@@ -90,11 +105,18 @@ export class WorkingTreeSummariesDirective {
       const { status } = request;
       const hasUnstaged = !!(status.unstaged || status.untracked);
       const hasStaged = !!status.staged;
+      const canRead = visible && !busy && !preview && (hasStaged || hasUnstaged);
+      if (!canRead || (this.lastMeasurement && !sameSnapshot(this.lastMeasurement.request, request))) {
+        this.lastMeasurement = null;
+      }
       const pending: SummaryState = { phase: preview ? 'preview' : 'loading' };
+      const previous = this.lastMeasurement?.result;
+      const duringRead = (hasChanges: boolean, value?: WorkingTreeChangeSummary | null): SummaryState =>
+        !hasChanges ? EMPTY : value ? { phase: 'refreshing', value } : pending;
       this.desired = null;
-      this.staged.set(hasStaged ? pending : EMPTY);
-      this.unstaged.set(hasUnstaged ? pending : EMPTY);
-      if (visible && !busy && !preview && (hasStaged || hasUnstaged)) {
+      this.staged.set(duringRead(hasStaged, previous?.staged));
+      this.unstaged.set(duringRead(hasUnstaged, previous?.unstaged));
+      if (canRead) {
         this.desired = request;
         this.pump();
       }
@@ -112,6 +134,7 @@ export class WorkingTreeSummariesDirective {
 
   private apply(request: Request, result?: WorkingTreeSummaries): void {
     if (!this.current(request)) return;
+    this.lastMeasurement = result ? { request, result } : null;
     const project = (hasChanges: boolean, summary: WorkingTreeChangeSummary | null | undefined): SummaryState =>
       !hasChanges ? EMPTY : summary ? { phase: 'ready', value: summary } : { phase: 'unavailable' };
     this.staged.set(project(!!request.status.staged, result?.staged));

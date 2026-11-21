@@ -6,6 +6,10 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
+    // Drive status refreshes explicitly in this suite. The ordinary renderer
+    // timer can otherwise increment the native call count between assertions.
+    app.cancelLiveStatusRefresh();
+    app.scheduleLiveStatusRefresh = () => {};
     const state: any = { app, git, requests: [] };
     (window as any).__unstagedSummary = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -98,6 +102,63 @@ test('a successful status poll refreshes line counts even when porcelain status 
   }));
   await expect(recap).toContainText('+6');
   await expect(recap).toContainText('−2');
+});
+
+test('an unchanged-status recount keeps both last totals visible and marks them as updating', async ({ page }) => {
+  const staged = page.locator('.staged-section gc-working-tree-summary');
+  const unstaged = page.locator('.unstaged-section gc-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: { additions: 24, deletions: 13, uncountedFiles: 1, partial: false },
+    unstaged: { additions: 5, deletions: 2, uncountedFiles: 0, partial: false },
+  }));
+  await expect(staged).toContainText('+24');
+  await expect(unstaged).toContainText('+5');
+
+  await page.evaluate(() => (window as any).__unstagedSummary.git.refreshStatusInBackground());
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await expect(staged.getByRole('img', { name: /24 additions and 13 deletions.*updating/i })).toBeVisible();
+  await expect(unstaged.getByRole('img', { name: /5 additions and 2 deletions.*updating/i })).toBeVisible();
+  await page.getByRole('button', { name: /^Staged Files/ }).click();
+  await expect(page.locator('#staged-files-list')).toHaveCount(0);
+  await expect(staged).toContainText('+24');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: { additions: 23, deletions: 12, uncountedFiles: 0, partial: false },
+    unstaged: { additions: 7, deletions: 1, uncountedFiles: 0, partial: false },
+  }));
+  await expect(staged.getByRole('img', { name: '23 additions and 12 deletions in staged files' })).toBeVisible();
+  await expect(unstaged.getByRole('img', { name: '7 additions and 1 deletion in unstaged files' })).toBeVisible();
+  await expect(staged.getByRole('img', { name: /updating/i })).toHaveCount(0);
+});
+
+test('a failed recount retires previously measured totals instead of leaving them as current', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gc-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 41, deletions: 3, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap).toContainText('+41');
+  await page.evaluate(() => (window as any).__unstagedSummary.git.refreshStatusInBackground());
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await expect(recap.getByRole('img', { name: /41 additions.*updating/i })).toBeVisible();
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].reject(new Error('Owned recount failure')));
+  await expect(recap).toHaveText('Line counts unavailable');
+});
+
+test('a replacement checkout cannot inherit the previous checkout’s measured totals', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gc-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 41, deletions: 3, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap).toContainText('+41');
+  await page.evaluate(() => {
+    const { git } = (window as any).__unstagedSummary;
+    const other = { ...git.repository(), id: 'recap-another-checkout', path: '/owned/recap-another-checkout' };
+    git.repositories.update((items: any[]) => [...items, other]);
+    git.activateRepository(other.id);
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await expect(recap).toHaveText('Counting lines…');
 });
 
 test('unchanged status polls supersede an in-flight line count without starting concurrent reads', async ({ page }) => {

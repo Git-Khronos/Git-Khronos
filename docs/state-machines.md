@@ -555,6 +555,11 @@ silently interpreted as no changes. The compact counters in each header have
 one accessible name that identifies the stage, counts, and any exclusions
 or partial result.
 
+An unchanged-status recount keeps the last measured counts visible and
+marked as updating. It does not borrow counts across visits, checkout
+paths, or changed status snapshots. A failed recount reports missing
+counts, and both sections still share one in-flight read.
+
 The installed `first-status` release check holds the initial complete
 file scan while history is usable. It requires a loading state instead of
 false zeroes, then checks both real recaps and an unchanged Git footprint.
