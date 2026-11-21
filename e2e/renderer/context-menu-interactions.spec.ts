@@ -64,6 +64,56 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const result of ['held', 'failed'] as const) {
+  test(`stash action menu remains dismissible while its optional module is ${result}`, async ({ page }) => {
+    let release!: () => void;
+    let requests = 0;
+    let delivered = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (source.includes('StashActionMenuComponent') && source.includes('Pop Stash')) {
+        requests++;
+        await gate;
+        if (result === 'failed') await route.abort();
+        else await route.fulfill({ response, body: source });
+        delivered = true;
+      } else await route.fulfill({ response, body: source });
+    });
+    await page.locator('#reference-section-stashes .sidebar-heading').click();
+    const trigger = page.locator('#reference-section-stashes .stash-item').first();
+    const menu = page.getByRole('menu', { name: 'Stash actions', exact: true });
+    try {
+      expect(requests).toBe(0);
+      await trigger.press('Shift+F10');
+      await expect.poll(() => requests).toBe(1);
+      const cancel = menu.getByRole('menuitem', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await expect(menu.getByRole('menuitem', { name: 'Apply Stash', exact: true })).toHaveCount(0);
+      if (result === 'failed') {
+        release();
+        await expect(menu.getByRole('alert')).toContainText('No stash action was run');
+        await expect(menu.getByRole('menuitem', { name: 'Close', exact: true })).toBeFocused();
+      }
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      release();
+      await expect.poll(() => delivered).toBe(true);
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      if (result === 'held') {
+        await trigger.press('Shift+F10');
+        const apply = menu.getByRole('menuitem', { name: 'Apply Stash', exact: true });
+        await expect(apply).toBeFocused();
+        await expect(apply).toHaveCSS('display', 'grid');
+        expect(requests).toBe(1);
+      }
+    } finally { release(); }
+  });
+}
+
+for (const result of ['held', 'failed'] as const) {
   test(`repository tab menu owns keyboard dismissal when the action module is ${result}`, async ({ page }) => {
     let release!: () => void;
     let requests = 0;

@@ -6,6 +6,7 @@ import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
+import { StashActionMenuComponent, type StashMenuAction } from './stash-action-menu.component';
 import { RepositoryTabMenuContentComponent, type RepositoryTabMenuAction, type RepositoryTabMenuView } from './repository-tab-menu-content.component';
 import { FileActionMenuComponent, type FileMenuAction } from './file-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
@@ -503,11 +504,12 @@ interface CommitFileContextMenuState {
   source: 'commit' | 'comparison';
 }
 
-interface StashContextMenuState {
+export interface StashContextMenuState {
   x: number;
   y: number;
   stash: StashEntry;
   repositoryId: string;
+  preferredPosition: { x: number; y: number };
 }
 
 export type FileActionMenu = { kind: 'file'; value: FileContextMenuState }
@@ -680,7 +682,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -765,6 +767,13 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly graphSettingsPanel = viewChild<ElementRef<HTMLElement>>('graphSettingsPanel');
   private readonly graphColumns = viewChild<ElementRef<HTMLElement>>('graphColumns');
   private readonly actionMenuElement = viewChild<ElementRef<HTMLElement>>('actionMenuElement');
+  private readonly stashMenuLoader = viewChild<ElementRef<HTMLElement>>('stashMenuLoader');
+  private readonly stashMenuLoaderFit = afterRenderEffect(() => {
+    if (this.stashMenuLoader()) untracked(() => {
+      const request = this.stashContextMenu();
+      if (request) this.stashActionMenuReady(request);
+    });
+  });
   private readonly graphMenuLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('graphMenuLoaderClose');
   private readonly graphMenuLoaderFocus = afterRenderEffect(() => {
     const escape = this.graphMenuLoaderClose()?.nativeElement;
@@ -12441,6 +12450,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return;
+    this.contextMenuGeneration += 1;
     this.prepareActionMenu('graph');
     this.actionOverlays.close('context');
     this.actionMenuElement()?.nativeElement.classList.remove('positioned');
@@ -12460,6 +12470,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.open({ kind: 'stash', value: {
       stash,
       repositoryId,
+      preferredPosition,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(
         preferredPosition.x,
         window.innerWidth - GRAPH_ACTION_MENU_WIDTH - VIEWPORT_MENU_GUTTER,
@@ -14401,12 +14412,39 @@ export class AppComponent implements OnInit, OnDestroy {
     this.settleGraphActionMenuPosition('context', `${menu.kind}:${menu.oid}`, menu, focusMenu);
   }
 
+  protected stashActionMenuReady(request: StashContextMenuState): void {
+    const element = this.actionMenuElement()?.nativeElement;
+    if (this.stashContextMenu() !== request || !element?.classList.contains('stash-context-menu')) return;
+    this.settleGraphActionMenuPosition('stash', request.stash.reference, request.preferredPosition,
+      this.contextMenuReturnFocus !== null);
+  }
+
+  protected closeStashMenuLoader(request: StashContextMenuState): void {
+    if (this.stashContextMenu() === request) this.dismissGraphActionMenu(true);
+  }
+
+  protected runStashMenuAction(request: StashContextMenuState, action: StashMenuAction): void {
+    if (this.stashContextMenu() !== request || request.repositoryId !== this.git.activeRepositoryId()) return;
+    switch (action) {
+      case 'apply': void this.applyStashFromMenu(false); break;
+      case 'apply-options': this.openStashOptions('apply', request.stash); break;
+      case 'branch': this.openStashOptions('branch', request.stash); break;
+      case 'pop': void this.applyStashFromMenu(true); break;
+      case 'rename': this.beginStashRename(request.stash); break;
+      case 'visibility': this.toggleStashVisibility(request.stash); break;
+      case 'hide-all': this.hideAllStashes(); break;
+      case 'show-all': this.showAllStashes(); break;
+      case 'delete': this.requestStashDelete(request.stash); break;
+    }
+  }
+
   private settleGraphActionMenuPosition(
     target: 'context' | 'stash',
     key: string,
     preferred: { x: number; y: number },
     focusMenu: boolean,
   ): void {
+    const generation = this.contextMenuGeneration;
     queueMicrotask(() => requestAnimationFrame(() => {
       const element = this.actionMenuElement()?.nativeElement;
       const context = this.contextMenu();
@@ -14414,7 +14452,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const activeKey = target === 'context'
         ? context && `${context.kind}:${context.oid}`
         : stash && stash.stash.reference;
-      if (!element || activeKey !== key) return;
+      if (!element || activeKey !== key || generation !== this.contextMenuGeneration) return;
 
       const menuWidth = element.offsetWidth;
       const borderHeight = element.offsetHeight - element.clientHeight;
@@ -14441,7 +14479,8 @@ export class AppComponent implements OnInit, OnDestroy {
         this.actionOverlays.open({ kind: 'stash', value: { ...stash, x, y } }, this.contextMenuReturnFocus);
       }
       element.classList.add('positioned');
-      if (focusMenu) {
+      if (focusMenu && (target !== 'stash' || element.contains(document.activeElement)
+        || document.activeElement === document.body || document.activeElement === this.contextMenuReturnFocus)) {
         element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
       }
     }));

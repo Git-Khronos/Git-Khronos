@@ -2120,18 +2120,17 @@
   }
   @if (stashContextMenu(); as menu) {
     <div #actionMenuElement class="context-menu graph-action-menu stash-context-menu" role="menu" aria-label="Stash actions" [style.left.px]="menu.x" [style.top.px]="menu.y" [style.--context-menu-top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleContextMenuKeydown($event)">
-      <div class="context-heading"><span>{{ menu.stash.reference }}</span><strong>{{ menu.stash.message }}</strong></div>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="applyStashFromMenu(false)"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply Stash</button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('apply', menu.stash)"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply with staged-state options…</button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openStashOptions('branch', menu.stash)"><span><gc-icon name="branch" [size]="13" /></span>Create branch from stash…</button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="applyStashFromMenu(true)"><span><gc-icon name="archive" [size]="13" /></span>Pop Stash</button>
-      <div class="context-divider"></div>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="beginStashRename(menu.stash)"><span><gc-icon name="edit" [size]="13" /></span>Edit stash message…</button>
-      <button type="button" role="menuitem" (click)="toggleStashVisibility(menu.stash)"><span><gc-icon [name]="isStashHidden(menu.stash.oid) ? 'eye' : 'eye-off'" [size]="13" /></span>{{ isStashHidden(menu.stash.oid) ? 'Show stash in graph' : 'Hide stash in graph' }}</button>
-      @if (hiddenStashOids().length < (git.repository()?.stashes?.length ?? 0)) { <button type="button" role="menuitem" (click)="hideAllStashes()"><span><gc-icon name="eye-off" [size]="13" /></span>Hide all stashes</button> }
-      @if (hiddenStashOids().length) { <button type="button" role="menuitem" (click)="showAllStashes()"><span><gc-icon name="eye" [size]="13" /></span>Show all stashes</button> }
-      <div class="context-divider"></div>
-      <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestStashDelete(menu.stash)"><span><gc-icon name="trash" [size]="13" /></span>Delete Stash…</button>
+      @defer (on immediate) {
+        <gc-stash-action-menu [request]="menu" [busy]="git.busy()" [hidden]="isStashHidden(menu.stash.oid)"
+          [canHideAll]="hiddenStashOids().length < (git.repository()?.stashes?.length ?? 0)" [canShowAll]="hiddenStashOids().length > 0"
+          (ready)="stashActionMenuReady($event)" (chosen)="runStashMenuAction($event.request, $event.action)" />
+      } @placeholder {
+        <p role="status">Loading stash actions…</p>
+        <button #stashMenuLoader type="button" role="menuitem" (click)="closeStashMenuLoader(menu)">Cancel</button>
+      } @error {
+        <p role="alert">Stash actions could not load. No stash action was run. Restart Git Khronos to retry.</p>
+        <button #stashMenuLoader type="button" role="menuitem" (click)="closeStashMenuLoader(menu)">Close</button>
+      }
     </div>
   }
   @if (branchDropMenu(); as operation) {

@@ -1307,6 +1307,10 @@ also keeps an eager loading/error shell. While
 the request owns the modal, Tab stays in the dialog and background Git
 shortcuts are ignored, including in the gap before the module renders. Escape
 retains drafts and returns focus only to the current request's opener.
+The stash action menu also loads on demand. Its root shell owns anchor,
+keyboard dismissal and repository/request identity before the chunk loads.
+Positioning refits the rendered actions against the original anchor, and a
+retired menu or failed chunk cannot submit a stash action.
 The branch-drop menu also loads on demand, with a root-styled failure notice.
 The drop owns the repository path and ID and the source and target branch
 tips. A changed snapshot retires it, and comparison results must match both the
