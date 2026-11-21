@@ -4835,6 +4835,31 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn partial_discard_replaces_an_unterminated_final_line_and_preserves_recovery() {
+        let repository = Repository::new();
+        repository.write("end", b"old final line");
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "Before final line change").unwrap();
+        repository.write("end", b"new final line");
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let diff = working_tree_file_diff(&repository.0, "end", false).unwrap();
+        let plan = prepare_partial_discard_with_preview(
+            &repository.0,
+            "end",
+            0,
+            Some(&[1]),
+            Some(&diff.patch),
+        )
+        .unwrap();
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(fs::read(repository.0.join("end")).unwrap(), b"old final line");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(fs::read(repository.0.join("end")).unwrap(), b"new final line");
+    }
+
     #[test]
     fn bulk_discard_partial_lines_keep_unselected_insertions_and_deletions() {
         let repository = Repository::new();

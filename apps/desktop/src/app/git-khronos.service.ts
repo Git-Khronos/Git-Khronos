@@ -91,6 +91,7 @@ const REPOSITORY_CHANGE_MAX_WAIT_MS = 1_500;
 const SAFE_DISCARD_FAILURES = new Set([
   'repositoryFileRefused', 'staleWorkingTreeFile', 'staleDiscard', 'emptyDiscard', 'missingRecoveryPatch',
   'untrackedPartialDiscardUnsupported', 'invalidLineSelection', 'invalidLineAction', 'invalidRecoveryPath',
+  'invalidDiffLine', 'partialFinalNewline',
   'discardRecoveryUnavailable', 'discardRecoveryMissing', 'discardRecoveryChanged', 'gitInspectionTimeout',
   'invalidSystemClock', 'gitFailure', 'gitUnavailable', 'internalState', 'operationCancelled',
 ]);

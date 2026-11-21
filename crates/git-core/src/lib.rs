@@ -7309,21 +7309,64 @@ fn select_patch_lines_with_context(
         .position(|line| line.starts_with("@@ "))
         .ok_or_else(|| AppError::new("missingDiffHunk", "That change has no text hunk.", None))?;
     let mut output = lines[..=hunk_start].concat();
-    let body = &lines[hunk_start + 1..];
+    // A no-final-newline notice belongs to the preceding patch row. It
+    // neither ends a replacement run nor has its own selection index.
+    let mut source = lines[hunk_start + 1..].iter().copied().peekable();
+    let mut body = Vec::new();
+    while let Some(line) = source.next() {
+        if line.starts_with("\\ ") {
+            return Err(AppError::new(
+                "invalidDiffLine",
+                "The selected diff contains an unattached end-of-file notice.",
+                Some("Reload the diff and review the change again."),
+            ));
+        }
+        let notice = if source.peek().is_some_and(|line| line.starts_with("\\ ")) {
+            source.next()
+        } else {
+            None
+        };
+        body.push((line, notice));
+    }
+    let mut old_end = false;
+    let mut new_end = false;
+    let mut emit = |(text, notice): (&str, Option<&str>), as_context: bool| -> Result<(), AppError> {
+        let prefix = if as_context { b' ' } else { text.as_bytes()[0] };
+        let old = prefix != b'+';
+        let new = prefix != b'-';
+        if (old && old_end) || (new && new_end) {
+            return Err(AppError::new(
+                "partialFinalNewline",
+                "That selection would join lines at the end of the file.",
+                Some("Select the neighbouring final lines together, or use the whole hunk."),
+            ));
+        }
+        if as_context {
+            output.push(' ');
+            output.push_str(&text[1..]);
+        } else {
+            output.push_str(text);
+        }
+        if let Some(notice) = notice {
+            output.push_str(notice);
+            old_end |= old;
+            new_end |= new;
+        }
+        Ok(())
+    };
     let mut index = 0;
     let mut change_index = 0;
     let mut seen = 0;
-    let mut last_emitted = true;
     while index < body.len() {
-        if body[index].starts_with('-') {
+        if body[index].0.starts_with('-') {
             let mut deletions = Vec::new();
-            while body.get(index).is_some_and(|line| line.starts_with('-')) {
+            while body.get(index).is_some_and(|(line, _)| line.starts_with('-')) {
                 deletions.push((body[index], change_index));
                 change_index += 1;
                 index += 1;
             }
             let mut additions = Vec::new();
-            while body.get(index).is_some_and(|line| line.starts_with('+')) {
+            while body.get(index).is_some_and(|(line, _)| line.starts_with('+')) {
                 additions.push((body[index], change_index));
                 change_index += 1;
                 index += 1;
@@ -7333,61 +7376,46 @@ fn select_patch_lines_with_context(
                 let chosen =
                     selected.contains(&deletions[pair].1) || selected.contains(&additions[pair].1);
                 if chosen {
-                    output.push_str(deletions[pair].0);
-                    output.push_str(additions[pair].0);
+                    emit(deletions[pair].0, false)?;
+                    emit(additions[pair].0, false)?;
                     seen += usize::from(selected.contains(&deletions[pair].1));
                     seen += usize::from(selected.contains(&additions[pair].1));
                 } else {
-                    output.push(' ');
-                    output.push_str(if reverse_context {
-                        &additions[pair].0[1..]
+                    emit(if reverse_context {
+                        additions[pair].0
                     } else {
-                        &deletions[pair].0[1..]
-                    });
+                        deletions[pair].0
+                    }, true)?;
                 }
-                last_emitted = true;
             }
             for (line, line_index) in &deletions[pairs..] {
                 if selected.contains(line_index) {
-                    output.push_str(line);
+                    emit(*line, false)?;
                     seen += 1;
                 } else if !reverse_context {
-                    output.push(' ');
-                    output.push_str(&line[1..]);
+                    emit(*line, true)?;
                 }
-                last_emitted = selected.contains(line_index) || !reverse_context;
             }
             for (line, line_index) in &additions[pairs..] {
-                last_emitted = selected.contains(line_index);
-                if last_emitted {
-                    output.push_str(line);
+                if selected.contains(line_index) {
+                    emit(*line, false)?;
                     seen += 1;
                 } else if reverse_context {
-                    output.push(' ');
-                    output.push_str(&line[1..]);
-                    last_emitted = true;
+                    emit(*line, true)?;
                 }
             }
             continue;
         }
-        if body[index].starts_with('+') {
-            last_emitted = selected.contains(&change_index);
-            if last_emitted {
-                output.push_str(body[index]);
+        if body[index].0.starts_with('+') {
+            if selected.contains(&change_index) {
+                emit(body[index], false)?;
                 seen += 1;
             } else if reverse_context {
-                output.push(' ');
-                output.push_str(&body[index][1..]);
-                last_emitted = true;
+                emit(body[index], true)?;
             }
             change_index += 1;
-        } else if body[index].starts_with("\\ ") {
-            if last_emitted {
-                output.push_str(body[index]);
-            }
         } else {
-            output.push_str(body[index]);
-            last_emitted = true;
+            emit(body[index], false)?;
         }
         index += 1;
     }
@@ -16250,6 +16278,95 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         );
         apply_working_tree_recovery(&repository.path, &recovery_path, true)
             .expect("discard restored replacement again");
+    }
+
+    #[test]
+    fn stages_and_unstages_a_replacement_when_both_lines_lack_a_final_newline() {
+        let repository = TestRepository::new();
+        repository.write("eof.txt", "old final line");
+        repository.git(&["add", "--", "eof.txt"]);
+        repository.git(&["commit", "-m", "Original unterminated line"]);
+        repository.write("eof.txt", "new final line");
+        let patch = |staged| {
+            working_tree_file_diff(&repository.path, "eof.txt", staged)
+                .unwrap()
+                .patch
+        };
+        let unstaged = patch(false);
+        assert_eq!(unstaged.matches("\\ No newline at end of file").count(), 2);
+        let index_bytes = || run_git(&repository.path, &["show", ":eof.txt"]).unwrap().stdout;
+
+        apply_working_tree_lines_with_preview(
+            &repository.path,
+            "eof.txt",
+            false,
+            0,
+            &[1],
+            "stage",
+            Some(&unstaged),
+        )
+        .expect("stage the replacement using only its added side");
+        assert_eq!(index_bytes(), b"new final line");
+
+        apply_working_tree_lines_with_preview(
+            &repository.path,
+            "eof.txt",
+            true,
+            0,
+            &[0],
+            "unstage",
+            Some(&patch(true)),
+        )
+        .expect("unstage the replacement using only its removed side");
+        assert_eq!(index_bytes(), b"old final line");
+        assert_eq!(
+            fs::read(repository.path.join("eof.txt")).unwrap(),
+            b"new final line"
+        );
+    }
+
+    #[test]
+    fn refuses_to_join_an_unterminated_context_line_with_a_later_selected_addition() {
+        let repository = TestRepository::new();
+        let original = "old last line";
+        let changed = "first revised line\nsecond revised line";
+        repository.write("tail.txt", original);
+        repository.git(&["add", "--", "tail.txt"]);
+        repository.git(&["commit", "-m", "Before expanding final line"]);
+        repository.write("tail.txt", changed);
+        let diff = working_tree_file_diff(&repository.path, "tail.txt", false).unwrap();
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+
+        let error = apply_working_tree_lines_with_preview(
+            &repository.path,
+            "tail.txt",
+            false,
+            0,
+            &[2],
+            "stage",
+            Some(&diff.patch),
+        )
+        .expect_err("partial staging must not concatenate the old and added lines");
+        assert_eq!(error.kind, "partialFinalNewline");
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repository.path.join("tail.txt")).unwrap(),
+            changed.as_bytes()
+        );
+
+        apply_working_tree_lines_with_preview(
+            &repository.path,
+            "tail.txt",
+            false,
+            0,
+            &[1, 2],
+            "stage",
+            Some(&diff.patch),
+        )
+        .expect("stage both selected final lines");
+        let staged = run_git(&repository.path, &["show", ":tail.txt"]).unwrap();
+        assert!(staged.status.success());
+        assert_eq!(staged.stdout, changed.as_bytes());
     }
 
     #[test]

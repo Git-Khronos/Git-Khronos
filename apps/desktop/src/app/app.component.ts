@@ -2526,10 +2526,8 @@ export class AppComponent implements OnInit, OnDestroy {
         index += 1;
         continue;
       }
-      const deletions: DiffLine[] = [];
-      const additions: DiffLine[] = [];
-      while (lines[index]?.kind === 'deletion') deletions.push(lines[index++]);
-      while (lines[index]?.kind === 'addition') additions.push(lines[index++]);
+      const { deletions, additions, next } = diffReplacementRun(lines, index);
+      index = next;
       for (let pair = 0; pair < Math.min(deletions.length, additions.length); pair += 1) {
         const group = [...deletions[pair].changeIndices, ...additions[pair].changeIndices];
         deletions[pair].changeIndices = group;
@@ -2563,13 +2561,14 @@ export class AppComponent implements OnInit, OnDestroy {
         continue;
       }
       if (line.kind === 'deletion') {
-        const deletions: DiffLine[] = [];
-        const additions: DiffLine[] = [];
-        while (lines[index]?.kind === 'deletion') deletions.push(lines[index++]);
-        while (lines[index]?.kind === 'addition') additions.push(lines[index++]);
+        const { deletions, additions, notices, next } = diffReplacementRun(lines, index);
+        index = next;
         const count = Math.max(deletions.length, additions.length);
         for (let pair = 0; pair < count; pair += 1) {
           rows.push({ kind: 'pair', left: deletions[pair] ?? null, right: additions[pair] ?? null, label: null, hunkIndex: null });
+        }
+        for (const notice of notices) {
+          rows.push({ kind: 'header', left: null, right: null, label: notice, hunkIndex: null });
         }
         continue;
       }
@@ -15200,6 +15199,24 @@ function shortLabel(oid: string): string {
 
 function isRemoteLocationIcon(value: unknown): value is RemoteLocationIcon {
   return REMOTE_LOCATION_ICONS.some((option) => option.value === value);
+}
+
+function diffReplacementRun(lines: DiffLine[], start: number) {
+  const notices: string[] = [];
+  let next = start;
+  const take = (kind: 'deletion' | 'addition', side: string): DiffLine[] => {
+    const rows: DiffLine[] = [];
+    while (lines[next]?.kind === kind) {
+      rows.push(lines[next++]);
+      if (lines[next]?.kind === 'header' && lines[next].text.startsWith('\\ ')) {
+        notices.push(`${side}: ${lines[next++].text.slice(2)}`);
+      }
+    }
+    return rows;
+  };
+  const deletions = take('deletion', 'Before');
+  const additions = take('addition', 'After');
+  return { deletions, additions, notices, next };
 }
 
 function wordDiffSegments(left: string, right: string): [DiffTextSegment[], DiffTextSegment[]] {

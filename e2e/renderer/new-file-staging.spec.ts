@@ -91,6 +91,29 @@ test('patch-like text inside a hunk retains its line numbers and exact native se
   });
 });
 
+test('end-of-file notices do not split a replacement into independently selected lines', async ({ page }) => {
+  const trackedPatch = [
+    'diff --git a/fresh.txt b/fresh.txt', 'index 1111111..2222222 100644',
+    '--- a/fresh.txt', '+++ b/fresh.txt', '@@ -1 +1 @@',
+    '-old final line', '\\ No newline at end of file',
+    '+new final line', '\\ No newline at end of file', '',
+  ].join('\n');
+  await mockNewFile(page, false, false, false, trackedPatch);
+  const diff = page.getByLabel('Diff viewer');
+  await diff.locator('[data-diff-mode="split"]').click();
+  const row = diff.locator('.split-row').filter({ hasText: 'old final line' });
+  await expect(row).toContainText('new final line');
+  await expect(diff.getByText('Before: No newline at end of file', { exact: true })).toBeVisible();
+  await expect(diff.getByText('After: No newline at end of file', { exact: true })).toBeVisible();
+  await diff.locator('[data-diff-mode="inline"]').click();
+  await diff.getByRole('button', { name: 'Select added line 1', exact: true }).click();
+  await expect(diff.getByRole('button', { name: 'Deselect removed line 1', exact: true })).toBeVisible();
+  await diff.getByRole('group', { name: 'Selected line actions' }).getByRole('button', { name: 'Stage', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).__newFileTest.calls);
+  expect(calls.find((call: { command: string }) => call.command === 'apply_working_tree_lines')?.args)
+    .toMatchObject({ hunkIndex: 0, lineIndices: [0, 1], expectedPatch: trackedPatch });
+});
+
 test('allows explicit full-hunk staging of a new text file', async ({ page }) => {
   await mockNewFile(page);
   await page.getByLabel('Diff viewer').getByRole('button', { name: 'Stage Hunk', exact: true }).click();

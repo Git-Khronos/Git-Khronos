@@ -99,7 +99,9 @@ Diff line actions submit hunk-relative indices against the exact displayed
 native patch. Within a hunk, only the first prefix character determines an
 addition or deletion: file content that begins with `++` or `--` is still
 selectable. End-of-file notices are shown without consuming a source line or
-a change index.
+a change index, and do not separate the removed and added sides of a
+replacement. Native selection retains the notice on the appropriate patch
+side and refuses a partial change that would concatenate final lines.
 
 ### Deferred saved-tab restoration
 
