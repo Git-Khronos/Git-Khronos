@@ -3036,6 +3036,12 @@ recovery state; it does not replay the Apply click. See the report under
 `target/local-review/updater/jammy-builder/working-tree-release.4wNlfYM8/jammy-workflow.RkKTxmy0/`
 for those timings. The full environment suite was restarted separately.
 
+That full retry then stopped because the editor-close scenario queried
+`Preview file content` before its deferred menu was painted after app
+restart. At the same package SHA-256, all three isolated editor-close
+scenarios passed with the ready-control click helper (`bc7bf1f`).
+See `jammy-editor.tySJcZnF/results/editor-close/` in the package run above.
+
 ### Shared Pull strategy menu rows
 
 One tracked template now renders the three strategy rows and uses the
@@ -3060,3 +3066,10 @@ debug-test timings, not installed-app latency estimates.
 
 Logs and the opt-in timing probe are in
 `target/local-review/short-git-capture.Tlyy8Yfi/`.
+
+The Unix pipe-readiness follow-up removed the sampling sleep from the
+readers without changing their 10 ms cancellation check. In a second
+three-pair comparison, the median of 60 short Git processes fell from
+733 ms to 235 ms. The real-Git release-finish test fell from a median of
+9.53 s to 4.76 s. These timings are local debug runs; logs are under
+`target/local-review/ready-git-pipes.nUy31LmV/`.
