@@ -46,6 +46,9 @@ def occupied_branch_navigation(driver, fixtures, report):
     owner = fixtures.root / 'occupied-owner Linéa\tfirst\nsecond '
     branch = 'owned/occupied-topic'
     fixtures.git(source, 'worktree', 'add', '-b', branch, str(owner))
+    # Give the occupied branch its own visible graph pill, rather than a
+    # branch-stack item sharing the source's tip.
+    fixtures.git(owner, 'commit', '--allow-empty', '-m', 'Owned worktree branch tip')
     (source / 'fixture.txt').write_text('Source checkout changes must survive navigation.\n')
     (owner / 'fixture.txt').write_text('Owning checkout changes must survive navigation.\n')
     (source / 'source-note.txt').write_text('Untracked source contents.\n')
@@ -62,10 +65,28 @@ def occupied_branch_navigation(driver, fixtures, report):
     review = 'gc-checkout-worktree-dialog [role=dialog]'
     branch_button = '.branch-item[aria-label="Local branch ' + branch + '"]'
 
-    def open_review():
-        driver.context_click(branch_button)
-        # Checkout can be a write when a branch is free: never replay this click.
-        driver.click_visible('.graph-action-menu button', 'Checkout branch')
+    def open_review(from_graph=False):
+        if from_graph:
+            graph_branch = '.commit-row .branch-column button[aria-label="Graph reference ' + branch + ', local branch"]'
+            element = driver.wait(f"""const button = document.querySelector({json.dumps(graph_branch)});
+              if (!button || !button.getClientRects().length) return null;
+              const r = button.getBoundingClientRect();
+              return button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
+                ? button : null;""")
+            # Deliver a real double click on the graph reference, not a
+            # synthesized DOM event and not two separate commands to retry.
+            driver.request('POST', driver.path('actions'), {'actions': [{
+                'type': 'pointer', 'id': 'native-worktree-graph-mouse', 'parameters': {'pointerType': 'mouse'},
+                'actions': [
+                    {'type': 'pointerMove', 'origin': element, 'x': 0, 'y': 0, 'duration': 0},
+                    {'type': 'pointerDown', 'button': 0}, {'type': 'pointerUp', 'button': 0},
+                    {'type': 'pointerDown', 'button': 0}, {'type': 'pointerUp', 'button': 0},
+                ],
+            }]})
+        else:
+            driver.context_click(branch_button)
+            # Checkout can be a write when a branch is free: never replay this click.
+            driver.click_visible('.graph-action-menu button', 'Checkout branch')
         driver.wait('return !!document.querySelector(' + json.dumps(review) + ')')
         text = driver.script('return document.querySelector(arguments[0]).textContent', review)
         assert str(source) in text and str(owner) in text and branch in text, text
@@ -81,7 +102,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     assert after_cancel == before, 'Cancel changed a checkout, index, configuration or reference'
     report['scenarios'].append('native-occupied-branch-review-cancel-preserves-both-dirty-checkouts')
 
-    open_review()
+    open_review(from_graph=True)
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-review.png')
     driver.click_visible('gc-checkout-worktree-dialog button', 'Open existing checkout')
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
@@ -92,6 +113,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     assert after_navigation == before, 'Opening the owner performed a checkout or changed Git data'
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-opened.png')
     report['scenarios'].append('native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss')
+    report['scenarios'].append('native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head')
 
     # Change real Git ownership after review. Fresh inspection must refuse the
     # old request, not silently fall back to a branch checkout in the source.
