@@ -3145,6 +3145,13 @@ against concurrent external file edits, nor ignored-path protection for
 Pull or rebase, is claimed. The two new scenarios are required by the
 existing installed Pull and checkout suites for future candidates.
 
+Both focused Ubuntu 24.04 installed suites passed on `ca3a347`:
+six checkout cases and three Pull cases, including the new ignored-file
+merge refusal and pruning-config Pull. They used the same package
+SHA-256 `9d22a1fb6e3f207463ff1e67f27e432d1c32a60006c6f0decf48ac4ff573646a`.
+Evidence is under `target/local-review/updater/jammy-builder/safe-integration-release.7M68nsCX/`.
+This is focused evidence, not full qualification of that or later packages.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds
