@@ -483,8 +483,8 @@ for (const selected of [false, true]) {
       (window as any).__TAURI_INTERNALS__ = {
         invoke: (command: string, args: any) => {
           test.calls.push({ command, args });
-          if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-            uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
+          if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+            uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true } });
           if (command === 'preview_discard') {
             if (selected) return Promise.reject({
               kind: 'repositoryFileRefused',
@@ -1193,8 +1193,8 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         (window as any).__recoveryCalls.push({ command, args });
-        if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-          uncountedFiles: app.git.repository().status.unstaged + app.git.repository().status.untracked, partial: true });
+        if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+          uncountedFiles: app.git.repository().status.unstaged + app.git.repository().status.untracked, partial: true } });
         if (command === 'load_discard_recoveries') return Promise.resolve(records);
         if (command === 'forget_saved_discard') {
           records = records.filter(record => record.id !== args.id);

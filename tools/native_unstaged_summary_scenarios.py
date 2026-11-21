@@ -28,15 +28,24 @@ def unstaged_summary_workflow(driver, fixtures, report):
         assert 'partial' not in driver.script('return document.querySelector(arguments[0]).textContent', recap)
         return driver.script('return document.querySelector(arguments[0]).textContent', recap)
 
+    def staged_counts(additions, deletions):
+        label = f'{additions} additions and {deletions} deletions in staged files'
+        selector = '.staged-section gc-working-tree-summary .summary'
+        driver.wait('return document.querySelector(' + json.dumps(selector) + ')?.getAttribute("aria-label") === ' + json.dumps(label))
+        return driver.script('return document.querySelector(arguments[0]).textContent', selector)
+
     initial = counts(4, 3)
+    initial_staged = staged_counts(1, 1)
     assert checkout_footprint(fixtures, repository, files) == before
-    report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial}
+    report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial, 'initialStagedRecap': initial_staged}
     report['scenarios'].append('native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes')
     driver.click_visible('[aria-label="Stage fixture.txt"]')
     after_stage = counts(2, 2)
+    after_staged = staged_counts(2, 1)
     assert fixtures.git(repository, 'show', ':fixture.txt') == 'unstaged\nretained\nextra'
     after = checkout_footprint(fixtures, repository, files)
     for key in ('head', 'branch', 'references', 'configSha256', 'files'):
         assert after[key] == before[key], 'Staging changed unrelated summary fixture data: ' + key
-    report['unstagedLineSummary'].update({'afterStageRecap': after_stage, 'after': after})
+    report['unstagedLineSummary'].update({'afterStageRecap': after_stage, 'afterStagedRecap': after_staged, 'after': after})
     report['scenarios'].append('native-unstaged-summary-recounts-after-staging-without-including-staged-lines')
+    report['scenarios'].append('native-staged-summary-counts-the-index-against-head-before-and-after-staging')

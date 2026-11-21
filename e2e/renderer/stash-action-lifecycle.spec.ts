@@ -18,7 +18,7 @@ async function prepare(page: Page) {
       if (command === 'working_tree_change_summary') {
         const repo = git.repositories().find((candidate: { id: string }) => candidate.id === (args as { repoId: string }).repoId);
         if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
-        return Promise.resolve({ additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+        return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true } });
       }
       if (command === 'apply_stash' || command === 'pop_stash_entry' || command === 'pop_stash') return new Promise(resolve => { state.finish = resolve; });
       return Promise.resolve(command === 'refresh_repository_status' ? repository.status : repository);

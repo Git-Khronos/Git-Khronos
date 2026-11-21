@@ -122,7 +122,7 @@ test('refreshes every local repository, retains failed cached rows and performs 
       if (command === 'working_tree_change_summary') {
         const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
         if (!repo) throw Error('Unexpected repository in owned recap read');
-        return { additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true };
+        return { staged: null, unstaged: { additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true } };
       }
       if (args.repoId === 'clean-repo') throw { kind: 'missingRepository', message: 'Fixture unavailable' };
       if (command === 'refresh_repository') return fixture.first;

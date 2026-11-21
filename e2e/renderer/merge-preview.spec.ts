@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
       if (command === 'working_tree_change_summary') {
         const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
         if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
-        return Promise.resolve({ additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+        return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true } });
       }
       if (command === 'preview_merge') {
         if (fixture.fail) return Promise.reject({ kind: 'mergePreviewUnsupported', message: 'Merge preview requires complete history.', hint: 'No merge was started.' });

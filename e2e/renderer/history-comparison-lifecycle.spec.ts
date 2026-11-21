@@ -13,8 +13,8 @@ async function prepare(page: Page): Promise<void> {
       if (command === 'working_tree_change_summary') {
         const repo = app.git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
         if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
-        return Promise.resolve({ additions: 0, deletions: 0,
-          uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+        return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+          uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true } });
       }
       if (command === 'compare_history_revisions') return new Promise((resolve, reject) => state.replies.push({ resolve, reject }));
       if (command === 'compare_commits' || command === 'compare_commit_with_working_tree') return Promise.resolve({ ...state.fresh, workingTree: command !== 'compare_commits' });

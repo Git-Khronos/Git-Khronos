@@ -17,9 +17,9 @@ test.beforeEach(async ({ page }) => {
         if (command === 'working_tree_change_summary') {
           const snapshot = (window as any).__pullSnapshot;
           if (snapshot.id !== args.repoId) return Promise.reject(new Error('Unexpected repository in pull recap read'));
-          return Promise.resolve({
+          return Promise.resolve({ staged: null, unstaged: {
             additions: 0, deletions: 0, uncountedFiles: snapshot.status.unstaged + snapshot.status.untracked, partial: true,
-          });
+          } });
         }
         if (command === 'refresh_repository_status') {
           return Promise.resolve((window as any).__pullSnapshot.status);

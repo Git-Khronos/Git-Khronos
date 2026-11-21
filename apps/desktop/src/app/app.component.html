@@ -1200,7 +1200,8 @@
               </div>
             }
           </div>
-          <div class="working-tree-scroll">
+          <div class="working-tree-scroll" gcWorkingTreeSummaries #lineTotals="gcWorkingTreeSummaries"
+            [repositoryId]="repo.id" [repositoryPath]="repo.path" [status]="repo.status" [visible]="detailsVisible()">
           <div class="working-tree-view-toolbar">
             <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
             <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ visibleWorkingTreeFileCount() }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
@@ -1227,7 +1228,7 @@
             </section>
           }
           <section class="file-section unstaged-section">
-            <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><gc-working-tree-summary [repositoryId]="repo.id" [repositoryPath]="repo.path" [status]="repo.status" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before staging all files' : null" [disabled]="!unstagedEntries().length || repo.status.conflicted !== 0 || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
+            <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><gc-working-tree-summary section="unstaged" [state]="lineTotals.unstaged()" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before staging all files' : null" [disabled]="!unstagedEntries().length || repo.status.conflicted !== 0 || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
             @if (discardSelectionMode()) {
               <div class="discard-actions" role="group" aria-label="Select unstaged files for discard">
                 <span>Select files below</span>
@@ -1275,7 +1276,7 @@
             }
           </section>
           <section class="file-section staged-section">
-            <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gc-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><button type="button" (click)="git.unstageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before unstaging all files' : null" [disabled]="!stagedEntries().length || repo.status.conflicted !== 0 || git.busy()">Unstage all</button></div>
+            <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gc-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><gc-working-tree-summary section="staged" [state]="lineTotals.staged()" /></div><button type="button" (click)="git.unstageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before unstaging all files' : null" [disabled]="!stagedEntries().length || repo.status.conflicted !== 0 || git.busy()">Unstage all</button></div>
             @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" [style.height.px]="workingTreeFileListSized.staged() ? workingTreeFileListHeight('staged') : null" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
               <gc-working-tree-viewport #stagedFilesViewport [content]="stagedRows" />
               <ng-template #stagedRows>

@@ -12,8 +12,8 @@ async function setup(page: Page): Promise<void> {
     (window as any).__integrity = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
-      if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
+      if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true } });
       if (command === 'inspect_repository_integrity') {
         if (fixture.fail) return Promise.reject({ kind: 'integrityScopeUnsupported', message: 'Partial clones require a separate integrity workflow.', hint: 'No promised objects were fetched.' });
         if (fixture.hold) return new Promise((resolve, reject) => { fixture.finish = () => resolve(fixture.report); fixture.reject = reject; });

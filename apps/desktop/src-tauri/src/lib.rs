@@ -2832,8 +2832,8 @@ fn compare_commit_file_with_working_tree(
 async fn working_tree_change_summary(
     repo_id: String,
     app: AppHandle,
-) -> Result<git_khronos_git_core::WorkingTreeChangeSummary, AppError> {
-    with_repository_background_read(repo_id, app, git_khronos_git_core::working_tree_change_summary).await
+) -> Result<git_khronos_git_core::WorkingTreeSummaries, AppError> {
+    with_repository_background_read(repo_id, app, git_khronos_git_core::working_tree_summaries).await
 }
 
 #[tauri::command(rename_all = "camelCase")]

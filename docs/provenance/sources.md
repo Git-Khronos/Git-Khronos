@@ -2115,3 +2115,11 @@ real-Git behavioral tests. No source code copied.
   running a single suite across multiple machines.
 
 Used for CI scheduling and the required aggregate check. No source code copied.
+
+
+## Staged and unstaged line recaps
+
+[Git diff](https://git-scm.com/docs/git-diff) defines the working-tree
+and staged comparison bases, the empty-tree behavior before the first commit,
+binary numstat markers, and NUL-terminated rename records. Used to implement
+separate index and working-file totals with one native read. No source copied.

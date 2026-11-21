@@ -19,9 +19,9 @@ async function setup(page: Page): Promise<void> {
       if (command === 'working_tree_change_summary') {
         const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
         if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
-        return Promise.resolve({
+        return Promise.resolve({ staged: null, unstaged: {
           additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true,
-        });
+        } });
       }
       if (command === 'worktree_registration_review') {
         if (fixture.fail) return Promise.reject({ kind: 'worktreeRegistrationReviewUnavailable', message: 'The complete registration list is unsupported. Inspect it with local Git; no registration was removed.' });

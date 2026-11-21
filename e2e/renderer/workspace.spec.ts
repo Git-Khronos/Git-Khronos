@@ -149,8 +149,8 @@ test('cancels eligible Git work, refreshes state, and distinguishes failures', a
       invoke: (command: string, args: Record<string, unknown> = {}) => {
         const state = (window as any).__cancelOperationTest;
         state.calls.push({ command, args });
-        if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-          uncountedFiles: snapshot.status.unstaged + snapshot.status.untracked, partial: true });
+        if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+          uncountedFiles: snapshot.status.unstaged + snapshot.status.untracked, partial: true } });
         if (command === 'fetch_repository') {
           state.attempts += 1;
           return new Promise((_, reject) => state.rejectFetch.push(reject));

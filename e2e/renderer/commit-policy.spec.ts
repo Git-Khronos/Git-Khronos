@@ -14,8 +14,8 @@ async function setup(page: Page, staged: number): Promise<void> {
     (window as any).__commitPolicy = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
-      if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
+      if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true } });
       if (command === 'stage_all') {
         if (fixture.stageFailure) return Promise.reject({ kind: 'sparsePathsNotStaged', message: 'Git left some paths outside the sparse selection.' });
         const status = { ...git.repository().status, staged: 3, unstaged: 0, untracked: 0 };

@@ -16,7 +16,7 @@ test('conflicts block bulk index actions without blocking staging a different fi
     (window as any).__bulkIndexCalls = calls;
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       calls.push({ command, args });
-      if (command === 'working_tree_change_summary') return { additions: 1, deletions: 1, uncountedFiles: 0, partial: false };
+      if (command === 'working_tree_change_summary') return { staged: null, unstaged: { additions: 1, deletions: 1, uncountedFiles: 0, partial: false } };
       return status;
     } };
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));

@@ -115,33 +115,36 @@ reference and branch-panel journeys. Packaged setup-keyboard acceptance adds
 explicit palette/context rename round trips with independent ref/index/config/
 working-byte checks and a commit-attempt marker.
 
-### Unstaged line recap reads
+### Staged and unstaged line recaps
 
-`WorkingTreeSummaryComponent` owns a separate optional read lifecycle rather than
-making repository status or file-list loading wait for line statistics. Totals
-compare tracked working files to the index, not HEAD, and include untracked text
-using the existing attribute-aware counter. Conflicted entries belong to their
-separate section. Binary or uncounted files are disclosed, not treated as text
-with zero changes. Truncated status/stat output and budget-skipped untracked
-files explicitly mark partial totals. The native read is bounded to 2,000 status
-entries, 4 MiB numstat output and 16 MiB aggregate regular untracked-file input;
-external diff/textconv are disabled and symlink targets are not opened.
-A thread-scoped policy also prevents implicit network access: the no-lazy-fetch
-environment guard is backed by command-level protocol refusal for older Git,
-including explicit configured allow policies. It retires on return/unwind and
-does not alter normal user-requested fetches or persistent Git configuration.
-Missing local objects make this optional recap unavailable, never a hidden fetch.
+`WorkingTreeSummariesDirective` owns one optional native read for the visible
+working-directory inspector. The two section components only render its
+results. The staged recap compares the index with HEAD (or the empty tree
+before the first commit); a pure rename contributes no changed lines. The
+unstaged recap compares tracked working files with the index and counts
+untracked text with the attribute-aware counter. Conflicted entries stay
+in their separate section. Binary or uncounted files are disclosed, not
+silently interpreted as no changes.
 
-Status bursts coalesce to one in-flight read and the latest desired snapshot.
-Only the same checkout ID/path, status object, active request and idle source can
-accept a result or error. Mutation/busy transitions invalidate old presentation;
-a clean unstaged section becomes zero without a new read. Failure is shown as
-unavailable rather than a fabricated zero, and the next status refresh retries.
-Filtering, collapse and list/tree presentation do not redefine the section total.
+Both sides share a status scan. Each summary counts at most 2,000 entries
+with 4 MiB of numstat output per side; untracked regular-file reads have an
+aggregate 16 MiB budget. Truncated or incomplete totals are labeled partial.
+External diff and text conversion are disabled and untracked symlink targets
+are not opened. The thread-scoped no-lazy-fetch guard and protocol refusal
+cover both diffs without changing ordinary Git operations or persistent
+configuration. If local blobs are unavailable for one diff, that side is
+unavailable without hiding a valid count from the other.
 
-Coverage: `unstaged-summary.spec.ts`, six native core `unstaged_summary` cases,
-and the packaged `native_unstaged_summary_scenarios.py` fixture. Native fixture
-execution remains a separate package gate, not implied by source test presence.
+Status bursts coalesce to one in-flight read and one latest desired checkout.
+Only the same repository ID/path and status object may accept a response,
+and the inspector must still be visible and Git idle. A clean section shows
+zero; two clean sections or a hidden inspector skip the native read.
+Filtering, collapse, and list/tree presentation do not redefine the totals.
+
+Coverage: `unstaged-summary.spec.ts`, real Git tests for both summaries,
+and the packaged `native_unstaged_summary_scenarios.py` fixture. Packaged
+qualification is a separate gate; source coverage is not evidence that
+the fixture ran.
 
 ### Stage All and Commit
 

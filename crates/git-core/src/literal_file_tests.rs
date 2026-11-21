@@ -1904,3 +1904,90 @@ fn unstaged_summary_transport_policy_is_scoped_and_restores_custom_protocols_aft
     }
     assert!(!git_in(&repository.0).args(["config", "--get", "protocol.allow"]).output().unwrap().status.success());
 }
+
+#[test]
+fn staged_summary_counts_head_relative_lines_and_pure_renames_independently() {
+    let repository = Repository::new();
+    repository.write("tracked.txt", b"old\nretained\n");
+    repository.write("before.txt", b"unique contents\nother line\n");
+    repository.commit("Base");
+    repository.write("tracked.txt", b"staged\nretained\n");
+    repository.git(&["mv", "before.txt", "after.txt"]);
+    repository.write("binary.dat", b"owned\0binary");
+    repository.git(&["add", "--", "tracked.txt", "binary.dat"]);
+    repository.write("tracked.txt", b"staged\nretained\nunstaged\n");
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let staged = recaps.staged.unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (1, 1, 1, false));
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files), (1, 0, 0));
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+}
+
+#[test]
+fn staged_summary_counts_inaugural_commit_but_not_intent_to_add() {
+    let repository = Repository::new();
+    repository.write("staged.txt", b"first\nsecond");
+    repository.write("intent.txt", b"not yet staged\n");
+    repository.git(&["add", "--", "staged.txt"]);
+    repository.git(&["add", "-N", "--", "intent.txt"]);
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let staged = recaps.staged.unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (2, 0, 0, false));
+    assert_eq!((unstaged.additions, unstaged.deletions), (1, 0));
+}
+
+#[test]
+fn staged_summary_ignores_unmerged_entries_while_counting_other_index_changes() {
+    let repository = Repository::new();
+    repository.write("conflict.txt", b"base\n");
+    repository.commit("Base");
+    let main = String::from_utf8(repository.git(&["branch", "--show-current"])).unwrap();
+    repository.git(&["switch", "-c", "side"]);
+    repository.write("conflict.txt", b"other\n");
+    repository.commit("Side");
+    repository.git(&["switch", main.trim()]);
+    repository.write("conflict.txt", b"ours\n");
+    repository.commit("Main");
+    assert!(!git_in(&repository.0).args(["merge", "--no-edit", "side"]).output().unwrap().status.success());
+    repository.write("independent.txt", b"added\n");
+    repository.git(&["add", "--", "independent.txt"]);
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let staged = recaps.staged.unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (1, 0, 0, false));
+    assert_eq!((unstaged.additions, unstaged.deletions), (0, 0));
+}
+
+#[test]
+fn staged_summary_discloses_its_bound_without_erasing_the_unstaged_side() {
+    let repository = Repository::new();
+    for index in 0..2001 {
+        repository.write(&format!("file-{index:04}.txt"), b"staged\n");
+    }
+    repository.git(&["add", "--all"]);
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let staged = recaps.staged.unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions, staged.partial), (2000, 0, true));
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (0, 0, false));
+}
+
+#[cfg(unix)]
+#[test]
+fn staged_summary_fails_locally_when_head_blob_is_missing_but_unstaged_still_counts() {
+    let repository = Repository::new();
+    repository.write("tracked.txt", b"head\n");
+    repository.commit("Base");
+    let oid = String::from_utf8(repository.git(&["rev-parse", "HEAD:tracked.txt"])).unwrap();
+    let oid = oid.trim();
+    repository.write("tracked.txt", b"staged replacement\n");
+    repository.git(&["add", "--", "tracked.txt"]);
+    repository.write("untracked.txt", b"separate working file\n");
+    fs::remove_file(repository.0.join(".git/objects").join(&oid[..2]).join(&oid[2..])).unwrap();
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    assert!(recaps.staged.is_none());
+    assert_eq!(recaps.unstaged.unwrap().additions, 1);
+}

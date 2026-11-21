@@ -795,7 +795,7 @@
 
 .workspace-control:has(.incoming-link-inbox) { display: flex; align-items: center; gap: 4px; }
 
-.unstaged-section > .file-section-title { height: auto; min-height: 33px; gap: 8px; }
+:is(.unstaged-section, .staged-section) > .file-section-title { height: auto; min-height: 33px; gap: 8px; }
 .file-section-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 
 .branch-drop-load-error { position: fixed; z-index: 34; right: 12px; bottom: calc(var(--statusbar-height) + 8px); max-width: min(360px, calc(100vw - 24px)); padding: 8px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--overlay-surface); color: var(--overlay-text); }

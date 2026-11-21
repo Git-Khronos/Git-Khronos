@@ -52,7 +52,7 @@ test.beforeEach(async ({ page }) => {
       } else if (command === 'working_tree_change_summary') {
         const repository = repositories.find((candidate: any) => candidate.id === args.repoId);
         if (!repository) throw Error('Unexpected repository in owned recap read');
-        result = { additions: 0, deletions: 0, uncountedFiles: repository.status.unstaged + repository.status.untracked, partial: true };
+        result = { staged: null, unstaged: { additions: 0, deletions: 0, uncountedFiles: repository.status.unstaged + repository.status.untracked, partial: true } };
       } else if (command === 'gitlab_connections') result = fixture.connections;
       else if (command === 'connect_gitlab_account' || command === 'connect_gitlab_fork_account') {
         result = { connectionId: (++fixture.next).toString(16).padStart(32, '0'),

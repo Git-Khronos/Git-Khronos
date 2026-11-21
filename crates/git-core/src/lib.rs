@@ -18,7 +18,7 @@ mod discard;
 mod file_content;
 mod file_statistics;
 mod working_tree_summary;
-pub use working_tree_summary::{WorkingTreeChangeSummary, working_tree_change_summary};
+pub use working_tree_summary::{WorkingTreeChangeSummary, WorkingTreeSummaries, working_tree_change_summary, working_tree_summaries};
 mod file_tool_model;
 mod ignore_rules;
 mod original_references;
@@ -7446,35 +7446,35 @@ fn parse_commit_files_with_stats(status_output: &[u8], stats_output: &[u8]) -> V
 fn parse_numstat(
     output: &[u8],
 ) -> std::collections::HashMap<String, (Option<usize>, Option<usize>)> {
-    let records = output
-        .split(|byte| *byte == 0)
-        .filter(|record| !record.is_empty())
-        .collect::<Vec<_>>();
-    let mut stats = std::collections::HashMap::new();
-    let mut index = 0;
-    while index < records.len() {
-        let record = records[index].strip_prefix(b"\n").unwrap_or(records[index]);
-        let mut fields = record.splitn(3, |byte| *byte == b'\t');
-        let additions = fields.next().and_then(parse_numstat_count);
-        let deletions = fields.next().and_then(parse_numstat_count);
-        let inline_path = fields.next().unwrap_or_default();
-        index += 1;
-        let path = if inline_path.is_empty() && index + 1 < records.len() {
-            index += 1;
-            let renamed_path = records[index];
-            index += 1;
-            renamed_path
-        } else {
-            inline_path
-        };
-        if !path.is_empty() {
-            stats.insert(
-                String::from_utf8_lossy(path).into_owned(),
-                (additions, deletions),
-            );
+    numstat_entries(output)
+        .map(|(path, additions, deletions)| {
+            (String::from_utf8_lossy(path).into_owned(), (additions, deletions))
+        })
+        .collect()
+}
+
+fn numstat_entries(
+    output: &[u8],
+) -> impl Iterator<Item = (&[u8], Option<usize>, Option<usize>)> {
+    let mut records = output.split(|byte| *byte == 0).filter(|record| !record.is_empty());
+    std::iter::from_fn(move || {
+        loop {
+            let record = records.next()?;
+            let record = record.strip_prefix(b"\n").unwrap_or(record);
+            let mut fields = record.splitn(3, |byte| *byte == b'\t');
+            let additions = fields.next().and_then(parse_numstat_count);
+            let deletions = fields.next().and_then(parse_numstat_count);
+            let Some(inline_path) = fields.next() else { continue };
+            let path = if inline_path.is_empty() {
+                // NUL-delimited rename records carry separate old and new paths.
+                records.next()?;
+                records.next()?
+            } else {
+                inline_path
+            };
+            return Some((path, additions, deletions));
         }
-    }
-    stats
+    })
 }
 
 fn parse_numstat_count(value: &[u8]) -> Option<usize> {

@@ -22,8 +22,8 @@ async function setup(page: Page, template: string | null, unavailable = false): 
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
       // Optional recap reads are not template changes or Git writes.
-      if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
-        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
+      if (command === 'working_tree_change_summary') return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+        uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true } });
       if (command === 'refresh_repository') {
         const snapshot = { ...git.repository(), commitTemplate: fixture.nextTemplate, commitTemplateError: null };
         return fixture.holdRefresh ? new Promise(resolve => { fixture.finishRefresh = () => resolve(snapshot); }) : Promise.resolve(snapshot);
