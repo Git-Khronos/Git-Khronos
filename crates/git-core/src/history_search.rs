@@ -855,15 +855,18 @@ mod tests {
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {
-            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-                ".history-search-test-{}-{}",
+            // Respect the test runner's temporary volume. Keeping fixtures
+            // beside source makes ordinary Git status/staging see nested
+            // repositories while acceptance is running.
+            let path = std::env::temp_dir().join(format!(
+                "khronos-history-search-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_nanos()
             ));
-            fs::create_dir_all(&path).unwrap();
+            fs::create_dir(&path).expect("create an owned history-search fixture");
             let fixture = Self(path);
             fixture.run(&["init", "-q", "-b", "main"]);
             fixture.run(&["config", "user.name", "History Investigator"]);
