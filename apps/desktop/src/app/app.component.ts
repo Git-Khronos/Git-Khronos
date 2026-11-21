@@ -84,7 +84,7 @@ import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
 import { GraphViewportComponent } from './graph-viewport.component';
 import { ViewportSizeDirective } from './viewport-size.directive';
-import { WorkingTreeViewportComponent } from './working-tree-viewport.component';
+import { WorkingTreeViewportComponent, type WorkingTreeFileListSection } from './working-tree-viewport.component';
 import { WorkingTreeSummariesDirective, WorkingTreeSummaryComponent } from './working-tree-summary.component';
 import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
 import { ReferenceActionDialogComponent, type ReferenceActionRequest, type ReferenceRenamed } from './reference-action-dialog.component';
@@ -556,7 +556,6 @@ type ReferencePane = Exclude<ReferenceSection, 'local'> | 'pullRequests';
 type ResizablePanel = 'sidebar' | 'details';
 type TerminalCursorStyle = 'block' | 'underline' | 'bar';
 type WorkingTreeViewMode = 'path' | 'tree';
-type WorkingTreeFileListSection = 'unstaged' | 'staged';
 type AutoFetchIntervalMinutes = 0 | 1 | 5 | 15 | 30;
 
 const DEFAULT_GRAPH_COLUMNS: GraphColumn[] = ['branch', 'graph', 'message', 'author', 'date', 'sha'];
@@ -3802,38 +3801,31 @@ export class AppComponent implements OnInit, OnDestroy {
     new Set(this.collapsedWorkingTreeDirectories()),
   ));
 
-  protected readonly virtualUnstagedEntries = computed(() => calculateVirtualWindow(
-    this.sortedUnstagedEntries(),
-    this.workingTreeFilesScrollTop.unstaged(),
-    this.workingTreeFileListHeight('unstaged'),
-    WORKING_TREE_FILE_ROW_HEIGHT,
-    0,
-    WORKING_TREE_FILE_OVERSCAN_ROWS,
-  ), { equal: sameVirtualWindow });
-  protected readonly virtualStagedEntries = computed(() => calculateVirtualWindow(
-    this.sortedStagedEntries(),
-    this.workingTreeFilesScrollTop.staged(),
-    this.workingTreeFileListHeight('staged'),
-    WORKING_TREE_FILE_ROW_HEIGHT,
-    0,
-    WORKING_TREE_FILE_OVERSCAN_ROWS,
-  ), { equal: sameVirtualWindow });
-  protected readonly virtualUnstagedTreeRows = computed(() => calculateVirtualWindow(
-    this.unstagedTreeRows(),
-    this.workingTreeFilesScrollTop.unstaged(),
-    this.workingTreeFileListHeight('unstaged'),
-    WORKING_TREE_FILE_ROW_HEIGHT,
-    0,
-    WORKING_TREE_FILE_OVERSCAN_ROWS,
-  ), { equal: sameVirtualWindow });
-  protected readonly virtualStagedTreeRows = computed(() => calculateVirtualWindow(
-    this.stagedTreeRows(),
-    this.workingTreeFilesScrollTop.staged(),
-    this.workingTreeFileListHeight('staged'),
-    WORKING_TREE_FILE_ROW_HEIGHT,
-    0,
-    WORKING_TREE_FILE_OVERSCAN_ROWS,
-  ), { equal: sameVirtualWindow });
+  protected readonly workingTreeFileWindows = {
+    unstaged: this.workingTreeWindow('unstaged', this.sortedUnstagedEntries, this.unstagedTreeRows),
+    staged: this.workingTreeWindow('staged', this.sortedStagedEntries, this.stagedTreeRows),
+  };
+
+  private workingTreeWindow(
+    section: WorkingTreeFileListSection,
+    entries: () => WorkingTreeEntry[],
+    tree: () => WorkingTreeDisplayRow[],
+  ) {
+    const windowFor = <T>(rows: () => T[]) => computed(() => calculateVirtualWindow(
+      rows(), this.workingTreeFilesScrollTop[section](), this.workingTreeFileListHeight(section),
+      WORKING_TREE_FILE_ROW_HEIGHT, 0, WORKING_TREE_FILE_OVERSCAN_ROWS,
+    ), { equal: sameVirtualWindow });
+    const pathWindow = windowFor(entries);
+    const treeWindow = windowFor(tree);
+    return computed<VirtualWindow<WorkingTreeDisplayRow>>(() => {
+      if (this.workingTreeViewMode() === 'tree') return treeWindow();
+      const window = pathWindow();
+      // Keep sorting and windowing on native entries; adapt only the visible rows.
+      return { ...window, items: window.items.map(entry => ({
+        kind: 'file', key: `file:${entry.path}`, label: '', path: entry.path, depth: 0, entry,
+      })) };
+    });
+  }
 
   protected readonly visibleWorkingTreeFileCount = computed(() =>
     this.conflictedEntries().length + this.sortedUnstagedEntries().length + this.sortedStagedEntries().length,
@@ -7920,6 +7912,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected statusDescription(entry: WorkingTreeEntry, staged: boolean): string {
     return describeWorkingTreeStatus(entry, staged);
+  }
+
+  protected toggleWorkingTreeEntryStaged(entry: WorkingTreeEntry, staged: boolean, repositoryPath: string): void {
+    const status = staged ? entry.indexStatus : entry.worktreeStatus;
+    const scope = { repositoryPath, renameSource: status === 'R' ? entry.previousPath ?? null : undefined };
+    if (staged) void this.git.unstagePath(entry.path, scope);
+    else void this.git.stagePath(entry.path, scope);
   }
 
   protected isUntrackedDirectory(entry: WorkingTreeEntry): boolean {

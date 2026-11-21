@@ -49,19 +49,27 @@ async function installRename(page: Page): Promise<string> {
   });
 }
 
-test('the Stage and Unstage buttons move both reviewed rename paths through native commands', async ({ page }) => {
-  const repoId = await installRename(page);
-  const stage = page.getByRole('button', { name: 'Stage after.txt', exact: true });
-  await expect(stage).toHaveAttribute('title', 'Stage before.txt → after.txt');
-  await stage.click();
-  await page.getByRole('button', { name: 'Unstage after.txt', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Stage before.txt', exact: true })).toBeVisible();
-  await expect(stage).toHaveAttribute('title', 'Stage after.txt');
-  expect(await page.evaluate(() => (window as any).__indexRenameCalls)).toEqual([
-    { command: 'stage_worktree_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
-    { command: 'unstage_index_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
-  ]);
-});
+for (const layout of ['Path', 'Tree'] as const) {
+  test(`the Stage and Unstage buttons move both reviewed rename paths in the ${layout} layout`, async ({ page }) => {
+    const repoId = await installRename(page);
+    await page.getByRole('button', { name: layout, exact: true }).click();
+    const unstaged = page.getByRole('region', { name: 'Unstaged files' });
+    const staged = page.getByRole('region', { name: 'Staged files' });
+    const stage = unstaged.getByRole('button', { name: 'Stage after.txt', exact: true });
+    const unstage = staged.getByRole('button', { name: 'Unstage after.txt', exact: true });
+    await expect(stage).toHaveAttribute('title', 'Stage before.txt → after.txt');
+    await stage.click();
+    await expect(unstage).toHaveAttribute('title', 'Unstage before.txt → after.txt');
+    await expect(staged.getByRole('button', { name: 'Discard changes in after.txt' })).toHaveCount(0);
+    await unstage.click();
+    await expect(unstaged.getByRole('button', { name: 'Stage before.txt', exact: true })).toBeVisible();
+    await expect(stage).toHaveAttribute('title', 'Stage after.txt');
+    expect(await page.evaluate(() => (window as any).__indexRenameCalls)).toEqual([
+      { command: 'stage_worktree_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
+      { command: 'unstage_index_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
+    ]);
+  });
+}
 
 test('working-tree rename filtering and the diff use the source path without offering partial changes', async ({ page }) => {
   const repoId = await installRename(page);

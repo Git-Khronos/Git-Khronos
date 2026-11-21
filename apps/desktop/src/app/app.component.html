@@ -1323,6 +1323,40 @@
               }
             </section>
           }
+          <ng-template #workingTreeRows let-section>
+            @let staged = section === 'staged';
+            @let tree = workingTreeViewMode() === 'tree';
+            @let window = workingTreeFileWindows[staged ? 'staged' : 'unstaged']();
+            <div class="virtual-file-spacer" [style.height.px]="window.topPadding" aria-hidden="true"></div>
+            @for (row of window.items; track row.key) {
+              @if (row.kind === 'directory') {
+                @let collapsed = isWorkingTreeDirectoryCollapsed(row.path);
+                <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!collapsed" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="collapsed ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
+              } @else if (row.entry; as entry) {
+                @let directory = !staged && isUntrackedDirectory(entry);
+                @let stageAction = staged ? 'Unstage' : 'Stage';
+                @let status = staged ? entry.indexStatus : entry.worktreeStatus;
+                @let statusLabel = statusDescription(entry, staged);
+                @let inspectLabel = directory ? 'Show files in ' + entry.path : (staged ? 'View staged changes in ' : 'View changes in ') + entry.path;
+                <div class="file-row" [class.tree-file]="tree" [style.padding-left.px]="tree ? 10 + row.depth * 12 : null" [class.conflict]="entry.conflicted" [class.directory-summary]="directory"
+                     [class.selected]="git.selectedWorkingTreeFile() === section + ':' + entry.path"
+                     (keydown)="handleFileActionKeydown($event, entry, staged)" (contextmenu)="openFileMenu($event, entry, staged)">
+                  @if (!staged && discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
+                  <button class="stage-box" [class.unstage]="staged" type="button" title="{{ stageAction }} {{ status === 'R' && entry.previousPath ? entry.previousPath + ' → ' + entry.path : entry.path }}"
+                          aria-label="{{ stageAction }} {{ entry.path }}" (click)="toggleWorkingTreeEntryStaged(entry, staged, repo.path)"><gc-icon [name]="staged ? 'minus' : 'plus'" [size]="12" /></button>
+                  <span class="file-status" [title]="statusLabel" [attr.aria-label]="statusLabel" role="img">{{ staged ? status : entry.conflicted ? '!' : entry.indexStatus === '?' ? 'A' : status }}</span>
+                  <button class="file-name-button" [class.path-display]="!tree" type="button" [title]="inspectLabel" [attr.aria-label]="inspectLabel"
+                          [disabled]="directory && git.changesLoading()" (click)="directory ? expandUntrackedDirectory(entry.path) : inspectWorkingTreeFile(entry.path, staged)">
+                    @if (directory) { <gc-icon name="folder-git" [size]="12" /> }
+                    @if (tree) { {{ directory ? fileName(entry.path) : row.label }} }
+                    @else { <span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong> }
+                  </button>
+                  @if (!staged && !directory) { <button class="row-discard" type="button" title="Discard changes in {{ entry.path }}" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gc-icon name="trash" [size]="12" /></button> }
+                </div>
+              }
+            } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching ' : 'No ' }}{{ section }} files</div> }
+            <div class="virtual-file-spacer" [style.height.px]="window.bottomPadding" aria-hidden="true"></div>
+          </ng-template>
           <section class="file-section unstaged-section">
             <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gc-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><gc-working-tree-summary section="unstaged" [state]="lineTotals.unstaged()" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before staging all files' : null" [disabled]="!unstagedEntries().length || repo.status.conflicted !== 0 || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
             @if (discardSelectionMode()) {
@@ -1334,38 +1368,7 @@
             }
 <p id="working-tree-file-navigation-help" class="sr-only">Focus a file list and use Home or End to reach the first or last files. Use Tab to move through visible file actions.</p>
             @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('unstaged')" [style.height.px]="workingTreeFileListSized.unstaged() ? workingTreeFileListHeight('unstaged') : null" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
-              <gc-working-tree-viewport #unstagedFilesViewport [content]="unstagedRows" />
-              <ng-template #unstagedRows>
-              @if (workingTreeViewMode() === 'path') {
-                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedEntries().topPadding" aria-hidden="true"></div>
-                @for (entry of virtualUnstagedEntries().items; track entry.path) {
-                  <div class="file-row" [class.conflict]="entry.conflicted" [class.directory-summary]="isUntrackedDirectory(entry)" [class.selected]="git.selectedWorkingTreeFile() === 'unstaged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, false)" (contextmenu)="openFileMenu($event, entry, false)">
-                    @if (discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
-                    <button class="stage-box" type="button" title="Stage {{ entry.worktreeStatus === 'R' && entry.previousPath ? entry.previousPath + ' → ' + entry.path : entry.path }}" aria-label="Stage {{ entry.path }}" (click)="git.stagePath(entry.path, { repositoryPath: repo.path, renameSource: entry.worktreeStatus === 'R' ? (entry.previousPath ?? null) : undefined })"><gc-icon name="plus" [size]="12" /></button>
-                    <span class="file-status" [title]="statusDescription(entry, false)" [attr.aria-label]="statusDescription(entry, false)" role="img">{{ entry.conflicted ? '!' : entry.indexStatus === '?' ? 'A' : entry.worktreeStatus }}</span>
-                    <button class="file-name-button path-display" type="button" title="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" aria-label="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" [disabled]="isUntrackedDirectory(entry) && git.changesLoading()" (click)="isUntrackedDirectory(entry) ? expandUntrackedDirectory(entry.path) : inspectWorkingTreeFile(entry.path, false)">@if (isUntrackedDirectory(entry)) { <gc-icon name="folder-git" [size]="12" /> }<span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
-                    @if (!isUntrackedDirectory(entry)) { <button class="row-discard" type="button" title="Discard changes in {{ entry.path }}" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gc-icon name="trash" [size]="12" /></button> }
-                  </div>
-                } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching unstaged files' : 'No unstaged files' }}</div> }
-                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedEntries().bottomPadding" aria-hidden="true"></div>
-              } @else {
-                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedTreeRows().topPadding" aria-hidden="true"></div>
-                @for (row of virtualUnstagedTreeRows().items; track row.key) {
-                  @if (row.kind === 'directory') {
-                    <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
-                  } @else if (row.entry; as entry) {
-                    <div class="file-row tree-file" [style.padding-left.px]="10 + row.depth * 12" [class.conflict]="entry.conflicted" [class.directory-summary]="isUntrackedDirectory(entry)" [class.selected]="git.selectedWorkingTreeFile() === 'unstaged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, false)" (contextmenu)="openFileMenu($event, entry, false)">
-                      @if (discardSelectionMode()) { <input class="discard-selection" type="checkbox" [checked]="selectedDiscardPaths().includes(entry.path)" [disabled]="git.busy() || entry.conflicted" aria-label="Select {{ entry.path }} for discard" (change)="toggleDiscardSelection(entry.path)" /> }
-                      <button class="stage-box" type="button" title="Stage {{ entry.worktreeStatus === 'R' && entry.previousPath ? entry.previousPath + ' → ' + entry.path : entry.path }}" aria-label="Stage {{ entry.path }}" (click)="git.stagePath(entry.path, { repositoryPath: repo.path, renameSource: entry.worktreeStatus === 'R' ? (entry.previousPath ?? null) : undefined })"><gc-icon name="plus" [size]="12" /></button>
-                      <span class="file-status" [title]="statusDescription(entry, false)" [attr.aria-label]="statusDescription(entry, false)" role="img">{{ entry.conflicted ? '!' : entry.indexStatus === '?' ? 'A' : entry.worktreeStatus }}</span>
-                      <button class="file-name-button" type="button" title="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" aria-label="{{ isUntrackedDirectory(entry) ? 'Show files in ' + entry.path : 'View changes in ' + entry.path }}" [disabled]="isUntrackedDirectory(entry) && git.changesLoading()" (click)="isUntrackedDirectory(entry) ? expandUntrackedDirectory(entry.path) : inspectWorkingTreeFile(entry.path, false)">@if (isUntrackedDirectory(entry)) { <gc-icon name="folder-git" [size]="12" /> }{{ isUntrackedDirectory(entry) ? fileName(entry.path) : row.label }}</button>
-                      @if (!isUntrackedDirectory(entry)) { <button class="row-discard" type="button" title="Discard changes in {{ entry.path }}" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gc-icon name="trash" [size]="12" /></button> }
-                    </div>
-                  }
-                } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching unstaged files' : 'No unstaged files' }}</div> }
-                <div class="virtual-file-spacer" [style.height.px]="virtualUnstagedTreeRows().bottomPadding" aria-hidden="true"></div>
-              }
-              </ng-template>
+              <gc-working-tree-viewport #unstagedFilesViewport [content]="workingTreeRows" section="unstaged" />
             </div> }
             @if (unstagedFilesOpen()) {
               <div class="unstaged-files-resizer" role="separator" tabindex="0" aria-label="Resize Unstaged Files section" aria-controls="unstaged-files-list" aria-orientation="horizontal" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('unstaged')" [attr.aria-valuetext]="workingTreeFileListHeight('unstaged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('unstaged', $event)" (dblclick)="resetWorkingTreeFileListHeight('unstaged', $event)" (pointerdown)="beginWorkingTreeFileListResize('unstaged', $event)"></div>
@@ -1374,34 +1377,7 @@
           <section class="file-section staged-section">
             <div class="file-section-title"><div class="file-section-heading"><button class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gc-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><gc-working-tree-summary section="staged" [state]="lineTotals.staged()" /></div><button type="button" (click)="git.unstageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before unstaging all files' : null" [disabled]="!stagedEntries().length || repo.status.conflicted !== 0 || git.busy()">Unstage all</button></div>
             @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" [style.height.px]="workingTreeFileListSized.staged() ? workingTreeFileListHeight('staged') : null" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
-              <gc-working-tree-viewport #stagedFilesViewport [content]="stagedRows" />
-              <ng-template #stagedRows>
-                @if (workingTreeViewMode() === 'path') {
-                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedEntries().topPadding" aria-hidden="true"></div>
-                  @for (entry of virtualStagedEntries().items; track entry.path) {
-                    <div class="file-row" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
-                      <button class="stage-box unstage" type="button" title="Unstage {{ entry.indexStatus === 'R' && entry.previousPath ? entry.previousPath + ' → ' + entry.path : entry.path }}" aria-label="Unstage {{ entry.path }}" (click)="git.unstagePath(entry.path, { repositoryPath: repo.path, renameSource: entry.indexStatus === 'R' ? (entry.previousPath ?? null) : undefined })"><gc-icon name="minus" [size]="12" /></button>
-                      <span class="file-status" [title]="statusDescription(entry, true)" [attr.aria-label]="statusDescription(entry, true)" role="img">{{ entry.indexStatus }}</span>
-                      <button class="file-name-button path-display" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)"><span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
-                    </div>
-                  } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
-                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedEntries().bottomPadding" aria-hidden="true"></div>
-                } @else {
-                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedTreeRows().topPadding" aria-hidden="true"></div>
-                  @for (row of virtualStagedTreeRows().items; track row.key) {
-                    @if (row.kind === 'directory') {
-                      <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!isWorkingTreeDirectoryCollapsed(row.path)" (click)="toggleWorkingTreeDirectory(row.path)"><gc-icon [name]="isWorkingTreeDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
-                    } @else if (row.entry; as entry) {
-                      <div class="file-row tree-file" [style.padding-left.px]="10 + row.depth * 12" [class.conflict]="entry.conflicted" [class.selected]="git.selectedWorkingTreeFile() === 'staged:' + entry.path" (keydown)="handleFileActionKeydown($event, entry, true)" (contextmenu)="openFileMenu($event, entry, true)">
-                        <button class="stage-box unstage" type="button" title="Unstage {{ entry.indexStatus === 'R' && entry.previousPath ? entry.previousPath + ' → ' + entry.path : entry.path }}" aria-label="Unstage {{ entry.path }}" (click)="git.unstagePath(entry.path, { repositoryPath: repo.path, renameSource: entry.indexStatus === 'R' ? (entry.previousPath ?? null) : undefined })"><gc-icon name="minus" [size]="12" /></button>
-                        <span class="file-status" [title]="statusDescription(entry, true)" [attr.aria-label]="statusDescription(entry, true)" role="img">{{ entry.indexStatus }}</span>
-                        <button class="file-name-button" type="button" title="View staged changes in {{ entry.path }}" aria-label="View staged changes in {{ entry.path }}" (click)="inspectWorkingTreeFile(entry.path, true)">{{ row.label }}</button>
-                      </div>
-                    }
-                  } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching staged files' : 'No staged files' }}</div> }
-                  <div class="virtual-file-spacer" [style.height.px]="virtualStagedTreeRows().bottomPadding" aria-hidden="true"></div>
-                }
-              </ng-template>
+              <gc-working-tree-viewport #stagedFilesViewport [content]="workingTreeRows" section="staged" />
             </div> }
             @if (stagedFilesOpen()) {
               <div class="unstaged-files-resizer" role="separator" aria-label="Resize Staged Files section" aria-controls="staged-files-list" aria-orientation="horizontal" tabindex="0" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('staged')" [attr.aria-valuetext]="workingTreeFileListHeight('staged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('staged', $event)" (dblclick)="resetWorkingTreeFileListHeight('staged', $event)" (pointerdown)="beginWorkingTreeFileListResize('staged', $event)"></div>
