@@ -38,6 +38,7 @@ export function initialRendererReport(html, metadata, budget) {
   const pending = [...rootsInIndex(html)];
   const seen = new Map();
   const contributions = new Map();
+  const outputsOverAttributed = [];
   while (pending.length) {
     const output = pending.pop();
     if (seen.has(output)) continue;
@@ -51,10 +52,15 @@ export function initialRendererReport(html, metadata, budget) {
         pending.push(localOutputPath(dependency.path));
       }
     }
+    let metadataInputBytes = 0;
     for (const [input, contribution] of Object.entries(entry.inputs ?? {})) {
       const bytes = contribution?.bytesInOutput;
       if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error(`Invalid source size for ${input}`);
+      metadataInputBytes += bytes;
       contributions.set(input, (contributions.get(input) ?? 0) + bytes);
+    }
+    if (metadataInputBytes > entry.bytes) {
+      outputsOverAttributed.push({ path: output, emittedBytes: entry.bytes, metadataInputBytes });
     }
   }
 
@@ -66,8 +72,14 @@ export function initialRendererReport(html, metadata, budget) {
     warningOverageBytes: Math.max(0, initialBytes - warningBytes),
     errorHeadroomBytes: errorBytes - initialBytes,
     assets: [...seen].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => ({ path, bytes })),
-    largestInputs: [...contributions].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 15).map(([path, bytes]) => ({ path, bytes })),
+    // Angular's stats can assign more bytes to inputs than exist in the
+    // emitted file. Use those numbers for ranking, never for budget accounting.
+    inputAttribution: {
+      kind: 'unverified-bundler-metadata',
+      outputsOverAttributed: outputsOverAttributed.sort((a, b) => a.path.localeCompare(b.path)),
+      largestInputs: [...contributions].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 15).map(([path, metadataInputBytes]) => ({ path, metadataInputBytes })),
+    },
   };
 }
 

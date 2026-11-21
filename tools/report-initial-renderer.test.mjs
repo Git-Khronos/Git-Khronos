@@ -34,7 +34,25 @@ test('reports unique emitted entry files and static imports, not lazily loaded d
   assert.equal(report.warningOverageBytes, 44);
   assert.equal(report.errorHeadroomBytes, 11);
   assert.deepEqual(report.assets.map(asset => asset.path), ['core.js', 'main.js', 'shared.js', 'styles.css', 'tokens.css']);
-  assert.deepEqual(report.largestInputs, [{ path: 'root.ts', bytes: 61 }, { path: 'lib.ts', bytes: 23 }]);
+  assert.deepEqual(report.inputAttribution, {
+    kind: 'unverified-bundler-metadata',
+    outputsOverAttributed: [],
+    largestInputs: [{ path: 'root.ts', metadataInputBytes: 61 }, { path: 'lib.ts', metadataInputBytes: 23 }],
+  });
+});
+
+test('flags input attribution larger than emitted chunks without inflating the budget', () => {
+  const metadata = structuredClone(metagraph);
+  metadata.outputs['main.js'].inputs['root.ts'].bytesInOutput = 99;
+  metadata.outputs['dialog.js'].inputs = { 'dialog.ts': { bytesInOutput: 900 } };
+  const report = initialRendererReport(index, metadata, budget);
+  assert.equal(report.initialBytes, 144);
+  assert.equal(report.errorHeadroomBytes, 11);
+  assert.deepEqual(report.inputAttribution.outputsOverAttributed, [
+    { path: 'main.js', emittedBytes: 80, metadataInputBytes: 99 },
+  ]);
+  assert.deepEqual(report.inputAttribution.largestInputs[0], { path: 'root.ts', metadataInputBytes: 101 });
+  assert.ok(report.inputAttribution.largestInputs.every(({ path }) => path !== 'dialog.ts'));
 });
 
 test('matches decimal Angular budget units without changing the budgets', () => {

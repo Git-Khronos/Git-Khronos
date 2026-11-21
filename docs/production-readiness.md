@@ -180,9 +180,10 @@ At `a6838ee`, the production renderer build and the production-content check
 passed. Initial assets total **1,393,278 bytes**: 56,722 bytes below the error
 limit, but 493,278 above the 900 kB warning limit. This build did not emit a
 component stylesheet budget warning. No limits were raised. The build's
-esbuild metadata identifies the root application component as the largest
-initial contributor; the next size-reduction work should defer more of its
-non-startup UI rather than tune the budget. The sizing evidence is local at
+input-attribution metadata ranks the root application component highest,
+but the attributed input counts can exceed the actual emitted chunk size.
+Use them to choose what to investigate, not to estimate savings without a
+new build. The sizing evidence is local at
 `target/local-review/live-recap-bundle/`.
 
 To reproduce a before/after report without touching the package build output:
@@ -193,8 +194,10 @@ node tools/report-initial-renderer.mjs target/local-review/bundle-size
 ```
 
 The report follows the generated index and its static imports, cross-checks
-the emitted file sizes and prints the configured budget headroom. Lazy-only
-chunks are excluded, and the report doesn't change the Angular build gate.
+the emitted file sizes and prints the configured budget headroom. It reports
+the bundler's unverified input ranking separately and identifies chunks whose
+input attribution exceeds their emitted size. Lazy-only chunks are excluded,
+and the report doesn't change the Angular build gate.
 
 ## Hosted form-binding mock contract correction — 2026-11-20
 
