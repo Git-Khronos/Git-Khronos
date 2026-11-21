@@ -483,6 +483,14 @@ and `focused/results` under
 The new requirement brings the installed matrix to 27 checks; neither
 receipt alone qualifies that expanded matrix.
 
+The tracked-file timeout candidate at `52032be`, SHA-256
+`16b6a9af21ade8f9e7da702305f941a70e636300f50435aba06a6b08e0653863`,
+passed all 27 required installed checks. The fixture-key verifier checked
+31 exact-artifact reports, including the 279-scenario Jammy environment run
+and both installed Noble tracked-file checks. See `verified-release.json`
+under `target/local-review/updater/jammy-builder/tracked-search-release.Sg6pQpfS/`.
+This does not qualify subsequent rebase or diff changes or production signing.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
