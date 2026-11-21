@@ -87,6 +87,28 @@ jobs:
         run: |
           python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - name: Provision JSON-capable Git LFS for full Jammy qualification
+        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          # Stock Jammy Git LFS 3.0.2 remains in use for the smoke checks above.
+          # The full suite exercises optional diagnostics that require ls-files --json.
+          version=3.7.1
+          archive="git-lfs-linux-amd64-v${version}.tar.gz"
+          sha256=1c0b6ee5200ca708c5cebebb18fdeb0e1c98f1af5c1a9cba205a4c0ab5a5ec08
+          bin="$(mktemp -d "$RUNNER_TEMP/qualification-lfs.XXXXXXXX")"
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            "https://github.com/git-lfs/git-lfs/releases/download/v${version}/${archive}" \
+            --output "$bin/$archive"
+          printf '%s  %s\n' "$sha256" "$bin/$archive" | sha256sum --check --strict
+          tar -xOzf "$bin/$archive" "git-lfs-${version}/git-lfs" > "$bin/git-lfs"
+          chmod 0755 "$bin/git-lfs"
+          rm "$bin/$archive"
+          PATH="$bin:$PATH" git lfs version
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
       - name: Qualify publisher trust on the exact installed Jammy candidate
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
         env:
