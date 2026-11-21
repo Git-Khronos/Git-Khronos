@@ -2958,3 +2958,28 @@ Gzip and Brotli encodings increased by 563 and 156 bytes respectively, so
 this is a raw-size and template-deduplication improvement, not a network
 transfer saving. The 900 kB warning remains. The exact build and comparison
 receipts are in the same directory under `revision-files-*`.
+
+The Staged Files and Unstaged Files viewports now share one row template
+(`34bc9c3`), with independent scroll state, line-count recaps, and stage or
+unstage actions. The production build fell from 1,320,563 to 1,310,835 raw
+initial bytes (−9,728 JS bytes; CSS unchanged), with 361 fewer gzip bytes
+and 382 fewer Brotli bytes. No extra chunk is needed to display the lists.
+The initial renderer is still 410,835 bytes above the 900 kB warning.
+The exact commit passed 122 focused Chromium tests (111 file and diff
+lifecycle, rename, recap and virtualization cases; 11 workspace cases).
+See `working-tree-rows-*` in the same receipts directory.
+
+## Batch Pull candidate: full Linux matrix — 2026-11-21
+
+The exact local 0.1.6 installer from `a953fe3` satisfied all 34 required
+checks with 49 passing installed-app reports across Ubuntu 22.04, 24.04,
+and 26.04 and Debian 12 and 13. The tested package SHA-256 is
+`b5a16da00356e9d2eae40645886b6a7f3ad19e8a547750dea4d8f69a8c1b4eb4`.
+The final verifier used each lane's report directory directly: the first
+aggregation stopped at a source symlink outside the reports, not a failed
+runtime suite. The verifier's symlink refusal was not relaxed.
+
+The checked package, verification JSON, and a successful APT dry run are in
+`target/local-review/qualified-0.1.6-a953fe3/`. It uses a fixture update key
+and has not been published. These receipts do not qualify newer changes on
+`dev` or a package built with the production publisher key.
