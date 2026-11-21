@@ -113,7 +113,7 @@ const RELEASE_MATRIX = [
   ['debian', '13', 'gitlab', GITLAB_SCENARIOS],
 ];
 
-export async function expandAcceptanceReports(args) {
+export async function expandAcceptanceReports(args, { allowEmptyDirectories = false } = {}) {
   const reports = [];
   let entriesVisited = 0;
   const append = path => {
@@ -144,7 +144,9 @@ export async function expandAcceptanceReports(args) {
       if (!directory || directory.startsWith('--')) throw new Error('Supply a directory after --reports-dir.');
       const first = reports.length;
       await discover(resolve(directory), 0);
-      if (reports.length === first) throw new Error(`No completed report.json files found in ${directory}.`);
+      if (reports.length === first && !allowEmptyDirectories) {
+        throw new Error(`No completed report.json files found in ${directory}.`);
+      }
       reports.splice(first, reports.length - first, ...reports.slice(first).sort());
     } else if (arg.startsWith('--')) throw new Error(`Unknown acceptance report option: ${arg}`);
     else append(arg);
@@ -226,6 +228,27 @@ export function summarizeReleaseMatrix(validatedReports) {
   return { complete: checks.every(check => check.report !== null), checks };
 }
 
+// Progress reports cannot qualify an installer or check a publisher key.
+// Keep their states tied to final, payload-matched evidence, not live files.
+export function summarizeReleaseProgress(matrix, reports) {
+  const counts = { satisfied: 0, failed: 0, incomplete: 0, 'awaiting-report': 0 };
+  const checks = matrix.checks.map(check => {
+    const matching = reports.filter(report => report.suite === check.suite
+      && report.distribution?.id === check.distribution.id
+      && report.distribution.versionId === check.distribution.versionId);
+    const state = check.report !== null ? 'satisfied'
+      : matching.some(report => !report.passed) ? 'failed'
+      : matching.length ? 'incomplete' : 'awaiting-report';
+    counts[state] += 1;
+    return { ...check, state };
+  });
+  return {
+    totalChecks: checks.length, counts,
+    failedReports: reports.filter(report => !report.passed).map(report => report.path),
+    checks,
+  };
+}
+
 export function selectPublisherReport(summary, environmentReports) {
   if (summary.reports.some(report => !report.passed)) {
     throw new Error('Release verification requires every supplied report to pass.');
@@ -285,7 +308,7 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
 async function main(args) {
   try {
     const usage = 'Usage: node tools/report-installed-acceptance.mjs --list-release-matrix\n'
-      + '   or: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
+      + '   or: node tools/report-installed-acceptance.mjs [--release-progress | --release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
     if (args[0] === '--list-release-matrix') {
       if (args.length !== 1) throw new Error(usage);
       const checks = releaseRequirements();
@@ -293,19 +316,30 @@ async function main(args) {
       return;
     }
     const releaseMatrix = args[0] === '--release-matrix';
+    const releaseProgress = args[0] === '--release-progress';
     let publisherPreflight;
-    if (releaseMatrix) args.shift();
+    if (releaseMatrix || releaseProgress) args.shift();
     else if (args[0] === '--verify-release') {
       const [, receipt, key] = args.splice(0, 3);
       if (!receipt || !key || [receipt, key].some(arg => arg.startsWith('--'))) throw new Error(usage);
       publisherPreflight = { receipt, key };
     }
     const [packagePath, ...reportInputs] = args;
-    if (!packagePath || packagePath.startsWith('--') || (!releaseMatrix && !reportInputs.length)) {
+    if (!packagePath || packagePath.startsWith('--') || (!releaseMatrix && !releaseProgress && !reportInputs.length)) {
       throw new Error(usage);
     }
-    const reportPaths = await expandAcceptanceReports(reportInputs);
-    const summary = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix, publisherPreflight });
+    const reportPaths = await expandAcceptanceReports(reportInputs, { allowEmptyDirectories: releaseProgress });
+    const summary = await reportInstalledAcceptance(packagePath, reportPaths, {
+      releaseMatrix: releaseMatrix || releaseProgress, publisherPreflight,
+    });
+    if (releaseProgress) {
+      const { releaseMatrix: matrix, ...result } = summary;
+      console.log(JSON.stringify({
+        kind: 'installed-release-progress', ...result, releaseProgress: summarizeReleaseProgress(matrix, summary.reports),
+      }, null, 2));
+      if (summary.reports.some(report => !report.passed)) process.exitCode = 1;
+      return;
+    }
     console.log(JSON.stringify(summary, null, 2));
     if (summary.reports.some(report => !report.passed) || (releaseMatrix && !summary.releaseMatrix.complete)) {
       process.exitCode = 1;

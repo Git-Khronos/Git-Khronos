@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { expandAcceptanceReports, selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
+import { expandAcceptanceReports, selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix, summarizeReleaseProgress } from './report-installed-acceptance.mjs';
 
 test('discovers only final native reports from explicitly selected roots in stable order', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'khronos-report-discovery-'));
@@ -34,12 +34,14 @@ test('directory discovery refuses missing, linked, empty and excessively nested 
   await assert.rejects(expandAcceptanceReports(['--bogus']), /Unknown acceptance report option/);
   await assert.rejects(expandAcceptanceReports(['--reports-dir', join(root, 'absent')]), { code: 'ENOENT' });
   await assert.rejects(expandAcceptanceReports(['--reports-dir', empty]), /No completed report.json/);
+  assert.deepEqual(await expandAcceptanceReports(['--reports-dir', empty], { allowEmptyDirectories: true }), []);
   const link = join(root, 'linked');
   await symlink(empty, link);
   await assert.rejects(expandAcceptanceReports(['--reports-dir', link]), /real acceptance report directory/);
   await assert.rejects(expandAcceptanceReports(['--reports-dir', root]), /does not follow links/);
   await symlink(join(empty, 'progress.json'), join(empty, 'report.json'));
   await assert.rejects(expandAcceptanceReports(['--reports-dir', empty]), /does not follow links/);
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', empty], { allowEmptyDirectories: true }), /does not follow links/);
   const deep = join(root, 'deep');
   await mkdir(join(deep, ...Array(14).fill('child')), { recursive: true });
   await assert.rejects(expandAcceptanceReports(['--reports-dir', deep]), /directory is too deep/);
@@ -138,6 +140,29 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   assert.equal(partial.complete, false);
   assert.deepEqual(partial.checks.filter(check => check.report === null).map(({ distribution, suite }) => [distribution.versionId, suite]),
     [['24.04', 'smoke']]);
+});
+
+test('release progress distinguishes missing, incomplete, failed and satisfied installed evidence', () => {
+  const [passed, failed, incomplete, ...remaining] = matrixFixtures();
+  const validated = [
+    passed,
+    { ...passed, path: 'previous-failed-report.json', passed: false },
+    { ...failed, passed: false },
+    { ...incomplete, scenarios: ['another-scenario'] },
+    ...remaining.slice(1),
+  ];
+  const matrix = summarizeReleaseMatrix(validated);
+  const reports = validated.map(report => ({ ...report, distribution: report.linuxDistribution }));
+  const progress = summarizeReleaseProgress(matrix, reports);
+  assert.equal(progress.totalChecks, matrix.checks.length);
+  assert.deepEqual(progress.counts, {
+    satisfied: matrix.checks.length - 3, failed: 1, incomplete: 1, 'awaiting-report': 1,
+  });
+  assert.deepEqual(progress.checks.slice(0, 4).map(check => check.state),
+    ['satisfied', 'failed', 'incomplete', 'awaiting-report']);
+  assert.deepEqual(progress.failedReports, ['previous-failed-report.json', failed.path]);
+  assert.equal(progress.checks[0].report, passed.path);
+  assert.equal(progress.checks[3].report, null);
 });
 
 test('local release checks include every installed Ubuntu 24.04 workflow review required by CI', () => {
