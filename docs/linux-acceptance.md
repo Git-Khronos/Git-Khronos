@@ -66,6 +66,13 @@ tests. A failure retains its first failing phase through cleanup, also
 recorded as `failurePhase` in `report.json`. Only the final report qualifies
 the package; a stale progress file alone is not proof the worker is alive.
 
+Use `--suite checkout-snapshot` to reproduce a same-tip branch switch
+while the application opens a repository. The fixture pauses only the
+app's Git reference read. Independent Git switches branches at the same
+commit, then the native command must retry and agree on the branch in
+porcelain status, the branch list, and the active worktree. The retry must
+not change Git state. A passing smoke run alone cannot satisfy this check.
+
 Use `--suite working-tree-recaps` to check staged and unstaged line totals
 without running all setup workflows. It checks the displayed counts and
 their accessible labels together, including singular counts and exclusions.

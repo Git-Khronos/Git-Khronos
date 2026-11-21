@@ -592,7 +592,7 @@ class FixtureTests(unittest.TestCase):
                         deadline = time.monotonic() + 5
                         while not (gate / "started").exists() and time.monotonic() < deadline:
                             time.sleep(0.01)
-                        self.assertTrue((gate / "started").exists())
+                        self.assertEqual((gate / "started").read_text(), f"{process.pid}\n")
                         self.assertIsNone(process.poll())
                     finally:
                         hold.unlink(missing_ok=True)

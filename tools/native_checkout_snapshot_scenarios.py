@@ -27,6 +27,7 @@ def coherent_checkout_snapshot(driver, fixtures, report):
             time.sleep(.05)
         assert entered.exists(), 'The snapshot never entered its held Git reference read'
         first_sample_pid = entered.read_text().strip()
+        assert first_sample_pid.isdigit(), 'The first Git reference sample did not identify its worker'
         assert driver.script('return window.__ownedCheckoutSnapshot.pending === true')
         fixtures.git(repository, 'switch', 'parallel')
         after_switch = checkout_footprint(fixtures, repository)
@@ -41,6 +42,7 @@ def coherent_checkout_snapshot(driver, fixtures, report):
     registration, = (tree for tree in snapshot['worktrees'] if tree['current'])
     current_refs = [item['name'] for item in snapshot['branches'] if item['current'] and not item['remote']]
     second_sample_pid = entered.read_text().strip()
+    assert second_sample_pid.isdigit(), 'The final Git reference sample did not identify its worker'
     observed = {
         'statusBranch': snapshot['status']['branch'],
         'worktreeBranch': registration['branch'],
