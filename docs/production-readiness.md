@@ -402,6 +402,15 @@ only that checkout advanced; the dirty sibling and the parent index and
 refs were unchanged. See `installed-submodule.json` under
 `target/local-review/updater/jammy-builder/submodule-update-review.YCHlzHDO/`.
 
+The workspace reopen package at `c278b21`, SHA-256
+`2ce82787c71655f4fbf92c98ca1bbd8d048ba9490ac30e05b86f378c6359847d`,
+passed four installed workspace scenarios. The predecessor exposed the
+reopen action in the wrong workspace. This package kept the action in the
+original layout and restored the middle tab to its former saved slot without
+losing the unavailable path or changing Git data. Both nearby and bulk
+relocation also passed. See `installed-workspace-tabs.json` under
+`target/local-review/updater/jammy-builder/workspace-tab-reopen.mO7cGsux/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

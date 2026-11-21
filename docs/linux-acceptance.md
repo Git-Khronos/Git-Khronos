@@ -149,7 +149,7 @@ Use `--suite workspace-reopen --headless` to exercise session-local tab
 history in two saved layouts with a shared checkout. The other workspace
 must not inherit the close action. Reopening in the original workspace
 restores the exact former saved position, preserves an unavailable slot,
-and does not touch Git data.
+and does not touch Git data. The exact-artifact Ubuntu 24.04 CI job runs it.
 
 ## Focused selection from a blocked discard review
 
