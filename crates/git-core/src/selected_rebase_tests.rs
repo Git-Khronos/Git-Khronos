@@ -338,7 +338,7 @@ fn merge_preserving_conflict_reload_continue_and_abort_retain_native_topology() 
     assert!(execute_merge_rebase(&repository.0, &plan.request).is_err());
     assert!(read_head_status(&repository.0).unwrap().rebase_in_progress);
     fs::write(repository.0.join("base"), b"reviewed resolution\n").unwrap();
-    stage_all(&repository.0).unwrap();
+    stage_path(&repository.0, "base").unwrap();
     continue_rebase(&repository.0).unwrap();
     assert_eq!(
         repository
@@ -411,7 +411,7 @@ fn merge_preserving_manual_merge_resolution_is_not_silently_copied_and_abort_res
         b"Original deliberate merge resolution\n",
     )
     .unwrap();
-    stage_all(&repository.0).unwrap();
+    stage_path(&repository.0, "base").unwrap();
     commit(&repository.0, "Resolved merge").unwrap();
     let original = repository.oid();
     repository.git(&["checkout", "destination"]);
@@ -682,7 +682,7 @@ fn selected_onto_conflict_continue_and_abort_keep_destination_and_original_histo
         .is_err()
     );
     fs::write(repository.0.join("base"), b"reviewed resolution\n").unwrap();
-    stage_all(&repository.0).unwrap();
+    stage_path(&repository.0, "base").unwrap();
     continue_rebase(&repository.0).unwrap();
     assert_eq!(repository.output(&["rev-parse", "HEAD~2"]), destination);
     assert_eq!(
@@ -1584,7 +1584,7 @@ fn selected_rebase_conflict_and_later_conflict_continue_remain_abortable_with_or
     assert!(read_status(&repository.0).unwrap().conflicted > 0);
     assert!(!read_status(&repository.0).unwrap().rebase_edit_stopped);
     fs::write(repository.0.join("base"), b"two\n").unwrap();
-    stage_all(&repository.0).unwrap();
+    stage_path(&repository.0, "base").unwrap();
     assert_eq!(
         continue_rebase(&repository.0).unwrap_err().kind,
         "rebaseConflict"

@@ -1076,12 +1076,20 @@ export class GitKhronosService {
   }
 
   async stageAll(): Promise<RepositoryStatus | null> {
+    if (!this.canChangeWholeIndex()) return null;
     const result = await this.mutateWorkingTree('stage_all', 'Staging all changes…', 'All changes staged', {}, predictStageAll);
     return result.confirmedStatus ?? null;
   }
 
   async unstageAll(): Promise<void> {
+    if (!this.canChangeWholeIndex()) return;
     await this.mutateWorkingTree('unstage_all', 'Unstaging changes…', 'All changes unstaged', {}, predictUnstageAll);
+  }
+
+  private canChangeWholeIndex(): boolean {
+    if (!this.repository()?.status.conflicted) return true;
+    this.error.set('Resolve conflicts before using Stage All or Unstage All. You can still stage or unstage other files individually.');
+    return false;
   }
 
   async stagePath(path: string): Promise<void> {

@@ -67,6 +67,68 @@ impl Drop for Repository {
     }
 }
 
+fn assert_bulk_index_operation_preserves_conflict(
+    operation: impl FnOnce(&Path) -> Result<(), AppError>,
+    conflicted_path: &str,
+) {
+    let repo = Repository::new();
+    repo.write(conflicted_path, b"base\n");
+    repo.write("prepared.txt", b"before staging\n");
+    repo.commit("Base");
+    repo.git(&["switch", "-c", "side"]);
+    repo.write(conflicted_path, b"side\n");
+    let side = repo.commit("Side");
+    repo.git(&["switch", "main"]);
+    repo.write(conflicted_path, b"main\n");
+    let main = repo.commit("Main");
+    let merge = run_git(&repo.0, &["merge", "--no-edit", "side"]).unwrap();
+    assert_eq!(merge.status.code(), Some(1));
+    repo.write("prepared.txt", b"explicitly staged\n");
+    repo.git(&["add", "prepared.txt"]);
+    repo.write("unstaged.txt", b"leave unstaged\n");
+    let index = fs::read(repo.0.join(".git/index")).unwrap();
+    let conflict = fs::read(repo.0.join(conflicted_path)).unwrap();
+    let unmerged = repo.git(&["ls-files", "--unmerged", "-z"]);
+    assert!(!unmerged.is_empty());
+
+    let result = operation(&repo.0);
+    assert_eq!(fs::read(repo.0.join(".git/index")).unwrap(), index, "bulk command wrote the index");
+    assert_eq!(repo.git(&["ls-files", "--unmerged", "-z"]), unmerged);
+    assert_eq!(fs::read(repo.0.join(conflicted_path)).unwrap(), conflict);
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]), format!("{main}\n").as_bytes());
+    assert_eq!(repo.git(&["rev-parse", "MERGE_HEAD"]), format!("{side}\n").as_bytes());
+    assert_eq!(result.unwrap_err().kind, "bulkIndexConflicts");
+}
+
+#[test]
+fn bulk_stage_refuses_to_resolve_unmerged_entries() {
+    assert_bulk_index_operation_preserves_conflict(
+        |root| {
+            let subdir = root.join("nested");
+            fs::create_dir(&subdir).unwrap();
+            stage_all(&subdir)
+        },
+        "shared.txt",
+    );
+}
+
+#[test]
+fn bulk_unstage_refuses_to_remove_unmerged_entries() {
+    // Three unmerged index stages for this path overflow the bounded probe.
+    assert_bulk_index_operation_preserves_conflict(unstage_all, &"x".repeat(185));
+}
+
+#[test]
+fn bulk_stage_and_unstage_still_work_before_the_first_commit() {
+    let repo = Repository::new();
+    repo.write("first.txt", b"keep these bytes\n");
+    stage_all(&repo.0).unwrap();
+    assert_eq!(repo.git(&["ls-files", "-z"]), b"first.txt\0");
+    unstage_all(&repo.0).unwrap();
+    assert!(repo.git(&["ls-files", "-z"]).is_empty());
+    assert_eq!(fs::read(repo.0.join("first.txt")).unwrap(), b"keep these bytes\n");
+}
+
 fn only_selected(diff: CommitFileDiff) {
     assert_eq!(
         diff.patch.matches("diff --git ").count(),

@@ -152,6 +152,13 @@ same checkout, with the same workspace, HEAD, draft, and commit options still
 current. A changed context keeps the draft and requires a fresh explicit
 commit. These checks do not lock out an independent Git process.
 
+Bulk Stage All and Unstage All are unavailable while the index has unresolved
+entries. Native code checks the current index before either write so a stale
+renderer status cannot silently turn conflicted files into ordinary staged
+files or erase their conflict stages. Individual file actions and the reviewed
+merge editor remain separate. The native check is a preflight, not an index
+transaction across independent Git processes.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and

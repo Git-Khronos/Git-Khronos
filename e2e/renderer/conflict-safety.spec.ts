@@ -1,6 +1,43 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { ConflictDetails } from '../../libs/contracts/src/index';
 
+test('conflicts block bulk index actions without blocking staging a different file', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const status = { ...git.repository().status, staged: 1, unstaged: 1, untracked: 0, conflicted: 1, entryCount: 3,
+      mergeInProgress: true, entries: [
+        { path: 'conflict.txt', indexStatus: 'U', worktreeStatus: 'U', conflicted: true },
+        { path: 'prepared.txt', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
+        { path: 'working.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
+      ] };
+    const calls: Array<{ command: string; args: any }> = [];
+    (window as any).__bulkIndexCalls = calls;
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      calls.push({ command, args });
+      if (command === 'working_tree_change_summary') return { additions: 1, deletions: 1, uncountedFiles: 0, partial: false };
+      return status;
+    } };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    git.repositories.update((repositories: any[]) => repositories.map(item => ({ ...item, status })));
+  });
+  const indexCalls = () => page.evaluate(() => (window as any).__bulkIndexCalls.filter(
+    (call: { command: string }) => ['stage_all', 'unstage_all', 'stage_path'].includes(call.command)));
+  const stageAll = page.getByRole('button', { name: 'Stage all changes', exact: true });
+  const unstageAll = page.getByRole('button', { name: 'Unstage all', exact: true });
+  await expect(stageAll).toBeDisabled();
+  await expect(unstageAll).toBeDisabled();
+  for (const key of ['S', 'U']) {
+    await page.keyboard.press(`Control+Shift+${key}`);
+    await expect(page.locator('.error-toast')).toContainText('Resolve conflicts before using Stage All or Unstage All');
+    await page.getByRole('button', { name: 'Dismiss error' }).click();
+  }
+  expect(await indexCalls()).toEqual([]);
+  await page.getByRole('button', { name: 'Stage working.txt', exact: true }).click();
+  expect(await indexCalls()).toEqual([{ command: 'stage_path', args: { repoId: 'browser-preview', path: 'working.txt' } }]);
+});
+
 async function openConflict(page: Page, options: { stale?: boolean; rebase?: boolean; truncated?: boolean; deleted?: boolean; submodule?: boolean } = {}): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();

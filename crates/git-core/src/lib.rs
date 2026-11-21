@@ -2175,7 +2175,27 @@ fn update_submodule_with_cancellation(
     )
 }
 
+/// A bulk index action is not explicit approval to resolve an unmerged path.
+/// Observe Git's index directly; the renderer's status can be stale or partial.
+fn require_conflict_free_bulk_index(path: &Path) -> Result<(), AppError> {
+    // Bulk Git commands can affect the whole index even from a subdirectory.
+    let (output, truncated) =
+        run_git_with_stdout_limit(path, &["ls-files", "--unmerged", "-z", "--", ":/"], 512)?;
+    if !truncated {
+        ensure_success("check the index for unresolved conflicts", &output)?;
+    }
+    if truncated || !output.stdout.is_empty() {
+        return Err(AppError::new(
+            "bulkIndexConflicts",
+            "Bulk staging and unstaging are unavailable while the index has unresolved conflicts.",
+            Some("Resolve conflicted files individually, or stage and unstage other files one at a time."),
+        ));
+    }
+    Ok(())
+}
+
 pub fn stage_all(path: &Path) -> Result<(), AppError> {
+    require_conflict_free_bulk_index(path)?;
     run_mutation(path, &["add", "--all", "--"], "stage all changes")?;
     if !read_sparse_checkout_info(path).enabled {
         return Ok(());
@@ -2252,6 +2272,7 @@ pub fn stage_path(path: &Path, file: &str) -> Result<(), AppError> {
 }
 
 pub fn unstage_all(path: &Path) -> Result<(), AppError> {
+    require_conflict_free_bulk_index(path)?;
     let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
     if head.status.success() {
         run_mutation(path, &["reset", "--mixed", "HEAD", "--"], "unstage changes")
