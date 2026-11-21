@@ -2,13 +2,22 @@
 import json
 
 
-def stale_element_refusal(error):
+def error_detail(error):
     if not isinstance(error, RuntimeError):
-        return False
+        return {}
     try:
         detail = json.loads(str(error))
     except (ValueError, TypeError):
-        return False
+        return {}
     if isinstance(detail, dict) and isinstance(detail.get('value'), dict):
         detail = detail['value']
-    return isinstance(detail, dict) and detail.get('error') == 'stale element reference'
+    return detail if isinstance(detail, dict) else {}
+
+
+def stale_element_refusal(error):
+    return error_detail(error).get('error') == 'stale element reference'
+
+
+def script_result_unavailable(error):
+    detail = error_detail(error)
+    return detail.get('error') == 'unknown error' and detail.get('message') == 'Could not parse script result'

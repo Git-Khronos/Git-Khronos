@@ -61,6 +61,69 @@ def observe_repository_changes(driver, fixtures, report, field, *, repository_id
             observation['statusReads'] = trace.read_text().splitlines()[-300:]
 
 
+def external_checkout_and_untracked(driver, fixtures, repository, repo_id, report):
+    untracked = repository / "native-untracked.txt"
+    trace_watcher = os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1"
+    # Branch changes outside the app must not discard untracked discovery while
+    # the renderer reconciles the new HEAD's metadata.
+    probe = '[aria-label^="Switch branch, current native-status-probe,"]'
+    with observe_repository_changes(driver, fixtures, report, 'externalCheckoutObservation',
+                                    repository_id=repo_id, enabled=trace_watcher, selector=probe) as mark:
+        mark('checkout-start')
+        fixtures.git(repository, "checkout", "-q", "-b", "native-status-probe")
+        untracked.write_text("untracked after an external checkout\n")
+        assert fixtures.git(repository, "symbolic-ref", "--short", "HEAD") == "native-status-probe"
+        mark('git-checkout-complete')
+        try:
+            driver.wait(f'return !!document.querySelector({json.dumps(probe)})')
+            mark('branch-rendered')
+            driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+            driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
+            mark('untracked-rendered')
+        except TimeoutError:
+            mark('external-checkout-timeout')
+            # Capture, but never substitute, a direct native read. This is
+            # after failure and must not make the observation pass.
+            state = {}
+            reads = (
+                ('git', lambda: fixtures.git(repository, '--no-optional-locks', 'status', '--short', '--branch')),
+                ('rendered', lambda: driver.script("""return {
+                    hidden: document.hidden,
+                    branch: document.querySelector('[aria-label^="Switch branch"]')?.getAttribute('aria-label'),
+                    untracked: !!document.querySelector('[aria-label="Stage native-untracked.txt"]')
+                };""")),
+                ('native', lambda: driver.invoke('refresh_repository_status', repoId=repo_id)),
+            )
+            for kind, read in reads:
+                try:
+                    sample = read()
+                    state[kind] = ({'branch': sample.get('branch'), 'untracked': sample.get('untracked')}
+                                   if kind == 'native' else sample)
+                except Exception as error:
+                    state[kind] = {'error': str(error)}
+            report['externalCheckoutTimeout'] = state
+            raise
+        untracked.unlink()
+        fixtures.git(repository, "checkout", "-q", "main")
+        fixtures.git(repository, "branch", "-D", "native-status-probe")
+        mark('git-restored-main')
+        driver.wait('return !!document.querySelector(\'[aria-label^="Switch branch, current main"]\')')
+        driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+        mark('main-rendered')
+        assert not fixtures.git(repository, "status", "--porcelain")
+    report["scenarios"].append("native-external-checkout-and-untracked-discovery")
+
+
+def watcher_checkout(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository()
+    repo_id = open_ui(driver, repository)
+    driver.click_visible('.wip-nav')
+    external_checkout_and_untracked(driver, fixtures, repository, repo_id, report)
+    return repository, repo_id
+
+
 def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, report, row, delete_ref):
     """Prove a same-branch graph update while native events are still arriving."""
     marker = repository / '.git' / 'owned-watcher-burst-marker'
@@ -116,8 +179,8 @@ def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, 
     assert during_burst, 'Git deleted the ref, but the graph did not update until watcher events stopped'
 
 
-def watcher_status_environment(fixtures):
-    path = fixtures.env['PATH']
+def watcher_status_environment(fixtures, path=None):
+    path = fixtures.env['PATH'] if path is None else path
     git = shutil.which('git', path=path)
     if git is None:
         raise RuntimeError('The watcher scenario requires Git on PATH')

@@ -30,7 +30,7 @@ from xml.sax.saxutils import quoteattr
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from native_webdriver_errors import stale_element_refusal
+from native_webdriver_errors import script_result_unavailable, stale_element_refusal
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -315,16 +315,28 @@ class Driver:
     def wait(self, script, timeout=30):
         """Poll a read-only predicate, including during document replacement."""
         end = time.monotonic() + timeout
+        unavailable = 0
+        last_refusal = None
         while time.monotonic() < end:
             try:
                 value = self.script(script)
             except (RemoteDisconnected, URLError, ConnectionError):
                 time.sleep(0.1)
                 continue
+            except RuntimeError as error:
+                if not script_result_unavailable(error):
+                    raise
+                # WebKitGTK can briefly fail to serialize the result. Only the
+                # read-only predicate is retried, never script() or a click.
+                unavailable += 1
+                last_refusal = error
+                time.sleep(0.1)
+                continue
             if value:
                 return value
             time.sleep(0.1)
-        raise TimeoutError(f"UI condition did not become true: {script}")
+        note = f" (WebKit could not parse {unavailable} script results)" if unavailable else ""
+        raise TimeoutError(f"UI condition did not become true{note}: {script}") from last_refusal
 
     def reload(self):
         origin = self.script("return performance.timeOrigin")
@@ -1067,7 +1079,7 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     # manually refreshing it or replacing renderer state with IPC results.
     driver.click('.wip-nav')
     untracked = repository / "native-untracked.txt"
-    from native_watcher_scenarios import observe_repository_changes, observe_untracked_refresh
+    from native_watcher_scenarios import external_checkout_and_untracked, observe_untracked_refresh
     trace_watcher = os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1"
     with observe_untracked_refresh(driver, fixtures, report, repo_id, trace_watcher) as mark:
         mark('create')
@@ -1080,30 +1092,7 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
         driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
         mark('observed-removal')
     report["scenarios"].append("native-untracked-file-discovery-and-removal")
-    # Branch changes outside the app must not discard untracked discovery while
-    # the renderer reconciles the new HEAD's metadata.
-    probe = '[aria-label^="Switch branch, current native-status-probe,"]'
-    with observe_repository_changes(driver, fixtures, report, 'externalCheckoutObservation',
-                                    repository_id=repo_id, enabled=trace_watcher, selector=probe) as mark:
-        mark('checkout-start')
-        fixtures.git(repository, "checkout", "-q", "-b", "native-status-probe")
-        untracked.write_text("untracked after an external checkout\n")
-        assert fixtures.git(repository, "symbolic-ref", "--short", "HEAD") == "native-status-probe"
-        mark('git-checkout-complete')
-        driver.wait(f'return !!document.querySelector({json.dumps(probe)})')
-        mark('branch-rendered')
-        driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-        driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
-        mark('untracked-rendered')
-        untracked.unlink()
-        fixtures.git(repository, "checkout", "-q", "main")
-        fixtures.git(repository, "branch", "-D", "native-status-probe")
-        mark('git-restored-main')
-        driver.wait('return !!document.querySelector(\'[aria-label^="Switch branch, current main"]\')')
-        driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-        mark('main-rendered')
-        assert not fixtures.git(repository, "status", "--porcelain")
-    report["scenarios"].append("native-external-checkout-and-untracked-discovery")
+    external_checkout_and_untracked(driver, fixtures, repository, repo_id, report)
     repository_file_discard_recovery(driver, fixtures, repository, repo_id, report)
     checkpoint_lifecycle(driver, fixtures, repository, repo_id, checkpoints, report,
                          hold_packed_status=hold_packed_status)
@@ -1149,7 +1138,7 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
+        "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection", "watcher-checkout",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1252,9 +1241,6 @@ def main():
             if args.suite == "lfs-snapshot-timeout":
                 from native_lfs_snapshot_scenarios import lfs_snapshot_timeout_environment
                 application_env.update(lfs_snapshot_timeout_environment(fixtures))
-            if args.suite == "watcher-refresh":
-                from native_watcher_scenarios import watcher_status_environment
-                application_env.update(watcher_status_environment(fixtures))
             if args.suite == "workspace-batch":
                 from native_workspace_batch_scenarios import workspace_fetch_environment
                 application_env.update(workspace_fetch_environment(fixtures))
@@ -1265,6 +1251,9 @@ def main():
             if args.suite == "gitlab":
                 from native_gitlab_scenarios import start_gitlab_fixture
                 application_env.update(start_gitlab_fixture(fixtures, children, log, report))
+            if args.suite == "watcher-refresh" or os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1":
+                from native_watcher_scenarios import watcher_status_environment
+                application_env.update(watcher_status_environment(fixtures, application_env["PATH"]))
             if outside is not None:
                 application_env.update({
                     "GIT_DIR": str(outside / ".git"),
@@ -1336,6 +1325,9 @@ def main():
             elif args.suite == "diff-line-selection":
                 from native_diff_line_selection_scenarios import diff_line_selection
                 repository, repo_id = diff_line_selection(driver, fixtures, report)
+            elif args.suite == "watcher-checkout":
+                from native_watcher_scenarios import watcher_checkout
+                repository, repo_id = watcher_checkout(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

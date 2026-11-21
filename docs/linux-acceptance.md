@@ -40,13 +40,18 @@ on the fixture's private bus and checks that owner again before sending one
 the target. The suite checks keeping, saving and discarding editor drafts
 without staging changes.
 
-For watcher diagnosis, run `watcher-refresh` with
-`GIT_KHRONOS_NATIVE_TRACE_WATCHER=1`. The report records the native events,
-Git status read modes, and when the untracked row disappears. This does not
-force a refresh, change the convergence timeout, or substitute for the Git
-oracle after deletion. Smoke also checks Git's actual branch independently
-of the toolbar, and the trace distinguishes the external checkout,
-notifications, and the rendered branch and untracked row.
+For watcher diagnosis, run `watcher-checkout` for just the external-checkout
+and untracked-file case shared by smoke and GitLab acceptance. Set
+`GIT_KHRONOS_NATIVE_TRACE_WATCHER=1` to record native events, Git status read
+modes and checkout milestones. `watcher-refresh` also records untracked-file
+disappearance. If the rendered branch or status fails to converge, the
+report captures Git, rendered and native read-only status after the timeout;
+the check still fails. The success path never forces a refresh and the
+timeout is unchanged.
+
+Read-only readiness checks tolerate WebKit's exact transient result-parsing
+error within the original deadline. Direct scripts, clicks and Git
+operations are not retried after an uncertain reply.
 
 ## Focused setup keyboard check
 

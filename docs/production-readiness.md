@@ -521,6 +521,22 @@ files. See the deliberate baseline under
 The subsequent fix preserves the configuration and the exact preview check;
 this baseline does not qualify the new behavior.
 
+The rebase-tips candidate's original Ubuntu 26.04 GitLab attempt timed out
+after an external checkout. The failure screenshot showed the previous
+branch and no newly created untracked row. A separate traced GitLab run
+on the same installer passed 45 cases; the standalone `watcher-checkout`
+suite also passed and recorded watcher events and native status reads.
+The original timeout remains evidence of a failure, not a proven cause.
+See `target/local-review/resolute-watcher-probe.NQEYNfC8/` and
+`target/local-review/native-watcher-and-poll.mHQRT8hw/resolute/`.
+
+The fixed diff candidate's initial Debian 12 GitLab run separately failed
+when WebKit could not parse the result of the read-only Clone-tab readiness
+predicate. A fresh Debian 12 run of the same installer with bounded
+readiness polling passed all 47 cases. Clicks and mutation scripts remain
+one-shot. The original report is retained separately from
+`target/local-review/native-watcher-and-poll.mHQRT8hw/bookworm/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

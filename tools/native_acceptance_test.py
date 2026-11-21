@@ -143,6 +143,47 @@ class PackageIdentityTests(unittest.TestCase):
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
 
 
+class ReadOnlyWebDriverPollTests(unittest.TestCase):
+    def test_result_parse_refusal_can_repoll_the_predicate_but_not_direct_scripts(self):
+        error = RuntimeError(json.dumps({'value': {
+            'error': 'unknown error', 'message': 'Could not parse script result', 'stacktrace': '',
+        }}))
+        driver = Driver(1)
+        expression = 'return !!document.querySelector("#repository-tab-clone")'
+        with patch.object(driver, 'script', side_effect=[error, True]) as read, patch('native_acceptance.time.sleep'):
+            self.assertTrue(driver.wait(expression))
+            self.assertEqual(read.call_args_list, [call(expression), call(expression)])
+        with patch.object(driver, 'request', side_effect=error) as request:
+            with self.assertRaises(RuntimeError):
+                driver.script('document.querySelector("button").click()')
+            self.assertEqual(request.call_count, 1)
+
+    def test_other_webdriver_errors_are_not_repolled(self):
+        driver = Driver(1)
+        for payload in [
+            {'value': {'error': 'javascript error', 'message': 'Could not parse script result'}},
+            {'value': {'error': 'unknown error', 'message': 'Session terminated'}},
+            {'message': 'Could not parse script result'},
+            'Could not parse script result',
+        ]:
+            with self.subTest(payload=payload):
+                error = RuntimeError(json.dumps(payload))
+                with patch.object(driver, 'script', side_effect=error) as read:
+                    with self.assertRaises(RuntimeError) as raised:
+                        driver.wait('return true')
+                    self.assertIs(raised.exception, error)
+                    self.assertEqual(read.call_count, 1)
+
+    def test_persistent_parse_refusal_expires_with_the_original_diagnostic(self):
+        driver = Driver(1)
+        error = RuntimeError(json.dumps({'error': 'unknown error', 'message': 'Could not parse script result'}))
+        with patch.object(driver, 'script', side_effect=error), patch('native_acceptance.time.sleep'), \
+                patch('native_acceptance.time.monotonic', side_effect=[0, 0.1, 0.2, 1.0]):
+            with self.assertRaisesRegex(TimeoutError, '2 script results') as raised:
+                driver.wait('return true', timeout=1)
+        self.assertIs(raised.exception.__cause__, error)
+
+
 class MainMenuReadinessTests(unittest.TestCase):
     def test_loading_menu_does_not_qualify_the_actual_content_or_send_its_tab(self):
         driver = MagicMock()
