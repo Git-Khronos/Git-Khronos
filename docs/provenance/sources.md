@@ -2104,3 +2104,14 @@ No source code copied.
 
 Used for local-branch resolution, pinning the reviewed source commit, and
 real-Git behavioral tests. No source code copied.
+
+
+## Parallel renderer validation in GitHub Actions
+
+- [GitHub Actions matrices](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)
+  and [workflow dependencies](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds)
+  document independent jobs, fail-fast settings, and dependencies.
+- [Playwright sharding](https://playwright.dev/docs/test-sharding) documents
+  running a single suite across multiple machines.
+
+Used for CI scheduling and the required aggregate check. No source code copied.

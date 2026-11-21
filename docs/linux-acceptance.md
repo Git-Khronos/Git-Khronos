@@ -54,6 +54,37 @@ the default deadline. Ambiguous matches still fail before clicking; a lost
 scroll or click response is not replayed. Runner unit tests cover readiness,
 ambiguity, permanent absence and single delivery after an uncertain reply.
 
+## Renderer acceptance in GitHub Actions
+
+The renderer suite uses Chromium with an isolated development server and mocked
+IPC where applicable. It tests UI behavior, focus, and lifecycle decisions. It
+does not replace the separate packaged WebKitGTK or installed Linux checks.
+
+Desktop CI runs four Playwright shards on independent Ubuntu 24.04 runners.
+Each uses one browser worker and no retries. Failure in one shard does not
+cancel the other shards; each failed shard uploads any available report, traces,
+and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
+The existing **Checks and renderer acceptance** status passes only after the
+Linux TypeScript/Rust/harness checks and all renderer shards succeed. Packaged
+native and exact-installer acceptance continue in their separate jobs.
+
+Reproduce one shard on a machine with the lockfile dependencies and Chromium
+installed:
+
+```sh
+CI=true NX_DAEMON=false NX_ISOLATE_PLUGINS=false NODE_OPTIONS=--max-old-space-size=2048 \
+  GIT_KHRONOS_RENDERER_OUTPUT_DIR=test-results/renderer/shard-2 \
+  GIT_KHRONOS_RENDERER_REPORT_DIR=test-results/renderer-report/shard-2 \
+  pnpm nx run desktop:e2e --output-style=static --skipNxCache -- \
+    --shard=2/4 --workers=1 --retries=0
+```
+
+Use a different `PLAYWRIGHT_PORT` and output/report directory for each
+simultaneous local run. Add `--list` to enumerate a shard without launching a
+browser. The first hosted run of this layout is needed to measure elapsed time
+and runner-minute costs; no test cases were dropped to reduce wall time.
+
+
 ## Focused remote and LFS review check
 
 ```sh
