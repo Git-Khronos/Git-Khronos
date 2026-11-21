@@ -158,6 +158,13 @@ the resulting package. Check the release version, pinned key, and exact-artifact
 qualification before signing. Provide the passphrase through the signer's
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` environment only for the signing process.
 
+For the Ubuntu release artifact, run `pnpm nx run desktop:package-ubuntu`
+on Ubuntu 22.04 amd64. The task records the completed build receipt at
+`release/.git-khronos-package-build.v1.json` under the selected Cargo target
+directory only after the package and its Jammy ABI have been checked. A generic
+local Debian build is useful for testing but is not a substitute for this
+release build.
+
 Retain the package build receipt and the completed native environment report
 alongside the exact package. For a publisher-key-enabled Debian build, the
 report must include the configured-trust scenario

@@ -32,16 +32,7 @@
     "package-ubuntu": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": {
-        "commands": [
-          "bash -c '. /etc/os-release; if [ \"$ID:$VERSION_ID:$(dpkg --print-architecture)\" != ubuntu:22.04:amd64 ]; then echo \"Ubuntu release packages must be built on Ubuntu 22.04 amd64.\" >&2; exit 1; fi'",
-          "tauri build --bundles deb --config apps/desktop/src-tauri/tauri.conf.json --config packaging/linux/ubuntu-jammy.conf.json",
-          "tools/manage-linux-package.sh name",
-          "tools/manage-linux-package.sh verify",
-          "node tools/check-linux-abi.mjs \"$(tools/manage-linux-package.sh print-package)\""
-        ],
-        "parallel": false
-      }
+      "options": { "command": "task --force package:ubuntu" }
     },
     "package-test": {
       "executor": "nx:run-commands",

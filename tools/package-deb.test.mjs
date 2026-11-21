@@ -212,6 +212,12 @@ async function fixture(t) {
   };
   await copyFile(join(repositoryRoot, 'Taskfile.yml'), join(root, 'Taskfile.yml'));
   await put('tools/check-node.mjs', '');
+  await put('tools/require-ubuntu-jammy.sh', '#!/bin/sh\ntest -z "$FAIL_HOST_CHECK"\n');
+  await put('tools/check-linux-abi.mjs', `import { appendFileSync, readFileSync } from 'node:fs';
+if (readFileSync(process.argv[2], 'utf8') !== 'built') throw new Error('Wrong ABI check input');
+appendFileSync('calls', 'abi\\n');
+if (process.env.FAIL_ABI) process.exit(1);
+`);
   await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
@@ -223,10 +229,14 @@ import { dirname } from 'node:path';
 if (process.argv[2] === '--version') {
   console.log('12.14.0');
 } else {
-  if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify([
+  const expected = [
     'exec', 'tauri', 'build', '--bundles', 'deb', '--config',
     'apps/desktop/src-tauri/tauri.conf.json'
-  ])) throw new Error('Unexpected build command: ' + process.argv.slice(2));
+  ];
+  if (process.env.EXPECT_JAMMY) expected.push('--config', 'packaging/linux/ubuntu-jammy.conf.json');
+  if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expected)) {
+    throw new Error('Unexpected build command: ' + process.argv.slice(2));
+  }
   if (!process.env.TMPDIR || !existsSync(process.env.TMPDIR)) throw new Error('Missing build temp directory');
   writeFileSync('build-tmpdir', process.env.TMPDIR);
   appendFileSync('calls', 'build\\n');
@@ -286,6 +296,25 @@ test('unchanged packaging skips Tauri but still verifies, including the deb alia
   await f.put('apps/desktop/src-tauri/target/debug/generated', 'regenerated');
   f.ok();
   assert.equal(await f.builds(), 1);
+});
+
+test('Jammy records an exact package only after host and ABI gates and cannot reuse generic output', async (t) => {
+  const f = await fixture(t);
+  const jammy = ['package:ubuntu'];
+  const env = { EXPECT_JAMMY: '1', GIT_KHRONOS_UPDATER_PUBLIC_KEY: 'fixture publisher key' };
+  const receipt = join(f.root, 'target/release/.git-khronos-package-build.v1.json');
+  assert.notEqual(f.run(jammy, { ...env, FAIL_HOST_CHECK: '1' }).status, 0);
+  await assert.rejects(readFile(join(f.root, 'calls')), { code: 'ENOENT' });
+  assert.notEqual(f.run(jammy, { ...env, FAIL_ABI: '1' }).status, 0);
+  await assert.rejects(readFile(receipt), { code: 'ENOENT' });
+  f.ok(jammy, env);
+  f.ok(jammy, env);
+  assert.deepEqual(await f.calls(), ['build', 'abi', 'build', 'abi']);
+  assert.match(JSON.parse(await readFile(receipt, 'utf8')).checksum, /^ubuntu-jammy:.+/);
+  f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: env.GIT_KHRONOS_UPDATER_PUBLIC_KEY });
+  assert.deepEqual((await f.calls()).slice(-2), ['build', 'verify']);
+  f.ok(['--force', ...jammy], env);
+  assert.deepEqual((await f.calls()).slice(-2), ['build', 'abi']);
 });
 
 test('input edits, additions, renames and deletions invalidate the build', async (t) => {

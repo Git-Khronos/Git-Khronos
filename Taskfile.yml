@@ -75,7 +75,7 @@ tasks:
     internal: true
     platforms: [linux]
     method: checksum
-    sources:
+    sources: &debian_build_sources
       - Taskfile.yml
       - package.json
       - pnpm-lock.yaml
@@ -103,7 +103,9 @@ tasks:
       - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
       - tools/package-build-receipt.mjs
-    generates:
+      - tools/check-linux-abi.mjs
+      - tools/require-ubuntu-jammy.sh
+    generates: &debian_build_outputs
       - '{{.CARGO_OUTPUT}}/release/git-khronos'
       - '{{.CARGO_OUTPUT}}/release/.git-khronos-package-build.v1.json'
       - '{{.CARGO_OUTPUT}}/release/bundle/deb/*.deb'
@@ -121,6 +123,29 @@ tasks:
       - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
       - tools/manage-linux-package.sh name
       - node tools/package-build-receipt.mjs complete "{{.CHECKSUM}}"
+
+  package:ubuntu:
+    desc: Build the Ubuntu 22.04 amd64 release package and record its checked outputs
+    platforms: [linux]
+    cmds:
+      - bash tools/require-ubuntu-jammy.sh
+      - task: package:ubuntu:build
+
+  package:ubuntu:build:
+    internal: true
+    platforms: [linux]
+    method: checksum
+    sources: *debian_build_sources
+    generates: *debian_build_outputs
+    status:
+      - node tools/package-build-receipt.mjs check "ubuntu-jammy:{{.CHECKSUM}}" >/dev/null 2>&1
+    cmds:
+      - node tools/package-build-receipt.mjs begin "ubuntu-jammy:{{.CHECKSUM}}"
+      - mkdir -p "${TMPDIR:-$PWD/target/package-tmp}"
+      - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}} --config packaging/linux/ubuntu-jammy.conf.json
+      - tools/manage-linux-package.sh name
+      - node tools/check-linux-abi.mjs "$(tools/manage-linux-package.sh print-package)"
+      - node tools/package-build-receipt.mjs complete "ubuntu-jammy:{{.CHECKSUM}}"
 
   package:deb:path:
     desc: Print the latest Debian/Ubuntu package path
