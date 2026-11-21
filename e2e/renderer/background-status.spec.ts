@@ -28,6 +28,51 @@ test('ignores status replies started before closing and reopening a repository',
   expect(status.entryCount).toBe(0);
 });
 
+test('restored tags load after the deferred metadata read meets an in-flight status read', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = git.repository();
+    const thin = { ...repository, tags: [] };
+    const full = { ...thin, tags: [{ name: 'retained-tag', fullName: 'refs/tags/retained-tag', oid: repository.commits[0].oid }] };
+    const fixture: { release?: () => void; status?: Promise<boolean>; metadataReads: number } = { metadataReads: 0 };
+    (window as any).__metadataRace = fixture;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'open_repository') return Promise.resolve(thin);
+        if (command === 'refresh_repository') {
+          fixture.metadataReads++;
+          return Promise.resolve(full);
+        }
+        if (command === 'refresh_repository_status') {
+          if (!fixture.release) return new Promise(resolve => { fixture.release = () => resolve(thin.status); });
+          return Promise.resolve(full.status);
+        }
+        return Promise.resolve(null);
+      },
+    };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    git.closeRepository(repository.id);
+    await git.openRepository(repository.path);
+    fixture.status = git.refreshStatusInBackground(repository.id);
+    if (!fixture.release) throw new Error('expected a pending status read');
+  });
+  await page.clock.runFor(1_300);
+  expect(await page.evaluate(() => (window as any).__metadataRace.metadataReads)).toBe(0);
+  await page.evaluate(async () => {
+    const fixture = (window as any).__metadataRace;
+    fixture.release();
+    await fixture.status;
+  });
+  await page.clock.runFor(1_300);
+  const heading = page.locator('#reference-section-tags .sidebar-heading');
+  if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
+  await expect(page.locator('#reference-section-tags').getByRole('button', { name: 'Tag retained-tag' })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__metadataRace.metadataReads)).toBe(1);
+});
+
 test('keeps untracked discovery after an external branch change', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();

@@ -377,6 +377,7 @@ export class GitKhronosService {
   private readonly historyLoadsInFlight = new Set<Promise<void>>();
   private readonly pendingWorkingTreeMutations = new Map<string, number>();
   private readonly deferredMetadataRefreshes = new Set<string>();
+  private readonly deferredMetadataTimers = new Map<string, number>();
   private closedRepositories: ClosedRepository[] = [];
 
   async scaleWindowChrome(percent: number): Promise<void> {
@@ -785,16 +786,30 @@ export class GitKhronosService {
       || this.busy()
       || this.backgroundFetchRepositoryId() === repositoryId
       || this.liveRefreshes.has(repositoryId)) return false;
+    const workspaceId = this.activeWorkspaceId();
+    const ownsRepository = () => this.activeWorkspaceId() === workspaceId
+      && this.repositories().some(candidate => candidate.id === repositoryId && candidate.path === repository.path);
     this.beginLiveRefresh(repositoryId);
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
-      if (this.busy() || !this.repositories().some((candidate) => candidate.id === repositoryId)) return false;
+      if (!ownsRepository()) return false;
+      if (this.busy()) {
+        if (this.deferredMetadataRefreshes.has(repositoryId)) this.deferMetadataRefresh(repositoryId);
+        return false;
+      }
       const generation = this.statusGeneration(repositoryId);
       const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
-      if (generation !== this.statusGeneration(repositoryId)) return true;
+      if (!ownsRepository() || snapshot.id !== repositoryId || snapshot.path !== repository.path) return false;
+      if (generation !== this.statusGeneration(repositoryId)) {
+        if (this.deferredMetadataRefreshes.has(repositoryId)) this.deferMetadataRefresh(repositoryId);
+        return true;
+      }
       const refreshed = await this.storeRefreshedSnapshot(snapshot);
-      if (refreshed) this.deferredMetadataRefreshes.delete(repositoryId);
+      if (ownsRepository() && this.deferredMetadataRefreshes.has(repositoryId)) {
+        if (generation !== this.statusGeneration(repositoryId)) this.deferMetadataRefresh(repositoryId);
+        else if (refreshed) this.deferredMetadataRefreshes.delete(repositoryId);
+      }
       return refreshed;
     } catch {
       return false;
@@ -3003,11 +3018,15 @@ export class GitKhronosService {
     this.recentlyClosedRepositoryPath.set(this.closedRepositories[0]?.path ?? null);
     const remaining = repositories.filter((repository) => repository.id !== repoId);
     this.deferredMetadataRefreshes.delete(repoId);
+    const timer = this.deferredMetadataTimers.get(repoId);
+    if (timer !== undefined) window.clearTimeout(timer);
+    this.deferredMetadataTimers.delete(repoId);
     this.repositories.set(remaining);
     if (this.activeRepositoryId() === repoId) {
       const next = remaining[Math.min(Math.max(closingIndex, 0), remaining.length - 1)] ?? null;
       this.activeRepositoryId.set(next?.id ?? null);
       this.clearInspection();
+      if (next && this.deferredMetadataRefreshes.has(next.id)) this.deferMetadataRefresh(next.id);
     }
     this.error.set(null);
     this.activity.set('Ready');
@@ -3899,15 +3918,18 @@ export class GitKhronosService {
 
   private deferMetadataRefresh(repositoryId: string): void {
     this.deferredMetadataRefreshes.add(repositoryId);
-    if (typeof window === 'undefined') return;
-    window.setTimeout(() => {
+    if (typeof window === 'undefined' || this.deferredMetadataTimers.has(repositoryId)) return;
+    const timer = window.setTimeout(() => {
+      this.deferredMetadataTimers.delete(repositoryId);
       if (this.activeRepositoryId() !== repositoryId || !this.deferredMetadataRefreshes.has(repositoryId)) return;
-      if (this.busy() || this.detailsBusy() || this.historyLoading() || this.changesLoading() || this.backgroundFetchBusy()) {
+      if (this.liveRefreshes.has(repositoryId) || this.busy() || this.detailsBusy()
+        || this.historyLoading() || this.changesLoading() || this.backgroundFetchBusy()) {
         this.deferMetadataRefresh(repositoryId);
         return;
       }
       void this.refreshRepositoryInBackground(repositoryId);
     }, 1_200);
+    this.deferredMetadataTimers.set(repositoryId, timer);
   }
 
   private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<boolean> {

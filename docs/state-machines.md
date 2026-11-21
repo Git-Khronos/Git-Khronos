@@ -64,6 +64,13 @@ workspace. Closing a tab revokes that pending path so an earlier read cannot
 reopen it. `repository-restoration.spec.ts` exercises durable tab intent,
 partial cache hits, deferred reordering, failures and late native replies.
 
+The first usable snapshot may omit tags. Its full metadata read stays pending
+while a status read or foreground action is active, with at most one deferred
+timer per repository. A superseded refresh cannot settle the pending read.
+Only a current snapshot from the owning workspace and checkout clears it.
+`background-status.spec.ts` holds a status reply across the first timer and
+verifies that the restored tag then appears without a manual refresh.
+
 Workspace create, rename and delete forms share a deferred view without
 moving mutation authority out of the renderer shell. Cancel and Escape work
 while its module is pending, returning focus to the opener. A completed
