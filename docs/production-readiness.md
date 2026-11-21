@@ -88,6 +88,18 @@ under `target/local-review/updater/jammy-builder/workspace-tags.JSKN2MQa/`.
 The isolated late-reply cases are renderer regressions; these installed
 suites confirm the neighboring real Git and package workflows.
 
+The same workspace-Tags bytes also passed Ubuntu 26.04 smoke (20), GitLab
+(47), and application update (21) checks; Debian 12 incoming links (26)
+with Git 2.39.5; and Debian 13 smoke (20) and GitLab (47) with Git 2.47.3. Ubuntu 26.04
+used Git 2.53. The Debian 12 run used the harness-only dismissal/order
+fix and confirmed the same single private-bus process before and after
+desktop link delivery. The fresh Debian 13 image's first WebDriver
+session disconnected; a new run with the standard X11 socket directory
+provisioned passed. Exact-package reports are under
+`target/local-review/runtime-matrix-workspace-tags.qDy7Af33/` and the
+candidate directory above. These are disposable local runtime checks, not
+the hosted release matrix or publication approval.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
