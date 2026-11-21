@@ -10,7 +10,7 @@ use git_khronos_git_core::{
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     begin_rebase_split as git_begin_rebase_split, checkout_branch as git_checkout_branch,
     checkout_branch_for_integration as git_checkout_branch_for_integration,
-    checkout_commit as git_checkout_commit, checkout_remote_branch as git_checkout_remote_branch,
+    checkout_commit_reviewed as git_checkout_commit_reviewed, checkout_remote_branch as git_checkout_remote_branch,
     cherry_pick_commits_with_options as git_cherry_pick_commits,
     clone_repository_with_submodules as git_clone_repository, commit_details as git_commit_details,
     commit_file_diff as git_commit_file_diff, compare_commit_file as git_compare_commit_file,
@@ -1618,9 +1618,18 @@ async fn update_all_submodules(
 fn checkout_commit(
     repo_id: String,
     oid: String,
+    expected_head_oid: Option<String>,
+    expected_branch: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_checkout_commit(path, &oid))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_checkout_commit_reviewed(
+            path,
+            &oid,
+            expected_head_oid.as_deref(),
+            expected_branch.as_deref(),
+        )
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]

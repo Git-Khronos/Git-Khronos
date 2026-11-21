@@ -3359,6 +3359,58 @@ pub fn checkout_commit(path: &Path, oid: &str) -> Result<(), AppError> {
     run_mutation(path, &["switch", "--detach", oid], "check out that commit")
 }
 
+/// Revalidate the checkout shown by the detach review. Git still owns the
+/// actual switch and refuses conflicting index or working-tree changes.
+pub fn checkout_commit_reviewed(
+    path: &Path,
+    oid: &str,
+    expected_head_oid: Option<&str>,
+    expected_branch: Option<&str>,
+) -> Result<(), AppError> {
+    validate_commit_oid(oid)?;
+    if let Some(head) = expected_head_oid {
+        validate_commit_oid(head)?;
+    }
+    let stale = || {
+        AppError::new(
+            "staleCheckout",
+            "The branch or HEAD changed before this commit could be checked out.",
+            Some("Refresh and review the checkout again."),
+        )
+    };
+    let head = run_git(path, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+    if !head.status.success() && head.status.code() != Some(1) {
+        ensure_success("read the current commit", &head)?;
+    }
+    let actual_head = if head.status.success() {
+        Some(std::str::from_utf8(&head.stdout).map_err(|_| stale())?.trim())
+    } else {
+        None
+    };
+    let symbolic = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    if !symbolic.status.success() && symbolic.status.code() != Some(1) {
+        ensure_success("read the current branch", &symbolic)?;
+    }
+    let actual_branch = if symbolic.status.success() {
+        Some(
+            std::str::from_utf8(&symbolic.stdout)
+                .map_err(|_| stale())?
+                .trim_end_matches(['\r', '\n'])
+                .strip_prefix("refs/heads/")
+                .ok_or_else(stale)?,
+        )
+    } else {
+        None
+    };
+    if actual_head != expected_head_oid
+        || actual_branch != expected_branch
+        || (actual_head.is_none() && actual_branch.is_none())
+    {
+        return Err(stale());
+    }
+    checkout_commit(path, oid)
+}
+
 pub fn rename_branch(path: &Path, old_name: &str, new_name: &str) -> Result<(), AppError> {
     validate_branch_name(path, old_name)?;
     validate_branch_name(path, new_name)?;
@@ -7889,12 +7941,18 @@ fn parse_porcelain_status(
 }
 
 fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
-    let branch = run_git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
-    let branch = branch
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&branch.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
+    // --short may return "heads/main" when a tag also uses "main". The
+    // initial snapshot and later porcelain status must name the same branch.
+    let branch = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    let branch = if branch.status.success() {
+        std::str::from_utf8(&branch.stdout)
+            .ok()
+            .and_then(|raw| raw.trim_end_matches(['\r', '\n']).strip_prefix("refs/heads/"))
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+    } else {
+        None
+    };
     let operations = repository_operation_state(path)?;
     Ok(RepositoryStatus {
         branch,
@@ -17370,6 +17428,76 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                 .is_empty()
         );
         assert_eq!(repository.git_output(&["rev-parse", "main"]).trim(), head);
+    }
+
+    #[test]
+    fn reviewed_detach_rejects_same_tip_branch_change_and_preserves_both_refs() {
+        let repo = TestRepository::new();
+        repo.write("history.txt", "one\n");
+        stage_all(&repo.path).unwrap();
+        commit(&repo.path, "First").unwrap();
+        let first = repo.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        repo.write("history.txt", "two\n");
+        stage_all(&repo.path).unwrap();
+        commit(&repo.path, "Second").unwrap();
+        let second = repo.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        repo.git_output(&["switch", "-c", "same-tip"]);
+        repo.git_output(&["tag", "same-tip"]);
+        assert_eq!(
+            read_head_status(&repo.path).unwrap().branch.as_deref(),
+            Some("same-tip")
+        );
+
+        let refs = repo.git_output(&["show-ref"]);
+        let rejected = checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("main"))
+            .expect_err("another branch at the same tip must retire review");
+        assert_eq!(rejected.kind, "staleCheckout");
+        assert_eq!(
+            repo.git_output(&["symbolic-ref", "HEAD"]).trim(),
+            "refs/heads/same-tip"
+        );
+        assert_eq!(
+            checkout_commit_reviewed(&repo.path, &first, Some(&first), Some("same-tip"))
+                .unwrap_err().kind,
+            "staleCheckout"
+        );
+        assert_eq!(repo.git_output(&["show-ref"]), refs);
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("history.txt")).unwrap(),
+            "two\n"
+        );
+
+        checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("same-tip")).unwrap();
+        assert!(repo.git_output(&["symbolic-ref", "--quiet", "HEAD"]).is_empty());
+        assert_eq!(repo.git_output(&["rev-parse", "HEAD"]).trim(), first);
+        assert_eq!(repo.git_output(&["show-ref"]), refs);
+    }
+
+    #[test]
+    fn reviewed_detach_leaves_overlapping_dirty_files_to_git_and_supports_an_unborn_branch() {
+        let repo = TestRepository::new();
+        repo.write("history.txt", "one\n");
+        stage_all(&repo.path).unwrap();
+        commit(&repo.path, "First").unwrap();
+        let first = repo.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        repo.write("history.txt", "two\n");
+        stage_all(&repo.path).unwrap();
+        commit(&repo.path, "Second").unwrap();
+        let second = repo.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        repo.write("history.txt", "keep my edits\n");
+        assert!(
+            checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("main")).is_err()
+        );
+        assert_eq!(repo.git_output(&["rev-parse", "HEAD"]).trim(), second);
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("history.txt")).unwrap(),
+            "keep my edits\n"
+        );
+        repo.git_output(&["restore", "--", "history.txt"]);
+        repo.git_output(&["switch", "--orphan", "unborn"]);
+        checkout_commit_reviewed(&repo.path, &first, None, Some("unborn")).unwrap();
+        assert_eq!(repo.git_output(&["rev-parse", "HEAD"]).trim(), first);
+        assert_eq!(repo.git_output(&["rev-parse", "main"]).trim(), second);
     }
 
     #[test]

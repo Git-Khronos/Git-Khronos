@@ -2,10 +2,16 @@
 <div class="confirmation-backdrop" (click)="closed.emit()">
   <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="history-confirmation-title"
     (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
-    <div class="confirmation-icon" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'"><gc-icon [name]="review.kind === 'split' ? 'edit' : review.kind === 'cherry-pick' ? 'cherry-pick' : review.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
+    <div class="confirmation-icon" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'"><gc-icon [name]="review.kind === 'checkout-commit' ? 'git-commit' : review.kind === 'split' ? 'edit' : review.kind === 'cherry-pick' ? 'cherry-pick' : review.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
     <div class="confirmation-copy">
-      <span>{{ review.kind === 'split' ? 'Split stopped commit' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits') : 'Reset to commit' }}</span>
+      <span>{{ review.kind === 'checkout-commit' ? 'Check out a commit' : review.kind === 'split' ? 'Split stopped commit' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits') : 'Reset to commit' }}</span>
       <h2 id="history-confirmation-title">{{ review.kind !== 'reset' && review.oids.length > 1 ? review.oids.length + ' selected commits' : review.label }}</h2>
+      @if (review.kind === 'checkout-commit') {
+        <p>Check out <code [title]="review.oid">{{ shortOid(review.oid) }}</code> in <strong>{{ review.checkout.path }}</strong>.</p>
+        <p>This leaves you in <strong>detached HEAD</strong>, not on a branch. Existing branch pointers do not move. Switch back to a branch to resume work there, or create a branch to keep new commits.</p>
+        @if (review.checkout.branch) { <p>Current branch: <strong>{{ review.checkout.branch }}</strong>.</p> }
+        @if (!checkoutReady() && !git.error()) { <p role="alert">The branch, HEAD, or checkout has changed. Cancel and review the commit again.</p> }
+      }
       @if (review.kind === 'split') {
         <p>Move detached HEAD <code [title]="review.oid">{{ shortOid(review.oid) }}</code> to its parent, keeping this commit's changes unstaged. Nothing is discarded or committed automatically. Requires a clean intentional Edit stop.</p>
         <p>Stage selected files, hunks or lines and create at least two separate commits. New files become untracked until staged. Do not Amend: that would rewrite the parent. Every part uses your reviewed message and current commit identity options; original author and signatures are not automatically inherited.</p>
@@ -72,8 +78,8 @@
     </div>
     <footer>
       <button type="button" data-history-dialog-cancel (click)="closed.emit()">Cancel</button>
-      <button class="confirm-action" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'" type="button" [disabled]="git.busy() || (review.kind === 'reset' && !preview()) || (parents().length > 0 && (review.oids.length !== 1 || !mainline()))" (click)="execute.emit()">
-        {{ review.kind === 'split' ? 'Begin split' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits') : 'Reset ' + resetMode() }}
+      <button class="confirm-action" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'" type="button" [disabled]="git.busy() || (review.kind === 'checkout-commit' && !checkoutReady()) || (review.kind === 'reset' && !preview()) || (parents().length > 0 && (review.oids.length !== 1 || !mainline()))" (click)="execute.emit()">
+        {{ review.kind === 'checkout-commit' ? 'Check out detached HEAD' : review.kind === 'split' ? 'Begin split' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits') : 'Reset ' + resetMode() }}
       </button>
     </footer>
   </section>

@@ -727,7 +727,7 @@ export function initialize_submodule(args: { repoId: string; path: string; opera
 export function initialize_all_submodules(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("initialize_all_submodules", args); }
 export function update_submodule(args: { repoId: string; path: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_submodule", args); }
 export function update_all_submodules(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_all_submodules", args); }
-export function checkout_commit(args: { repoId: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_commit", args); }
+export function checkout_commit(args: { repoId: string; oid: string; expectedHeadOid?: string | null; expectedBranch?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_commit", args); }
 export function rename_branch(args: { repoId: string; oldName: string; newName: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_branch", args); }
 export function set_branch_upstream(args: { repoId: string; branch: string; upstream?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_branch_upstream", args); }
 export function delete_branch(args: { repoId: string; name: string; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }

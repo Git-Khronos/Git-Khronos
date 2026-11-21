@@ -68,3 +68,56 @@ test('keeps multi-commit actions legible and disables commands that require one 
   expect(bounds!.y).toBeGreaterThanOrEqual(8);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
 });
+
+async function checkoutFixture(page: Page) {
+  return page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const snapshot = git.repository();
+    const target = snapshot.commits.find((commit: any) => commit.subject === 'Polish repository activity drawer');
+    const calls: { command: string; args: unknown }[] = [];
+    (window as any).__checkoutCommitCalls = calls;
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      calls.push({ command, args });
+      if (command === 'checkout_commit') return { ...snapshot, headOid: target.oid,
+        status: { ...snapshot.status, branch: null } };
+      return snapshot;
+    } };
+    return { head: snapshot.headOid, branch: snapshot.status.branch, oid: target.oid, id: snapshot.id, path: snapshot.path };
+  });
+}
+
+test('explicit commit checkout explains detached HEAD and sends the reviewed selection once', async ({ page }) => {
+  const fixture = await checkoutFixture(page);
+  const { menu } = await openCommitMenu(page);
+  await menu.getByRole('menuitem', { name: 'Checkout this commit', exact: true }).click();
+  const review = page.getByRole('alertdialog', { name: commitSubject });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText('detached HEAD');
+  await expect(review).toContainText(fixture.path);
+  await expect(review).toContainText(fixture.oid.slice(0, 8));
+  await expect(review.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__checkoutCommitCalls.filter((call: any) => call.command === 'checkout_commit'))).toEqual([]);
+  await review.getByRole('button', { name: 'Check out detached HEAD', exact: true }).click();
+  await expect(review).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__checkoutCommitCalls.filter((call: any) => call.command === 'checkout_commit')))
+    .toEqual([{ command: 'checkout_commit', args: { repoId: fixture.id, oid: fixture.oid, expectedHeadOid: fixture.head, expectedBranch: fixture.branch } }]);
+});
+
+test('cancel and a same-tip branch change cannot trigger a detached checkout', async ({ page }) => {
+  const fixture = await checkoutFixture(page);
+  const first = await openCommitMenu(page);
+  await first.menu.getByRole('menuitem', { name: 'Checkout this commit', exact: true }).click();
+  const review = page.getByRole('alertdialog', { name: commitSubject });
+  await review.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(first.trigger).toBeFocused();
+  const { menu } = await openCommitMenu(page);
+  await menu.getByRole('menuitem', { name: 'Checkout this commit', exact: true }).click();
+  await page.evaluate(fixture => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((items: any[]) => items.map(repo => repo.id === fixture.id
+      ? { ...repo, status: { ...repo.status, branch: 'switched-at-same-tip' } } : repo));
+  }, fixture);
+  await expect(review.getByRole('alert')).toContainText('changed');
+  await expect(review.getByRole('button', { name: 'Check out detached HEAD', exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__checkoutCommitCalls.filter((call: any) => call.command === 'checkout_commit'))).toEqual([]);
+});

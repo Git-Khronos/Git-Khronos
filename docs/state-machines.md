@@ -476,6 +476,18 @@ tab's draft. An optional push uses
 the original consent only while the same tab, checkout, and branch remain
 active; otherwise the user must review and push explicitly.
 
+### Detached checkout review
+
+**Checkout this commit** reviews the destination commit, repository path,
+and current checkout before dispatch. The user must explicitly choose
+**Check out detached HEAD**; Cancel is the initial focus. A changed checkout
+visit, branch, or HEAD invalidates the review, including a move to a different
+branch at the same commit. Native code rechecks the reviewed HEAD and
+symbolic branch before asking Git to switch without force. This preflight
+does not lock out independent Git processes. Git retains responsibility for
+refusing conflicting index or working-tree changes. Tags still navigate to
+their commit without checking it out.
+
 ### Commit rewrite review ownership
 
 The inline author/message editor reviews a target OID against the active

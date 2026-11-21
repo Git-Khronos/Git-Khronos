@@ -1233,12 +1233,20 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly historyNoCommit = signal(false);
   protected readonly historyMergeParents = computed(() => {
     const action = this.pendingHistoryAction();
-    if (!action || action.kind === 'reset' || action.kind === 'split') return [];
+    if (!action || action.kind === 'reset' || action.kind === 'split' || action.kind === 'checkout-commit') return [];
     return action.oids.flatMap(oid => {
       const commit = this.graphCommitByOid().get(oid)
         ?? (this.externalHistoryCommit()?.oid === oid ? this.externalHistoryCommit() : null);
       return commit && commit.parents.length > 1 ? commit.parents : [];
     });
+  });
+  protected readonly historyCheckoutReady = computed(() => {
+    const review = this.pendingHistoryAction();
+    if (review?.kind !== 'checkout-commit') return true;
+    const repo = this.git.repository();
+    return !!repo && review.checkout.scope === this.git.activeRepositoryReadScope()
+      && repo.path === review.checkout.path && repo.headOid === review.checkout.headOid
+      && repo.status.branch === review.checkout.branch;
   });
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
   protected readonly pendingBranchRename = signal<PendingBranchRename | null>(null);
@@ -13286,7 +13294,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dismissGraphActionMenu();
     const generation = this.contextMenuGeneration;
     if (menu.kind === 'branch') await this.checkoutBranch(menu.label, target);
-    else if (menu.kind === 'commit') await this.git.checkoutCommit(menu.oid);
+    else if (menu.kind === 'commit') {
+      const repo = this.git.repository();
+      if (!repo || repo.bare || menu.oids.length !== 1 || menu.repositoryId !== repo.id || menu.repositoryPath !== repo.path) return;
+      this.openHistoryConfirmation({
+        kind: 'checkout-commit', oid: menu.oid, oids: [menu.oid], label: menu.label,
+        checkout: { scope: this.git.activeRepositoryReadScope(), path: repo.path, headOid: repo.headOid, branch: repo.status.branch },
+      }, target);
+      return;
+    }
     else if (menu.kind === 'remote') await this.git.checkoutRemote(menu.label);
     else this.selectCommit(menu.oid);
     queueMicrotask(() => requestAnimationFrame(() => {
@@ -13653,7 +13669,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected requestHistoryAction(kind: PendingHistoryAction['kind']): void {
+  protected requestHistoryAction(kind: Exclude<PendingHistoryAction['kind'], 'checkout-commit'>): void {
     const menu = this.contextMenu();
     if (!menu || menu.kind !== 'commit') return;
     const oids = kind === 'cherry-pick' ? menu.oids : kind === 'revert' ? [...menu.oids].reverse() : [menu.oid];
@@ -13745,7 +13761,11 @@ export class AppComponent implements OnInit, OnDestroy {
       }, { injector: this.injector });
       return;
     }
-    if (action.kind === 'cherry-pick') {
+    if (action.kind === 'checkout-commit') {
+      if (!this.historyCheckoutReady()) return;
+      const result = await this.git.checkoutCommit(action.oid, action.checkout.headOid, action.checkout.branch);
+      if (!result || result.status === 'cancelled') return;
+    } else if (action.kind === 'cherry-pick') {
       if (action.targetBranch && this.git.repository()?.status.branch !== action.targetBranch) {
         const result = await this.git.checkout(action.targetBranch);
         if (result?.status !== 'success' || this.pendingHistoryAction() !== action) return;

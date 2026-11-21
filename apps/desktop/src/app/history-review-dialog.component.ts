@@ -5,13 +5,15 @@ import { GitKhronosService } from './git-khronos.service';
 import { GitDocumentationService } from './git-documentation.service';
 import { IconComponent } from './icon.component';
 
-export interface PendingHistoryAction {
-  kind: 'cherry-pick' | 'revert' | 'reset' | 'split';
+export type PendingHistoryAction = {
   oid: string;
   oids: string[];
   label: string;
   targetBranch?: string;
-}
+} & (
+  | { kind: 'cherry-pick' | 'revert' | 'reset' | 'split' }
+  | { kind: 'checkout-commit'; checkout: { scope: string; path: string; headOid: string | null; branch: string | null } }
+);
 
 @Component({
   selector: 'gc-history-review-dialog',
@@ -26,6 +28,7 @@ export class HistoryReviewDialogComponent {
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   readonly action = input.required<PendingHistoryAction>();
   readonly parents = input<string[]>([]);
+  readonly checkoutReady = input(true);
   readonly mainline = input<number | null>(null);
   readonly noCommit = input(false);
   readonly resetMode = input<ResetMode>('mixed');

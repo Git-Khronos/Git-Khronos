@@ -1895,8 +1895,10 @@ export class GitKhronosService implements OnDestroy {
     ) === 'success';
   }
 
-  async checkoutCommit(oid: string): Promise<MutationResult | null> {
-    return this.runBranchMutation(() => this.mutateWithResult('checkout_commit', 'Checking out commit…', 'Checked out commit', { oid }));
+  async checkoutCommit(oid: string, expectedHeadOid: string | null, expectedBranch: string | null): Promise<MutationResult | null> {
+    return this.runBranchMutation(() => this.mutateWithResult('checkout_commit', 'Checking out commit…', 'Checked out detached HEAD', {
+      oid, expectedHeadOid, expectedBranch,
+    }));
   }
 
   async renameBranch(oldName: string, newName: string): Promise<boolean> {

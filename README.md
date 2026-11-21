@@ -583,6 +583,12 @@ whose format the installed Git does not support, or a folder owned by another
 user is refused with an explanation and next steps; nothing is changed. Empty
 repositories (unborn branch) and detached HEAD open normally.
 
+From a commit's actions, **Checkout this commit** opens a review before
+switching the working tree. Confirm **Check out detached HEAD** to inspect
+that revision without moving an existing branch tip. Switch back to a branch
+to resume work there, or create a new branch to keep commits made while
+detached. Viewing a tagged commit does not change the checkout.
+
 **Worktrees → Worktree actions → Review registrations and prune report…**
 reads the complete NUL-delimited registration list and Git's verbose prune
 dry-run, with `--expire=now`. It displays locked/prunable reasons and preserves

@@ -2308,7 +2308,7 @@
   }
   @if (pendingHistoryAction(); as action) {
     @defer (on immediate) {
-      <gc-history-review-dialog #historyConfirmationDialog [action]="action" [parents]="historyMergeParents()"
+      <gc-history-review-dialog #historyConfirmationDialog [action]="action" [parents]="historyMergeParents()" [checkoutReady]="historyCheckoutReady()"
         [mainline]="historyMainline()" [noCommit]="historyNoCommit()" [resetMode]="resetMode()"
         [preview]="resetPreview()" [previewBusy]="resetPreviewBusy()"
         (mainlineChanged)="historyMainline.set($event)" (noCommitChanged)="historyNoCommit.set($event)"
