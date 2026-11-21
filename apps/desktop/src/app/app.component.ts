@@ -2628,9 +2628,18 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.remoteOnlyBranchGroupByPrimary().get(branch.fullName)?.locations ?? [];
   }
 
-  protected readonly currentBranch = computed(() =>
-    (this.git.repository()?.branches ?? []).find((candidate) => candidate.current) ?? null,
-  );
+  protected readonly checkoutDisplayName = computed(() => {
+    const repository = this.git.repository();
+    return repository?.status.branch ?? (repository?.headOid ? 'Detached HEAD' : 'No commits yet');
+  });
+
+  protected readonly currentBranch = computed(() => {
+    const repository = this.git.repository();
+    if (!repository?.status.branch || !repository.headOid) return null;
+    // Branch rows supply optional tracking metadata, not checkout identity.
+    return repository.branches.find(candidate => !candidate.remote && candidate.current
+      && candidate.name === repository.status.branch && candidate.oid === repository.headOid) ?? null;
+  });
 
   protected readonly toolbarRemotes = computed(() => {
     const repository = this.git.repository();
@@ -2691,7 +2700,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly currentBranchStateLabel = computed(() => {
     const repository = this.git.repository();
     const branch = this.currentBranch();
-    if (!repository || !branch) return 'Detached HEAD';
+    if (!repository?.headOid) return 'No commits yet';
+    if (!repository.status.branch) return 'Detached HEAD';
+    if (!branch) return this.git.repositoryMetadataState() === 'loading' ? 'Branch details loading…' : 'Branch details unavailable';
 
     const sync = this.currentBranchSync();
     const parts: string[] = [];

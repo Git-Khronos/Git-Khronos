@@ -7604,6 +7604,31 @@ test('makes branch synchronization state explicit and actionable in the status b
   await expect(page.getByRole('button', { name: /Switch branch, current main/ })).toBeVisible();
 });
 
+for (const metadata of ['a stale branch row', 'no branch rows'] as const) {
+  test(`uses native checkout status with ${metadata}`, async ({ page }) => {
+    const head = await page.evaluate(metadata => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const git = app.git;
+      const repository = git.repository();
+      const headOid = repository.commits[1].oid;
+      // A lightweight status read can know the new checkout before full branch
+      // metadata refreshes. Keep the previous "current main" entry on purpose.
+      git.repositories.update((items: any[]) => items.map(item => item.id === repository.id ? {
+        ...item, headOid, status: { ...item.status, branch: 'dev' },
+        branches: metadata === 'no branch rows' ? [] : item.branches,
+      } : item));
+      return headOid as string;
+    }, metadata);
+    const statusbar = page.locator('.statusbar');
+    await expect(statusbar.getByRole('button', { name: 'View current branch dev tip', exact: true })).toBeVisible();
+    await expect(statusbar.getByRole('button', { name: /View detached HEAD/ })).toHaveCount(0);
+    await expect(statusbar.getByRole('button', { name: /ahead of origin\/main/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Switch branch, current dev, Branch details/ })).toBeVisible();
+    await statusbar.getByRole('button', { name: 'View current branch dev tip', exact: true }).click();
+    await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-oid', head);
+  });
+}
+
 test('distinguishes detached HEAD from a repository without commits in the status bar', async ({ page }) => {
   const head = await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
@@ -7612,7 +7637,6 @@ test('distinguishes detached HEAD from a repository without commits in the statu
     git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
       ...item,
       status: { ...item.status, branch: null },
-      branches: item.branches.map((branch: any) => ({ ...branch, current: false })),
     } : item));
     return repository.headOid as string;
   });

@@ -274,9 +274,9 @@
           </div>
           <gc-icon class="toolbar-nav-divider" name="chevron-right" [size]="11" />
           <div class="toolbar-nav-control branch-nav-control">
-            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ repo.status.branch ?? 'detached HEAD' }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ repo.status.branch ?? 'detached HEAD' }}, {{ currentBranchStateLabel() }}" aria-haspopup="dialog" [attr.aria-controls]="toolbarCheckoutMenuOpen() ? 'branch-picker' : null" [disabled]="git.busy()" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
+            <button #toolbarBranchToggle class="toolbar-nav-button branch-nav-button" type="button" title="Switch branch · {{ checkoutDisplayName() }} · {{ currentBranchStateLabel() }}" aria-label="Switch branch, current {{ checkoutDisplayName() }}, {{ currentBranchStateLabel() }}" aria-haspopup="dialog" [attr.aria-controls]="toolbarCheckoutMenuOpen() ? 'branch-picker' : null" [disabled]="git.busy()" [attr.aria-expanded]="toolbarCheckoutMenuOpen()" (click)="toggleToolbarCheckoutMenu($event)">
               <gc-icon class="toolbar-nav-leading-icon" name="branch" [size]="12" />
-              <span><small class="branch-state-summary">{{ currentBranchStateLabel() }}</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong></span><gc-icon name="chevron-down" [size]="9" />
+              <span><small class="branch-state-summary">{{ currentBranchStateLabel() }}</small><strong>{{ checkoutDisplayName() }}</strong></span><gc-icon name="chevron-down" [size]="9" />
             </button>
             @if (toolbarCheckoutMenuOpen()) {
               <div id="branch-picker" class="toolbar-nav-menu branch-nav-menu" role="dialog" aria-label="Switch branch" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchMenuKeydown($event)">
@@ -396,7 +396,7 @@
             <div id="branch-options-menu" class="toolbar-menu branch-menu" role="menu" aria-label="Branch options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <header class="toolbar-menu-context">
                 <gc-icon name="branch" [size]="14" />
-                <span><small>Current branch</small><strong>{{ currentBranch()?.name ?? 'Detached HEAD' }}</strong></span>
+                <span><small>Current branch</small><strong>{{ checkoutDisplayName() }}</strong></span>
                 <b>{{ currentBranchStateLabel() }}</b>
               </header>
               <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openBranchCreatorFromToolbarMenu()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
@@ -418,7 +418,7 @@
             <div id="stash-options-menu" class="toolbar-menu stash-menu" role="menu" aria-label="Stash options" (keydown)="handleToolbarActionMenuKeydown($event)">
               <header class="toolbar-menu-context">
                 <gc-icon name="archive" [size]="14" />
-                <span><small>Working directory</small><strong>{{ repo.status.branch || 'Detached HEAD' }}</strong></span>
+                <span><small>Working directory</small><strong>{{ checkoutDisplayName() }}</strong></span>
                 <b>{{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</b>
               </header>
               <button type="button" role="menuitem" (click)="toolbarOverlays.close('stash'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
@@ -464,12 +464,12 @@
                 <gc-icon name="branch" [size]="14" />
                 <span>
                   <small>{{ repo.name }}</small>
-                  <strong [title]="'Current branch: ' + (currentBranch()?.name ?? 'Detached HEAD')">{{ currentBranch()?.name ?? 'Detached HEAD' }}</strong>
+                  <strong [title]="'Current branch: ' + (checkoutDisplayName())">{{ checkoutDisplayName() }}</strong>
                 </span>
                 <b [title]="currentRemote() && currentRemoteBranch() ? 'Pull and push: ' + currentRemote()!.name + '/' + currentRemoteBranch() : 'No pull and push remote selected'">{{ currentRemote() && currentRemoteBranch() ? currentRemote()!.name + '/' + currentRemoteBranch() : 'No remote' }}</b>
               </header>
               <div class="menu-caption compact-menu-caption toolbar-branch-overflow" role="separator" aria-label="Branch navigation">Branch navigation</div>
-              <button class="toolbar-branch-overflow" type="button" role="menuitem" (click)="openCompactBranchSwitcher($event)"><gc-icon name="branch" [size]="13" /><span><strong>Switch branch…</strong><small>Current: {{ currentBranch()?.name ?? 'Detached HEAD' }}</small></span></button>
+              <button class="toolbar-branch-overflow" type="button" role="menuitem" (click)="openCompactBranchSwitcher($event)"><gc-icon name="branch" [size]="13" /><span><strong>Switch branch…</strong><small>Current: {{ checkoutDisplayName() }}</small></span></button>
               @if (toolbarRemotes().length) {
                 <div class="menu-caption toolbar-remote-overflow">Pull and push remote</div>
                 @for (remote of toolbarRemotes(); track remote.name) {
@@ -1193,7 +1193,7 @@
           <div class="panel-title"><strong>Bare repository</strong><ng-container [ngTemplateOutlet]="commitPanelCloseControl" /></div>
           <section class="selected-worktree-card bare-repository-card" aria-label="Bare repository">
             <span class="selected-worktree-icon"><gc-icon name="archive" [size]="22" /></span>
-            <div><small>READ-ONLY</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong><code>{{ repo.path }}</code></div>
+            <div><small>READ-ONLY</small><strong>{{ checkoutDisplayName() }}</strong><code>{{ repo.path }}</code></div>
             <p>This repository has no working tree, so there are no files to stage or commit. Select a commit to inspect it, or browse branches and tags. Fetching and pushing stay available.</p>
             <p>To make changes, clone it or add a worktree, then open that folder.</p>
           </section>
@@ -1209,7 +1209,7 @@
           </section>
         } @else if (changesOpen()) {
           <div class="panel-title wip-panel-title" (click)="$event.stopPropagation()">
-            <strong><span>{{ repo.status.entryCount }} file {{ repo.status.entryCount === 1 ? 'change' : 'changes' }} on</span><b>{{ repo.status.branch ?? 'detached HEAD' }}</b></strong>
+            <strong><span>{{ repo.status.entryCount }} file {{ repo.status.entryCount === 1 ? 'change' : 'changes' }} on</span><b>{{ checkoutDisplayName() }}</b></strong>
             <div class="panel-title-actions">
               <button #workingTreeOptionsToggle class="inspector-overflow-action" [class.menu-open]="workingTreeOptionsOpen()" type="button" title="Working directory options" aria-label="Working directory options" aria-haspopup="menu" [attr.aria-expanded]="workingTreeOptionsOpen()" (click)="toggleWorkingTreeOptions($event)"><gc-icon name="more" [size]="15" /></button>
               <ng-container [ngTemplateOutlet]="commitPanelCloseControl" />
@@ -1775,8 +1775,8 @@
     }
     <footer class="statusbar">
       <span class="status-repository" [attr.aria-label]="'Repository ' + git.repositoryLabel(repo) + ', ' + repo.path" [title]="repo.path"><gc-icon name="repo" [size]="10" /><strong>{{ git.repositoryLabel(repo) }}</strong><span class="status-repository-path">{{ repo.path }}</span></span>
-      @if (currentBranch(); as branch) {
-        <button class="status-branch" type="button" aria-label="View current branch {{ branch.name }} tip" title="View {{ branch.name }} at {{ shortOid(branch.oid) }}" (click)="jumpToReference($event, branch.oid)"><gc-icon name="branch" [size]="10" />{{ branch.name }}</button>
+      @if (repo.status.branch && repo.headOid; as headOid) {
+        <button class="status-branch" type="button" aria-label="View current branch {{ repo.status.branch }} tip" title="View {{ repo.status.branch }} at {{ shortOid(headOid) }}" (click)="jumpToReference($event, headOid)"><gc-icon name="branch" [size]="10" />{{ repo.status.branch }}</button>
       } @else if (repo.headOid; as headOid) {
         <button class="status-branch detached" type="button" aria-label="View detached HEAD commit {{ shortOid(headOid) }}" title="View detached HEAD at {{ shortOid(headOid) }}" (click)="jumpToReference($event, headOid)"><gc-icon name="git-commit" [size]="10" />Detached HEAD <code>{{ shortOid(headOid) }}</code></button>
       } @else {

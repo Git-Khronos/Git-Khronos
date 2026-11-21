@@ -478,6 +478,11 @@ active; otherwise the user must review and push explicitly.
 
 ### Detached checkout review
 
+Current checkout labels use the native status branch and HEAD OID, not the
+presence or current marker of a branch-list row. A missing or older metadata
+row may withhold tracking details but cannot display a false detached HEAD,
+attach a real detached HEAD to the old branch, or navigate to an old tip.
+
 **Checkout this commit** reviews the destination commit, repository path,
 and current checkout before dispatch. The user must explicitly choose
 **Check out detached HEAD**; Cancel is the initial focus. A changed checkout
