@@ -7963,20 +7963,21 @@ fn read_worktrees(
     current_status: &RepositoryStatus,
     include_linked_status: bool,
 ) -> Result<Vec<Worktree>, AppError> {
-    let output = run_git(path, &["worktree", "list", "--porcelain"])?;
+    let output = run_git(path, &["worktree", "list", "--porcelain", "-z"])?;
     ensure_success("read repository worktrees", &output)?;
     let current_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let text = String::from_utf8_lossy(&output.stdout);
 
     Ok(text
-        .split("\n\n")
+        .split_terminator("\0\0")
         .filter_map(|record| {
             let mut worktree_path = None;
             let mut oid = String::new();
             let mut branch = None;
             let mut locked = false;
             let mut prunable = false;
-            for line in record.lines() {
+            // Git paths and registration reasons can contain literal newlines.
+            for line in record.split('\0') {
                 if let Some(value) = line.strip_prefix("worktree ") {
                     worktree_path = Some(PathBuf::from(value));
                 } else if let Some(value) = line.strip_prefix("HEAD ") {
@@ -17577,6 +17578,45 @@ mod tests {
         assert!(review.path.ends_with("review-task"));
         remove_worktree(&repository.path, &review.path, true, false)
             .expect("remove clean review worktree and branch");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn snapshots_preserve_linked_checkout_paths_with_embedded_line_breaks() {
+        let repository = TestRepository::new();
+        repository.write("README.md", "# Worktree path\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Base worktree").unwrap();
+
+        let linked_path = repository.path.join("Linéa \tfirst\nsecond");
+        let linked_text = linked_path.to_str().unwrap();
+        run_mutation(
+            &repository.path,
+            &["worktree", "add", "-b", "review/topic", linked_text],
+            "create isolated checkout with embedded whitespace",
+        )
+        .unwrap();
+        fs::write(linked_path.join("note.txt"), "untracked linked work\n").unwrap();
+
+        let main = snapshot(&repository.path).unwrap();
+        let linked = main
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.branch.as_deref() == Some("review/topic"))
+            .unwrap();
+        assert_eq!(linked.path, linked_text);
+        assert!(!linked.current);
+        assert!(!linked.prunable);
+        assert!(linked.status_loaded);
+        assert_eq!(linked.changes, 1);
+
+        let resolved = resolve_repository(Path::new(&linked.path)).unwrap();
+        assert_eq!(resolved, linked_path.canonicalize().unwrap());
+        let opened = snapshot(&resolved).unwrap();
+        let current = opened.worktrees.iter().find(|tree| tree.current).unwrap();
+        assert_eq!(current.branch.as_deref(), Some("review/topic"));
+        assert_eq!(current.path, linked_text);
+        assert_eq!(opened.status.untracked, 1);
     }
 
     #[test]

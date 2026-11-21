@@ -41,7 +41,9 @@ def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 
     source = fixtures.repository('occupied-checkout-navigation', commits=3)
-    owner = fixtures.root / 'occupied-owner-checkout'
+    # Keep embedded whitespace in the registered path all the way through
+    # the production snapshot, confirmation, and native repository opening.
+    owner = fixtures.root / 'occupied-owner Linéa\tfirst\nsecond'
     branch = 'owned/occupied-topic'
     fixtures.git(source, 'worktree', 'add', '-b', branch, str(owner))
     (source / 'fixture.txt').write_text('Source checkout changes must survive navigation.\n')

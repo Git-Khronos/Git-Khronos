@@ -2014,6 +2014,8 @@ Used for the behavioral requirement that a local branch already checked out
 in another worktree must not be forcibly checked out again. The application
 offers explicit navigation to the existing checkout and rechecks registration
 data before opening it. Git remains authoritative for actual checkout commands.
+The documented NUL-delimited porcelain format preserves embedded whitespace
+in worktree snapshot paths.
 No source code or third-party interface text copied.
 
 ## Native navigation click refusal handling

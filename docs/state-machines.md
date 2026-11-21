@@ -478,6 +478,8 @@ classifies a fresh, bounded registration read without parsing Git's error text.
 The same source checkout may then offer navigation if refresh confirms an owner;
 it never retries the switch or opens the owner without confirmation. Unrelated
 errors or failed ownership reads retain the ordinary Git error.
+Ordinary worktree snapshots use Git's NUL-delimited porcelain format so
+embedded newlines and tabs in registered paths survive navigation unchanged.
 
 Coverage: `repository-location.spec.ts`, renderer
 `branch-checkout-worktree.spec.ts` (including a stale graph double-click and
