@@ -2851,6 +2851,7 @@ export class GitKhronosService implements OnDestroy {
   ): Promise<boolean> {
     this.clearComparisonInspection();
     const request = this.detailsRequest;
+    const initialFileRequest = this.fileRequest;
     if (mode) this.historyComparisonRequest = request;
     this.clearWorkingTreeInspection();
     this.detailsBusy.set(true);
@@ -2871,7 +2872,10 @@ export class GitKhronosService implements OnDestroy {
       return false;
     } finally {
       if (this.historyComparisonRequest === request) this.historyComparisonRequest = null;
-      if (request === this.detailsRequest) this.detailsBusy.set(false);
+      // Any file read started after the list request owns the busy indicator.
+      // In particular, the auto-opened first file may finish while a later
+      // selection is still pending.
+      if (request === this.detailsRequest && initialFileRequest === this.fileRequest) this.detailsBusy.set(false);
     }
   }
 

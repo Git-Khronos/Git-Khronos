@@ -456,6 +456,9 @@ request owns, or authorize a write while the comparison completes.
 Stash details and stash file previews use the same worker and operation
 lock; previewing saved changes does not apply them or replace the
 current worktree's contents.
+In the renderer, once a comparison opens a file, that file request owns
+the loading indicator. A completed or failed auto-opened file cannot
+clear the indicator for a later selection.
 
 Coverage: `unstaged-summary.spec.ts`, real Git tests for both summaries,
 and the packaged `native_unstaged_summary_scenarios.py` fixture. Packaged
