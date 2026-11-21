@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 export type Column = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 
@@ -6,24 +6,37 @@ export const HEADINGS: Record<Column, string> = {
   branch: 'BRANCH / TAG', graph: 'GRAPH', message: 'COMMIT MESSAGE', author: 'AUTHOR', date: 'DATE / TIME', sha: 'SHA',
 };
 
-interface GraphLayoutReport {
-  readonly problems: string[];
-  readonly titles: string[];
+interface GraphLayoutProbe {
+  readonly expectedTitles: string[];
+  readonly fit: boolean;
+  readonly explain?: boolean;
 }
 
-/** Measure every invariant in the browser; return a report only once all pass. */
-function graphLayoutReady({ expectedOrder, fit }: { expectedOrder: Column[]; fit: boolean }): GraphLayoutReport | false {
+/** Use the same browser-side checks for readiness and failure diagnostics. */
+function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): boolean | string[] {
   const problems: string[] = [];
-  const header = document.querySelector<HTMLElement>('.graph-columns')!;
-  const list = document.querySelector<HTMLElement>('.commit-list')!;
-  const row = document.querySelector<HTMLElement>('.commit-row[data-commit-oid]')!;
+  const header = document.querySelector<HTMLElement>('.graph-columns');
+  const list = document.querySelector<HTMLElement>('.commit-list');
+  const row = document.querySelector<HTMLElement>('.commit-row[data-commit-oid]');
+  const settings = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]');
+  if (!header || !list || !row || !settings) {
+    if (!header) problems.push('column header is missing');
+    if (!list) problems.push('commit list is missing');
+    if (!row) problems.push('commit row is missing');
+    if (!settings) problems.push('column settings button is missing');
+    return explain ? problems : false;
+  }
   const byOrder = (parent: Element, selector: string) => [...parent.querySelectorAll<HTMLElement>(selector)]
     .filter((element) => element.style.order !== '' && element.getBoundingClientRect().width > 0)
     .sort((a, b) => Number(a.style.order) - Number(b.style.order));
   const headings = byOrder(header, ':scope > .draggable-column');
   const cells = byOrder(row, ':scope > [style*="order"]');
   const titles = headings.map((heading) => (heading.textContent ?? '').replace(/\s+/g, ' ').trim());
-  if (headings.length !== expectedOrder.length) problems.push(`expected ${expectedOrder.length} headings, found ${headings.length}: ${titles.join('|')}`);
+  if (headings.length !== expectedTitles.length) problems.push(`expected ${expectedTitles.length} headings, found ${headings.length}: ${titles.join('|')}`);
+  else if (!titles.every((title, index) => title.toUpperCase().includes(expectedTitles[index]))) {
+    problems.push(`expected headings ${expectedTitles.join('|')}, found ${titles.join('|')}`);
+  }
+  if (cells.length !== expectedTitles.length) problems.push(`expected ${expectedTitles.length} row cells, found ${cells.length}`);
   const boxes = headings.map((heading) => heading.getBoundingClientRect());
   for (let index = 1; index < boxes.length; index += 1) {
     const gap = boxes[index].left - boxes[index - 1].right;
@@ -41,9 +54,9 @@ function graphLayoutReady({ expectedOrder, fit }: { expectedOrder: Column[]; fit
   // Resizing moves only a column's right edge, so narrowing may leave free space after the last
   // heading. The last heading never spills past the visible header, and the settings button stays
   // at the panel's right end.
-  const gear = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect();
-  const layoutIcon = document.querySelector<HTMLElement>('[aria-label="Configure graph columns"] gc-icon');
-  const last = boxes.at(-1)!;
+  const gear = settings.getBoundingClientRect();
+  const layoutIcon = settings.querySelector('gc-icon');
+  const last = boxes.at(-1);
   const overflow = list.scrollWidth - list.clientWidth;
   const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);
   if (gear.width < 20 || gear.width > 32) problems.push(`settings button is ${gear.width.toFixed(1)}px wide`);
@@ -51,7 +64,7 @@ function graphLayoutReady({ expectedOrder, fit }: { expectedOrder: Column[]; fit
     problems.push('settings button does not show the framed columns layout icon');
   }
   if (overflow <= 1) {
-    if (last.right > visibleRight + 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, past the panel edge at ${visibleRight.toFixed(1)}`);
+    if (last && last.right > visibleRight + 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, past the panel edge at ${visibleRight.toFixed(1)}`);
     if (Math.abs(gear.right - visibleRight) > 4) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is not at the panel edge ${visibleRight.toFixed(1)}`);
   }
   // Scroll markers stay in their own rail and never cover the settings button, or row actions once
@@ -60,7 +73,7 @@ function graphLayoutReady({ expectedOrder, fit }: { expectedOrder: Column[]; fit
   const atEnd = list.scrollWidth - list.clientWidth - list.scrollLeft <= 1;
   const actions = [
     ...(atEnd ? [...document.querySelectorAll<HTMLElement>('.commit-row .row-menu')].map((element) => element.getBoundingClientRect()) : []),
-    document.querySelector<HTMLElement>('[aria-label="Configure graph columns"]')!.getBoundingClientRect(),
+    gear,
   ];
   for (const marker of document.querySelectorAll<HTMLElement>('.graph-scroll-marker')) {
     const box = marker.getBoundingClientRect();
@@ -90,26 +103,21 @@ function graphLayoutReady({ expectedOrder, fit }: { expectedOrder: Column[]; fit
       problems.push(`${label}: handle at ${handleCenter.toFixed(1)} is not on the right edge ending at ${boxes[index].right.toFixed(1)}`);
     }
   }
-  return problems.length ? false : { problems, titles };
+  return explain ? problems : problems.length === 0;
 }
 
 export async function expectGraphLayout(page: Page, order: Column[], context: string, fit = false) {
-  let report: GraphLayoutReport;
+  const input = { expectedTitles: order.map(column => HEADINGS[column]), fit };
   try {
     // Bound readiness where geometry is measured, not around browser-reply
     // delivery to the test worker. The overall test deadline still applies.
-    const ready = await page.waitForFunction(graphLayoutReady, { expectedOrder: order, fit }, { timeout: 3000 });
-    try {
-      const value = await ready.jsonValue();
-      if (value === false) throw new Error('The readiness handle did not contain a layout report.');
-      report = value;
-    } finally {
-      await ready.dispose();
-    }
+    const ready = await page.waitForFunction(probeGraphLayout, input, { timeout: 3000 });
+    await ready.dispose();
   } catch (error) {
-    throw new Error(`${context}: layout verification failed`, { cause: error });
+    // Only failed checks need a diagnostic snapshot. Preserve the timeout even
+    // if the page has closed or the next frame has already recovered.
+    const observed = !page.isClosed() && await page.evaluate(probeGraphLayout, { ...input, explain: true }).catch(() => false);
+    const detail = Array.isArray(observed) && observed.length ? ` (${observed.join('; ')})` : '';
+    throw new Error(`${context}: layout verification failed${detail}`, { cause: error });
   }
-  expect(report.problems, context).toEqual([]);
-  const { titles } = report;
-  expect(titles.map((title) => title.toUpperCase()), context).toEqual(order.map((column) => expect.stringContaining(HEADINGS[column])));
 }

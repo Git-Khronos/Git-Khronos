@@ -60,5 +60,16 @@ test('rejects persistent invalid geometry at the unchanged three-second deadline
   const error = await expectGraphLayout(page, DEFAULT_ORDER, 'persistent narrow heading')
     .then(() => null, error => error as Error & { cause?: Error });
   expect(error?.message).toContain('persistent narrow heading: layout verification failed');
+  expect(error?.message).toContain('heading 0 is only 1.0px wide');
   expect(error?.cause?.message).toContain('3000ms');
+});
+
+test('rejects a missing ordered row cell even when all headings remain', async ({ page }) => {
+  await page.locator('.commit-row[data-commit-oid]').first().evaluate(row => {
+    const cells = [...row.querySelectorAll<HTMLElement>(':scope > [style*="order"]')];
+    cells.sort((a, b) => Number(a.style.order) - Number(b.style.order));
+    cells.at(-1)!.style.setProperty('display', 'none', 'important');
+  });
+  await expect(expectGraphLayout(page, DEFAULT_ORDER, 'missing row cell'))
+    .rejects.toThrow('expected 5 row cells, found 4');
 });
