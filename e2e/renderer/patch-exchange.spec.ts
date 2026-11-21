@@ -184,6 +184,29 @@ test('native file chooser cancellations perform no Git calls and target changes 
   await expect(panel.getByRole('region', { name: 'Patch import review' })).toHaveCount(0);
 });
 
+test('returning to the same checkout does not authorize a destination from its former visit', async ({ page }) => {
+  await setup(page);
+  const panel = page.locator('gc-patch-exchange-panel');
+  await page.evaluate(() => { (window as any).__patch.deferSave = true; });
+  await panel.getByRole('button', { name: 'Save diff patch…', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__patch.finishSave)).toBe('function');
+  const visits = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const source = git.repository();
+    const before = git.activeRepositoryReadScope();
+    git.repositories.update((items: any[]) => [...items, { ...source, id: 'patch-export-other', path: '/owned/patch-export-other' }]);
+    // Resolve in the same tick as the tab changes, including a return to the original ID.
+    git.activateRepository('patch-export-other');
+    git.activateRepository(source.id);
+    (window as any).__patch.finishSave();
+    return { before, after: git.activeRepositoryReadScope(), active: git.activeRepositoryId(), original: source.id };
+  });
+  expect(visits.active).toBe(visits.original);
+  expect(visits.before).not.toBe(visits.after);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  expect(await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'))).toEqual([]);
+});
+
 test('preflight and stale-apply failures are focused, explicit and require a fresh check rather than replaying twice', async ({ page }) => {
   await setup(page);
   const panel = page.locator('gc-patch-exchange-panel');
