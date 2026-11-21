@@ -999,11 +999,30 @@ pub fn resolve_repository(path: &Path) -> Result<PathBuf, AppError> {
         }
         return Err(error);
     }
-    let root = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    PathBuf::from(root).canonicalize().map_err(|error| {
+    git_absolute_path(&output.stdout)?
+        .canonicalize()
+        .map_err(|error| {
+            AppError::new(
+                "invalidRepositoryPath",
+                format!("Could not resolve the repository path: {error}"),
+                None,
+            )
+        })
+}
+
+/// Git writes one raw pathname followed by a line terminator. Whitespace in
+/// the pathname itself is filesystem data, even if it ends in a line break.
+fn git_absolute_path(stdout: &[u8]) -> Result<&Path, AppError> {
+    let path = stdout.strip_suffix(b"\n").and_then(|field| {
+        #[cfg(windows)]
+        let field = field.strip_suffix(b"\r").unwrap_or(field);
+        let path = Path::new(std::str::from_utf8(field).ok()?);
+        (path.is_absolute() && !field.contains(&0)).then_some(path)
+    });
+    path.ok_or_else(|| {
         AppError::new(
             "invalidRepositoryPath",
-            format!("Could not resolve the repository path: {error}"),
+            "Git did not return an absolute path that Git Khronos can represent.",
             None,
         )
     })
@@ -1022,12 +1041,14 @@ fn explicit_bare_repository_root(path: &Path) -> Option<PathBuf> {
         .env("LC_ALL", "C")
         .output()
         .ok()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut lines = stdout.lines();
-    if !output.status.success() || lines.next()? != "true" {
+    if !output.status.success() {
         return None;
     }
-    if PathBuf::from(lines.next()?).canonicalize().ok()? != root {
+    let stdout = output.stdout.as_slice();
+    let git_dir = stdout
+        .strip_prefix(b"true\n")
+        .or_else(|| stdout.strip_prefix(b"true\r\n"))?;
+    if git_absolute_path(git_dir).ok()?.canonicalize().ok()? != root {
         return None;
     }
     remember_explicit_bare_repository(&root);
@@ -1091,12 +1112,9 @@ pub fn repository_watch_paths(path: &Path) -> Result<RepositoryWatchPaths, AppEr
     ] {
         let output = run_git(path, args)?;
         ensure_success("locate Git repository metadata", &output)?;
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        if !value.is_empty() {
-            let metadata = PathBuf::from(value);
-            if !metadata_roots.contains(&metadata) {
-                metadata_roots.push(metadata);
-            }
+        let metadata = git_absolute_path(&output.stdout)?.to_path_buf();
+        if !metadata_roots.contains(&metadata) {
+            metadata_roots.push(metadata);
         }
     }
     let mut recursive = Vec::new();
@@ -1220,10 +1238,10 @@ pub fn clone_repository_with_submodules(
                 .is_ok_and(|output| output.status.success())
             && run_git(&destination, &["rev-parse", "--show-toplevel"]).is_ok_and(|output| {
                 output.status.success()
-                    && Path::new(String::from_utf8_lossy(&output.stdout).trim())
-                        .canonicalize()
+                    && git_absolute_path(&output.stdout)
                         .ok()
-                        == destination.canonicalize().ok()
+                        .and_then(|root| root.canonicalize().ok())
+                        .is_some_and(|root| destination.canonicalize().is_ok_and(|dest| dest == root))
             });
         if superproject_ready {
             error.kind = "submoduleCloneIncomplete".to_owned();
@@ -9657,6 +9675,66 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn resolve_repository_preserves_literal_trailing_whitespace() {
+        let fixtures = TestRepository::new();
+        let plain = fixtures.path.join("project");
+        let literal = fixtures.path.join("project \t\r\n");
+        for (root, branch) in [(&plain, "different"), (&literal, "requested")] {
+            fs::create_dir(root).unwrap();
+            run_mutation(root, &["init", "-b", branch], "init fixture").unwrap();
+        }
+        let nested = literal.join("nested");
+        fs::create_dir(&nested).unwrap();
+
+        let opened = resolve_repository(&nested).unwrap();
+        assert_eq!(opened, literal.canonicalize().unwrap());
+        assert_eq!(
+            read_status(&opened).unwrap().branch.as_deref(),
+            Some("requested")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn resolve_repository_refuses_an_unrepresentable_path_instead_of_aliasing_it() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let fixtures = TestRepository::new();
+        let literal = fixtures
+            .path
+            .join(std::ffi::OsStr::from_bytes(b"project-\xff"));
+        let replacement = fixtures.path.join("project-\u{fffd}");
+        for root in [&literal, &replacement] {
+            fs::create_dir(root).unwrap();
+            run_mutation(root, &["init", "-b", "main"], "init fixture").unwrap();
+        }
+        assert_eq!(
+            resolve_repository(&literal).unwrap_err().kind,
+            "invalidRepositoryPath"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_repository_accepts_only_the_exact_bare_root_with_line_breaks() {
+        let fixtures = TestRepository::new();
+        // The bare repository must not be nested under a working tree.
+        fs::remove_dir_all(fixtures.path.join(".git")).unwrap();
+        let bare = fixtures.path.join("bare\nrepo \t\n");
+        fs::create_dir(&bare).unwrap();
+        run_mutation(&bare, &["init", "--bare"], "init bare fixture").unwrap();
+
+        let opened = resolve_repository(&bare).unwrap();
+        assert_eq!(opened, bare.canonicalize().unwrap());
+        assert!(is_explicit_bare_repository(&opened));
+        let watch = repository_watch_paths(&opened).unwrap();
+        assert_eq!(watch.non_recursive, [opened.clone()]);
+        assert_eq!(watch.recursive, [opened.join("refs")]);
+        assert!(resolve_repository(&bare.join("objects")).is_err());
+    }
+
     #[test]
     fn repository_operation_observations_preserve_overlapping_markers() {
         let repository = TestRepository::new();
@@ -17601,7 +17679,7 @@ mod tests {
             .path
             .canonicalize()
             .unwrap()
-            .join("Linéa \tfirst\nsecond");
+            .join("Linéa \tfirst\nsecond ");
         let linked_text = linked_path.to_str().unwrap();
         run_mutation(
             &repository.path,

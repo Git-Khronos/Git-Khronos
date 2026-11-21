@@ -41,9 +41,9 @@ def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 
     source = fixtures.repository('occupied-checkout-navigation', commits=3)
-    # Keep embedded whitespace in the registered path all the way through
+    # Keep embedded and trailing whitespace in the registered path through
     # the production snapshot, confirmation, and native repository opening.
-    owner = fixtures.root / 'occupied-owner Linéa\tfirst\nsecond'
+    owner = fixtures.root / 'occupied-owner Linéa\tfirst\nsecond '
     branch = 'owned/occupied-topic'
     fixtures.git(source, 'worktree', 'add', '-b', branch, str(owner))
     (source / 'fixture.txt').write_text('Source checkout changes must survive navigation.\n')
@@ -71,7 +71,7 @@ def occupied_branch_navigation(driver, fixtures, report):
         assert str(source) in text and str(owner) in text and branch in text, text
 
     def at(path):
-        driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === ' + json.dumps(str(path)))
+        driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(path)))
 
     open_review()
     driver.click_visible('gc-checkout-worktree-dialog button', 'Cancel')

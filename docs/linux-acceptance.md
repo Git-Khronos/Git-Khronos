@@ -228,7 +228,7 @@ The same cases are included in `full` and `environment`. They create only owned
 temporary linked checkouts and dirty tracked/untracked files. Cancel must leave
 both checkouts unchanged; explicit navigation must open the registered owner
 without checking out a branch or changing Git data, using its exact path with
-Unicode, a tab and an embedded newline. A real Git ownership change
+Unicode, a tab, an embedded newline and a trailing space. A real Git ownership change
 after review must be refused, without a fallback checkout. Retained evidence
 includes both checkouts' HEAD/ref/config/index/file hashes and before/after Git
 status, resolving each linked checkout's actual index rather than treating its
