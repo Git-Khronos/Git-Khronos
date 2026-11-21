@@ -9130,6 +9130,48 @@ fn stash_options_selected_paths_leave_other_changes_and_index_intact() {
 }
 
 #[test]
+fn stash_options_refuse_a_selection_with_any_ineligible_path_atomically() {
+    let repository = Repository::new();
+    fs::write(repository.0.join("file"), b"eligible staged edit\n").unwrap();
+    stage_path(&repository.0, "file").unwrap();
+    fs::write(repository.0.join("other"), b"unstaged edit\n").unwrap();
+    fs::write(repository.0.join("untracked"), b"untracked bytes\n").unwrap();
+    let index = run_git(&repository.0, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
+    let head = repository.oid();
+    for (mode, ineligible) in [("all", "untracked"), ("staged-only", "other")] {
+        let options = stash_options(mode, false, Some(vec!["file".into(), ineligible.into()]));
+        let error = stash_with_options(&repository.0, &options).unwrap_err();
+        if mode == "staged-only" && error.kind == "unsupportedStagedStash" {
+            continue;
+        }
+        assert_eq!(error.kind, "staleStashSelection");
+        assert!(error.message.contains(ineligible));
+        assert!(read_stashes(&repository.0).unwrap().is_empty());
+        assert_eq!(repository.oid(), head);
+        assert_eq!(
+            run_git(&repository.0, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            index
+        );
+        assert_eq!(
+            fs::read(repository.0.join("file")).unwrap(),
+            b"eligible staged edit\n"
+        );
+        assert_eq!(
+            fs::read(repository.0.join("other")).unwrap(),
+            b"unstaged edit\n"
+        );
+        assert_eq!(
+            fs::read(repository.0.join("untracked")).unwrap(),
+            b"untracked bytes\n"
+        );
+    }
+}
+
+#[test]
 fn stash_options_restore_staged_and_unstaged_separation() {
     let repository = Repository::new();
     fs::write(repository.0.join("file"), b"staged\n").unwrap();

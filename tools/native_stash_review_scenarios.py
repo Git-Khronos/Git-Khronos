@@ -6,6 +6,75 @@ from native_setup_keyboard_scenarios import _chord
 from native_worktree_scenarios import checkout_footprint
 
 
+def stash_selection_scope(driver, fixtures, report):
+    """The scoped stash must match the eligible paths visible at confirmation."""
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('stash-selection-scope', commits=2)
+    staged_file = repository / 'fixture.txt'
+    dirty_file = repository / 'dirty.txt'
+    untracked_file = repository / 'new note.txt'
+    original = staged_file.read_bytes()
+    dirty_file.write_bytes(b'Committed neighbour\n')
+    fixtures.git(repository, 'add', '--', dirty_file.name)
+    fixtures.git(repository, 'commit', '-qm', 'Record neighbour')
+    staged = b'Only this staged change should be saved\n'
+    staged_file.write_bytes(staged)
+    fixtures.git(repository, 'add', '--', staged_file.name)
+    dirty_file.write_bytes(b'Preserve the unstaged neighbour\n')
+    untracked_file.write_bytes(b'Preserve the untracked neighbour\n')
+    repo_id = open_ui(driver, repository)
+    files = (staged_file.name, dirty_file.name, untracked_file.name)
+    before = checkout_footprint(fixtures, repository, files)
+    before_index = fixtures.git(repository, '--no-optional-locks', 'ls-files', '--stage', '-z')
+    evidence = report['stashSelectionScope'] = {}
+    try:
+        driver.invoke('stash_selected', repoId=repo_id, options={
+            'mode': 'staged-only', 'includeUntracked': False,
+            'paths': [staged_file.name, dirty_file.name], 'message': 'Refuse mixed scope',
+        })
+    except RuntimeError as error:
+        detail = json.loads(str(error))
+        assert detail['kind'] == 'staleStashSelection' and dirty_file.name in detail['message'], detail
+        evidence['nativeRefusal'] = detail['kind']
+    else:
+        evidence['unexpectedStash'] = fixtures.git(repository, 'stash', 'list', '--format=%H')
+        raise AssertionError('A request with an ineligible path was partially applied')
+    after = checkout_footprint(fixtures, repository, files)
+    assert {key: value for key, value in before.items() if key != 'indexSha256'} == {
+        key: value for key, value in after.items() if key != 'indexSha256'}
+    assert fixtures.git(repository, '--no-optional-locks', 'ls-files', '--stage', '-z') == before_index
+    assert not fixtures.git(repository, 'stash', 'list')
+    report['scenarios'].append('native-stash-refuses-mixed-mode-selection-without-changing-index-stash-or-files')
+
+    driver.click_visible('[aria-label="Stash options"]')
+    driver.click_visible('#stash-options-menu button[role=menuitem]',
+                         'Stash with options…Choose which changes and files to save')
+    modal = 'gc-stash-options-dialog [role=dialog]'
+    driver.click_scrolled_text(modal + ' summary', 'Choose specific files', wait_for_ready=True)
+    driver.click_scrolled_text(modal + ' label.check', 'Save only selected files', wait_for_ready=True)
+    driver.click_scrolled_text(modal + ' button', 'Select all eligible files', wait_for_ready=True)
+    driver.wait(f"return document.querySelector({json.dumps(modal)})?.textContent.includes('3 of 3 eligible files selected')")
+    driver.script("""const input = document.querySelector(arguments[0]);
+      if (!input || input.disabled) throw Error('Stash mode input unavailable');
+      input.value = 'staged-only'; input.dispatchEvent(new Event('change', { bubbles: true }));
+    """, modal + ' select[name=stashMode]')
+    driver.wait(f"return document.querySelector({json.dumps(modal)})?.textContent.includes('1 of 1 eligible files selected')")
+    driver.click_visible(modal + ' footer .primary', 'Create stash')
+    driver.wait(f"return !document.querySelector({json.dumps(modal)})")
+    stashes = fixtures.git(repository, 'stash', 'list', '--format=%H').splitlines()
+    assert len(stashes) == 1 and fixtures.git(repository, 'show', stashes[0] + ':fixture.txt') == staged.decode().strip()
+    assert fixtures.git(repository, 'diff', '--name-only', stashes[0] + '^1', stashes[0]) == staged_file.name
+    assert staged_file.read_bytes() == original
+    assert dirty_file.read_bytes() == b'Preserve the unstaged neighbour\n'
+    assert untracked_file.read_bytes() == b'Preserve the untracked neighbour\n'
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == before['head']
+    assert not fixtures.git(repository, 'diff', '--cached', '--name-only')
+    evidence['savedPaths'] = [staged_file.name]
+    report['scenarios'].append('native-stash-mode-change-saves-only-currently-eligible-selected-paths')
+    return repository, repo_id
+
+
 def stash_review_workflows(driver, fixtures, report):
     from native_acceptance import open_ui
 

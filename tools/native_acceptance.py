@@ -1149,6 +1149,7 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
+        "stash-selection",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1321,6 +1322,9 @@ def main():
             elif args.suite == "submodule-update":
                 from native_submodule_update_scenarios import update_one_submodule
                 repository, repo_id = update_one_submodule(driver, fixtures, report)
+            elif args.suite == "stash-selection":
+                from native_stash_review_scenarios import stash_selection_scope
+                repository, repo_id = stash_selection_scope(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

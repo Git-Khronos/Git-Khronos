@@ -61,6 +61,15 @@ pub fn stash_with_options(path: &Path, options: &StashOptions) -> Result<(), App
             None,
         ));
     }
+    let eligible_entry = |entry: &WorkingTreeEntry| match entry.index_status.as_str() {
+        "?" => options.include_untracked,
+        "!" => false,
+        " " if options.mode == "staged-only" => false,
+        _ => true,
+    };
+    let matches_path = |entry: &WorkingTreeEntry, file: &str| {
+        entry.path == file || (file.ends_with('/') && entry.path.starts_with(file))
+    };
     if let Some(paths) = &options.paths {
         if paths.is_empty() {
             return Err(AppError::new(
@@ -75,31 +84,32 @@ pub fn stash_with_options(path: &Path, options: &StashOptions) -> Result<(), App
                 "invalidStashPath",
                 "That stash path is invalid.",
             )?;
-            if !status.entries.iter().any(|entry| {
-                entry.path == *file || (file.ends_with('/') && entry.path.starts_with(file))
-            }) {
+            if !status.entries.iter().any(|entry| matches_path(entry, file)) {
                 return Err(AppError::new(
                     "staleStashSelection",
                     format!("'{}' is no longer changed.", file),
                     Some("Refresh and review the selected files."),
                 ));
             }
+            if !status
+                .entries
+                .iter()
+                .any(|entry| matches_path(entry, file) && eligible_entry(entry))
+            {
+                return Err(AppError::new(
+                    "staleStashSelection",
+                    format!("'{file}' no longer matches these stash options."),
+                    Some("Refresh and review the selected files."),
+                ));
+            }
         }
     }
     let eligible = status.entries.iter().any(|entry| {
-        let selected = options.paths.as_ref().is_none_or(|paths| {
-            paths.iter().any(|file| {
-                entry.path == *file || (file.ends_with('/') && entry.path.starts_with(file))
-            })
-        });
-        selected
-            && if entry.index_status == "?" {
-                options.include_untracked
-            } else if options.mode == "staged-only" {
-                !matches!(entry.index_status.as_str(), " " | "!")
-            } else {
-                true
-            }
+        eligible_entry(entry)
+            && options
+                .paths
+                .as_ref()
+                .is_none_or(|paths| paths.iter().any(|file| matches_path(entry, file)))
     });
     if !eligible {
         return Err(AppError::new(

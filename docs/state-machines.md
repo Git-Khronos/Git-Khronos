@@ -411,6 +411,12 @@ replacement stash review. Native work freezes its option controls and payload;
 its actual mutation result, not a subsequently cleared global error, determines
 successful dismissal. Retiring UI intent does not cancel or lose native receipts.
 
+Selected stash paths are limited to entries eligible for the current mode.
+Changing mode or untracked-file preference drops paths that no longer match;
+dispatch also intersects with the latest visible status. The native command
+rechecks every explicit path before stashing, rather than saving only the
+eligible subset of an outdated selection.
+
 Each stash and tag/reference request also owns its form-control instances. Their
 loaded components key the rendered view by request identity. Ignoring an obsolete
 `ngModelChange` event protects signal state but is not sufficient to reset the

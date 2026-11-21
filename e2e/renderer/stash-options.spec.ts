@@ -77,6 +77,53 @@ test('staged-only mode excludes untracked files and keeps escape inside the work
   await expect(dialog).toHaveCount(0);
 });
 
+test('stash selections follow the mode and do not send hidden or ineligible paths', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const repo = git.repository();
+    const entries = [
+      { path: 'staged.rs', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
+      { path: 'dirty.rs', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
+      { path: 'new notes.txt', indexStatus: '?', worktreeStatus: '?', conflicted: false },
+    ];
+    git.repositories.update((repos: any[]) => repos.map(item => item.id === repo.id
+      ? { ...repo, status: { ...repo.status, entries, entryCount: 3, staged: 1, unstaged: 1, untracked: 1, conflicted: 0 } } : item));
+  });
+  await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Stash with options/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+  const mode = dialog.getByLabel('Changes to save');
+  const untracked = dialog.getByLabel('Include untracked files');
+  const create = dialog.getByRole('button', { name: 'Create stash' });
+  const dirtyPath = dialog.getByRole('checkbox', { name: 'Stash dirty.rs', exact: true });
+  const newPath = dialog.getByRole('checkbox', { name: 'Stash new notes.txt', exact: true });
+  const stagedPath = dialog.getByRole('checkbox', { name: 'Stash staged.rs', exact: true });
+  await dialog.getByText('Choose specific files', { exact: true }).click();
+  await dialog.getByLabel('Save only selected files').check();
+  await dialog.getByRole('button', { name: 'Select all eligible files' }).click();
+  await expect(dialog).toContainText('3 of 3 eligible files selected');
+  await untracked.uncheck();
+  await expect(newPath).toHaveCount(0);
+  await expect(dialog).toContainText('2 of 2 eligible files selected');
+  await mode.selectOption('staged-only');
+  await expect(dirtyPath).toHaveCount(0);
+  await expect(dialog).toContainText('1 of 1 eligible files selected');
+  await mode.selectOption('all');
+  await expect(untracked).not.toBeChecked();
+  await expect(dirtyPath).not.toBeChecked();
+  await expect(stagedPath).toBeChecked();
+  await dialog.getByRole('button', { name: 'Clear selection' }).click();
+  await expect(create).toBeDisabled();
+  await mode.selectOption('staged-only');
+  await dialog.getByRole('button', { name: 'Select all eligible files' }).click();
+  await create.click();
+  await expect(dialog).toHaveCount(0);
+  const saves = await page.evaluate(() => (window as any).__stashCalls.filter((call: any) => call.command === 'stash_selected'));
+  expect(saves).toEqual([{ command: 'stash_selected', args: { repoId: expect.any(String), options: {
+    mode: 'staged-only', includeUntracked: false, paths: ['staged.rs'], message: '',
+  } } }]);
+});
+
 test('apply options restore the index using the selected immutable stash', async ({ page }) => {
   const row = page.locator('.commit-row.stash-row').first();
   await row.click({ button: 'right' });

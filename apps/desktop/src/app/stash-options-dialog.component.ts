@@ -57,18 +57,32 @@ export interface StashDialogRequest {
               <label class="check"><input type="checkbox" name="stashSelectedOnly" [disabled]="git.busy()" [ngModel]="selectedOnly()" (ngModelChange)="changeSelectedOnly($event, target)" />Save only selected files</label>
               @if (selectedOnly()) {
                 <p class="hint">Unselected files remain untouched.
-                  @if (git.repository()?.status?.entriesTruncated) { This list contains loaded files only. Turn off selection to include the complete native status. }
+                  @if (git.repository()?.status?.entriesTruncated) { This list contains loaded files only. Turn off selection to let Git use the full scope of this stash mode. }
                 </p>
+                @if (eligibleFiles().length) {
+                  <div class="file-selection" role="group" aria-label="Stash file selection">
+                    <button type="button" [disabled]="git.busy()" [attr.aria-disabled]="selectedEligiblePaths().length === eligibleFiles().length"
+                      (click)="chooseAllPaths(true, target)">Select all eligible files</button>
+                    <button type="button" [disabled]="git.busy()" [attr.aria-disabled]="!selectedEligiblePaths().length"
+                      (click)="chooseAllPaths(false, target)">Clear selection</button>
+                    <small aria-live="polite">{{ selectedEligiblePaths().length }} of {{ eligibleFiles().length }} eligible files selected</small>
+                  </div>
+                }
                 <div class="files">
-                  @for (file of git.repository()?.status?.entries ?? []; track file.path) {
-                    @if (!file.conflicted && (file.indexStatus !== '?' || includeUntracked())) {
-                      <label class="check"><input type="checkbox" [attr.aria-label]="'Stash ' + file.path"
-                        [disabled]="git.busy()" [checked]="selectedPaths().includes(file.path)" (change)="togglePath(file.path, target)" /><code>{{ file.path }}</code></label>
-                    }
+                  @for (file of eligibleFiles(); track file.path) {
+                    <label class="check"><input type="checkbox" [attr.aria-label]="'Stash ' + file.path"
+                      [disabled]="git.busy()" [checked]="selectedPaths().includes(file.path)" (change)="togglePath(file.path, target)" /><code>{{ file.path }}</code></label>
+                  } @empty {
+                    <p class="hint">No listed files match these stash options.</p>
                   }
                 </div>
               }
             </details>
+            @if (git.repository()?.status?.conflicted) {
+              <p class="hint">Resolve conflicts before creating a stash.</p>
+            } @else if (!selectedOnly() && !hasWholeScopeChanges()) {
+              <p class="hint">No changes match these stash options.</p>
+            }
           } @else if (target.action === 'apply') {
             <code>{{ target.stash?.reference }} — {{ target.stash?.message }}</code>
             <label class="check"><input type="checkbox" name="restoreStashIndex" [disabled]="git.busy()" [ngModel]="restoreIndex()" (ngModelChange)="changeRestoreIndex($event, target)" />Restore which changes were staged</label>
@@ -131,6 +145,9 @@ export interface StashDialogRequest {
     button.primary { border-color: color-mix(in srgb, var(--accent) 72%, #000); background: var(--accent); color: #10251e; font-weight: 700; }
     button:hover:not(:disabled), button:focus-visible { filter: brightness(1.08); }
     button:disabled { cursor: default; filter: none; opacity: .45; }
+    .file-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .file-selection button[aria-disabled='true'] { opacity: .45; cursor: default; filter: none; }
+    .file-selection small { color: var(--muted); }
     .error { color: var(--danger); }
   `],
 })
@@ -142,10 +159,21 @@ export class StashOptionsDialogComponent {
   readonly ownsRequest = input.required<(request: StashDialogRequest) => boolean>();
   readonly closed = output<StashDialogRequest>();
   readonly mode = signal<StashOptions['mode']>('all');
-  readonly includeUntracked = signal(true);
+  private readonly preferUntracked = signal(true);
+  readonly includeUntracked = computed(() => this.mode() !== 'staged-only' && this.preferUntracked());
   readonly message = signal('');
   readonly selectedOnly = signal(false);
   readonly selectedPaths = signal<string[]>([]);
+  readonly eligibleFiles = computed(() => (this.git.repository()?.status.entries ?? []).filter(file =>
+    !file.conflicted && file.indexStatus !== '!'
+    && (file.indexStatus === '?' ? this.includeUntracked() : this.mode() !== 'staged-only' || file.indexStatus !== ' ')));
+  private readonly eligiblePaths = computed(() => new Set(this.eligibleFiles().map(file => file.path)));
+  readonly selectedEligiblePaths = computed(() => this.selectedPaths().filter(path => this.eligiblePaths().has(path)));
+  readonly hasWholeScopeChanges = computed(() => {
+    const status = this.git.repository()?.status;
+    return !!status && (status.staged > 0 || (this.mode() !== 'staged-only'
+      && (status.unstaged > 0 || (this.includeUntracked() && status.untracked > 0))));
+  });
   readonly restoreIndex = signal(true);
   readonly branchName = signal('');
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
@@ -173,7 +201,8 @@ export class StashOptionsDialogComponent {
   readonly canConfirm = computed(() => {
     const target = this.request();
     if (!this.owns(target)) return false;
-    if (target.action === 'save') return !this.selectedOnly() || this.selectedPaths().length > 0;
+    if (target.action === 'save') return !this.git.repository()?.status.conflicted
+      && (this.selectedOnly() ? this.selectedEligiblePaths().length > 0 : this.hasWholeScopeChanges());
     if (target.action === 'apply-file') return !!target.stash && !!target.file;
     if (target.action === 'branch') return !!this.branchName().trim() && this.git.repository()?.status.entryCount === 0;
     return target.action === 'apply' || !!target.headOid;
@@ -184,7 +213,7 @@ export class StashOptionsDialogComponent {
       const target = this.request();
       if (!target) return;
       this.mode.set('all');
-      this.includeUntracked.set(true);
+      this.preferUntracked.set(true);
       this.message.set(target.message ?? '');
       this.selectedOnly.set(false);
       this.selectedPaths.set([]);
@@ -207,7 +236,9 @@ export class StashOptionsDialogComponent {
   }
 
   changeIncludeUntracked(value: boolean, target: StashDialogRequest): void {
-    if (this.owns(target) && !this.git.busy() && this.mode() !== 'staged-only') this.includeUntracked.set(value);
+    if (!this.owns(target) || this.git.busy() || this.mode() === 'staged-only') return;
+    this.preferUntracked.set(value);
+    this.selectedPaths.set(this.selectedEligiblePaths());
   }
 
   changeSelectedOnly(value: boolean, target: StashDialogRequest): void {
@@ -225,12 +256,18 @@ export class StashOptionsDialogComponent {
   changeMode(mode: StashOptions['mode'], target = this.request()): void {
     if (!this.owns(target) || this.git.busy()) return;
     this.mode.set(mode);
-    if (mode === 'staged-only') this.includeUntracked.set(false);
+    this.selectedPaths.set(this.selectedEligiblePaths());
   }
 
   togglePath(path: string, target = this.request()): void {
-    if (!this.owns(target) || this.git.busy()) return;
+    if (!this.owns(target) || this.git.busy() || !this.eligiblePaths().has(path)) return;
     this.selectedPaths.update(paths => paths.includes(path) ? paths.filter(candidate => candidate !== path) : [...paths, path]);
+  }
+
+  chooseAllPaths(select: boolean, target: StashDialogRequest): void {
+    if (!this.owns(target) || this.git.busy() || !this.selectedOnly()) return;
+    if (this.selectedEligiblePaths().length === (select ? this.eligibleFiles().length : 0)) return;
+    this.selectedPaths.set(select ? [...this.eligiblePaths()] : []);
   }
 
   async confirm(target = this.request()): Promise<void> {
@@ -239,7 +276,7 @@ export class StashOptionsDialogComponent {
     switch (target.action) {
       case 'save':
         succeeded = await this.git.stashSelected({ mode: this.mode(), includeUntracked: this.includeUntracked(),
-          paths: this.selectedOnly() ? [...this.selectedPaths()] : null, message: this.message().trim() });
+          paths: this.selectedOnly() ? this.selectedEligiblePaths() : null, message: this.message().trim() });
         break;
       case 'apply':
         if (!target.stash) return;
