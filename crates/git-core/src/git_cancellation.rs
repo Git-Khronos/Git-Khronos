@@ -41,6 +41,20 @@ pub(super) fn inspect<T>(timeout: Duration, action: impl FnOnce() -> T) -> T {
     )
 }
 
+/// A nested optional read must neither revive a cancelled operation nor
+/// extend the earlier deadline. Unlike post-operation reconciliation, it is
+/// still an observation made on behalf of the enclosing operation.
+pub(super) fn inspect_within<T>(timeout: Duration, action: impl FnOnce() -> T) -> T {
+    let requested = std::time::Instant::now() + timeout;
+    scoped(
+        Some(Context {
+            token: current().unwrap_or_default(),
+            deadline: Some(deadline().map_or(requested, |outer| outer.min(requested))),
+        }),
+        action,
+    )
+}
+
 fn scoped<T>(context: Option<Context>, action: impl FnOnce() -> T) -> T {
     struct Restore(Option<Context>);
     impl Drop for Restore {
@@ -249,6 +263,25 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.kind, "gitInspectionTimeout");
         assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(current().is_none());
+    }
+
+    #[test]
+    fn nested_read_keeps_the_outer_cancellation_and_earlier_deadline() {
+        let token = CancellationToken::default();
+        token.cancel();
+        with(Some(&token), || {
+            inspect_within(Duration::from_secs(1), || {
+                assert!(current().unwrap().is_cancelled());
+                let earlier = deadline().unwrap();
+                inspect_within(Duration::from_secs(10), || {
+                    assert_eq!(deadline(), Some(earlier));
+                    assert!(current().unwrap().is_cancelled());
+                });
+                assert_eq!(deadline(), Some(earlier));
+            });
+            assert!(deadline().is_none());
+        });
         assert!(current().is_none());
     }
 }

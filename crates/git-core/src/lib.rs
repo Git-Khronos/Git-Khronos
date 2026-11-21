@@ -8163,6 +8163,9 @@ fn read_submodules(path: &Path) -> Result<Vec<Submodule>, AppError> {
 }
 
 fn lfs_enabled(path: &Path) -> bool {
+    if path.join(".lfsconfig").is_file() {
+        return true;
+    }
     let attributes = run_git(
         path,
         &[
@@ -8176,16 +8179,25 @@ fn lfs_enabled(path: &Path) -> bool {
             ":(glob)**/.gitattributes",
         ],
     );
-    let tracking_configured = attributes
-        .as_ref()
-        .is_ok_and(|output| output.status.success())
-        || path.join(".lfsconfig").is_file();
-    let locally_installed = run_git(path, &["config", "--local", "--get", "filter.lfs.process"])
-        .is_ok_and(|output| output.status.success() && !output.stdout.is_empty());
-    tracking_configured || locally_installed
+    attributes.is_ok_and(|output| output.status.success())
+        || run_git(path, &["config", "--local", "--get", "filter.lfs.process"])
+            .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
 }
 
+// LFS counts are optional snapshot data. A slow helper must not hold up the
+// repository refresh indefinitely, especially during the first usable view.
+const LFS_SNAPSHOT_BUDGET: Duration = Duration::from_secs(2);
+
 fn read_lfs_info(path: &Path) -> LfsInfo {
+    without_lazy_fetch(|| {
+        // Recognize repository intent before probing the optional executable.
+        // A stalled helper must not hide a configured repository's LFS section.
+        let enabled = lfs_enabled(path);
+        git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || read_bounded_lfs_info(path, enabled))
+    })
+}
+
+fn read_bounded_lfs_info(path: &Path, enabled: bool) -> LfsInfo {
     let version_output = run_git_with_stdout_limit(path, &["lfs", "version"], 4 * 1024);
     let available = version_output
         .as_ref()
@@ -8195,8 +8207,11 @@ fn read_lfs_info(path: &Path) -> LfsInfo {
         .filter(|(output, truncated)| !truncated && output.status.success())
         .map(|(output, _)| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .filter(|value| !value.is_empty());
-    let enabled = lfs_enabled(path);
-    let counts = if enabled && available { lfs_objects::checkout_counts(path) } else { None };
+    let counts = if enabled && available {
+        lfs_objects::checkout_counts(path)
+    } else {
+        None
+    };
     let tracked_files = counts.map(|(tracked, _)| tracked);
     let pointer_files = counts.map(|(_, pointers)| pointers);
     LfsInfo {
@@ -9501,6 +9516,7 @@ fn run_git_with_stdout_limit(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     configure_process_tree(&mut command);
@@ -9855,6 +9871,65 @@ mod tests {
                 .output()
                 .expect("run Git in test repository");
             String::from_utf8(output.stdout).expect("UTF-8 Git output")
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lfs_snapshot_budget_settles_with_a_stalled_version_or_listing() {
+        use std::os::unix::fs::PermissionsExt;
+        const MODE: &str = "GIT_KHRONOS_OWNED_SLOW_LFS_MODE";
+        const MARKER: &str = "GIT_KHRONOS_OWNED_SLOW_LFS_MARKER";
+        if let Ok(mode) = std::env::var(MODE) {
+            let repository = TestRepository::new();
+            repository.git(&["config", "filter.lfs.process", "git-lfs filter-process"]);
+            let started = std::time::Instant::now();
+            let info = read_lfs_info(&repository.path);
+            assert!(started.elapsed() < Duration::from_secs(6));
+            assert!(info.enabled);
+            assert_eq!(info.available, mode == "listing");
+            assert_eq!(info.tracked_files, None);
+            assert_eq!(info.pointer_files, None);
+            assert_eq!(
+                fs::read_to_string(std::env::var_os(MARKER).unwrap()).unwrap(),
+                format!("{mode}\n"),
+            );
+            return;
+        }
+        let fixture = TestRepository::new();
+        let bin = fixture.path.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let helper = bin.join("git-lfs");
+        fs::write(&helper, r#"#!/bin/sh
+case "$1" in
+  version)
+    if [ "$GIT_KHRONOS_OWNED_SLOW_LFS_MODE" = version ]; then
+        printf 'version\n' >"$GIT_KHRONOS_OWNED_SLOW_LFS_MARKER"
+        sleep 8
+    fi
+    printf 'git-lfs/3.7.1 fixture\n'
+    ;;
+  ls-files)
+    printf 'listing\n' >"$GIT_KHRONOS_OWNED_SLOW_LFS_MARKER"
+    sleep 8
+    printf '{"files":null}\n'
+    ;;
+  *) exit 1 ;;
+esac
+"#).unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = std::env::join_paths(std::iter::once(bin).chain(
+            std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        )).unwrap();
+        for mode in ["version", "listing"] {
+            let result = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests::lfs_snapshot_budget_settles_with_a_stalled_version_or_listing", "--nocapture"])
+                .env("PATH", &path)
+                .env(MODE, mode)
+                .env(MARKER, fixture.path.join(mode))
+                .output().unwrap();
+            assert!(result.status.success(), "{}: {}{}", mode,
+                String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
         }
     }
 

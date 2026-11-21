@@ -343,6 +343,15 @@ push/rename/delete and remote-branch rename/delete through the packaged UI using
 only an owned local bare remote. Independent Git checks preserve the annotated
 object, unrelated local heads, dirty files/index/config and the staged draft.
 
+### Optional Git LFS checkout diagnostics
+
+An automatic snapshot first detects local LFS configuration, then gives the
+external executable check and structured checkout count one shared two-second
+budget. If the version check completes but listing does not, LFS actions stay
+available and the counts stay unknown. An unresponsive executable is not reported as
+available. These checks do not fetch; explicit LFS transfers have their own
+operation lifecycle and do not inherit the snapshot deadline.
+
 ### Source-bound publish, force-push and LFS cleanup reviews
 
 Publishing, force-push and LFS cleanup capture repository ID/path and their own
