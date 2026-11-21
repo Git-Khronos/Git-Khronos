@@ -4918,7 +4918,13 @@ fn pull_from_remote_with_strategy_and_cancellation(
     // nested fetch/checkout is a separate, explicitly reviewed operation.
     // Pull requests integration, not deletion of stale refs or local tags.
     // Git forwards --no-prune to fetch, even over per-remote pruning settings.
-    let mut args = vec!["pull", "--no-recurse-submodules", "--no-prune"];
+    let mut args = Vec::new();
+    if strategy == "rebase" {
+        // Replay was requested for the checked-out branch only. The nested
+        // rebase inherits this override without modifying the user's config.
+        args.extend(["-c", "rebase.updateRefs=false"]);
+    }
+    args.extend(["pull", "--no-recurse-submodules", "--no-prune"]);
     args.extend(strategy_arguments);
     match (remote, branch) {
         (Some(remote), Some(branch)) => {

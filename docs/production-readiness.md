@@ -3162,6 +3162,14 @@ browser checks and the production build passed on the fix. The installed
 sibling-preservation check is required for future release candidates; the
 updated package's installed evidence is not yet available.
 
+The same installed baseline also moved an unreviewed branch when Pull
+used the Rebase strategy. Pull now overrides `rebase.updateRefs` for its
+own invocation. The override leaves the configured setting intact, and
+the regular transport classifier still identifies conflicts and dirty
+checkout errors when Git receives the option before the subcommand.
+The installed regression is required by the Pull scope gate for future
+candidates.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

@@ -30,6 +30,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-workspace-pull-skips-multiple-upstreams-before-fetch-and-continues-the-batch',
     'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch',
     'native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config',
+    'native-pull-with-rebase-preserves-unreviewed-sibling-branches',
   ]],
   ['pull-submodule-scope', [
     'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule',

@@ -1747,6 +1747,7 @@ fn pull_strategy_rebase_overrides_merge_defaults_and_replays_only_local_work() {
         ("pull.rebase", "false"),
         ("branch.main.rebase", "false"),
         ("pull.ff", "only"),
+        ("rebase.updateRefs", "true"),
     ] {
         run_mutation(
             path,
@@ -1755,9 +1756,20 @@ fn pull_strategy_rebase_overrides_merge_defaults_and_replays_only_local_work() {
         )
         .unwrap();
     }
+    run_mutation(
+        path,
+        &["branch", "local-sibling", &local],
+        "save unreviewed branch",
+    )
+    .unwrap();
     let config = fs::read(path.join(".git/config")).unwrap();
     pull_with_strategy(path, "rebase").unwrap();
     assert_ne!(repository.oid(), local);
+    assert_eq!(
+        rev(path, "refs/heads/local-sibling"),
+        local,
+        "Pull must not rewrite a branch outside the selected checkout"
+    );
     assert_eq!(
         String::from_utf8(
             run_git(path, &["show", "-s", "--format=%P", "HEAD"])
@@ -1780,6 +1792,42 @@ fn pull_strategy_rebase_overrides_merge_defaults_and_replays_only_local_work() {
     let status = read_status(path).unwrap();
     assert_eq!((status.ahead, status.behind), (1, 0));
     assert!(!status.merge_in_progress && !status.rebase_in_progress);
+}
+
+#[test]
+fn pull_rebase_continue_preserves_an_unreviewed_branch_after_conflict_resolution() {
+    let (repository, _, local, upstream) = pull_fixture(true, true);
+    let path = &repository.0;
+    run_mutation(
+        path,
+        &["config", "rebase.updateRefs", "true"],
+        "configure update-refs for the fixture",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["branch", "local-sibling", &local],
+        "save an unreviewed branch",
+    )
+    .unwrap();
+    let error = pull_from_remote_with_strategy(path, "rebase", Some("origin"), Some("main"))
+        .unwrap_err();
+    assert_eq!(error.kind, "gitFailure");
+    let status = read_status(path).unwrap();
+    assert_eq!(status.conflicted, 1);
+    assert!(status.rebase_in_progress);
+    assert_eq!(rev(path, "refs/heads/local-sibling"), local);
+
+    fs::write(path.join("file"), b"resolved contents\n").unwrap();
+    stage_path(path, "file").unwrap();
+    continue_rebase(path).unwrap();
+    assert_ne!(repository.oid(), local);
+    assert_eq!(rev(path, "HEAD^"), upstream);
+    assert_eq!(rev(path, "refs/heads/local-sibling"), local);
+    assert_eq!(rev(path, "refs/remotes/origin/main"), upstream);
+    let status = read_status(path).unwrap();
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert!(!status.rebase_in_progress);
 }
 
 #[test]

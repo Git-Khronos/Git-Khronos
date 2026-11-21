@@ -441,6 +441,9 @@ Used for explicit `--no-rebase`, `--rebase`, `--ff` and `--ff-only`, per-command
 overrides, upstreams, occupied branches and partial fetch/integration effects.
 The Git pull and fetch manuals also informed the per-invocation `--no-prune`
 override; an owned bare-remote fixture verified tag and tracking-ref retention.
+The [Git rebase manual](https://git-scm.com/docs/git-rebase) documents
+`rebase.updateRefs`; independent Pull fixtures verified the targeted
+command-level override and continuation after a conflict.
 Independent disposable local bare-remote observations establish merge-parent,
 replayed-commit, conflict-abort and stale/gone-upstream contracts. Real rebase
 progress may delimit an error with a carriage return, not only a newline.

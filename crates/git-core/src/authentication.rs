@@ -223,19 +223,23 @@ fn helper_run() -> Result<(), ()> {
     std::io::stdout().write_all(b"\n").map_err(|_| ())
 }
 
-pub(crate) fn is_transport(args: &[&str]) -> bool {
+fn git_subcommand<'a>(args: &[&'a str]) -> Option<&'a str> {
     let mut arguments = args.iter();
     while let Some(argument) = arguments.next() {
         if matches!(*argument, "-c" | "-C" | "--git-dir" | "--work-tree") {
             arguments.next();
         } else if !argument.starts_with('-') {
-            return matches!(
-                *argument,
-                "clone" | "fetch" | "pull" | "push" | "ls-remote" | "submodule" | "lfs"
-            );
+            return Some(argument);
         }
     }
-    false
+    None
+}
+
+pub(crate) fn is_transport(args: &[&str]) -> bool {
+    matches!(
+        git_subcommand(args),
+        Some("clone" | "fetch" | "pull" | "push" | "ls-remote" | "submodule" | "lfs")
+    )
 }
 
 pub(crate) fn validate_arguments(args: &[&str]) -> Result<(), AppError> {
@@ -270,7 +274,7 @@ pub(crate) fn validate_repository_urls(
     if cancellation.is_cancelled() {
         return Err(crate::operation_cancelled());
     }
-    if args.first() == Some(&"clone") {
+    if git_subcommand(args) == Some("clone") {
         return Ok(());
     }
     let mut command = crate::git_in(path);
@@ -474,7 +478,8 @@ fn classify_output(output: Output, args: &[&str]) -> Result<Output, AppError> {
     ]
     .iter()
     .any(|message| contains_diagnostic(message));
-    if !authentication_failed && args.first() == Some(&"pull") {
+    let subcommand = git_subcommand(args);
+    if !authentication_failed && subcommand == Some("pull") {
         if contains_diagnostic("not possible to fast-forward") {
             return Err(AppError::new(
                 "gitFailure",
@@ -532,7 +537,7 @@ fn classify_output(output: Output, args: &[&str]) -> Result<Output, AppError> {
     // A prompt does not mean authentication failed: Git may authenticate and
     // then reject a push or fail a later connection for a different reason.
     if !authentication_failed
-        && args.first() == Some(&"push")
+        && subcommand == Some("push")
         && (contains_diagnostic("non-fast-forward")
             || contains_diagnostic("[rejected]")
             || contains_diagnostic("failed to push some refs"))
@@ -851,7 +856,7 @@ mod tests {
                         status: std::process::ExitStatus::from_raw(256),
                         stdout: stdout.as_bytes().to_vec(),
                         stderr: stderr.as_bytes().to_vec(),
-                    }, &["pull", "--no-rebase", "--ff"]).unwrap_err();
+                    }, &["-c", "rebase.updateRefs=false", "pull", "--rebase"]).unwrap_err();
                     assert_eq!(error.kind, "gitFailure");
                     assert!(error.message.contains(expected));
                     assert!(!error.message.contains("fixture-secret"));

@@ -322,6 +322,8 @@ test('installed Pull requires both repository-scope and explicit single-branch e
       scenario: 'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch' },
     { suite: 'workspace-pull-upstreams',
       scenario: 'native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config' },
+    { suite: 'workspace-pull-upstreams',
+      scenario: 'native-pull-with-rebase-preserves-unreviewed-sibling-branches' },
     { suite: 'pull-submodule-scope',
       scenario: 'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule' },
   ]) {

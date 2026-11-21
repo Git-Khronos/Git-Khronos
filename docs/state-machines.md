@@ -295,6 +295,9 @@ Both configured and explicit Pull disable pruning for that invocation.
 Integration does not delete local tags or stale tracking refs as a side
 effect, even when pruning is configured. This does not disable normal tag
 following or change the configured fetch mappings.
+Pull with Rebase replays only the selected receiving branch. It suppresses
+`rebase.updateRefs` for the operation without changing repository settings.
+A conflict and later Continue Rebase do not add sibling branches to the replay.
 
 ### Remote branch rename and deletion
 

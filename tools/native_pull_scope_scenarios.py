@@ -23,6 +23,39 @@ def _toolbar_pull(driver):
     driver.wait('return document.body.textContent.includes("Pull complete")')
 
 
+def _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    publisher = fixtures.repository('pull-rebase-publisher', commits=2)
+    checkout = _local_clone(fixtures, publisher, 'pull-rebase-receiver')
+    sibling = _write_commit(fixtures, checkout, 'first-local.txt', 'Owned first local commit\n')
+    fixtures.git(checkout, 'branch', 'owned-sibling', sibling)
+    old_head = _write_commit(fixtures, checkout, 'second-local.txt', 'Owned second local commit\n')
+    new_upstream = _write_commit(fixtures, publisher, 'upstream.txt', 'Owned upstream commit\n')
+    fixtures.git(checkout, 'config', 'rebase.updateRefs', 'true')
+    before_config = (checkout / '.git/config').read_bytes()
+    open_ui(driver, checkout)
+    driver.click_visible('button[aria-label="Pull options"]')
+    selector = '#pull-options-menu [role=menuitem]'
+    text = driver.wait(f"""
+        const item = [...document.querySelectorAll({json.dumps(selector)})]
+          .find(row => row.querySelector('strong')?.textContent.trim() === 'Rebase');
+        return item?.getClientRects().length && item.textContent.trim();
+    """)
+    driver.click_scrolled_text(selector, text, wait_for_ready=True)
+    driver.wait('return document.body.textContent.includes("Pull complete")')
+    assert fixtures.git(checkout, 'rev-parse', 'HEAD') != old_head
+    assert fixtures.git(checkout, 'rev-parse', 'HEAD^^') == new_upstream
+    assert fixtures.git(checkout, 'rev-parse', 'refs/remotes/origin/main') == new_upstream
+    assert fixtures.git(checkout, 'rev-parse', 'refs/heads/owned-sibling') == sibling, (
+        'Pull with Rebase rewrote a branch outside the receiving checkout')
+    assert (checkout / '.git/config').read_bytes() == before_config
+    assert fixtures.git(checkout, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert fixtures.git(checkout, 'status', '--porcelain') == ''
+    report['scenarios'].append('native-pull-with-rebase-preserves-unreviewed-sibling-branches')
+    return checkout
+
+
 def pull_submodule_scope(driver, fixtures, report):
     from native_acceptance import open_ui
 
@@ -161,4 +194,5 @@ def workspace_pull_upstreams(driver, fixtures, report):
     report['workspacePullUpstreams']['explicitSelection'] = selected
     report['scenarios'].append('native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch')
     report['scenarios'].append('native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config')
-    return ambiguous, driver.invoke('open_repository', path=str(ambiguous))['id']
+    rebase = _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report)
+    return rebase, driver.invoke('open_repository', path=str(rebase))['id']
