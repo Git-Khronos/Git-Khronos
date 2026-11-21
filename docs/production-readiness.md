@@ -1716,3 +1716,13 @@ package builds do not establish completion of those deliverables.
 
 No system installation, service/network changes, publication, or Git commit is
 implied by this review. Any such operation needs the applicable user authority.
+
+## Deferred Windows shortcut inspection — 2026-11-21
+
+The startup root no longer instantiates the Windows shortcut inspection service.
+The deferred main menu refreshes it once per eligible opening; its dialog still
+shares the same inspection and in-flight request. A matched production build
+with statistics reports 1,447,724 initial bytes versus 1,449,856: 2,132 bytes
+moved off startup, giving 2,276 bytes of headroom under the unchanged 1.45 MB
+limit. The 900 kB warning remains, and startup latency was not benchmarked.
+The shortcut, deferred main menu, and updater renderer suites passed 42 cases.

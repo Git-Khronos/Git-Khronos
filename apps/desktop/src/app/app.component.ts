@@ -11,7 +11,6 @@ import { FileContentDialogComponent, type FileContentDialogRequest } from './fil
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
 import { WindowsLauncherComponent } from './windows-launcher.component';
 import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } from './application-updates-dialog.component';
-import { WindowsLauncherService } from './windows-launcher.service';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
@@ -955,7 +954,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
   private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
   protected readonly windowsLauncherOpen = signal(false);
-  protected readonly windowsLauncher = inject(WindowsLauncherService);
   protected readonly windowsLauncherAvailable = computed(() => this.git.systemInfo()?.windowsSubsystemForLinux === true && this.git.systemInfo()?.windowsInteropAvailable === true && !this.git.browserPreview());
   private windowsLauncherReturnFocus: HTMLElement | null = null;
   private readonly windowsLauncherLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('windowsLauncherLoaderClose');
@@ -3273,7 +3271,6 @@ export class AppComponent implements OnInit, OnDestroy {
     undoShortcut: this.undoShortcut,
     redoShortcut: this.redoShortcut,
     windowsLauncherAvailable: this.windowsLauncherAvailable,
-    windowsLauncher: this.windowsLauncher,
     openRepositoryManager: this.openRepositoryManager.bind(this),
     chooseRepository: this.chooseRepository.bind(this),
     reopenClosedRepository: this.reopenClosedRepository.bind(this),
@@ -10467,10 +10464,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.identityPopoverOpen.set(false);
     const open = !this.appMenuOpen();
     this.appMenuOpen.set(open);
-    if (open) {
-      if (this.windowsLauncherAvailable()) void this.windowsLauncher.refresh();
-      setTimeout(() => this.mainMenuContentReady());
-    }
+    if (open) setTimeout(() => this.mainMenuContentReady());
   }
 
   private readonly mainMenuLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('mainMenuLoaderClose');

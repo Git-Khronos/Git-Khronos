@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, afterNextRender, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, afterNextRender, inject, input, output } from '@angular/core';
 import type { MainMenuView } from './app.component';
 import { IconComponent } from './icon.component';
+import { WindowsLauncherService } from './windows-launcher.service';
 
 /** Optional presentation; root retains actions, dismissal and keyboard ownership. */
 @Component({
@@ -13,8 +14,12 @@ import { IconComponent } from './icon.component';
 export class MainMenuContentComponent {
   readonly presenter = input.required<MainMenuView>();
   readonly ready = output<void>();
+  protected readonly windowsLauncher = inject(WindowsLauncherService);
 
   constructor() {
-    afterNextRender(() => this.ready.emit());
+    afterNextRender(() => {
+      if (this.presenter().windowsLauncherAvailable()) void this.windowsLauncher.refresh();
+      this.ready.emit();
+    });
   }
 }

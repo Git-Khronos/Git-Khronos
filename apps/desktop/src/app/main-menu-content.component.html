@@ -33,6 +33,6 @@
   <button type="button" role="menuitem" (click)="vm.openApplicationUpdates()"><gc-icon name="refresh" [size]="14" /><span><strong>Updates</strong><small>Check manually or enable automatic updates</small></span></button>
   <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openPreferences()"><gc-icon name="settings" [size]="14" /><span><strong>Preferences</strong></span></button>
   @if (vm.windowsLauncherAvailable()) {
-    <button type="button" role="menuitem" (click)="vm.openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>{{ vm.windowsLauncher.status() }}</small></span></button>
+    <button type="button" role="menuitem" (click)="vm.openWindowsLauncher()"><gc-icon name="link" [size]="14" /><span><strong>Windows taskbar shortcut</strong><small>{{ windowsLauncher.status() }}</small></span></button>
   }
 </div>
