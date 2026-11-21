@@ -376,7 +376,11 @@ export class GitKhronosService {
   // Closing a tab can leave its page pending while another tab starts a page.
   private readonly historyLoadsInFlight = new Set<Promise<void>>();
   private readonly pendingWorkingTreeMutations = new Map<string, number>();
-  private readonly deferredMetadataRefreshes = new Set<string>();
+  private readonly deferredMetadataStates = signal<ReadonlyMap<string, 'loading' | 'failed'>>(new Map());
+  readonly repositoryMetadataState = computed(() => {
+    const id = this.activeRepositoryId();
+    return (id ? this.deferredMetadataStates().get(id) : undefined) ?? 'ready';
+  });
   private readonly deferredMetadataTimers = new Map<string, number>();
   private closedRepositories: ClosedRepository[] = [];
 
@@ -744,7 +748,6 @@ export class GitKhronosService {
     await this.run('Refreshing…', async report => {
       const refreshed = await this.storeRefreshedSnapshot(await ipc.refresh_repository({ repoId: repo.id }));
       if (!refreshed) throw new Error('Could not refresh repository status. Try again.');
-      this.deferredMetadataRefreshes.delete(repo.id);
       report('Repository refreshed');
     }, repo.id);
   }
@@ -768,6 +771,7 @@ export class GitKhronosService {
             continue;
           }
           this.storeSnapshot({ ...snapshot, status });
+          this.setDeferredMetadataState(repository.id, undefined);
           results[repository.id] = { at: Date.now(), error: null };
         } catch (error: unknown) {
           results[repository.id] = { at: null, error: this.formatError(error) };
@@ -795,21 +799,19 @@ export class GitKhronosService {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (!ownsRepository()) return false;
       if (this.busy()) {
-        if (this.deferredMetadataRefreshes.has(repositoryId)) this.deferMetadataRefresh(repositoryId);
+        if (this.deferredMetadataStates().has(repositoryId)) this.deferMetadataRefresh(repositoryId);
         return false;
       }
       const generation = this.statusGeneration(repositoryId);
       const snapshot = await ipc.refresh_repository({ repoId: repositoryId });
       if (!ownsRepository() || snapshot.id !== repositoryId || snapshot.path !== repository.path) return false;
       if (generation !== this.statusGeneration(repositoryId)) {
-        if (this.deferredMetadataRefreshes.has(repositoryId)) this.deferMetadataRefresh(repositoryId);
+        if (this.deferredMetadataStates().has(repositoryId)) this.deferMetadataRefresh(repositoryId);
         return true;
       }
       const refreshed = await this.storeRefreshedSnapshot(snapshot);
-      if (ownsRepository() && this.deferredMetadataRefreshes.has(repositoryId)) {
-        if (generation !== this.statusGeneration(repositoryId)) this.deferMetadataRefresh(repositoryId);
-        else if (refreshed) this.deferredMetadataRefreshes.delete(repositoryId);
-      }
+      if (ownsRepository() && this.deferredMetadataStates().has(repositoryId)
+        && generation !== this.statusGeneration(repositoryId)) this.deferMetadataRefresh(repositoryId);
       return refreshed;
     } catch {
       return false;
@@ -2953,7 +2955,10 @@ export class GitKhronosService {
       const active = cached.find((repository) => repository.path === target.activeRepositoryPath) ?? cached[0] ?? null;
       this.activeRepositoryId.set(active?.id ?? null);
       this.activity.set(active ? `Workspace ${target.name}` : 'Ready');
-      if (active) void this.refreshRepositoryInBackground(active.id);
+      if (active) {
+        if (this.deferredMetadataStates().has(active.id)) this.deferMetadataRefresh(active.id);
+        else void this.refreshRepositoryInBackground(active.id);
+      }
       if (!this.browserPreview()) await this.restoreRepositories();
       return;
     }
@@ -2990,7 +2995,7 @@ export class GitKhronosService {
       this.error.set(null);
       this.activity.set('Ready');
       this.persistOpenTabs();
-      if (this.deferredMetadataRefreshes.has(repoId)) this.deferMetadataRefresh(repoId);
+      if (this.deferredMetadataStates().has(repoId)) this.deferMetadataRefresh(repoId);
     }
   }
 
@@ -3017,7 +3022,7 @@ export class GitKhronosService {
     ].slice(0, 10);
     this.recentlyClosedRepositoryPath.set(this.closedRepositories[0]?.path ?? null);
     const remaining = repositories.filter((repository) => repository.id !== repoId);
-    this.deferredMetadataRefreshes.delete(repoId);
+    this.setDeferredMetadataState(repoId, undefined);
     const timer = this.deferredMetadataTimers.get(repoId);
     if (timer !== undefined) window.clearTimeout(timer);
     this.deferredMetadataTimers.delete(repoId);
@@ -3026,7 +3031,7 @@ export class GitKhronosService {
       const next = remaining[Math.min(Math.max(closingIndex, 0), remaining.length - 1)] ?? null;
       this.activeRepositoryId.set(next?.id ?? null);
       this.clearInspection();
-      if (next && this.deferredMetadataRefreshes.has(next.id)) this.deferMetadataRefresh(next.id);
+      if (next && this.deferredMetadataStates().has(next.id)) this.deferMetadataRefresh(next.id);
     }
     this.error.set(null);
     this.activity.set('Ready');
@@ -3850,7 +3855,7 @@ export class GitKhronosService {
       this.storeSnapshot(snapshot, true);
       this.repositories.update(repositories => [...repositories].sort((left, right) =>
         (ranks.get(left.path) ?? saved.length) - (ranks.get(right.path) ?? saved.length)));
-      this.deferredMetadataRefreshes.add(snapshot.id);
+      this.setDeferredMetadataState(snapshot.id, 'loading');
     }
     if (!this.repository()) {
       this.activeRepositoryId.set(snapshot.id);
@@ -3916,29 +3921,59 @@ export class GitKhronosService {
     }
   }
 
-  private deferMetadataRefresh(repositoryId: string): void {
-    this.deferredMetadataRefreshes.add(repositoryId);
+  retryRepositoryMetadata(): void {
+    const id = this.activeRepositoryId();
+    if (id && this.repositoryMetadataState() === 'failed') this.deferMetadataRefresh(id, 0);
+  }
+
+  private setDeferredMetadataState(repositoryId: string, phase: 'loading' | 'failed' | undefined): void {
+    this.deferredMetadataStates.update(states => {
+      if (states.get(repositoryId) === phase) return states;
+      const next = new Map(states);
+      if (phase) next.set(repositoryId, phase);
+      else next.delete(repositoryId);
+      return next;
+    });
+  }
+
+  private deferMetadataRefresh(repositoryId: string, delay = 1_200): void {
+    this.setDeferredMetadataState(repositoryId, 'loading');
     if (typeof window === 'undefined' || this.deferredMetadataTimers.has(repositoryId)) return;
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(async () => {
       this.deferredMetadataTimers.delete(repositoryId);
-      if (this.activeRepositoryId() !== repositoryId || !this.deferredMetadataRefreshes.has(repositoryId)) return;
+      const repository = this.repository();
+      if (repository?.id !== repositoryId || this.repositoryMetadataState() !== 'loading') return;
       if (this.liveRefreshes.has(repositoryId) || this.busy() || this.detailsBusy()
         || this.historyLoading() || this.changesLoading() || this.backgroundFetchBusy()) {
         this.deferMetadataRefresh(repositoryId);
         return;
       }
-      void this.refreshRepositoryInBackground(repositoryId);
-    }, 1_200);
+      const workspaceId = this.activeWorkspaceId();
+      const generation = this.statusGeneration(repositoryId);
+      const refreshed = await this.refreshRepositoryInBackground(repositoryId);
+      if (!refreshed && this.activeWorkspaceId() === workspaceId && this.activeRepositoryId() === repositoryId
+        && this.repository()?.path === repository.path && this.statusGeneration(repositoryId) === generation
+        && this.repositoryMetadataState() === 'loading' && !this.deferredMetadataTimers.has(repositoryId)) {
+        this.setDeferredMetadataState(repositoryId, 'failed');
+      }
+    }, delay);
     this.deferredMetadataTimers.set(repositoryId, timer);
   }
 
   private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<boolean> {
     const previous = this.repositories().find((repository) => repository.id === snapshot.id);
-    if (!previous) return false;
+    if (!previous || previous.path !== snapshot.path) return false;
+    const workspace = this.activeWorkspaceId();
+    const generation = this.statusGeneration(snapshot.id);
     // Metadata snapshots omit untracked discovery. Keep known entries visible
     // until the asynchronous status scan can discover additions and removals.
     this.storeSnapshot({ ...snapshot, status: preserveUntrackedEntries(previous.status, snapshot.status) });
-    return this.refreshStatus(snapshot.id, true, false);
+    const refreshed = await this.refreshStatus(snapshot.id, true, false);
+    if (refreshed && this.activeWorkspaceId() === workspace && this.statusGeneration(snapshot.id) === generation
+      && this.repositories().some(repository => repository.id === snapshot.id && repository.path === snapshot.path)) {
+      this.setDeferredMetadataState(snapshot.id, undefined);
+    }
+    return refreshed;
   }
 
   private storeSnapshot(snapshot: RepositorySnapshot, addIfMissing = false): void {

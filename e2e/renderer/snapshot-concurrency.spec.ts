@@ -140,11 +140,11 @@ for (const reconcile of ['normal', 'newer-change', 'read-failure']) {
       }
       return { metadataReads, head: git.repository().headOid, expected: latest.headOid,
         statuses: git.activityLogs().slice(-3).map((entry: any) => entry.status),
-        deferred: git.deferredMetadataRefreshes.has(repository.id) };
+        metadataState: git.repositoryMetadataState() };
     }, reconcile);
     expect(result.statuses.every((status: string) => status === 'success')).toBe(true);
     if (reconcile === 'normal') expect(result.metadataReads).toBe(0);
     if (reconcile === 'newer-change') expect(result.head).toBe(result.expected);
-    if (reconcile === 'read-failure') expect(result.deferred).toBe(true);
+    if (reconcile === 'read-failure') expect(result.metadataState).toBe('loading');
   });
 }

@@ -879,8 +879,9 @@
           }
         </div>
         <div id="reference-section-tags" class="reference-section" [class.pane-hidden]="!referencePaneVisible('tags')" [class.collapsed]="!tagsOpen()" [class.maximized]="maximizedReferenceSection() === 'tags'" [class.resized]="referenceSectionHeight('tags') !== null" [style.height.px]="referenceSectionHeight('tags')">
-          <button class="sidebar-heading collapsible-heading" type="button" [attr.aria-expanded]="tagsOpen()" (click)="toggleReferenceSectionOpen('tags')" (dblclick)="maximizeReferenceSection('tags')" (contextmenu)="openReferencePaneMenu($event)">
-            <span><i><gc-icon [name]="tagsOpen() ? 'chevron-down' : 'chevron-right'" [size]="11" /></i> Tags</span><b>{{ visibleTags().length }}</b>
+          <button #tagsHeading class="sidebar-heading collapsible-heading" type="button" [attr.aria-expanded]="tagsOpen()" (click)="toggleReferenceSectionOpen('tags')" (dblclick)="maximizeReferenceSection('tags')" (contextmenu)="openReferencePaneMenu($event)">
+            <span><i><gc-icon [name]="tagsOpen() ? 'chevron-down' : 'chevron-right'" [size]="11" /></i> Tags</span>
+            @if (git.repositoryMetadataState() === 'ready' || visibleTags().length) { <b>{{ visibleTags().length }}</b> }
           </button>
           @if (tagsOpen()) {
             <div role="list" aria-label="Tags" gcViewportSize (gcViewportSize)="updateReferenceListHeight('tags', $event)" (scroll)="updateReferenceListViewport('tags', $event)" (keydown)="handleReferenceListKeydown('tags', $event)" class="reference-content">
@@ -892,7 +893,20 @@
                   </button>
                   <button class="reference-overflow-action" [class.menu-open]="contextMenu()?.kind === 'tag' && contextMenu()?.oid === tag.oid && contextMenu()?.label === tag.name" type="button" [disabled]="git.busy()" [attr.aria-label]="'Tag actions for ' + tag.name" aria-haspopup="menu" [attr.aria-expanded]="contextMenu()?.kind === 'tag' && contextMenu()?.oid === tag.oid && contextMenu()?.label === tag.name" [title]="'Tag actions for ' + tag.name" (click)="openTagMenu($event, tag.name, tag.oid)"><gc-icon name="more" [size]="13" /></button>
                 </div>
-              } @empty { <div class="empty-ref">No tags</div> }
+              } @empty {
+                <div role="listitem">
+                  @switch (git.repositoryMetadataState()) {
+                    @case ('loading') { <div class="empty-ref" role="status">Loading tags…</div> }
+                    @case ('failed') {
+                      <div class="empty-ref" role="status">Could not load tags.</div>
+                      <button class="branch-item" type="button" (click)="git.retryRepositoryMetadata(); tagsHeading.focus()">Retry loading tags</button>
+                    }
+                    @default {
+                      <div class="empty-ref">{{ (git.repository()?.tags?.length ?? 0) > 0 ? 'No matching tags' : 'No tags' }}</div>
+                    }
+                  }
+                </div>
+              }
               <div class="reference-list-spacer" aria-hidden="true" [style.height.px]="virtualTags().bottomPadding"></div>
             </div>
             <div class="reference-section-resizer" role="separator" tabindex="0" aria-label="Resize Tags section" aria-controls="reference-section-tags" aria-orientation="horizontal" [attr.aria-valuemin]="70" [attr.aria-valuemax]="420" [attr.aria-valuenow]="referenceSectionAriaHeight('tags')" [attr.aria-valuetext]="referenceSectionAriaHeight('tags') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to restore automatic sizing" (focus)="prepareReferenceSectionResize('tags', $event)" (keydown)="handleReferenceSectionResizeKeydown('tags', $event)" (dblclick)="resetReferenceSectionHeight('tags', $event)" (pointerdown)="beginReferenceSectionResize('tags', $event)"></div>

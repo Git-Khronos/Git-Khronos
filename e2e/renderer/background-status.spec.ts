@@ -59,6 +59,11 @@ test('restored tags load after the deferred metadata read meets an in-flight sta
     fixture.status = git.refreshStatusInBackground(repository.id);
     if (!fixture.release) throw new Error('expected a pending status read');
   });
+  const pane = page.locator('#reference-section-tags');
+  const heading = pane.locator('.sidebar-heading');
+  if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
+  await expect(pane.getByRole('status')).toHaveText('Loading tags…');
+  await expect(pane.getByText('No tags', { exact: true })).toHaveCount(0);
   await page.clock.runFor(1_300);
   expect(await page.evaluate(() => (window as any).__metadataRace.metadataReads)).toBe(0);
   await page.evaluate(async () => {
@@ -67,10 +72,54 @@ test('restored tags load after the deferred metadata read meets an in-flight sta
     await fixture.status;
   });
   await page.clock.runFor(1_300);
-  const heading = page.locator('#reference-section-tags .sidebar-heading');
-  if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
-  await expect(page.locator('#reference-section-tags').getByRole('button', { name: 'Tag retained-tag' })).toBeVisible();
+  await expect(pane.getByRole('button', { name: 'Tag retained-tag' })).toBeVisible();
+  await expect(pane.getByRole('status')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__metadataRace.metadataReads)).toBe(1);
+  await page.getByRole('searchbox', { name: 'Filter references' }).fill('not-present');
+  await expect(pane.getByText('No matching tags', { exact: true })).toBeVisible();
+});
+
+test('a failed tags read stays distinguishable from an empty repository and retries from the sidebar', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repository = { ...git.repository(), tags: [] };
+    const state = { reads: 0 };
+    (window as any).__tagReadRetry = state;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'open_repository') return Promise.resolve(repository);
+        if (command === 'refresh_repository') {
+          state.reads++;
+          if (state.reads === 1) return Promise.reject(new Error('owned fixture unavailable'));
+          return Promise.resolve(repository);
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+        return Promise.resolve(null);
+      },
+    };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    git.closeRepository(repository.id);
+    await git.openRepository(repository.path);
+  });
+  const pane = page.locator('#reference-section-tags');
+  const heading = pane.locator('.sidebar-heading');
+  if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
+  await page.clock.runFor(1_300);
+  await expect(pane.getByRole('status')).toHaveText('Could not load tags.');
+  await expect(pane.getByText('No tags', { exact: true })).toHaveCount(0);
+  await page.clock.runFor(2_500);
+  expect(await page.evaluate(() => (window as any).__tagReadRetry.reads)).toBe(1);
+  const retry = pane.getByRole('button', { name: 'Retry loading tags' });
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await page.clock.runFor(250);
+  await expect(pane.getByText('No tags', { exact: true })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  await expect(heading).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__tagReadRetry.reads)).toBe(2);
 });
 
 test('keeps untracked discovery after an external branch change', async ({ page }) => {

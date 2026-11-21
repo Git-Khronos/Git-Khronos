@@ -70,6 +70,10 @@ timer per repository. A superseded refresh cannot settle the pending read.
 Only a current snapshot from the owning workspace and checkout clears it.
 `background-status.spec.ts` holds a status reply across the first timer and
 verifies that the restored tag then appears without a manual refresh.
+A failed full read is distinct from ready metadata with zero tags. The Tags
+pane discloses loading, failure with an explicit read-only retry, confirmed
+empty, or no filter matches. Retry returns focus to the Tags heading without
+clearing the filter or closing the pane.
 
 Workspace create, rename and delete forms share a deferred view without
 moving mutation authority out of the renderer shell. Cancel and Escape work
