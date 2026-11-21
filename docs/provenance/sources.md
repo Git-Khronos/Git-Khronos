@@ -1609,6 +1609,7 @@ Sources:
 - [Git annotated and signed tags](https://git-scm.com/docs/git-tag)
 - [Git worktree occupancy](https://git-scm.com/docs/git-worktree)
 - [Rust standard file locking](https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock)
+- [Linux flock descriptor ownership](https://man7.org/linux/man-pages/man2/flock.2.html)
 
 Used for a neutral capability specification and an original Rust workflow engine.
 Owned Git repositories verify configuration scope, literal names, conditional

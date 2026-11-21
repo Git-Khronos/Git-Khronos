@@ -344,6 +344,14 @@ struct ActionGuard {
     _file: fs::File,
 }
 
+impl Drop for ActionGuard {
+    fn drop(&mut self) {
+        // A concurrent child may briefly retain a descriptor to this same
+        // lock while it starts. Release the lock now, not on its last close.
+        let _ = self._file.unlock();
+    }
+}
+
 fn action_guard(path: &Path) -> Result<ActionGuard, AppError> {
     let journal = common_journal(path)?;
     let directory = journal.parent().expect("workflow journal has a parent");
@@ -405,8 +413,8 @@ fn action_guard(path: &Path) -> Result<ActionGuard, AppError> {
     file.try_lock().map_err(|_| {
         refused("Another workflow action is active in this repository or a linked worktree.")
     })?;
-    // Keep this file in place: unlinking a lock permits a second inode to be
-    // locked independently. Closing this owned handle also releases crash locks.
+    // Keep this file in place: unlinking would let actions lock separate inodes.
+    // The OS still releases the lock when every handle closes after a crash.
     Ok(ActionGuard { _file: file })
 }
 
@@ -1127,6 +1135,23 @@ mod tests {
             read_settings(&linked).unwrap(),
             read_settings(&fixture.repo).unwrap()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workflow_action_releases_its_lock_before_inherited_descriptor_closes() {
+        let fixture = Fixture::new();
+        let guard = action_guard(&fixture.repo).unwrap();
+        // A Unix child between fork and exec can hold a reference to the same
+        // open file description. Duplicating the descriptor models that delay.
+        let inherited = guard._file.try_clone().unwrap();
+        assert!(action_guard(&fixture.repo).is_err());
+        drop(guard);
+        let next = action_guard(&fixture.repo).expect("completed action must release its lock");
+        drop(inherited);
+        assert!(action_guard(&fixture.repo).is_err());
+        drop(next);
+        assert!(action_guard(&fixture.repo).is_ok());
     }
 
     #[test]

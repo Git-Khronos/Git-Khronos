@@ -167,6 +167,10 @@ Finish preserves recovery refs, integrates the original topic into the reviewed
 targets in order, annotates the production result when requested, and conditionally
 deletes the reviewed topic ref. Shared repository locking serializes actions
 across linked worktrees; execution records remain bound to their owning checkout.
+The guard explicitly unlocks on normal exit without removing the lock file.
+This prevents a child still starting on Unix from prolonging a completed
+workflow's lock by retaining a duplicate descriptor. A competing action
+remains refused for as long as the owning guard is live.
 
 Owned Git fixtures cover conflict continuation, abort after an earlier integration,
 restart reconciliation, explicit retry, stale bindings, checkout-hook failure,
