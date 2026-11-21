@@ -1,5 +1,14 @@
 # Informational sources
 
+## Linux package build serialization
+
+- [Linux advisory lock semantics](https://man7.org/linux/man-pages/man2/flock.2.html)
+- [util-linux flock descriptor mode](https://man7.org/linux/man-pages/man1/flock.1.html)
+
+Used to serialize the two Task build flavors that share generated workspace
+files. The owner and receipt flow is independently implemented; no source
+code was copied.
+
 ## Reviewed force-push destination configuration
 
 - [Git remote URL inspection](https://git-scm.com/docs/git-remote)

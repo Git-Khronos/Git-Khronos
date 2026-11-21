@@ -260,6 +260,10 @@ invocation after enabling these checks builds once to establish a baseline in
 deletions, or missing required outputs trigger another build. Use
 `task --force package:deb` to rebuild explicitly, for example after changing the
 installed toolchain or system libraries.
+Linux package builds use `flock` from util-linux. Local and Jammy builds share
+renderer files and package notices, so only one Task build can write to the
+checkout at a time, even with different `CARGO_TARGET_DIR` values. If a build
+reports contention, let the other build finish before retrying.
 
 #### Experimental WSL display defaults on dev
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -221,12 +221,14 @@ appendFileSync('calls', 'abi\\n');
 if (process.env.FAIL_ABI) process.exit(1);
 `);
   await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
+  await copyFile(join(repositoryRoot, 'tools/build-linux-package.sh'), join(root, 'tools/build-linux-package.sh'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
   await put('crates/git-core/src/lib.rs');
   await put('packaging/debian/changelog');
   await put('bin/pnpm', `#!/usr/bin/env node
-import { appendFileSync, existsSync, mkdirSync, readlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 if (process.argv[2] === '--version') {
   console.log('12.14.0');
@@ -240,12 +242,16 @@ if (process.argv[2] === '--version') {
     throw new Error('Unexpected build command: ' + process.argv.slice(2));
   }
   if (!process.env.TMPDIR || !existsSync(process.env.TMPDIR)) throw new Error('Missing build temp directory');
+  const lock = spawnSync('flock', ['-n', '-E', '73', 'target/.git-khronos-linux-package.lock', 'true']);
+  if (lock.status !== 73) throw new Error('Package writes started without the workspace lock');
   writeFileSync('build-tmpdir', process.env.TMPDIR);
   appendFileSync('calls', 'build\\n');
   if (process.env.HARD_STOP_BUILD) {
-    // Kill only this fixture's direct Task parent; never a caller or host job.
+    // Kill only this fixture's direct writer; never a caller or host job.
     const parent = '/proc/' + process.ppid;
-    if (!readlinkSync(parent + '/exe').endsWith('/task') || readlinkSync(parent + '/cwd') !== process.cwd()) {
+    const args = readFileSync(parent + '/cmdline', 'utf8').split('\0');
+    if (!readlinkSync(parent + '/exe').endsWith('/bash') ||
+        args[1] !== 'tools/build-linux-package.sh' || readlinkSync(parent + '/cwd') !== process.cwd()) {
       throw new Error('Refused to interrupt an unverified fixture parent');
     }
     process.kill(process.ppid, 'SIGKILL');
@@ -1198,10 +1204,41 @@ test('hard-stopped builds cannot accept older outputs as a completed current bui
   const f = await fixture(t); f.ok();
   await f.put('apps/desktop/src/main.ts', 'new source after completed old build');
   const interrupted = f.run(undefined, { HARD_STOP_BUILD: '1' });
-  assert.equal(interrupted.signal, 'SIGKILL', interrupted.stderr);
+  assert.notEqual(interrupted.status, 0, interrupted.stderr);
+  assert.doesNotMatch(interrupted.stderr, /Refused to interrupt/);
+  assert.ok(JSON.parse(await readFile(join(f.root, 'target/release/.git-khronos-package-build.v1.json.pending'), 'utf8')).owner);
   const previous = await f.builds();
   f.ok();
   assert.equal(await f.builds(), previous + 1, 'a hard stop must not bless old package outputs under the new source checksum');
+});
+
+test('local and Jammy builds with different Cargo targets cannot overlap workspace writes', async (t) => {
+  const f = await fixture(t);
+  const lockPath = join(f.root, 'target/.git-khronos-linux-package.lock');
+  const alternate = join(f.root, 'other Cargo target');
+  await mkdir(dirname(lockPath), { recursive: true });
+  const held = await open(lockPath, 'a', 0o600);
+  try {
+    // The test retains the descriptor after flock exits, just like the writer.
+    const lock = spawnSync('flock', ['--exclusive', '--nonblock', '3'], {
+      stdio: ['ignore', 'ignore', 'pipe', held.fd],
+    });
+    assert.equal(lock.status, 0, lock.stderr?.toString());
+    for (const [task, env] of [
+      ['package:deb', {}],
+      ['package:ubuntu', { CARGO_TARGET_DIR: alternate, EXPECT_JAMMY: '1' }],
+    ]) {
+      const blocked = f.run(['--force', task], env);
+      assert.notEqual(blocked.status, 0, blocked.stderr);
+      assert.match(blocked.stderr, /another Linux package build holds this workspace lock/);
+      await assert.rejects(stat(join(f.root, 'calls')), { code: 'ENOENT' });
+    }
+  } finally {
+    await held.close();
+  }
+  f.ok(['package:deb']);
+  f.ok(['package:ubuntu'], { CARGO_TARGET_DIR: alternate, EXPECT_JAMMY: '1' });
+  assert.equal(await f.builds(), 2);
 });
 
 test('returning to a prior Cargo target rebuilds outputs associated with an older source', async (t) => {

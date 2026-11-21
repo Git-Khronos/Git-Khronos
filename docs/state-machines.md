@@ -853,7 +853,7 @@ installer/package-transition files must not be modified by this task.
 
 | ID / family | Owner | States and transitions | Relevant coverage |
 |---|---|---|---|
-| D01 Build receipts/cache | `tools/package-build-receipt.mjs` | Missing -> owned pending attempt -> verified outputs -> atomic completed receipt -> reusable only with matching digests. | `tools/package-deb.test.mjs` |
+| D01 Build receipts/cache | `tools/build-linux-package.sh`, `tools/package-build-receipt.mjs` | Acquire workspace writer lock -> owned pending attempt -> verified outputs -> atomic completed receipt -> reusable only with matching digests. The writer lock spans shared renderer and notice writes even across separate Cargo outputs. | `tools/package-deb.test.mjs` |
 | D02 Installer/package manager | `install.sh`, `tools/manage-linux-package.sh` | Validate -> select source/download/local -> verify -> fresh/legacy/already-present transaction -> install/uninstall -> inspect/cleanup. | Installer/package tests |
 | D03 APT guard parser | `tools/guard-linux-package-transition.sh` | Version header -> config frame -> terminator -> allowed action records -> required app action -> accept, otherwise refuse. | Package-transition tests |
 | D04 Validation resource ownership | `tools/run-validation.mjs`, `owned-command.mjs`, native harness | Started evidence -> owned child -> exit/abort -> graceful/forced cleanup -> reaped/pipes closed -> one report. | Owned-command/validation/native harness tests |

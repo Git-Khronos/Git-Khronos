@@ -102,6 +102,7 @@ tasks:
       - tools/prepare-frontend-notices.mjs
       - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
+      - tools/build-linux-package.sh
       - tools/package-build-receipt.mjs
       - tools/check-linux-abi.mjs
       - tools/require-ubuntu-jammy.sh
@@ -118,11 +119,7 @@ tasks:
     status:
       - node tools/package-build-receipt.mjs check "{{.CHECKSUM}}" >/dev/null 2>&1
     cmds:
-      - node tools/package-build-receipt.mjs begin "{{.CHECKSUM}}"
-      - mkdir -p "${TMPDIR:-$PWD/target/package-tmp}"
-      - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}}
-      - tools/manage-linux-package.sh name
-      - node tools/package-build-receipt.mjs complete "{{.CHECKSUM}}"
+      - bash tools/build-linux-package.sh local "{{.CHECKSUM}}" "{{.TAURI_CONFIG}}"
 
   package:ubuntu:
     desc: Build the Ubuntu 22.04 amd64 release package and record its checked outputs
@@ -140,12 +137,7 @@ tasks:
     status:
       - node tools/package-build-receipt.mjs check "ubuntu-jammy:{{.CHECKSUM}}" >/dev/null 2>&1
     cmds:
-      - node tools/package-build-receipt.mjs begin "ubuntu-jammy:{{.CHECKSUM}}"
-      - mkdir -p "${TMPDIR:-$PWD/target/package-tmp}"
-      - TMPDIR="${TMPDIR:-$PWD/target/package-tmp}" pnpm exec tauri build --bundles deb --config {{.TAURI_CONFIG}} --config packaging/linux/ubuntu-jammy.conf.json
-      - tools/manage-linux-package.sh name
-      - node tools/check-linux-abi.mjs "$(tools/manage-linux-package.sh print-package)"
-      - node tools/package-build-receipt.mjs complete "ubuntu-jammy:{{.CHECKSUM}}"
+      - bash tools/build-linux-package.sh ubuntu-jammy "ubuntu-jammy:{{.CHECKSUM}}" "{{.TAURI_CONFIG}}"
 
   package:deb:path:
     desc: Print the latest Debian/Ubuntu package path
