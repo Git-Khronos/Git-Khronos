@@ -256,6 +256,12 @@ and observed actual watcher notifications and Git status reads. Those passes
 did not reproduce the original delay or establish its cause. The initial
 reports and the traced reports are retained under
 `target/local-review/updater/jammy-builder/bulk-open.BPaQhVGy/`.
+The next full Jammy attempt passed external checkout but stopped while
+checking the image viewing mode. Its failure screenshot already showed the
+correct single “After” image; the test had read the DOM immediately after
+the click. The updated check waits for the pressed control and the
+expected single image without replaying input. The same installed package
+passed all 30 focused media checks. Full validation is still separate.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 

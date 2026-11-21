@@ -73,6 +73,10 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         assert side['state'] == 'raster', side
         return base64.b64decode(side['dataUrl'].split(',', 1)[1], validate=True)
 
+    def wait_pressed(text):
+        driver.wait('return [...document.querySelectorAll(\'gc-file-media button[aria-pressed="true"]\')].some('
+                    'button => button.textContent.trim() === ' + json.dumps(text) + ')')
+
     try:
         repo_id = driver.invoke('open_repository', path=str(repository))['id']
         for name, _, mime, _, _ in formats:
@@ -117,8 +121,11 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
             assert driver.script("return document.querySelector('gc-file-media').textContent.includes(arguments[0])", mime)
             assert not driver.script("return !!document.querySelector('gc-file-media [role=alert]')")
             driver.click_text('gc-file-media button', 'Actual size')
+            wait_pressed('Actual size')
             driver.click_text('gc-file-media button', 'After only')
-            assert driver.script("return document.querySelectorAll('gc-file-media article').length") == 1
+            wait_pressed('After only')
+            driver.wait("""return document.querySelectorAll('gc-file-media article').length === 1
+              && !!document.querySelector('gc-file-media article[aria-label="After content"]')""")
             driver.screenshot(Path(report['artifactsDirectory']) / ('media-native-' + name + '.png'))
             driver.click('[aria-label="Close diff"]')
             driver.wait("return !document.querySelector('[aria-label=\"Diff viewer\"]')")
