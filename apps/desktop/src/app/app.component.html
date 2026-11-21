@@ -1443,7 +1443,7 @@
             <p id="commit-readiness" class="commit-readiness" [class.ready]="commitReadiness.ready" aria-live="polite" aria-atomic="true"><gc-icon [name]="commitReadiness.icon" [size]="12" />{{ commitReadiness.message }}</p>
             <button class="primary" type="submit" aria-describedby="commit-readiness" [title]="commitReadiness.message" [disabled]="!commitReadiness.ready">
               <gc-icon name="git-commit" [size]="13" />
-              {{ !operationState.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : repo.status.staged ? 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') : 'Stage files to commit' }}{{ (repo.status.staged || amendPrevious() || commitPolicy().allowEmpty) && pushAfterCommit() ? ' and push' : '' }}
+              {{ !operationState.rebaseSplit && amendPrevious() ? 'Amend previous commit' : !repo.status.staged && commitPolicy().allowEmpty ? 'Create commit without staged changes' : repo.status.staged ? 'Commit changes to ' + repo.status.staged + ' ' + (repo.status.staged === 1 ? 'file' : 'files') : 'Stage files to commit' }}{{ (repo.status.staged || amendPrevious() || commitPolicy().allowEmpty) ? commitPushButtonSuffix() : '' }}
             </button>
           </form>
           </div>

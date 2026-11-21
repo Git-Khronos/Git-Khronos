@@ -212,6 +212,10 @@ confirming a tracked selection can untrack only the selected file.
 
 ### Commit followed by push
 
+The composer previews the same route the toolbar uses: push to the selected
+remote and target branch, open a publish review for a branch without an
+upstream, or commit locally when there is no usable route. A publish review
+is not itself a network write.
 The composer retains the selected remote, its displayed push URL, and
 the target branch when it starts a commit (or stage-and-commit).
 After staging, a mismatch leaves the staged changes for explicit review.

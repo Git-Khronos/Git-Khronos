@@ -460,6 +460,44 @@ for (const change of ['during staging', 'during commit', 'with a changed push UR
   });
 }
 
+for (const route of ['tracked', 'unpublished', 'detached'] as const) {
+  test(`commit composer previews the ${route} push follow-up`, async ({ page }) => {
+    await setup(page, 1);
+    await page.evaluate(route => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      git.repositories.update((items: any[]) => items.map(item => ({
+        ...item,
+        status: route === 'detached' ? { ...item.status, branch: null } : item.status,
+        branches: item.branches.map((branch: any) => !branch.current ? branch : {
+          ...branch, current: route !== 'detached',
+          upstream: route === 'tracked' ? 'origin/target/topic' : null,
+        }),
+      })));
+    }, route);
+    await page.getByLabel('Commit summary', { exact: true }).fill('Preview the result before doing anything');
+    await page.getByLabel('Push after committing', { exact: true }).check();
+    const readiness = page.locator('#commit-readiness');
+    const submit = page.locator('.commit-form button[type=submit]');
+    if (route === 'tracked') {
+      await expect(readiness).toContainText('then push to origin/target/topic');
+      await expect(submit).toContainText('and push');
+    } else if (route === 'unpublished') {
+      await expect(readiness).toContainText('then review publishing main to origin');
+      await expect(submit).toContainText('and review publishing');
+      await submit.click();
+      await expect(page.getByRole('dialog', { name: 'Publish main', exact: true })
+        .getByLabel('Publish remote', { exact: true })).toHaveValue('origin');
+    } else {
+      await expect(readiness).toContainText('Detached HEAD: the commit stays local');
+      await expect(submit).not.toContainText('and push');
+      await submit.click();
+      await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
+    }
+    expect(await page.evaluate(() => (window as any).__commitPolicy.calls
+      .filter((call: any) => ['push_repository', 'publish_branch'].includes(call.command)))).toEqual([]);
+  });
+}
+
 for (const navigation of ['stay', 'switch tabs', 'return to the submitted text'] as const) {
   test(`late commit completion retains a newer draft when users ${navigation}`, async ({ page }) => {
     await setup(page, 1);

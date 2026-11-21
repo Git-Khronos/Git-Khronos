@@ -256,6 +256,10 @@ interface CommitDraft {
   policy: CommitPolicy;
 }
 
+type BranchPushPlan =
+  | { readonly kind: 'push'; readonly remote: Remote; readonly branch: string }
+  | { readonly kind: 'publish'; readonly remote: Remote | null; readonly branch: string };
+
 interface DiffViewportPosition {
   top: number;
   left: number;
@@ -2676,6 +2680,18 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!branch || !remote) return null;
     const prefix = `${remote.name}/`;
     return branch.upstream?.startsWith(prefix) ? branch.upstream.slice(prefix.length) : branch.name;
+  });
+
+  private readonly branchPushPlan = computed<BranchPushPlan | null>(() => {
+    const repository = this.git.repository();
+    const current = this.currentBranch();
+    // Before the first commit the branch has a name but no ref row yet.
+    const name = current?.name ?? (repository?.headOid ? null : repository?.status.branch);
+    if (!name) return null;
+    const remote = this.currentRemote();
+    if (!current?.upstream) return { kind: 'publish', remote, branch: name };
+    const target = this.currentRemoteBranch();
+    return remote && target ? { kind: 'push', remote, branch: target } : null;
   });
 
   protected readonly currentRemoteIsUpstream = computed(() => {
@@ -7351,16 +7367,33 @@ export class AppComponent implements OnInit, OnDestroy {
       return { ready: false, icon: 'edit', message: 'Write a commit summary to continue.' };
     }
 
-    const push = this.pushAfterCommit() ? ' and push it' : '';
+    let action: string;
     if (!split && this.amendPrevious()) {
-      return { ready: true, icon: 'check', message: `Ready to amend the previous commit${push}.` };
+      action = 'amend the previous commit';
+    } else if (!repository.status.staged && this.commitPolicy().allowEmpty) {
+      action = 'create an empty commit';
+    } else {
+      action = `commit ${repository.status.staged} staged ${repository.status.staged === 1 ? 'file' : 'files'}`;
     }
-    if (!repository.status.staged && this.commitPolicy().allowEmpty) {
-      return { ready: true, icon: 'check', message: `Ready to create an empty commit${push}.` };
+    let message = `Ready to ${action}.`;
+    if (this.pushAfterCommit()) {
+      const plan = this.branchPushPlan();
+      if (plan?.kind === 'push') message = `Ready to ${action}, then push to ${plan.remote.name}/${plan.branch}.`;
+      else if (plan?.kind === 'publish') {
+        message = `Ready to ${action}, then review publishing ${plan.branch}${plan.remote ? ' to ' + plan.remote.name : ''}.`;
+      } else {
+        message += repository.headOid && !repository.status.branch
+          ? ' Detached HEAD: the commit stays local.'
+          : ' No push destination is available. The commit stays local.';
+      }
     }
-    const files = `${repository.status.staged} staged ${repository.status.staged === 1 ? 'file' : 'files'}`;
-    return { ready: true, icon: 'check', message: `Ready to commit ${files}${push}.` };
+    return { ready: true, icon: 'check', message };
   }
+
+  protected readonly commitPushButtonSuffix = computed(() => {
+    const kind = this.pushAfterCommit() ? this.branchPushPlan()?.kind : null;
+    return kind === 'push' ? ' and push' : kind === 'publish' ? ' and review publishing' : '';
+  });
 
   protected async commit(): Promise<void> {
     const repository = this.git.repository();
@@ -7403,12 +7436,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private commitPushTarget(): string {
-    const remote = this.currentRemote();
-    const branch = this.git.repository()?.status.branch;
-    // An unborn branch can acquire its first ref during the commit. Use its
-    // local name as the fallback target when there is no tracking ref yet.
-    return JSON.stringify([remote?.name, remote?.pushUrl || remote?.fetchUrl,
-      remote ? this.currentRemoteBranch() ?? branch : null, this.currentBranch()?.upstream]);
+    const plan = this.branchPushPlan();
+    return JSON.stringify([plan?.kind, plan?.remote?.name, plan?.remote?.pushUrl || plan?.remote?.fetchUrl,
+      plan?.branch, this.currentBranch()?.upstream]);
   }
 
   protected updateStashMessage(message: string, repositoryId: string, repositoryPath: string): void {
@@ -11737,21 +11767,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected pushCurrentBranch(): void {
     const opener = this.captureSecondaryConfirmationOpener();
     this.toolbarOverlays.close('push');
-    const branch = this.currentBranch();
-    const remote = this.currentRemote();
-    const targetBranch = this.currentRemoteBranch();
-    if (!branch || this.git.busy()) return;
-    if (!remote || !targetBranch) {
-      if (!branch.upstream) {
-        this.openPublishBranchReview(branch.name, '', opener);
-      }
-      return;
-    }
-    if (branch.upstream) {
-      void this.git.remote('push_repository', { remote: remote.name, branch: targetBranch });
-      return;
-    }
-    this.openPublishBranchReview(branch.name, remote.name, opener);
+    const plan = this.branchPushPlan();
+    if (!this.currentBranch() || this.git.busy() || !plan) return;
+    if (plan.kind === 'push') void this.git.remote('push_repository', { remote: plan.remote.name, branch: plan.branch });
+    else this.openPublishBranchReview(plan.branch, plan.remote?.name ?? '', opener);
   }
 
   private openPublishBranchReview(branch: string, remote: string, returnFocus: HTMLElement | null): void {
