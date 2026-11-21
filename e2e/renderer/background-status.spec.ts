@@ -122,6 +122,105 @@ test('a failed tags read stays distinguishable from an empty repository and retr
   expect(await page.evaluate(() => (window as any).__tagReadRetry.reads)).toBe(2);
 });
 
+test('each workspace keeps its own tag-loading state when the same repository is open in both', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const originalWorkspace = git.activeWorkspaceId();
+    const thin = { ...git.repository(), tags: [] };
+    const hydrated = { ...thin, tags: [{ name: 'shared-tag', fullName: 'refs/tags/shared-tag', oid: thin.commits[0].oid }] };
+    const fixture = { git, sharedWorkspace: '', sharedReads: 0 };
+    (window as any).__sharedWorkspaceMetadata = fixture;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'open_repository') return Promise.resolve(thin);
+        if (command === 'refresh_repository') {
+          if (git.activeWorkspaceId() === fixture.sharedWorkspace) {
+            fixture.sharedReads++;
+            return Promise.reject(new Error('owned workspace read failed'));
+          }
+          return Promise.resolve(hydrated);
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(thin.status);
+        return Promise.resolve(null);
+      },
+    };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    git.closeRepository(thin.id);
+    await git.openRepository(thin.path);
+    fixture.sharedWorkspace = (await git.createWorkspace('Shared checkout')).id;
+    await git.openRepository(thin.path);
+    await git.switchWorkspace(originalWorkspace);
+  });
+  const pane = page.locator('#reference-section-tags');
+  const heading = pane.locator('.sidebar-heading');
+  if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
+  await page.clock.runFor(1_300);
+  await expect(pane.getByRole('button', { name: 'Tag shared-tag' })).toBeVisible();
+  await page.evaluate(async () => {
+    const fixture = (window as any).__sharedWorkspaceMetadata;
+    await fixture.git.switchWorkspace(fixture.sharedWorkspace);
+  });
+  await expect(pane.getByRole('status')).toHaveText('Loading tags…');
+  await expect(pane.getByText('No tags', { exact: true })).toHaveCount(0);
+  await page.clock.runFor(1_300);
+  await expect(pane.getByRole('status')).toHaveText('Could not load tags.');
+  expect(await page.evaluate(() => (window as any).__sharedWorkspaceMetadata.sharedReads)).toBe(1);
+});
+
+for (const read of ['metadata', 'background fetch'] as const) {
+  test(`a ${read} reply from an earlier visit cannot replace a revisited workspace`, async ({ page }) => {
+    await page.clock.install();
+    await page.goto('/');
+    await expect(page.locator('.commit-row').first()).toBeVisible();
+    await page.evaluate(async read => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const origin = git.activeWorkspaceId();
+      const thin = { ...git.repository(), tags: [] };
+      const withTag = (name: string) => ({
+        ...thin, tags: [{ name, fullName: `refs/tags/${name}`, oid: thin.commits[0].oid }],
+      });
+      const fixture: { git: any; origin: string; release?: () => void; reads: number } = { git, origin, reads: 0 };
+      (window as any).__revisitedWorkspace = fixture;
+      (window as any).__TAURI_INTERNALS__ = {
+        invoke: (command: string) => {
+          if (command === 'open_repository') return Promise.resolve(thin);
+          if (command === 'refresh_repository' || command === 'sync_repository') {
+            if (++fixture.reads === 1 && (read === 'metadata' || command === 'sync_repository')) {
+              return new Promise(resolve => { fixture.release = () => resolve(withTag('retired-tag')); });
+            }
+            return Promise.resolve(withTag('current-tag'));
+          }
+          if (command === 'refresh_repository_status') return Promise.resolve(thin.status);
+          return Promise.resolve(null);
+        },
+      };
+      git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+      git.closeRepository(thin.id);
+      await git.openRepository(thin.path);
+      if (read === 'background fetch') void git.fetchInBackground(thin.id);
+    }, read);
+    if (read === 'metadata') await page.clock.runFor(1_300);
+    await page.evaluate(async () => {
+      const fixture = (window as any).__revisitedWorkspace;
+      if (!fixture.release) throw new Error('expected the first metadata read to be in flight');
+      await fixture.git.createWorkspace('Temporary visit');
+      await fixture.git.switchWorkspace(fixture.origin);
+      fixture.release();
+    });
+    const pane = page.locator('#reference-section-tags');
+    const heading = pane.locator('.sidebar-heading');
+    if (await heading.getAttribute('aria-expanded') === 'false') await heading.click();
+    await expect(pane.getByRole('status')).toHaveText('Loading tags…');
+    await expect(pane.getByRole('button', { name: 'Tag retired-tag' })).toHaveCount(0);
+    await page.clock.runFor(1_300);
+    await expect(pane.getByRole('button', { name: 'Tag current-tag' })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__revisitedWorkspace.reads)).toBe(2);
+  });
+}
+
 test('keeps untracked discovery after an external branch change', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();

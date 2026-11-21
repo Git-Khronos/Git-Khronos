@@ -61,13 +61,15 @@ reported rather than treated as an explicit close.
 One restore instance owns an active workspace visit. Both its timer and replies
 check instance identity, including when the user leaves and returns to the same
 workspace. Closing a tab revokes that pending path so an earlier read cannot
-reopen it. `repository-restoration.spec.ts` exercises durable tab intent,
-partial cache hits, deferred reordering, failures and late native replies.
+reopen it. Renderer incoming-link tests cover saved-path restoration before
+review, and the packaged workspace scenario checks returning to cached tabs.
 
 The first usable snapshot may omit tags. Its full metadata read stays pending
 while a status read or foreground action is active, with at most one deferred
-timer per repository. A superseded refresh cannot settle the pending read.
-Only a current snapshot from the owning workspace and checkout clears it.
+timer per repository in each workspace. Two cached views of the same checkout
+can have different metadata readiness. A superseded refresh cannot settle the
+pending read, including after leaving and returning to the same workspace.
+Only a current snapshot from the owning visit and checkout clears it.
 `background-status.spec.ts` holds a status reply across the first timer and
 verifies that the restored tag then appears without a manual refresh.
 A failed full read is distinct from ready metadata with zero tags. The Tags
