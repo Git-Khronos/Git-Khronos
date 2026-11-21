@@ -273,7 +273,11 @@ transaction across independent Git processes.
 Commit completion consumes only the submitted draft. Both the live form and
 saved per-tab drafts retain edits made after submission, even when the user
 types the same text again. A tab switch can save a new draft for the original
-checkout without letting the old completion erase it. An optional push uses
+checkout without letting the old completion erase it. Repository navigation
+saves the visible draft again at handoff, so edits made during a pending
+native open stay with their original checkout. A same-checkout transition
+keeps the live form, and explicit tab closure does not re-save the closed
+tab's draft. An optional push uses
 the original consent only while the same tab, checkout, and branch remain
 active; otherwise the user must review and push explicitly.
 

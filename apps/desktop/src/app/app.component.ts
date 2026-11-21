@@ -7863,8 +7863,14 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  private restoreCommitDraft(): void {
+  private restoreCommitDraft(discardedRepositoryId?: string): void {
     const repositoryId = this.git.activeRepositoryId();
+    if (this.draftRepositoryId && this.draftRepositoryId !== discardedRepositoryId) {
+      if (this.draftRepositoryId === repositoryId) return;
+      // Opening a checkout can leave the outgoing form editable while native
+      // work is pending. Save the live fields at handoff, not just at dispatch.
+      this.saveCommitDraft();
+    }
     this.draftRepositoryId = repositoryId;
     this.resetCommitForm();
     if (!repositoryId) return;
@@ -10623,7 +10629,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (wasActive) {
       this.commitDrafts.delete(repoId);
-      this.restoreCommitDraft();
+      this.restoreCommitDraft(repoId);
       this.selectWip();
       this.loadGraphPreferences();
     }

@@ -302,7 +302,7 @@ test('opens multiple selected directories, keeps individual outcomes and switche
   await expect(summary).toHaveValue('Workspace draft');
 });
 
-test('closing the overview stops queued opens but still finishes the dispatched checkout', async ({ page }) => {
+test('closing the overview stops queued opens and keeps draft edits made while an open finishes', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -323,10 +323,30 @@ test('closing the overview stops queued opens but still finishes the dispatched 
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishFirstOpen)).toBe('function');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/alpha');
+  const summary = page.getByRole('textbox', { name: 'Commit summary', exact: true });
+  const description = page.getByRole('textbox', { name: 'Commit description', exact: true });
+  await summary.fill('Draft edited while the checkout was opening');
+  await description.fill('These source edits must survive the open.');
   await page.evaluate(() => (window as any).__center.finishFirstOpen());
   await expect(page.locator('.status-repository-path')).toHaveText('/owned/first-open');
-  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('');
+  await expect(summary).toHaveValue('');
+  await expect(description).toHaveValue('');
   expect(await page.evaluate(() => (window as any).__center.calls)).toEqual(['/owned/first-open']);
+  await page.getByRole('tab', { name: /^Alpha(?:,|$)/i }).click();
+  await expect(summary).toHaveValue('Draft edited while the checkout was opening');
+  await expect(description).toHaveValue('These source edits must survive the open.');
+});
+
+test('closing the active tab does not revive its former draft when reopened', async ({ page }) => {
+  const path = page.locator('.status-repository-path');
+  const summary = page.getByRole('textbox', { name: 'Commit summary', exact: true });
+  await expect(summary).toHaveValue('Workspace draft');
+  await page.getByRole('button', { name: 'Close Alpha', exact: true }).click();
+  await expect(path).toHaveText('/owned/beta');
+  await page.keyboard.press('Control+Shift+T');
+  await expect(path).toHaveText('/owned/alpha');
+  await expect(summary).toHaveValue('');
 });
 
 test('a bulk pull invalidates its old diff without clearing a newer inspection', async ({ page }) => {

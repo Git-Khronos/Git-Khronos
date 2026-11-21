@@ -287,6 +287,11 @@ test('signer configuration failure clears a previous availability result and ret
       fixture.calls.push(command);
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
       if (command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
+      if (command === 'working_tree_change_summary') {
+        const { unstaged, untracked } = git.repository().status;
+        return Promise.resolve({ staged: null, unstaged: { additions: 0, deletions: 0,
+          uncountedFiles: unstaged + untracked, partial: true } });
+      }
       if (command !== 'diagnose_signing') return Promise.reject(new Error(`Unexpected ${command}`));
       if (fixture.fail) return Promise.reject({
         kind: 'invalidSigningProgram', message: 'The configured signing program is empty.',
@@ -317,7 +322,8 @@ test('signer configuration failure clears a previous availability result and ret
   expect(calls.filter(command => command === 'diagnose_signing')).toEqual([
     'diagnose_signing', 'diagnose_signing', 'diagnose_signing',
   ]);
-  expect(calls.every(command => ['diagnose_signing', 'refresh_repository_status', 'refresh_repository_metadata'].includes(command))).toBe(true);
+  const allowedReads = ['diagnose_signing', 'refresh_repository_status', 'refresh_repository_metadata', 'working_tree_change_summary'];
+  expect(calls.filter(command => !allowedReads.includes(command))).toEqual([]);
 });
 
 test('closing commit details during signature loading never reopens them or steals focus', async ({ page }) => {
