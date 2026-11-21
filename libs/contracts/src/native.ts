@@ -526,7 +526,7 @@ export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
 export type WorkingTreeChangeSummary = { additions: number; deletions: number; uncountedFiles: number; partial: boolean }
 export type WorkingTreeEntry = { path: string; previousPath?: string | null; indexStatus: string; worktreeStatus: string; conflicted: boolean }
-export type WorkingTreeFileDiff = { path: string; staged: boolean; patch: string; truncated: boolean }
+export type WorkingTreeFileDiff = { path: string; previousPath?: string | null; staged: boolean; patch: string; truncated: boolean }
 export type WorkingTreeSummaries = { staged: WorkingTreeChangeSummary | null; unstaged: WorkingTreeChangeSummary | null }
 export type Worktree = { path: string; oid: string; branch: string | null; current: boolean; locked: boolean; prunable: boolean; statusLoaded: boolean; changes: number; ahead: number; behind: number }
 export type WorktreeMove = { path: string; parentPath: string; folder: string; expectedOid: string; expectedBranch: string | null }
@@ -850,7 +850,7 @@ export function compare_commits(args: { repoId: string; baseOid: string; targetO
 export function compare_commit_file(args: { repoId: string; baseOid: string; targetOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file", args); }
 export function compare_commit_with_working_tree(args: { repoId: string; baseOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commit_with_working_tree", args); }
 export function compare_commit_file_with_working_tree(args: { repoId: string; baseOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file_with_working_tree", args); }
-export function inspect_working_tree_file(args: { repoId: string; path: string; staged: boolean }): Promise<WorkingTreeFileDiff> { return TAURI_INVOKE("inspect_working_tree_file", args); }
+export function inspect_working_tree_file(args: { repoId: string; path: string; staged: boolean; previousPath?: string | null }): Promise<WorkingTreeFileDiff> { return TAURI_INVOKE("inspect_working_tree_file", args); }
 export function working_tree_change_summary(args: { repoId: string }): Promise<WorkingTreeSummaries> { return TAURI_INVOKE("working_tree_change_summary", args); }
 export function application_update_status(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("application_update_status", args); }
 export function set_automatic_application_updates(args: { enabled: boolean }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("set_automatic_application_updates", args); }

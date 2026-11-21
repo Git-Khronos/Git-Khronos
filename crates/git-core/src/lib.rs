@@ -18,7 +18,7 @@ mod discard;
 mod file_content;
 mod file_statistics;
 mod index_rename;
-pub use index_rename::{stage_worktree_rename, unstage_index_rename};
+pub use index_rename::{stage_worktree_rename, unstage_index_rename, working_tree_rename_diff};
 mod working_tree_summary;
 pub use working_tree_summary::{WorkingTreeChangeSummary, WorkingTreeSummaries, working_tree_change_summary, working_tree_summaries};
 mod file_tool_model;
@@ -861,6 +861,8 @@ pub struct CommitFileDiff {
 #[serde(rename_all = "camelCase")]
 pub struct WorkingTreeFileDiff {
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
     pub staged: bool,
     pub patch: String,
     pub truncated: bool,
@@ -6292,6 +6294,7 @@ pub fn working_tree_file_diff(
     let bytes = &output.stdout[..output.stdout.len().min(MAX_FILE_DIFF_BYTES)];
     Ok(WorkingTreeFileDiff {
         path: file.to_owned(),
+        previous_path: None,
         staged,
         patch: String::from_utf8_lossy(bytes).into_owned(),
         truncated,
@@ -7072,6 +7075,14 @@ fn read_working_tree_patch(
     staged: bool,
 ) -> Result<(WorkingTreeEntry, Output), AppError> {
     let entry = validate_worktree_path(path, file)?;
+    let status = if staged { &entry.index_status } else { &entry.worktree_status };
+    if status == "R" {
+        return Err(AppError::new(
+            "wholeRenameRequired",
+            "This change is a rename, not a change to one path.",
+            Some("Open the rename from Changes and stage or unstage both paths together."),
+        ));
+    }
     let mut output = if staged {
         run_git(
             path,

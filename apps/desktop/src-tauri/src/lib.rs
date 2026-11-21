@@ -2866,15 +2866,18 @@ async fn working_tree_change_summary(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn inspect_working_tree_file(
+async fn inspect_working_tree_file(
     repo_id: String,
     path: String,
     staged: bool,
-    state: tauri::State<'_, AppState>,
+    previous_path: Option<String>,
+    app: AppHandle,
 ) -> Result<WorkingTreeFileDiff, AppError> {
-    with_repository(&repo_id, &state, |repository| {
-        git_working_tree_file_diff(repository, &path, staged)
+    with_repository_background(repo_id, app, move |repository| match previous_path {
+        Some(source) => git_khronos_git_core::working_tree_rename_diff(repository, &source, &path, staged),
+        None => git_working_tree_file_diff(repository, &path, staged),
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]

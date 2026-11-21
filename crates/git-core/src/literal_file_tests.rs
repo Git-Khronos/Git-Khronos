@@ -1940,6 +1940,53 @@ fn reviewed_index_rename_refuses_directory_pathspec_expansion() {
     assert_eq!(index(), before);
 }
 
+#[test]
+fn reviewed_working_tree_rename_diff_shows_only_actual_edits_on_either_side() {
+    let repository = Repository::new();
+    let source = "old\t\n[*].txt";
+    let destination = "new[*].txt";
+    let base = b"retained alpha\nretained beta\nretained gamma\nold\n";
+    let changed = b"retained alpha\nretained beta\nretained gamma\nnew\n";
+    repository.write(source, base);
+    repository.commit("Base");
+    fs::rename(repository.0.join(source), repository.0.join(destination)).unwrap();
+    repository.git(&["--literal-pathspecs", "add", "-N", "--", destination]);
+    let index = || fs::read(repository.0.join(".git/index")).unwrap();
+    let pure_index = index();
+    let pure = working_tree_rename_diff(&repository.0, source, destination, false).unwrap();
+    assert!(pure.patch.contains("\nsimilarity index 100%\n"));
+    assert!(!pure.patch.contains("\n@@"));
+    assert_eq!(index(), pure_index);
+    repository.write(destination, changed);
+    for staged in [false, true] {
+        if staged {
+            stage_worktree_rename(&repository.0, source, destination).unwrap();
+        }
+        let before = index();
+        let patch = working_tree_rename_diff(&repository.0, source, destination, staged).unwrap();
+        assert_eq!(patch.previous_path.as_deref(), Some(source));
+        assert_eq!(patch.path, destination);
+        assert!(!patch.truncated);
+        assert!(patch.patch.contains("\nrename from "));
+        assert!(patch.patch.contains("\nrename to "));
+        assert!(patch.patch.contains("\n-old\n+new\n"));
+        assert!(!patch.patch.contains("\n+retained"));
+        assert!(!patch.patch.contains("\n-retained"));
+        assert_eq!(working_tree_rename_diff(&repository.0, source, destination, !staged).unwrap_err().kind,
+            "staleWorkingTreeRename");
+        assert_eq!(working_tree_rename_diff(&repository.0, "wrong", destination, staged).unwrap_err().kind,
+            "staleWorkingTreeRename");
+        assert_eq!(apply_working_tree_hunk_with_preview(&repository.0, destination, staged, 0,
+            if staged { "unstage" } else { "stage" }, Some(&patch.patch)).unwrap_err().kind, "wholeRenameRequired");
+        assert_eq!(index(), before);
+        assert_eq!(fs::read(repository.0.join(destination)).unwrap(), changed);
+    }
+    repository.write(destination, b"retained alpha\nretained beta\nretained gamma\nlater\n");
+    let unstaged_edit = working_tree_file_diff(&repository.0, destination, false).unwrap();
+    assert!(unstaged_edit.previous_path.is_none());
+    assert!(unstaged_edit.patch.contains("\n-new\n+later\n"));
+}
+
 #[cfg(unix)]
 #[test]
 fn unstaged_summary_counts_symlink_blob_without_opening_its_target() {

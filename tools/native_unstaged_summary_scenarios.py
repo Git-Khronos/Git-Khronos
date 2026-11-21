@@ -87,10 +87,31 @@ def unstaged_summary_workflow(driver, fixtures, report):
                                                    'stagedRecap': staged, 'footprint': expected_after_edit}
     report['scenarios'].append('native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain')
 
+    def verify_rename_diff(button, side):
+        driver.click_visible(button)
+        text = driver.wait('''
+            const viewer = document.querySelector('.diff-workspace');
+            const from = viewer?.querySelector('.diff-rename-source');
+            const footer = viewer?.querySelector('.diff-additions')?.parentElement;
+            if (!viewer?.getClientRects().length || !from?.getClientRects().length || from.textContent !== 'Renamed from before.txt'
+                || !viewer.querySelector('.diff-file-identity')?.textContent.includes(''' + json.dumps(side) + ''')
+                || !footer?.textContent.includes('Stage or unstage the whole rename from Changes.')) return null;
+            return {added: footer.querySelector('.diff-additions').textContent,
+                deleted: footer.querySelector('.diff-deletions').textContent,
+                partialActions: viewer.querySelectorAll('.diff-line-selector, .focus-hunk-actions button').length};
+        ''')
+        assert text == {'added': '+2', 'deleted': '−1', 'partialActions': 0}, text
+        driver.click_visible('button[aria-label="Close diff"]')
+        return text
+
+    unstaged_diff = verify_rename_diff('[aria-label="View changes in after.txt"]', 'Unstaged Changes')
+    assert checkout_footprint(fixtures, renamed, (new_name.name,)) == expected_after_edit
     driver.click_visible('[aria-label="Stage after.txt"]')
     staged_rename = recaps((0, 0), (2, 1), uncounted=0)
     indexed = checkout_footprint(fixtures, renamed, (new_name.name,))
     assert indexed['status'] == 'R  before.txt -> after.txt', indexed['status']
+    staged_diff = verify_rename_diff('[aria-label="View staged changes in after.txt"]', 'Staged Changes')
+    assert checkout_footprint(fixtures, renamed, (new_name.name,)) == indexed
     driver.click_visible('[aria-label="Unstage after.txt"]')
     driver.wait('return !document.querySelector(\'[aria-label="Unstage after.txt"]\')'
                 ' && !!document.querySelector(\'[aria-label="Stage before.txt"]\')')
@@ -102,3 +123,5 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary']['indexRename'] = {'recaps': staged_rename,
                                                    'afterStage': indexed, 'afterUnstage': unindexed}
     report['scenarios'].append('native-worktree-rename-stages-and-unstages-both-paths-without-changing-files')
+    report['unstagedLineSummary']['renameDiff'] = {'unstaged': unstaged_diff, 'staged': staged_diff}
+    report['scenarios'].append('native-worktree-rename-diff-reviews-both-paths-and-shows-only-edited-lines')

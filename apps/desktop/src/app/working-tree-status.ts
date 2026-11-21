@@ -180,6 +180,8 @@ export function describeWorkingTreeStatus(entry: WorkingTreeEntry, staged: boole
       : 'New file, not tracked by Git yet';
   }
   const code = staged ? entry.indexStatus : entry.worktreeStatus;
-  const change = CHANGE_DESCRIPTIONS[code] ?? `Changed (${code.trim() || 'unknown'})`;
+  const change = code === 'R' && entry.previousPath
+    ? `Renamed from ${entry.previousPath}`
+    : CHANGE_DESCRIPTIONS[code] ?? `Changed (${code.trim() || 'unknown'})`;
   return staged ? `${change}, staged for the next commit` : `${change}, not staged yet`;
 }

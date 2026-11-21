@@ -2394,9 +2394,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
   ]);
 
-  private workingMediaSelection(path: string, staged: boolean): FileMediaSelection | null {
+  private workingMediaSelection(path: string, staged: boolean, previousPath = this.git.renameSourceForPath(path, staged)): FileMediaSelection | null {
     const repoId = this.git.activeRepositoryId();
-    return repoId ? { repoId, request: { context: { kind: 'workingTree', staged }, path, previousPath: null } } : null;
+    return repoId ? { repoId, request: { context: { kind: 'workingTree', staged }, path, previousPath: previousPath ?? null } } : null;
   }
 
   private commitMediaSelection(file: Pick<CommitFile, 'path' | 'previousPath'>, oid: string, source: 'commit' | 'comparison'): FileMediaSelection | null {
@@ -2417,7 +2417,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!diff) return null;
     if (this.changesOpen()) {
       const working = this.git.workingTreeFileDiff();
-      return working ? this.workingMediaSelection(working.path, working.staged) : null;
+      return working ? this.workingMediaSelection(working.path, working.staged, working.previousPath ?? null) : null;
     }
     const comparison = this.git.commitComparison();
     const details = this.git.commitDetails();
@@ -2430,6 +2430,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly activeWorkingTreeDiff = computed(() => this.changesOpen()
     ? this.git.workingTreeFileDiff()
     : null);
+  protected readonly selectableWorkingTreeDiff = computed(() => {
+    const diff = this.activeWorkingTreeDiff();
+    return diff?.previousPath ? null : diff;
+  });
 
   protected readonly activeDiffLabel = computed(() => {
     const workingTree = this.git.workingTreeFileDiff();
@@ -2567,6 +2571,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ));
 
   protected readonly selectedDiffLines = computed<DiffLineSelection | null>(() => {
+    if (!this.selectableWorkingTreeDiff()) return null;
     const groups = this.selectedDiffLineGroups();
     if (!groups.length) return null;
     const hunkIndex = Number(groups[0].split(':', 1)[0]);
@@ -3753,22 +3758,30 @@ export class AppComponent implements OnInit, OnDestroy {
     (this.git.repository()?.status.entries ?? []).filter((entry) => entry.conflicted && this.matchesFileFilter(entry.path)),
   );
 
+  private readonly filteredUnstagedEntries = computed(() =>
+    this.unstagedEntries().filter(entry => this.matchesFileFilter(entry.path, entry.worktreeStatus === 'R' ? entry.previousPath : null)),
+  );
+
+  private readonly filteredStagedEntries = computed(() =>
+    this.stagedEntries().filter(entry => this.matchesFileFilter(entry.path, entry.indexStatus === 'R' ? entry.previousPath : null)),
+  );
+
   protected readonly sortedUnstagedEntries = computed(() =>
-    sortWorkingTreeEntries(this.unstagedEntries().filter((entry) => this.matchesFileFilter(entry.path)), this.workingTreeSortAscending()),
+    sortWorkingTreeEntries(this.filteredUnstagedEntries(), this.workingTreeSortAscending()),
   );
 
   protected readonly sortedStagedEntries = computed(() =>
-    sortWorkingTreeEntries(this.stagedEntries().filter((entry) => this.matchesFileFilter(entry.path)), this.workingTreeSortAscending()),
+    sortWorkingTreeEntries(this.filteredStagedEntries(), this.workingTreeSortAscending()),
   );
 
   protected readonly unstagedTreeRows = computed(() => buildWorkingTreeRows(
-    this.unstagedEntries().filter((entry) => this.matchesFileFilter(entry.path)),
+    this.filteredUnstagedEntries(),
     this.workingTreeSortAscending(),
     new Set(this.collapsedWorkingTreeDirectories()),
   ));
 
   protected readonly stagedTreeRows = computed(() => buildWorkingTreeRows(
-    this.stagedEntries().filter((entry) => this.matchesFileFilter(entry.path)),
+    this.filteredStagedEntries(),
     this.workingTreeSortAscending(),
     new Set(this.collapsedWorkingTreeDirectories()),
   ));
@@ -13204,7 +13217,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async applyHunk(path: string, staged: boolean, hunkIndex: number): Promise<void> {
-    const diff = this.activeWorkingTreeDiff();
+    const diff = this.selectableWorkingTreeDiff();
     if (!diff || diff.path !== path || diff.staged !== staged || diff.truncated || this.git.busy()) return;
     await this.applyDiffChange(() => this.git.applyWorkingTreeHunk(path, staged, hunkIndex, staged ? 'unstage' : 'stage', diff.patch));
   }
@@ -13226,7 +13239,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected toggleDiffLineSelection(line: DiffLine): void {
-    if (line.hunkIndex === null || !line.changeIndices.length || !this.activeWorkingTreeDiff()) return;
+    if (line.hunkIndex === null || !line.changeIndices.length || !this.selectableWorkingTreeDiff()) return;
     const key = this.diffLineSelectionKey(line);
     this.selectedDiffLineGroups.update((groups) => {
       const sameHunk = groups.filter((group) => Number(group.split(':', 1)[0]) === line.hunkIndex);
@@ -13235,7 +13248,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async applySelectedDiffLines(): Promise<void> {
-    const diff = this.activeWorkingTreeDiff();
+    const diff = this.selectableWorkingTreeDiff();
     const selection = this.selectedDiffLines();
     if (!diff || !selection || diff.truncated || this.git.busy()) return;
     await this.applyDiffChange(() => this.git.applyWorkingTreeLines(
@@ -13256,7 +13269,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected requestDiscardSelectedDiffLines(): void {
-    const diff = this.activeWorkingTreeDiff();
+    const diff = this.selectableWorkingTreeDiff();
     const selection = this.selectedDiffLines();
     if (!diff || diff.staged || diff.truncated || !selection || this.isUntrackedPath(diff.path)) return;
     this.openFileConfirmation({
@@ -13271,7 +13284,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected requestDiscardHunk(path: string, hunkIndex: number): void {
-    const diff = this.activeWorkingTreeDiff();
+    const diff = this.selectableWorkingTreeDiff();
     if (!diff || diff.path !== path || diff.staged || diff.truncated || this.isUntrackedPath(path)) return;
     this.openFileConfirmation({
       kind: 'discard-hunk',

@@ -1,9 +1,10 @@
-//! Index actions for a rename whose two literal paths have been reviewed.
+//! Diff and index actions for a rename whose two literal paths have been reviewed.
 //! Keep ordinary single-path staging unchanged; a rename is a separate intent.
 use std::{io::ErrorKind, path::Path};
 
 use super::{
-    AppError, ensure_success, run_git, run_git_with_stdout_limit, run_mutation, without_lazy_fetch,
+    AppError, MAX_FILE_DIFF_BYTES, WorkingTreeFileDiff, ensure_success, run_git,
+    run_git_with_stdout_limit, run_mutation, without_lazy_fetch,
 };
 
 const MAX_REVIEW_BYTES: usize = 4 * 1024 * 1024;
@@ -59,17 +60,6 @@ fn require_review(
     if source.is_empty() || destination.is_empty() || source == destination {
         return Err(stale_rename());
     }
-    let sparse = run_git(path, &["config", "--bool", "--get", "core.sparseCheckout"])?;
-    if sparse.status.code() != Some(1) {
-        ensure_success("check sparse checkout before changing the rename", &sparse)?;
-        if sparse.stdout == b"true\n" || sparse.stdout == b"true\r\n" {
-            return Err(AppError::new(
-                "sparseRenameIndexUnsupported",
-                "A grouped rename cannot be changed in a sparse checkout. Neither path was changed.",
-                Some("Review and stage or unstage each path separately using Git."),
-            ));
-        }
-    }
     let (output, truncated) = without_lazy_fetch(|| {
         run_git_with_stdout_limit(
             path,
@@ -90,6 +80,21 @@ fn require_review(
     if !output.stdout.ends_with(b"\0") || !matches_review(&output.stdout, source, destination, side)
     {
         return Err(stale_rename());
+    }
+    Ok(())
+}
+
+fn require_full_checkout(path: &Path) -> Result<(), AppError> {
+    let sparse = run_git(path, &["config", "--bool", "--get", "core.sparseCheckout"])?;
+    if sparse.status.code() != Some(1) {
+        ensure_success("check sparse checkout before changing the rename", &sparse)?;
+        if sparse.stdout == b"true\n" || sparse.stdout == b"true\r\n" {
+            return Err(AppError::new(
+                "sparseRenameIndexUnsupported",
+                "A grouped rename cannot be changed in a sparse checkout. Neither path was changed.",
+                Some("Review and stage or unstage each path separately using Git."),
+            ));
+        }
     }
     Ok(())
 }
@@ -122,8 +127,60 @@ fn require_literal_file_scope(
     Ok(())
 }
 
+/// Show a read-only delta of the reviewed pair, not a new-file diff of its destination.
+pub fn working_tree_rename_diff(
+    path: &Path,
+    source: &str,
+    destination: &str,
+    staged: bool,
+) -> Result<WorkingTreeFileDiff, AppError> {
+    let side = if staged {
+        RenameSide::Index
+    } else {
+        RenameSide::Worktree
+    };
+    require_review(path, source, destination, side)?;
+    require_literal_file_scope(path, source, destination, None)?;
+    if staged {
+        require_literal_file_scope(path, source, destination, Some("HEAD"))?;
+    }
+    let mut args = vec![
+        "--no-optional-locks",
+        "--literal-pathspecs",
+        "diff",
+        "--find-renames",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--unified=3",
+    ];
+    if staged {
+        args.push("--cached");
+    }
+    args.extend(["--", source, destination]);
+    let (output, truncated) =
+        without_lazy_fetch(|| run_git_with_stdout_limit(path, &args, MAX_FILE_DIFF_BYTES))?;
+    if !truncated {
+        ensure_success("read the reviewed rename", &output)?;
+    }
+    let patch = String::from_utf8_lossy(&output.stdout).into_owned();
+    if !patch.contains("\nrename from ") || !patch.contains("\nrename to ") {
+        return Err(stale_rename());
+    }
+    Ok(WorkingTreeFileDiff {
+        path: destination.to_owned(),
+        previous_path: Some(source.to_owned()),
+        staged,
+        patch,
+        truncated,
+    })
+}
+
 /// Stages the deletion and destination of the explicitly reviewed worktree rename.
 pub fn stage_worktree_rename(path: &Path, source: &str, destination: &str) -> Result<(), AppError> {
+    require_full_checkout(path)?;
     require_review(path, source, destination, RenameSide::Worktree)?;
     require_literal_file_scope(path, source, destination, None)?;
     if !std::fs::symlink_metadata(path.join(source))
@@ -142,6 +199,7 @@ pub fn stage_worktree_rename(path: &Path, source: &str, destination: &str) -> Re
 
 /// Restores the HEAD index entries for both paths without altering working files.
 pub fn unstage_index_rename(path: &Path, source: &str, destination: &str) -> Result<(), AppError> {
+    require_full_checkout(path)?;
     require_review(path, source, destination, RenameSide::Index)?;
     require_literal_file_scope(path, source, destination, None)?;
     require_literal_file_scope(path, source, destination, Some("HEAD"))?;

@@ -2753,6 +2753,7 @@ export class GitKhronosService {
   async inspectWorkingTreeFile(path: string, staged: boolean): Promise<void> {
     const repository = this.repository();
     if (!repository) return;
+    const previousPath = this.renameSourceForPath(path, staged);
     this.clearCommitInspection();
     const request = ++this.workingTreeRequest;
     this.clearFileInsights();
@@ -2761,14 +2762,20 @@ export class GitKhronosService {
     this.detailsBusy.set(true);
     this.error.set(null);
     try {
+      if (previousPath === null) {
+        this.error.set('The original path of this rename is unavailable. Refresh or review the paths in Git.');
+        return;
+      }
       const diff = this.browserPreview()
         ? (await import('./repository-preview')).createPreviewWorkingTreeDiff(path, staged)
         : await ipc.inspect_working_tree_file({
           repoId: repository.id,
           path,
           staged,
+          ...(previousPath === undefined ? {} : { previousPath }),
         });
-      if (request === this.workingTreeRequest && repository.id === this.activeRepositoryId()) {
+      if (request === this.workingTreeRequest && repository.id === this.activeRepositoryId()
+        && repository.path === this.repository()?.path) {
         this.workingTreeFileDiff.set(diff);
       }
     } catch (error: unknown) {

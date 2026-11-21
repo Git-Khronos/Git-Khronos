@@ -1106,9 +1106,11 @@ different repository rename preferences. The installed check then adds one
 line externally without changing the porcelain record and expects +2/−1
 without any click or index write. Renderer tests separately isolate the
 periodic/focus-refresh fallback from live watcher notifications.
-The rename fixture also stages and unstages the pair through the file row.
-Git must show one staged rename and, after unstage, both unstaged path changes;
-the checkout bytes, HEAD, unrelated refs and configuration remain unchanged.
+The rename fixture also reviews the staged and unstaged diffs and stages and
+unstages the pair through the file row. Both previews must show the original
+name and +2/−1, with no hunk or line mutation controls. Git must show one staged
+rename and, after unstage, both unstaged path changes; checkout bytes, HEAD,
+unrelated refs and configuration remain unchanged.
 
 The remote-review suite additionally exercises all six tag/remote-reference
 review actions through their actual UI. An owned annotated tag is pushed,

@@ -1754,11 +1754,19 @@
       >
         <header class="diff-workspace-toolbar">
           <button class="diff-back" type="button" (click)="closeDiffViewer()" title="Back to graph (Esc)" aria-label="Back to commit graph"><gc-icon name="chevron-left" [size]="13" /><span>Graph</span></button>
-          <div class="diff-file-identity" [attr.title]="diff.path">
+          <div class="diff-file-identity" [attr.title]="activeWorkingTreeDiff()?.previousPath ? activeWorkingTreeDiff()?.previousPath + ' → ' + diff.path : diff.path">
             <span class="diff-file-status" [attr.data-status]="activeDiffFileStatus()" [attr.aria-label]="diffFileStatusLabel(activeDiffFileStatus())">{{ activeDiffFileStatus() }}</span>
             <div>
               <strong>{{ fileName(diff.path) }}</strong>
-              <small><span class="diff-file-directory">{{ fileDirectory(diff.path) || './' }}</span>@if (activeDiffCommitContext(); as commitSubject) { <i class="diff-source-separator" aria-hidden="true">·</i><span class="diff-source-context" [title]="commitSubject">{{ commitSubject }}</span> }<i>·</i><b>{{ activeDiffLabel() }}</b></small>
+              <small>
+                @if (activeWorkingTreeDiff()?.previousPath; as previousPath) {
+                  <span class="diff-rename-source" [title]="previousPath">Renamed from {{ previousPath }}</span>
+                } @else {
+                  <span class="diff-file-directory">{{ fileDirectory(diff.path) || './' }}</span>
+                  @if (activeDiffCommitContext(); as commitSubject) { <i class="diff-source-separator" aria-hidden="true">·</i><span class="diff-source-context" [title]="commitSubject">{{ commitSubject }}</span> }
+                }
+                <i>·</i><b>{{ activeDiffLabel() }}</b>
+              </small>
             </div>
             @if (activeDiffFileChangeStats(); as stats) {
               <span class="diff-file-change-stats" [attr.aria-label]="stats.additions + ' additions and ' + stats.deletions + ' deletions'">
@@ -1869,10 +1877,10 @@
               <div class="diff-lines">
               @for (line of diffLines(); track $index) {
                 <div class="focus-diff-line {{ line.kind }}" [attr.data-diff-old-line]="line.hunkIndex !== null ? line.oldLine : null" [attr.data-diff-new-line]="line.hunkIndex !== null ? line.newLine : null" [class.active-hunk]="line.kind === 'hunk' && line.hunkIndex === activeDiffHunk()" [class.line-selected]="isDiffLineSelected(line)" [attr.data-diff-hunk]="line.kind === 'hunk' ? line.hunkIndex : null">
-                  <span>@if (line.kind === 'addition' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
-                  <span>@if (line.kind === 'deletion' && activeWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.newLine }} }</span>
+                  <span>@if (line.kind === 'addition' && selectableWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
+                  <span>@if (line.kind === 'deletion' && selectableWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="isDiffLineSelected(line)" [disabled]="git.busy() || diff.truncated" [attr.aria-pressed]="isDiffLineSelected(line)" aria-label="{{ isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="toggleDiffLineSelection(line)">{{ isDiffLineSelected(line) ? '✓' : '−' }}</button> } @else { {{ line.newLine }} }</span>
                   <div class="focus-diff-code"><code>@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}</code>
-                    @if (diffViewMode() === 'hunk' && line.kind === 'hunk' && line.hunkIndex !== null && activeWorkingTreeDiff(); as workingDiff) {
+                    @if (diffViewMode() === 'hunk' && line.kind === 'hunk' && line.hunkIndex !== null && selectableWorkingTreeDiff(); as workingDiff) {
                       <div class="focus-hunk-actions">
                         <button type="button" [disabled]="git.busy() || diff.truncated" (click)="applyHunk(workingDiff.path, workingDiff.staged, line.hunkIndex)">{{ workingDiff.staged ? 'Unstage Hunk' : 'Stage Hunk' }}</button>
                         @if (!workingDiff.staged) { <button class="discard" type="button" [disabled]="git.busy() || diff.truncated || isUntrackedPath(workingDiff.path)" (click)="requestDiscardHunk(workingDiff.path, line.hunkIndex)">Discard Hunk</button> }
@@ -1902,6 +1910,7 @@
             <span>{{ diffLines().length }} lines</span>
             <span class="diff-additions">+{{ diffStats().additions }}</span>
             <span class="diff-deletions">−{{ diffStats().deletions }}</span>
+            @if (activeWorkingTreeDiff()?.previousPath) { <strong>Stage or unstage the whole rename from Changes.</strong> }
             @if (diff.truncated) { <strong>Preview truncated at 256 KB</strong> }
             <nav class="diff-footer-hunk-nav" aria-label="Navigate changes compact">
               <button type="button" aria-label="Previous change" aria-keyshortcuts="Shift+F7" [disabled]="!diffHunks().length || activeDiffHunk() === 0" (click)="navigateDiffHunk(-1)" title="Previous change (Shift+F7)"><gc-icon name="chevron-up" [size]="9" /></button>

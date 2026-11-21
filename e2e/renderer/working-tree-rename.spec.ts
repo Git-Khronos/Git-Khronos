@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-test('the Stage and Unstage buttons move both reviewed rename paths through native commands', async ({ page }) => {
+async function installRename(page: Page): Promise<string> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
-  const repoId = await page.evaluate(() => {
+  return page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     const repo = git.repository();
@@ -31,6 +31,15 @@ test('the Stage and Unstage buttons move both reviewed rename paths through nati
         current = reset;
       }
       if (command.includes('stage_')) calls.push({ command, args });
+      if (command === 'inspect_working_tree_file') {
+        calls.push({ command, args });
+        return { ...args, truncated: false, patch: [
+          'diff --git a/before.txt b/after.txt', 'similarity index 80%',
+          'rename from before.txt', 'rename to after.txt',
+          '--- a/before.txt', '+++ b/after.txt', '@@ -1,2 +1,2 @@',
+          ' retained', '-old', '+new', '',
+        ].join('\n') };
+      }
       if (command === 'working_tree_change_summary') return { staged: null, unstaged: null };
       return current;
     } };
@@ -38,6 +47,10 @@ test('the Stage and Unstage buttons move both reviewed rename paths through nati
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     return repo.id as string;
   });
+}
+
+test('the Stage and Unstage buttons move both reviewed rename paths through native commands', async ({ page }) => {
+  const repoId = await installRename(page);
   const stage = page.getByRole('button', { name: 'Stage after.txt', exact: true });
   await expect(stage).toHaveAttribute('title', 'Stage before.txt → after.txt');
   await stage.click();
@@ -47,5 +60,25 @@ test('the Stage and Unstage buttons move both reviewed rename paths through nati
   expect(await page.evaluate(() => (window as any).__indexRenameCalls)).toEqual([
     { command: 'stage_worktree_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
     { command: 'unstage_index_rename', args: { repoId, source: 'before.txt', destination: 'after.txt' } },
+  ]);
+});
+
+test('working-tree rename filtering and the diff use the source path without offering partial changes', async ({ page }) => {
+  const repoId = await installRename(page);
+  await page.getByRole('searchbox', { name: 'Filter changed files' }).fill('before.txt');
+  const row = page.locator('#unstaged-files-list').getByRole('button', { name: 'View changes in after.txt' });
+  await expect(row).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Renamed from before.txt, not staged yet' })).toBeVisible();
+  await page.getByRole('button', { name: 'Tree', exact: true }).click();
+  await row.click();
+  const diff = page.getByRole('region', { name: 'Diff viewer' });
+  await expect(diff.getByText('Renamed from before.txt', { exact: true })).toBeVisible();
+  await expect(diff.getByText('Stage or unstage the whole rename from Changes.')).toBeVisible();
+  await expect(diff.locator('.diff-additions')).toContainText('+1');
+  await expect(diff.locator('.diff-deletions')).toContainText('−1');
+  await expect(diff.getByRole('button', { name: 'Stage Hunk' })).toHaveCount(0);
+  await expect(diff.getByRole('button', { name: /select added line/i })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__indexRenameCalls)).toEqual([
+    { command: 'inspect_working_tree_file', args: { repoId, path: 'after.txt', staged: false, previousPath: 'before.txt' } },
   ]);
 });

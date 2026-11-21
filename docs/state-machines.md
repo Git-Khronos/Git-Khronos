@@ -97,6 +97,13 @@ The renderer waits for the returned status instead of predicting a half
 rename. The operation does not move working files, and the review is not a
 lock against independent Git processes.
 
+The rename diff also binds the exact source and destination to the selected
+staged or unstaged side. Git compares the two paths in one bounded read; the
+destination is not presented as an entirely new file. The diff is read-only:
+the renderer sends the user to whole-rename indexing instead of offering hunk
+or line actions that could split its two entries. Normal edits to the
+destination on the other side of the index still use the ordinary file diff.
+
 ### Source-bound branch, sparse-checkout and worktree-removal reviews
 
 Branch deletion/rebase and worktree removal requests capture the repository ID,
