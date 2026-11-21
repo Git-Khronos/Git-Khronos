@@ -39,6 +39,24 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
                 pass
         return sorted(found)
 
+    def desktop_activation_processes():
+        """Record liveness and ownership without retaining argv or environment."""
+        owner = None
+        with suppress(RuntimeError, OSError):
+            owner = driver.owned_session_application_pid()
+        bus_entry = ('DBUS_SESSION_BUS_ADDRESS=' + fixtures.env['DBUS_SESSION_BUS_ADDRESS']).encode()
+        observed = []
+        for pid in pids():
+            root = Path('/proc') / str(pid)
+            try:
+                fields = (root / 'stat').read_text().rsplit(')', 1)[1].split()
+                on_private_bus = bus_entry in (root / 'environ').read_bytes().split(b'\0')
+                observed.append(dict(pid=pid, state=fields[0], parentPid=int(fields[1]),
+                                     onPrivateBus=on_private_bus, ownsBusName=pid == owner))
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
+                observed.append(dict(pid=pid, exitedWhileInspected=True))
+        return dict(ownerPid=owner, processes=observed)
+
     def deliver(*arguments):
         original = pids()
         assert len(original) == 1, original
@@ -124,6 +142,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
                                XDG_CONFIG_DIRS=fixtures.env['XDG_CONFIG_HOME'],
                                GIO_USE_VFS='local', GIO_USE_VOLUME_MONITOR='unix')
         original_pids = pids()
+        report['incomingDesktopActivation'] = dict(before=desktop_activation_processes())
         try:
             subprocess.run(['desktop-file-validate', str(handler)], env=association_env,
                            capture_output=True, check=True, timeout=10)
@@ -138,7 +157,9 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
             deadline = time.monotonic() + 5
             while pids() != original_pids and time.monotonic() < deadline:
                 time.sleep(.02)
-            assert pids() == original_pids
+            settled_pids = pids()
+            report['incomingDesktopActivation']['after'] = desktop_activation_processes()
+            assert settled_pids == original_pids, report['incomingDesktopActivation']
             queued = snapshot()['requests']
             assert len(queued) == 1 and queued[0]['payload']['uri'] == uri
             driver.invoke('acknowledge_incoming_repository_link', requestId=queued[0]['id'])

@@ -62,6 +62,7 @@ jobs:
           esac
           sudo apt-get update
           sudo apt-get install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config
+          sudo install -d -m 1777 /tmp/.X11-unix
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
           done
@@ -167,6 +168,7 @@ jobs:
             openssh-client openssh-server desktop-file-utils libglib2.0-bin \
             openssl dbus-daemon dbus-bin libssl-dev pkg-config python3 binutils
           install -d -m 0755 /run/sshd
+          install -d -m 1777 /tmp/.X11-unix
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
           done

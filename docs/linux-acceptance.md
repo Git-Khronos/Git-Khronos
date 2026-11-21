@@ -226,6 +226,9 @@ before attempting native acceptance. Debian installs `dbus-daemon` and
 `dbus-bin`, then checks `dbus-daemon`, `dbus-send` and `dbus-run-session`.
 Ubuntu continues to request the release-available `dbus` package and check the
 same commands.
+Installed runners provision the standard sticky `/tmp/.X11-unix` directory
+before starting Xvfb as an unprivileged fixture user. Minimal containers may
+not have it even after installing Xvfb.
 
 The release publish job depends on the reusable workflow completing every
 Ubuntu and Debian runtime matrix entry successfully. A failed or unavailable
