@@ -450,7 +450,16 @@ The separate installed worktree suite passed 21 scenarios, including
 the three occupied-branch checks (Cancel, explicit owner navigation, and
 refusal after a changed owner). See
 `workflow-reviews/installed-workflow-reviews.json` in the same directory.
-This focused evidence does not substitute for the full release matrix.
+
+The same installer passed the expanded **26-check local release matrix**,
+including 279 installed Ubuntu 22.04 environment scenarios. The combined
+preflight bound the installed reports and build receipt to that installer
+and the fixture publisher public key. See `verified-release-expanded.json`
+in the same directory. Removing the Noble patch report (while retaining
+the separate Ubuntu 22.04 and Debian 12 patch reports) or supplying a
+different public key produced no verification receipt. This is exact
+local fixture qualification, not production signing or publication; the
+later repository form stylesheet change is not in this installer.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
