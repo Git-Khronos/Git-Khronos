@@ -2016,9 +2016,19 @@
 
   @if (repositoryDialog(); as mode) {
     @defer (on immediate) {
-      <gc-repository-dialog [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [favoriteShortcut]="favoriteShortcut"
+      <gc-repository-dialog #repositoryManager [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [favoriteShortcut]="favoriteShortcut"
         (closed)="closeRepositoryManager()" (browse)="browseFromRepositoryManager()" (openFavorite)="openFavoriteRepository($event)"
         (openPath)="openRepositoryPath($event, true)" (opening)="saveCommitDraft()" (opened)="finishRepositoryCreation()" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading repository management">
+        <p role="status">Loading repository management…</p>
+        <button #repositoryManagerLoaderClose type="button" (click)="closeRepositoryManager()">Cancel</button>
+      </section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Repository management unavailable">
+        <p role="alert">Repository management could not load. Close this dialog and restart the application to retry.</p>
+        <button #repositoryManagerLoaderClose type="button" (click)="closeRepositoryManager()">Close</button>
+      </section></div>
     }
   }
   @if (workspaceDialogMode(); as mode) {

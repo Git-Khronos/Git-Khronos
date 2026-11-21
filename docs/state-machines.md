@@ -805,7 +805,11 @@ styles with their deferred components. Selectors are scoped to the component
 host, including embedded panels. Shared modal form and shell rules and
 launcher/status controls remain in the startup stylesheet. The Preferences
 shell still styles loading and failure states when its feature chunk never
-arrives. `deferred-overlay-styles.spec.ts` covers these boundaries.
+arrives. Repository Management also keeps an eager loading/error shell. While
+the request owns the modal, Tab stays in the dialog and background Git
+shortcuts are ignored, including in the gap before the module renders. Escape
+retains drafts and returns focus only to the current request's opener.
+`deferred-overlay-styles.spec.ts` covers these boundaries.
 
 ### Application update intent, consent and installation receipts
 

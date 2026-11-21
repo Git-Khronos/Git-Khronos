@@ -80,3 +80,48 @@ for (const overlay of [
     } finally { layout.release(); }
   });
 }
+
+for (const outcome of ['loaded', 'failed'] as const) {
+  test(`repository management blocks ambient Git shortcuts while its module is ${outcome}`, async ({ page }) => {
+    const layout = await interceptLayout(page, /class\s+_?RepositoryDialogComponent\b/, '.repository-manager-body', outcome === 'failed');
+    try {
+      await page.goto('/');
+      const summary = page.getByLabel('Commit summary', { exact: true });
+      await summary.fill('Do not commit while managing repositories');
+      await page.evaluate(() => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        (window as any).__ambientRepositoryWrites = [];
+        app.git.stageAll = async () => { (window as any).__ambientRepositoryWrites.push('stage'); return null; };
+        app.git.commit = async () => { (window as any).__ambientRepositoryWrites.push('commit'); return false; };
+      });
+      const opener = page.getByRole('button', { name: 'New repository tab', exact: true });
+      await opener.click();
+      await expect.poll(layout.requests).toBe(1);
+      const loading = page.getByRole('dialog', { name: 'Loading repository management', exact: true });
+      const cancel = loading.getByRole('button', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Control+Shift+Enter');
+      await expect(loading).toBeVisible();
+      layout.release();
+      if (outcome === 'loaded') {
+        const dialog = page.getByRole('dialog', { name: 'Repository management', exact: true });
+        await expect(dialog.getByRole('tab', { name: 'Browse', exact: true })).toBeFocused();
+        await page.keyboard.press('Control+Shift+Enter');
+        await expect(dialog).toBeVisible();
+      } else {
+        const error = page.getByRole('dialog', { name: 'Repository management unavailable', exact: true });
+        await expect(error.getByRole('alert')).toContainText('could not load');
+        await expect(error.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+        await page.keyboard.press('Control+Enter');
+        await expect(error).toBeVisible();
+      }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      await expect(summary).toHaveValue('Do not commit while managing repositories');
+      expect(await page.evaluate(() => (window as any).__ambientRepositoryWrites)).toEqual([]);
+    } finally { layout.release(); }
+  });
+}

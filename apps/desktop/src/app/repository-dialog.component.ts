@@ -258,7 +258,12 @@ export class RepositoryDialogComponent {
   }
 
   protected trapFocus(event: KeyboardEvent): void {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return; }
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat || event.isComposing)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key !== 'Tab') return;
     const dialog = event.currentTarget as HTMLElement;
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(

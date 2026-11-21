@@ -1080,6 +1080,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly identityEmail = signal('');
   protected readonly repositoryDialog = signal<RepositoryDialogMode | null>(null);
   protected readonly repositoryDialogFocusRequest = signal(0);
+  private readonly repositoryManager = viewChild<unknown, ElementRef<HTMLElement>>('repositoryManager', { read: ElementRef });
+  private readonly repositoryManagerLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositoryManagerLoaderClose');
+  private readonly repositoryManagerLoaderFocus = effect(() => {
+    const button = this.repositoryManagerLoaderClose()?.nativeElement;
+    if (button) afterNextRender(() => {
+      if (this.repositoryDialog() && this.repositoryManagerLoaderClose()?.nativeElement === button && button.isConnected) button.focus();
+    }, { injector: this.injector });
+  });
   protected readonly worktreeDialogOpen = signal(false);
   protected readonly worktreeEditorOwner = signal<RepositoryEditorOwner | null>(null);
   protected readonly worktreeBranch = signal('');
@@ -4705,9 +4713,17 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeWorkspaceDialog();
       return;
     }
-    if (event.key === 'Escape' && this.repositoryDialog()) {
-      event.preventDefault();
-      this.closeRepositoryManager();
+    if (this.repositoryDialog()) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeRepositoryManager();
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        (this.repositoryManagerLoaderClose()?.nativeElement
+          ?? this.repositoryManager()?.nativeElement.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
+      } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+      }
       return;
     }
     if (event.key === 'Escape' && this.worktreeDialogOpen()) {
@@ -10340,10 +10356,11 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeRepositoryManager(): void {
     const opener = this.repositoryDialogOpener;
+    const request = this.repositoryDialogFocusRequest();
     this.repositoryDialog.set(null);
     this.repositoryDialogOpener = null;
     queueMicrotask(() => {
-      if (opener?.isConnected) opener.focus();
+      if (!this.repositoryDialog() && this.repositoryDialogFocusRequest() === request && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
 
