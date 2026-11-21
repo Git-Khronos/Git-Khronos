@@ -2116,6 +2116,14 @@ pre-execution refusal; other ambiguous outcomes remain unconfirmed. Dpkg's
 documented downgrade policy defines the transaction-level refusal option.
 Independently implemented behavior; no upstream source code or documentation text copied.
 
+## Tracked-file search during merge conflicts
+
+- [Git 2.39 `ls-files` manual](https://git-scm.com/docs/git-ls-files/2.39.0)
+
+Used to select Git's documented deduplicated cached-path listing while
+preserving unmerged index entries and NUL-delimited filenames. No source
+code copied.
+
 
 ## Signed Debian release publication
 

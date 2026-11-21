@@ -211,3 +211,48 @@ test('opens a grouped branch switcher from the compact repository toolbar', asyn
   await page.keyboard.press('Escape');
   await expect(more).toBeFocused();
 });
+
+test('a late tracked-file search cannot populate a later visit to the same checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const original = git.repository();
+    git.repositories.update((repos: any[]) => [...repos, { ...original, id: 'other-search-checkout', path: '/owned/other' }]);
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'tracked file search test' }));
+    const fixture = { original, requests: [] as Array<(paths: string[]) => void>, published: [] as string[][] };
+    (window as any).__fileQueryLease = fixture;
+    const publish = git.trackedFileSearch.set.bind(git.trackedFileSearch);
+    git.trackedFileSearch.set = (result: any) => {
+      if (result) fixture.published.push(result.paths);
+      publish(result);
+    };
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      if (command === 'search_tracked_files') {
+        return new Promise(resolve => fixture.requests.push(paths => resolve({ paths, truncated: false })));
+      }
+      const repo = git.repositories().find((value: any) => value.id === args?.repoId);
+      if (command === 'refresh_repository_status') return Promise.resolve(repo?.status);
+      if (command === 'refresh_repository_metadata' || command === 'refresh_repository') return Promise.resolve(repo);
+      return Promise.reject(new Error(`Unexpected command ${command}`));
+    } };
+  });
+  await page.keyboard.press('Control+Shift+H');
+  const input = page.getByRole('combobox', { name: 'Search tracked files', exact: true });
+  await input.fill('tracked');
+  const requestCount = () => page.evaluate(() => (window as any).__fileQueryLease.requests.length);
+  await expect.poll(requestCount).toBe(1);
+  const changedVisit = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const fixture = (window as any).__fileQueryLease;
+    const before = git.activeRepositoryReadScope();
+    git.activateRepository('other-search-checkout');
+    git.activateRepository(fixture.original.id);
+    fixture.requests[0](['obsolete-tracked.txt']);
+    return git.activeRepositoryId() === fixture.original.id && git.activeRepositoryReadScope() !== before;
+  });
+  expect(changedVisit).toBe(true);
+  await expect.poll(requestCount).toBe(2);
+  await page.evaluate(() => (window as any).__fileQueryLease.requests[1](['current-tracked.txt']));
+  await expect(page.getByRole('option', { name: /^File History: current-tracked\.txt/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: /obsolete-tracked/ })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__fileQueryLease.published)).toEqual([['current-tracked.txt']]);
+});

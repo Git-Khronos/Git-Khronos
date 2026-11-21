@@ -58,6 +58,11 @@ repository-specific review authorities. A captured action must pass the same
 dispatch guards after the palette closes or the repository changes. While the
 chunk loads, Cancel and Escape can close its view without running any Git
 command. A failed chunk remains dismissible and a late load cannot reopen it.
+The tracked-file debounce belongs to the open palette visit, query and
+checkout visit. Both dispatch and receipt recheck the visit, including a
+switch away and back to the same repository ID. Git emits distinct paths
+for tracked-file search; multiple unmerged index stages do not reserve
+multiple results or change the existing bounded search limit.
 
 ### Diff patch export
 

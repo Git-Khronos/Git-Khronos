@@ -2270,7 +2270,9 @@ export class AppComponent implements OnInit, OnDestroy {
     });
     effect(() => {
       const open = this.commandPaletteOpen();
+      const visit = this.commandPaletteVisit();
       const repositoryId = this.git.activeRepositoryId();
+      const checkout = this.git.activeRepositoryReadScope();
       const scope = this.commandPaletteScope();
       const query = this.commandQuery().trim();
       if (this.trackedFileSearchTimer) clearTimeout(this.trackedFileSearchTimer);
@@ -2278,6 +2280,9 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!open || !repositoryId || scope === 'branches' || query.length < 2) return;
       this.trackedFileSearchTimer = setTimeout(() => {
         this.trackedFileSearchTimer = null;
+        if (!this.commandPaletteOpen() || this.commandPaletteVisit() !== visit
+          || this.git.activeRepositoryReadScope() !== checkout || this.commandQuery().trim() !== query
+          || this.commandPaletteScope() !== scope) return;
         void this.git.searchTrackedFiles(query);
       }, 180);
     });

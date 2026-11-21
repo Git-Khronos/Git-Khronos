@@ -1114,6 +1114,7 @@ export class GitKhronosService implements OnDestroy {
 
   async searchTrackedFiles(query: string, limit = 30): Promise<void> {
     const repository = this.repository();
+    const scope = this.activeRepositoryReadScope();
     const normalized = query.trim();
     const request = ++this.trackedFileSearchRequest;
     if (!repository || !normalized) {
@@ -1135,7 +1136,7 @@ export class GitKhronosService implements OnDestroy {
           query: normalized,
           limit,
         });
-      if (request === this.trackedFileSearchRequest && repository.id === this.activeRepositoryId()) {
+      if (request === this.trackedFileSearchRequest && scope === this.activeRepositoryReadScope()) {
         this.trackedFileSearch.set(result);
       }
     } catch {

@@ -1715,7 +1715,7 @@ pub fn search_tracked_files(
     );
     let (output, output_truncated) = run_git_with_stdout_limit(
         path,
-        &["ls-files", "-z", "--cached", "--", &pathspec],
+        &["ls-files", "-z", "--cached", "--deduplicate", "--", &pathspec],
         MAX_TRACKED_FILE_SEARCH_BYTES,
     )?;
     if !output_truncated {
@@ -11325,6 +11325,36 @@ esac
         let bracket = search_tracked_files(&repository.path, "[old]", 10)
             .expect("treat glob punctuation literally");
         assert_eq!(bracket.paths, vec!["docs/guide[old].md"]);
+    }
+
+    #[test]
+    fn searches_tracked_files_count_unmerged_paths_once() {
+        let repository = TestRepository::new();
+        repository.write("search-1.txt", "base\n");
+        repository.write("search-2.txt", "unchanged\n");
+        repository.git(&["add", "--", "search-1.txt", "search-2.txt"]);
+        repository.git(&["commit", "-m", "Base"]);
+        repository.git(&["checkout", "-b", "side"]);
+        repository.write("search-1.txt", "side\n");
+        repository.git(&["commit", "-am", "Side"]);
+        repository.git(&["checkout", "main"]);
+        repository.write("search-1.txt", "main\n");
+        repository.git(&["commit", "-am", "Main"]);
+        let merge = run_git(&repository.path, &["merge", "--no-edit", "side"]).unwrap();
+        assert!(!merge.status.success());
+        let before = repository.git_output(&["ls-files", "--unmerged", "--", "search-1.txt"]);
+        assert_eq!(before.lines().count(), 3, "fixture must have three index stages");
+
+        let two = search_tracked_files(&repository.path, "search-", 2).unwrap();
+        assert_eq!(two.paths, ["search-1.txt", "search-2.txt"]);
+        assert!(!two.truncated);
+        let one = search_tracked_files(&repository.path, "search-", 1).unwrap();
+        assert_eq!(one.paths, ["search-1.txt"]);
+        assert!(one.truncated);
+        assert_eq!(
+            repository.git_output(&["ls-files", "--unmerged", "--", "search-1.txt"]),
+            before
+        );
     }
 
     #[test]
