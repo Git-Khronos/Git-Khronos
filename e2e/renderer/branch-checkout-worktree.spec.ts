@@ -118,6 +118,46 @@ async function requestCheckout(page: Page, branch: string) {
   return page.getByRole('dialog', { name: 'Branch is open in another checkout' });
 }
 
+test('a checkout review closes when another workspace opens the same checkout', async ({ page }) => {
+  const fixture = await setup(page);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await expect(dialog).toBeVisible();
+  const scope = await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const repo = git.repository();
+    const workspace = { ...git.activeWorkspace(), id: 'same-checkout-workspace', name: 'Same checkout view',
+      repositoryPaths: [repo.path], activeRepositoryPath: repo.path };
+    git.workspaces.update((workspaces: any[]) => [...workspaces, workspace]);
+    git.workspaceRepositoryCache.set(workspace.id, [repo]);
+    await git.switchWorkspace(workspace.id);
+    return { workspace: git.activeWorkspaceId(), sameCheckout: git.activeRepositoryId() === repo.id };
+  });
+  expect(scope).toEqual({ workspace: 'same-checkout-workspace', sameCheckout: true });
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .some((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toBe(false);
+});
+
+test('a late checkout refusal cannot reopen a review after leaving and returning to the same tab', async ({ page }) => {
+  const fixture = await setup(page);
+  await loseCachedOwner(page, 'branchInAnotherWorktree');
+  await page.evaluate(() => { (window as any).__checkoutWorktree.hold = true; });
+  await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
+  await expect.poll(() => page.evaluate(() => !!(window as any).__checkoutWorktree.finish)).toBe(true);
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const source = git.repository();
+    const other = { ...source, id: 'other-checkout-visit', path: '/fixture/other-checkout-visit' };
+    git.repositories.update((repositories: any[]) => [...repositories, other]);
+    git.activateRepository(other.id);
+    git.activateRepository(source.id);
+    (window as any).__checkoutWorktree.finish();
+  });
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
+  await expect(page.getByRole('dialog', { name: 'Branch is open in another checkout' })).toHaveCount(0);
+});
+
 test('occupied branch requires explicit navigation and sends no checkout command', async ({ page }) => {
   const fixture = await setup(page);
   await page.evaluate(() => {

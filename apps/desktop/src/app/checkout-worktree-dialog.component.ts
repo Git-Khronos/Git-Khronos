@@ -3,7 +3,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { branchCheckoutOwner } from './repository-location';
 
 export interface CheckoutWorktreeRequest {
-  repositoryId: string;
+  scope: string;
   repositoryPath: string;
   branch: string;
   worktreePath: string;
@@ -72,20 +72,19 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
 
   async confirm(): Promise<void> {
     const request = this.request();
-    const source = this.git.repository();
-    if (this.busy() || this.git.busy() || this.error() || request.prunable || source?.id !== request.repositoryId
-      || source.path !== request.repositoryPath) return;
+    if (this.busy() || this.git.busy() || this.error() || request.prunable || !this.owns(request)) return;
     this.busy.set(true);
     try {
       await this.git.refresh();
       const current = this.git.repository();
-      if (this.destroyed || this.request() !== request || current?.id !== request.repositoryId
-        || current.path !== request.repositoryPath) return;
+      if (!current || !this.owns(request)) return;
       const owner = branchCheckoutOwner(current, request.branch);
       if (this.git.error() || !owner || owner.path !== request.worktreePath || owner.prunable) {
         this.error.set(this.git.error()
           ?? 'Branch ownership changed or the checkout is unavailable. Close this review and select the branch again.');
-        setTimeout(() => { if (!this.destroyed) this.dialog()?.nativeElement.querySelector<HTMLElement>('[tabindex="-1"]')?.focus(); });
+        setTimeout(() => {
+          if (this.owns(request)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[role="alert"]')?.focus();
+        });
         return;
       }
       this.closing = true;
@@ -97,10 +96,16 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
 
   @HostListener('document:focusin') containFocus(): void {
     const dialog = this.dialog()?.nativeElement;
-    if (!this.destroyed && !this.closing && dialog && !dialog.contains(document.activeElement)) this.focusCancel();
+    if (dialog && !dialog.contains(document.activeElement)) this.focusCancel();
+  }
+
+  private owns(request: CheckoutWorktreeRequest): boolean {
+    return !this.destroyed && !this.closing && this.request() === request
+      && this.git.activeRepositoryReadScope() === request.scope;
   }
 
   private focusCancel(): void {
+    if (!this.owns(this.request())) return;
     const dialog = this.dialog()?.nativeElement;
     (dialog?.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? dialog)?.focus();
   }

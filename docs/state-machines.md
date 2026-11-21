@@ -586,8 +586,10 @@ in another repository.
 The deferred review permits explicit navigation only after refreshing the
 source and rechecking the exact owner path, branch and non-prunable status.
 Changed ownership or failed inspection stays in review with an error; there is
-no fallback checkout, force option, repair or automatic replay. Closing or
-changing the active repository retires the request; a late read cannot navigate.
+no fallback checkout, force option, repair or automatic replay. The review and
+its refresh belong to one visit to a checkout. Closing the review, changing
+repositories or switching workspaces (even when both show the same checkout)
+retires the request. A late read cannot navigate or reopen the old review.
 Opening the owner uses the existing repository navigation path so source commit
 drafts are saved. If occupancy changes before an ordinary native checkout, Git
 still decides whether the switch is allowed. After a refusal, native code

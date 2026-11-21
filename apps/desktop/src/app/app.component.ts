@@ -1888,14 +1888,14 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     if (!repository || this.git.busy() || this.checkoutWorktreeRequest()) return null;
     if (repository.status.branch === name) return null;
-    const workspaceId = this.git.activeWorkspaceId();
+    const scope = this.git.activeRepositoryReadScope();
     const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     let owner = branchCheckoutOwner(repository, name);
     if (!owner) {
       const result = await this.git.checkout(name);
       const current = this.git.repository();
-      if (result?.status !== 'error' || current?.id !== repository.id || current.path !== repository.path
-        || workspaceId !== this.git.activeWorkspaceId() || this.checkoutWorktreeRequest()) return result;
+      if (result?.status !== 'error' || !current || scope !== this.git.activeRepositoryReadScope()
+        || this.checkoutWorktreeRequest()) return result;
       // A different checkout may have taken the branch since the last read.
       // A native refusal plus a refreshed owner can offer navigation, not a retry.
       if (result.failureKind === 'branchInAnotherWorktree' && !result.refreshError) {
@@ -1909,23 +1909,23 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       if (this.git.error() === result.error) this.git.error.set(null);
     }
-    this.checkoutWorktreeRequest.set({ repositoryId: repository.id, repositoryPath: repository.path,
+    this.checkoutWorktreeRequest.set({ scope, repositoryPath: repository.path,
       branch: name, worktreePath: owner.path, prunable: owner.prunable,
       returnFocus: opener });
     return null;
   }
 
   protected closeCheckoutWorktree(): void {
-    const target = this.checkoutWorktreeRequest()?.returnFocus;
+    const request = this.checkoutWorktreeRequest();
     this.checkoutWorktreeRequest.set(null);
+    if (!request || request.scope !== this.git.activeRepositoryReadScope()) return;
+    const target = request.returnFocus;
     this.restoreDialogFocus(target?.isConnected ? target : this.toolbarBranchToggle()?.nativeElement ?? null);
   }
 
   protected async openCheckoutWorktree(path: string): Promise<void> {
     const request = this.checkoutWorktreeRequest();
-    const repository = this.git.repository();
-    if (!request || request.worktreePath !== path || repository?.id !== request.repositoryId
-      || repository.path !== request.repositoryPath) return;
+    if (!request || request.worktreePath !== path || request.scope !== this.git.activeRepositoryReadScope()) return;
     this.checkoutWorktreeRequest.set(null);
     await this.openRepositoryPath(path);
   }
@@ -2216,7 +2216,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.savedDiscardsRepositoryId.set(null);
         this.savedDiscardsReturnFocus = null;
         this.referenceAction.set(null);
-        this.checkoutWorktreeRequest.set(null);
         this.stashDialog.set(null);
         this.rebaseRequest++;
         this.interactiveRebase.set(null);
@@ -2225,6 +2224,13 @@ export class AppComponent implements OnInit, OnDestroy {
         this.branchWorkflowRequest.set(null);
         this.selectedRebaseOid.set(null);
         this.pendingHistoryAction.set(null);
+      });
+    });
+    effect(() => {
+      const scope = this.git.activeRepositoryReadScope();
+      untracked(() => {
+        const request = this.checkoutWorktreeRequest();
+        if (request && request.scope !== scope) this.checkoutWorktreeRequest.set(null);
       });
     });
     this.applyAppTheme(this.appTheme());
