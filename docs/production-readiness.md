@@ -578,7 +578,9 @@ Package SHA-256:
 `d72be40e3fb2ffd726a001b8859599346560d8d8711050eddd78d0ff3861dc5e`.
 The installed report is under
 `target/local-review/updater/jammy-builder/partial-watcher-release.LuJrILXb/compatibility/resolute/results/watcher-reftable/`.
-This focused result does not certify the ongoing full matrix or later commits.
+The same exact bytes passed all **27** strict Linux release checks; see
+`verified-release.json` at the root of that run. The matrix used a fixture
+publisher key and does not qualify later commits or production publication.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
