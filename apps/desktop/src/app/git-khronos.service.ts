@@ -315,6 +315,7 @@ export class GitKhronosService implements OnDestroy {
   readonly changesLoading = signal(false);
   readonly trackedFileSearch = signal<TrackedFileSearch | null>(null);
   readonly trackedFileSearchBusy = signal(false);
+  readonly trackedFileSearchError = signal<string | null>(null);
   readonly reflog = signal<ReflogPage | null>(null);
   readonly reflogBusy = signal(false);
   readonly signingDiagnosticBusy = signal(false);
@@ -1117,6 +1118,7 @@ export class GitKhronosService implements OnDestroy {
     const scope = this.activeRepositoryReadScope();
     const normalized = query.trim();
     const request = ++this.trackedFileSearchRequest;
+    this.trackedFileSearchError.set(null);
     if (!repository || !normalized) {
       this.trackedFileSearch.set(null);
       this.trackedFileSearchBusy.set(false);
@@ -1139,8 +1141,13 @@ export class GitKhronosService implements OnDestroy {
       if (request === this.trackedFileSearchRequest && scope === this.activeRepositoryReadScope()) {
         this.trackedFileSearch.set(result);
       }
-    } catch {
-      if (request === this.trackedFileSearchRequest) this.trackedFileSearch.set(null);
+    } catch (error: unknown) {
+      if (request === this.trackedFileSearchRequest && scope === this.activeRepositoryReadScope()) {
+        this.trackedFileSearch.set(null);
+        this.trackedFileSearchError.set(this.errorKind(error) === 'trackedFileSearchTimedOut'
+          ? 'Git took too long to search tracked files. Change the query to retry.'
+          : 'Tracked files could not be searched. Change the query to retry.');
+      }
     } finally {
       if (request === this.trackedFileSearchRequest) this.trackedFileSearchBusy.set(false);
     }
@@ -1150,6 +1157,7 @@ export class GitKhronosService implements OnDestroy {
     this.trackedFileSearchRequest += 1;
     this.trackedFileSearch.set(null);
     this.trackedFileSearchBusy.set(false);
+    this.trackedFileSearchError.set(null);
   }
 
   async loadReflog(): Promise<string | null> {

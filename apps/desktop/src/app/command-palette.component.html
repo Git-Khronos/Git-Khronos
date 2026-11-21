@@ -2,6 +2,7 @@
   <section class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette"
     (click)="$event.stopPropagation()" (keydown)="handleDialogKey($event)">
     @let items = commands();
+    @let fileSearchError = git.trackedFileSearchError();
     <header class="palette-header">
       <label class="palette-search">
         <span><gc-icon name="search" [size]="18" /></span>
@@ -37,7 +38,11 @@
       } @empty {
         <div class="palette-empty">
           <span><gc-icon name="search" [size]="22" /></span>
-          <strong>{{ git.trackedFileSearchBusy() ? 'Searching tracked files…' : scope() === 'files' && query().trim().length < 2 ? 'Type at least two characters' : scope() === 'files' ? 'No matching tracked files' : scope() === 'branches' ? 'No matching branches' : 'No matching commands, repositories, references, or files' }}</strong>
+          @if (fileSearchError) {
+            <strong role="alert">{{ fileSearchError }}</strong>
+          } @else {
+            <strong>{{ git.trackedFileSearchBusy() ? 'Searching tracked files…' : scope() === 'files' && query().trim().length < 2 ? 'Type at least two characters' : scope() === 'files' ? 'No matching tracked files' : scope() === 'branches' ? 'No matching branches' : 'No matching commands, repositories, references, or files' }}</strong>
+          }
           @if (query().trim() && !git.trackedFileSearchBusy()) {
             <small>Try another phrase or browse the full list.</small>
             <button type="button" (click)="clearSearch()"><gc-icon name="reset" [size]="13" /> Clear search</button>
@@ -48,6 +53,9 @@
         <div class="palette-result-limit">More files match. Refine your search to narrow the results.</div>
       }
     </div>
+    @if (items.length && fileSearchError) {
+      <p class="palette-result-limit" role="alert">{{ fileSearchError }}</p>
+    }
     <footer class="palette-footer">
       <small class="palette-result-count" aria-live="polite">{{ items.length }} {{ scope() === 'branches' ? (items.length === 1 ? 'branch' : 'branches') : scope() === 'files' || query().trim() ? (items.length === 1 ? 'result' : 'results') : (items.length === 1 ? 'command' : 'commands') }}</small>
       @if (!query().trim() && scope() === 'all') { <span class="palette-search-hint">Commands · repos · refs · files</span> }

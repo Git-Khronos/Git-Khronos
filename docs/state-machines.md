@@ -63,6 +63,9 @@ checkout visit. Both dispatch and receipt recheck the visit, including a
 switch away and back to the same repository ID. Git emits distinct paths
 for tracked-file search; multiple unmerged index stages do not reserve
 multiple results or change the existing bounded search limit.
+The native listing has a five-second ceiling and respects any earlier
+deadline. On timeout Git is stopped without publishing partial results,
+and the palette distinguishes a failed file search from no matches.
 
 ### Diff patch export
 

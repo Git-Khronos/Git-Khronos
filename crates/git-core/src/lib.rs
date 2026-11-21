@@ -931,6 +931,7 @@ const MAX_INTERACTIVE_REBASE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_COMMIT_FILES: usize = 300;
 const COMMIT_RENAME_LIMIT: usize = 200;
 const MAX_TRACKED_FILE_SEARCH_BYTES: usize = 1_000_000;
+const TRACKED_FILE_SEARCH_BUDGET: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -1713,11 +1714,25 @@ pub fn search_tracked_files(
             escaped
         })
     );
-    let (output, output_truncated) = run_git_with_stdout_limit(
-        path,
-        &["ls-files", "-z", "--cached", "--deduplicate", "--", &pathspec],
-        MAX_TRACKED_FILE_SEARCH_BYTES,
-    )?;
+    let (output, output_truncated) =
+        git_cancellation::inspect_within(TRACKED_FILE_SEARCH_BUDGET, || {
+            run_git_with_stdout_limit(
+                path,
+                &["ls-files", "-z", "--cached", "--deduplicate", "--", &pathspec],
+                MAX_TRACKED_FILE_SEARCH_BYTES,
+            )
+        })
+        .map_err(|error| {
+            if error.kind == "gitInspectionTimeout" {
+                AppError::new(
+                    "trackedFileSearchTimedOut",
+                    "Git took too long to list tracked files.",
+                    Some("Retry the search; no partial results were returned."),
+                )
+            } else {
+                error
+            }
+        })?;
     if !output_truncated {
         ensure_success("search tracked files", &output)?;
     }
@@ -11325,6 +11340,74 @@ esac
         let bracket = search_tracked_files(&repository.path, "[old]", 10)
             .expect("treat glob punctuation literally");
         assert_eq!(bracket.paths, vec!["docs/guide[old].md"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tracked_file_search_deadline_reaps_owned_git_without_partial_results() {
+        use std::os::unix::fs::PermissionsExt;
+
+        const MARKER: &str = "GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_MARKER";
+        const REAL: &str = "GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT";
+        if let Some(marker) = std::env::var_os(MARKER) {
+            let repository = TestRepository::new();
+            let started = std::time::Instant::now();
+            let error = git_cancellation::inspect_within(Duration::from_millis(600), || {
+                search_tracked_files(&repository.path, "partial", 2)
+            })
+            .expect_err("a stalled listing must not return partial output");
+            assert_eq!(error.kind, "trackedFileSearchTimedOut");
+            assert!(started.elapsed() < Duration::from_secs(3));
+            let pid = fs::read_to_string(marker).expect("owned Git listing must have started");
+            assert!(pid.trim().parse::<u32>().is_ok());
+            #[cfg(target_os = "linux")]
+            assert!(!Path::new("/proc").join(pid.trim()).exists());
+            return;
+        }
+
+        let fixture = TestRepository::new();
+        let bin = fixture.path.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let helper = bin.join("git");
+        fs::write(
+            &helper,
+            r#"#!/bin/sh
+if [ "$3" = ls-files ]; then
+    printf '%s\n' "$$" >"$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_MARKER"
+    printf 'partial.txt\000'
+    sleep 8
+    exit 0
+fi
+exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let real_git = std::env::split_paths(&original_path)
+            .map(|entry| entry.join("git"))
+            .find(|candidate| candidate.is_absolute() && candidate.is_file())
+            .expect("Git must be available on PATH");
+        let path =
+            std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&original_path)))
+                .unwrap();
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::tracked_file_search_deadline_reaps_owned_git_without_partial_results",
+                "--nocapture",
+            ])
+            .env("PATH", path)
+            .env(MARKER, fixture.path.join("pid"))
+            .env(REAL, real_git)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
 
     #[test]

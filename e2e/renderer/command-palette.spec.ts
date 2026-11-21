@@ -256,3 +256,34 @@ test('a late tracked-file search cannot populate a later visit to the same check
   await expect(page.getByRole('option', { name: /obsolete-tracked/ })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__fileQueryLease.published)).toEqual([['current-tracked.txt']]);
 });
+
+test('a tracked-file search timeout is announced and a later query can succeed', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'tracked file search test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      if (command === 'search_tracked_files') {
+        if (args.query === 'slow') {
+          return Promise.reject({ kind: 'trackedFileSearchTimedOut', message: 'fixture' });
+        }
+        if (args.query === 'matched') {
+          return Promise.resolve({ paths: ['current-matched.txt'], truncated: false });
+        }
+      }
+      return Promise.reject(new Error(`Unexpected command ${command}`));
+    } };
+  });
+
+  await page.keyboard.press('Control+Shift+H');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const input = palette.getByRole('combobox', { name: 'Search tracked files', exact: true });
+  await input.fill('slow');
+  await expect(palette.getByRole('alert')).toHaveText('Git took too long to search tracked files. Change the query to retry.');
+  await expect(palette.getByText('No matching tracked files')).toHaveCount(0);
+  await expect(input).toBeFocused();
+
+  await input.fill('matched');
+  await expect(palette.getByRole('option', { name: /^File History: current-matched\.txt/ })).toBeVisible();
+  await expect(palette.getByRole('option', { name: /^Blame: current-matched\.txt/ })).toBeVisible();
+  await expect(palette.getByRole('alert')).toHaveCount(0);
+});
