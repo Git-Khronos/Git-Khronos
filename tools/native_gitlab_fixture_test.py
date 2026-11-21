@@ -26,7 +26,10 @@ class GitLabFixtureTests(unittest.TestCase):
             fixtures = Fixtures(directory)
             try:
                 with (Path(directory) / "fixture.log").open("w") as log:
-                    environment = start_gitlab_fixture(fixtures, children, log, {})
+                    report = {}
+                    environment = start_gitlab_fixture(fixtures, children, log, report)
+                    self.assertRegex(fixtures.gitlab_origin, r"^https://127\.0\.0\.1:[0-9]+$")
+                    self.assertTrue(report["gitlabFixture"]["verifiedLocalTlsBeforeLaunch"])
                     self.assertEqual(set(environment), {"SSL_CERT_FILE", "SSL_CERT_DIR"})
                     self.assertTrue(Path(environment["SSL_CERT_FILE"]).is_relative_to(directory))
                     self.assertEqual(list(Path(environment["SSL_CERT_DIR"]).iterdir()), [])
@@ -42,8 +45,9 @@ class GitLabFixtureTests(unittest.TestCase):
                     with trusted.open(request, timeout=5) as response:
                         self.assertEqual(json.load(response), {"id": 41, "username": "owned-reader"})
                     observed_tls = [json.loads(line) for line in (gate / "tls-observations.jsonl").read_text().splitlines()]
-                    self.assertEqual([item["outcome"] for item in observed_tls], ["tls-error", "negotiated"])
-                    self.assertEqual(observed_tls[1], {"destination": False, "outcome": "negotiated", "reason": None})
+                    self.assertEqual([item["outcome"] for item in observed_tls], ["negotiated", "tls-error", "negotiated"])
+                    self.assertEqual(observed_tls[0], {"destination": False, "outcome": "negotiated", "reason": None})
+                    self.assertEqual(observed_tls[2], {"destination": False, "outcome": "negotiated", "reason": None})
                     self.assertTrue(all(set(item) == {"destination", "outcome", "reason"} for item in observed_tls))
                     (gate / "mode").write_text("redirect-302")
                     with self.assertRaises(HTTPError) as failure:

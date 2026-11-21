@@ -14,6 +14,7 @@ import threading
 import time
 
 root = Path(sys.argv[1])
+advertised_host = '127.0.0.1' if sys.argv[2:] == ['--ipv4-origin'] else 'localhost'
 certificate, key = root / 'certificate.pem', root / 'key.pem'
 subprocess.run([
     'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
@@ -72,7 +73,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                and intent.get('projectPath') == body.get('path')
                                and intent.get('sourceId') == '101'
                                and intent.get('accountId') == '41'
-                               and intent.get('origin') == f'https://localhost:{main.server_port}')
+                               and intent.get('origin') == main_origin)
                     if matched:
                         observed['nativeJournalBeforePost'].append({
                             'id': record.get('id'), 'phase': record.get('phase'), 'bodyMatched': True,
@@ -125,7 +126,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             payload = b'{"id":'
         else:
             reply = {'id': 202, 'name': 'Reviewed project', 'path_with_namespace': 'owned-reader/reviewed-project',
-                'web_url': f'https://localhost:{main.server_port}/owned-reader/reviewed-project',
+                'web_url': main_origin + '/owned-reader/reviewed-project',
                 'description': None, 'default_branch': None, 'visibility': 'private', 'archived': False,
                 'namespace': {'id': 9007199254740993, 'name': 'Owned reader', 'path': 'owned-reader',
                               'full_path': 'owned-reader', 'kind': 'user'},
@@ -264,10 +265,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             status = 200
             project = {'id': 101, 'name': 'Owned project',
                 'path_with_namespace': 'team/subgroup/owned-project',
-                'web_url': f'https://localhost:{main.server_port}/team/subgroup/owned-project',
+                'web_url': main_origin + '/team/subgroup/owned-project',
                 'description': None, 'default_branch': None, 'visibility': 'private',
                 'archived': False,
-                'http_url_to_repo': f'https://localhost:{main.server_port}/team/subgroup/owned-project.git',
+                'http_url_to_repo': main_origin + '/team/subgroup/owned-project.git',
                 'ssh_url_to_repo': 'ssh://git@ssh.example.test:2222/team/subgroup/owned-project.git'}
             if (root / 'project-overrides.json').exists():
                 project.update(json.loads((root / 'project-overrides.json').read_text()))
@@ -276,7 +277,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             status = 200
             body = json.dumps([{'id': 101, 'name': 'Owned project',
                 'path_with_namespace': 'team/subgroup/owned-project',
-                'web_url': f'https://localhost:{main.server_port}/team/subgroup/owned-project',
+                'web_url': main_origin + '/team/subgroup/owned-project',
                 'description': None, 'default_branch': 'main', 'visibility': 'private',
                 'archived': False, 'private_token': 'owned-not-exported-marker'}]).encode()
         else:
@@ -318,9 +319,10 @@ class ObservedTlsServer(http.server.ThreadingHTTPServer):
 
 main = ObservedTlsServer(('127.0.0.1', 0), Handler)
 other = ObservedTlsServer(('127.0.0.1', 0), Handler)
+main_origin = f'https://{advertised_host}:{main.server_port}'
 for server in (main, other):
     server.daemon_threads = True
     server.socket = context.wrap_socket(server.socket, server_side=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-print(json.dumps({'origin': f'https://localhost:{main.server_port}'}), flush=True)
+print(json.dumps({'origin': main_origin}), flush=True)
 threading.Event().wait()

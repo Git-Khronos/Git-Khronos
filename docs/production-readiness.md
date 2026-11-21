@@ -3114,6 +3114,26 @@ The fixture-key installer, checksum, verification JSON and successful
 APT preview are in `target/local-review/qualified-0.1.6-ef28d9d/`. This
 does not qualify the later checkout change or the production publisher.
 
+### Packaged GitLab TLS fixture readiness
+
+The packaged harness now uses the IPv4 address its fixture actually binds
+and verifies that listener with one credential-free TLS handshake before
+launching the app. It checks the IP identity using the fixture's private
+certificate as its trust anchor; host trust is unchanged. The harness excludes that
+handshake from app traffic counts. Source transport tests still use the
+`localhost` origin by default, and a redirect to the second port is still
+a different origin.
+
+On the unchanged `ef28d9d` installer, the updated harness passed all 47
+GitLab cases on Ubuntu 24.04 and Debian 12. Each Connect recorded exactly
+one new TLS negotiation and one expected API request. The earlier zero-
+traffic refusal remains in its original report; removing the resolver
+from this local fixture does not prove it caused that refusal. Python
+harness tests (150) and native GitLab source tests (103) also passed.
+See `target/local-review/gitlab-loopback-readiness.pEfBzgsX/`.
+
+### Manual and automatic Fetch recovery
+
 Successful manual Fetch options now re-enable an automatic Fetch paused
 by an earlier failure only when the manual scope covers the repository.
 One of multiple remotes is not enough. A background reply from a closed

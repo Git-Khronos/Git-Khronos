@@ -3,10 +3,31 @@ import hashlib
 import json
 import re
 import select
+import socket
+import ssl
 import subprocess
 import sys
 import time
 import uuid
+
+
+def _prove_owned_tls(gate, port):
+    context = ssl.create_default_context(cafile=str(gate / "certificate.pem"))
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        with context.wrap_socket(sock, server_hostname="127.0.0.1"):
+            pass  # No HTTP request, API credential, or certificate override.
+    record_path = gate / "tls-observations.jsonl"
+    deadline = time.monotonic() + 3
+    expected = [{"destination": False, "outcome": "negotiated", "reason": None}]
+    while time.monotonic() < deadline:
+        if record_path.exists():
+            entries = [json.loads(line) for line in record_path.read_text().splitlines()]
+            if entries:
+                if entries != expected:
+                    raise RuntimeError("Unexpected initial TLS fixture observations")
+                return len(entries)
+        time.sleep(0.01)
+    raise TimeoutError("The owned GitLab listener did not record its prelaunch TLS handshake")
 
 
 def start_gitlab_fixture(fixtures, children, log, report):
@@ -16,7 +37,7 @@ def start_gitlab_fixture(fixtures, children, log, report):
     gate.mkdir(mode=0o700)
     (gate / "mode").write_text("normal")
     process = subprocess.Popen(
-        [sys.executable, str(ROOT / "crates/git-core/src/gitlab_https_fixture.py"), str(gate)],
+        [sys.executable, str(ROOT / "crates/git-core/src/gitlab_https_fixture.py"), str(gate), "--ipv4-origin"],
         env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True,
     )
     children.append(process)
@@ -24,13 +45,18 @@ def start_gitlab_fixture(fixtures, children, log, report):
         raise TimeoutError("Owned GitLab HTTPS fixture did not become ready")
     ready = json.loads(process.stdout.readline())
     origin = ready["origin"]
-    if not re.fullmatch(r"https://localhost:[0-9]+", origin):
+    owned = re.fullmatch(r"https://127\.0\.0\.1:([1-9][0-9]{0,4})", origin)
+    if not owned or int(owned.group(1)) > 65535:
         raise RuntimeError("Unexpected owned HTTPS fixture origin")
+    # The server binds IPv4 only. Use that exact IP SAN and prove readiness
+    # independently of localhost resolution and of the installed app.
+    fixtures.gitlab_preflight_tls_count = _prove_owned_tls(gate, int(owned.group(1)))
     empty_ca_directory = gate / "empty-ca-directory"
     empty_ca_directory.mkdir(mode=0o700)
     fixtures.gitlab_gate, fixtures.gitlab_origin = gate, origin
     report["gitlabFixture"] = {"origin": origin, "credential": "synthetic-only",
                                "trust": "private-process-SSL_CERT_FILE",
+                               "verifiedLocalTlsBeforeLaunch": True,
                                "certificateSha256": hashlib.sha256((gate / "certificate.pem").read_bytes()).hexdigest()}
     # Native TLS verifies this certificate normally. Only the owned application
     # process inherits the private trust store; host trust is never changed.
@@ -110,11 +136,12 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     """)
     observed = requests()
     tls_records = gate / "tls-observations.jsonl"
+    preflight_count = fixtures.gitlab_preflight_tls_count
     report["gitlabInitialConnect"] = {
         "outcome": connect_result,
         "fixtureApiRequests": len(observed),
         "matchingFixtureCredentials": sum(request["credentialMatched"] for request in observed),
-        "fixtureTls": [json.loads(line) for line in tls_records.read_text().splitlines()[:16]]
+        "fixtureTls": [json.loads(line) for line in tls_records.read_text().splitlines()[preflight_count:preflight_count + 16]]
         if tls_records.exists() else [],
     }
     assert connect_result == "connected", (
