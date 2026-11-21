@@ -239,6 +239,8 @@ interface MutationResult {
   error: string | null;
   failureKind: string | null;
   refreshError?: string | null;
+  /** HEAD reported by this command, not by a later reconciliation read. */
+  responseHeadOid: string | null;
 }
 
 export type OpenRepositoryResult =
@@ -1560,11 +1562,11 @@ export class GitKhronosService implements OnDestroy {
   async commit(
     message: string,
     options: { amend?: boolean; skipHooks?: boolean; sign?: boolean } & Partial<CommitPolicy> = {},
-  ): Promise<boolean> {
-    if (!message.trim()) return false;
+  ): Promise<{ headOid: string | null } | null> {
+    if (!message.trim()) return null;
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    const outcome = await this.mutate('commit_changes', options.amend ? 'Amending commit…' : 'Creating commit…', options.amend ? 'Commit amended' : 'Commit created', {
+    const outcome = await this.mutateWithResult('commit_changes', options.amend ? 'Amending commit…' : 'Creating commit…', options.amend ? 'Commit amended' : 'Commit created', {
       message: message.trim(),
       amend: options.amend ?? false,
       skipHooks: options.skipHooks ?? false,
@@ -1572,9 +1574,9 @@ export class GitKhronosService implements OnDestroy {
       policy: { signOff: options.signOff ?? false, allowEmpty: options.allowEmpty ?? false,
         author: options.author ?? null, committer: options.committer ?? null },
     });
-    if (outcome !== 'success') return false;
-    this.recordHeadChange(repository?.id, beforeOid, options.amend ? 'Amend Commit' : 'Commit');
-    return true;
+    if (outcome?.status !== 'success') return null;
+    this.recordHeadChange(repository?.id, beforeOid, options.amend ? 'Amend Commit' : 'Commit', outcome.responseHeadOid);
+    return { headOid: outcome.responseHeadOid };
   }
 
   async updateHeadMessage(expectedOid: string, message: string): Promise<boolean> {
@@ -3418,6 +3420,7 @@ export class GitKhronosService implements OnDestroy {
     let recoveryRefreshError: string | null = null;
     let failureKind: string | null = null;
     let ignoreFailure: string | null = null;
+    let responseHeadOid: string | null = null;
     try {
       const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
       this.bumpStatusGeneration(repo.id);
@@ -3458,9 +3461,11 @@ export class GitKhronosService implements OnDestroy {
           }
           throw error;
         }
+        const matchingSnapshot = snapshot.id === repo.id && snapshot.path === repo.path;
+        if (matchingSnapshot) responseHeadOid = snapshot.headOid;
         if (!ownsRepository()) {
           this.deferMetadataRefresh(repo.id, { workspaceId });
-        } else if (snapshot.id !== repo.id || snapshot.path !== repo.path) {
+        } else if (!matchingSnapshot) {
           refreshError = 'The returned snapshot belongs to a different repository.';
           this.deferMetadataRefresh(repo.id);
         } else if (generation === this.statusGeneration(repo.id)) {
@@ -3507,7 +3512,8 @@ export class GitKhronosService implements OnDestroy {
       if (ownsRepository()) {
         void this.refreshStatusInBackground(repo.id, true);
       }
-      return { status: result, error: failure, failureKind, refreshError };
+      return { status: result, error: failure, failureKind, refreshError,
+        responseHeadOid: result === 'success' ? responseHeadOid : null };
     } finally {
       finishHistoryBarrier();
     }
@@ -3923,8 +3929,8 @@ export class GitKhronosService implements OnDestroy {
     repoId: string | undefined,
     beforeOid: string | null | undefined,
     label: string,
+    afterOid = this.repositories().find(repository => repository.id === repoId)?.headOid,
   ): void {
-    const afterOid = this.repositories().find(repository => repository.id === repoId)?.headOid;
     const entry = createHeadHistoryEntry(beforeOid, afterOid, label);
     if (!repoId || !entry) return;
     this.operationHistory.update((history) => ({ ...history, [repoId]: entry }));

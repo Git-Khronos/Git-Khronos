@@ -7427,7 +7427,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const tab = this.commitTabLease();
     const savedAtSubmit = this.commitDrafts.get(repository.id);
     const { message, pushAfter, options } = submission;
-    const pushTarget = pushAfter ? this.commitPushTarget() : null;
+    const pushTarget = pushAfter && this.branchPushPlan() ? this.commitPushTarget() : null;
     const committed = await this.git.commit(message, {
       ...options,
       amend: !this.repositoryOperation().rebaseSplit && options.amend,
@@ -7448,11 +7448,15 @@ export class AppComponent implements OnInit, OnDestroy {
       this.resetCommitForm(true);
       this.applyCommitTemplate();
     }
-    if (pushAfter) {
+    if (pushTarget !== null) {
       if (!ownsTab || current.status.branch !== repository.status.branch) {
         this.git.error.set('The commit completed in the original checkout. Push was not started because the active checkout or branch changed. Review the original branch and push explicitly.');
       } else if (pushTarget !== this.commitPushTarget()) {
         this.git.error.set('The commit completed. Push was not started because the selected push destination changed. Review the destination and push explicitly.');
+      } else if (!committed.headOid || committed.headOid !== current.headOid) {
+        this.git.error.set(committed.headOid
+          ? 'The commit completed. Push was not started because the local commit changed. Review the outgoing commits and push explicitly.'
+          : 'The commit completed, but its revision could not be confirmed. Review the outgoing commits and push explicitly.');
       } else {
         this.pushCurrentBranch();
       }

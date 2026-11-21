@@ -10,7 +10,7 @@ async function setup(page: Page, staged: number): Promise<void> {
     git.repositories.update((items: any[]) => items.map(item => ({ ...item,
       status: { ...item.status, staged } })));
     const fixture = { calls: [] as any[], fail: false, invalidIdentity: false, diagnostic: null as any, hold: false, finish: null as any,
-      stageFailure: false, holdStage: false, finishStage: null as any };
+      stageFailure: false, holdStage: false, finishStage: null as any, refreshedHead: null as string | null };
     (window as any).__commitPolicy = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
@@ -37,6 +37,12 @@ async function setup(page: Page, staged: number): Promise<void> {
           } : snapshot);
         });
         return Promise.resolve(snapshot);
+      }
+      if (command === 'refresh_repository' && fixture.refreshedHead) {
+        const repository = git.repository();
+        const headOid = fixture.refreshedHead;
+        return Promise.resolve({ ...repository, headOid, status: { ...repository.status, staged: 0 },
+          branches: repository.branches.map((branch: any) => branch.current ? { ...branch, oid: headOid } : branch) });
       }
       if (['push_repository', 'refresh_repository', 'refresh_repository_metadata'].includes(command)) return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
@@ -497,6 +503,36 @@ for (const route of ['tracked', 'unpublished', 'detached'] as const) {
       .filter((call: any) => ['push_repository', 'publish_branch'].includes(call.command)))).toEqual([]);
   });
 }
+
+test('commit and push never adopts a newer HEAD learned during snapshot reconciliation', async ({ page }) => {
+  await setup(page, 1);
+  const summary = page.getByLabel('Commit summary', { exact: true });
+  await summary.fill('Commit only this change');
+  await page.getByLabel('Push after committing', { exact: true }).check();
+  await page.evaluate(() => { (window as any).__commitPolicy.hold = true; });
+  await page.locator('.commit-form button[type=submit]').click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__commitPolicy.finish)).toBe('function');
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const fixture = (window as any).__commitPolicy;
+    // Force reconciliation rather than accepting the mutation snapshot into
+    // the view. The original commit reply still reports eeee..., not ffff....
+    git.bumpStatusGeneration(git.activeRepositoryId());
+    fixture.refreshedHead = 'f'.repeat(40);
+    fixture.finish();
+  });
+  await expect(page.getByRole('alert')).toContainText('Push was not started because the local commit changed');
+  await expect(summary).toHaveValue('');
+  const observed = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { calls } = (window as any).__commitPolicy;
+    return { head: git.repository().headOid,
+      refreshed: calls.some((call: any) => call.command === 'refresh_repository'),
+      pushed: calls.some((call: any) => call.command === 'push_repository'),
+      undoAfterOid: git.operationHistory()[git.activeRepositoryId()]?.afterOid };
+  });
+  expect(observed).toEqual({ head: 'f'.repeat(40), refreshed: true, pushed: false, undoAfterOid: 'e'.repeat(40) });
+});
 
 for (const navigation of ['stay', 'switch tabs', 'return to the submitted text'] as const) {
   test(`late commit completion retains a newer draft when users ${navigation}`, async ({ page }) => {

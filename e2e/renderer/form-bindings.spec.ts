@@ -39,14 +39,14 @@ test('keeps commit text, options, and co-author data synchronized', async ({ pag
       ng: {
         getComponent(element: Element): {
           git: {
-            commit(message: string, options: Record<string, unknown>): Promise<boolean>;
+            commit(message: string, options: Record<string, unknown>): Promise<{ headOid: string } | null>;
           };
         };
       };
     }).ng.getComponent(root);
     app.git.commit = async (message, options) => {
       sessionStorage.setItem('form-test-commit', JSON.stringify({ message, options }));
-      return true;
+      return { headOid: 'e'.repeat(40) };
     };
   });
 
@@ -84,7 +84,7 @@ test('keeps commit text, options, and co-author data synchronized', async ({ pag
     return recorded ? JSON.parse(recorded) : null;
   })).toEqual({
     message: 'abc\n\nDetailed explanation\n\nCo-authored-by: Morgan Lee <morgan@example.test>',
-    options: { amend: false, skipHooks: true, sign: true, pushAfter: false, signOff: false, allowEmpty: false, author: null, committer: null },
+    options: { amend: false, skipHooks: true, sign: true, signOff: false, allowEmpty: false, author: null, committer: null },
   });
   await expect(summary).toHaveValue('');
   await expect(description).toHaveValue('');

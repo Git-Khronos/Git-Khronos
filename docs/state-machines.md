@@ -227,6 +227,9 @@ After committing, a mismatch keeps the local commit but skips the push.
 The user can review the new destination and push explicitly. This check
 covers the renderer's selected destination and latest accepted repository
 snapshot; it is not a lock against external Git configuration changes.
+The commit response retains its own reported HEAD separately from any
+reconciliation refresh. If the view later shows a different HEAD, it cannot
+be adopted for the follow-up push or recorded as the commit's Undo target.
 `Push` also sends the selected local commit ID to native. A different HEAD
 before launch is a refusal, and the push refspec uses the requested object
 ID rather than a symbolic HEAD so a later move cannot change the commits
