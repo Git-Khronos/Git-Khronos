@@ -2843,3 +2843,19 @@ the unrelated unstaged edit. SHA-256:
 `6032a4fd06201b494b255baed956dc34b006a877c1316827bd7414f46ae2953f`.
 The report is under
 `target/local-review/installed-coauthors.5q9iKMnN/combined/`.
+
+## Installed comparison responsiveness — 2026-11-21
+
+The Ubuntu 24.04 installed fixture held the comparison Git process
+open and requested updater status through the native command bridge.
+In the `8578d57` package the status call did not finish until the
+watchdog released Git. In the `ac8ac69` package it finished while
+each of the four commit and working-directory comparison commands was
+still pending, without invoking the watchdog. Each comparison then
+completed normally after Git was released.
+
+Positive installer SHA-256:
+`73a0690e0c472a8a58e05016af6120aaf9a43cd7f16c44c4099383c4599e1622`.
+Reports: `target/local-review/comparison-native-background.BhTpmW3O/red/`
+and `target/local-review/updater/jammy-builder/comparison-responsive-release.kS7kw8aR/focused/`.
+This is focused evidence for that installer, not a full release matrix.
