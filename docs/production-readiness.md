@@ -1850,9 +1850,15 @@ manually supplied Git 2.53 binary invoked the system Git 2.43 for its nested
 `git refs verify`. The private fixture intentionally strips inherited
 `GIT_EXEC_PATH`, so that override could not supply the matching helpers.
 An independent local repository passed `fsck` with the modern binary and
-helpers mounted at their normal paths in the container; a full recheck uses
-that coherent toolchain. The harness now retains initial and final Git
-integrity diagnostics without reducing either check to an exit code.
+helpers mounted at their normal paths in the container. On the subsequent
+recheck, that exact installed candidate passed **272 environment scenarios**
+with both Git integrity checks clean. The updater recognized the publisher
+key, kept automatic updates off and offered no offline installation. Strict
+local preflight accepted the Jammy receipt, Debian ABI, exact package digest
+and environment evidence for `e7c06759`. The report is under
+`noble-coherent-git/`; `noble-coherent-preflight.sha256` records the accepted
+digest. This does not qualify the later setup-dialog or workflow-lock changes
+and does not establish hosted publication or a live update installation.
 
 ## Deferred repository setup dialogs — 2026-11-21
 
