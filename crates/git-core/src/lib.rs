@@ -7992,14 +7992,12 @@ fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
     // initial snapshot and later porcelain status must name the same branch.
     let branch = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
     let branch = if branch.status.success() {
-        std::str::from_utf8(&branch.stdout)
-            .ok()
-            .map(|raw| {
-                let reference = raw.trim_end_matches(['\r', '\n']);
-                reference.strip_prefix("refs/heads/").unwrap_or(reference)
-            })
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned)
+        // Worktree and porcelain reports use lossy decoding for display.
+        // Use the same spelling here, never as an exact mutation input.
+        let raw = String::from_utf8_lossy(&branch.stdout);
+        let reference = raw.trim_end_matches(['\r', '\n']);
+        let name = reference.strip_prefix("refs/heads/").unwrap_or(reference);
+        (!name.is_empty()).then(|| name.to_owned())
     } else {
         None
     };
@@ -14202,6 +14200,40 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         let detached = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
         assert_eq!(detached.status.branch, None);
         assert_eq!(detached.head_oid.as_deref(), Some(oid.as_str()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn checkout_consistency_keeps_non_utf8_names_readable_without_authorizing_mutation() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let repository = TestRepository::new();
+        repository.git_output(&["commit", "--allow-empty", "-m", "Fixture"]);
+        let switch = Command::new("git")
+            .current_dir(&repository.path)
+            .args(["checkout", "-qb"])
+            .arg(std::ffi::OsStr::from_bytes(b"topic-\xff"))
+            .output()
+            .unwrap();
+        assert!(switch.status.success(), "{:?}", switch.stderr);
+
+        let first = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        let full = snapshot_with_limits_fast(&repository.path, 5, 20).unwrap();
+        assert_eq!(first.status.branch.as_deref(), Some("topic-\u{fffd}"));
+        assert_eq!(first.status.branch, full.status.branch);
+        let oid = first.head_oid.as_deref().unwrap();
+        let refusal = checkout_commit_reviewed(
+            &repository.path,
+            oid,
+            Some(oid),
+            first.status.branch.as_deref(),
+        )
+        .unwrap_err();
+        assert_eq!(refusal.kind, "staleCheckout");
+        assert_eq!(
+            read_head_status(&repository.path).unwrap().branch,
+            first.status.branch
+        );
     }
 
     #[test]
