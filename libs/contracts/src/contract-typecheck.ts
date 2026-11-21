@@ -2,6 +2,10 @@ import { ipc, invokeCommand, type GitAuthenticationPrompt, type BranchWorkflowSe
 
 // Compiled, never executed. Widened bindings make expect-error directives fail.
 function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflowSettings): void {
+  const receivingCheckout = { branch: 'main', headOid: 'a'.repeat(40) };
+  void ipc.pull_repository({ repoId: 'fixture', strategy: 'ff-only', checkout: receivingCheckout, operationId: 'owned-pull' });
+  // @ts-expect-error no Pull route may fall back to an implicit merge strategy
+  void ipc.pull_repository({ repoId: 'fixture', checkout: receivingCheckout, operationId: 'owned-pull' });
   void ipc.parse_repository_link({ rawLink: 'git-khronos://repository?v=1&remote=https%3A%2F%2Fexample.test%2Fowned.git' });
   void ipc.create_repository_link({ remote: 'git@example.test:owned/project.git', target: { kind: 'reference', reference: 'refs/heads/main' } });
   void ipc.discover_repository_link({ rawLink: 'owned-link', knownPaths: ['/owned/repository'], operationId: 'owned-discovery' });

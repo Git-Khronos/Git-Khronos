@@ -171,8 +171,10 @@ reads check remote-tracking refs and preservation of HEAD, local refs,
 index, config and working files. A second journey holds the first Pull,
 switches the queued checkout to another branch at the same commit, and
 checks that Pull refuses it before fetching. An explicit retry then
-advances only the newly selected local branch. No external transport is used. The
-exact-artifact Ubuntu 24.04 CI job runs this suite on the installed package.
+advances only the newly selected local branch. The suite also sets
+**Fast-forward only** in the UI, then checks that a batch updates the linear
+checkout without merging a divergent checkout. No external transport is used.
+The exact-artifact Ubuntu 24.04 CI job runs this suite on the installed package.
 
 ## Focused removal of unopened saved paths
 

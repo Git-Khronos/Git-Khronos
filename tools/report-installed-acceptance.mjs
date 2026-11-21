@@ -24,6 +24,7 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['workspace-batch', [
     'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch',
     'native-workspace-pull-refuses-same-tip-external-checkout-before-fetch',
+    'native-workspace-pull-honors-fast-forward-only-on-diverged-repository',
   ]],
   ['workspace-saved-removal', 'native-workspace-review-removes-only-selected-saved-paths-and-persists-across-reload'],
   ['workspace-locate', 'native-workspace-locate-replaces-one-path-using-owned-native-folder-picker'],

@@ -263,15 +263,18 @@ test('installed startup must show pending files and publish both accurate line r
   }
 });
 
-test('installed workspace batch must refuse a replacement checkout before Pull', () => {
+test('installed workspace batch must preserve its checkout and saved Pull policy', () => {
   const fixtures = matrixFixtures();
   const batch = fixtures.find(report => report.suite === 'workspace-batch');
-  const olderEvidence = { ...batch, scenarios: [
-    'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch',
-  ] };
-  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== batch), olderEvidence]);
-  assert.equal(matrix.complete, false);
-  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['workspace-batch']);
+  for (const scenario of [
+    'native-workspace-pull-refuses-same-tip-external-checkout-before-fetch',
+    'native-workspace-pull-honors-fast-forward-only-on-diverged-repository',
+  ]) {
+    const olderEvidence = { ...batch, scenarios: batch.scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== batch), olderEvidence]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['workspace-batch']);
+  }
 });
 
 test('installed Browse must reject a retired reply and still open a fresh selection', () => {

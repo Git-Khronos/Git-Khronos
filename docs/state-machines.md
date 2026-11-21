@@ -253,9 +253,10 @@ All app Pull routes pass the original checkout's branch and commit to
 native. A workspace batch captures each checkout when the batch is started,
 not when it reaches the front of the queue. It also captures the saved Pull
 strategy once for the batch; each checkout still uses its own Git upstream,
-not the active tab's toolbar remote. Under the app's repository mutation
-lock, native refuses a changed checkout before starting Git, even when the
-new branch shares its old commit. This preflight isn't a lock against Git
+not the active tab's toolbar remote. The native command requires an explicit
+strategy; it does not silently choose merge when omitted. Under the app's
+repository mutation lock, native refuses a changed checkout before starting
+Git, even when the new branch shares its old commit. This preflight isn't a lock against Git
 clients outside the app after the check.
 
 ### Manual co-author entry

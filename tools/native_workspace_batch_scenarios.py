@@ -153,8 +153,75 @@ def workspace_batch_stop(driver, fixtures, report):
     assert_git_state({first, second})
     evidence['onlyRemoteTrackingRefsChanged'] = True
     report['scenarios'].append('native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch')
+    workspace_batch_pull_strategy(driver, fixtures, report)
     workspace_batch_pull_checkout(driver, fixtures, report)
     return first
+
+
+def workspace_batch_pull_strategy(driver, fixtures, report):
+    upstream = fixtures.repository('workspace-policy-upstream', commits=2)
+    first, second = (fixtures.root / name for name in ('workspace-policy-linear', 'workspace-policy-diverged'))
+    for checkout in (first, second):
+        fixtures.git(fixtures.root, 'clone', '-q', '--no-local', str(upstream), str(checkout))
+        fixtures.git(checkout, 'config', 'user.name', 'Native Fixture')
+        fixtures.git(checkout, 'config', 'user.email', 'native@example.test')
+    common = fixtures.git(upstream, 'rev-parse', 'HEAD')
+    author = ('-c', 'user.name=Native Fixture', '-c', 'user.email=native@example.test')
+    for checkout, file, content in (
+        (second, 'local.txt', 'Local commit\n'),
+        (upstream, 'incoming.txt', 'Incoming commit\n'),
+    ):
+        (checkout / file).write_text(content)
+        fixtures.git(checkout, 'add', '--', file)
+        fixtures.git(checkout, *author, 'commit', '-qm', content.strip())
+    local = fixtures.git(second, 'rev-parse', 'HEAD')
+    incoming = fixtures.git(upstream, 'rev-parse', 'HEAD')
+    upstream_refs = fixtures.git(upstream, 'show-ref')
+    assert fixtures.git(second, 'rev-parse', 'refs/remotes/origin/main') == common
+    assert local != incoming and local != common and incoming != common
+
+    driver.script("""
+      localStorage.clear();
+      localStorage.setItem('git-khronos.open-repositories.v1', JSON.stringify(arguments[0]));
+      localStorage.setItem('git-khronos.active-repository.v1', arguments[0][0]);
+      localStorage.setItem('git-khronos.remote.auto-fetch-minutes', '0');
+    """, [str(first), str(second)])
+    driver.reload()
+    driver.wait('return document.querySelectorAll(".repo-tab-main[role=tab]").length === 2', 60)
+    driver.click_visible('button[aria-label="Pull options"]')
+    driver.click_visible('.pull-menu [role="menuitemradio"][aria-label="Make Fast-forward only the default pull strategy"]')
+    driver.wait('return localStorage.getItem("git-khronos.pull.strategy") === "ff-only"')
+    driver.click_visible('button[aria-label="Pull options"]')
+    driver.click_visible('.workspace-toggle')
+    driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    result = overview + ' [aria-label="Repository action results"]'
+    for checkout in (first, second):
+        driver.click_visible(overview + ' article[aria-label=' + json.dumps(checkout.name) + '] input[type=checkbox]')
+    driver.click_scrolled_text(overview + ' button', 'Pull selected (2)', wait_for_ready=True)
+    driver.wait(
+        'const text = document.querySelector(' + json.dumps(result) + ')?.textContent ?? ""; '
+        'return text.includes(' + json.dumps(f'{second.name} — error:') + ') || '
+        'text.includes(' + json.dumps(f'{second.name} — success') + ');')
+    linear = fixtures.git(first, 'rev-parse', 'HEAD')
+    actual = fixtures.git(second, 'rev-parse', 'HEAD')
+    tracking = fixtures.git(second, 'rev-parse', 'refs/remotes/origin/main')
+    report['workspaceBatchPullStrategy'] = {
+        'strategy': 'ff-only', 'linearHead': linear, 'originalDivergentHead': local, 'divergentHead': actual,
+        'divergentHeadParents': fixtures.git(second, 'show', '-s', '--format=%P', 'HEAD').split(),
+        'expectedIncoming': incoming, 'trackingRef': tracking,
+    }
+    assert linear == incoming
+    assert actual == local, f'Fast-forward-only batch changed divergent HEAD: expected {local}, got {actual}'
+    assert tracking == incoming
+    assert fixtures.git(second, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert not fixtures.git(second, 'status', '--porcelain')
+    assert not (second / 'incoming.txt').exists()
+    assert (second / 'local.txt').read_text() == 'Local commit\n'
+    assert fixtures.git(upstream, 'show-ref') == upstream_refs
+    driver.wait('return document.querySelector(' + json.dumps(result) + ')?.textContent.includes('
+                + json.dumps(f'{second.name} — error: Pull stopped because the histories cannot fast-forward.') + ')')
+    report['scenarios'].append('native-workspace-pull-honors-fast-forward-only-on-diverged-repository')
 
 
 def workspace_batch_pull_checkout(driver, fixtures, report):

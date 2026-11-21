@@ -2393,14 +2393,13 @@ async fn sparse_checkout_disable(
 #[specta::specta]
 async fn pull_repository(
     repo_id: String,
-    strategy: Option<String>,
+    strategy: String,
     remote: Option<String>,
     branch: Option<String>,
     checkout: PullCheckout,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    let strategy = strategy.unwrap_or_else(|| "merge".into());
     mutate_and_refresh_cancellable_background(
         repo_id,
         operation_id,
