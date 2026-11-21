@@ -243,11 +243,13 @@ are covered by `diff-workspace-loading.spec.ts`.
 Porcelain status describes file states, not file contents. A successful
 standalone status refresh of the active dirty checkout advances a separate
 content revision even when the renderer can retain its existing status object.
-The recap binds that revision, repository ID, path and status to its one
-in-flight native read. It discards outdated results and coalesces new requests.
+The recap binds that revision, repository ID, path, status and the active
+checkout visit to its one in-flight native read. An away-and-back tab switch
+invalidates results even if it reuses the same repository snapshot. The recap
+discards outdated results and coalesces new requests.
 Full snapshots already provide a fresh status input. Clean or hidden recaps
 do not start reads just because a refresh ran. `unstaged-summary.spec.ts`
-exercises unchanged-status updates and superseded counts.
+exercises unchanged-status updates, superseded counts and return visits.
 
 ### History search read ownership
 
@@ -376,7 +378,7 @@ unavailable for one diff, that side is unavailable without hiding a valid
 count from the other.
 
 Status bursts coalesce to one in-flight read and one latest desired checkout.
-Only the same repository ID/path and status object may accept a response,
+Only the same checkout visit, repository ID/path and status object may accept a response,
 and the inspector must still be visible and Git idle. A clean section shows
 zero; two clean sections or a hidden inspector skip the native read.
 Filtering, collapse, and list/tree presentation do not redefine the totals.

@@ -8,6 +8,7 @@ const EMPTY: SummaryState = { phase: 'ready', value: { additions: 0, deletions: 
 interface Request {
   repositoryId: string;
   repositoryPath: string;
+  checkoutScope: string;
   status: RepositoryStatus;
   contentRevision: number;
 }
@@ -78,6 +79,7 @@ export class WorkingTreeSummariesDirective {
     effect(() => {
       const request = {
         repositoryId: this.repositoryId(), repositoryPath: this.repositoryPath(),
+        checkoutScope: this.git.activeRepositoryReadScope(),
         status: this.status(), contentRevision: this.git.workingTreeContentRevision(),
       };
       const busy = this.git.busy();
@@ -100,6 +102,7 @@ export class WorkingTreeSummariesDirective {
   private current(request: Request): boolean {
     const repository = this.git.repository();
     return !this.destroyed && this.desired === request && !this.git.busy() && this.visible()
+      && this.git.activeRepositoryReadScope() === request.checkoutScope
       && repository?.id === request.repositoryId && repository.path === request.repositoryPath
       && repository.status === request.status && this.status() === request.status
       && this.git.workingTreeContentRevision() === request.contentRevision;

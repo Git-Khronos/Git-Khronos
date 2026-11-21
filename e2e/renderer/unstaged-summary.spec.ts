@@ -46,6 +46,38 @@ test('status bursts coalesce and an old result cannot replace current totals', a
   await expect(page.locator('.unstaged-section gc-working-tree-summary')).toContainText('−3');
 });
 
+test('an obsolete recap cannot publish after returning to the unchanged checkout', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gc-working-tree-summary');
+  const sameSnapshotNewVisit = await page.evaluate(() => {
+    const fixture = (window as any).__unstagedSummary;
+    const { git, requests } = fixture;
+    const totals = (window as any).ng.getDirectives(document.querySelector('.working-tree-scroll'))
+      .find((directive: any) => typeof directive.unstaged?.set === 'function');
+    fixture.published = [];
+    const publish = totals.unstaged.set.bind(totals.unstaged);
+    totals.unstaged.set = (state: any) => {
+      if (state.phase === 'ready') fixture.published.push(state.value.additions);
+      publish(state);
+    };
+    const original = git.repository();
+    const other = { ...original, id: 'summary-other-checkout', path: '/owned/summary-other' };
+    git.repositories.update((items: any[]) => [...items, other]);
+    const before = git.activeRepositoryReadScope();
+    git.activateRepository(other.id);
+    git.activateRepository(original.id);
+    requests[0].resolve({ staged: null, unstaged: { additions: 999, deletions: 999, uncountedFiles: 0, partial: false } });
+    return git.repository() === original && git.activeRepositoryReadScope() !== before;
+  });
+  expect(sameSnapshotNewVisit).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await expect(recap).not.toContainText('999');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: null, unstaged: { additions: 7, deletions: 4, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap).toContainText('+7');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.published)).toEqual([7]);
+});
+
 test('a successful status poll refreshes line counts even when porcelain status is unchanged', async ({ page }) => {
   const recap = page.locator('.unstaged-section gc-working-tree-summary');
   await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
