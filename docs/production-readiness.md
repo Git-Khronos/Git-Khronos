@@ -591,7 +591,11 @@ bytes. Package SHA-256:
 The package and harness source IDs are recorded under
 `target/local-review/updater/jammy-builder/reviewed-commit-edit-release.J9co8Ig3/focused/`;
 the runtime report is in its `results/commit-rewrite/` directory.
-This check is now required by the local and CI release matrix.
+This check is now required by the local and CI release matrix. The same
+installer passed all **28** checks under the expanded local verifier
+(`verified-release-expanded.json` at the root of that run); the original
+27-check receipt is retained separately. Both verified the fixture publisher
+key, not a production signing or publication.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
