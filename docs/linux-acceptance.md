@@ -145,6 +145,12 @@ when a checkout was renamed in its original parent. The keyboard selects the
 sole row in the chooser's starting folder without navigating; only the exact
 renamed checkout in the original saved slot is accepted as success.
 
+Use `--suite workspace-reopen --headless` to exercise session-local tab
+history in two saved layouts with a shared checkout. The other workspace
+must not inherit the close action. Reopening in the original workspace
+restores the exact former saved position, preserves an unavailable slot,
+and does not touch Git data.
+
 ## Focused selection from a blocked discard review
 
 Use `--suite discard-subset --headless` to exercise the native preview and

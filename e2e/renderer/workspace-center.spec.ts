@@ -113,6 +113,109 @@ test('shows local repository state, filters attention and opens a repository', a
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('clean-repo');
 });
 
+test('reopens a closed tab in its own workspace and original saved slot', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const workspace = git.activeWorkspace();
+    const third = { ...fixture.second, id: 'reopen-third', path: '/owned/third', name: 'Gamma' };
+    fixture.origin = workspace.id;
+    fixture.alternate = 'reopen-alternate';
+    fixture.calls = [];
+    git.repositories.set([fixture.first, fixture.second, third]);
+    git.workspaces.set([
+      { ...workspace, repositoryPaths: ['/owned/alpha', '/owned/offline', '/owned/beta', '/owned/third'] },
+      { id: fixture.alternate, name: 'Alternate reopen', repositoryPaths: [fixture.second.path], activeRepositoryPath: fixture.second.path },
+    ]);
+    git.workspaceRepositoryCache.set(fixture.alternate, [fixture.second]);
+    git.systemInfo.update((previous: any) => ({ ...previous, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      if (command === 'open_repository') {
+        fixture.calls.push({ path: args.path, workspace: git.activeWorkspaceId() });
+        if (args.path !== fixture.second.path || fixture.failReopen) return Promise.reject({ message: 'Checkout unavailable' });
+        return Promise.resolve(git.activeWorkspaceId() === fixture.origin
+          ? { ...fixture.second, path: '/owned/beta-canonical' } : fixture.second);
+      }
+      const active = git.repositories().find((repo: any) => repo.id === args?.repoId) ?? git.repository();
+      if (command === 'refresh_repository_status' && active) return Promise.resolve(active.status);
+      if ((command === 'refresh_repository' || command === 'refresh_repository_metadata') && active) return Promise.resolve(active);
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+  });
+  const switchTo = (target: string) => page.evaluate(async key => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    await git.switchWorkspace((window as any).__center[key]);
+  }, target);
+  const reopen = () => page.evaluate(async () => (window as any).ng.getComponent(document.querySelector('gc-root')).git.reopenClosedRepository());
+  const recent = () => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.recentlyClosedRepositoryPath());
+  const closeBeta = page.getByRole('button', { name: 'Close Beta', exact: true });
+  const betaTab = page.getByRole('tab', { name: /^Beta(?:,|$)/ });
+  await betaTab.hover();
+  await closeBeta.click();
+  await expect.poll(recent).toBe('/owned/beta');
+  await switchTo('alternate');
+  expect(await recent()).toBeNull();
+  expect(await reopen()).toBe(false);
+  await closeBeta.click();
+  await expect.poll(recent).toBe('/owned/beta');
+  await page.getByRole('button', { name: /^Reopen beta/i }).click();
+  await expect(betaTab).toBeVisible();
+  await expect.poll(recent).toBeNull();
+
+  await switchTo('origin');
+  expect(await recent()).toBe('/owned/beta');
+  await page.evaluate(() => { (window as any).__center.failReopen = true; });
+  expect(await reopen()).toBe(false);
+  expect(await recent()).toBe('/owned/beta');
+  await page.evaluate(() => { (window as any).__center.failReopen = false; });
+  await page.keyboard.press('Control+Shift+T');
+  await expect(betaTab).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(recent).toBeNull();
+  const state = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const fixture = (window as any).__center;
+    const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
+    return {
+      open: git.repositories().map((repo: any) => repo.path),
+      origin: workspaces.find((item: any) => item.id === fixture.origin).repositoryPaths,
+      alternate: workspaces.find((item: any) => item.id === fixture.alternate).repositoryPaths,
+      reopenRequests: fixture.calls.filter((call: any) => call.path === '/owned/beta')
+        .map((call: any) => call.workspace === fixture.alternate ? 'alternate' : 'origin'),
+    };
+  });
+  expect(state).toEqual({
+    open: ['/owned/alpha', '/owned/beta-canonical', '/owned/third'],
+    origin: ['/owned/alpha', '/owned/offline', '/owned/beta-canonical', '/owned/third'],
+    alternate: ['/owned/beta'],
+    reopenRequests: ['alternate', 'origin', 'origin'],
+  });
+});
+
+test('a reopen reply from an earlier visit cannot repopulate the current workspace', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((value: any) => ({ ...value, appVersion: 'renderer test' }));
+    git.closeRepository(fixture.second.id);
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      if (command === 'open_repository') return new Promise(resolve => { fixture.releaseReopen = () => resolve(fixture.second); });
+      return Promise.reject(Error(`Unexpected ${command}`));
+    } };
+    fixture.reopening = git.reopenClosedRepository();
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseReopen)).toBe('function');
+  const state = await page.evaluate(async () => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    // Change the visit while deliberately keeping the same ID and closed entry.
+    git.workspaceVisit += 1;
+    fixture.releaseReopen();
+    const applied = await fixture.reopening;
+    return { applied, paths: git.repositories().map((repo: any) => repo.path), retry: git.recentlyClosedRepositoryPath() };
+  });
+  expect(state).toEqual({ applied: false, paths: ['/owned/alpha'], retry: '/owned/beta' });
+});
+
 test('retries a saved path, preserves membership and does not carry a draft into the opened checkout', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

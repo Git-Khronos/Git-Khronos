@@ -82,6 +82,12 @@ membership. One stale or reopened path refuses the whole removal.
 Successful removal revokes every matching pending restore before updating
 the saved layout. This does not close tabs or invoke Git.
 
+Close history is session-local and scoped to the workspace that closed the
+tab. Reopen uses its former saved position without dropping inaccessible
+paths. A failed open retains the history for retry, and a native reply from
+a retired workspace visit cannot restore the tab into another layout.
+Ordinary opens consume only matching entries in the current workspace.
+
 One restore instance owns an active workspace visit. Both its timer and replies
 check instance identity, including when the user leaves and returns to the same
 workspace. Closing a tab revokes that pending path so an earlier read cannot

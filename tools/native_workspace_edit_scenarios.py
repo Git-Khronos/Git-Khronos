@@ -4,6 +4,75 @@ import json
 from native_worktree_scenarios import checkout_footprint
 
 
+def reopen_workspace_tab(driver, fixtures, report):
+    """Keep close history in its workspace and restore the previous saved slot."""
+    first, middle, last = [
+        fixtures.repository('workspace-reopen-' + name, commits=2) for name in ('first', 'middle', 'last')
+    ]
+    offline = fixtures.root / 'workspace-reopen-unavailable'
+    snapshots = [checkout_footprint(fixtures, repository) for repository in (first, middle, last)]
+    primary = {'id': 'owned-reopen-origin', 'name': 'Owned reopen origin',
+               'repositoryPaths': [str(path) for path in (first, offline, middle, last)],
+               'activeRepositoryPath': str(first)}
+    other = {'id': 'owned-reopen-other', 'name': 'Owned reopen other',
+             'repositoryPaths': [str(middle)], 'activeRepositoryPath': str(middle)}
+    driver.wait("return !!document.querySelector('gc-root')")
+    driver.script("""
+      localStorage.clear();
+      localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
+      localStorage.setItem('git-khronos.active-workspace.v1', arguments[0][0].id);
+    """, [primary, other])
+    driver.reload()
+
+    def memberships():
+        return driver.script("""return Object.fromEntries(JSON.parse(localStorage.getItem('git-khronos.workspaces.v1'))
+            .map(item => [item.id, item.repositoryPaths]));""")
+
+    def wait_tabs(paths):
+        names = [path.name for path in paths]
+        driver.wait("""return JSON.stringify([...document.querySelectorAll('.repo-tab-main[role=tab]')]
+          .map(node => node.querySelector('.repo-tab-full-label').textContent.trim())) === """
+                    + json.dumps(json.dumps(names, separators=(',', ':'))), 60)
+
+    def switch(workspace, paths):
+        driver.click_visible('.workspace-toggle')
+        item = '.workspace-list [role=menuitemradio][aria-label^=' + json.dumps(workspace['name'] + ',') + ']'
+        driver.click_visible(item)
+        driver.wait("return document.querySelector('.workspace-toggle')?.getAttribute('aria-label') === "
+                    + json.dumps('Workspace: ' + workspace['name']))
+        wait_tabs(paths)
+
+    def show_reopen():
+        driver.click_visible('[aria-label="Main menu"]')
+        return driver.wait("""const item = [...document.querySelectorAll('.app-menu-popover [role=menuitem]')]
+          .find(node => node.querySelector('strong')?.textContent.trim() === 'Reopen Closed Repository');
+          return item ? (item.disabled ? 'disabled' : 'enabled') : null;""")
+
+    wait_tabs([first, middle, last])
+    assert memberships() == {primary['id']: primary['repositoryPaths'], other['id']: other['repositoryPaths']}
+    driver.click_visible('.repo-tab-main[role=tab][aria-label^=' + json.dumps(middle.name) + ']')
+    driver.click_visible('[aria-label=' + json.dumps('Close ' + middle.name) + ']')
+    wait_tabs([first, last])
+    assert memberships()[primary['id']] == [str(first), str(offline), str(last)]
+    switch(other, [middle])
+    evidence = report['workspaceReopen'] = {'otherWorkspaceAction': show_reopen()}
+    assert evidence['otherWorkspaceAction'] == 'disabled', evidence
+    driver.key('\ue00c')
+    driver.wait("return !document.querySelector('.app-menu-popover')")
+    report['scenarios'].append('native-ui-reopen-closed-tab-does-not-leak-across-workspaces')
+
+    switch(primary, [first, last])
+    assert show_reopen() == 'enabled'
+    driver.click_scrolled_text('.app-menu-popover [role=menuitem] strong', 'Reopen Closed Repository', wait_for_ready=True)
+    wait_tabs([first, middle, last])
+    driver.wait("return document.querySelector('.status-repository-path')?.textContent.trim() === " + json.dumps(str(middle)))
+    evidence['savedPathsAfterReopen'] = memberships()
+    assert evidence['savedPathsAfterReopen'] == {primary['id']: primary['repositoryPaths'], other['id']: other['repositoryPaths']}
+    assert [checkout_footprint(fixtures, repository) for repository in (first, middle, last)] == snapshots
+    report['scenarios'].append('native-ui-reopen-closed-tab-restores-saved-slot-without-changing-git')
+    return middle
+
+
 def workspace_edit_workflow(driver, fixtures, report):
     from native_acceptance import open_ui
 

@@ -249,6 +249,7 @@ export interface SavedRepositoryReplacement {
 
 interface ClosedRepository {
   path: string;
+  savedIndex: number;
   preview: RepositorySnapshot | null;
 }
 
@@ -298,7 +299,9 @@ export class GitKhronosService implements OnDestroy {
     return this.recentPaths().filter((path) => !favorites.has(path));
   });
   readonly repositoryAliases = signal<Record<string, string>>(this.readAliases());
-  readonly recentlyClosedRepositoryPath = signal<string | null>(null);
+  private readonly closedRepositories = signal<ReadonlyMap<string, readonly ClosedRepository[]>>(new Map());
+  private readonly recentlyClosedRepository = computed(() => this.closedRepositories().get(this.activeWorkspaceId())?.[0]);
+  readonly recentlyClosedRepositoryPath = computed(() => this.recentlyClosedRepository()?.path ?? null);
   private readonly operations = new OperationTracker();
   private readonly branchMutationPending = signal(false);
   readonly busy = computed(() => this.operations.busy() || this.branchMutationPending());
@@ -397,7 +400,6 @@ export class GitKhronosService implements OnDestroy {
     return (id ? this.deferredMetadataPhase(id) : undefined) ?? 'ready';
   });
   private readonly deferredMetadataTimers = new Map<string, Map<string, number>>();
-  private closedRepositories: ClosedRepository[] = [];
 
   ngOnDestroy(): void {
     this.cancelRepositoryChangeRefreshes();
@@ -678,19 +680,25 @@ export class GitKhronosService implements OnDestroy {
     }
   }
 
-  async openRepository(path: string, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
+  openRepository(path: string, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
+    return this.openRepositoryRequest(path, replacement);
+  }
+
+  private async openRepositoryRequest(path: string, replacement?: SavedRepositoryReplacement, reopening?: ClosedRepository): Promise<OpenRepositoryResult> {
     const workspaceId = this.activeWorkspaceId();
     const visit = this.workspaceVisit;
     const savedPath = replacement?.path ?? path;
     const canReplace = () => !replacement || (replacement.current() && this.workspaceVisit === visit
       && this.activeWorkspace()?.repositoryPaths.includes(savedPath)
       && !this.repositories().some(repository => repository.path === savedPath));
+    const canReopen = () => !reopening || (this.workspaceVisit === visit && this.activeWorkspaceId() === workspaceId
+      && this.closedRepositories().get(workspaceId)?.includes(reopening));
     const opened: { snapshot?: RepositorySnapshot; failure?: string; retired?: boolean } = {};
     const status = await this.run('Opening repository…', async report => {
       const retired = () => {
-        if (canReplace()) return false;
+        if (canReplace() && canReopen()) return false;
         opened.retired = true;
-        report('Saved path replacement was not applied');
+        report(reopening ? 'Closed tab was not reopened' : 'Saved path replacement was not applied');
         return true;
       };
       if (retired()) return;
@@ -704,7 +712,7 @@ export class GitKhronosService implements OnDestroy {
           throw new Error('That repository is already in this workspace. The saved path was not replaced.');
         }
       } catch (error: unknown) {
-        if (replacement && retired()) return;
+        if ((replacement || reopening) && retired()) return;
         opened.failure = this.formatError(error);
         throw error;
       }
@@ -712,12 +720,14 @@ export class GitKhronosService implements OnDestroy {
       this.repositoryRestoration?.pending.delete(savedPath);
       this.repositoryRestoration?.failed.delete(savedPath);
       this.storeSnapshot(snapshot, true);
-      this.orderRestoredRepositoryTabs(savedPath, snapshot.path);
+      const savedOrder = reopening ? this.closedTabSavedOrder(reopening, snapshot.path) : undefined;
+      this.orderRestoredRepositoryTabs(savedPath, snapshot.path, savedOrder);
       this.setActiveRepository(snapshot.id);
       this.clearInspection();
       this.remember(snapshot.path);
-      this.persistOpenTabs({ canonical: { requested: savedPath, resolved: snapshot.path } });
+      this.persistOpenTabs({ canonical: { requested: savedPath, resolved: snapshot.path }, savedOrder, preserveSavedOrder: !!savedOrder });
       this.forgetClosedRepository(snapshot.path);
+      if (reopening && savedPath !== snapshot.path) this.forgetClosedRepository(savedPath);
       report(`Opened ${snapshot.name}`);
     });
     if (opened.retired) return { status: 'cancelled', error: null };
@@ -3023,6 +3033,7 @@ export class GitKhronosService implements OnDestroy {
       await this.switchWorkspace(next.id);
     }
     this.workspaceRepositoryCache.delete(workspaceId);
+    this.setClosedRepositories(workspaceId, []);
     for (const id of this.deferredMetadataTimers.get(workspaceId)?.keys() ?? []) {
       this.cancelDeferredMetadataTimer(id, workspaceId);
     }
@@ -3123,14 +3134,16 @@ export class GitKhronosService implements OnDestroy {
     }
     this.bumpStatusGeneration(repoId);
     this.cancelRepositoryChangeRefresh(repoId);
-    this.closedRepositories = [
+    const workspaceId = this.activeWorkspaceId();
+    const savedIndex = this.activeWorkspace()?.repositoryPaths.indexOf(closingRepository.path) ?? -1;
+    this.setClosedRepositories(workspaceId, [
       {
         path: closingRepository.path,
+        savedIndex: savedIndex < 0 ? closingIndex : savedIndex,
         preview: this.browserPreview() ? closingRepository : null,
       },
-      ...this.closedRepositories.filter((repository) => repository.path !== closingRepository.path),
-    ].slice(0, 10);
-    this.recentlyClosedRepositoryPath.set(this.closedRepositories[0]?.path ?? null);
+      ...(this.closedRepositories().get(workspaceId) ?? []).filter(repository => repository.path !== closingRepository.path),
+    ].slice(0, 10));
     const remaining = repositories.filter((repository) => repository.id !== repoId);
     this.setDeferredMetadataState(repoId, undefined);
     this.cancelDeferredMetadataTimer(repoId, this.activeWorkspaceId());
@@ -3162,8 +3175,8 @@ export class GitKhronosService implements OnDestroy {
   }
 
   async reopenClosedRepository(): Promise<boolean> {
-    const closed = this.closedRepositories[0];
-    if (!closed) return false;
+    const closed = this.recentlyClosedRepository();
+    if (!closed || this.busy()) return false;
     const openRepository = this.repositories().find((repository) => repository.path === closed.path);
     if (openRepository) {
       this.activateRepository(openRepository.id);
@@ -3172,16 +3185,17 @@ export class GitKhronosService implements OnDestroy {
     }
     if (closed.preview && this.browserPreview()) {
       this.storeSnapshot(closed.preview, true);
+      const savedOrder = this.closedTabSavedOrder(closed, closed.preview.path);
+      this.orderRestoredRepositoryTabs(closed.path, closed.preview.path, savedOrder);
       this.setActiveRepository(closed.preview.id);
       this.clearInspection();
       this.remember(closed.preview.path);
-      this.persistOpenTabs();
+      this.persistOpenTabs({ savedOrder, preserveSavedOrder: !!savedOrder });
       this.forgetClosedRepository(closed.preview.path);
       this.activity.set(`Reopened ${closed.preview.name}`);
       return true;
     }
-    await this.openRepository(closed.path);
-    return this.repositories().some((repository) => repository.path === closed.path);
+    return (await this.openRepositoryRequest(closed.path, undefined, closed)).status === 'success';
   }
 
   reorderRepository(sourceId: string, targetId: string): void {
@@ -3888,8 +3902,29 @@ export class GitKhronosService implements OnDestroy {
   }
 
   private forgetClosedRepository(path: string): void {
-    this.closedRepositories = this.closedRepositories.filter((repository) => repository.path !== path);
-    this.recentlyClosedRepositoryPath.set(this.closedRepositories[0]?.path ?? null);
+    const workspaceId = this.activeWorkspaceId();
+    const history = this.closedRepositories().get(workspaceId);
+    if (history?.some(repository => repository.path === path)) {
+      this.setClosedRepositories(workspaceId, history.filter(repository => repository.path !== path));
+    }
+  }
+
+  private setClosedRepositories(workspaceId: string, history: readonly ClosedRepository[]): void {
+    this.closedRepositories.update(previous => {
+      if (!history.length && !previous.has(workspaceId)) return previous;
+      const next = new Map(previous);
+      if (history.length) next.set(workspaceId, history);
+      else next.delete(workspaceId);
+      return next;
+    });
+  }
+
+  private closedTabSavedOrder(closed: ClosedRepository, resolved: string): string[] | undefined {
+    const saved = this.activeWorkspace()?.repositoryPaths ?? [];
+    if (saved.includes(closed.path) || saved.includes(resolved)) return undefined;
+    const ordered = [...saved];
+    ordered.splice(Math.min(closed.savedIndex, ordered.length), 0, closed.path);
+    return ordered;
   }
 
   private async restoreRepositories(): Promise<void> {
@@ -3984,8 +4019,7 @@ export class GitKhronosService implements OnDestroy {
     return true;
   }
 
-  private orderRestoredRepositoryTabs(requested: string, resolved: string): void {
-    const saved = this.activeWorkspace()?.repositoryPaths ?? [];
+  private orderRestoredRepositoryTabs(requested: string, resolved: string, saved: readonly string[] = this.activeWorkspace()?.repositoryPaths ?? []): void {
     const ranks = new Map(saved.map((path, index) => [path, index]));
     const requestedRank = ranks.get(requested);
     if (requestedRank === undefined) return;
@@ -4017,13 +4051,14 @@ export class GitKhronosService implements OnDestroy {
     );
   }
 
-  private persistOpenTabs({ removedPaths, canonical, preserveSavedOrder = false }: {
+  private persistOpenTabs({ removedPaths, canonical, savedOrder, preserveSavedOrder = false }: {
     removedPaths?: ReadonlySet<string>;
     canonical?: { requested: string; resolved: string };
+    savedOrder?: readonly string[];
     preserveSavedOrder?: boolean;
   } = {}): void {
     const loadedPaths = this.repositories().map((repository) => repository.path);
-    const savedPaths = [...new Set((this.activeWorkspace()?.repositoryPaths ?? [])
+    const savedPaths = [...new Set((savedOrder ?? this.activeWorkspace()?.repositoryPaths ?? [])
       .filter(path => !removedPaths?.has(path))
       .map(path => canonical && path === canonical.requested ? canonical.resolved : path))];
     let repositoryPaths: string[];

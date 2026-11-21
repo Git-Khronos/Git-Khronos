@@ -10,7 +10,7 @@
     <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.chooseRepository()"><gc-icon name="folder-git" [size]="14" /><span><strong>Open Repository</strong><small>Choose a local working copy</small></span><kbd>{{ vm.primaryShortcutKey }} ⇧ O</kbd></button>
     <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openRepositoryManager('clone')"><gc-icon name="copy" [size]="14" /><span><strong>Clone Repository</strong><small>Clone from a remote URL</small></span></button>
     <button type="button" role="menuitem" (click)="vm.appMenuOpen.set(false); vm.openRepositoryManager('init')"><gc-icon name="plus" [size]="14" /><span><strong>Initialize Repository</strong><small>Create a new local repository</small></span></button>
-    <button type="button" role="menuitem" [disabled]="!vm.git.recentlyClosedRepositoryPath() || vm.git.busy()" (click)="vm.appMenuOpen.set(false); vm.reopenClosedRepository()"><gc-icon name="redo" [size]="14" /><span><strong>Reopen Closed Repository</strong><small>{{ vm.git.recentlyClosedRepositoryPath() ?? 'No repository closed this session' }}</small></span><kbd>{{ vm.primaryShortcutKey }} ⇧ T</kbd></button>
+    <button type="button" role="menuitem" [disabled]="!vm.git.recentlyClosedRepositoryPath() || vm.git.busy()" (click)="vm.appMenuOpen.set(false); vm.reopenClosedRepository()"><gc-icon name="redo" [size]="14" /><span><strong>Reopen Closed Repository</strong><small>{{ vm.git.recentlyClosedRepositoryPath() ?? 'No repository closed in this workspace' }}</small></span><kbd>{{ vm.primaryShortcutKey }} ⇧ T</kbd></button>
   </div>
   <div class="app-menu-section">
     <span>Current Repository</span>

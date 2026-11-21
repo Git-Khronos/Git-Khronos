@@ -1148,7 +1148,7 @@ def main():
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
-        "workspace-locate-nearby", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
+        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1288,6 +1288,10 @@ def main():
             elif args.suite == "workspace-saved-removal":
                 from native_workspace_edit_scenarios import remove_saved_workspace_paths
                 repository = remove_saved_workspace_paths(driver, fixtures, report)
+                repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "workspace-reopen":
+                from native_workspace_edit_scenarios import reopen_workspace_tab
+                repository = reopen_workspace_tab(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
             elif picker_suite:
                 from native_workspace_locate_scenarios import locate_workspace_paths
