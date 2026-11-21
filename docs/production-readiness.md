@@ -23,6 +23,16 @@ Only the acceptance driver used the follow-up menu-readiness change at
 `980e5b9`; the installer bytes did not change. This checkpoint does not qualify
 paired rename staging, which was added after this installer was built.
 
+The preceding live-recap candidate at `a6838ee` has now completed the full
+**274-scenario installed environment suite** on Ubuntu 24.04 with Git 2.53.
+It reproduced the +2/−1 recap after an external edit without a status change.
+Only the harness changed for the passing run: `980e5b9` captured the native
+root-history menu action when it was ready, before sending one click. The
+strict installed release preflight accepted package SHA-256
+`a8c829fd648e6dcc4a7d8bfa989fb564a2ed1764030c9140afc5a8b538655fa4`;
+the report, receipt, and installer are retained under
+`target/local-review/updater/jammy-builder/live-recap.oD1hX1mY/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
