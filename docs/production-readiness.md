@@ -3151,6 +3151,8 @@ recreated the deleted branch under the new scope scenario. That is a red
 check on the old package, not a failing gate in its original matrix.
 Exact source and installed baseline receipts are in
 `target/local-review/safe-checkout.BIlSZSgx/`.
+New release qualification requires both the stale-target and ignored-file
+scenarios in its existing Ubuntu 24.04 detached-checkout gate.
 
 ### Working-tree recap during refresh
 

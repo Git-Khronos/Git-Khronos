@@ -97,6 +97,8 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-current-repository-selection-still-opens-the-chosen-checkout',
   ]],
   ['detached-checkout', [
+    'native-stale-local-checkout-does-not-recreate-remote-tracking-branch',
+    'native-branch-and-detached-checkout-preserve-an-ignored-local-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
