@@ -344,6 +344,15 @@ footprints and the other layout kept its original paths. The older candidate
 did not offer the bulk action. See `installed-locate.json` under
 `target/local-review/updater/jammy-builder/workspace-locate-latest.ROf8O4Ys/`.
 
+The picker-hint package at `a927872`, SHA-256
+`46ed2e5768ea1ca65f63e96675c88c87e0fb9c61b922ea39e9cf636dc7c4f9da`,
+passed all three installed relocation suites on Ubuntu 24.04. The new test
+selects the renamed checkout directly from the chooser's starting directory.
+The previous package could open the chooser but did not activate that checkout
+with the same input. All 57 workspace renderer tests passed against settled
+development assets. The exact-package comparison is retained under
+`target/local-review/updater/jammy-builder/workspace-picker-hint.0MBhT5FI/`.
+
 Deferring the blocked-discard file chooser and its styles moved them out of the
 initial renderer. An independent walk of emitted static imports measured
 1,361,018 → 1,357,578 initial bytes against the preceding picker-hint build

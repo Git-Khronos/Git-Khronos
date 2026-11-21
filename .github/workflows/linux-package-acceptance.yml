@@ -94,6 +94,7 @@ jobs:
           python3 tools/native_acceptance.py --suite workspace-saved-removal --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite workspace-locate --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite workspace-bulk-locate --headless --installed --package "$PACKAGE"
+          python3 tools/native_acceptance.py --suite workspace-locate-nearby --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite feature-rebase --headless --installed --package "$PACKAGE"
       - name: Verify installed packed-ref refresh under contention
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
