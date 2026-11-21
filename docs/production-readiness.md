@@ -161,8 +161,12 @@ Debian 13. Its SHA-256 is
 `9359c11ddea63ca90aab6a4917ac3b8e74bfc1e6f206d7fb40a7c9cd16cf8406`.
 Package-matched reports are retained in
 `target/local-review/updater/jammy-builder/watcher-refresh.1o25EHZw/`.
-Debian 12's first run failed a direct singleton delivery process check and
-is being investigated separately. These local checks are not hosted approval.
+Debian 12's first run failed a direct singleton delivery process check. A
+same-package rerun with additional process diagnostics passed incoming links
+(26), GitLab (47), and application updates (21). The rerun observed the same
+private-bus owner before and after each direct launch and did not reproduce
+the original failure; this does not establish a root cause for it.
+These local checks are not hosted approval.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { summarizeInstalledReport } from './report-installed-acceptance.mjs';
+import { summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
 
 const candidate = {
   packageSha256: 'a'.repeat(64),
@@ -56,4 +56,53 @@ test('distinguishes an incomplete run from a passing run and refuses malformed s
   ]) {
     assert.throws(() => summarizeInstalledReport(candidate, { ...report, ...substitution }), /invalid suite or scenario/);
   }
+});
+
+const requiredMatrix = {
+  'ubuntu:22.04': ['smoke', 'gitlab', 'watcher-refresh', 'lfs-counts', 'lfs-snapshot-timeout', 'environment'],
+  'ubuntu:24.04': ['smoke', 'gitlab'],
+  'ubuntu:26.04': ['smoke', 'gitlab'],
+  'debian:12': ['incoming-links', 'gitlab'],
+  'debian:13': ['smoke', 'gitlab'],
+};
+
+function matrixFixtures() {
+  return summarizeReleaseMatrix([]).checks.map(check => ({
+    path: `${check.distribution.id}-${check.distribution.versionId}-${check.suite}/report.json`,
+    linuxDistribution: check.distribution,
+    suite: check.suite,
+    passed: true,
+    inheritedGitEnvironment: check.inheritedGitEnvironment === true,
+    scenarios: [check.requiredScenario ?? 'completed-suite'],
+  }));
+}
+
+test('the release matrix needs exact suites on all supported userspaces', () => {
+  const fixtures = matrixFixtures();
+  const complete = summarizeReleaseMatrix(fixtures);
+  assert.equal(complete.complete, true);
+  assert.equal(complete.checks.length, 14);
+  for (const [platform, suites] of Object.entries(requiredMatrix)) {
+    assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
+      .map(check => check.suite), suites);
+  }
+  const absent = fixtures.find(report => report.suite === 'smoke' && report.linuxDistribution.versionId === '24.04');
+  const unrelated = { ...absent, linuxDistribution: undefined, platform: 'Ubuntu 24.04', path: 'shared-kernel/report.json' };
+  const partial = summarizeReleaseMatrix([...fixtures.filter(report => report !== absent), unrelated]);
+  assert.equal(partial.complete, false);
+  assert.deepEqual(partial.checks.filter(check => check.report === null).map(({ distribution, suite }) => [distribution.versionId, suite]),
+    [['24.04', 'smoke']]);
+});
+
+test('the release matrix refuses incomplete watcher, trust, and incoming-link reports', () => {
+  const fixtures = matrixFixtures().map(report => {
+    if (report.suite === 'watcher-refresh') return { ...report, scenarios: ['ordinary-smoke'] };
+    if (report.suite === 'environment') return { ...report, passed: false };
+    if (report.suite === 'incoming-links') return { ...report, inheritedGitEnvironment: false };
+    return report;
+  });
+  const partial = summarizeReleaseMatrix(fixtures);
+  assert.equal(partial.complete, false);
+  assert.deepEqual(partial.checks.filter(check => check.report === null).map(check => check.suite),
+    ['watcher-refresh', 'environment', 'incoming-links']);
 });

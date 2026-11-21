@@ -258,6 +258,13 @@ suites. Older reports may not identify the userspace distribution. This
 summary is not signing approval; it does not replace the release preflight or
 the required runtime matrix.
 
+To check whether the retained reports cover every required Linux runtime
+suite for one release candidate, add `--release-matrix` before the package
+path. The JSON lists the matching report or `null` for each required
+distribution and suite; any missing or failed check causes a nonzero exit.
+Use the original `report.json` from each passing job. The command does not
+check the publisher key or authorize publication.
+
 For the bounded Git LFS counts regression, run
 `python3 tools/native_acceptance.py --suite lfs-counts --headless --package "$PACKAGE"`.
 Use a disposable runner with a Git LFS that supports `ls-files --json` on PATH,

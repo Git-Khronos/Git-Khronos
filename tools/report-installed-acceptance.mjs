@@ -8,6 +8,27 @@ import { pathToFileURL } from 'node:url';
 import { checkPackage } from './check-linux-abi.mjs';
 
 const MAX_REPORT_BYTES = 4 * 1024 * 1024;
+const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository';
+const GITLAB_SCENARIO = 'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree';
+
+// Keep the local checklist aligned with linux-package-acceptance.yml. It
+// checks retained runtime evidence, not the hosted job or publisher key.
+const RELEASE_MATRIX = [
+  ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIO],
+  ['ubuntu', '22.04', 'watcher-refresh', 'native-packed-ref-refresh-replays-read-after-held-status'],
+  ['ubuntu', '22.04', 'lfs-counts', 'native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters'],
+  ['ubuntu', '22.04', 'lfs-snapshot-timeout', 'native-lfs-stalled-listing-does-not-block-opening-or-invent-counts'],
+  ['ubuntu', '22.04', 'environment', 'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer', true],
+  ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIO],
+  ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '26.04', 'gitlab', GITLAB_SCENARIO],
+  ['debian', '12', 'incoming-links', 'native-incoming-cold-saved-promisor-restoration-and-patch-read-never-fetch-with-independent-positive-control', true],
+  ['debian', '12', 'gitlab', GITLAB_SCENARIO],
+  ['debian', '13', 'smoke', SMOKE_SCENARIO],
+  ['debian', '13', 'gitlab', GITLAB_SCENARIO],
+];
 
 async function readReport(path) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -61,16 +82,40 @@ export function summarizeInstalledReport(candidate, report) {
   };
 }
 
-export async function reportInstalledAcceptance(packagePath, reportPaths) {
+// Input reports must already have been matched to the installed payload.
+export function summarizeReleaseMatrix(validatedReports) {
+  const checks = RELEASE_MATRIX.map(([id, versionId, suite, requiredScenario, inheritedGitEnvironment = false]) => {
+    const observed = validatedReports.find(report => report.passed === true &&
+      report.linuxDistribution?.id === id && report.linuxDistribution.versionId === versionId &&
+      report.suite === suite && (!inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
+      (!requiredScenario || report.scenarios.includes(requiredScenario)));
+    return {
+      distribution: { id, versionId },
+      suite,
+      ...(inheritedGitEnvironment && { inheritedGitEnvironment }),
+      ...(requiredScenario && { requiredScenario }),
+      report: observed?.path ?? null,
+    };
+  });
+  return { complete: checks.every(check => check.report !== null), checks };
+}
+
+export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false } = {}) {
   const candidate = checkPackage(resolve(packagePath));
   const reports = [];
   const seen = new Set();
+  const validatedReports = [];
   for (const path of reportPaths) {
     const absolute = resolve(path);
     if (seen.has(absolute)) throw new Error(`Duplicate report path: ${path}`);
     seen.add(absolute);
     try {
-      reports.push({ path, ...summarizeInstalledReport(candidate, await readReport(absolute)) });
+      const report = await readReport(absolute);
+      reports.push({ path, ...summarizeInstalledReport(candidate, report) });
+      if (releaseMatrix) {
+        const { suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment } = report;
+        validatedReports.push({ path, suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment });
+      }
     } catch (error) {
       throw new Error(`${path}: ${error.message}`, { cause: error });
     }
@@ -80,18 +125,24 @@ export async function reportInstalledAcceptance(packagePath, reportPaths) {
     version: candidate.version,
     sha256: candidate.packageSha256,
     reports,
+    ...(releaseMatrix && { releaseMatrix: summarizeReleaseMatrix(validatedReports) }),
   };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    const [packagePath, ...reportPaths] = process.argv.slice(2);
-    if (!packagePath || !reportPaths.length) {
-      throw new Error('Usage: node tools/report-installed-acceptance.mjs PACKAGE.deb REPORT.json [REPORT.json …]');
+    const args = process.argv.slice(2);
+    const releaseMatrix = args[0] === '--release-matrix';
+    if (releaseMatrix) args.shift();
+    const [packagePath, ...reportPaths] = args;
+    if (!packagePath || (!releaseMatrix && !reportPaths.length) || args.some(arg => arg.startsWith('--'))) {
+      throw new Error('Usage: node tools/report-installed-acceptance.mjs [--release-matrix] PACKAGE.deb [REPORT.json …]');
     }
-    const summary = await reportInstalledAcceptance(packagePath, reportPaths);
+    const summary = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix });
     console.log(JSON.stringify(summary, null, 2));
-    if (summary.reports.some(report => !report.passed)) process.exitCode = 1;
+    if (summary.reports.some(report => !report.passed) || (releaseMatrix && !summary.releaseMatrix.complete)) {
+      process.exitCode = 1;
+    }
   } catch (error) {
     console.error(`Git Khronos: ${error.message}`);
     process.exitCode = 1;
