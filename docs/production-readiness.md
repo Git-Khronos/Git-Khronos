@@ -378,6 +378,17 @@ entries and their flags, refs, and config were unchanged. See
 `installed-discard.json` under
 `target/local-review/updater/jammy-builder/blocked-discard-subset.cfQLbcP6/`.
 
+The submodule-initialization build at `5157559`, SHA-256
+`6f64c6b922452d62485d199f9bf1e4d9948cbba68a6b822d75d743853d7f7b79`,
+passed both installed single-path initialization scenarios. The predecessor
+initialized immediately on the row click. This build kept the selected path
+uninitialized during review and after Cancel; explicit confirmation then
+initialized only that path and its nested checkout. The second top-level
+checkout, parent index, refs and declaration were unchanged. See
+`installed-submodule.json` under
+`target/local-review/updater/jammy-builder/submodule-init-review.Vvp7sZoU/`.
+This focused report does not qualify the later per-submodule remote update.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
