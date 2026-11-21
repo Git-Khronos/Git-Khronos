@@ -40,6 +40,48 @@ async function open(page: Page) {
   return form;
 }
 
+async function openIntegrationMenu(page: Page) {
+  await page.getByRole('button', { name: 'Local branch feature/partial-staging', exact: true }).first().click({ button: 'right' });
+  const action = page.getByRole('menuitem', { name: 'Merge feature/partial-staging into main', exact: true });
+  await expect(action).toBeEnabled();
+  return action;
+}
+
+for (const side of ['source', 'head', 'checkout', 'path']) {
+  test(`context menu integration refuses a changed ${side} before dispatch`, async ({ page }) => {
+    const action = await openIntegrationMenu(page);
+    await action.evaluate((button, side) => {
+      const s = (window as any).__contextBranchScope;
+      s.git.repositories.update((items: any[]) => items.map(item => {
+        if (item.id !== s.repository.id) return item;
+        if (side === 'path') return { ...item, path: '/owned/changed-path' };
+        if (side === 'head') return { ...item, headOid: 'c'.repeat(40) };
+        if (side === 'checkout') return { ...item, status: { ...item.status, branch: 'release' } };
+        return { ...item, branches: item.branches.map((branch: any) =>
+          branch.name === 'feature/partial-staging' ? { ...branch, oid: 'b'.repeat(40) } : branch) };
+      }));
+      (button as HTMLButtonElement).click();
+    }, side);
+    expect(await page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch'))).toEqual([]);
+    await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.git.error())).toContain('Open the branch menu again');
+  });
+}
+
+test('context menu integration sends the exact source and receiving checkout to native', async ({ page }) => {
+  const action = await openIntegrationMenu(page);
+  const expected = await page.evaluate(() => {
+    const s = (window as any).__contextBranchScope;
+    const target = s.repository.branches.find((b: any) => b.name === 'main');
+    const source = s.repository.branches.find((b: any) => b.name === 'feature/partial-staging');
+    return { repoId: s.repository.id, name: source.name, strategy: 'merge', review: {
+      sourceBranch: source.name, sourceOid: source.oid, receivingBranch: target.name, receivingOid: target.oid,
+    } };
+  });
+  await action.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch')))
+    .toMatchObject([{ args: expected }]);
+});
+
 for (const change of ['repository', 'path']) {
   test(`context branch creation rejects a pre-effect ${change} change`, async ({ page }) => {
     await open(page);

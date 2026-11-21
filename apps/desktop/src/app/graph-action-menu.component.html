@@ -84,11 +84,13 @@
         } @else {
           <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ view.git.repository()?.status?.branch }} onto {{ menu.label }}</button>
           <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openMergeRebase()"><span><gc-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
-          <div class="context-divider"></div>
-          <div class="context-section-label" aria-hidden="true">Integrate into {{ view.git.repository()?.status?.branch }}</div>
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('ff-only')"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ view.git.repository()?.status?.branch }} to {{ menu.label }}</button>
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('merge')"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ menu.label }} into {{ view.git.repository()?.status?.branch }}</button>
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('squash')"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ menu.label }} into {{ view.git.repository()?.status?.branch }}</button>
+          @if (menu.integration; as integration) {
+            <div class="context-divider"></div>
+            <div class="context-section-label" aria-hidden="true">Integrate into {{ integration.review.target }}</div>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('ff-only', integration)"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ integration.review.target }} to {{ integration.review.source }}</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('merge', integration)"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ integration.review.source }} into {{ integration.review.target }}</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('squash', integration)"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ integration.review.source }} into {{ integration.review.target }}</button>
+          }
           <button type="button" role="menuitem" (click)="view.requestBranchAction('rebase')"><span><gc-icon name="refresh" [size]="13" /></span>Rebase {{ view.git.repository()?.status?.branch }} onto {{ menu.label }}…</button>
         }
         <div class="context-divider"></div>

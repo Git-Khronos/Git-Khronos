@@ -380,6 +380,12 @@ interface ContextMenuState {
   oid: string;
   oids: string[];
   label: string;
+  integration?: ContextBranchIntegration;
+}
+
+interface ContextBranchIntegration {
+  readonly scope: string;
+  readonly review: ReviewedBranchPair;
 }
 
 interface ContextBranchCreation extends RepositoryEditorOwner {
@@ -13805,11 +13811,25 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.setBranchUpstream(menu.label, null);
   }
 
-  protected async integrateContextBranch(strategy: 'merge' | 'ff-only' | 'squash'): Promise<void> {
-    const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'branch' || menu.label === this.git.repository()?.status.branch || this.git.busy()) return;
+  protected async integrateContextBranch(
+    strategy: 'merge' | 'ff-only' | 'squash',
+    integration: ContextBranchIntegration,
+  ): Promise<void> {
+    if (this.contextMenu()?.integration !== integration || this.git.busy()) return;
+    const repository = this.git.repository();
+    const review = integration.review;
     this.actionOverlays.close('context');
-    await this.git.integrateBranch(menu.label, strategy);
+    if (integration.scope !== this.git.activeRepositoryReadScope()
+      || !this.reviewedBranchPairMatches(review)
+      || repository?.status.branch !== review.target
+      || repository.headOid !== review.targetOid) {
+      this.git.error.set('The repository, receiving checkout, or source branch changed. Open the branch menu again.');
+      return;
+    }
+    await this.git.integrateBranch(review.source, strategy, {
+      receivingBranch: review.target, receivingOid: review.targetOid,
+      sourceBranch: review.source, sourceOid: review.sourceOid,
+    });
   }
 
   protected requestBranchAction(kind: PendingBranchAction['kind']): void {
@@ -14296,6 +14316,11 @@ export class AppComponent implements OnInit, OnDestroy {
       x: anchor?.x ?? event.clientX,
       y: anchor?.y ?? event.clientY,
     };
+    const repository = this.git.repository();
+    const receiving = repository?.status.branch;
+    const pair = kind === 'branch' && receiving ? this.captureBranchPair(label, receiving) : null;
+    const integration = pair && pair.sourceOid === oid && pair.targetOid === repository?.headOid
+      ? { scope: this.git.activeRepositoryReadScope(), review: pair } : undefined;
     this.actionOverlays.open({ kind: 'context', value: {
       kind,
       repositoryId: this.git.activeRepositoryId(),
@@ -14303,6 +14328,7 @@ export class AppComponent implements OnInit, OnDestroy {
       oid,
       oids,
       label,
+      integration,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(
         preferredPosition.x,
         window.innerWidth - GRAPH_ACTION_MENU_WIDTH - VIEWPORT_MENU_GUTTER,
