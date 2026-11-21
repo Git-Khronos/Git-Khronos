@@ -232,8 +232,15 @@ after 990 ms while notifications were still arriving (maximum gap 159 ms,
 below the 450 ms quiet debounce). Git independently confirmed the deletion
 in both runs. These reports are retained in
 `target/local-review/updater/jammy-builder/watcher-burst.UjxQi7BT/burst-proof/`.
-This qualifies the specific watcher behavior, not the still-running
-full matrix under the stronger evidence requirements.
+Jammy's watcher suite also passed all 20 checks: the graph converged in
+1,013 ms with a maximum event gap of 280 ms. The first full Jammy attempt
+stopped before a link activation because process inspection found a second
+non-owning child of the verified application. A bounded read-only recheck
+now verifies that such a child disappears or changes executable before
+accepting a singleton. The focused same-package Jammy incoming-link run
+passed 26 checks; it did not reproduce the extra child. The original
+failure and separate focused report are retained. The new full Jammy run
+remains distinct from these focused proofs.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 

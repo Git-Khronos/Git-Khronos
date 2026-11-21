@@ -9,10 +9,14 @@ import time
 from native_acceptance import open_ui
 
 
+def live_application_processes(observation):
+    return [process for process in observation['processes']
+            if not (process.get('exitedWhileInspected') or process.get('changedExecutableWhileInspected'))]
+
+
 def singleton_owner_pid(observation):
     """Only a confirmed disappearance or executable replacement ends an observation."""
-    live = [process for process in observation['processes']
-            if not (process.get('exitedWhileInspected') or process.get('changedExecutableWhileInspected'))]
+    live = live_application_processes(observation)
     if len(live) != 1:
         return None
     process = live[0]
@@ -20,6 +24,27 @@ def singleton_owner_pid(observation):
             and process.get('ownsBusName') and process.get('state') not in (None, 'Z', 'X')):
         return process['pid']
     return None
+
+
+def observe_settled_singleton(probe, evidence, phase, *, timeout=.75):
+    """Re-observe a potential fork/exec child; never retry an activation."""
+    observation = probe()
+    owner = observation['ownerPid']
+    deadline = time.monotonic() + timeout
+    while singleton_owner_pid(observation) is None and owner is not None and observation['ownerPid'] == owner:
+        live = live_application_processes(observation)
+        primary = [process for process in live if process['pid'] == owner]
+        others = [process for process in live if process['pid'] != owner]
+        if (singleton_owner_pid({'ownerPid': owner, 'processes': primary}) != owner or not others
+                or not all(process.get('parentPid') == owner and process.get('onPrivateBus') is True
+                           and process.get('ownsBusName') is False for process in others)
+                or time.monotonic() >= deadline):
+            break
+        evidence.setdefault(phase + 'InitialObservation', observation)
+        time.sleep(.025)
+        observation = probe()
+    evidence[phase] = observation
+    return owner if owner is not None and singleton_owner_pid(observation) == owner else None
 
 
 def incoming_repository_links(driver, fixtures, original_repository, report):
@@ -76,9 +101,9 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         return dict(ownerPid=owner, processes=observed)
 
     def deliver(*arguments):
-        observation = dict(before=desktop_activation_processes())
+        observation = {}
         report.setdefault('incomingDirectActivation', []).append(observation)
-        original = singleton_owner_pid(observation['before'])
+        original = observe_settled_singleton(desktop_activation_processes, observation, 'before')
         assert original is not None, observation
         child = subprocess.Popen([str(driver.executable), *arguments], env=fixtures.env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -90,8 +115,8 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
             child.communicate()
             raise AssertionError('Secondary link delivery did not terminate')
         assert child.returncode == 0, (child.returncode, stderr.decode(errors='replace')[-2000:])
-        observation.update(secondaryPid=child.pid, after=desktop_activation_processes())
-        assert singleton_owner_pid(observation['after']) == original, observation
+        observation['secondaryPid'] = child.pid
+        assert observe_settled_singleton(desktop_activation_processes, observation, 'after') == original, observation
         report.setdefault('incomingLinkDeliveries', []).append(dict(primaryPid=original, secondaryPid=child.pid,
                                                                    exitCode=child.returncode, arguments=len(arguments)))
 
@@ -162,10 +187,10 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         association_env = dict(fixtures.env, XDG_DATA_DIRS=str(applications.parent),
                                XDG_CONFIG_DIRS=fixtures.env['XDG_CONFIG_HOME'],
                                GIO_USE_VFS='local', GIO_USE_VOLUME_MONITOR='unix')
-        report['incomingDesktopActivation'] = dict(before=desktop_activation_processes())
-        original = singleton_owner_pid(report['incomingDesktopActivation']['before'])
+        report['incomingDesktopActivation'] = desktop_observation = {}
         try:
-            assert original is not None, report['incomingDesktopActivation']
+            original = observe_settled_singleton(desktop_activation_processes, desktop_observation, 'before')
+            assert original is not None, desktop_observation
             subprocess.run(['desktop-file-validate', str(handler)], env=association_env,
                            capture_output=True, check=True, timeout=10)
             subprocess.run(['update-desktop-database', str(applications)], env=association_env,

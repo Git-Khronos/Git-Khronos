@@ -371,8 +371,11 @@ runner, add `--installed` to check the same package bytes used by the full suite
 Direct and desktop-scheme delivery must leave the original PID owning the
 fixture's private session bus. If a candidate PID disappears or changes
 executable between procfs reads, the report keeps that observation separate
-from live application processes. A second live process, unreadable candidate,
-or changed bus owner still fails. This never resends a desktop activation.
+from live application processes. A short read-only settling window can
+recheck a non-owning direct child on the same bus. The original and settled
+observations are both kept. A persistent second process, unrelated process,
+unreadable candidate, or changed bus owner still fails. This never resends
+a desktop activation.
 
 ## Focused publisher trust acceptance
 

@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import Mock, patch
 
-from native_incoming_link_scenarios import singleton_owner_pid
+from native_incoming_link_scenarios import observe_settled_singleton, singleton_owner_pid
 
 
 class SingletonObservationTest(unittest.TestCase):
@@ -30,3 +31,23 @@ class SingletonObservationTest(unittest.TestCase):
             with self.subTest(change=change):
                 self.assertIsNone(singleton_owner_pid(dict(ownerPid=42, processes=[self.owner | change])))
         self.assertIsNone(singleton_owner_pid(dict(ownerPid=52, processes=[self.owner])))
+
+    def test_reobserves_an_owned_child_before_accepting_same_singleton(self):
+        initial = self.observation(dict(pid=52, parentPid=42, state='R', onPrivateBus=True, ownsBusName=False))
+        evidence = {}
+        probe = Mock(side_effect=[initial, self.observation()])
+        with patch('native_incoming_link_scenarios.time.sleep'):
+            self.assertEqual(observe_settled_singleton(probe, evidence, 'before'), 42)
+        self.assertEqual(evidence, dict(beforeInitialObservation=initial, before=self.observation()))
+
+    def test_persistent_or_unrelated_process_and_changed_owner_still_fail(self):
+        owned_child = self.observation(dict(pid=52, parentPid=42, state='R', onPrivateBus=True, ownsBusName=False))
+        for initial in (owned_child, self.observation(dict(pid=52, parentPid=77, onPrivateBus=True, ownsBusName=False))):
+            probe = Mock(return_value=initial)
+            with patch('native_incoming_link_scenarios.time.monotonic', side_effect=[0, 0, 1]), \
+                    patch('native_incoming_link_scenarios.time.sleep'):
+                self.assertIsNone(observe_settled_singleton(probe, {}, 'before'))
+            self.assertEqual(probe.call_count, 2 if initial is owned_child else 1)
+        new_owner = dict(ownerPid=52, processes=[self.owner | {'pid': 52}])
+        with patch('native_incoming_link_scenarios.time.sleep'):
+            self.assertIsNone(observe_settled_singleton(Mock(side_effect=[owned_child, new_owner]), {}, 'before'))
