@@ -174,6 +174,10 @@ fn ready_runtime(store: PathBuf) -> Runtime {
     ));
     let download = model.begin_download("owned", Origin::Manual).unwrap();
     assert!(model.downloaded_and_verified(download));
+    runtime_with_model(store, model)
+}
+
+fn runtime_with_model(store: PathBuf, model: UpdateModel) -> Runtime {
     Runtime {
         model,
         store,
@@ -188,6 +192,146 @@ fn ready_runtime(store: PathBuf) -> Runtime {
         storage_error: None,
         next_check: Instant::now(),
     }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn matching_debian_fixture() -> (&'static [u8], &'static str) {
+    #[cfg(target_arch = "x86_64")]
+    let fixture: (&[u8], &str) = (
+        include_bytes!("fixtures/matching-amd64.deb"),
+        include_str!("fixtures/matching-amd64.deb.sig"),
+    );
+    #[cfg(target_arch = "aarch64")]
+    let fixture: (&[u8], &str) = (
+        include_bytes!("fixtures/matching-arm64.deb"),
+        include_str!("fixtures/matching-arm64.deb.sig"),
+    );
+    fixture
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn start_fixture_download(
+    runtime: &mut Runtime,
+    id: &str,
+    update: Update,
+    origin: Origin,
+) -> ReadLease {
+    let check = runtime.model.begin_check(origin).unwrap();
+    assert!(runtime.model.checked(
+        check,
+        Some(UpdateOffer {
+            token: id.into(),
+            version: update.version.clone(),
+        })
+    ));
+    runtime.update = Some((id.into(), update));
+    runtime.model.begin_download(id, origin).unwrap()
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[test]
+fn application_update_controller_keeps_signed_bytes_bound_to_an_explicit_opt_out() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut runtime = runtime_with_model(
+        directory.path().join("settings"),
+        UpdateModel::new(UpdatePreferences::default(), true),
+    );
+    runtime.model.set_automatic(true).unwrap();
+    let origin = runtime.model.automatic_origin();
+    let (_app, updater) = updater();
+    let (payload, signature) = matching_debian_fixture();
+    let candidate = updater
+        .restore_update(manifest("0.2.0", signature))
+        .unwrap()
+        .unwrap();
+    let lease = start_fixture_download(&mut runtime, "owned-verified", candidate.clone(), origin);
+
+    runtime.model.set_automatic(false).unwrap();
+    let verified = verify_downloaded_package(&candidate, payload.to_vec(), Some("deb"));
+    assert!(settle_download(
+        &mut runtime,
+        lease,
+        "owned-verified",
+        verified
+    ));
+    assert_eq!(runtime.model.phase, UpdatePhase::Ready);
+    assert_eq!(runtime.downloaded, payload.len());
+    let (owner, bytes) = runtime.bytes.as_ref().unwrap();
+    assert_eq!(owner, "owned-verified");
+    assert_eq!(bytes.as_slice(), payload);
+    assert!(!runtime.model.can_automatically_install());
+    assert!(
+        runtime
+            .model
+            .prepare_install(
+                "owned-verified",
+                Origin::Manual,
+                true,
+                "owned-attempt".into()
+            )
+            .is_ok()
+    );
+    assert!(
+        !runtime.store.exists(),
+        "Verification alone must not record or invoke an install"
+    );
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[test]
+fn application_update_controller_rejects_wrong_metadata_and_a_stale_verified_reply() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut runtime = runtime_with_model(
+        directory.path().join("settings"),
+        UpdateModel::new(UpdatePreferences::default(), true),
+    );
+    let (_app, updater) = updater();
+    let bad_signature = include_str!("fixtures/wrong-package.deb.sig");
+    let wrong = updater
+        .restore_update(manifest("0.2.0", bad_signature))
+        .unwrap()
+        .unwrap();
+    let wrong_bytes = include_bytes!("fixtures/wrong-package.deb");
+    assert!(wrong.verify(wrong_bytes).is_ok());
+    let wrong_lease = start_fixture_download(&mut runtime, "first", wrong.clone(), Origin::Manual);
+    let rejected = verify_downloaded_package(&wrong, wrong_bytes.to_vec(), Some("deb"));
+    assert!(rejected.is_err());
+    assert!(settle_download(
+        &mut runtime,
+        wrong_lease,
+        "first",
+        rejected
+    ));
+    assert_eq!(runtime.model.phase, UpdatePhase::Failed);
+    assert!(!runtime.model.verified);
+    assert!(runtime.bytes.is_none());
+
+    let (payload, signature) = matching_debian_fixture();
+    let candidate = updater
+        .restore_update(manifest("0.2.0", signature))
+        .unwrap()
+        .unwrap();
+    let lease = start_fixture_download(&mut runtime, "retired", candidate.clone(), Origin::Manual);
+    let verified = verify_downloaded_package(&candidate, payload.to_vec(), Some("deb"));
+    assert!(verified.is_ok());
+    assert!(runtime.model.read_failed(lease));
+    let _current = start_fixture_download(&mut runtime, "current", candidate, Origin::Manual);
+    assert!(!settle_download(&mut runtime, lease, "retired", verified));
+    assert_eq!(runtime.model.phase, UpdatePhase::Downloading);
+    assert_eq!(runtime.model.offer.as_ref().unwrap().token, "current");
+    assert!(runtime.bytes.is_none());
 }
 
 #[test]

@@ -144,10 +144,14 @@ state. Pending receipts are inspected off-thread on startup; confirmed retiremen
 while already running that version resumes checks without a second restart.
 Unconfirmed persistence continues to block replay. Tests reproduced both the
 missing-database fallback and second-restart problem before fixing them.
-Cross-installation receipt ownership (multiple executable/bundle paths or package
-formats), positive controller-level signed-fixture integration, publisher tooling
-and remaining platform installation/restart acceptance still need qualification;
-fixture crypto/policy tests alone are not that proof.
+The controller tests now pass real signed inert Debian payloads through the
+production download verifier and state settlement. They verify that opt-out
+keeps the accepted bytes available for an explicit manual install, that a
+signed package with incorrect metadata never becomes ready, and that a
+retired read cannot attach bytes to a newer offer. These tests do not start
+HTTPS delivery or invoke an installer. Cross-installation receipt ownership,
+public feed qualification and remaining platform install/restart acceptance
+still need verification.
 
 The rebuilt Debian checkpoint containing the restart reconciliation passed all
 272 extracted-package native environment scenarios. Debian SHA-256:

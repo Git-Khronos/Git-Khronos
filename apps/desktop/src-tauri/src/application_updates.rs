@@ -1,7 +1,9 @@
 //! Application-global signed updater. The renderer chooses actions and opaque
 //! offers, never a URL, verification key, package path or installation result.
 use crate::{AppError, AppState, application_update_model as model};
-use model::{InstallOutcome, Origin, UpdateModel, UpdateOffer, UpdatePhase, UpdatePreferences};
+use model::{
+    InstallOutcome, Origin, ReadLease, UpdateModel, UpdateOffer, UpdatePhase, UpdatePreferences,
+};
 use serde::Serialize;
 use std::{
     path::PathBuf,
@@ -427,44 +429,64 @@ fn begin_download(
             Ok(bytes) => {
                 let candidate = update.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    candidate
-                        .verify(&bytes)
-                        .map_err(|_| "The package signature or signed version is invalid.")?;
-                    if !cfg!(windows) {
-                        let format =
-                            installer::format().ok_or("This bundle cannot self-update.")?;
-                        let _validated = installer::prepare(&candidate, &bytes, format)?;
-                    }
-                    Ok::<_, String>(bytes)
+                    verify_downloaded_package(&candidate, bytes, installer::format())
                 })
                 .await
                 .unwrap_or_else(|_| Err("Native package verification could not finish.".into()))
             }
             Err(message) => Err(message),
         };
-        let _ = with_runtime(&handle, |runtime| {
-            match result {
-                Ok(bytes) if runtime.model.downloaded_and_verified(lease) => {
-                    runtime.downloaded = bytes.len();
-                    runtime.bytes = Some((offer_id.clone(), Arc::new(bytes)));
-                    runtime.message = if cfg!(windows) {
-                        "The package and signed version are verified. Windows self-installation is not enabled until a safe application restart flow is implemented."
-                    } else {
-                        "The package and signed version are verified. Installation waits for idle Git, terminals and editors, may require OS authorization, and does not force a restart."
-                    }.into();
-                }
-                Ok(_) => {}
-                Err(message) => {
-                    if runtime.model.read_failed(lease) {
-                        runtime.message = message;
-                    }
-                }
-            }
-            Ok(())
-        });
-        changed(&handle);
+        let applied = with_runtime(&handle, |runtime| {
+            Ok(settle_download(runtime, lease, &offer_id, result))
+        })
+        .unwrap_or(false);
+        if applied {
+            changed(&handle);
+        }
     });
     snapshot(&app)
+}
+
+struct VerifiedDownload(Vec<u8>);
+
+fn verify_downloaded_package(
+    candidate: &Update,
+    bytes: Vec<u8>,
+    format: Option<&str>,
+) -> Result<VerifiedDownload, String> {
+    candidate
+        .verify(&bytes)
+        .map_err(|_| "The package signature or signed version is invalid.")?;
+    if !cfg!(windows) {
+        let format = format.ok_or("This bundle cannot self-update.")?;
+        let _validated = installer::prepare(candidate, &bytes, format)?;
+    }
+    Ok(VerifiedDownload(bytes))
+}
+
+fn settle_download(
+    runtime: &mut Runtime,
+    lease: ReadLease,
+    offer_id: &str,
+    result: Result<VerifiedDownload, String>,
+) -> bool {
+    match result {
+        Ok(VerifiedDownload(bytes)) if runtime.model.downloaded_and_verified(lease) => {
+            runtime.downloaded = bytes.len();
+            runtime.bytes = Some((offer_id.into(), Arc::new(bytes)));
+            runtime.message = if cfg!(windows) {
+                "The package and signed version are verified. Windows self-installation is not enabled until a safe application restart flow is implemented."
+            } else {
+                "The package and signed version are verified. Installation waits for idle Git, terminals and editors, may require OS authorization, and does not force a restart."
+            }.into();
+            true
+        }
+        Err(message) if runtime.model.read_failed(lease) => {
+            runtime.message = message;
+            true
+        }
+        _ => false,
+    }
 }
 
 #[tauri::command(rename_all = "camelCase")]
