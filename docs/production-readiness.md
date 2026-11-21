@@ -2700,3 +2700,31 @@ now wait for the requested checkout's visible, editable commit form before
 seeding a draft. Waiting only for graph history is not sufficient.
 The focused Jammy rerun on the same package passed 52 scenarios with the
 private inherited Git context and expected fixture publisher trust.
+
+## Full late-clone package matrix — 2026-11-21
+
+The exact `6c52d4e` Debian package also passed all 30 installed release
+checks on the then-current checklist, covering Ubuntu 22.04, 24.04 and
+26.04 and Debian 12 and 13. The corrected Ubuntu 22.04 run passed 287
+environment scenarios, including the setup keyboard checks that had
+previously failed before reaching the real controls. The original matrix
+launcher failure and the separate, successful Jammy results are retained
+alongside `installed-matrix.MPFGjPYC/verified-release-combined.json` under
+`target/local-review/updater/jammy-builder/repository-creation-release.DLDHfn0G/`.
+The package SHA-256 is
+`66ea004a676f14b3bb5bea8edcadfc7ff0b12a905ec3ff7fc3a0d3adcf3a72d1`.
+Qualification used the fixture publisher key, not production signing.
+
+## Installed accessible line recap — 2026-11-21
+
+The `4861704` package passed `first-status` and
+`repository-creation-scope` in an Ubuntu 24.04 installation with an isolated
+Git environment. Holding the initial Git scan left history usable and
+showed loading rather than a clean tree. After the scan, the staged recap
+was **+1/−0** and the unstaged recap **+3/−1**, each with a single accessible
+label. The exact package SHA-256 is
+`74d879362ec2369b54982bb7d2bd4a32d850900f0f423df30381ed8a4f51ac04`.
+Evidence is under
+`target/local-review/updater/jammy-builder/accessible-recap-release.vLwHp41d/focused-installed/`.
+This is focused evidence; it does not qualify those bytes across the matrix
+or verify later Browse ownership changes.
