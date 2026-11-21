@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const ROOT = '/home/maya/projects/git-khronos';
+const OTHER_TAB = '/home/maya/projects/git-khronos-partial-staging';
 const FIRST = '/owned/first';
 const SECOND = '/owned/second';
 const manager = (page: Page) => page.getByRole('dialog', { name: 'Repository management' });
@@ -54,12 +55,14 @@ test('closing a recent repository read keeps the current tab and replacement man
   await row(page, FIRST).click();
   await requested(page, FIRST);
   await closeManager(page);
-  await page.locator('.repo-tab-main').nth(1).click();
-  const selection = await selectedPath(page).innerText();
+  const otherTab = page.locator('.repo-tab-main').nth(1);
+  await otherTab.click();
+  await expect(otherTab).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedPath(page)).toHaveText(OTHER_TAB);
   await showManager(page);
   await reply(page, FIRST);
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
-  await expect(selectedPath(page)).toHaveText(selection);
+  await expect(selectedPath(page)).toHaveText(OTHER_TAB);
   await expect(manager(page)).toBeVisible();
   await expect(page.locator('.repo-tab-main')).toHaveCount(2);
 });
