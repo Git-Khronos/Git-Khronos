@@ -1,3 +1,11 @@
+<ng-template #fileChangeRecap let-stats>
+  <span class="file-change-summary" role="img" [attr.aria-label]="stats.label">
+    <span>+{{ stats.additions }}</span><i>−{{ stats.deletions }}</i>
+    @if (stats.uncountedFiles) { <em>{{ stats.uncountedFiles }} other</em> }
+    @if (stats.partial) { <em>(partial)</em> }
+  </span>
+</ng-template>
+
 @let operationState = repositoryOperation();
 <div class="app-shell" [class.is-busy]="git.busy()" [style.--zoom-controls-width.px]="zoomControlsWidth()">
   @defer (on immediate) {
@@ -1480,7 +1488,7 @@
             <div class="comparison-unavailable"><span><gc-icon name="git-commit" [size]="18" /></span><strong>Combined diff unavailable</strong><p>Select consecutive commits with Shift, or select exactly two commits with Ctrl/Cmd.</p></div>
           } @else if (git.commitComparison(); as comparison) {
             <section class="commit-file-section comparison-files">
-              <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ comparison.files.length }})</button><span class="file-change-summary" aria-label="{{ comparisonFileStats().additions }} additions and {{ comparisonFileStats().deletions }} deletions"><span>+{{ comparisonFileStats().additions }}</span><i>−{{ comparisonFileStats().deletions }}</i>@if (comparisonFileStats().binaryFiles) { <em>{{ comparisonFileStats().binaryFiles }} binary</em> }</span></div>
+              <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ comparison.files.length }})</button><ng-container [ngTemplateOutlet]="fileChangeRecap" [ngTemplateOutletContext]="{ $implicit: comparisonFileStats() }" /></div>
               @if (changedFilesOpen()) { <div class="working-tree-view-toolbar commit-file-view-toolbar">
                 <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
                 <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedComparisonFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>
@@ -1710,7 +1718,7 @@
           </dl>
           @if (git.commitDetails(); as details) {
             <section class="commit-file-section">
-              <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ details.files.length }}{{ details.filesTruncated ? '+' : '' }})</button><span class="file-change-summary" aria-label="{{ selectedCommitFileStats().additions }} additions and {{ selectedCommitFileStats().deletions }} deletions"><span>+{{ selectedCommitFileStats().additions }}</span><i>−{{ selectedCommitFileStats().deletions }}</i>@if (selectedCommitFileStats().binaryFiles) { <em>{{ selectedCommitFileStats().binaryFiles }} binary</em> }</span></div>
+              <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="changedFilesOpen()" (click)="changedFilesOpen.update(open => !open)"><gc-icon [name]="changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ details.files.length }}{{ details.filesTruncated ? '+' : '' }})</button><ng-container [ngTemplateOutlet]="fileChangeRecap" [ngTemplateOutletContext]="{ $implicit: selectedCommitFileStats() }" /></div>
               @if (changedFilesOpen()) { <div class="working-tree-view-toolbar commit-file-view-toolbar">
                 <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
                 <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="fileFilter()" (gcTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ displayedCommitFiles().length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gc-icon name="x" [size]="9" /></button> }</label>

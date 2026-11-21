@@ -7791,6 +7791,7 @@ test('compares a graph commit with the current working directory', async ({ page
   await expect(panel.locator('.comparison-commit-card').first()).toContainText('Add hunk-level staging actions');
   await expect(panel.locator('.working-tree-target')).toContainText('Working directory');
   await expect(panel.getByText('Changed Files (4)')).toBeVisible();
+  await expect(panel.getByRole('img', { name: '55 additions and 15 deletions' })).toBeVisible();
   await expect(page.locator('.commit-row.selected')).toHaveCount(2);
 
   const comparisonFile = panel.locator('.comparison-files .commit-file').filter({ hasText: 'app.component.html' });
@@ -8240,6 +8241,30 @@ test('resizes activity logs with pointer, buttons, and keyboard while preserving
   await page.setViewportSize({ width: 1200, height: 800 });
   await expect(page.getByRole('region', { name: 'Activity logs' })).toHaveCSS('height', '361px');
   await expect(page.getByRole('separator', { name: 'Resize activity logs' })).toHaveAttribute('aria-valuemax', '690');
+});
+
+test('labels truncated commit line totals and explains binary exclusions', async ({ page }) => {
+  await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
+  const panel = page.locator('.commit-panel');
+  await expect(panel.getByText('Changed Files (3)')).toBeVisible();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.commitDetails.update((details: any) => ({
+      ...details,
+      filesTruncated: true,
+      files: [
+        { ...details.files[0], additions: 1, deletions: 1 },
+        { ...details.files[1], additions: null, deletions: null },
+      ],
+    }));
+  });
+  const recap = panel.getByRole('img', { name: '1 addition and 1 deletion; 1 binary or uncounted file excluded; partial totals' });
+  await expect(recap).toBeVisible();
+  await expect(recap).toContainText('+1−1');
+  await expect(recap).toContainText('(partial)');
+  await panel.getByRole('button', { name: 'Changed Files (2+)' }).click();
+  await expect(panel.locator('.commit-file-list')).toHaveCount(0);
+  await expect(recap).toBeVisible();
 });
 
 test('opens commit details, tree files, and the focused diff through normal clicks', async ({ page }) => {

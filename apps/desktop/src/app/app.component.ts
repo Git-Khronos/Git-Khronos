@@ -350,7 +350,9 @@ interface ReferencePresentation {
 interface FileChangeStats {
   additions: number;
   deletions: number;
-  binaryFiles: number;
+  uncountedFiles: number;
+  partial: boolean;
+  label: string;
 }
 
 interface BranchSyncState {
@@ -3821,9 +3823,10 @@ export class AppComponent implements OnInit, OnDestroy {
     0,
     COMMIT_FILE_OVERSCAN_ROWS,
   ));
-  protected readonly selectedCommitFileStats = computed(() => summarizeFileChanges(
-    this.git.commitDetails()?.files ?? [],
-  ));
+  protected readonly selectedCommitFileStats = computed(() => {
+    const details = this.git.commitDetails();
+    return summarizeFileChanges(details?.files ?? [], details?.filesTruncated);
+  });
 
   protected readonly sortedComparisonFiles = computed(() => sortCommitFiles(
     (this.git.commitComparison()?.files ?? []).filter((file) => this.matchesFileFilter(file.path, file.previousPath)),
@@ -15298,15 +15301,20 @@ function parseCoAuthors(body: string): { body: string; authors: CoAuthor[] } {
   return { body: content.join('\n').trim(), authors };
 }
 
-function summarizeFileChanges(files: CommitFile[]): FileChangeStats {
-  return files.reduce<FileChangeStats>((total, file) => {
-    if (file.additions === null || file.deletions === null) total.binaryFiles += 1;
+function summarizeFileChanges(files: CommitFile[], partial = false): FileChangeStats {
+  const totals = files.reduce((total, file) => {
+    if (file.additions === null || file.deletions === null) total.uncountedFiles += 1;
     else {
       total.additions += file.additions;
       total.deletions += file.deletions;
     }
     return total;
-  }, { additions: 0, deletions: 0, binaryFiles: 0 });
+  }, { additions: 0, deletions: 0, uncountedFiles: 0 });
+  const { additions, deletions, uncountedFiles } = totals;
+  const label = `${additions} ${additions === 1 ? 'addition' : 'additions'} and ${deletions} ${deletions === 1 ? 'deletion' : 'deletions'}`
+    + (uncountedFiles ? `; ${uncountedFiles} binary or uncounted ${uncountedFiles === 1 ? 'file' : 'files'} excluded` : '')
+    + (partial ? '; partial totals' : '');
+  return { ...totals, partial, label };
 }
 
 export type GraphRowView = ReturnType<AppComponent['graphRowView']>;
