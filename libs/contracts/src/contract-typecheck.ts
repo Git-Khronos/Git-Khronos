@@ -32,6 +32,12 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   // @ts-expect-error a comparison has no arbitrary filesystem root
   void ipc.inspect_file_media({ repoId: 'owned-repository', operationId: 'owned-media', request: { context: { kind: 'workingTree', staged: false }, path: 'image', previousPath: null }, root: '/outside' });
   void ipc.open_repository({ path: '/owned/fixture' });
+  void ipc.execute_interactive_rebase({ repoId: 'fixture', source: 'topic', target: 'main', steps: [],
+    reviewedTips: { sourceOid: 'a'.repeat(40), targetOid: 'b'.repeat(40) } });
+  // @ts-expect-error replay requires the tips returned by the review, not just branch names
+  void ipc.execute_interactive_rebase({ repoId: 'fixture', source: 'topic', target: 'main', steps: [] });
+  // @ts-expect-error the destination tip cannot be omitted when the replay commits are unchanged
+  void ipc.execute_interactive_rebase({ repoId: 'fixture', source: 'topic', target: 'main', steps: [], reviewedTips: { sourceOid: 'a'.repeat(40) } });
   void ipc.inspect_stash({ repoId: 'fixture', oid: 'a'.repeat(40) });
   void ipc.inspect_stash_file({ repoId: 'fixture', oid: 'a'.repeat(40), path: 'fixture.txt' });
   // @ts-expect-error stash previews must use the selected immutable object

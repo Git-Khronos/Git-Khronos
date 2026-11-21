@@ -281,15 +281,16 @@ export type IncomingRepositoryLinkState = { requests: IncomingRepositoryLink[]; 
 export type IncomingRepositoryLinksChanged = { pending: boolean }
 export type IntegrityReport = { passed: boolean; exitCode: number; stdout: string; stderr: string; truncated: boolean }
 export type InteractiveRebaseCommit = { oid: string; authorName: string; authorEmail: string; subject: string; message: string }
-export type InteractiveRebasePlan = { source: string; target: string; base: string; commits: InteractiveRebaseCommit[]; remoteReachableOids: string[] }
+export type InteractiveRebasePlan = { source: string; target: string; base: string; tips: InteractiveRebaseTips; commits: InteractiveRebaseCommit[]; remoteReachableOids: string[] }
 export type InteractiveRebaseStep = { oid: string; action: string; message: string | null }
+export type InteractiveRebaseTips = { sourceOid: string; targetOid: string }
 export type LfsAttribute = { name: string; working: string; index: string }
 export type LfsCheckoutPreview = { file: string; oid: string; size: number; state: string }
 export type LfsFetchPreview = { file: string; remote: string; head: string; oid: string; size: number; settings: string }
 export type LfsFileAttributes = { path: string; attributes: LfsAttribute[] }
 export type LfsInfo = { enabled: boolean; available: boolean; version: string | null; trackedFiles: number | null;
 /**
- * Tracked files currently checked out as LFS pointers.
+ * Entries Git LFS did not report as full objects in the working tree.
  */
 pointerFiles: number | null }
 export type LfsLock = { id: string; path: string; owner: string; lockedAt: string; ours: boolean }
@@ -731,7 +732,7 @@ export function integrate_branch(args: { repoId: string; name: string; strategy:
 export function continue_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_merge", args); }
 export function abort_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_merge", args); }
 export function prepare_interactive_rebase(args: { repoId: string; source: string; target: string; selectionOids?: string[] | null; root?: boolean | null }): Promise<InteractiveRebasePlan> { return TAURI_INVOKE("prepare_interactive_rebase", args); }
-export function execute_interactive_rebase(args: { repoId: string; source: string; target: string; steps: InteractiveRebaseStep[]; selectionOids?: string[] | null; root?: boolean | null; ontoOid?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_interactive_rebase", args); }
+export function execute_interactive_rebase(args: { repoId: string; source: string; target: string; steps: InteractiveRebaseStep[]; selectionOids?: string[] | null; root?: boolean | null; ontoOid?: string | null; reviewedTips: InteractiveRebaseTips }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_interactive_rebase", args); }
 export function continue_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_rebase", args); }
 export function begin_rebase_split(args: { repoId: string; expectedHead: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("begin_rebase_split", args); }
 export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }

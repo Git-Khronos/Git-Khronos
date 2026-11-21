@@ -836,8 +836,16 @@ pub struct InteractiveRebasePlan {
     pub source: String,
     pub target: String,
     pub base: String,
+    pub tips: InteractiveRebaseTips,
     pub commits: Vec<InteractiveRebaseCommit>,
     pub remote_reachable_oids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InteractiveRebaseTips {
+    pub source_oid: String,
+    pub target_oid: String,
 }
 
 #[derive(Debug, Clone, Deserialize, specta::Type)]
@@ -3558,7 +3566,7 @@ pub fn prepare_interactive_rebase_with_options(
     selection: Option<&[String]>,
     root: bool,
 ) -> Result<InteractiveRebasePlan, AppError> {
-    prepare_rebase_review(path, source, target, selection, root, false)
+    prepare_rebase_review(path, source, target, selection, root, false, None)
 }
 
 fn prepare_rebase_review(
@@ -3568,6 +3576,7 @@ fn prepare_rebase_review(
     selection: Option<&[String]>,
     root: bool,
     preserve_merges: bool,
+    reviewed_tips: Option<&InteractiveRebaseTips>,
 ) -> Result<InteractiveRebasePlan, AppError> {
     validate_branch_name(path, source)?;
     validate_branch_name(path, target)?;
@@ -3695,22 +3704,17 @@ fn prepare_rebase_review(
     }
     let source_ref = format!("refs/heads/{source}");
     let target_ref = format!("refs/heads/{target}");
-    let source_output = run_git(path, &["rev-parse", "--verify", &source_ref])?;
-    ensure_success(
-        "capture the source tip for interactive rebase",
-        &source_output,
-    )?;
-    let source_oid = std::str::from_utf8(&source_output.stdout)
-        .map_err(|_| {
-            AppError::new(
-                "invalidInteractiveRebasePlan",
-                "Git returned an unsupported source tip.",
-                None,
-            )
-        })?
-        .trim()
-        .to_owned();
-    validate_commit_oid(&source_oid)?;
+    let source_oid = interactive_rebase_tip(path, &source_ref)?;
+    let target_oid = if source_ref == target_ref {
+        source_oid.clone()
+    } else {
+        interactive_rebase_tip(path, &target_ref)?
+    };
+    if reviewed_tips
+        .is_some_and(|tips| tips.source_oid != source_oid || tips.target_oid != target_oid)
+    {
+        return Err(stale_interactive_rebase_tips());
+    }
     let base = if root {
         String::new()
     } else if let Some(oids) = selection {
@@ -3739,7 +3743,7 @@ fn prepare_rebase_review(
         validate_commit_oid(fields[1])?;
         fields[1].to_owned()
     } else {
-        let base_output = run_git(path, &["merge-base", &source_ref, &target_ref])?;
+        let base_output = run_git(path, &["merge-base", &source_oid, &target_oid])?;
         ensure_success("find a common ancestor for those branches", &base_output)?;
         String::from_utf8_lossy(&base_output.stdout)
             .trim()
@@ -3912,22 +3916,47 @@ fn prepare_rebase_review(
         .filter(|commit| !unrecorded.contains(commit.oid.as_str()))
         .map(|commit| commit.oid.clone())
         .collect();
-    let current_source = run_git(path, &["rev-parse", "--verify", &source_ref])?;
-    ensure_success("check the reviewed source tip", &current_source)?;
-    if current_source.stdout != source_output.stdout {
-        return Err(AppError::new(
-            "staleInteractiveRebase",
-            "The source branch changed while the complete plan was being prepared.",
-            Some("Refresh and review the complete plan again."),
-        ));
+    let tips = InteractiveRebaseTips {
+        source_oid,
+        target_oid,
+    };
+    if !interactive_rebase_tips_match(path, &source_ref, &target_ref, &tips)? {
+        return Err(stale_interactive_rebase_tips());
     }
     Ok(InteractiveRebasePlan {
         source: source.to_owned(),
         target: target.to_owned(),
         base,
+        tips,
         commits,
         remote_reachable_oids,
     })
+}
+
+fn interactive_rebase_tip(path: &Path, reference: &str) -> Result<String, AppError> {
+    let output = run_git(path, &["show-ref", "--verify", "--hash", "--", reference])?;
+    ensure_success("read the interactive rebase branch tip", &output)?;
+    let oid = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    validate_commit_oid(&oid)?;
+    Ok(oid)
+}
+
+fn interactive_rebase_tips_match(
+    path: &Path,
+    source_ref: &str,
+    target_ref: &str,
+    tips: &InteractiveRebaseTips,
+) -> Result<bool, AppError> {
+    Ok(interactive_rebase_tip(path, source_ref)? == tips.source_oid
+        && (source_ref == target_ref || interactive_rebase_tip(path, target_ref)? == tips.target_oid))
+}
+
+fn stale_interactive_rebase_tips() -> AppError {
+    AppError::new(
+        "staleInteractiveRebase",
+        "The source or destination branch changed after the interactive rebase was reviewed.",
+        Some("Prepare a fresh plan before rewriting history. No rebase was started."),
+    )
 }
 
 fn parse_interactive_rebase_commits(
@@ -4010,6 +4039,36 @@ pub fn execute_interactive_rebase_with_destination(
     root: bool,
     onto_oid: Option<&str>,
 ) -> Result<(), AppError> {
+    execute_interactive_rebase_impl(path, source, target, steps, selection, root, onto_oid, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn execute_reviewed_interactive_rebase(
+    path: &Path,
+    source: &str,
+    target: &str,
+    steps: &[InteractiveRebaseStep],
+    selection: Option<&[String]>,
+    root: bool,
+    onto_oid: Option<&str>,
+    tips: &InteractiveRebaseTips,
+) -> Result<(), AppError> {
+    execute_interactive_rebase_impl(
+        path, source, target, steps, selection, root, onto_oid, Some(tips),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_interactive_rebase_impl(
+    path: &Path,
+    source: &str,
+    target: &str,
+    steps: &[InteractiveRebaseStep],
+    selection: Option<&[String]>,
+    root: bool,
+    onto_oid: Option<&str>,
+    reviewed_tips: Option<&InteractiveRebaseTips>,
+) -> Result<(), AppError> {
     if let Some(destination) = onto_oid {
         if !root && selection.is_none() {
             return Err(AppError::new(
@@ -4039,7 +4098,7 @@ pub fn execute_interactive_rebase_with_destination(
             ));
         }
     }
-    let plan = prepare_interactive_rebase_with_options(path, source, target, selection, root)?;
+    let plan = prepare_rebase_review(path, source, target, selection, root, false, reviewed_tips)?;
     if let Some(destination) = onto_oid
         && plan
             .commits
@@ -4131,30 +4190,18 @@ pub fn execute_interactive_rebase_with_destination(
         ));
     }
 
-    let source_tip = run_git(
+    if !interactive_rebase_tips_match(
         path,
-        &["rev-parse", "--verify", &format!("refs/heads/{source}")],
-    )?;
-    ensure_success("read the source tip before interactive rebase", &source_tip)?;
-    let source_tip = String::from_utf8_lossy(&source_tip.stdout)
-        .trim()
-        .to_owned();
-    if (selection.is_some() || root)
-        && plan
-            .commits
-            .last()
-            .is_none_or(|commit| commit.oid != source_tip)
-    {
-        return Err(AppError::new(
-            "staleInteractiveRebase",
-            "The source tip changed after history editing was prepared.",
-            Some("Prepare and review the complete history again."),
-        ));
+        &format!("refs/heads/{source}"),
+        &format!("refs/heads/{target}"),
+        &plan.tips,
+    )? {
+        return Err(stale_interactive_rebase_tips());
     }
     let support_dir = rebase_support_dir(path)?;
     preserve_reference(
         path,
-        &source_tip,
+        &plan.tips.source_oid,
         &if let Some(destination) = onto_oid.filter(|_| root) {
             format!("Whole-history editing {source} including root onto {destination}")
         } else if let Some(destination) = onto_oid {
@@ -4243,7 +4290,7 @@ pub fn execute_interactive_rebase_with_destination(
     } else if selection.is_some() {
         plan.base.clone()
     } else {
-        format!("refs/heads/{target}")
+        plan.tips.target_oid.clone()
     };
     let mut command = git_in(path);
     if selection.is_some() || root {
@@ -11921,6 +11968,70 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             vec!["One", "Renamed Two"]
         );
         assert!(!repository.path.join(".git/git-khronos-rebase").exists());
+    }
+
+    #[test]
+    fn interactive_rebase_refuses_an_advanced_destination_with_unchanged_steps() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Base"]);
+        repository.git(&["checkout", "-b", "feature"]);
+        repository.write("feature.txt", "feature\n");
+        repository.git(&["add", "--", "feature.txt"]);
+        repository.git(&["commit", "-m", "Feature"]);
+        repository.git(&["checkout", "main"]);
+        let plan = prepare_interactive_rebase(&repository.path, "feature", "main").unwrap();
+        let steps = vec![InteractiveRebaseStep {
+            oid: plan.commits[0].oid.clone(),
+            action: "pick".into(),
+            message: None,
+        }];
+        repository.write("destination.txt", "destination\n");
+        repository.git(&["add", "--", "destination.txt"]);
+        repository.git(&["commit", "-m", "Destination advanced"]);
+        let fresh = prepare_interactive_rebase(&repository.path, "feature", "main").unwrap();
+        assert_eq!(plan.base, fresh.base);
+        assert_eq!(plan.tips.source_oid, fresh.tips.source_oid);
+        assert_eq!(plan.commits[0].oid, fresh.commits[0].oid);
+        assert_ne!(plan.tips.target_oid, fresh.tips.target_oid);
+        let refs = repository.git_output(&["show-ref"]);
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let error = execute_reviewed_interactive_rebase(
+            &repository.path,
+            "feature",
+            "main",
+            &steps,
+            None,
+            false,
+            None,
+            &plan.tips,
+        )
+        .expect_err("the reviewed destination moved");
+        assert_eq!(error.kind, "staleInteractiveRebase");
+        assert_eq!(repository.git_output(&["show-ref"]), refs);
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            repository
+                .git_output(&["symbolic-ref", "--short", "HEAD"])
+                .trim(),
+            "main"
+        );
+        assert!(!repository.path.join(".git/git-khronos-rebase").exists());
+
+        execute_reviewed_interactive_rebase(
+            &repository.path,
+            "feature",
+            "main",
+            &steps,
+            None,
+            false,
+            None,
+            &fresh.tips,
+        )
+        .expect("execute only the fresh review");
+        assert_eq!(
+            repository.git_output(&["rev-parse", "HEAD^"]).trim(),
+            fresh.tips.target_oid
+        );
     }
 
     #[test]

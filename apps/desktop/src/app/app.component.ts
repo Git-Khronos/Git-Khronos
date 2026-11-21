@@ -4069,8 +4069,8 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('interactive-rebase')) {
       const repository = this.git.repository();
-      const source = repository?.branches.find((branch) => !branch.remote && !branch.current)?.name;
-      const target = repository?.branches.find((branch) => branch.current)?.name;
+      const source = repository?.branches.find((branch) => !branch.remote && !branch.current);
+      const target = repository?.branches.find((branch) => branch.current);
       const commits = repository?.commits.slice(-4, -1).reverse() ?? [];
       if (repository && source && target && commits.length) {
         const steps = commits.map((commit, index): RebaseStepView => ({
@@ -4085,9 +4085,10 @@ export class AppComponent implements OnInit, OnDestroy {
         this.interactiveRebase.set({
           repositoryId: repository.id,
           checkoutScope: this.git.activeRepositoryReadScope(),
-          source,
-          target,
+          source: source.name,
+          target: target.name,
           base: commits[0].parents[0] ?? '',
+          tips: { sourceOid: source.oid, targetOid: target.oid },
           original: steps.map((step) => ({ ...step, action: 'pick' })),
           steps,
         });
@@ -8904,7 +8905,7 @@ export class AppComponent implements OnInit, OnDestroy {
       message: step.action === 'reword' ? step.message.trim() : null,
     }));
     this.closeInteractiveRebase();
-    await this.git.executeInteractiveRebase(state.source, state.target, steps, state.selectionOids, state.root, state.ontoOid);
+    await this.git.executeInteractiveRebase(state.source, state.target, steps, state.tips, state.selectionOids, state.root, state.ontoOid);
     if (state.checkoutScope === this.git.activeRepositoryReadScope() && this.repositoryOperation().rebaseInProgress) this.selectWip();
   }
 
@@ -9034,6 +9035,7 @@ export class AppComponent implements OnInit, OnDestroy {
       source: plan.source,
       target: plan.target,
       base: plan.base,
+      tips: plan.tips,
       selectionOids,
       root,
       destinations: selectionOids || root ? this.git.repository()?.branches

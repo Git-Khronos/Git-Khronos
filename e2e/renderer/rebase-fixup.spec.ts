@@ -17,6 +17,7 @@ test.beforeEach(async ({ page }) => {
           }
           const plan = {
             source: args.source, target: args.target, base: 'a'.repeat(40),
+            tips: { sourceOid: '3'.repeat(40), targetOid: (window as any).__rebaseTargetOid ?? '4'.repeat(40) },
             commits: ['First retained', 'Fixup change', 'Last commit'].map((subject, index) => ({
               oid: String(index + 1).repeat(40), subject, message: `${subject}\n\nExplanation`,
               authorName: 'Fixture Author', authorEmail: 'author@example.test',
@@ -31,6 +32,11 @@ test.beforeEach(async ({ page }) => {
           return Promise.resolve(plan);
         }
         if (command === 'execute_interactive_rebase') {
+          if ((window as any).__rebaseTargetOid && args.reviewedTips.targetOid !== (window as any).__rebaseTargetOid) {
+            return Promise.reject({ kind: 'staleInteractiveRebase',
+              message: 'The source or destination branch changed after the interactive rebase was reviewed.',
+              hint: 'Prepare a fresh plan before rewriting history. No rebase was started.' });
+          }
           const snapshot = git.repository();
           if (!(window as any).__editRebaseStop) return Promise.resolve(snapshot);
           const head = { ...snapshot.commits[0], oid: 'd'.repeat(40), subject: 'First retained', description: 'Explanation' };
@@ -347,12 +353,32 @@ test('fixup explains message retention and sends the exact explicit action', asy
   const calls = await page.evaluate(() => (window as any).__rebaseCalls
     .filter((call: any) => call.command === 'execute_interactive_rebase'));
   expect(calls).toEqual([expect.objectContaining({ args: expect.objectContaining({
-    source: 'main', target: 'feature/partial-staging', steps: [
+    source: 'main', target: 'feature/partial-staging',
+    reviewedTips: { sourceOid: '3'.repeat(40), targetOid: '4'.repeat(40) }, steps: [
       { oid: '1'.repeat(40), action: 'pick', message: null },
       { oid: '2'.repeat(40), action: 'fixup', message: null },
       { oid: '3'.repeat(40), action: 'pick', message: null },
     ],
   }) })]);
+});
+
+test('a destination change requires a fresh ordinary rebase review and never retries automatically', async ({ page }) => {
+  const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
+  await expect(dialog.getByText('44444444', { exact: true })).toBeVisible();
+  await page.evaluate(() => { (window as any).__rebaseTargetOid = 'd'.repeat(40); });
+  await dialog.getByRole('button', { name: 'Start Rebase', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.error-toast')).toContainText('The source or destination branch changed');
+  const sentTips = () => page.evaluate(() => (window as any).__rebaseCalls
+    .filter((call: any) => call.command === 'execute_interactive_rebase')
+    .map((call: any) => call.args.reviewedTips.targetOid));
+  expect(await sentTips()).toEqual(['4'.repeat(40)]);
+  await page.getByRole('button', { name: 'Dismiss error' }).click();
+  await page.locator('.branch-item').filter({ hasText: 'feature/partial-staging' }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Interactive rebase main onto feature/partial-staging' }).click();
+  await expect(dialog.getByText('dddddddd', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Start Rebase', exact: true }).click();
+  await expect.poll(sentTips).toEqual(['4'.repeat(40), 'd'.repeat(40)]);
 });
 
 test('dropping the recipient keeps fixup visible but disables execution until explicitly corrected', async ({ page }) => {

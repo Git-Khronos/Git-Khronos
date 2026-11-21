@@ -6,6 +6,9 @@
       <button data-rebase-close type="button" aria-label="Close interactive rebase" title="Close interactive rebase" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button>
     </header>
     <div class="rebase-scope">
+      @if (!state().root && !state().selectionOids) {
+        <p>Reviewed destination: <strong>{{ state().target }}</strong> at <code [title]="state().tips.targetOid">{{ state().tips.targetOid.slice(0, 8) }}</code>. If the branch moves, prepare a fresh review.</p>
+      }
       @if (state().root) {
         <p>Entire history, including the root: all {{ state().steps.length }} reviewed commits may be rewritten. @if (!state().ontoOid) { There is no unchanged parent base. } Retain at least one commit. Root commits cannot use guided splitting.</p>
         <label>Replay destination

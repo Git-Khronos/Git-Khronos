@@ -28,7 +28,7 @@ use git_khronos_git_core::{
     delete_original_reference as git_delete_original_reference, detect_git,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
     edit_commit as git_edit_commit,
-    execute_interactive_rebase_with_destination as git_execute_interactive_rebase,
+    execute_reviewed_interactive_rebase as git_execute_interactive_rebase,
     fetch_cancellable as git_fetch_cancellable, fetch_if_needed as git_fetch_if_needed,
     fetch_remote_cancellable as git_fetch_remote_cancellable,
     fetch_with_options as git_fetch_with_options, file_blame as git_file_blame,
@@ -1704,6 +1704,7 @@ fn execute_interactive_rebase(
     selection_oids: Option<Vec<String>>,
     root: Option<bool>,
     onto_oid: Option<String>,
+    reviewed_tips: git_khronos_git_core::InteractiveRebaseTips,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
@@ -1715,6 +1716,7 @@ fn execute_interactive_rebase(
             selection_oids.as_deref(),
             root.unwrap_or(false),
             onto_oid.as_deref(),
+            &reviewed_tips,
         )
     })
 }

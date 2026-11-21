@@ -4069,10 +4069,11 @@ def operation_storage_boundaries(driver, fixtures, report):
         assert len(plan["commits"]) == 1
         call("execute_interactive_rebase", source="main", target="main",
              steps=[dict(oid=entry["oid"], action="edit", message=None) for entry in plan["commits"]],
-             selectionOids=[tip], root=False, ontoOid=None)
+             selectionOids=[tip], root=False, ontoOid=None, reviewedTips=plan["tips"])
         assert call("refresh_repository_status")["rebaseEditStopped"]
+        return plan["tips"]
 
-    pause()
+    reviewed_tips = pause()
     support = repository / ".git/git-khronos-rebase"
     parked = repository / ".git/parked-support"
     support.rename(parked)
@@ -4092,7 +4093,7 @@ def operation_storage_boundaries(driver, fixtures, report):
     index = (repository / ".git/index").read_bytes()
     refused("execute_interactive_rebase", source="main", target="main",
             steps=[dict(oid=tip, action="edit", message=None)],
-            selectionOids=[tip], root=False, ontoOid=None)
+            selectionOids=[tip], root=False, ontoOid=None, reviewedTips=reviewed_tips)
     assert sentinel.read_bytes() == b"retain external operation data\n"
     assert fixtures.git(repository, "for-each-ref", "--format=%(refname) %(objectname)") == references
     assert (repository / ".git/index").read_bytes() == index
@@ -4408,9 +4409,27 @@ def advanced(driver, fixtures, report):
     commit("Main for rebase")
     plan = call("prepare_interactive_rebase", source="topic", target="main", selectionOids=None, root=False)
     assert plan["commits"]
+    (repository / "later-target.txt").write_text("new target content\n")
+    commit("Destination advances after review")
+    references = fixtures.git(repository, "show-ref")
+    index = (repository / ".git/index").read_bytes()
+    steps = [dict(oid=entry["oid"], action="pick", message=None) for entry in plan["commits"]]
+    try:
+        call("execute_interactive_rebase", source="topic", target="main", steps=steps,
+             selectionOids=None, root=False, ontoOid=None, reviewedTips=plan["tips"])
+    except RuntimeError as error:
+        assert "staleInteractiveRebase" in str(error), str(error)
+    else:
+        raise AssertionError("Interactive rebase accepted an unreviewed destination tip")
+    assert fixtures.git(repository, "show-ref") == references
+    assert (repository / ".git/index").read_bytes() == index
+    assert not (repository / ".git/git-khronos-rebase").exists()
+    assert fixtures.git(repository, "symbolic-ref", "--short", "HEAD") == "main"
+    report["scenarios"].append("native-interactive-rebase-rejects-moved-target-with-unchanged-replay-commits")
+    fresh = call("prepare_interactive_rebase", source="topic", target="main", selectionOids=None, root=False)
+    assert fresh["base"] == plan["base"] and fresh["commits"] == plan["commits"]
     call("execute_interactive_rebase", source="topic", target="main",
-         steps=[dict(oid=entry["oid"], action="pick", message=None) for entry in plan["commits"]],
-         selectionOids=None, root=False, ontoOid=None)
+         steps=steps, selectionOids=None, root=False, ontoOid=None, reviewedTips=fresh["tips"])
     assert not call("refresh_repository_status")["rebaseInProgress"]
     assert (repository / "topic.txt").is_file() and (repository / "main.txt").is_file()
     report["scenarios"].append("interactive-rebase-pick")
@@ -4423,7 +4442,7 @@ def advanced(driver, fixtures, report):
     plan = call("prepare_interactive_rebase", source="edit-topic", target="main", selectionOids=None, root=False)
     call("execute_interactive_rebase", source="edit-topic", target="main",
          steps=[dict(oid=entry["oid"], action="edit", message=None) for entry in plan["commits"]],
-         selectionOids=None, root=False, ontoOid=None)
+         selectionOids=None, root=False, ontoOid=None, reviewedTips=plan["tips"])
     assert call("refresh_repository_status")["rebaseEditStopped"]
     call("abort_rebase")
     assert not call("refresh_repository_status")["rebaseInProgress"]

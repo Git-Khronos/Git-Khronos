@@ -17,7 +17,8 @@ test.beforeEach(async ({ page }) => {
     const commits = app.visibleGraphRows().map((row: any) => row.commit)
       .filter((commit: any) => commit.parents.length === 1 && !app.stashForOid(commit.oid))
       .slice(0, 3).reverse();
-    const fixture = { original: clean, commits, calls: [] as any[], deferred: false,
+    const tips = { sourceOid: clean.headOid, targetOid: clean.headOid };
+    const fixture = { original: clean, commits, tips, calls: [] as any[], deferred: false,
       finish: null as (() => void) | null, refused: false };
     (window as any).__selectedRebase = fixture;
     app.commitMessage.set('Retained unrelated draft');
@@ -35,7 +36,7 @@ test.beforeEach(async ({ page }) => {
             hint: 'Deepen the repository to its actual root and prepare a fresh review.' } : { kind: 'invalidRebaseSelection',
             message: 'The selected commits are not a consecutive oldest-to-newest range on the current branch.',
             hint: 'Select one starting commit or a contiguous range. All later commits through HEAD will also be reviewed.' });
-          const plan = { source: args.source, target: args.target, base: args.root ? '' : 'a'.repeat(40),
+          const plan = { source: args.source, target: args.target, base: args.root ? '' : 'a'.repeat(40), tips,
             commits: fixture.commits.map(commit => ({ oid: commit.oid, subject: commit.subject,
               message: `${commit.subject}\n\nRetained detail`, authorName: commit.authorName, authorEmail: commit.authorEmail })),
             remoteReachableOids: [fixture.commits[0].oid] };
@@ -88,7 +89,7 @@ test('whole-history review explicitly includes root with no unchanged base and s
   const result = await page.evaluate(() => (window as any).__selectedRebase);
   expect(result.calls.find((call: any) => call.command === 'execute_interactive_rebase').args)
     .toEqual({ repoId: fixture.original.id, source: fixture.original.status.branch,
-      target: fixture.original.status.branch, root: true,
+      target: fixture.original.status.branch, root: true, reviewedTips: fixture.tips,
       steps: fixture.commits.map((commit: any, index: number) => ({ oid: commit.oid,
         action: index ? 'pick' : 'reword', message: index ? null : 'Reviewed root message' })) });
 });
@@ -224,7 +225,7 @@ test('explicit onto choice retains full suffix and drafts and executes the captu
   const calls = await page.evaluate(() => (window as any).__selectedRebase.calls);
   expect(calls.find((call: any) => call.command === 'execute_interactive_rebase').args)
     .toEqual({ repoId: fixture.original.id, source: fixture.original.status.branch,
-      target: fixture.original.status.branch, selectionOids: [fixture.commits[0].oid],
+      target: fixture.original.status.branch, selectionOids: [fixture.commits[0].oid], reviewedTips: fixture.tips,
       ontoOid: 'd'.repeat(40), steps: fixture.commits.map((commit: any, index: number) => ({
         oid: commit.oid, action: index ? 'pick' : 'reword', message: index ? null : 'Moved reviewed message',
       })) });
@@ -293,6 +294,7 @@ test('range preview discloses later descendants and recorded versus unknown publ
   }));
   expect(result.fixture.calls.find((call: any) => call.command === 'execute_interactive_rebase').args)
     .toEqual({ repoId: fixture.original.id, source: fixture.original.status.branch, target: fixture.original.status.branch,
+      reviewedTips: fixture.tips,
       selectionOids: fixture.commits.slice(0, 2).map((commit: any) => commit.oid),
       steps: fixture.commits.map((commit: any, index: number) => ({ oid: commit.oid,
         action: index ? 'pick' : 'reword', message: index ? null : 'Reviewed starting message' })) });

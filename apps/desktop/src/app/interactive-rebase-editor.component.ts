@@ -1,6 +1,6 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, inject, Injector, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { InteractiveRebaseCommit, InteractiveRebaseStep } from '@git-khronos/contracts';
+import type { InteractiveRebaseCommit, InteractiveRebaseStep, InteractiveRebaseTips } from '@git-khronos/contracts';
 import { IconComponent } from './icon.component';
 import { GitHelpComponent } from './git-help.component';
 import { previewAutosquash } from './rebase-autosquash';
@@ -16,6 +16,7 @@ export interface InteractiveRebaseState {
   source: string;
   target: string;
   base: string;
+  tips: InteractiveRebaseTips;
   original: RebaseStepView[];
   steps: RebaseStepView[];
   selectionOids?: string[];

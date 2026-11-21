@@ -25,6 +25,7 @@ import type {
   FileHistoryEntry,
   FetchOptions,
   InteractiveRebasePlan,
+  InteractiveRebaseTips,
   InteractiveRebaseStep,
   MergeRebasePlan,
   MergeRebaseRequest,
@@ -1978,6 +1979,7 @@ export class GitKhronosService implements OnDestroy {
     source: string,
     target: string,
     steps: InteractiveRebaseStep[],
+    reviewedTips: InteractiveRebaseTips,
     selectionOids?: string[],
     root = false,
     ontoOid?: string,
@@ -1986,7 +1988,7 @@ export class GitKhronosService implements OnDestroy {
       'execute_interactive_rebase',
       ontoOid ? `Replaying history on ${source} onto ${ontoOid.slice(0, 8)}…` : root ? `Editing entire history on ${source}…` : selectionOids ? `Editing selected history on ${source}…` : `Rebasing ${source} onto ${target}…`,
       snapshot => this.rebaseActivity(snapshot),
-      { source, target, steps, ...(selectionOids ? { selectionOids } : {}), ...(root ? { root: true } : {}), ...(ontoOid ? { ontoOid } : {}) },
+      { source, target, steps, reviewedTips, ...(selectionOids ? { selectionOids } : {}), ...(root ? { root: true } : {}), ...(ontoOid ? { ontoOid } : {}) },
     );
   }
 

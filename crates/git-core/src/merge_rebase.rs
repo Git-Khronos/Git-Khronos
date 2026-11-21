@@ -63,7 +63,14 @@ pub fn prepare_merge_rebase(
             Some("Deepen the repository before preparing a fresh review."),
         ));
     }
-    let review = prepare_rebase_review(path, source, target, None, false, true)?;
+    let review = prepare_rebase_review(path, source, target, None, false, true, None)?;
+    if review.tips.source_oid != source_oid || review.tips.target_oid != target_oid {
+        return Err(AppError::new(
+            "staleMergeRebase",
+            "A branch changed while merge-preserving history was reviewed.",
+            Some("Reload the complete review."),
+        ));
+    }
     let bases = run_git(path, &["merge-base", "--all", &source_oid, &target_oid])?;
     ensure_success("inspect merge-preserving common base", &bases)?;
     if bases.stdout != format!("{}\n", review.base).as_bytes() {

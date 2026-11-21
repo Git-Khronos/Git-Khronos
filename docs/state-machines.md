@@ -75,6 +75,10 @@ applying navigation or focus changes cannot cross visits. An
 away-and-back tab change retires the earlier review even when the renderer
 never drew the intervening checkout. The original native mutation receipt
 still belongs to the command; retiring the review does not cancel or replay it.
+The native interactive plan records both local branch tips. Start must
+submit those tips even when the common base and replay commits are unchanged.
+Git receives the reviewed destination commit ID, not a moving branch name;
+a changed tip before execution requires a fresh plan instead of a new replay.
 
 ### Diff patch export
 
