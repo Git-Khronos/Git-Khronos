@@ -201,6 +201,20 @@ incoming links (26), GitLab (47), and updates (21). The verification still
 requires the same live private-bus owner before and after delivery. This
 candidate does not include durable unavailable workspace paths.
 
+The saved-workspace build at `7efad11` has package SHA-256
+`4c33a3eb93f1b90f475219dd024e5d5b45bda1a6c74e27ef16760ed2b8e6201b`.
+On disposable Ubuntu 24.04, the installed app retained both unavailable
+paths across a workspace switch, reopened one after its folder returned,
+and kept the explicitly removed path out after reloading. All three owned
+checkouts retained their refs, index, config and working-file bytes. The
+older `ed9b22c` package failed at the switch with both paths dropped.
+The reports and successful APT simulation are retained in
+`target/local-review/updater/jammy-builder/saved-workspace.1h4ZT3fI/`.
+The focused workspace result is not a release pass: two attempts on these
+bytes failed an earlier smoke check when a deleted untracked file remained
+visible. The separate workspace test does not bypass that gate in the
+release suite. A fresh full matrix is still pending.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

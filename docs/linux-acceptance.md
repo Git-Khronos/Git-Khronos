@@ -56,6 +56,15 @@ deleting that layout. The original checkout's staged and untracked data,
 refs, index and config remain unchanged. Renderer tests separately hold or
 fail the lazy module to prove an unrendered editor cannot modify a layout.
 
+Use `--suite workspace-restore` to run the saved-path regression independently
+of smoke and the rest of setup. The fixture parks two owned checkouts outside their
+saved paths, waits for restoration to fail, and switches away and back using
+the workspace menu. It removes one membership and returns the other folder
+before explicitly retrying. A fresh WebView load must restore only the
+remaining checkout paths; independent Git reads check that each checkout's
+refs, index, config, and working files remain unchanged. Setup, full and
+environment suites also run this scenario.
+
 The suite then explicitly confirms deletion of the owned test branch. It checks
 the remaining branch refs, HEAD, staged/untracked contents, index/config bytes,
 commit draft and native recovery receipt. This proves valid reviewed commands
@@ -337,6 +346,12 @@ that ordinary Git would call its configured helper; guarded restoration and
 patch inspection must not call it. A timeout retains the failing view before
 fixture cleanup reopens the original repository. On a disposable installed
 runner, add `--installed` to check the same package bytes used by the full suite.
+
+Direct and desktop-scheme delivery must leave the original PID owning the
+fixture's private session bus. If a candidate PID disappears or changes
+executable between procfs reads, the report keeps that observation separate
+from live application processes. A second live process, unreadable candidate,
+or changed bus owner still fails. This never resends a desktop activation.
 
 ## Focused publisher trust acceptance
 

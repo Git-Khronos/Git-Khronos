@@ -1136,7 +1136,7 @@ def main():
     parser.add_argument("--suite", choices=(
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
-        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media",
+        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1261,7 +1261,12 @@ def main():
             report["webdriverTransport"] = "tauri-session-creation-native-session-control"
             wait_webdriver_ready(driver, process, listen_port)
             driver.start(executable)
-            repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
+            if args.suite == "workspace-restore":
+                from native_workspace_edit_scenarios import saved_workspace_repository_workflow
+                repository = saved_workspace_repository_workflow(driver, fixtures, report)
+                repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            else:
+                repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
                 view = driver.invoke("refresh_repository", repoId=repo_id)
                 for field in ("name", "email"):
@@ -1304,6 +1309,9 @@ def main():
             if args.suite in ("full", "environment", "setup-keyboard"):
                 from native_setup_keyboard_scenarios import setup_keyboard_isolation
                 setup_keyboard_isolation(driver, fixtures, report)
+            if args.suite in ("full", "environment", "setup-keyboard"):
+                from native_workspace_edit_scenarios import saved_workspace_repository_workflow
+                saved_workspace_repository_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "remote-reviews"):
                 from native_remote_review_scenarios import remote_review_workflows
                 remote_review_workflows(driver, fixtures, report)

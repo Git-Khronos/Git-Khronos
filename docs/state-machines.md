@@ -616,7 +616,8 @@ explicit retry and a workspace-only removal for each unopened path. Removal
 revokes pending restoration for that exact path. A late native result cannot
 add it back, and the same path saved in another workspace is unaffected.
 
-Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`.
+Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`, and the
+packaged `workspace-restore` suite.
 
 ### Transient overlays (F46)
 
