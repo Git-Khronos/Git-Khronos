@@ -15,6 +15,11 @@ async function prepare(page: Page) {
     (window as any).__stashAction = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: unknown) => {
       state.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') {
+        const repo = git.repositories().find((candidate: { id: string }) => candidate.id === (args as { repoId: string }).repoId);
+        if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
+        return Promise.resolve({ additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+      }
       if (command === 'apply_stash' || command === 'pop_stash_entry' || command === 'pop_stash') return new Promise(resolve => { state.finish = resolve; });
       return Promise.resolve(command === 'refresh_repository_status' ? repository.status : repository);
     } };
@@ -28,8 +33,10 @@ for (const pop of [false, true]) {
       const state = (window as any).__stashAction;
       state.pending = state.root.applyStashFromMenu(pop);
     }, pop);
-    const calls = await page.evaluate(() => (window as any).__stashAction.calls);
-    expect(calls[0].args.expectedOid).toBe('a'.repeat(40));
+    const calls = await page.evaluate(() => (window as any).__stashAction.calls.filter(
+      (call: { command: string }) => ['apply_stash', 'pop_stash', 'pop_stash_entry'].includes(call.command)));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: pop ? 'pop_stash_entry' : 'apply_stash', args: { expectedOid: 'a'.repeat(40) } });
     await page.evaluate(async () => {
       const state = (window as any).__stashAction;
       state.root.selectedCommit.set('newer-inspection');
@@ -49,7 +56,8 @@ test('a stash menu owned by another repository cannot start a mutation', async (
     state.root.actionOverlays.open({ kind: 'stash', value: { repositoryId: state.repository.id, stash: state.stash, x: 100, y: 100 } });
     void state.root.applyStashFromMenu(true);
   });
-  expect(await page.evaluate(() => (window as any).__stashAction.calls)).toHaveLength(0);
+  expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
+    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toHaveLength(0);
 });
 
 for (const change of ['shifted-stack', 'other-repository']) {
@@ -72,7 +80,8 @@ for (const change of ['shifted-stack', 'other-repository']) {
       for (const action of actions) await state.root.runCommand(action);
     }, change);
     expect(await page.evaluate(() => (window as any).__stashAction.actionCount)).toBe(4);
-    expect(await page.evaluate(() => (window as any).__stashAction.calls)).toHaveLength(0);
+    expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
+    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toHaveLength(0);
   });
 }
 
@@ -86,7 +95,8 @@ test('rename confirmation cannot mutate another repository with an identical sta
     state.git.activeRepositoryId.set('other-repository');
     await state.root.confirmStashRename();
   });
-  expect(await page.evaluate(() => (window as any).__stashAction.calls)).toHaveLength(0);
+  expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
+    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toHaveLength(0);
 });
 
 test('latest-pop rejects repeated submissions while its first call is pending', async ({ page }) => {

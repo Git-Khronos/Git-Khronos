@@ -49,6 +49,10 @@ test.beforeEach(async ({ page }) => {
         const repository = repositories.find((candidate: any) => candidate.id === args.repoId);
         if (!repository) throw Error('Unexpected repository in owned status refresh');
         result = repository.status;
+      } else if (command === 'working_tree_change_summary') {
+        const repository = repositories.find((candidate: any) => candidate.id === args.repoId);
+        if (!repository) throw Error('Unexpected repository in owned recap read');
+        result = { additions: 0, deletions: 0, uncountedFiles: repository.status.unstaged + repository.status.untracked, partial: true };
       } else if (command === 'gitlab_connections') result = fixture.connections;
       else if (command === 'connect_gitlab_account' || command === 'connect_gitlab_fork_account') {
         result = { connectionId: (++fixture.next).toString(16).padStart(32, '0'),
@@ -91,7 +95,7 @@ test('GitLab connect clears its token, loads only explicitly, and keeps reads se
   expect(await page.evaluate(() => document.body.textContent)).not.toContain(TOKEN);
   const commands = await page.evaluate(() => (window as any).__gitlab.calls.map((call: any) => call.command));
   expect(commands.filter((command: string) => !['gitlab_connections', 'connect_gitlab_account',
-    'load_gitlab_projects', 'refresh_repository_status'].includes(command))).toEqual([]);
+    'load_gitlab_projects', 'refresh_repository_status', 'working_tree_change_summary'].includes(command))).toEqual([]);
 });
 
 test('changing the selected instance clears a previously entered token and Enter never submits the manual clone form', async ({ page }) => {

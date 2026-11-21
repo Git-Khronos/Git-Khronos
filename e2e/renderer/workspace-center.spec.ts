@@ -119,6 +119,11 @@ test('refreshes every local repository, retains failed cached rows and performs 
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       const fixture = (window as any).__center; fixture.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') {
+        const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
+        if (!repo) throw Error('Unexpected repository in owned recap read');
+        return { additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true };
+      }
       if (args.repoId === 'clean-repo') throw { kind: 'missingRepository', message: 'Fixture unavailable' };
       if (command === 'refresh_repository') return fixture.first;
       if (command === 'refresh_repository_status') return { ...fixture.first.status, staged: 4 };
@@ -132,7 +137,7 @@ test('refreshes every local repository, retains failed cached rows and performs 
   await expect(dialog).toContainText('Read locally at');
   const calls = await page.evaluate(() => (window as any).__center.calls);
   expect(calls.some((call: any) => call.command === 'refresh_repository' && call.args.repoId === 'clean-repo')).toBe(true);
-  expect(calls.every((call: any) => ['refresh_repository', 'refresh_repository_status', 'refresh_repository_metadata'].includes(call.command))).toBe(true);
+  expect(calls.every((call: any) => ['refresh_repository', 'refresh_repository_status', 'refresh_repository_metadata', 'working_tree_change_summary'].includes(call.command))).toBe(true);
 });
 
 test('fetches selected repositories independently and reports each result', async ({ page }) => {

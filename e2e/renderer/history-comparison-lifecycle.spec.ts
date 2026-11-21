@@ -10,6 +10,12 @@ async function prepare(page: Page): Promise<void> {
     (window as any).__historyComparison = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') {
+        const repo = app.git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
+        if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
+        return Promise.resolve({ additions: 0, deletions: 0,
+          uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+      }
       if (command === 'compare_history_revisions') return new Promise((resolve, reject) => state.replies.push({ resolve, reject }));
       if (command === 'compare_commits' || command === 'compare_commit_with_working_tree') return Promise.resolve({ ...state.fresh, workingTree: command !== 'compare_commits' });
       if (command === 'inspect_commit') return Promise.resolve({ oid: args.oid, message: 'New selection', files: [], signature: { status: 'unsigned' } });
@@ -64,12 +70,13 @@ for (const mode of ['direct', 'mergeBase']) {
       state.replies[0].resolve({ ...state.fresh, files: [{ path: 'compared.txt', previousPath: null, status: 'M', additions: 1, deletions: 0 }] });
       await pending;
       return { comparison: state.app.git.commitComparison(), selected: state.app.git.selectedComparisonFile(),
-        diff: state.app.git.comparisonFileDiff(), args: state.calls[0].args };
+        diff: state.app.git.comparisonFileDiff(),
+        comparisons: state.calls.filter((call: { command: string }) => call.command === 'compare_history_revisions').map((call: { args: unknown }) => call.args) };
     }, mode);
     expect(result.comparison.comparisonMode).toBe(mode);
     expect(result.selected).toBe('compared.txt');
     expect(result.diff.path).toBe('compared.txt');
-    expect(result.args).toMatchObject({ base: 'base-ref', target: 'target-ref', mode });
+    expect(result.comparisons).toEqual([expect.objectContaining({ base: 'base-ref', target: 'target-ref', mode })]);
   });
 }
 

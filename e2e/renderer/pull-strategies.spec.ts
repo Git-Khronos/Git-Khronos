@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+const pullFixtureReads = ['refresh_repository', 'refresh_repository_status', 'working_tree_change_summary'];
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15000 });
@@ -12,6 +14,13 @@ test.beforeEach(async ({ page }) => {
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         (window as any).__pullCalls.push({ command, args });
+        if (command === 'working_tree_change_summary') {
+          const snapshot = (window as any).__pullSnapshot;
+          if (snapshot.id !== args.repoId) return Promise.reject(new Error('Unexpected repository in pull recap read'));
+          return Promise.resolve({
+            additions: 0, deletions: 0, uncountedFiles: snapshot.status.unstaged + snapshot.status.untracked, partial: true,
+          });
+        }
         if (command === 'refresh_repository_status') {
           return Promise.resolve((window as any).__pullSnapshot.status);
         }
@@ -142,7 +151,7 @@ test('missing upstream reports the gone state without selecting a replacement re
   expect(calls.filter((call: any) => call.command === 'pull_repository')).toEqual([
     expect.objectContaining({ args: expect.objectContaining({ remote: 'origin', branch: 'main', strategy: 'ff-only' }) }),
   ]);
-  expect(calls.every((call: any) => ['pull_repository', 'refresh_repository', 'refresh_repository_status'].includes(call.command))).toBe(true);
+  expect(calls.every((call: any) => call.command === 'pull_repository' || pullFixtureReads.includes(call.command))).toBe(true);
 });
 
 test('local-change refusal preserves the commit draft and retries only on an explicit pull', async ({ page }) => {
@@ -157,8 +166,8 @@ test('local-change refusal preserves the commit draft and retries only on an exp
   await page.locator('.pull-menu').getByRole('menuitem', { name: /^Rebase/ }).click();
   await expect(page.locator('.error-toast')).toContainText('protect local changes');
   await expect(page.getByRole('textbox', { name: 'Commit summary' })).toHaveValue('Preserve local work');
-  expect(await page.evaluate(() => (window as any).__pullCalls
-    .filter((call: any) => !['refresh_repository', 'refresh_repository_status'].includes(call.command))))
+  const refusedCalls = await page.evaluate(() => (window as any).__pullCalls);
+  expect(refusedCalls.filter((call: any) => !pullFixtureReads.includes(call.command)))
     .toEqual([expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ strategy: 'rebase' }) })]);
   await page.evaluate(() => { (window as any).__pullFailure = null; });
   await page.getByRole('button', { name: 'Pull options' }).click();

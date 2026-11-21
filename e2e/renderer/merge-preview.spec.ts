@@ -28,6 +28,11 @@ test.beforeEach(async ({ page }) => {
     (window as any).__mergePreview = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') {
+        const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
+        if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
+        return Promise.resolve({ additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true });
+      }
       if (command === 'preview_merge') {
         if (fixture.fail) return Promise.reject({ kind: 'mergePreviewUnsupported', message: 'Merge preview requires complete history.', hint: 'No merge was started.' });
         const result = { request: args.request, clean: fixture.clean, conflictedPaths: fixture.paths };
@@ -57,7 +62,7 @@ test('explicit preview sends exact direction and commit IDs without starting a m
   const call = calls.find((x: any) => x.command === 'preview_merge');
   expect(call.args.request).toEqual({ source: 'refs/heads/preview-target', target: 'refs/heads/preview-source', sourceOid: 'b'.repeat(40), targetOid: 'a'.repeat(40) });
   expect(call.args.operationId).toMatch(/^[a-f\d-]{36}$/);
-  expect(calls.every((x: any) => ['preview_merge', 'refresh_repository_status', 'refresh_repository_metadata'].includes(x.command))).toBe(true);
+  expect(calls.every((x: any) => ['preview_merge', 'refresh_repository_status', 'refresh_repository_metadata', 'working_tree_change_summary'].includes(x.command))).toBe(true);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Retained draft');
 });
