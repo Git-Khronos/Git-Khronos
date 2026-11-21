@@ -80,16 +80,17 @@ before relying on it on Debian.
 
 ```bash
 bash install.sh --version <version>  # install a specific published release
-bash install.sh --deb ./Git-Khronos.deb --dry-run  # preview an existing local package
+bash install.sh --deb ./Git-Khronos.deb --sha256 "$REVIEWED_SHA256" --dry-run
 bash install.sh --deb ./Git-Khronos.deb
 bash install.sh --from-source
 bash install.sh --uninstall
 ```
 
 Run `bash install.sh --help` for all options. The source-build and local-package
-paths are not a substitute for release qualification. For a local package,
-check its SHA-256 against the candidate's build receipt before previewing or
-installing it.
+paths are not a substitute for release qualification. Set
+`REVIEWED_SHA256` to the digest from a trusted build receipt. With
+`--sha256`, the installer verifies a private copy and passes that same
+copy to APT for either preview or installation.
 
 ## Quick start
 

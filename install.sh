@@ -16,6 +16,7 @@ readonly release_base_url
 action="install"
 version=""
 local_package=""
+local_sha256=""
 source_ref=""
 dry_run=false
 assume_yes=false
@@ -39,6 +40,7 @@ Options:
   --version VERSION   Install a specific release (for example 0.1.0).
                       Defaults to the latest published release.
   --deb FILE          Install a Debian package that is already on this machine.
+  --sha256 DIGEST     Require the local --deb to match a reviewed SHA-256.
   --from-source [REF] Build from source (default branch unless REF is given)
                       and install the result. Requires the development
                       toolchain described in the README.
@@ -82,6 +84,13 @@ parse_arguments() {
         local_package="$2"
         shift 2
         ;;
+      --sha256)
+        (($# >= 2)) || fail "--sha256 requires a digest."
+        [[ -z "$local_sha256" ]] || fail "--sha256 may only be specified once."
+        [[ "$2" =~ ^[0-9A-Fa-f]{64}$ ]] || fail "--sha256 requires exactly 64 hexadecimal characters."
+        local_sha256="${2,,}"
+        shift 2
+        ;;
       --from-source)
         action="source"
         if (($# >= 2)) && [[ "$2" != -* ]]; then
@@ -99,6 +108,9 @@ parse_arguments() {
   done
   if [[ -n "$local_package" && ( -n "$version" || "$action" != "install" ) ]]; then
     fail "--deb cannot be combined with --version, --from-source, or --uninstall."
+  fi
+  if [[ -n "$local_sha256" && -z "$local_package" ]]; then
+    fail "--sha256 requires --deb."
   fi
   if [[ -n "$version" && "$action" != "install" ]]; then
     fail "--version cannot be combined with --from-source or --uninstall."
@@ -213,6 +225,22 @@ verify_package_identity() {
     || fail "${package_file} targets ${architecture}, but this system is ${system_architecture}."
 }
 
+stage_reviewed_local_package() {
+  local source="$1" staged="${work_directory}/reviewed.deb" actual
+  [[ -f "$source" ]] || fail "package not found: ${source}"
+  require_command sha256sum "sha256sum is required to verify the local package."
+  # Verify the same private copy that will be passed to APT, not a path
+  # whose contents can be replaced after the check.
+  (umask 077; cp --reflink=auto -- "$source" "$staged") \
+    || fail "could not stage the local package for verification."
+  actual="$(sha256sum < "$staged")" || fail "could not compute the local package SHA-256."
+  actual="${actual%% *}"
+  [[ "$actual" == "$local_sha256" ]] \
+    || fail "local package checksum mismatch (expected ${local_sha256}, got ${actual})."
+  say "Verified local SHA-256 ${actual}"
+  printf '%s\n' "$staged"
+}
+
 require_git_prerequisite() {
   [[ "$ubuntu_jammy" == true ]] || return 0
   local depends state installed
@@ -279,7 +307,13 @@ main() {
     source) install_from_source ;;
     install)
       if [[ -n "$local_package" ]]; then
-        install_package_file "$local_package"
+        if [[ -n "$local_sha256" ]]; then
+          local staged
+          staged="$(stage_reviewed_local_package "$local_package")"
+          install_package_file "$staged"
+        else
+          install_package_file "$local_package"
+        fi
       else
         local downloaded
         downloaded="$(download_release_package)"

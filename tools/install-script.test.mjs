@@ -88,6 +88,55 @@ test('accepts a local Git Khronos package', () => {
   assert.match(result.stdout, /Inst git-khronos/);
 });
 
+test('checks the reviewed local digest before any APT simulation', () => {
+  const file = join(root, 'valid.deb');
+  const digest = createHash('sha256').update(readFileSync(file)).digest('hex');
+  const accepted = run(['--deb', file, '--sha256', digest.toUpperCase(), '--dry-run']);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stderr, new RegExp(`Verified local SHA-256 ${digest}`));
+  assert.match(accepted.stdout, /Inst git-khronos/);
+  const mismatch = run(['--deb', file, '--sha256', '0'.repeat(64), '--dry-run']);
+  assert.equal(mismatch.status, 1);
+  assert.match(mismatch.stderr, /local package checksum mismatch/);
+  assert.doesNotMatch(mismatch.stdout, /Inst /);
+  for (const args of [
+    ['--sha256', digest], ['--deb', file, '--sha256', 'not-a-digest'],
+    ['--deb', file, '--sha256'], ['--deb', file, '--sha256', digest, '--sha256', digest],
+  ]) {
+    const invalid = run([...args, '--dry-run']);
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /--sha256/);
+    assert.doesNotMatch(invalid.stdout, /Inst /);
+  }
+});
+
+test('passes the verified private copy to APT, not the mutable source path', () => {
+  const file = buildPackage('reviewed-snapshot');
+  const digest = createHash('sha256').update(readFileSync(file)).digest('hex');
+  const bin = join(root, 'reviewed-snapshot-bin');
+  mkdirSync(bin);
+  const apt = join(bin, 'apt-get');
+  writeFileSync(apt, `#!/bin/sh
+set -eu
+[ "$3" = --simulate ] || [ "$4" = --simulate ] || exit 98
+for staged do :; done
+[ "$staged" != "$OWNED_SOURCE" ] || exit 99
+printf '%s\\n' 'source replaced after verification' > "$OWNED_SOURCE"
+sha256sum < "$staged"
+printf '%s\\n' "$staged"
+`);
+  chmodSync(apt, 0o755);
+  const result = spawnSync('bash', [installer, '--deb', file, '--sha256', digest, '--dry-run'], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, OWNED_SOURCE: file },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const [observed, staged] = result.stdout.trimEnd().split('\n');
+  assert.equal(observed.split(' ')[0], digest);
+  assert.match(staged, /git-khronos-install\.[^/]+\/reviewed\.deb$/);
+  assert.throws(() => readFileSync(staged), { code: 'ENOENT' });
+  assert.equal(readFileSync(file, 'utf8'), 'source replaced after verification\n');
+});
+
 function gitPrerequisiteFixture(id, release) {
   const packageFile = buildPackage(`requires-newer-git-${id}-${release}`, 'git-khronos', 'git (>= 1:2.39)');
   const directory = join(root, `git-prerequisite-${id}-${release}`);
