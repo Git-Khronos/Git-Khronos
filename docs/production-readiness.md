@@ -547,8 +547,14 @@ release evidence.
 The blank-context candidate at `62be3a4`, SHA-256
 `542d65029a86d93bf7c94d9eff4735cffeef123fc08f9e987188a82bb1aa04ab`,
 passed all six installed Ubuntu 24.04 diff cases, including compact
-blank-context discard and recovery. The full matrix is separate from this
-result.
+blank-context discard and recovery. The same bytes then passed all **27**
+strict release checks across the five Linux distributions, using the fixture
+publisher key. The successful controller exit and exact-package verifier
+report are retained in
+`target/local-review/updater/jammy-builder/blank-context-release.VhWpfmCA/`
+as `qualification.exit` and `verified-release.json`. This does not qualify
+the later watcher or recap commits, and it is not a production signing or
+publication receipt.
 
 An additional reftable-only fixture with Git 2.53.0 removed a branch
 externally on the same installed diff candidate. Git no longer listed the
