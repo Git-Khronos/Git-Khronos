@@ -109,10 +109,13 @@ def gitlab_catalogue(driver, fixtures, repository, report):
         return 'other-app-refusal';
     """)
     observed = requests()
+    tls_records = gate / "tls-observations.jsonl"
     report["gitlabInitialConnect"] = {
         "outcome": connect_result,
         "fixtureApiRequests": len(observed),
         "matchingFixtureCredentials": sum(request["credentialMatched"] for request in observed),
+        "fixtureTls": [json.loads(line) for line in tls_records.read_text().splitlines()[:16]]
+        if tls_records.exists() else [],
     }
     assert connect_result == "connected", (
         "Installed app refused the initial owned GitLab connection", report["gitlabInitialConnect"])

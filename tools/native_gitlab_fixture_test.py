@@ -41,6 +41,10 @@ class GitLabFixtureTests(unittest.TestCase):
                     request = Request(url, headers={"PRIVATE-TOKEN": "owned-api-fixture-token"})
                     with trusted.open(request, timeout=5) as response:
                         self.assertEqual(json.load(response), {"id": 41, "username": "owned-reader"})
+                    observed_tls = [json.loads(line) for line in (gate / "tls-observations.jsonl").read_text().splitlines()]
+                    self.assertEqual([item["outcome"] for item in observed_tls], ["tls-error", "negotiated"])
+                    self.assertEqual(observed_tls[1], {"destination": False, "outcome": "negotiated", "reason": None})
+                    self.assertTrue(all(set(item) == {"destination", "outcome", "reason"} for item in observed_tls))
                     (gate / "mode").write_text("redirect-302")
                     with self.assertRaises(HTTPError) as failure:
                         trusted.open(request, timeout=5)

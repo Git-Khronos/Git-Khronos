@@ -609,8 +609,10 @@ local release matrix requires both checks in one passing Jammy watcher
 report. The fixture does not modify Git on the host.
 
 The GitLab suite's initial Connect action is clicked once. A refusal records
-the rendered error category and the owned HTTPS fixture's request counters,
-without recording credentials or retrying the connection.
+the rendered error category, owned HTTPS fixture request counters, and
+whether the fixture saw a TLS handshake. Evidence includes only a bounded
+handshake outcome and SSL reason identifier, never credentials or raw
+request data. The connection is not retried.
 
 For Pull scope, Ubuntu 24.04 qualification runs two independent suites
 against the installed package:

@@ -5,6 +5,7 @@ import urllib.parse
 import http.server
 import json
 from pathlib import Path
+import re
 import ssl
 import socket
 import subprocess
@@ -291,8 +292,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pass
 
 
-main = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-other = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+class ObservedTlsServer(http.server.ThreadingHTTPServer):
+    """Record the handshake boundary without logging socket or request data."""
+
+    def get_request(self):
+        try:
+            request = super().get_request()
+        except ssl.SSLError as error:
+            reason = getattr(error, 'reason', None)
+            safe_reason = reason if isinstance(reason, str) and re.fullmatch(r'[A-Z0-9_]{1,80}', reason) else None
+            self.record_tls('tls-error', safe_reason)
+            raise
+        except OSError:
+            self.record_tls('socket-error', None)
+            raise
+        self.record_tls('negotiated', None)
+        return request
+
+    def record_tls(self, outcome, reason):
+        with (root / 'tls-observations.jsonl').open('a') as stream:
+            stream.write(json.dumps({
+                'destination': self is other, 'outcome': outcome, 'reason': reason,
+            }) + '\n')
+
+
+main = ObservedTlsServer(('127.0.0.1', 0), Handler)
+other = ObservedTlsServer(('127.0.0.1', 0), Handler)
 for server in (main, other):
     server.daemon_threads = True
     server.socket = context.wrap_socket(server.socket, server_side=True)
