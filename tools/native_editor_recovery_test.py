@@ -1,10 +1,10 @@
 """Crash acceptance may signal only its verified executable and private profile."""
 import hashlib
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -25,7 +25,7 @@ class OwnedRecoveryCrashTests(unittest.TestCase):
         self.digest = hashlib.sha256(self.executable.read_bytes()).hexdigest()
 
     def start(self, executable=None, data_home=None, bus_address=None):
-        env = {**os.environ, 'XDG_DATA_HOME': str(data_home or self.home)}
+        env = {'XDG_DATA_HOME': str(data_home or self.home)}
         if bus_address is not None:
             env['DBUS_SESSION_BUS_ADDRESS'] = bus_address
         child = subprocess.Popen([str(executable or self.executable), '60'],
@@ -35,7 +35,17 @@ class OwnedRecoveryCrashTests(unittest.TestCase):
                 child.kill()
             child.wait(timeout=10)
         self.addCleanup(finish)
-        return child
+        # The pidfd test should start once the owned child's procfs metadata
+        # is visible. Keep the production identity check fail-closed; this
+        # readiness poll uses the precise PID just returned by Popen.
+        deadline = time.monotonic() + 3
+        expected = {f'{name}={value}'.encode() for name, value in env.items()}
+        environ = Path(f'/proc/{child.pid}/environ')
+        while child.poll() is None and time.monotonic() < deadline:
+            if expected.issubset(environ.read_bytes().split(b'\0')):
+                return child
+            time.sleep(0.01)
+        self.fail(f'Sleep fixture {child.pid} did not expose its private profile')
 
     def test_exact_pidfd_exit_leaves_other_fixture_process_running(self):
         sentinel_path = self.root / 'package/sentinel-sleep'
