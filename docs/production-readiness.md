@@ -167,6 +167,12 @@ same-package rerun with additional process diagnostics passed incoming links
 private-bus owner before and after each direct launch and did not reproduce
 the original failure; this does not establish a root cause for it.
 These local checks are not hosted approval.
+The same installer then completed all 278 Jammy environment scenarios.
+The exact-package matrix matched all 14 required suite reports across the
+five distributions, and the separate publisher-key evidence check accepted
+the same digest. The matched matrix and strict-preflight digest are retained
+as `installed-release-matrix.json` and `jammy-installed-preflight.sha256`
+in the candidate directory. No release signature or publication was created.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
