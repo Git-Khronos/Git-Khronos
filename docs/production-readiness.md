@@ -121,6 +121,8 @@ full report were independently matched against the same installer.
 
 That same installer also passed the focused counts suite on Ubuntu 22.04
 with Git 2.56.1 and the checksum-verified Git LFS 3.7.1 release archive.
+With that fixture, the **278-scenario installed environment run** and strict
+release-evidence preflight also passed on Jammy.
 The same suite with stock Jammy Git LFS 3.0.2 demonstrated the compatibility
 boundary: the helper is available, but the counts are unknown because
 `git lfs ls-files --json` is unsupported. The pinned binary is only a
