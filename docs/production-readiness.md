@@ -305,6 +305,18 @@ summary and APT simulation under
 The host package database was unchanged. This focused check does not
 replace a full release matrix or qualify feature rebase.
 
+The feature-rebase candidate at `9d49a65` has SHA-256
+`7f986d4c94de892cafaa6ac38e54c97768d57b07bd17a5a55d67451d309ab44b`.
+The exact package passed the focused offline Ubuntu 24.04 regressions for
+feature rebase, batch stop, and removal of unopened saved paths. The feature
+rebased onto the non-default configured development branch without moving
+development, production, or a sibling branch pointing into the old history,
+even with `rebase.updateRefs` enabled. Cancel left Git state unchanged, and
+the fresh Finish review contained the rebased tip. The predecessor reached
+Finish but did not offer rebase. Reports and checksum-matched summaries
+are under `target/local-review/updater/jammy-builder/feature-rebase-palette.oAT3XeQs/`.
+This focused evidence does not qualify later renderer bundle changes.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

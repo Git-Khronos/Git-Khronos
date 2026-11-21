@@ -123,6 +123,18 @@ to a separate layout. Independent Git reads fingerprint HEAD, refs, index,
 config and working files before and after.
 The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 
+## Focused feature rebase review
+
+Use `--suite feature-rebase` to verify that Branch workflows opens a
+separate rebase review against the configured development branch. The
+fixture uses a non-default development branch and enables Git's
+`rebase.updateRefs` in the owned checkout. The review and Cancel must
+leave Git state unchanged. Confirming must replay the checked-out feature
+onto the expected commit without moving production, development or an
+unrelated local branch pointing into the old replay range. A fresh Finish
+review must refer to the rebased tip.
+The exact-artifact Ubuntu 24.04 CI job also runs this suite.
+
 ## Renderer acceptance in GitHub Actions
 
 The renderer suite uses Chromium with an isolated development server and mocked

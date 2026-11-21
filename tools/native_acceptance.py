@@ -1147,7 +1147,7 @@ def main():
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
-        "workspace-batch", "workspace-saved-removal",
+        "workspace-batch", "workspace-saved-removal", "feature-rebase",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1292,6 +1292,9 @@ def main():
                 from native_workspace_batch_scenarios import workspace_batch_stop
                 repository = workspace_batch_stop(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "feature-rebase":
+                from native_feature_rebase_scenarios import feature_rebase_on_configured_development
+                repository, repo_id = feature_rebase_on_configured_development(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
