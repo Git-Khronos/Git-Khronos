@@ -86,6 +86,11 @@ large untracked text file. The installed UI must show partial line totals,
 keep the uncounted file selectable, and still open the small file's diff
 without modifying Git state or any fixture file.
 
+Use `--suite commit-coauthors` to add a suggested and a manual co-author
+through the installed composer. The scenario verifies that editing the
+draft makes no Git changes, then reads both exact trailers from the single
+new commit and verifies that the separate unstaged edit was not committed.
+
 Use `--suite working-tree-recaps` to check staged and unstaged line totals
 without running all setup workflows. It checks the displayed counts and
 their accessible labels together, including singular counts and exclusions.
