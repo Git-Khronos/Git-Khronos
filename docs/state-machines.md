@@ -236,6 +236,14 @@ ID rather than a symbolic HEAD so a later move cannot change the commits
 the transport sends. This is a regular, non-force push.
 `commit-policy.spec.ts` covers both phases and the unchanged destination.
 
+### Toolbar split menus
+
+The active toolbar overlay owns the opening button. Escape closes the menu
+and returns focus to it. Tab or Shift+Tab makes the closing menu inert and
+anchors focus on the opener before the browser performs native sequential
+navigation. Closing a menu must not send keyboard focus to the page start
+or through detached menu items.
+
 ### Upstream status actions versus toolbar sync
 
 The ahead/behind status badges compare the checkout with its configured

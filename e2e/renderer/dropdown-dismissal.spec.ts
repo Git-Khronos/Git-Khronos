@@ -1,5 +1,24 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
+for (const key of ['Tab', 'Shift+Tab'] as const) {
+  test(`toolbar menu ${key} returns to the surrounding toolbar order`, async ({ page }) => {
+    await page.goto('/');
+    const opener = page.getByRole('button', { name: 'Pull options', exact: true });
+    const destination = key === 'Tab'
+      ? page.getByRole('button', { name: /^Push(?: \d+ commits?)? to origin\/main$/ })
+      : page.getByRole('button', { name: 'Pull from origin/main', exact: true });
+    const menu = page.getByRole('menu', { name: 'Pull options', exact: true });
+    await opener.focus();
+    await page.keyboard.press(key);
+    await expect(destination).toBeFocused();
+    await opener.press('Enter');
+    await expect(menu.locator('[role="menuitem"]:focus')).toBeVisible();
+    await page.keyboard.press(key);
+    await expect(menu).toHaveCount(0);
+    await expect(destination).toBeFocused();
+  });
+}
+
 const OUTSIDE_COMMIT = 'f19b263a8af31408d5f665caf7a5508e108c0fd1';
 const SHARED_REFERENCE_COMMIT = '83e6d15fb82672899688b93f59251dfc669888a3';
 const OTHER_REFERENCE_COMMIT = 'ca5fa80bf46c95b6c8d4296d47f3fd9e1e77d5c2';

@@ -11719,6 +11719,14 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (event.key === 'Tab') {
+      const menu = event.currentTarget as HTMLElement;
+      const opener = this.toolbarOverlays.activeOverlay()?.returnFocus;
+      if (opener?.isConnected && !opener.matches(':disabled') && !opener.closest('[inert]')) {
+        // Angular detaches the menu after this event. Resume the browser's
+        // native Tab order from the opening control, not a disappearing item.
+        menu.inert = true;
+        opener.focus({ preventScroll: true });
+      }
       this.closeToolbarMenus();
       return;
     }
