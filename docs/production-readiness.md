@@ -389,6 +389,15 @@ checkout, parent index, refs and declaration were unchanged. See
 `target/local-review/updater/jammy-builder/submodule-init-review.Vvp7sZoU/`.
 This focused report does not qualify the later per-submodule remote update.
 
+The remote-update build at `1c31484`, SHA-256
+`43788713b5ed1d48b4188288662b23fd89864b1708679a4d1e5e2353bdba38db`,
+passed all five installed submodule scenarios. Opening and cancelling did
+not fetch. An edit made after opening the review caused a native refusal
+without changing the remote-tracking ref. With the selected checkout clean,
+only that checkout advanced; the dirty sibling and the parent index and
+refs were unchanged. See `installed-submodule.json` under
+`target/local-review/updater/jammy-builder/submodule-update-review.YCHlzHDO/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

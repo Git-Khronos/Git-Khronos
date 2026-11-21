@@ -174,6 +174,7 @@ cancelling must not fetch. The test introduces a tracked edit after review
 and checks the remote-tracking ref is still unchanged after the native
 refusal. Confirming a clean selected checkout must move only that checkout,
 even when its sibling is dirty, without staging the parent gitlink.
+The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 
 ## Focused feature rebase review
 
