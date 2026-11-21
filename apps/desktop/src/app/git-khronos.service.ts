@@ -264,6 +264,10 @@ export class GitKhronosService implements OnDestroy {
   readonly repository = computed(
     () => this.repositories().find((repository) => repository.id === this.activeRepositoryId()) ?? null,
   );
+  private readonly activeReadVisit = signal(0);
+  readonly activeRepositoryReadScope = computed(() => JSON.stringify([
+    this.activeReadVisit(), this.activeWorkspaceId(), this.activeRepositoryId(), this.repository()?.path ?? null,
+  ]));
   private readonly incomingLinksRead = new AsyncStateController<IncomingRepositoryLinkState>({ requests: [], overflowed: false });
   readonly incomingRepositoryLinks = this.incomingLinksRead.value;
   readonly incomingRepositoryLinksPending = signal(false);
@@ -560,7 +564,7 @@ export class GitKhronosService implements OnDestroy {
             }]
           : [preview];
         this.repositories.set(repositories);
-        this.activeRepositoryId.set(preview.id);
+        this.setActiveRepository(preview.id);
         this.activity.set('Repository preview');
       }
       this.incomingRepositoryLinksReady.set(true);
@@ -682,7 +686,7 @@ export class GitKhronosService implements OnDestroy {
       }
       opened.snapshot = snapshot;
       this.storeSnapshot(snapshot, true);
-      this.activeRepositoryId.set(snapshot.id);
+      this.setActiveRepository(snapshot.id);
       this.clearInspection();
       this.remember(snapshot.path);
       this.persistOpenTabs();
@@ -3007,6 +3011,7 @@ export class GitKhronosService implements OnDestroy {
     this.repositoryRestoration = null;
     this.cancelRepositoryChangeRefreshes();
     this.workspaceVisit++;
+    this.activeReadVisit.update(visit => visit + 1);
     this.activeWorkspaceId.set(workspaceId);
     this.persistWorkspaces();
     this.clearInspection();
@@ -3016,7 +3021,7 @@ export class GitKhronosService implements OnDestroy {
     if (cached) {
       this.repositories.set(cached);
       const active = cached.find((repository) => repository.path === target.activeRepositoryPath) ?? cached[0] ?? null;
-      this.activeRepositoryId.set(active?.id ?? null);
+      this.setActiveRepository(active?.id ?? null);
       this.activity.set(active ? `Workspace ${target.name}` : 'Ready');
       if (active) {
         if (this.deferredMetadataPhase(active.id)) this.deferMetadataRefresh(active.id);
@@ -3027,7 +3032,7 @@ export class GitKhronosService implements OnDestroy {
     }
 
     this.repositories.set([]);
-    this.activeRepositoryId.set(null);
+    this.setActiveRepository(null);
     if (target.repositoryPaths.length && this.browserPreview()) {
       let preview: RepositorySnapshot;
       try {
@@ -3039,7 +3044,7 @@ export class GitKhronosService implements OnDestroy {
         return;
       }
       this.repositories.set([preview]);
-      this.activeRepositoryId.set(preview.id);
+      this.setActiveRepository(preview.id);
       this.activity.set(`Workspace ${target.name}`);
       this.workspaceRepositoryCache.set(workspaceId, [preview]);
       return;
@@ -3051,9 +3056,14 @@ export class GitKhronosService implements OnDestroy {
     }
   }
 
+  private setActiveRepository(repoId: string | null): void {
+    if (this.activeRepositoryId() !== repoId) this.activeReadVisit.update(visit => visit + 1);
+    this.activeRepositoryId.set(repoId);
+  }
+
   activateRepository(repoId: string): void {
     if (this.repositories().some((repository) => repository.id === repoId)) {
-      this.activeRepositoryId.set(repoId);
+      this.setActiveRepository(repoId);
       this.clearInspection();
       this.error.set(null);
       this.activity.set('Ready');
@@ -3091,7 +3101,7 @@ export class GitKhronosService implements OnDestroy {
     this.repositories.set(remaining);
     if (this.activeRepositoryId() === repoId) {
       const next = remaining[Math.min(Math.max(closingIndex, 0), remaining.length - 1)] ?? null;
-      this.activeRepositoryId.set(next?.id ?? null);
+      this.setActiveRepository(next?.id ?? null);
       this.clearInspection();
       if (next && this.deferredMetadataPhase(next.id)) this.deferMetadataRefresh(next.id);
     }
@@ -3111,7 +3121,7 @@ export class GitKhronosService implements OnDestroy {
     }
     if (closed.preview && this.browserPreview()) {
       this.storeSnapshot(closed.preview, true);
-      this.activeRepositoryId.set(closed.preview.id);
+      this.setActiveRepository(closed.preview.id);
       this.clearInspection();
       this.remember(closed.preview.path);
       this.persistOpenTabs();
@@ -3525,7 +3535,7 @@ export class GitKhronosService implements OnDestroy {
 
   private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string, report: ActivityReporter): void {
     this.storeSnapshot(snapshot, true);
-    this.activeRepositoryId.set(snapshot.id);
+    this.setActiveRepository(snapshot.id);
     this.clearInspection();
     this.remember(snapshot.path);
     this.persistOpenTabs(this.incomingRepositoryLinksPending());
@@ -3920,7 +3930,7 @@ export class GitKhronosService implements OnDestroy {
       this.setDeferredMetadataState(snapshot.id, 'loading');
     }
     if (!this.repository()) {
-      this.activeRepositoryId.set(snapshot.id);
+      this.setActiveRepository(snapshot.id);
       this.deferMetadataRefresh(snapshot.id);
     }
     this.persistOpenTabs();

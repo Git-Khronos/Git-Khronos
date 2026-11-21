@@ -8,6 +8,7 @@ interface HistoryReadOperation {
   read: CancellableOperation;
   dismissed: boolean;
   generation: number;
+  scope: string;
 }
 
 export const emptyHistoryQuery = (): HistoryQuery => ({
@@ -35,7 +36,7 @@ export class HistorySearchService {
   readonly fileCancellationRequested = signal(false);
   readonly fileError = signal<string | null>(null);
   private query = emptyHistoryQuery();
-  private readonly fileTarget = signal<{ repoId: string; revision: string; path: string } | null>(null);
+  private readonly fileTarget = signal<{ scope: string; revision: string; path: string } | null>(null);
   private operation: HistoryReadOperation | null = null;
   private fileOperation: HistoryReadOperation | null = null;
   private generation = 0;
@@ -43,7 +44,7 @@ export class HistorySearchService {
 
   constructor() {
     effect(() => {
-      this.git.activeRepositoryId();
+      this.git.activeRepositoryReadScope();
       void this.reset();
     });
   }
@@ -58,6 +59,7 @@ export class HistorySearchService {
     this.fileGeneration++;
     const cancellation = Promise.all([this.cancel(), this.cancelFile()]);
     this.clearSearch(); this.clearFileSearch(); this.fileTarget.set(null);
+    this.query = emptyHistoryQuery();
     this.status.set(searchPrompt);
     await cancellation;
   }
@@ -74,11 +76,11 @@ export class HistorySearchService {
 
   async search(query: HistoryQuery): Promise<void> {
     const generation = ++this.generation;
-    const repoId = this.git.activeRepositoryId();
+    const scope = this.git.activeRepositoryReadScope();
     const submitted = { ...query };
     await this.cancel();
     // A later search or repository reset owns the continuation now.
-    if (generation !== this.generation || repoId !== this.git.activeRepositoryId()) return;
+    if (generation !== this.generation || scope !== this.git.activeRepositoryReadScope()) return;
     this.clearSearch();
     this.query = submitted;
     await this.next();
@@ -88,8 +90,9 @@ export class HistorySearchService {
     const repo = this.git.repository();
     if (!repo || this.busy() || this.complete()) return;
     const generation = this.generation;
+    const scope = this.git.activeRepositoryReadScope();
     const operation: HistoryReadOperation = {
-      read: new CancellableOperation(`history-${crypto.randomUUID()}`), dismissed: false, generation,
+      read: new CancellableOperation(`history-${crypto.randomUUID()}`), dismissed: false, generation, scope,
     };
     this.operation = operation;
     this.busy.set(true); this.cancellationRequested.set(false); this.error.set(null); this.status.set('Searching a bounded history page…');
@@ -99,7 +102,7 @@ export class HistorySearchService {
       const page = await ipc.search_repository_history({
         repoId: repo.id, query: this.query, cursor: this.cursor(), operationId: operation.read.id,
       });
-      if (generation !== this.generation || repo.id !== this.git.activeRepositoryId()) return;
+      if (generation !== this.generation || scope !== this.git.activeRepositoryReadScope()) return;
       if (operation.dismissed) {
         this.dismissSearchPage();
         return;
@@ -110,7 +113,7 @@ export class HistorySearchService {
         ? ' · search complete for locally available history at the pinned refs'
         : ' so far · more history remains (continue searching)'}`);
     } catch (error) {
-      if (generation === this.generation && repo.id === this.git.activeRepositoryId()) {
+      if (generation === this.generation && scope === this.git.activeRepositoryReadScope()) {
         if (operation.dismissed) {
           this.dismissSearchPage();
         } else {
@@ -136,14 +139,16 @@ export class HistorySearchService {
     if (!operation) return;
     operation.dismissed = true;
     this.cancellationRequested.set(true); this.cancelling.set(true);
-    if (operation.generation === this.generation) this.status.set('Stopping repository search…');
+    const current = () => operation === this.operation && operation.generation === this.generation
+      && operation.scope === this.git.activeRepositoryReadScope();
+    if (current()) this.status.set('Stopping repository search…');
     const result = await operation.read.cancel();
     if (!operation.read.settled && (result === 'unacknowledged' || typeof result === 'object')) {
       const detail = result === 'unacknowledged'
         ? 'Cancellation was not acknowledged.'
         : `Could not confirm cancellation: ${this.message(result.error)}.`;
       this.git.reportBackgroundOperationWarning(operation.read.id, `${detail} The repository search may still be running.`);
-      if (operation === this.operation && operation.generation === this.generation) {
+      if (current()) {
         this.status.set('Cancellation not confirmed. Retry, or wait for the search to finish.');
       }
     }
@@ -152,20 +157,20 @@ export class HistorySearchService {
 
   async openFile(revision: string, path: string): Promise<void> {
     const generation = ++this.fileGeneration;
-    const repoId = this.git.activeRepositoryId();
+    const scope = this.git.activeRepositoryReadScope();
     // Old rows must not be presented or resumed while a replacement awaits cancellation.
     this.fileTarget.set(null);
     await this.cancelFile();
-    if (generation !== this.fileGeneration || repoId !== this.git.activeRepositoryId()) return;
+    if (generation !== this.fileGeneration || scope !== this.git.activeRepositoryReadScope()) return;
     this.clearFileSearch();
-    if (!repoId) return;
-    this.fileTarget.set({ repoId, revision, path });
+    if (!this.git.repository()) return;
+    this.fileTarget.set({ scope, revision, path });
     await this.nextFile();
   }
 
   matchesFile(revision: string, path: string): boolean {
     const target = this.fileTarget();
-    return !!target && target.repoId === this.git.activeRepositoryId()
+    return !!target && target.scope === this.git.activeRepositoryReadScope()
       && target.revision === revision && target.path === path;
   }
 
@@ -176,10 +181,11 @@ export class HistorySearchService {
   async nextFile(): Promise<void> {
     const repo = this.git.repository();
     const target = this.fileTarget();
-    if (!repo || !target || target.repoId !== repo.id || this.fileBusy() || this.fileComplete()) return;
+    const scope = this.git.activeRepositoryReadScope();
+    if (!repo || !target || target.scope !== scope || this.fileBusy() || this.fileComplete()) return;
     const generation = this.fileGeneration;
     const operation: HistoryReadOperation = {
-      read: new CancellableOperation(`file-history-${crypto.randomUUID()}`), dismissed: false, generation,
+      read: new CancellableOperation(`file-history-${crypto.randomUUID()}`), dismissed: false, generation, scope,
     };
     this.fileOperation = operation; this.fileBusy.set(true); this.fileCancellationRequested.set(false); this.fileError.set(null);
     try {
@@ -187,7 +193,7 @@ export class HistorySearchService {
       const page = await ipc.inspect_file_history_page({
         repoId: repo.id, revision: target.revision, path: target.path, cursor: this.fileCursor(), operationId: operation.read.id,
       });
-      if (generation !== this.fileGeneration || repo.id !== this.git.activeRepositoryId()) return;
+      if (generation !== this.fileGeneration || scope !== this.git.activeRepositoryReadScope()) return;
       if (operation.dismissed) {
         this.fileError.set('File history stopped. Retry to load this page.');
         return;
@@ -195,7 +201,7 @@ export class HistorySearchService {
       this.files.update(entries => [...entries, ...page.entries]);
       this.fileCursor.set(page.cursor); this.fileComplete.set(page.complete);
     } catch (error) {
-      if (generation === this.fileGeneration && repo.id === this.git.activeRepositoryId()
+      if (generation === this.fileGeneration && scope === this.git.activeRepositoryReadScope()
         && target === this.fileTarget()) this.fileError.set(operation.dismissed
           ? 'File history stopped. Retry to load this page.'
           : this.message(error));

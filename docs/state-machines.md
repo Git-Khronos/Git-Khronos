@@ -113,6 +113,18 @@ Full snapshots already provide a fresh status input. Clean or hidden recaps
 do not start reads just because a refresh ran. `unstaged-summary.spec.ts`
 exercises unchanged-status updates and superseded counts.
 
+### History search read ownership
+
+Repository search and paged file history belong to the active workspace visit
+and checkout, not just the reusable repository ID. Results and paging
+continuations from a retired read cannot update the new view, even if the new
+workspace opens the same checkout. Retirement cancels outstanding reads on a
+best-effort basis; their replies remain invalid if cancellation fails.
+Ordinary snapshot updates within the same view do not reset pinned results.
+The scope is checked after cancellation and native replies, not only when the
+renderer next runs its reset effect. `history-search-lifecycle.spec.ts`
+exercises same-checkout workspace switches and in-place snapshot refreshes.
+
 ### Working-tree rename index actions
 
 An unambiguous Git rename row retains both literal paths. Stage and Unstage

@@ -47,6 +47,52 @@ async function showHistory(page: Page, file: boolean) {
 }
 
 for (const file of [false, true]) {
+  test(`${file ? 'file history' : 'repository search'} retires a pending page when the same checkout is opened in another workspace`, async ({ page }) => {
+    await prepare(page, file);
+    const result = await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      const { git } = state.app;
+      const repo = git.repository();
+      const currentWorkspace = git.workspaces().find((workspace: any) => workspace.id === git.activeWorkspaceId());
+      const next = {
+        ...currentWorkspace, id: 'same-checkout-next-workspace', name: 'Another view',
+        repositoryPaths: [repo.path], activeRepositoryPath: repo.path,
+      };
+      git.workspaces.update((workspaces: any[]) => [...workspaces, next]);
+      git.workspaceRepositoryCache.set(next.id, [repo]);
+      await git.switchWorkspace(next.id);
+      await new Promise(requestAnimationFrame);
+      for (const cancellation of state.cancellations) cancellation.resolve(true);
+      state.finishInitial({ entries: [{ oid: 'b'.repeat(40), subject: 'old workspace result', path: 'initial' }],
+        cursor: null, complete: true, scanned: 1 });
+      await state.initial;
+      return {
+        sameRepoId: repo.id === git.activeRepositoryId(),
+        switched: git.activeWorkspaceId() === next.id,
+        subjects: (state.file ? state.history.files() : state.history.entries()).map((entry: any) => entry.subject),
+      };
+    });
+    expect(result).toEqual({ sameRepoId: true, switched: true, subjects: [] });
+  });
+
+  test(`${file ? 'file history' : 'repository search'} keeps its page when the current checkout snapshot refreshes`, async ({ page }) => {
+    await prepare(page, file);
+    const subjects = await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      const { git } = state.app;
+      const repoId = git.activeRepositoryId();
+      git.repositories.update((repositories: any[]) => repositories.map(repo =>
+        repo.id === repoId ? { ...repo, tags: [], status: { ...repo.status } } : repo));
+      await new Promise(requestAnimationFrame);
+      for (const cancellation of state.cancellations) cancellation.resolve(true);
+      state.finishInitial({ entries: [{ oid: 'b'.repeat(40), subject: 'valid pinned result', path: 'initial' }],
+        cursor: null, complete: true, scanned: 1 });
+      await state.initial;
+      return (state.file ? state.history.files() : state.history.entries()).map((entry: any) => entry.subject);
+    });
+    expect(subjects).toEqual(['valid pinned result']);
+  });
+
   for (const change of ['newer-request', 'reset', 'repository-switch', 'repository-switch-immediate']) {
     test(`${file ? 'file history' : 'repository search'} cannot restart obsolete work after ${change}`, async ({ page }) => {
       await prepare(page, file);
