@@ -483,14 +483,14 @@ test('waits for an in-flight page before restoring the active workspace reposito
   await page.evaluate(() => {
     const state = (window as any).__checkpointTest;
     state.delayHistory = true;
-    state.git.workspaces.update((workspaces: any[]) => workspaces.map((workspace) =>
-      workspace.id === state.git.activeWorkspaceId()
-        ? { ...workspace, repositoryPaths: [state.base.path], activeRepositoryPath: state.base.path }
-        : workspace));
+    state.git.workspaces.update((workspaces: any[]) => [...workspaces, {
+      id: 'restore-current', name: 'Restore current checkout',
+      repositoryPaths: [state.base.path], activeRepositoryPath: state.base.path,
+    }]);
     state.git.repositories.update((repositories: any[]) => repositories.map((repository) =>
       repository.id === 'browser-preview' ? { ...repository, historyTruncated: true } : repository));
     void state.git.loadMoreHistory();
-    void state.git.restoreRepositories();
+    void state.git.switchWorkspace('restore-current');
   });
   await expect.poll(() => page.evaluate(() => !!(window as any).__checkpointTest.resolvePage)).toBe(true);
   expect(await page.evaluate(() => (window as any).__checkpointTest.calls
@@ -499,34 +499,44 @@ test('waits for an in-flight page before restoring the active workspace reposito
     const state = (window as any).__checkpointTest;
     state.resolvePage({ commits: [], historyTruncated: false });
   });
-  await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.calls
-    .some((call: { command: string }) => call.command === 'open_repository'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => {
+    const state = (window as any).__checkpointTest;
+    return state.git.activeWorkspaceId() === 'restore-current' && state.git.repository()?.path === state.base.path;
+  })).toBe(true);
 });
 
 test('resumes history paging after a workspace tab is restored', async ({ page }) => {
-  await page.evaluate(() => {
+  const deferredPath = '/repos/deferred-checkout';
+  await page.evaluate(async (path) => {
     const state = (window as any).__checkpointTest;
+    state.base.historyTruncated = true;
+    state.git.workspaces.update((workspaces: any[]) => [...workspaces, {
+      id: 'restore-deferred', name: 'Restore deferred checkout',
+      repositoryPaths: [state.base.path, path], activeRepositoryPath: state.base.path,
+    }]);
+    await state.git.switchWorkspace('restore-deferred');
     state.delayOpen = true;
     state.delayHistory = true;
-    state.base.historyTruncated = true;
-    state.git.repositories.update((repositories: any[]) => repositories.map((repository) =>
-      repository.id === 'browser-preview' ? { ...repository, historyTruncated: true } : repository));
-    void state.git.restoreRepositoryTabs([state.base.path], [state.base.path], state.git.activeWorkspaceId());
-    void state.git.loadMoreHistory();
-  });
+  }, deferredPath);
   await expect.poll(() => page.evaluate(() => !!(window as any).__checkpointTest.resolveOpen)).toBe(true);
-  expect(await page.evaluate(() => (window as any).__checkpointTest.calls
-    .filter((call: { command: string }) => call.command === 'load_more_commits'))).toHaveLength(0);
   await page.evaluate(() => {
     const state = (window as any).__checkpointTest;
-    state.resolveOpen(state.snapshot());
+    void state.git.loadMoreHistory();
   });
+  expect(await page.evaluate(() => (window as any).__checkpointTest.calls
+    .filter((call: { command: string }) => call.command === 'load_more_commits'))).toHaveLength(0);
+  await page.evaluate((path) => {
+    const state = (window as any).__checkpointTest;
+    state.resolveOpen({ ...state.snapshot(), id: 'deferred-checkout', path });
+  }, deferredPath);
   await expect.poll(() => page.evaluate(() => !!(window as any).__checkpointTest.resolvePage)).toBe(true);
   await page.evaluate(() => {
     const state = (window as any).__checkpointTest;
     state.resolvePage({ commits: [], historyTruncated: false });
   });
   await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.git.repository().historyTruncated)).toBe(false);
+  await expect.poll(() => page.evaluate((path) => (window as any).__checkpointTest.git.repositories()
+    .some((repository: { path: string }) => repository.path === path), deferredPath)).toBe(true);
 });
 
 test('retains a history page when a working-tree mutation starts during its load', async ({ page }) => {
