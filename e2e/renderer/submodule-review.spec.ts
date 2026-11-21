@@ -13,7 +13,8 @@ async function setup(page: Page): Promise<void> {
     const entry = (overrides: any) => ({ path: 'vendor/lane-engine', name: 'vendor/lane-engine', declaredUrl: '/lane', registeredUrl: '/lane',
       trackingBranch: null, urlMatches: true, headOid: a, indexOid: a, checkoutOid: a, conflict: null, checkedOut: true, commitChanged: false,
       trackedChanges: false, untrackedChanges: false, stagedChange: false, undeclared: false, missingGitlink: false, ...overrides });
-    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, initializedAll: false, initializedOne: false,
+    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, mixed: false,
+      initializedAll: false, initializedOne: false,
       syncFail: false, holdSync: false, finishSync: null as any, checkoutFail: false, trackingBranch: null as string | null };
     (window as any).__submoduleReview = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -30,6 +31,10 @@ async function setup(page: Page): Promise<void> {
           entry({ path: 'merge/lib', indexOid: null, headOid: null, conflict: { base: a, ours: b, theirs: 'c'.repeat(40), mixedTypes: false } }),
           entry({ path: 'synced', urlMatches: false, registeredUrl: '/elsewhere' }),
           entry({ path: 'moved', commitChanged: true, checkoutOid: b, untrackedChanges: true }),
+          ...(fixture.mixed ? [
+            entry({ path: 'docs/reference', name: 'docs guide' }),
+            entry({ path: 'media/loose', name: 'media assets', untrackedChanges: true }),
+          ] : []),
         ] };
         if (fixture.hold) return new Promise(resolve => { fixture.finish = () => resolve(result); });
         return Promise.resolve(result);
@@ -203,6 +208,31 @@ test('submodule review explains each state with exact commits and invokes only t
   await expect(opener(page)).toBeFocused();
 });
 
+test('filters by path or name and treats untracked-only checkouts as needing attention', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__submoduleReview.mixed = true; });
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const filters = dialog.getByRole('group', { name: 'Filter submodule states' });
+  const query = filters.getByRole('searchbox', { name: 'Filter by path or name' });
+  const attention = filters.getByRole('checkbox', { name: 'Needs attention only' });
+  await expect(filters).toContainText('8 of 8 shown');
+  await query.fill('GUIDE');
+  await expect(filters).toContainText('1 of 8 shown');
+  await expect(dialog.getByRole('listitem', { name: 'Submodule docs/reference', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('group', { name: 'All submodule actions' })).toContainText('regardless of the filter');
+  await expect(dialog.getByRole('button', { name: 'Initialize missing 1' })).toBeEnabled();
+  await attention.check();
+  await expect(dialog).toContainText('No matching submodules');
+  await query.fill('MEDIA/LOOSE');
+  const untracked = dialog.getByRole('listitem', { name: 'Submodule media/loose', exact: true });
+  await expect(untracked).toContainText('Needs attention');
+  await expect(untracked).toContainText('Untracked files inside');
+  await expect(untracked).not.toContainText('No changes inside');
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls
+    .filter((call: any) => call.command.includes('submodule')).map((call: any) => call.command))).toEqual(['submodule_state_review']);
+});
+
 test('initializes every missing submodule only after a scoped bulk confirmation', async ({ page }) => {
   await setup(page);
   await open(page);
@@ -250,7 +280,13 @@ test('shows and changes the reviewed remote update branch without hiding .gitmod
   const behavior = editor.getByLabel('Tracking behavior', { exact: true });
   await expect(behavior).toBeFocused();
   await behavior.selectOption('specific');
-  await editor.getByLabel('Remote branch name', { exact: true }).fill('release/v2');
+  const branchName = editor.getByLabel('Remote branch name', { exact: true });
+  await expect(branchName).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(behavior).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(branchName).toBeFocused();
+  await branchName.fill('release/v2');
   await expect(editor).toContainText('review and commit that file');
   await editor.getByRole('button', { name: 'Save tracking branch', exact: true }).click();
   await expect(dialog.locator('[data-submodule-sync]')).toContainText('Review and commit .gitmodules');
@@ -310,7 +346,11 @@ test('submodule review fits a compact window, contains Tab focus and returns fro
   const help = dialog.getByRole('button', { name: 'Learn about submodule state…', exact: true });
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
   await page.keyboard.press('Tab');
-  await expect(dialog.getByRole('button', { name: 'Initialize missing 1', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('searchbox', { name: 'Filter by path or name' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('checkbox', { name: 'Needs attention only' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('searchbox', { name: 'Filter by path or name' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
   await help.click();

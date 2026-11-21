@@ -24,12 +24,12 @@ export function submoduleFindings(entry: SubmoduleState): SubmoduleFinding[] {
     add('Declared without a recorded commit', '.gitmodules names this path, but neither HEAD nor the index records a submodule commit for it.');
   } else if (!entry.checkedOut && !entry.conflict) {
     add(entry.registeredUrl ? 'Initialized, not checked out' : 'Not initialized', entry.registeredUrl
-      ? 'Update the submodule to check out the recorded commit.'
-      : 'Initialize to register its URL in local configuration, then update to check it out.');
+      ? 'Initialize this checkout at the recorded commit.'
+      : 'Initialize to register its URL in local configuration and check out the recorded commit.');
   }
   if (entry.commitChanged) {
     add('Different commit checked out', `Checked out ${short(entry.checkoutOid)}; recorded ${short(entry.indexOid)}. `
-      + 'Stage the path to record the new commit, or update the submodule to return to the recorded one.');
+      + 'Stage the path to record the new commit, or choose Check out recorded commit to return to it.');
   }
   if (entry.stagedChange) {
     add('Submodule commit change staged', `HEAD ${short(entry.headOid)} → index ${entry.indexOid ? short(entry.indexOid) : 'removed'}. `
@@ -39,7 +39,7 @@ export function submoduleFindings(entry: SubmoduleState): SubmoduleFinding[] {
     add('Uncommitted changes inside', 'Commit or stash them inside the submodule before updating it.');
   }
   if (entry.untrackedChanges) {
-    add('Untracked files inside', 'They stay in the submodule directory and are not recorded by the parent repository.', false);
+    add('Untracked files inside', 'These are not recorded by the parent. Review them inside the submodule before updating it.');
   }
   if (entry.urlMatches === false) {
     add('Local URL differs from .gitmodules', `.gitmodules: ${entry.declaredUrl}. Local: ${entry.registeredUrl}. `

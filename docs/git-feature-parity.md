@@ -48,6 +48,8 @@ behavioral cases during the audit; grouping does not remove any listed action.
    it does not initialize or contact its remote without confirmation.
    A single remote update is also reviewed, and the native command checks
    that the selected checkout is clean and conflict-free before fetching.
+   The review can filter by path or name and show only entries that need
+   attention, including checkouts with only untracked files.
    Automatic update preferences are intentionally not
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the

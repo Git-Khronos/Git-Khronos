@@ -101,6 +101,13 @@ pane discloses loading, failure with an explicit read-only retry, confirmed
 empty, or no filter matches. Retry returns focus to the Tags heading without
 clearing the filter or closing the pane.
 
+### Submodule review filters
+
+Path and attention filters only change visible entries, not the inspected
+state or bulk-operation scope. A new request starts with empty filters.
+An open confirmation disables filtering so the reviewed entry cannot
+disappear before confirmation or cancellation.
+
 ### Blocked discard subset review
 
 The root owns file-action identity, preview requests and confirmation; the
