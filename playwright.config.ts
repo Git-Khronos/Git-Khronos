@@ -2,6 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 const port = Number(process.env['PLAYWRIGHT_PORT'] ?? 4201);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PLAYWRIGHT_PORT');
+const serverTimeout = Number(process.env['PLAYWRIGHT_SERVER_TIMEOUT_MS'] ?? 120_000);
+if (!Number.isInteger(serverTimeout) || serverTimeout < 1 || serverTimeout > 2_147_483_647) {
+  throw new Error('Invalid PLAYWRIGHT_SERVER_TIMEOUT_MS: expected positive milliseconds');
+}
 
 export default defineConfig({
   testDir: './e2e/renderer',
@@ -33,6 +37,6 @@ export default defineConfig({
     command: `pnpm exec ng serve desktop --watch=false --no-hmr --live-reload=false --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env['CI'],
-    timeout: 120_000,
+    timeout: serverTimeout,
   },
 });

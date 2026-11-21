@@ -350,6 +350,9 @@ Use a different `PLAYWRIGHT_PORT` and output/report directory for each
 simultaneous local run. The Playwright-managed server builds once without
 file watching. Use `CI=true` as above to require a fresh server rather than
 reusing anything already listening on the selected port.
+For a cold build on a busy machine, set `PLAYWRIGHT_SERVER_TIMEOUT_MS=300000`
+to allow up to five minutes for the server to start. This does not change
+browser test timeouts or retry counts; the default startup limit is two minutes.
 Add `--list` to enumerate a shard without launching a
 browser. The first hosted run of this layout is needed to measure elapsed time
 and runner-minute costs; no test cases were dropped to reduce wall time.
