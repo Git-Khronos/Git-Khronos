@@ -76,6 +76,15 @@ The report and package hashes match the installer
 This package predates the Tags loading/retry presentation and per-workspace
 metadata isolation.
 
+The subsequent workspace-Tags package at `431b6ce` passed the 32 installed
+remote-review and 51 setup/keyboard checks on Ubuntu 24.04 with stock Git
+2.43. The retained reports explicitly identify Linux userspace and match
+installer SHA-256
+`b1254e19477dfb11425b2701f9da0d99b2cdbc3dd207c8d97d2d31ef70176991`
+under `target/local-review/updater/jammy-builder/workspace-tags.JSKN2MQa/`.
+The isolated late-reply cases are renderer regressions; these installed
+suites confirm the neighboring real Git and package workflows.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
