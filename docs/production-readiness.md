@@ -2859,3 +2859,19 @@ Positive installer SHA-256:
 Reports: `target/local-review/comparison-native-background.BhTpmW3O/red/`
 and `target/local-review/updater/jammy-builder/comparison-responsive-release.kS7kw8aR/focused/`.
 This is focused evidence for that installer, not a full release matrix.
+
+## Combined 0.1.6 candidate: full Linux matrix — 2026-11-21
+
+The frozen `998c238` installer passed all 34 required installed checks
+across Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. The verifier
+accepted 44 original reports, including all 287 Jammy environment
+scenarios. The packaged GitLab catalogue scenario passed on each of
+the five distributions. The publisher preflight used the fixture key.
+
+Installer SHA-256:
+`6032a4fd06201b494b255baed956dc34b006a877c1316827bd7414f46ae2953f`.
+The verification receipt is under
+`target/local-review/updater/jammy-builder/combined-linux.MnaEIB1s/verified-release.json`.
+The digest-checked handoff and no-install APT preview are under
+`target/local-review/qualified-0.1.6-998c238/`. Neither this matrix nor
+the preview qualifies a production-signed build or later source changes.
