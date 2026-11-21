@@ -246,6 +246,10 @@ activate the new checkout. If that visit retires after dispatch, a confirmed
 creation is saved unopened to the original workspace and recorded in Recent
 repositories (Recent only if the workspace no longer exists). An old result
 cannot close a replacement dialog or replay the native command.
+Installed `repository-creation-scope` exercises the manual Clone form with a
+real folder chooser and an owned Git HTTPS transfer held mid-pack. It verifies
+the saved result stays unopened after retirement, then opens it from Recents
+without a second transfer.
 
 The repository tab menu keeps positioning and keyboard ownership in the
 shell, but loads action content and styles on demand. Escape closes a

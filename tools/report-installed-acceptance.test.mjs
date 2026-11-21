@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 29);
+  assert.equal(complete.checks.length, 30);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -211,6 +211,22 @@ test('installed file discard must prove stale refusal and fresh, scoped success'
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
       ['file-review-scope']);
+  }
+});
+
+test('installed repository creation needs both non-activation and recovery without replay', () => {
+  const fixtures = matrixFixtures();
+  const review = fixtures.find(report => report.suite === 'repository-creation-scope');
+  const scenarios = [
+    'native-late-clone-result-is-persisted-without-taking-over-the-active-repository',
+    'native-late-clone-can-be-opened-from-recents-without-replaying-git',
+  ];
+  for (const scenario of scenarios) {
+    const partial = { ...review, scenarios: review.scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== review), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
+      ['repository-creation-scope']);
   }
 });
 

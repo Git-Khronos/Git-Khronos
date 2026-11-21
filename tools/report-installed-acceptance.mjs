@@ -65,6 +65,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-same-tip-external-checkout-disables-the-old-file-discard-review',
     'native-fresh-file-review-discards-only-the-newly-reviewed-edit',
   ]],
+  ['repository-creation-scope', [
+    'native-late-clone-result-is-persisted-without-taking-over-the-active-repository',
+    'native-late-clone-can-be-opened-from-recents-without-replaying-git',
+  ]],
 ];
 
 const RELEASE_MATRIX = [

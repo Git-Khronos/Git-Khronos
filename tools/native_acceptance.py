@@ -1140,7 +1140,7 @@ def main():
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
-        "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status",
+        "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1149,9 +1149,10 @@ def main():
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
-    picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
-    if picker_suite and not args.headless:
-        parser.error("workspace folder picker suites require --headless (private Xvfb)")
+    workspace_picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
+    owned_picker_suite = workspace_picker_suite or args.suite == "repository-creation-scope"
+    if owned_picker_suite and not args.headless:
+        parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "patch-export" and not args.headless:
         parser.error("patch-export requires --headless (private Xvfb)")
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
@@ -1238,7 +1239,7 @@ def main():
                 owned_display = (fixtures.env["DISPLAY"], display)
             listen_port, native_port = webdriver_ports()
             application_env = fixtures.env.copy()
-            if picker_suite:
+            if owned_picker_suite:
                 application_env.update(LC_ALL="C.UTF-8", LANGUAGE="en")
             if args.suite == "lfs-snapshot-timeout":
                 from native_lfs_snapshot_scenarios import lfs_snapshot_timeout_environment
@@ -1253,7 +1254,7 @@ def main():
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
-            if args.suite == "gitlab":
+            if args.suite in ("gitlab", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
                 application_env.update(start_gitlab_fixture(fixtures, children, log, report))
             if args.suite == "watcher-refresh" or os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1":
@@ -1290,7 +1291,7 @@ def main():
                 from native_workspace_edit_scenarios import reopen_workspace_tab
                 repository = reopen_workspace_tab(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
-            elif picker_suite:
+            elif workspace_picker_suite:
                 from native_workspace_locate_scenarios import locate_workspace_paths
                 repository = locate_workspace_paths(
                     driver, fixtures, report, args.suite == "workspace-bulk-locate",
@@ -1339,6 +1340,9 @@ def main():
             elif args.suite == "first-status":
                 from native_first_status_scenarios import first_status
                 repository, repo_id = first_status(driver, fixtures, report)
+            elif args.suite == "repository-creation-scope":
+                from native_repository_creation_scenarios import repository_creation_scope
+                repository, repo_id = repository_creation_scope(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

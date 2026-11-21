@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 from urllib.error import URLError
 
 from native_acceptance import Driver
-from native_gitlab_fork_scenarios import _open_repository_dialog
+from native_repository_navigation import open_repository_dialog
 
 
 ELEMENT = 'element-6066-11e4-a52e-4f735466cecf'
@@ -22,7 +22,7 @@ class CatalogueEntryTests(unittest.TestCase):
 
     def test_success_clicks_painted_toolbar_control_once_with_a_real_webdriver_request(self):
         driver = self.driver({ELEMENT: 'tab'})
-        _open_repository_dialog(driver)
+        open_repository_dialog(driver)
         driver.request.assert_called_once_with('POST', '/session/owned/element/tab/click', {})
         driver.script.assert_called_once()
         script = driver.script.call_args.args[0]
@@ -39,8 +39,8 @@ class CatalogueEntryTests(unittest.TestCase):
                     detail = {'value': detail}
                 driver = self.driver({ELEMENT: 'outgoing'}, None, {ELEMENT: 'current-tab'})
                 driver.request.side_effect = [RuntimeError(json.dumps(detail)), None]
-                with patch('native_gitlab_fork_scenarios.time.sleep'):
-                    _open_repository_dialog(driver)
+                with patch('native_repository_navigation.time.sleep'):
+                    open_repository_dialog(driver)
                 self.assertEqual(driver.script.call_count, 3)
                 self.assertEqual(driver.request.call_args_list, [
                     call('POST', '/session/owned/element/outgoing/click', {}),
@@ -49,8 +49,8 @@ class CatalogueEntryTests(unittest.TestCase):
 
     def test_temporarily_missing_control_is_polled_without_a_click(self):
         driver = self.driver(None, {ELEMENT: 'restored'})
-        with patch('native_gitlab_fork_scenarios.time.sleep'):
-            _open_repository_dialog(driver)
+        with patch('native_repository_navigation.time.sleep'):
+            open_repository_dialog(driver)
         self.assertEqual(driver.script.call_count, 2)
         driver.request.assert_called_once()
 
@@ -65,7 +65,7 @@ class CatalogueEntryTests(unittest.TestCase):
                 driver = self.driver({ELEMENT: 'owned'})
                 driver.request.side_effect = error
                 with self.assertRaises(type(error)) as failure:
-                    _open_repository_dialog(driver)
+                    open_repository_dialog(driver)
                 self.assertIs(failure.exception, error)
                 driver.request.assert_called_once()
                 driver.script.assert_called_once()
@@ -75,7 +75,7 @@ class CatalogueEntryTests(unittest.TestCase):
         error = RuntimeError(json.dumps({'error': 'stale element reference'}))
         driver.script.side_effect = error
         with self.assertRaises(RuntimeError) as failure:
-            _open_repository_dialog(driver)
+            open_repository_dialog(driver)
         self.assertIs(failure.exception, error)
         driver.request.assert_not_called()
 
@@ -84,18 +84,18 @@ class CatalogueEntryTests(unittest.TestCase):
         driver.wait.side_effect = None
         driver.wait.return_value = {ELEMENT: 'outgoing'}
         driver.request.side_effect = RuntimeError(json.dumps({'error': 'stale element reference'}))
-        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 30]), \
-                patch('native_gitlab_fork_scenarios.time.sleep'):
+        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 30]), \
+                patch('native_repository_navigation.time.sleep'):
             with self.assertRaises(TimeoutError):
-                _open_repository_dialog(driver)
+                open_repository_dialog(driver)
         driver.request.assert_called_once()
 
     def test_missing_control_stops_at_the_deadline_without_clicking(self):
         driver = self.driver(None)
-        with patch('native_gitlab_fork_scenarios.time.monotonic', side_effect=[0, 0, 0, 30]), \
-                patch('native_gitlab_fork_scenarios.time.sleep'):
+        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 0, 0, 30]), \
+                patch('native_repository_navigation.time.sleep'):
             with self.assertRaises(TimeoutError):
-                _open_repository_dialog(driver)
+                open_repository_dialog(driver)
         driver.request.assert_not_called()
 
 
