@@ -1,16 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function setup(page: Page) {
+async function setup(page: Page, sourceRegistrationPath?: string) {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
-  return page.evaluate(() => {
+  return page.evaluate(sourceRegistrationPath => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     const source = git.repository();
     const branch = source.branches.find((entry: any) => entry.name === 'feature/partial-staging');
     const ownerPath = '/workspace/other-checkout';
     const worktrees = [
-      ...source.worktrees.filter((entry: any) => entry.branch !== branch.name),
+      ...source.worktrees.filter((entry: any) => entry.branch !== branch.name)
+        .map((entry: any) => sourceRegistrationPath && entry.current ? { ...entry, path: sourceRegistrationPath } : entry),
       { ...source.worktrees[0], path: ownerPath, branch: branch.name, current: false,
         prunable: false, changes: 3, statusLoaded: true },
     ];
@@ -21,7 +22,8 @@ async function setup(page: Page) {
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const fixture = { calls: [] as any[], changed: false, missing: false, failRefresh: false,
       checkoutFailure: null as string | null,
-      hold: false, finish: null as any, ownerPath, branch: branch.name, sourcePath: source.path, sourceId: source.id };
+      hold: false, finish: null as any, holdOpen: false, finishOpen: null as any, changedOpen: null as string | null,
+      ownerPath, branch: branch.name, sourcePath: source.path, sourceId: source.id };
     (window as any).__checkoutWorktree = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
@@ -32,10 +34,20 @@ async function setup(page: Page) {
         if (fixture.hold) return new Promise(resolve => { fixture.finish = () => resolve(refreshed()); });
         return Promise.resolve(refreshed());
       }
-      if (command === 'open_repository') return Promise.resolve({ ...snapshot, id: source.id + '-owner',
-        path: args.path, name: source.name, status: { ...source.status, branch: branch.name },
-        branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === branch.name })),
-        worktrees: worktrees.map(entry => ({ ...entry, current: entry.path === args.path })) });
+      if (command === 'open_repository') {
+        const opened = {
+          ...snapshot, id: source.id + '-owner',
+          path: fixture.changedOpen === 'path' || fixture.changedOpen === 'canonical alias' ? '/workspace/redirected' : args.path,
+          status: { ...source.status, branch: fixture.changedOpen === 'branch' ? 'different-branch' : branch.name },
+          branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === branch.name })),
+          worktrees: worktrees.filter(entry => fixture.changedOpen !== 'registration' || entry.path === args.path)
+            .map(entry => ({ ...entry,
+              path: fixture.changedOpen === 'path' && entry.path === args.path ? '/workspace/redirected' : entry.path,
+              current: entry.path === args.path })),
+        };
+        if (fixture.holdOpen) return new Promise(resolve => { fixture.finishOpen = () => resolve(opened); });
+        return Promise.resolve(opened);
+      }
       if (command === 'checkout_branch') {
         if (fixture.checkoutFailure) return Promise.reject({ kind: fixture.checkoutFailure, message: 'Owned checkout refused' });
         return Promise.resolve({ ...snapshot, status: { ...source.status, branch: args.name },
@@ -48,7 +60,7 @@ async function setup(page: Page) {
       return Promise.reject(new Error(`Unexpected ${command}`));
     } };
     return { branch: branch.name, sourcePath: source.path, ownerPath };
-  });
+  }, sourceRegistrationPath);
 }
 
 async function loseCachedOwner(page: Page, failureKind: string, failRefresh = false): Promise<void> {
@@ -347,4 +359,53 @@ test('graph double-click and context-menu checkout use the same occupancy review
   await page.getByRole('menuitem', { name: /^Checkout branch/ }).click();
   await expect(dialog).toBeVisible();
   expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+});
+
+for (const change of ['branch', 'path', 'registration']) {
+  test(`the returned checkout must still match the reviewed ${change}`, async ({ page }) => {
+    const fixture = await setup(page);
+    const dialog = await requestCheckout(page, fixture.branch);
+    await page.evaluate(change => { (window as any).__checkoutWorktree.changedOpen = change; }, change);
+    await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+    await expect(page.locator('.error-toast')).toContainText('That checkout no longer matches the branch you reviewed');
+    await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
+    const state = await page.evaluate(() => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const fixture = (window as any).__checkoutWorktree;
+      return { writes: fixture.calls.filter((entry: any) => entry.command === 'checkout_branch'),
+        opened: git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner') };
+    });
+    expect(state).toEqual({ writes: [], opened: false });
+  });
+}
+
+test('an open reply cannot navigate after leaving and returning to the same checkout', async ({ page }) => {
+  const fixture = await setup(page);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await page.evaluate(() => { (window as any).__checkoutWorktree.holdOpen = true; });
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finishOpen)).toBe('function');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const source = git.repository();
+    git.repositories.update((tabs: any[]) => [...tabs, { ...source, id: 'different-visit', path: '/owned/different-visit' }]);
+    git.activateRepository('different-visit');
+    git.activateRepository(source.id);
+    (window as any).__checkoutWorktree.finishOpen();
+  });
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
+  expect(await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const fixture = (window as any).__checkoutWorktree;
+    return git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner');
+  })).toBe(false);
+});
+
+test('the verified registration may resolve to a differently formatted canonical path', async ({ page }) => {
+  const fixture = await setup(page, '/workspace/raw-source-registration');
+  const dialog = await requestCheckout(page, fixture.branch);
+  await page.evaluate(() => { (window as any).__checkoutWorktree.changedOpen = 'canonical alias'; });
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect(page.locator('.status-repository-path')).toHaveText('/workspace/redirected');
 });

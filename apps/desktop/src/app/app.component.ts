@@ -1922,7 +1922,8 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       if (this.git.error() === result.error) this.git.error.set(null);
     }
-    this.checkoutWorktreeRequest.set({ scope, repositoryPath: repository.path,
+    const sourceRegistrationPath = this.git.repository()?.worktrees.find(tree => tree.current)?.path ?? repository.path;
+    this.checkoutWorktreeRequest.set({ scope, repositoryPath: repository.path, sourceRegistrationPath,
       branch: name, worktreePath: owner.path, prunable: owner.prunable,
       returnFocus: opener });
     return null;
@@ -1940,7 +1941,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const request = this.checkoutWorktreeRequest();
     if (!request || request.worktreePath !== path || request.scope !== this.git.activeRepositoryReadScope()) return;
     this.checkoutWorktreeRequest.set(null);
-    await this.openRepositoryPath(path);
+    await this.openRepositoryWithDraft(() => this.git.openReviewedWorktree(path, request));
   }
 
   private resizeTarget: 'sidebar' | 'details' | null = null;
@@ -6381,9 +6382,15 @@ export class AppComponent implements OnInit, OnDestroy {
       if (closeManager) this.repositoryDialog.set(null);
       return { status: 'success', repositoryId: current.id, path };
     }
+    return this.openRepositoryWithDraft(() => this.git.openRepository(path, replacement), closeManager);
+  }
+
+  private async openRepositoryWithDraft(
+    open: () => Promise<OpenRepositoryResult>, closeManager = false,
+  ): Promise<OpenRepositoryResult> {
     const workspaceId = this.git.activeWorkspaceId();
     this.saveCommitDraft();
-    const opened = await this.git.openRepository(path, replacement);
+    const opened = await open();
     const active = this.git.repository();
     // A background read can report its own error while this open succeeds.
     if (opened.status === 'success' && workspaceId === this.git.activeWorkspaceId()

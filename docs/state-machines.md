@@ -784,9 +784,15 @@ no fallback checkout, force option, repair or automatic replay. The review and
 its refresh belong to one visit to a checkout. Closing the review, changing
 repositories or switching workspaces (even when both show the same checkout)
 retires the request. A late read cannot navigate or reopen the old review.
-Opening the owner uses the existing repository navigation path so source commit
-drafts are saved. If occupancy changes before an ordinary native checkout, Git
-still decides whether the switch is allowed. After a refusal, native code
+Opening the owner saves the source commit draft. Before activating a tab,
+the returned native snapshot must still show the reviewed path, branch
+and shared worktree registration, and the source checkout visit must still
+be active. A late open can neither redirect to a different branch nor
+navigate after an away-and-back tab switch. A mismatched destination leaves
+the source tab active and asks the user to review the branch again. Git's
+registration paths are compared separately from the platform's canonical
+path spelling. If occupancy changes before an ordinary native checkout, Git still decides
+whether the switch is allowed. After a refusal, native code
 classifies a fresh, bounded registration read without parsing Git's error text.
 The same source checkout may then offer navigation if refresh confirms an owner;
 it never retries the switch or opens the owner without confirmation. Unrelated
@@ -795,9 +801,10 @@ Ordinary worktree snapshots use Git's NUL-delimited porcelain format so
 embedded newlines and tabs in registered paths survive navigation unchanged.
 
 Coverage: `repository-location.spec.ts`, renderer
-`branch-checkout-worktree.spec.ts` (including a stale graph double-click and
-late refusal after a tab switch), branch-panel interaction tests, and the
-real-Git occupied-branch test preserving both worktrees.
+`branch-checkout-worktree.spec.ts` (including a stale graph double-click,
+late native reply, mismatched destination, and canonical alias), branch-panel
+interaction tests, and the real-Git occupied-branch test preserving both
+worktrees.
 
 ### Saved workspace repositories
 

@@ -5,6 +5,7 @@ import { branchCheckoutOwner } from './repository-location';
 export interface CheckoutWorktreeRequest {
   scope: string;
   repositoryPath: string;
+  sourceRegistrationPath: string;
   branch: string;
   worktreePath: string;
   prunable: boolean;

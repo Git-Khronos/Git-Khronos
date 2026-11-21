@@ -249,6 +249,12 @@ export interface SavedRepositoryReplacement {
   current: () => boolean;
 }
 
+interface ReviewedWorktreeOpen {
+  readonly scope: string;
+  readonly sourceRegistrationPath: string;
+  readonly branch: string;
+}
+
 interface ClosedRepository {
   path: string;
   savedIndex: number;
@@ -687,7 +693,16 @@ export class GitKhronosService implements OnDestroy {
     return this.openRepositoryRequest(path, replacement);
   }
 
-  private async openRepositoryRequest(path: string, replacement?: SavedRepositoryReplacement, reopening?: ClosedRepository): Promise<OpenRepositoryResult> {
+  openReviewedWorktree(path: string, review: ReviewedWorktreeOpen): Promise<OpenRepositoryResult> {
+    return this.openRepositoryRequest(path, undefined, undefined, review);
+  }
+
+  private async openRepositoryRequest(
+    path: string,
+    replacement?: SavedRepositoryReplacement,
+    reopening?: ClosedRepository,
+    reviewedWorktree?: ReviewedWorktreeOpen,
+  ): Promise<OpenRepositoryResult> {
     const workspaceId = this.activeWorkspaceId();
     const visit = this.workspaceVisit;
     const savedPath = replacement?.path ?? path;
@@ -696,12 +711,14 @@ export class GitKhronosService implements OnDestroy {
       && !this.repositories().some(repository => repository.path === savedPath));
     const canReopen = () => !reopening || (this.workspaceVisit === visit && this.activeWorkspaceId() === workspaceId
       && this.closedRepositories().get(workspaceId)?.includes(reopening));
+    const canOpenWorktree = () => !reviewedWorktree || this.activeRepositoryReadScope() === reviewedWorktree.scope;
     const opened: { snapshot?: RepositorySnapshot; failure?: string; retired?: boolean } = {};
     const status = await this.run('Opening repository…', async report => {
       const retired = () => {
-        if (canReplace() && canReopen()) return false;
+        if (canReplace() && canReopen() && canOpenWorktree()) return false;
         opened.retired = true;
-        report(reopening ? 'Closed tab was not reopened' : 'Saved path replacement was not applied');
+        report(reviewedWorktree ? 'Reviewed checkout was not opened'
+          : reopening ? 'Closed tab was not reopened' : 'Saved path replacement was not applied');
         return true;
       };
       if (retired()) return;
@@ -710,12 +727,19 @@ export class GitKhronosService implements OnDestroy {
         snapshot = await ipc.open_repository({ path });
         if (retired()) return;
         if (this.activeWorkspaceId() !== workspaceId) throw new Error('The workspace changed before the repository was opened.');
+        // Native current flags identify the resolved checkouts. Compare raw Git
+        // registration paths to one another, not to OS-canonical paths.
+        if (reviewedWorktree && (snapshot.status.branch !== reviewedWorktree.branch
+          || !snapshot.worktrees.some(tree => tree.path === path && tree.current && !tree.prunable && tree.branch === reviewedWorktree.branch)
+          || !snapshot.worktrees.some(tree => tree.path === reviewedWorktree.sourceRegistrationPath && !tree.current && !tree.prunable))) {
+          throw new Error('That checkout no longer matches the branch you reviewed. Select the branch again to see its current checkout.');
+        }
         if (replacement && (this.repositories().some(repository => repository.id === snapshot.id || repository.path === snapshot.path)
           || (snapshot.path !== savedPath && this.activeWorkspace()?.repositoryPaths.includes(snapshot.path)))) {
           throw new Error('That repository is already in this workspace. The saved path was not replaced.');
         }
       } catch (error: unknown) {
-        if ((replacement || reopening) && retired()) return;
+        if ((replacement || reopening || reviewedWorktree) && retired()) return;
         opened.failure = this.formatError(error);
         throw error;
       }
