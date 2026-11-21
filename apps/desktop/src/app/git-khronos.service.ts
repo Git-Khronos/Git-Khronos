@@ -4,7 +4,7 @@ import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
 import type { IncomingLinksController } from './incoming-links-controller';
 import type { RepositoryFileActionLifecycle } from './repository-file-actions';
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, signal, type OnDestroy } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
 import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
@@ -85,6 +85,7 @@ const REPOSITORY_ALIASES_KEY = 'git-khronos.repository-aliases.v1';
 const WORKSPACES_KEY = 'git-khronos.workspaces.v1';
 const ACTIVE_WORKSPACE_KEY = 'git-khronos.active-workspace.v1';
 const DEFAULT_WORKSPACE_ID = 'default';
+const REPOSITORY_CHANGE_DEBOUNCE_MS = 450;
 const SAFE_DISCARD_FAILURES = new Set([
   'repositoryFileRefused', 'staleWorkingTreeFile', 'staleDiscard', 'emptyDiscard', 'missingRecoveryPatch',
   'untrackedPartialDiscardUnsupported', 'invalidLineSelection', 'invalidLineAction', 'invalidRecoveryPath',
@@ -248,7 +249,7 @@ interface ClosedRepository {
 type DeferredMetadataPhase = 'loading' | 'failed';
 
 @Injectable({ providedIn: 'root' })
-export class GitKhronosService {
+export class GitKhronosService implements OnDestroy {
   readonly systemInfo = signal<SystemInfo | null>(null);
   readonly browserPreview = computed(() => this.systemInfo()?.appVersion === 'browser preview');
   readonly repositories = signal<RepositorySnapshot[]>([]);
@@ -372,6 +373,7 @@ export class GitKhronosService {
   private reflogRequest = 0;
   private nextActivityId = 1;
   private readonly liveRefreshes = new Map<string, number>();
+  private readonly repositoryChangeRefreshes = new Map<string, { timer: number | null }>();
   private readonly statusGenerations = new Map<string, number>();
   private readonly historyGenerations = new Map<string, number>();
   // Full snapshots reset the native cursor, so page reads wait for those operations.
@@ -386,6 +388,10 @@ export class GitKhronosService {
   });
   private readonly deferredMetadataTimers = new Map<string, Map<string, number>>();
   private closedRepositories: ClosedRepository[] = [];
+
+  ngOnDestroy(): void {
+    this.cancelRepositoryChangeRefreshes();
+  }
 
   async scaleWindowChrome(percent: number): Promise<void> {
     try {
@@ -786,13 +792,45 @@ export class GitKhronosService {
     return results;
   }
 
-  async refreshRepositoryInBackground(repositoryId: string): Promise<boolean> {
+  queueRepositoryChangeRefresh(repositoryId: string): void {
+    if (!this.repositories().some(repository => repository.id === repositoryId)) return;
+    this.cancelRepositoryChangeRefresh(repositoryId);
+    const request: { timer: number | null } = { timer: null };
+    this.repositoryChangeRefreshes.set(repositoryId, request);
+    const schedule = () => {
+      if (this.repositoryChangeRefreshes.get(repositoryId) !== request) return;
+      request.timer = window.setTimeout(async () => {
+        request.timer = null;
+        if (this.repositoryChangeRefreshes.get(repositoryId) !== request) return;
+        await this.refreshRepositoryInBackground(repositoryId, schedule);
+        if (request.timer === null && this.repositoryChangeRefreshes.get(repositoryId) === request) {
+          this.repositoryChangeRefreshes.delete(repositoryId);
+        }
+      }, REPOSITORY_CHANGE_DEBOUNCE_MS);
+    };
+    schedule();
+  }
+
+  private cancelRepositoryChangeRefresh(repositoryId: string): void {
+    const request = this.repositoryChangeRefreshes.get(repositoryId);
+    if (!request) return;
+    if (request.timer !== null) window.clearTimeout(request.timer);
+    this.repositoryChangeRefreshes.delete(repositoryId);
+  }
+
+  private cancelRepositoryChangeRefreshes(): void {
+    for (const repoId of this.repositoryChangeRefreshes.keys()) this.cancelRepositoryChangeRefresh(repoId);
+  }
+
+  async refreshRepositoryInBackground(repositoryId: string, onDeferred?: () => void): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
-    if (!repository
-      || this.browserPreview()
-      || this.busy()
+    if (!repository || this.browserPreview()) return false;
+    if (this.busy()
       || this.backgroundFetchRepositoryId() === repositoryId
-      || this.liveRefreshes.has(repositoryId)) return false;
+      || this.liveRefreshes.has(repositoryId)) {
+      onDeferred?.();
+      return false;
+    }
     const workspaceId = this.activeWorkspaceId();
     const visit = this.workspaceVisit;
     const ownsRepository = () => this.workspaceVisit === visit
@@ -802,8 +840,9 @@ export class GitKhronosService {
     try {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
       if (!ownsRepository()) return false;
-      if (this.busy()) {
+      if (this.busy() || this.backgroundFetchRepositoryId() === repositoryId) {
         if (this.deferredMetadataPhase(repositoryId, workspaceId)) this.deferMetadataRefresh(repositoryId, { workspaceId });
+        onDeferred?.();
         return false;
       }
       const generation = this.statusGeneration(repositoryId);
@@ -811,6 +850,7 @@ export class GitKhronosService {
       if (!ownsRepository() || snapshot.id !== repositoryId || snapshot.path !== repository.path) return false;
       if (generation !== this.statusGeneration(repositoryId)) {
         if (this.deferredMetadataPhase(repositoryId, workspaceId)) this.deferMetadataRefresh(repositoryId, { workspaceId });
+        onDeferred?.();
         return true;
       }
       const refreshed = await this.storeRefreshedSnapshot(snapshot);
@@ -2965,6 +3005,7 @@ export class GitKhronosService {
     this.persistOpenTabs();
     this.workspaceRepositoryCache.set(this.activeWorkspaceId(), this.repositories());
     this.repositoryRestoration = null;
+    this.cancelRepositoryChangeRefreshes();
     this.workspaceVisit++;
     this.activeWorkspaceId.set(workspaceId);
     this.persistWorkspaces();
@@ -3035,6 +3076,7 @@ export class GitKhronosService {
       this.historyLoading.set(false);
     }
     this.bumpStatusGeneration(repoId);
+    this.cancelRepositoryChangeRefresh(repoId);
     this.closedRepositories = [
       {
         path: closingRepository.path,

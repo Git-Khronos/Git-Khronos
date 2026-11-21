@@ -1,5 +1,94 @@
 import { expect, test } from '@playwright/test';
 
+test('a repository file event is not lost while a periodic status read is active', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    const updated = { ...repository, tags: [
+      { name: 'external-ref-update', fullName: 'refs/tags/external-ref-update', oid: repository.headOid },
+    ] };
+    const fixture: { finish?: () => void; refresh?: Promise<boolean>; metadataReads: number } = { metadataReads: 0 };
+    (window as any).__watcherStatusRace = fixture;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'refresh_repository_status') {
+          if (!fixture.finish) return new Promise(resolve => { fixture.finish = () => resolve(repository.status); });
+          return Promise.resolve(repository.status);
+        }
+        if (command === 'refresh_repository') {
+          fixture.metadataReads++;
+          return Promise.resolve(updated);
+        }
+        return Promise.resolve(null);
+      },
+    };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    fixture.refresh = git.refreshStatusInBackground(repository.id);
+    if (!fixture.finish) throw new Error('expected a pending periodic status read');
+    app.scheduleRepositoryRefresh(repository.id);
+  });
+  await page.clock.runFor(700);
+  expect(await page.evaluate(() => (window as any).__watcherStatusRace.metadataReads)).toBe(0);
+  await page.evaluate(async () => {
+    const fixture = (window as any).__watcherStatusRace;
+    fixture.finish();
+    await fixture.refresh;
+  });
+  await page.clock.runFor(2_000);
+  const state = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return { metadataReads: (window as any).__watcherStatusRace.metadataReads,
+      names: git.repository().tags.map((tag: { name: string }) => tag.name) };
+  });
+  expect(state).toEqual({ metadataReads: 1, names: ['external-ref-update'] });
+});
+
+test('repository change timers retire on close and coalesce for the reopened tab', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    const fixture = { app, git, repository, metadataReads: 0 };
+    (window as any).__watcherCloseRace = fixture;
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string) => {
+        if (command === 'open_repository') return Promise.resolve(repository);
+        if (command === 'refresh_repository') {
+          fixture.metadataReads++;
+          return Promise.resolve(repository);
+        }
+        if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+        return Promise.resolve(null);
+      },
+    };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    app.scheduleRepositoryRefresh(repository.id);
+  });
+  await page.clock.runFor(100);
+  const reopened = await page.evaluate(async () => {
+    const { git, repository } = (window as any).__watcherCloseRace;
+    git.closeRepository(repository.id);
+    return await git.openRepository(repository.path);
+  });
+  expect(reopened.status).toBe('success');
+  await page.clock.runFor(500);
+  expect(await page.evaluate(() => (window as any).__watcherCloseRace.metadataReads)).toBe(0);
+  await page.evaluate(() => {
+    const { app, repository } = (window as any).__watcherCloseRace;
+    app.scheduleRepositoryRefresh(repository.id);
+    app.scheduleRepositoryRefresh(repository.id);
+  });
+  await page.clock.runFor(500);
+  expect(await page.evaluate(() => (window as any).__watcherCloseRace.metadataReads)).toBe(1);
+});
+
 test('ignores status replies started before closing and reopening a repository', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();

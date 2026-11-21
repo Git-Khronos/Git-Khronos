@@ -2105,7 +2105,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private get toolbarMenuReturnFocus(): HTMLElement | null {
     return this.toolbarOverlays.activeOverlay()?.returnFocus ?? null;
   }
-  private readonly repositoryRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private repositoryChangeUnlisten: UnlistenFn | null = null;
   private rebaseRequest = 0;
   private nativeWindowTitle = '';
@@ -4572,8 +4571,6 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.detailReferenceStackCloseTimer) clearTimeout(this.detailReferenceStackCloseTimer);
     if (this.tagPreviewTimer) clearTimeout(this.tagPreviewTimer);
     this.git.clearTrackedFileSearch();
-    for (const timer of this.repositoryRefreshTimers.values()) clearTimeout(timer);
-    this.repositoryRefreshTimers.clear();
     this.repositoryChangeUnlisten?.();
     this.git.stopIncomingRepositoryLinks();
   }
@@ -14784,15 +14781,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private scheduleRepositoryRefresh(repositoryId: string): void {
-    if (this.git.backgroundFetchRepositoryId() === repositoryId) return;
-    const current = this.repositoryRefreshTimers.get(repositoryId);
-    if (current) clearTimeout(current);
-    const timer = window.setTimeout(() => {
-      this.repositoryRefreshTimers.delete(repositoryId);
-      if (this.git.backgroundFetchRepositoryId() === repositoryId) return;
-      void this.git.refreshRepositoryInBackground(repositoryId);
-    }, 450);
-    this.repositoryRefreshTimers.set(repositoryId, timer);
+    this.git.queueRepositoryChangeRefresh(repositoryId);
   }
 
   private scheduleLiveStatusRefresh(delayMs = LIVE_STATUS_REFRESH_MS): void {

@@ -77,6 +77,23 @@ pane discloses loading, failure with an explicit read-only retry, confirmed
 empty, or no filter matches. Retry returns focus to the Tags heading without
 clearing the filter or closing the pane.
 
+### Repository change notifications
+
+Filesystem notifications and explicit file-tool change notices request a
+debounced metadata read for an open repository. At most one queued request
+per repository owns the timer. A status read, foreground Git action, or
+background fetch can defer it without consuming the notification. A newer
+notification supersedes an older pending timer. Closing the tab or switching
+workspace retires queued work for that visit. A native read error is not
+automatically replayed. Both the filesystem event and periodic status remain
+read-only; status alone does not invalidate a same-branch ref change.
+
+In `background-status.spec.ts`, a held status reply crosses the first
+metadata deadline. After the reply settles, the delayed refresh reads and
+applies the changed ref metadata without requiring another notification.
+
+### Deferred workspace editing
+
 Workspace create, rename and delete forms share a deferred view without
 moving mutation authority out of the renderer shell. Cancel and Escape work
 while its module is pending, returning focus to the opener. A completed
