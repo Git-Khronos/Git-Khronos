@@ -1,7 +1,47 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import { selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
+import { expandAcceptanceReports, selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
+
+test('discovers only final native reports from explicitly selected roots in stable order', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'khronos-report-discovery-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = join(root, 'first results');
+  const second = join(root, 'second results');
+  const late = join(first, 'smoke/run-b');
+  const early = join(first, 'smoke/run-a');
+  for (const directory of [late, early, second]) {
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'report.json'), '{}');
+    await writeFile(join(directory, 'progress.json'), '{}');
+  }
+  assert.deepEqual(await expandAcceptanceReports(['explicit.json', '--reports-dir', first, '--reports-dir', second]),
+    ['explicit.json', join(early, 'report.json'), join(late, 'report.json'), join(second, 'report.json')]);
+});
+
+test('directory discovery refuses missing, linked, empty and excessively nested evidence', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'khronos-report-boundary-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const empty = join(root, 'empty');
+  await mkdir(empty);
+  await writeFile(join(empty, 'progress.json'), '{}');
+  await assert.rejects(expandAcceptanceReports(['--reports-dir']), /Supply a directory/);
+  await assert.rejects(expandAcceptanceReports(['--bogus']), /Unknown acceptance report option/);
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', join(root, 'absent')]), { code: 'ENOENT' });
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', empty]), /No completed report.json/);
+  const link = join(root, 'linked');
+  await symlink(empty, link);
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', link]), /real acceptance report directory/);
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', root]), /does not follow links/);
+  await symlink(join(empty, 'progress.json'), join(empty, 'report.json'));
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', empty]), /does not follow links/);
+  const deep = join(root, 'deep');
+  await mkdir(join(deep, ...Array(14).fill('child')), { recursive: true });
+  await assert.rejects(expandAcceptanceReports(['--reports-dir', deep]), /directory is too deep/);
+});
 
 const candidate = {
   packageSha256: 'a'.repeat(64),

@@ -396,6 +396,11 @@ node tools/report-installed-acceptance.mjs "$PACKAGE" \
 The command checks the package ABI, installer hash, and installed executable
 and launcher hashes before reporting each suite and Git version. It exits
 nonzero if a supplied suite failed or any report mismatches the package.
+Use repeatable `--reports-dir DIRECTORY` arguments instead of shell globs
+to discover final `report.json` files under selected results roots. Select
+directories for one candidate attempt; empty directories or links are
+rejected, and an older or failed report is not skipped. Discovery is bounded
+and does not treat `progress.json` or screenshots as release evidence.
 Scenario counts are per report and are not added across potentially overlapping
 suites. Older reports may not identify the userspace distribution. This
 summary is not signing approval; it does not replace the release preflight or
@@ -416,7 +421,8 @@ in one command. Supply the original installed reports, not a prior summary:
 
 ```bash
 node tools/report-installed-acceptance.mjs --verify-release \
-  "$BUILD_RECEIPT" "$PUBLISHER_PUBLIC_KEY_FILE" "$PACKAGE" "${REPORTS[@]}"
+  "$BUILD_RECEIPT" "$PUBLISHER_PUBLIC_KEY_FILE" "$PACKAGE" \
+  --reports-dir "$UBUNTU_RESULTS" --reports-dir "$DEBIAN_RESULTS"
 ```
 
 This emits a JSON summary only after both checks pass. The publisher preflight

@@ -2,13 +2,16 @@
 // Summarize operator-owned reports without confusing extracted builds, other
 // package bytes, or repeated scenarios with installed release evidence.
 import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { lstat, open, opendir } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkPackage } from './check-linux-abi.mjs';
 import { checkEvidenceWithReport } from './check-debian-update-evidence.mjs';
 
 const MAX_REPORT_BYTES = 4 * 1024 * 1024;
+const MAX_REPORTS = 512;
+const MAX_DISCOVERY_DEPTH = 12;
+const MAX_DISCOVERY_ENTRIES = 10_000;
 const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository';
 const GITLAB_SCENARIO = 'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree';
 
@@ -72,6 +75,45 @@ const RELEASE_MATRIX = [
   ['debian', '13', 'smoke', SMOKE_SCENARIO],
   ['debian', '13', 'gitlab', GITLAB_SCENARIO],
 ];
+
+export async function expandAcceptanceReports(args) {
+  const reports = [];
+  let entriesVisited = 0;
+  const append = path => {
+    if (reports.length >= MAX_REPORTS) throw new Error('Too many acceptance reports; select one candidate run.');
+    reports.push(path);
+  };
+  async function discover(directory, depth) {
+    if (depth > MAX_DISCOVERY_DEPTH) throw new Error(`Acceptance report directory is too deep: ${directory}`);
+    if (!(await lstat(directory)).isDirectory()) {
+      throw new Error(`Use a real acceptance report directory, not a file or link: ${directory}`);
+    }
+    for await (const entry of await opendir(directory)) {
+      if (++entriesVisited > MAX_DISCOVERY_ENTRIES) {
+        throw new Error('Too many directory entries; select acceptance results, not a build or workspace tree.');
+      }
+      const path = join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`Acceptance report discovery does not follow links: ${path}`);
+      if (entry.name === 'report.json') {
+        if (!entry.isFile()) throw new Error(`Expected a regular acceptance report: ${path}`);
+        append(path);
+      } else if (entry.isDirectory()) await discover(path, depth + 1);
+    }
+  }
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--reports-dir') {
+      const directory = args[++i];
+      if (!directory || directory.startsWith('--')) throw new Error('Supply a directory after --reports-dir.');
+      const first = reports.length;
+      await discover(resolve(directory), 0);
+      if (reports.length === first) throw new Error(`No completed report.json files found in ${directory}.`);
+      reports.splice(first, reports.length - first, ...reports.slice(first).sort());
+    } else if (arg.startsWith('--')) throw new Error(`Unknown acceptance report option: ${arg}`);
+    else append(arg);
+  }
+  return reports;
+}
 
 async function readReport(path) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -203,7 +245,7 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
-    const usage = 'Usage: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb REPORT.json …';
+    const usage = 'Usage: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
     const releaseMatrix = args[0] === '--release-matrix';
     let publisherPreflight;
     if (releaseMatrix) args.shift();
@@ -212,10 +254,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       if (!receipt || !key || [receipt, key].some(arg => arg.startsWith('--'))) throw new Error(usage);
       publisherPreflight = { receipt, key };
     }
-    const [packagePath, ...reportPaths] = args;
-    if (!packagePath || (!releaseMatrix && !reportPaths.length) || args.some(arg => arg.startsWith('--'))) {
+    const [packagePath, ...reportInputs] = args;
+    if (!packagePath || packagePath.startsWith('--') || (!releaseMatrix && !reportInputs.length)) {
       throw new Error(usage);
     }
+    const reportPaths = await expandAcceptanceReports(reportInputs);
     const summary = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix, publisherPreflight });
     console.log(JSON.stringify(summary, null, 2));
     if (summary.reports.some(report => !report.passed) || (releaseMatrix && !summary.releaseMatrix.complete)) {
