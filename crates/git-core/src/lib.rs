@@ -9730,7 +9730,7 @@ mod tests {
         assert_eq!(opened, bare.canonicalize().unwrap());
         assert!(is_explicit_bare_repository(&opened));
         let watch = repository_watch_paths(&opened).unwrap();
-        assert_eq!(watch.non_recursive, [opened.clone()]);
+        assert_eq!(watch.non_recursive.as_slice(), std::slice::from_ref(&opened));
         assert_eq!(watch.recursive, [opened.join("refs")]);
         assert!(resolve_repository(&bare.join("objects")).is_err());
     }
