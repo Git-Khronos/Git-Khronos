@@ -635,6 +635,11 @@ feature, release, and hotfix operations. The same scenarios run in
 window, records its elapsed time, and requires the real Git refs, parents,
 tags, and recovery artifacts before declaring success.
 
+Use `--suite hosted-fork-ui` to isolate the real hosted fork UI, restart
+recovery, and reviewed clone handoff on an installed package. It uses the
+owned CLI provider and local Git only. Controls in the scrolling catalogue
+must be painted and hit-testable before the harness clicks them once.
+
 The `file-media` suite runs the same native image and file-content checks
 as the full toolkit, including actual WebKit decoding. It centers each row
 before its click so a partially clipped row under a sticky heading is not

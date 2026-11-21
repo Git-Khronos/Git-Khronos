@@ -2838,8 +2838,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
                       forkName='organization-fork', forkDefaultBranchOnly=False, uncertainAfterWrite=False)
         save_config()
         def button(text, selector='gc-hosted-forks button'):
-            driver.wait(f"return [...document.querySelectorAll({json.dumps(selector)})].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
-            driver.click_text(selector, text)
+            driver.click_scrolled_text(selector, text, wait_for_ready=True)
         def fill(selector, value):
             driver.script("const input=document.querySelector(arguments[0]); input.value=arguments[1]; input.dispatchEvent(new Event('input',{bubbles:true}));", selector, value)
         def checkbox_layout(selector):
