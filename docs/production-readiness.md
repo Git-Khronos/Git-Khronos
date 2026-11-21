@@ -315,7 +315,12 @@ even with `rebase.updateRefs` enabled. Cancel left Git state unchanged, and
 the fresh Finish review contained the rebased tip. The predecessor reached
 Finish but did not offer rebase. Reports and checksum-matched summaries
 are under `target/local-review/updater/jammy-builder/feature-rebase-palette.oAT3XeQs/`.
-This focused evidence does not qualify later renderer bundle changes.
+The same package passed 279 installed Ubuntu 22.04 environment scenarios
+and all 14 required release-matrix checks. Strict installed-updater preflight
+accepted that exact SHA-256 with the fixture publisher key; see
+`installed-release-matrix.json` and `jammy-installed-preflight.sha256`.
+This does not qualify the later lazy diff and bulk relocation changes, or
+imply production signing or publication.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
