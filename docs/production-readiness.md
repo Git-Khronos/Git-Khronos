@@ -54,8 +54,11 @@ path and +2/−1 in both staged and unstaged previews, with zero partial action
 controls and unchanged checkout contents. The package SHA-256 is
 `04740fa2b99b4958ca87a21a0f0eb62b7945cc830383190a3cf42a3aad3c4a91`;
 the receipt, independently checked package and report are under
-`target/local-review/updater/jammy-builder/rename-diff.4TrqrXpZ/`. This
-checkpoint does not qualify the later Tags changes or replace the full matrix.
+`target/local-review/updater/jammy-builder/rename-diff.4TrqrXpZ/`. The other
+stock-Git suites also passed on those bytes: worktrees, GitLab, updates,
+recovery, and incoming links. All six reports were matched to the installed
+executable and launcher. This checkpoint does not qualify the later Tags
+changes or replace the full matrix.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
