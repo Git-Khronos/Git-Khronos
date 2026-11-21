@@ -203,19 +203,25 @@ fn sync_tracking_refs(
     new_tracking: &str,
     oid: &str,
 ) -> Result<(), AppError> {
-    let mut transaction = String::new();
-    if reference_tip(path, new_tracking).is_none() {
-        transaction.push_str(&format!("create {new_tracking} {oid}\n"));
-    }
-    if reference_tip(path, tracking).is_some() {
-        transaction.push_str(&format!("delete {tracking}\n"));
-    }
-    if transaction.is_empty() {
-        return Ok(());
-    }
+    crate::remote_checkout::require_direct_tracking_ref(path, tracking)?;
+    crate::remote_checkout::require_direct_tracking_ref(path, new_tracking)?;
+    // A successful push may already have updated one or both tracking refs.
+    // Check both in the same transaction so a concurrent fetch can't make us
+    // delete its newer tip or retarget upstreams to an unreviewed destination.
+    let destination_action = if reference_tip(path, new_tracking).is_some() {
+        "verify"
+    } else {
+        "create"
+    };
+    let source_action = if reference_tip(path, tracking).is_some() {
+        format!("delete {tracking} {oid}")
+    } else {
+        format!("verify {tracking}")
+    };
+    let transaction = format!("{destination_action} {new_tracking} {oid}\n{source_action}\n");
     run_git_with_input(
         path,
-        &["update-ref", "--stdin"],
+        &["update-ref", "--no-deref", "--stdin"],
         transaction.as_bytes(),
         "update the remote-tracking branch",
     )

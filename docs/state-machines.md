@@ -268,6 +268,11 @@ branch; the commit lease alone does not prove the destination. Symbolic
 aliases, conflicting mappings, and mappings to a differently named branch
 are refused without a push. A rename also checks that the new name will be
 tracked before changing either the remote branch or local upstreams.
+After the remote rename succeeds, Git verifies the new tracking tip and
+removes the old one only at the reviewed object ID, in one local reference
+transaction. If the refs no longer match when Git acquires their locks,
+native reports the remote rename as partially applied without changing
+local upstreams. The remote rename is not replayed or rolled back automatically.
 
 ### Manual co-author entry
 

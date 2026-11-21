@@ -1040,6 +1040,12 @@ clamping for a positioning regression.
 Behavioral sources: Git's `git-tag`, `git-push`, `git-update-ref` and
 `git-remote` manuals. No upstream code, assets or proprietary wording was copied.
 
+Remote branch rename uses the documented
+[`git update-ref --stdin` transaction](https://git-scm.com/docs/git-update-ref)
+for its local tracking refs after the remote transaction. The old and new
+refs are checked together; a conflicting local update produces a partial
+success report rather than removing a newer tip or retargeting an upstream.
+
 ## Explicit pull choices and local integration refusals
 
 The three app pull modes now explicitly select both rebase and fast-forward

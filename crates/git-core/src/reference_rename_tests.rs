@@ -253,6 +253,127 @@ fn remote_branch_rename_moves_remote_tracking_refs_and_upstreams() {
     assert_eq!(fixture.tip("refs/heads/feature").as_deref(), Some(&*head));
 }
 
+#[cfg(unix)]
+#[test]
+fn remote_branch_rename_preserves_tracking_refs_moved_during_local_sync() {
+    use std::os::unix::fs::PermissionsExt;
+
+    const FIXTURE: &str = "KHRONOS_RENAME_TRACKING_FIXTURE";
+    const MODE: &str = "KHRONOS_RENAME_TRACKING_MODE";
+    const OLD: &str = "refs/remotes/origin/source";
+    const NEW: &str = "refs/remotes/origin/destination";
+    const TEST: &str =
+        "reference_rename_tests::remote_branch_rename_preserves_tracking_refs_moved_during_local_sync";
+
+    if let Some(path) = std::env::var_os(FIXTURE) {
+        let result = rename_remote_branch(
+            Path::new(&path),
+            "origin",
+            "source",
+            "destination",
+            &std::env::var("KHRONOS_RENAME_TRACKING_EXPECTED").unwrap(),
+            &CancellationToken::default(),
+        );
+        assert_eq!(
+            result.unwrap_err().kind,
+            "remoteBranchRenamePartiallyApplied"
+        );
+        return;
+    }
+
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .unwrap();
+    assert!(real.status.success());
+    let real = std::str::from_utf8(&real.stdout).unwrap().trim();
+    for mode in ["source", "destination"] {
+        let fixture = Fixture::new();
+        let root = fixture.path();
+        let remote = fixture.add_bare_remote("origin");
+        let expected = fixture.head();
+        fixture.git(&["push", "origin", "HEAD:refs/heads/source"]);
+        fixture.git(&["config", "branch.main.remote", "origin"]);
+        fixture.git(&["config", "branch.main.merge", "refs/heads/source"]);
+        fs::write(root.join("file"), "unrelated newer commit\n").unwrap();
+        fixture.git(&["commit", "-am", "Newer work"]);
+        let moved = fixture.head();
+        assert_ne!(moved, expected);
+
+        let bin = root.join(".git/rename-shim");
+        fs::create_dir(&bin).unwrap();
+        let shim = bin.join("git");
+        fs::write(
+            &shim,
+            r#"#!/bin/sh
+set -eu
+real=$KHRONOS_RENAME_TRACKING_REAL_GIT
+root=$KHRONOS_RENAME_TRACKING_FIXTURE
+mode=$KHRONOS_RENAME_TRACKING_MODE
+for arg; do
+    case "$arg" in
+    push)
+        "$real" "$@"
+        # Keep an old-tip observation available for the follow-up transaction.
+        "$real" -C "$root" update-ref refs/remotes/origin/source "$KHRONOS_RENAME_TRACKING_EXPECTED"
+        exit ;;
+    --stdin)
+        # Simulate a separate Git writer after the app's local ref reads.
+        "$real" -C "$root" update-ref "refs/remotes/origin/$mode" "$KHRONOS_RENAME_TRACKING_MOVED"
+        printf '%s\n' "$mode" > "$root/.git/tracking-race-exercised"
+        break ;;
+    esac
+done
+exec "$real" "$@"
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(shim, fs::Permissions::from_mode(0o700)).unwrap();
+        let search = std::env::join_paths(
+            std::iter::once(bin)
+                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+        )
+        .unwrap();
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST])
+            .env("PATH", search)
+            .env(FIXTURE, root)
+            .env(MODE, mode)
+            .env("KHRONOS_RENAME_TRACKING_REAL_GIT", real)
+            .env("KHRONOS_RENAME_TRACKING_EXPECTED", &expected)
+            .env("KHRONOS_RENAME_TRACKING_MOVED", &moved)
+            .output()
+            .unwrap();
+        assert!(
+            child.status.success(),
+            "{mode}: {}",
+            String::from_utf8_lossy(&child.stdout)
+        );
+
+        assert_eq!(
+            fixture.remote_tip(&remote, "refs/heads/destination").as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(fixture.remote_tip(&remote, "refs/heads/source"), None);
+        assert_eq!(fixture.head(), moved);
+        assert_eq!(
+            fs::read_to_string(root.join(".git/tracking-race-exercised")).unwrap(),
+            format!("{mode}\n")
+        );
+        let (old, new) = if mode == "source" {
+            (&moved, &expected)
+        } else {
+            (&expected, &moved)
+        };
+        assert_eq!(fixture.tip(OLD).as_deref(), Some(old.as_str()));
+        assert_eq!(fixture.tip(NEW).as_deref(), Some(new.as_str()));
+        assert_eq!(
+            fixture.git(&["config", "--get", "branch.main.merge"]),
+            "refs/heads/source"
+        );
+    }
+}
+
 #[test]
 fn remote_branch_rename_rejects_duplicate_invalid_and_stale_requests() {
     let fixture = Fixture::new();
