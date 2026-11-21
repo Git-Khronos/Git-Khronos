@@ -2634,3 +2634,20 @@ reports and `verified-release-fork-restart.json` are under
 `target/local-review/gitlab-restored-entry.4SdfGShs/`.
 This qualifies those package bytes with a fixture public key only. It does
 not qualify later app changes, sign an update or publish a release.
+
+## Installed file-discard scope and release checklist — 2026-11-21
+
+The Jammy build from `da25ca1` passed its full matrix. In its installed
+Ubuntu 24.04 discard review, an external checkout at the same commit disabled
+the original review without touching the working tree, index or recovery
+records. A fresh review then discarded only the newly reviewed edit and
+created one recovery capture. The release checklist now requires both
+outcomes; strict verification of the same bytes passed all 29 checks
+(`verified-release-file-review.json`).
+
+The installer, receipt and all reports are retained at
+`target/local-review/updater/jammy-builder/file-review-release.YNdT8tef/`.
+Its SHA-256 is
+`b79721d9c7f87437479f92be6cd35d80f6f1c7b866058e98cddd113abc4bea51`.
+This uses a fixture publisher key and does not qualify subsequent app
+changes or publish anything.

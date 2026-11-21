@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 28);
+  assert.equal(complete.checks.length, 29);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -195,6 +195,22 @@ test('GitLab catalogue-only evidence cannot qualify an installed platform withou
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(({ distribution, suite }) => ({
       distribution, suite,
     })), [{ distribution: gitlab.linuxDistribution, suite: 'gitlab' }]);
+  }
+});
+
+test('installed file discard must prove stale refusal and fresh, scoped success', () => {
+  const fixtures = matrixFixtures();
+  const fileReview = fixtures.find(report => report.suite === 'file-review-scope');
+  const scenarios = [
+    'native-same-tip-external-checkout-disables-the-old-file-discard-review',
+    'native-fresh-file-review-discards-only-the-newly-reviewed-edit',
+  ];
+  for (const scenario of scenarios) {
+    const partial = { ...fileReview, scenarios: scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== fileReview), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
+      ['file-review-scope']);
   }
 });
 

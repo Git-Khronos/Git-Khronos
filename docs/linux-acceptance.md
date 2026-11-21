@@ -258,7 +258,8 @@ with the exact package installed in a disposable environment. An external
 switch to another branch at the same commit must disable an open discard
 confirmation without touching files, the index or recovery captures. A new
 review must still discard the intended edit and create one recovery capture.
-This focused check does not replace the release matrix.
+Both scenarios are required by the Ubuntu 24.04 workflow and exact-package
+release checklist.
 
 ## Focused feature rebase review
 

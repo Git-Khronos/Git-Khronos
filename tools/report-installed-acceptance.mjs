@@ -61,6 +61,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-commit-rewrite-refuses-a-stale-branch-at-the-same-head',
     'native-commit-editor-rewrites-only-the-reviewed-branch-and-keeps-staged-and-working-bytes',
   ]],
+  ['file-review-scope', [
+    'native-same-tip-external-checkout-disables-the-old-file-discard-review',
+    'native-fresh-file-review-discards-only-the-newly-reviewed-edit',
+  ]],
 ];
 
 const RELEASE_MATRIX = [
