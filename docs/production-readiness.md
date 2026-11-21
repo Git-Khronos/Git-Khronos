@@ -2951,3 +2951,10 @@ This measures the actual initial files in both builds and prints candidate
 minus baseline for raw, JavaScript, stylesheet, gzip and Brotli bytes. The
 compressed sizes describe encoding the emitted assets independently, not
 network transfer timing. It does not change budgets or write receipts.
+
+The shared revision file list (`e59f88f`) then removed another 5,543 raw
+initial bytes without adding a deferred chunk: 1,326,106 → 1,320,563.
+Gzip and Brotli encodings increased by 563 and 156 bytes respectively, so
+this is a raw-size and template-deduplication improvement, not a network
+transfer saving. The 900 kB warning remains. The exact build and comparison
+receipts are in the same directory under `revision-files-*`.
