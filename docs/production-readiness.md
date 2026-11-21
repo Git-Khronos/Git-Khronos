@@ -3091,6 +3091,23 @@ delivery and narrow toolbar actions. Exact build, timing samples, and
 browser receipts are under `compact-toolbar-*` in the startup profile.
 The 900 kB bundle warning remains.
 
+The compact menu now [prefetches on hover or keyboard focus](https://angular.dev/guide/templates/defer#prefetching-data-with-prefetch).
+It still renders only when explicitly opened and does not fetch its chunk
+on startup. With 180 ms of hover before clicking, seven alternating pairs
+of fresh Chromium pages each measured 62 → 73 ms medians with no added
+delay (no local speedup demonstrated), and 203 → 36 ms when only the menu
+chunk had a simulated 100 ms delay. Each prefetch response finished
+before the click in those samples. This demonstrates hiding a slow load
+when there is advance intent, not a native WebKit latency result.
+
+The trigger adds 2,146 raw initial JS bytes, 558 gzip bytes and 610 Brotli
+bytes over click-only deferral. Compared with the earlier eager menu,
+initial output is still 3,980 raw bytes and 143 gzip bytes smaller, but
+192 Brotli bytes larger. CSS and bundle budgets are unchanged. All 32
+focused browser checks passed; the three new intent checks failed on the
+click-only baseline because it made no request before activation. Exact
+receipts are under `compact-intent-*` in the startup profile directory.
+
 ### Cancellable Git process latency
 
 The process coordinator now wakes when both output readers finish instead
