@@ -166,6 +166,14 @@ parent and returns focus to the row. Confirming explicitly must initialize
 only the selected path and its nested checkout, leaving a second top-level
 submodule uninitialized. Git independently checks the recorded commits,
 parent staging and refs, and the expected scope of local config changes.
+The exact-artifact Ubuntu 24.04 CI job runs this suite.
+
+Use `--suite submodule-update --headless` to exercise the separate remote
+update review with two local checkouts and an owned upstream. Opening or
+cancelling must not fetch. The test introduces a tracked edit after review
+and checks the remote-tracking ref is still unchanged after the native
+refusal. Confirming a clean selected checkout must move only that checkout,
+even when its sibling is dirty, without staging the parent gitlink.
 
 ## Focused feature rebase review
 
