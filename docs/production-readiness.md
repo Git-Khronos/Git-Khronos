@@ -1834,6 +1834,22 @@ catalogue (45) suites in an offline Debian 12 container using its stock
 Git 2.39.5 and glibc 2.36. The installed launcher and executable matched
 the package. This is separate from running the Git 2.39 binary on Ubuntu.
 Reports are in `bookworm-native/` under the same qualification directory.
+The installed crash/relaunch suite also passed all 21 scenarios there,
+including the private-bus process binding and explicit save.
+The installed publisher-trust suite separately passed all 19 scenarios:
+the public key was configured, automatic updates remained off and no offline
+offer could be installed. That report is in `bookworm-updates/`.
 The Debian 12 workflow now runs the incoming-link suite in place of plain
 smoke (which it includes), so the cold-start regression is covered at the
 supported Git floor. Hosted execution of that workflow is still pending.
+
+The first Ubuntu 24.04 installed environment run after the recovery fix
+recorded 164 successes before failing Git integrity inspection. A retained
+initial integrity report identified the qualification setup problem: the
+manually supplied Git 2.53 binary invoked the system Git 2.43 for its nested
+`git refs verify`. The private fixture intentionally strips inherited
+`GIT_EXEC_PATH`, so that override could not supply the matching helpers.
+An independent local repository passed `fsck` with the modern binary and
+helpers mounted at their normal paths in the container; a full recheck uses
+that coherent toolchain. The harness now retains initial and final Git
+integrity diagnostics without reducing either check to an exit code.

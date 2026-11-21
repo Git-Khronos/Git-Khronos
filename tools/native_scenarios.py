@@ -2940,6 +2940,10 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
 
 
 def full_toolkit(driver, fixtures, repository, repo_id, report):
+    initial_integrity = driver.invoke("inspect_repository_integrity", repoId=repo_id,
+                                      operationId=str(uuid.uuid4()))
+    report["initialRepositoryIntegrity"] = initial_integrity
+    assert initial_integrity["passed"], "Owned toolkit repository did not start healthy"
     incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
     configured_tools(driver, fixtures, repository, report)
@@ -3139,7 +3143,9 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     # Restore the toolkit's selected repository before its terminal/UI steps.
     assert open_ui(driver, repository) == repo_id
 
-    assert call("inspect_repository_integrity", operationId=str(uuid.uuid4()))["passed"]
+    integrity = call("inspect_repository_integrity", operationId=str(uuid.uuid4()))
+    report["repositoryIntegrity"] = integrity
+    assert integrity["passed"], "Owned toolkit repository did not pass Git integrity inspection"
     call("perform_repository_maintenance")
     assert call("cancel_git_operation", operationId="not-running") is False
     terminal = call("open_terminal", rows=24, cols=80)
