@@ -274,7 +274,8 @@ checkout.
 
 For watcher contention, run
 `python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"`
-with the exact package on a disposable runner. The app-only Git wrapper
+with the exact package on a disposable runner. Jammy signed-release
+qualification runs this check with the stock runtime prerequisites. The app-only Git wrapper
 holds one read while real Git deletes a packed checkpoint in the owned
 checkout. Git verifies the deletion first; the graph must then remove the
 row without a manual refresh. The fixture does not modify Git on the host.

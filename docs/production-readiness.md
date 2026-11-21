@@ -140,6 +140,16 @@ unchanged. The report matches package SHA-256
 under `target/local-review/updater/jammy-builder/lfs-time-budget.zDVt6ssI/`.
 This focused pass does not replace the full installed release gate.
 
+On Ubuntu 22.04 the same package passed the installed timeout probe in
+2.046 seconds. One ordinary run left the packed checkpoint row stale before
+starting GitLab; a same-package retry completed all 45 GitLab/smoke checks.
+A controlled negative run on the same bytes then held an actual status read
+for 1.5 seconds after Git deleted the packed ref. The independent Git oracle
+confirmed the deletion, but the graph kept the row. The report is under
+`jammy-held-status-negative.eK0yjWU5/` in the candidate directory. This
+separates the watcher race from GitLab and from the LFS timeout change;
+the replacement app still needs the controlled installed pass.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
