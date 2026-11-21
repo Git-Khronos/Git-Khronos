@@ -229,9 +229,11 @@ gap as well as the ordinary keyboard path from Clone and Initialize.
 
 ### Deferred diff workspace
 
-The diff viewer's on-demand component renders the shell's current diff
-model. The shell still owns file selection, viewport restoration,
-navigation and Git operations. Before the viewer loads, the fallback can
+The diff viewer's on-demand component turns the shell's current patch into
+rows, syntax tokens, line totals and navigation markers. The shell still
+owns file selection, viewport restoration, navigation and Git operations;
+keyboard hunk navigation reads the loaded viewer's hunk list. Before the
+viewer loads, the fallback can
 return to the graph and the diff shortcuts cannot move an invisible file
 or hunk. Closing unmounts the request; a late chunk cannot reopen it.
 When the loading fallback held focus, a rendered viewer takes it only

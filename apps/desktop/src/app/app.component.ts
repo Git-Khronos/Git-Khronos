@@ -137,7 +137,7 @@ import {
   repositoryTabOverflowState,
   repositoryTabScrollPosition,
 } from './repository-tabs';
-import { shouldDecorateDiff, tokenizeDiffLine, type DiffSyntaxToken, type DiffTextSegment } from './diff-rendering';
+import type { DiffLine } from './diff-rendering';
 import {
   APP_THEME_OPTIONS,
   appThemeNavigationValue,
@@ -247,25 +247,6 @@ interface CommitDraft {
   sign: boolean;
   pushAfter: boolean;
   policy: CommitPolicy;
-}
-
-interface DiffLine {
-  text: string;
-  kind: 'addition' | 'deletion' | 'hunk' | 'header' | 'context';
-  oldLine: number | null;
-  newLine: number | null;
-  hunkIndex: number | null;
-  changeIndices: number[];
-  segments: DiffTextSegment[];
-  tokens: DiffSyntaxToken[];
-}
-
-interface SplitDiffRow {
-  kind: 'pair' | 'header' | 'hunk';
-  left: DiffLine | null;
-  right: DiffLine | null;
-  label: string | null;
-  hunkIndex: number | null;
 }
 
 interface DiffViewportPosition {
@@ -735,6 +716,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
   private readonly editedCommitSummaryInput = viewChild<ElementRef<HTMLInputElement>>('editedCommitSummaryInput');
   private readonly diffWorkspace = viewChild<unknown, ElementRef<HTMLElement>>('diffWorkspace', { read: ElementRef });
+  private readonly diffWorkspacePanel = viewChild<DiffWorkspaceComponent>('diffWorkspace');
   private readonly diffWorkspaceLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('diffWorkspaceLoaderClose');
   private diffWorkspaceLoaderFocused = false;
   private readonly diffWorkspaceRenderFocus = afterRenderEffect(() => {
@@ -2492,121 +2474,6 @@ export class AppComponent implements OnInit, OnDestroy {
     return !!diff && !!this.activeDiffRevision() && !(this.changesOpen() && this.isUntrackedPath(diff.path));
   });
 
-  protected readonly blameSyntaxTokens = (text: string, path: string) => tokenizeDiffLine([{ text, changed: false }], path);
-
-  protected readonly diffLines = computed<DiffLine[]>(() => {
-    const diff = this.activeDiff();
-    const patch = diff?.patch;
-    if (!patch) return [];
-    const patchLines = patch.split('\n');
-    // split() adds an empty entry for the patch's terminating newline. A
-    // real empty context line has its own row, even with suppressBlankEmpty.
-    if (patchLines.at(-1) === '') patchLines.pop();
-    const decorate = shouldDecorateDiff(patch.length, patchLines.length);
-    let oldLine = 0;
-    let newLine = 0;
-    let hunkIndex = 0;
-    let currentHunkIndex: number | null = null;
-    let changeIndex = 0;
-    const lines = patchLines.map((text): DiffLine => {
-      if (text.startsWith('diff --git ')) currentHunkIndex = null;
-      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
-      if (hunk) {
-        oldLine = Number(hunk[1]);
-        newLine = Number(hunk[2]);
-        currentHunkIndex = hunkIndex++;
-        changeIndex = 0;
-        return { text, kind: 'hunk', oldLine: null, newLine: null, hunkIndex: currentHunkIndex, changeIndices: [], segments: [], tokens: [] };
-      }
-      // Only the first byte of a hunk body identifies a change. Content
-      // starting with ++ or -- must still advance the native change index.
-      // Backslash notices (such as a missing final newline) consume neither
-      // a source line nor a change index.
-      if (currentHunkIndex === null || text.startsWith('\\ ')) {
-        return { text, kind: 'header', oldLine: null, newLine: null, hunkIndex: null, changeIndices: [], segments: [], tokens: [] };
-      }
-      if (text.startsWith('+')) {
-        return { text, kind: 'addition', oldLine: null, newLine: newLine++, hunkIndex: currentHunkIndex, changeIndices: [changeIndex++], segments: [], tokens: [] };
-      }
-      if (text.startsWith('-')) {
-        return { text, kind: 'deletion', oldLine: oldLine++, newLine: null, hunkIndex: currentHunkIndex, changeIndices: [changeIndex++], segments: [], tokens: [] };
-      }
-      const line: DiffLine = { text, kind: 'context', oldLine, newLine, hunkIndex: currentHunkIndex, changeIndices: [], segments: [], tokens: [] };
-      oldLine += 1;
-      newLine += 1;
-      return line;
-    });
-
-    let index = 0;
-    while (index < lines.length) {
-      if (lines[index].kind !== 'deletion') {
-        index += 1;
-        continue;
-      }
-      const { deletions, additions, next } = diffReplacementRun(lines, index);
-      index = next;
-      for (let pair = 0; pair < Math.min(deletions.length, additions.length); pair += 1) {
-        const group = [...deletions[pair].changeIndices, ...additions[pair].changeIndices];
-        deletions[pair].changeIndices = group;
-        additions[pair].changeIndices = group;
-        if (decorate) {
-          const [left, right] = wordDiffSegments(deletions[pair].text, additions[pair].text);
-          deletions[pair].segments = left;
-          additions[pair].segments = right;
-        }
-      }
-    }
-
-    for (const line of lines) {
-      if (!line.segments.length) line.segments = [{ text: line.text, changed: false }];
-      line.tokens = decorate
-        ? tokenizeDiffLine(line.segments, diff.path)
-        : [{ text: line.text, kind: 'plain', changed: false }];
-    }
-    return lines;
-  });
-
-  protected readonly splitDiffRows = computed<SplitDiffRow[]>(() => {
-    const lines = this.diffLines();
-    const rows: SplitDiffRow[] = [];
-    let index = 0;
-    while (index < lines.length) {
-      const line = lines[index];
-      if (line.kind === 'header' || line.kind === 'hunk') {
-        rows.push({ kind: line.kind, left: null, right: null, label: line.text, hunkIndex: line.hunkIndex });
-        index += 1;
-        continue;
-      }
-      if (line.kind === 'deletion') {
-        const { deletions, additions, notices, next } = diffReplacementRun(lines, index);
-        index = next;
-        const count = Math.max(deletions.length, additions.length);
-        for (let pair = 0; pair < count; pair += 1) {
-          rows.push({ kind: 'pair', left: deletions[pair] ?? null, right: additions[pair] ?? null, label: null, hunkIndex: null });
-        }
-        for (const notice of notices) {
-          rows.push({ kind: 'header', left: null, right: null, label: notice, hunkIndex: null });
-        }
-        continue;
-      }
-      if (line.kind === 'addition') {
-        rows.push({ kind: 'pair', left: null, right: line, label: null, hunkIndex: null });
-      } else {
-        rows.push({ kind: 'pair', left: line, right: line, label: null, hunkIndex: null });
-      }
-      index += 1;
-    }
-    return rows;
-  });
-
-  protected readonly diffStats = computed(() => this.diffLines().reduce(
-    (stats, line) => ({
-      additions: stats.additions + (line.kind === 'addition' ? 1 : 0),
-      deletions: stats.deletions + (line.kind === 'deletion' ? 1 : 0),
-    }),
-    { additions: 0, deletions: 0 },
-  ));
-
   protected readonly selectedDiffLines = computed<DiffLineSelection | null>(() => {
     if (!this.selectableWorkingTreeDiff()) return null;
     const groups = this.selectedDiffLineGroups();
@@ -2621,20 +2488,6 @@ export class AppComponent implements OnInit, OnDestroy {
     return Number.isInteger(hunkIndex) && lineIndices.every(Number.isInteger)
       ? { hunkIndex, lineIndices }
       : null;
-  });
-
-  protected readonly diffHunks = computed(() => {
-    const lines = this.diffLines();
-    return lines.flatMap((line, lineIndex) => line.kind === 'hunk' && line.hunkIndex !== null
-      ? [{ index: line.hunkIndex, position: lines.length <= 1 ? 0 : lineIndex / (lines.length - 1) * 100 }]
-      : []);
-  });
-
-  protected readonly diffMapMarks = computed(() => {
-    const lines = this.diffLines();
-    return lines.flatMap((line, lineIndex) => line.kind === 'addition' || line.kind === 'deletion'
-      ? [{ kind: line.kind, position: lines.length <= 1 ? 0 : lineIndex / (lines.length - 1) * 100 }]
-      : []);
   });
 
   private readonly remoteBranchesByLocalName = computed(() => {
@@ -9804,7 +9657,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected navigateDiffHunk(direction: -1 | 1): void {
-    const count = this.diffHunks().length;
+    const count = this.diffWorkspacePanel()?.diffHunks().length ?? 0;
     if (!count) return;
     const index = Math.max(0, Math.min(this.activeDiffHunk() + direction, count - 1));
     if (this.diffInsightMode() === 'diff') {
@@ -9939,18 +9792,13 @@ export class AppComponent implements OnInit, OnDestroy {
     activeWorkingTreeDiff: () => this.activeWorkingTreeDiff(),
     diffFileMenuOpen: () => this.diffFileMenuOpen(),
     diffFontSize: () => this.diffFontSize(),
-    diffHunks: () => this.diffHunks(),
     diffInsightMode: () => this.diffInsightMode(),
-    diffLines: () => this.diffLines(),
-    diffMapMarks: () => this.diffMapMarks(),
-    diffStats: () => this.diffStats(),
     diffTabSize: () => this.diffTabSize(),
     diffViewMode: () => this.diffViewMode(),
     diffWordWrap: () => this.diffWordWrap(),
     selectableWorkingTreeDiff: () => this.selectableWorkingTreeDiff(),
     selectedDiffLines: () => this.selectedDiffLines(),
     sidebarVisible: () => this.sidebarVisible(),
-    splitDiffRows: () => this.splitDiffRows(),
     busy: () => this.git.busy(),
     detailsBusy: () => this.git.detailsBusy(),
     blameCount: () => this.git.fileBlame()?.length ?? 0,
@@ -9960,7 +9808,6 @@ export class AppComponent implements OnInit, OnDestroy {
     clearSelectedLines: () => this.selectedDiffLineGroups.set([]),
     showContent: () => this.diffInsightMode.set('content'),
     authorColor: (name: string, email: string) => this.rebaseAuthorColor(name, email),
-    tokenizeBlame: (text: string, path: string) => this.blameSyntaxTokens(text, path),
     initials: this.initials.bind(this),
     applyHunk: this.applyHunk.bind(this),
     applySelectedDiffLines: this.applySelectedDiffLines.bind(this),
@@ -15239,73 +15086,6 @@ function shortLabel(oid: string): string {
 
 function isRemoteLocationIcon(value: unknown): value is RemoteLocationIcon {
   return REMOTE_LOCATION_ICONS.some((option) => option.value === value);
-}
-
-function diffReplacementRun(lines: DiffLine[], start: number) {
-  const notices: string[] = [];
-  let next = start;
-  const take = (kind: 'deletion' | 'addition', side: string): DiffLine[] => {
-    const rows: DiffLine[] = [];
-    while (lines[next]?.kind === kind) {
-      rows.push(lines[next++]);
-      if (lines[next]?.kind === 'header' && lines[next].text.startsWith('\\ ')) {
-        notices.push(`${side}: ${lines[next++].text.slice(2)}`);
-      }
-    }
-    return rows;
-  };
-  const deletions = take('deletion', 'Before');
-  const additions = take('addition', 'After');
-  return { deletions, additions, notices, next };
-}
-
-function wordDiffSegments(left: string, right: string): [DiffTextSegment[], DiffTextSegment[]] {
-  const leftMarker = left.slice(0, 1);
-  const rightMarker = right.slice(0, 1);
-  const leftWords = splitDiffWords(left.slice(1));
-  const rightWords = splitDiffWords(right.slice(1));
-  if (leftWords.length * rightWords.length > 16_000) {
-    return [
-      [{ text: leftMarker, changed: false }, { text: left.slice(1), changed: true }],
-      [{ text: rightMarker, changed: false }, { text: right.slice(1), changed: true }],
-    ];
-  }
-  const table = Array.from({ length: leftWords.length + 1 }, () => new Uint16Array(rightWords.length + 1));
-  for (let leftIndex = leftWords.length - 1; leftIndex >= 0; leftIndex -= 1) {
-    for (let rightIndex = rightWords.length - 1; rightIndex >= 0; rightIndex -= 1) {
-      table[leftIndex][rightIndex] = leftWords[leftIndex] === rightWords[rightIndex]
-        ? table[leftIndex + 1][rightIndex + 1] + 1
-        : Math.max(table[leftIndex + 1][rightIndex], table[leftIndex][rightIndex + 1]);
-    }
-  }
-  const leftSegments: DiffTextSegment[] = [{ text: leftMarker, changed: false }];
-  const rightSegments: DiffTextSegment[] = [{ text: rightMarker, changed: false }];
-  let leftIndex = 0;
-  let rightIndex = 0;
-  while (leftIndex < leftWords.length || rightIndex < rightWords.length) {
-    if (leftWords[leftIndex] === rightWords[rightIndex]) {
-      appendDiffSegment(leftSegments, leftWords[leftIndex], false);
-      appendDiffSegment(rightSegments, rightWords[rightIndex], false);
-      leftIndex += 1;
-      rightIndex += 1;
-    } else if (rightIndex >= rightWords.length || (leftIndex < leftWords.length && table[leftIndex + 1][rightIndex] >= table[leftIndex][rightIndex + 1])) {
-      appendDiffSegment(leftSegments, leftWords[leftIndex++], true);
-    } else {
-      appendDiffSegment(rightSegments, rightWords[rightIndex++], true);
-    }
-  }
-  return [leftSegments, rightSegments];
-}
-
-function splitDiffWords(text: string): string[] {
-  return text.match(/\s+|[\p{L}\p{N}_$]+|./gu) ?? [];
-}
-
-function appendDiffSegment(segments: DiffTextSegment[], text: string | undefined, changed: boolean): void {
-  if (!text) return;
-  const previous = segments.at(-1);
-  if (previous?.changed === changed) previous.text += text;
-  else segments.push({ text, changed });
 }
 
 function commitMessageBody(message: string): string {

@@ -4,9 +4,45 @@ import {
   MAX_DETAILED_DIFF_LINES,
   MAX_SYNTAX_LINE_CHARACTERS,
   MAX_SYNTAX_TOKENS_PER_LINE,
+  renderDiffLines,
   shouldDecorateDiff,
+  splitRenderedDiff,
   tokenizeDiffLine,
 } from './diff-rendering';
+
+describe('diff presentation', () => {
+  it('assigns source coordinates and edit indices to patch-like lines and compact blank context', () => {
+    const patch = [
+      'diff --git a/fixture b/fixture', '--- a/fixture', '+++ b/fixture',
+      '@@ -1,3 +1,3 @@', '--- old content', '+++ new content', '',
+      '-old tail', '+new tail', '',
+    ].join('\n');
+    const lines = renderDiffLines(patch, 'fixture');
+    expect(lines.slice(4).map(({ kind, oldLine, newLine, changeIndices }) =>
+      [kind, oldLine, newLine, changeIndices],
+    )).toEqual([
+      ['deletion', 1, null, [0, 1]],
+      ['addition', null, 1, [0, 1]],
+      ['context', 2, 2, []],
+      ['deletion', 3, null, [2, 3]],
+      ['addition', null, 3, [2, 3]],
+    ]);
+  });
+
+  it('keeps both sides of an unterminated replacement in one split row', () => {
+    const patch = [
+      '@@ -1 +1 @@', '-old tail', '\\ No newline at end of file',
+      '+new tail', '\\ No newline at end of file', '',
+    ].join('\n');
+    const rows = splitRenderedDiff(renderDiffLines(patch, 'fixture'));
+    expect(rows.map(({ kind, left, right, label }) => [kind, left?.text, right?.text, label])).toEqual([
+      ['hunk', undefined, undefined, '@@ -1 +1 @@'],
+      ['pair', '-old tail', '+new tail', null],
+      ['header', undefined, undefined, 'Before: No newline at end of file'],
+      ['header', undefined, undefined, 'After: No newline at end of file'],
+    ]);
+  });
+});
 
 describe('diff rendering budget', () => {
   it('keeps detailed decoration for ordinary patches', () => {

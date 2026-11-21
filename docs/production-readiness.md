@@ -675,6 +675,14 @@ locally under `target/local-review/lazy-diff-workspace/`. Chromium against
 the final production output requested no diff module before opening a file
 and one copy on opening it. These are asset measurements, not boot time.
 
+Moving patch-row projection, split alignment and syntax tokenization into
+the deferred viewer reduced the initial renderer from **1,339,564 to
+1,333,972 bytes** (5,592 fewer). The same production bundle requested the
+parser chunk zero times before opening a file and once on first open.
+The unchanged 900 kB warning remains. See
+`target/local-review/lazy-diff-projection.*` for the production build
+reports and Chromium request probe. Startup latency was not measured.
+
 The shared repository-form styles now load with whichever of the repository
 manager, repository setup or workspace editor opens first. Common form
 primitives used elsewhere remain in the startup stylesheet. Comparing
