@@ -491,6 +491,28 @@ and both installed Noble tracked-file checks. See `verified-release.json`
 under `target/local-review/updater/jammy-builder/tracked-search-release.Sg6pQpfS/`.
 This does not qualify subsequent rebase or diff changes or production signing.
 
+An isolated installed run against the rebase-tips candidate at `7a45f63`,
+SHA-256 `b725747fe4d60c2ed93136b609e73604f519b8dfc99d7fd6f0b07c7415101f90`,
+confirmed both later diff regressions before their fixes. The diff footer
+showed +1/−1 while the working-tree recap correctly showed +2/−2, and the
+visible tail appeared on line 3 instead of line 4. Separately, staging only
+the added side of an unterminated replacement produced the concatenated
+old and new bytes in the index, while leaving HEAD and the worktree
+untouched. See the deliberately failing UI report and screenshot under
+`target/local-review/native-diff-line-selection.wjaLP22d/old/results/`
+and the independent baseline-only reproduction under
+`target/local-review/native-eof-baseline.GNXWZYM9/old/results/`.
+Neither run is passing release evidence.
+
+The fixed Jammy-built candidate at `ff23e25`, SHA-256
+`6862bf470908fda4d02d8c869f6835378a7ab7dc3b2d76b5abf38c75e3e99f16`,
+passed all five focused cases after installation on Ubuntu 24.04
+(Git 2.43.0). The suite verified the selected tail, split-view alignment,
+native unstage, discard and recovery, and refusal without index or
+working-file changes when a selection would concatenate final lines.
+See `target/local-review/native-diff-line-selection.wjaLP22d/new/summary.json`.
+The focused result does not replace the full release matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

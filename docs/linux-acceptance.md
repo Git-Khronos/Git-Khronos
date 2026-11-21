@@ -215,6 +215,18 @@ file, and leave the merge, index entries, references and files unchanged.
 The exact-artifact Ubuntu 24.04 CI job and local release checklist require
 both scenarios.
 
+## Focused diff line selection
+
+Use `--suite diff-line-selection --headless --installed --package "$PACKAGE"`
+in a disposable environment with the exact package already installed.
+The packaged viewer must stage the intended later replacement without
+staging text that resembles a patch header. It must also keep both sides
+of a replacement selected when neither line has a trailing newline.
+The suite checks exact index blob IDs and working bytes through native
+unstage, discard, recovery, and refusal of a selection that would join
+final lines. Full and inherited-environment acceptance run the same checks.
+The focused reproduction does not replace the release matrix.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a
