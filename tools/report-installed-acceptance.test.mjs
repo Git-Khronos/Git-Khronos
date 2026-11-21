@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope', 'detached-checkout'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope', 'detached-checkout', 'checkout-snapshot'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 33);
+  assert.equal(complete.checks.length, 34);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -284,6 +284,16 @@ test('the release matrix refuses incomplete watcher, trust, and incoming-link re
   assert.equal(partial.complete, false);
   assert.deepEqual(partial.checks.filter(check => check.report === null).map(check => check.suite),
     ['watcher-refresh', 'environment', 'incoming-links']);
+});
+
+test('checkout snapshot accepts neither a smoke-only report nor a failed race scenario', () => {
+  const fixtures = matrixFixtures();
+  const checkout = fixtures.find(report => report.suite === 'checkout-snapshot');
+  for (const invalid of [{ ...checkout, scenarios: ['ordinary-smoke'] }, { ...checkout, passed: false }]) {
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== checkout), invalid]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['checkout-snapshot']);
+  }
 });
 
 test('split passing reports cannot combine to satisfy a required suite', () => {

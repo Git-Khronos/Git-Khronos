@@ -82,6 +82,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
   ]],
+  ['checkout-snapshot', 'native-snapshot-retries-mixed-reads-across-an-external-same-tip-checkout'],
 ];
 
 const RELEASE_MATRIX = [
