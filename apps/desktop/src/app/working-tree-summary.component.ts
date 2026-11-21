@@ -19,7 +19,7 @@ interface Request {
   template: `
     @let current = state();
     @if (current.phase === 'ready') {
-      <span class="summary" [attr.aria-label]="label(current.value)" [title]="description()">
+      <span class="summary" role="img" [attr.aria-label]="label(current.value)" [title]="description()">
         <span>+{{ current.value.additions }}</span><i>−{{ current.value.deletions }}</i>
         @if (current.value.uncountedFiles) { <em>{{ current.value.uncountedFiles }} other</em> }
         @if (current.value.partial) { <em>(partial)</em> }
@@ -52,8 +52,10 @@ export class WorkingTreeSummaryComponent {
   }
 
   label(value: WorkingTreeChangeSummary): string {
-    return `${value.additions} additions and ${value.deletions} deletions in ${this.section()} files`
-      + (value.uncountedFiles ? `; ${value.uncountedFiles} binary or uncounted files excluded` : '')
+    const additions = `${value.additions} ${value.additions === 1 ? 'addition' : 'additions'}`;
+    const deletions = `${value.deletions} ${value.deletions === 1 ? 'deletion' : 'deletions'}`;
+    return `${additions} and ${deletions} in ${this.section()} files`
+      + (value.uncountedFiles ? `; ${value.uncountedFiles} binary or uncounted ${value.uncountedFiles === 1 ? 'file' : 'files'} excluded` : '')
       + (value.partial ? '; partial totals' : '');
   }
 }

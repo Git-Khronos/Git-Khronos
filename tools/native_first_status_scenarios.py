@@ -86,16 +86,24 @@ def first_status(driver, fixtures, report):
     report['scenarios'].append('native-first-file-scan-shows-loading-not-clean-while-history-is-usable')
 
     counts = {
-        '.unstaged-section gc-working-tree-summary .summary': '3 additions and 1 deletions in unstaged files',
-        '.staged-section gc-working-tree-summary .summary': '1 additions and 0 deletions in staged files',
+        '.unstaged-section gc-working-tree-summary .summary': {
+            'label': '3 additions and 1 deletion in unstaged files', 'added': '+3', 'removed': '−1',
+        },
+        '.staged-section gc-working-tree-summary .summary': {
+            'label': '1 addition and 0 deletions in staged files', 'added': '+1', 'removed': '−0',
+        },
     }
     report['firstWorkingTreeRecaps'] = driver.wait(f"""
       if (document.querySelector('.wip-nav small')?.textContent.trim() !== '3 changed files'
         || document.querySelector('[aria-label="Working directory status"]')) return null;
-      const actual = Object.entries({json.dumps(counts)}).map(([selector, label]) => {{
+      const actual = Object.entries({json.dumps(counts)}).map(([selector, expected]) => {{
         const recap = document.querySelector(selector);
-        return recap?.getClientRects().length && recap.getAttribute('aria-label') === label
-          ? recap.textContent : null;
+        const label = recap?.getAttribute('aria-label');
+        const added = recap?.querySelector('span')?.textContent.trim();
+        const removed = recap?.querySelector('i')?.textContent.trim();
+        return recap?.getClientRects().length && recap.getAttribute('role') === 'img'
+          && label === expected.label && added === expected.added && removed === expected.removed
+          ? {{label, added, removed}} : null;
       }});
       return actual.every(Boolean) ? actual : null;
     """)

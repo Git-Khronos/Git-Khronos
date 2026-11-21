@@ -187,6 +187,17 @@ test('one native read supplies independent staged and unstaged counts', async ({
   expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
 });
 
+test('assistive technology receives a single correctly worded recap per section', async ({ page }) => {
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: { additions: 1, deletions: 0, uncountedFiles: 1, partial: false },
+    unstaged: { additions: 0, deletions: 1, uncountedFiles: 0, partial: true },
+  }));
+  await expect(page.locator('.staged-section gc-working-tree-summary')).toMatchAriaSnapshot(
+    '- img "1 addition and 0 deletions in staged files; 1 binary or uncounted file excluded"');
+  await expect(page.locator('.unstaged-section gc-working-tree-summary')).toMatchAriaSnapshot(
+    '- img "0 additions and 1 deletion in unstaged files; partial totals"');
+});
+
 test('a staged-only tree still counts and distinguishes an unavailable side', async ({ page }) => {
   const staged = page.locator('.staged-section gc-working-tree-summary');
   const unstaged = page.locator('.unstaged-section gc-working-tree-summary');

@@ -69,6 +69,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-late-clone-result-is-persisted-without-taking-over-the-active-repository',
     'native-late-clone-can-be-opened-from-recents-without-replaying-git',
   ]],
+  ['first-status', [
+    'native-first-file-scan-shows-loading-not-clean-while-history-is-usable',
+    'native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes',
+  ]],
 ];
 
 const RELEASE_MATRIX = [

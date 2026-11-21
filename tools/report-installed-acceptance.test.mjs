@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 30);
+  assert.equal(complete.checks.length, 31);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -227,6 +227,20 @@ test('installed repository creation needs both non-activation and recovery witho
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
       ['repository-creation-scope']);
+  }
+});
+
+test('installed startup must show pending files and publish both accurate line recaps', () => {
+  const fixtures = matrixFixtures();
+  const firstStatus = fixtures.find(report => report.suite === 'first-status');
+  for (const name of [
+    'native-first-file-scan-shows-loading-not-clean-while-history-is-usable',
+    'native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes',
+  ]) {
+    const incomplete = { ...firstStatus, scenarios: firstStatus.scenarios.filter(scenario => scenario !== name) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== firstStatus), incomplete]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['first-status']);
   }
 });
 

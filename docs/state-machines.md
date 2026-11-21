@@ -397,7 +397,13 @@ before the first commit); a pure rename contributes no changed lines. The
 unstaged recap compares tracked working files with the index and counts
 untracked text with the attribute-aware counter. Conflicted entries stay
 in their separate section. Binary or uncounted files are disclosed, not
-silently interpreted as no changes.
+silently interpreted as no changes. The compact counters in each header have
+one accessible name that identifies the stage, counts, and any exclusions
+or partial result.
+
+The installed `first-status` release check holds the initial complete
+file scan while history is usable. It requires a loading state instead of
+false zeroes, then checks both real recaps and an unchanged Git footprint.
 
 Both sides share a status scan capped at 4 MiB of stdout. If that scan is incomplete,
 neither side reports a total. Each summary counts at most 2,000 entries
