@@ -104,6 +104,7 @@ tasks:
       - tools/collect-rust-notices.mjs
       - tools/manage-linux-package.sh
       - tools/build-linux-package.sh
+      - tools/check-linux-package-watcher.mjs
       - tools/package-build-receipt.mjs
       - tools/check-linux-abi.mjs
       - tools/require-ubuntu-jammy.sh

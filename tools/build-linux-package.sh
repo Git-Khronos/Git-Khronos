@@ -24,6 +24,7 @@ if ! flock --exclusive --nonblock 9; then
   exit 1
 fi
 
+node tools/check-linux-package-watcher.mjs apps/desktop/src-tauri/Cargo.toml
 node tools/package-build-receipt.mjs begin "$checksum"
 export TMPDIR="${TMPDIR:-$PWD/target/package-tmp}"
 mkdir -p -- "$TMPDIR"

@@ -9,6 +9,15 @@ Used to serialize the two Task build flavors that share generated workspace
 files. The owner and receipt flow is independently implemented; no source
 code was copied.
 
+## Linux package watcher preflight
+
+- [Tauri CLI 2.12.1 Cargo manifest watcher](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.1/crates/tauri-cli/src/interface/rust.rs#L126-L146)
+- [Linux inotify initialization errors](https://www.man7.org/linux/man-pages/man2/inotify_init.2.html#ERRORS)
+
+Used to identify what Tauri initializes during packaging and to distinguish
+the possible sources of watcher exhaustion. The preflight uses Node's
+existing filesystem API; no upstream implementation was copied.
+
 ## Reviewed force-push destination configuration
 
 - [Git remote URL inspection](https://git-scm.com/docs/git-remote)

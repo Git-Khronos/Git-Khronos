@@ -10,6 +10,7 @@ import { gzipSync } from 'node:zlib';
 import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
 import { checkEvidence } from './check-debian-update-evidence.mjs';
 import { checkInstalledDeb } from './check-installed-deb.mjs';
+import { checkLinuxPackageWatcher } from './check-linux-package-watcher.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
@@ -273,8 +274,10 @@ if (process.env.FAIL_ABI) process.exit(1);
 `);
   await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
   await copyFile(join(repositoryRoot, 'tools/build-linux-package.sh'), join(root, 'tools/build-linux-package.sh'));
+  await copyFile(join(repositoryRoot, 'tools/check-linux-package-watcher.mjs'), join(root, 'tools/check-linux-package-watcher.mjs'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
+  await put('apps/desktop/src-tauri/Cargo.toml');
   await put('crates/git-core/src/lib.rs');
   await put('packaging/debian/changelog');
   await put('bin/pnpm', `#!/usr/bin/env node
@@ -1322,6 +1325,37 @@ test('hard-stopped builds cannot accept older outputs as a completed current bui
   const previous = await f.builds();
   f.ok();
   assert.equal(await f.builds(), previous + 1, 'a hard stop must not bless old package outputs under the new source checksum');
+});
+
+test('the packaging watcher probe releases its handle and distinguishes limit failures', () => {
+  const manifest = 'apps/desktop/src-tauri/Cargo.toml';
+  let closed = 0;
+  checkLinuxPackageWatcher(manifest, (path, options) => {
+    assert.equal(path, manifest);
+    assert.deepEqual(options, { persistent: false });
+    return { close: () => closed++ };
+  });
+  assert.equal(closed, 1);
+  for (const [code, explanation] of [
+    ['EMFILE', /process descriptor limit or the account’s inotify instance limit/],
+    ['ENFILE', /system-wide open-file limit/],
+    ['ENOSPC', /inotify watch limit/],
+    ['EACCES', /manifest exists and can be watched/],
+  ]) {
+    const error = Object.assign(new Error('fixture'), { code });
+    assert.throws(() => checkLinuxPackageWatcher(manifest, () => { throw error; }),
+      thrown => thrown.cause === error && thrown.message.includes(code) && explanation.test(thrown.message));
+  }
+});
+
+test('a package build with a missing watcher target fails before starting Tauri or its receipt', async (t) => {
+  const f = await fixture(t);
+  await rm(join(f.root, 'apps/desktop/src-tauri/Cargo.toml'), { force: true });
+  const result = f.run(['--force', 'package:deb']);
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stderr, /cannot watch .*Cargo\.toml/i);
+  await assert.rejects(stat(join(f.root, 'calls')), { code: 'ENOENT' });
+  await assert.rejects(stat(join(f.root, 'target/release/.git-khronos-package-build.v1.json.pending')), { code: 'ENOENT' });
 });
 
 test('local and Jammy builds with different Cargo targets cannot overlap workspace writes', async (t) => {

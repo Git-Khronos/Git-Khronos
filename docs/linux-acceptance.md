@@ -328,6 +328,15 @@ APT signature verification. This is an external maintenance/trust boundary, not
 Ubuntu's stock/security archive and not a recommendation to silently configure
 user systems. No Git implementation is bundled into Git Khronos.
 
+Before starting a local or release package build, the builder briefly opens
+and closes a watcher on the desktop Cargo manifest. If that fails, it stops
+before Tauri runs or a pending build receipt is written. Tauri initializes
+this watcher even when not running in development-watch mode. Linux reports
+both descriptor exhaustion and its per-user inotify instance limit as
+`EMFILE`; raising the descriptor limit alone may not help. Close unnecessary
+watchers or review resource limits in the disposable build runner. The
+preflight does not change user or system resource limits.
+
 CI and release builds use Ubuntu 22.04 with official updates/Universe enabled
 for WebKitGTK 4.1. `desktop:package-ubuntu` first requires an Ubuntu 22.04 amd64
 build host, then merges `packaging/linux/ubuntu-jammy.conf.json` over the normal
