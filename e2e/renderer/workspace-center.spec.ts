@@ -242,7 +242,11 @@ test('reviews and removes selected unopened paths in one workspace without dispa
   const dialog = await open(page);
   const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
   await saved.getByRole('button', { name: 'Select all saved paths' }).click();
-  await saved.getByRole('checkbox', { name: 'Select saved path ' + retainedPath }).uncheck();
+  const keep = saved.getByRole('checkbox', { name: 'Select saved path ' + retainedPath });
+  // A native uncheck is a no-op if Angular has not painted Select all yet.
+  await expect(keep).toBeChecked();
+  await keep.uncheck();
+  await expect(keep).not.toBeChecked();
   const remove = saved.getByRole('button', { name: 'Remove selected saved paths (2)…' });
   await remove.click();
   const review = page.getByRole('alertdialog', { name: 'Remove selected saved paths?' });
