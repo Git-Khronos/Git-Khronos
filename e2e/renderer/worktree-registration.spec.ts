@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const independentBackgroundReads = ['working_tree_change_summary', 'refresh_repository_status'];
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'wait' });
 });
@@ -66,8 +68,8 @@ test('registration review distinguishes prunable and locked entries and invokes 
   await expect.poll(() => page.evaluate(() =>
     (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeRegistrationRequest())).toBeNull();
   await expect(actions).toBeFocused();
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter(
-    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toEqual([]);
+  expect(await page.evaluate(reads => (window as any).__worktreeRegistration.calls.filter(
+    (call: { command: string }) => !reads.includes(call.command)), independentBackgroundReads)).toEqual([]);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
   await expect(dialog.getByRole('status')).toContainText('3 registrations reported');
@@ -78,8 +80,10 @@ test('registration review distinguishes prunable and locked entries and invokes 
   await expect(dialog).toContainText('not a deletion lease');
   await expect(dialog).toContainText('If a directory was moved, repair');
   await expect(dialog.getByLabel('Git worktree prune dry-run report')).toContainText('Removing worktrees/missing');
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter(
-    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toEqual([
+  // A visibility/focus status refresh can run independently of the review.
+  // It is still an error if any mutation or second review was dispatched.
+  expect(await page.evaluate(reads => (window as any).__worktreeRegistration.calls.filter(
+    (call: { command: string }) => !reads.includes(call.command)), independentBackgroundReads)).toEqual([
     { command: 'worktree_registration_review', args: { repoId: expect.any(String) } },
   ]);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
