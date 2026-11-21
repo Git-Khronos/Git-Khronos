@@ -16,6 +16,13 @@ async function setup(page: Page): Promise<void> {
     (window as any).__worktreeRegistration = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
+      if (command === 'working_tree_change_summary') {
+        const repo = git.repositories().find((candidate: { id: string }) => candidate.id === args.repoId);
+        if (!repo) return Promise.reject(new Error('Unexpected repository in owned recap read'));
+        return Promise.resolve({
+          additions: 0, deletions: 0, uncountedFiles: repo.status.unstaged + repo.status.untracked, partial: true,
+        });
+      }
       if (command === 'worktree_registration_review') {
         if (fixture.fail) return Promise.reject({ kind: 'worktreeRegistrationReviewUnavailable', message: 'The complete registration list is unsupported. Inspect it with local Git; no registration was removed.' });
         const result = {
@@ -59,7 +66,8 @@ test('registration review distinguishes prunable and locked entries and invokes 
   await expect.poll(() => page.evaluate(() =>
     (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeRegistrationRequest())).toBeNull();
   await expect(actions).toBeFocused();
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls)).toEqual([]);
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter(
+    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toEqual([]);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
   await expect(dialog.getByRole('status')).toContainText('3 registrations reported');
@@ -70,10 +78,10 @@ test('registration review distinguishes prunable and locked entries and invokes 
   await expect(dialog).toContainText('not a deletion lease');
   await expect(dialog).toContainText('If a directory was moved, repair');
   await expect(dialog.getByLabel('Git worktree prune dry-run report')).toContainText('Removing worktrees/missing');
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter((call: any) => call.command === 'worktree_registration_review'))).toEqual([
+  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter(
+    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toEqual([
     { command: 'worktree_registration_review', args: { repoId: expect.any(String) } },
   ]);
-  expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => ['remove_worktree', 'repair_worktree', 'prune_worktrees'].includes(call.command)))).toBe(false);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true })).toBeFocused();
 });
