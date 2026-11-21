@@ -2801,26 +2801,27 @@ async fn inspect_commit_file(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn inspect_stash(
+async fn inspect_stash(
     repo_id: String,
     oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitDetails, AppError> {
-    with_repository(&repo_id, &state, |path| git_stash_details(path, &oid))
+    with_repository_background(repo_id, app, move |path| git_stash_details(path, &oid)).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn inspect_stash_file(
+async fn inspect_stash_file(
     repo_id: String,
     oid: String,
     path: String,
     previous_path: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitFileDiff, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background(repo_id, app, move |repository| {
         git_stash_file_diff(repository, &oid, &path, previous_path.as_deref())
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]

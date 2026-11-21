@@ -92,6 +92,10 @@ An unrelated native status query must finish before the held comparison
 is released, and the finished comparison must still return the correct
 file or patch without changing the repository.
 
+`--suite stash-responsiveness` uses the same check for stash details and
+an individual saved file. It verifies the exact saved patch while both
+the stash ref and the different live working changes remain untouched.
+
 Use `--suite commit-coauthors` to add a suggested and a manual co-author
 through the installed composer. The scenario verifies that editing the
 draft makes no Git changes, then reads both exact trailers from the single

@@ -453,6 +453,9 @@ individual file diffs, run on the native blocking worker pool. They
 retain the repository's existing operation lock and read policy.
 Moving them off the UI lane does not change which checkout or inputs a
 request owns, or authorize a write while the comparison completes.
+Stash details and stash file previews use the same worker and operation
+lock; previewing saved changes does not apply them or replace the
+current worktree's contents.
 
 Coverage: `unstaged-summary.spec.ts`, real Git tests for both summaries,
 and the packaged `native_unstaged_summary_scenarios.py` fixture. Packaged
