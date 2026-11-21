@@ -5,11 +5,16 @@ import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { SubmoduleStateReviewComponent } from './submodule-state-review.component';
 
+export interface SubmoduleReviewTarget {
+  path: string;
+  action: 'initialize' | 'update';
+}
+
 export interface WorktreeRegistrationRequest {
   repositoryId: string;
   returnFocus: HTMLElement | null;
   submodules?: boolean;
-  submoduleToInitialize?: string;
+  submoduleTarget?: SubmoduleReviewTarget;
 }
 
 @Component({

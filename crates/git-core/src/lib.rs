@@ -2141,13 +2141,7 @@ pub fn update_all_submodules_cancellable(
             Some("Initialize missing submodules before updating all of them from their remotes."),
         ));
     }
-    if review.entries.iter().any(|submodule| {
-        submodule.name.is_none()
-            || submodule.index_oid.is_none()
-            || submodule.conflict.is_some()
-            || submodule.tracked_changes
-            || submodule.untracked_changes
-    }) {
+    if !review.entries.iter().all(submodule_can_update_from_remote) {
         return Err(AppError::new(
             "submoduleUpdateUnsafe",
             "Every submodule must be declared, recorded, conflict-free and clean before updating all of them.",
@@ -2169,6 +2163,15 @@ pub fn update_all_submodules_cancellable(
     )
 }
 
+fn submodule_can_update_from_remote(submodule: &SubmoduleState) -> bool {
+    submodule.checked_out
+        && submodule.name.is_some()
+        && submodule.index_oid.is_some()
+        && submodule.conflict.is_none()
+        && !submodule.tracked_changes
+        && !submodule.untracked_changes
+}
+
 fn update_submodule_with_cancellation(
     path: &Path,
     target: &str,
@@ -2180,6 +2183,20 @@ fn update_submodule_with_cancellation(
             "submoduleNotInitialized",
             "Initialize that submodule before updating it.",
             None,
+        ));
+    }
+    let review = review_submodule_state(path)?;
+    if !review
+        .entries
+        .iter()
+        .any(|entry| entry.path == target && submodule_can_update_from_remote(entry))
+    {
+        return Err(AppError::new(
+            "submoduleUpdateUnsafe",
+            format!(
+                "{target} must be declared, recorded, conflict-free and clean before updating."
+            ),
+            Some("Review the submodule state and resolve local changes before trying again."),
         ));
     }
     run_mutation_with_cancellation(
@@ -17946,6 +17963,20 @@ esac
         stage_all(&dependency.path).expect("stage second dependency update");
         commit(&dependency.path, "Dependency v3").expect("commit second dependency update");
         repository.write("vendor/engine/engine.txt", "local edit\n");
+        let checkout = repository.path.join("vendor/engine");
+        let remote_before = run_git(&checkout, &["rev-parse", "refs/remotes/origin/HEAD"])
+            .expect("read the submodule's remote tip before the review");
+        assert!(remote_before.status.success());
+        assert_eq!(
+            update_submodule(&repository.path, "vendor/engine")
+                .unwrap_err()
+                .kind,
+            "submoduleUpdateUnsafe"
+        );
+        assert_eq!(
+            fs::read_to_string(checkout.join("engine.txt")).unwrap(),
+            "local edit\n"
+        );
         assert_eq!(
             update_all_submodules_cancellable(&repository.path, &CancellationToken::default())
                 .unwrap_err()
@@ -17953,6 +17984,25 @@ esac
             "submoduleUpdateUnsafe"
         );
         repository.git(&["-C", "vendor/engine", "restore", "--", "engine.txt"]);
+        repository.write("vendor/engine/local note.txt", "untracked\n");
+        assert_eq!(
+            update_submodule(&repository.path, "vendor/engine")
+                .unwrap_err()
+                .kind,
+            "submoduleUpdateUnsafe"
+        );
+        assert_eq!(
+            run_git(&checkout, &["rev-parse", "refs/remotes/origin/HEAD"])
+                .expect("read the submodule's remote tip after both refusals")
+                .stdout,
+            remote_before.stdout,
+            "dirty refusals must happen before fetching"
+        );
+        assert_eq!(
+            fs::read_to_string(checkout.join("local note.txt")).unwrap(),
+            "untracked\n"
+        );
+        fs::remove_file(checkout.join("local note.txt")).unwrap();
         update_all_submodules_cancellable(&repository.path, &CancellationToken::default())
             .expect("update all submodules");
         let bulk_updated = snapshot(&repository.path).expect("snapshot bulk updated submodule");
@@ -17960,6 +18010,38 @@ esac
         assert_ne!(
             bulk_updated.submodules[0].head_oid,
             updated.submodules[0].head_oid
+        );
+
+        add_submodule(&repository.path, &dependency_url, "vendor/sibling")
+            .expect("add a second owned submodule");
+        repository.write("vendor/sibling/engine.txt", "sibling edit\n");
+        let sibling = repository.path.join("vendor/sibling");
+        let sibling_head = run_git(&sibling, &["rev-parse", "HEAD"]).unwrap().stdout;
+        let parent_index = run_git(&repository.path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout;
+        dependency.write("engine.txt", "version four\n");
+        stage_all(&dependency.path).unwrap();
+        commit(&dependency.path, "Dependency v4").unwrap();
+        update_submodule(&repository.path, "vendor/engine")
+            .expect("an unrelated dirty sibling must not block the selected update");
+        assert_eq!(
+            run_git(&checkout, &["rev-parse", "HEAD"]).unwrap().stdout,
+            run_git(&dependency.path, &["rev-parse", "HEAD"]).unwrap().stdout
+        );
+        assert_eq!(
+            run_git(&sibling, &["rev-parse", "HEAD"]).unwrap().stdout,
+            sibling_head
+        );
+        assert_eq!(
+            fs::read_to_string(sibling.join("engine.txt")).unwrap(),
+            "sibling edit\n"
+        );
+        assert_eq!(
+            run_git(&repository.path, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            parent_index
         );
     }
 

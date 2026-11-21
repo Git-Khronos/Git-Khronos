@@ -312,7 +312,10 @@ Sources: [git-submodule](https://git-scm.com/docs/git-submodule),
 
 Used for gitlink modes, conflict stages, submodule status flags, declared and
 registered URLs, `set-branch` remote-HEAD/same-name/specific-branch semantics,
-the `sync` subcommand's scope, `update --no-fetch --checkout`, non-forced `deinit` and gitlink removal with
+the `sync` subcommand's scope, `update --no-fetch --checkout`, and single-path
+`update --remote --recursive` behavior. The app independently uses the
+porcelain flags to refuse updating a dirty selected checkout before fetching.
+Also used for non-forced `deinit` and gitlink removal with
 [git-rm](https://git-scm.com/docs/git-rm). Original fixtures; no
 third-party implementation copied.
 

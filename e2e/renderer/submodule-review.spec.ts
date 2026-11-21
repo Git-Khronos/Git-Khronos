@@ -57,6 +57,10 @@ async function setup(page: Page): Promise<void> {
         fixture.initializedOne = true;
         return Promise.resolve(git.repository());
       }
+      if (command === 'update_submodule') {
+        if (args.path !== 'vendor/lane-engine') return Promise.reject(Error('Unexpected submodule path'));
+        return Promise.resolve(git.repository());
+      }
       if (command === 'update_all_submodules') return Promise.resolve(git.repository());
       if (command === 'set_submodule_tracking_branch') {
         const previousTrackingBranch = fixture.trackingBranch;
@@ -126,6 +130,45 @@ test('opening an uninitialized submodule reviews one path and requires explicit 
   await expect(dialog.getByRole('alert')).toContainText('no longer available for initialization');
   await expect(review).toHaveCount(0);
   expect(await mutations()).toHaveLength(1);
+});
+
+test('reviews a single remote update without fetching from a dirty or cancelled checkout', async ({ page }) => {
+  await setup(page);
+  const actions = page.getByRole('button', { name: 'Submodule actions for vendor/lane-engine', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const confirmation = dialog.getByRole('group', { name: 'Update vendor/lane-engine', exact: true });
+  const mutations = () => page.evaluate(() => (window as any).__submoduleReview.calls
+    .filter((call: any) => /^update_.*submodule/.test(call.command)));
+  const openUpdate = async () => {
+    await actions.click();
+    await page.getByRole('menuitem', { name: 'Update from remote…', exact: true }).click();
+  };
+  await openUpdate();
+  await expect(dialog.getByRole('alert')).toContainText('no longer available for remote update');
+  await expect(confirmation).toHaveCount(0);
+  expect(await mutations()).toEqual([]);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.evaluate(() => {
+    const fixture = (window as any).__submoduleReview;
+    fixture.clean = true;
+    fixture.trackingBranch = 'release';
+  });
+
+  await openUpdate();
+  await expect(confirmation).toContainText('Tracking branch: release.');
+  await expect(confirmation).toContainText('before staging or committing it in the parent');
+  await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  expect(await mutations()).toEqual([]);
+  await confirmation.getByRole('button', { name: 'Cancel' }).click();
+  const reviewAgain = dialog.getByRole('button', { name: 'Update from remote…', exact: true });
+  await expect(reviewAgain).toBeFocused();
+  expect(await mutations()).toEqual([]);
+  await reviewAgain.click();
+  await confirmation.getByRole('button', { name: 'Update from remote', exact: true }).click();
+  await expect(dialog.locator('[data-submodule-sync]')).toContainText('Updated vendor/lane-engine from its remote.');
+  expect(await mutations()).toEqual([{
+    command: 'update_submodule', args: expect.objectContaining({ path: 'vendor/lane-engine' }),
+  }]);
 });
 
 async function open(page: Page): Promise<void> {

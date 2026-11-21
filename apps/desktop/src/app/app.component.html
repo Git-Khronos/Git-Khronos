@@ -958,7 +958,7 @@
                         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="reviewSubmoduleInitialization(submodule)"><gc-icon name="refresh" [size]="12" />Initialize…</button>
                       } @else {
                         <button type="button" role="menuitem" (click)="openSubmodule(submodule)"><gc-icon name="folder-git" [size]="12" />Open submodule</button>
-                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="updateSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Update to latest commit</button>
+                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="reviewSubmoduleUpdate(submodule)"><gc-icon name="refresh" [size]="12" />Update from remote…</button>
                       }
                       <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview(true)"><gc-icon name="settings" [size]="12" />Manage submodules…</button>
                       <button type="button" role="menuitem" (click)="actionOverlays.close('submodule'); copyContextValue(submodule.url)"><gc-icon name="copy" [size]="12" />Copy remote URL</button>

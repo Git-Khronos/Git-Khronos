@@ -1812,13 +1812,13 @@ export class GitKhronosService implements OnDestroy {
     ) === 'success';
   }
 
-  async updateSubmodule(path: string): Promise<void> {
-    await this.mutate(
+  async updateSubmodule(path: string): Promise<boolean> {
+    return await this.mutate(
       'update_submodule',
       `Updating ${path}…`,
       `Updated ${path}`,
       { path },
-    );
+    ) === 'success';
   }
 
   async updateAllSubmodules(): Promise<boolean> {

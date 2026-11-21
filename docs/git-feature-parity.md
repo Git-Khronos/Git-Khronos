@@ -46,6 +46,8 @@ behavioral cases during the audit; grouping does not remove any listed action.
 2. **Optional submodule automation:** clone can include submodules and explicit
    management exists. Opening a missing submodule now opens a scoped review;
    it does not initialize or contact its remote without confirmation.
+   A single remote update is also reviewed, and the native command checks
+   that the selected checkout is clean and conflict-free before fetching.
    Automatic update preferences are intentionally not
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the

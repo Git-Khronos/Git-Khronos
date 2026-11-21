@@ -3,7 +3,7 @@ import { ipc } from '@git-khronos/contracts';
 import type { SubmoduleDeinitResult, SubmoduleRemovalResult, SubmoduleRecordedCheckoutResult, SubmoduleState, SubmoduleStateReview, SubmoduleTrackingBranchResult, SubmoduleUrlSyncResult } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
-import type { WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
+import type { SubmoduleReviewTarget, WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
 import { submoduleFindings } from './submodule-findings';
 
 
@@ -80,21 +80,30 @@ import { submoduleFindings } from './submodule-findings';
                         <span>{{ finding.detail }}</span></li>
                     }
                   </ul>
-                  @if (canInitialize(entry)) {
-                    @if (confirming() === 'initialize:' + entry.path) {
-                      <div class="confirm" role="group" [attr.aria-label]="'Initialize ' + entry.path">
-                        <p>Initialize only <code>{{ entry.path }}</code> and its nested submodules at the commits recorded by Git.
-                          Git may contact their configured remotes. Other top-level submodules are not selected.</p>
-                        @if (syncing()) { <p role="status">Initializing {{ entry.path }}…</p> }
+                  @if (reviewAction(entry); as operation) {
+                    @if (confirming() === operation + ':' + entry.path) {
+                      <div class="confirm" role="group" [attr.aria-label]="(operation === 'initialize' ? 'Initialize ' : 'Update ') + entry.path">
+                        @if (operation === 'initialize') {
+                          <p>Initialize only <code>{{ entry.path }}</code> and its nested submodules at the commits recorded by Git.
+                            Git may contact their configured remotes. Other top-level submodules are not selected.</p>
+                        } @else {
+                          <p>Fetch and update only <code>{{ entry.path }}</code> and its nested submodules using their Git configuration.
+                            Review any changed gitlink before staging or committing it in the parent.</p>
+                          <p>Tracking branch: {{ trackingBranchLabel(entry.trackingBranch) }}.</p>
+                        }
+                        @if (syncing()) { <p role="status">{{ operation === 'initialize' ? 'Initializing' : 'Updating' }} {{ entry.path }}…</p> }
                         <div class="row">
-                          <button type="button" [disabled]="unavailable() || syncing() || git.busy()" (click)="initialize(entry)">Initialize submodule</button>
-                          <button type="button" data-initialize-one-cancel [disabled]="syncing()" (click)="cancel('initialize-open', entry.path)">Cancel</button>
+                          <button type="button" [disabled]="unavailable() || syncing() || git.busy()" (click)="runSingle(entry, operation)">
+                            {{ operation === 'initialize' ? 'Initialize submodule' : 'Update from remote' }}</button>
+                          <button type="button" data-single-submodule-cancel [attr.data-initialize-one-cancel]="operation === 'initialize' ? '' : null"
+                            [disabled]="syncing()" (click)="cancel(operation + '-open', entry.path)">Cancel</button>
                         </div>
                       </div>
                     } @else {
-                      <button type="button" [attr.data-initialize-open]="entry.path"
+                      <button type="button" [attr.data-initialize-open]="operation === 'initialize' ? entry.path : null"
+                        [attr.data-update-open]="operation === 'update' ? entry.path : null"
                         [disabled]="unavailable() || syncing() || git.busy() || !!confirming()"
-                        (click)="openInitialize(entry)">Initialize submodule…</button>
+                        (click)="openSingle(entry, operation)">{{ operation === 'initialize' ? 'Initialize submodule…' : 'Update from remote…' }}</button>
                     }
                   }
                   @if (entry.name) {
@@ -270,7 +279,7 @@ export class SubmoduleStateReviewComponent {
   constructor() {
     effect(() => {
       const target = this.request();
-      if (target) untracked(() => { this.syncNotice.set(''); void this.reload(target.submoduleToInitialize); });
+      if (target) untracked(() => { this.syncNotice.set(''); void this.reload(target.submoduleTarget); });
     });
   }
 
@@ -459,33 +468,42 @@ export class SubmoduleStateReviewComponent {
     return !!entry.name && !!entry.indexOid && !!entry.declaredUrl && !entry.checkedOut && !entry.conflict;
   }
 
-  openInitialize(entry: SubmoduleState): void {
-    if (!this.canInitialize(entry) || this.unavailable() || this.syncing() || this.git.busy()) return;
+  reviewAction(entry: SubmoduleState): SubmoduleReviewTarget['action'] | null {
+    if (this.canInitialize(entry)) return 'initialize';
+    return this.canUpdate(entry) ? 'update' : null;
+  }
+
+  private canUpdate(entry: SubmoduleState): boolean {
+    return !!entry.name && !!entry.indexOid && entry.checkedOut && !entry.conflict && !entry.trackedChanges && !entry.untrackedChanges;
+  }
+
+  openSingle(entry: SubmoduleState, action: SubmoduleReviewTarget['action']): void {
+    if (this.reviewAction(entry) !== action || this.unavailable() || this.syncing() || this.git.busy()) return;
     const target = this.request();
-    const confirmation = `initialize:${entry.path}`;
+    const confirmation = `${action}:${entry.path}`;
     this.confirming.set(confirmation);
     setTimeout(() => {
       if (this.request() === target && this.confirming() === confirmation) {
-        this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-initialize-one-cancel]')?.focus();
+        this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-single-submodule-cancel]')?.focus();
       }
     });
   }
 
-  initialize(entry: SubmoduleState): Promise<void> {
-    if (!this.canInitialize(entry) || this.confirming() !== `initialize:${entry.path}`
+  runSingle(entry: SubmoduleState, action: SubmoduleReviewTarget['action']): Promise<void> {
+    if (this.reviewAction(entry) !== action || this.confirming() !== `${action}:${entry.path}`
       || !this.review()?.entries.includes(entry) || this.git.busy()) return Promise.resolve();
     return this.run(async () => {
-      if (!await this.git.initializeSubmodule(entry.path)) {
-        throw new Error(this.git.error() ?? 'Submodule initialization did not complete.');
+      const succeeded = action === 'initialize' ? await this.git.initializeSubmodule(entry.path) : await this.git.updateSubmodule(entry.path);
+      if (!succeeded) {
+        throw new Error(this.git.error() ?? 'The submodule operation did not complete.');
       }
-      return `Initialized ${entry.path} at its recorded commit.`;
+      return action === 'initialize' ? `Initialized ${entry.path} at its recorded commit.`
+        : `Updated ${entry.path} from its remote. Review any changed gitlink before committing.`;
     });
   }
 
   canUpdateAll(result: SubmoduleStateReview): boolean {
-    return !!result.entries.length && result.entries.every(entry =>
-      !!entry.name && !!entry.indexOid && entry.checkedOut && !entry.conflict
-      && !entry.trackedChanges && !entry.untrackedChanges);
+    return !!result.entries.length && result.entries.every(entry => this.canUpdate(entry));
   }
 
   updateAllReason(result: SubmoduleStateReview): string {
@@ -529,7 +547,7 @@ export class SubmoduleStateReviewComponent {
     return oid?.slice(0, 10) ?? 'Not recorded';
   }
 
-  async reload(initializePath?: string): Promise<void> {
+  async reload(submoduleTarget?: SubmoduleReviewTarget): Promise<void> {
     const target = this.request();
     if (!target || this.unavailable()) return;
     this.loading.set(true);
@@ -545,13 +563,14 @@ export class SubmoduleStateReviewComponent {
       this.loading.set(false);
     }
     if (this.request() !== target) return;
-    if (initializePath && target.repositoryId === this.git.activeRepositoryId() && !this.error()) {
-      const entry = this.review()?.entries.find(candidate => candidate.path === initializePath);
-      if (entry && this.canInitialize(entry) && !this.git.busy()) {
-        this.openInitialize(entry);
+    if (submoduleTarget && target.repositoryId === this.git.activeRepositoryId() && !this.error()) {
+      const entry = this.review()?.entries.find(candidate => candidate.path === submoduleTarget.path);
+      if (entry && this.reviewAction(entry) === submoduleTarget.action && !this.git.busy()) {
+        this.openSingle(entry, submoduleTarget.action);
         return;
       }
-      this.error.set(`${initializePath} is no longer available for initialization. Review its current state before continuing.`);
+      const reason = submoduleTarget.action === 'initialize' ? 'initialization' : 'remote update';
+      this.error.set(`${submoduleTarget.path} is no longer available for ${reason}. Review its current state before continuing.`);
     }
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(
       this.error() || target.repositoryId !== this.git.activeRepositoryId() ? '[role=alert]' : '[data-submodule-result]')?.focus());

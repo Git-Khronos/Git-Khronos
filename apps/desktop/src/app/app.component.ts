@@ -100,7 +100,7 @@ import { KeyboardShortcutsDialogComponent } from './keyboard-shortcuts-dialog.co
 import { RepositoryDialogComponent, type RepositoryDialogMode } from './repository-dialog.component';
 import { LfsTrackingDialogComponent, type LfsTrackingRequest } from './lfs-tracking-dialog.component';
 import { WorktreeMoveDialogComponent, type WorktreeMoveRequest } from './worktree-move-dialog.component';
-import { WorktreeRegistrationDialogComponent, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
+import { WorktreeRegistrationDialogComponent, type SubmoduleReviewTarget, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
 import { MergeRebaseDialogComponent, type MergeRebaseDialogState } from './merge-rebase-dialog.component';
 import { GitDocumentationDialogComponent } from './git-documentation-dialog.component';
 import { GitDocumentationService } from './git-documentation.service';
@@ -7023,7 +7023,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeMoveRequest.set({ ...owner, worktree, returnFocus, repair: true });
   }
 
-  protected openWorktreeRegistrationReview(submodules?: boolean, returnFocus?: HTMLElement | null, submoduleToInitialize?: string): void {
+  protected openWorktreeRegistrationReview(submodules?: boolean, returnFocus?: HTMLElement | null, submoduleTarget?: SubmoduleReviewTarget): void {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
     const opener = returnFocus
@@ -7031,7 +7031,7 @@ export class AppComponent implements OnInit, OnDestroy {
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.actionOverlays.close('worktree');
     this.actionOverlays.close('submodule');
-    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules, submoduleToInitialize });
+    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules, submoduleTarget });
   }
 
   protected openLfsTracking(): void {
@@ -7371,12 +7371,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected reviewSubmoduleInitialization(submodule: Submodule, returnFocus?: HTMLElement): void {
-    this.openWorktreeRegistrationReview(true, returnFocus, submodule.path);
+    this.openWorktreeRegistrationReview(true, returnFocus, { path: submodule.path, action: 'initialize' });
   }
 
-  protected async updateSubmodule(submodule: Submodule): Promise<void> {
-    this.actionOverlays.close('submodule');
-    await this.git.updateSubmodule(submodule.path);
+  protected reviewSubmoduleUpdate(submodule: Submodule): void {
+    this.openWorktreeRegistrationReview(true, undefined, { path: submodule.path, action: 'update' });
   }
 
   protected isWorktreeOpen(path: string): boolean {
