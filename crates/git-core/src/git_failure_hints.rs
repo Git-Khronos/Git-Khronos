@@ -1,6 +1,11 @@
 pub(super) const GENERIC_HINT: &str = "Resolve the Git error and refresh the repository.";
 
 pub(super) fn recovery_hint(detail: &str) -> &'static str {
+    // This is guidance only. A diagnostic cannot authorize switching or
+    // opening a checkout, or override native worktree registration checks.
+    if worktree_branch_refusal(detail) {
+        return "In Worktrees, open the checkout named by Git to work on this branch. To switch to it here instead, first finish or stop any active rebase or bisect there, then switch that checkout to a different branch. Do not force the branch switch.";
+    }
     let detail = detail.to_ascii_lowercase();
     if detail.contains("no space left on device") || detail.contains("disk quota exceeded") {
         return "Free space or resolve the quota on the repository and temporary-file volumes. Writes may have partially completed; preserve the current files, inspect repository status and refresh before retrying. Do not remove Git objects or recovery data to make space.";
@@ -37,6 +42,24 @@ pub(super) fn recovery_hint(detail: &str) -> &'static str {
         return "Stop writes and check the storage device and filesystem for I/O failures. Preserve recoverable repository and working-file data before further Git operations. Inspect any partial changes and use a verified backup; do not assume retrying or maintenance will repair storage damage.";
     }
     GENERIC_HINT
+}
+
+fn worktree_branch_refusal(detail: &str) -> bool {
+    let Some(refusal) = detail.strip_prefix("fatal: '") else {
+        return false;
+    };
+    [
+        "' is already used by worktree at '",
+        "' is already checked out at '",
+    ]
+    .into_iter()
+    .any(|separator| {
+        refusal
+            .rsplit_once(separator)
+            .is_some_and(|(branch, path)| {
+                !branch.is_empty() && path.strip_suffix('\'').is_some_and(|path| !path.is_empty())
+            })
+    })
 }
 
 #[cfg(test)]
@@ -98,11 +121,27 @@ mod tests {
             "error: gpg failed to sign the data: bad signature",
             "fatal: reference is not a tree: unknown-branch",
             "fatal: cannot lock ref: is at abc but expected def",
+            "fatal: destination already used by worktree at '/repo'",
+            "fatal: 'main' is already used by worktree at ''",
         ] {
             assert_eq!(
                 recovery_hint(message),
                 "Resolve the Git error and refresh the repository."
             );
+        }
+    }
+
+    #[test]
+    fn git_worktree_refusals_give_actionable_guidance_for_both_diagnostic_spellings() {
+        for diagnostic in [
+            "fatal: 'dev' is already used by worktree at '/home/user/main checkout'",
+            "fatal: 'topic' is already checked out at '/home/user/main checkout'",
+        ] {
+            let hint = recovery_hint(diagnostic);
+            assert!(
+                hint.contains("In Worktrees") && hint.contains("rebase") && hint.contains("bisect")
+            );
+            assert!(hint.contains("Do not force"));
         }
     }
 }

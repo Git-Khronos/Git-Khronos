@@ -1911,6 +1911,60 @@ fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktre
 }
 
 #[test]
+fn reference_actions_checkout_explains_a_branch_reserved_by_a_detached_rebase() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let linked = path.join(".git/rebase-owner");
+    run_mutation(
+        path,
+        &["worktree", "add", "-b", "topic", linked.to_str().unwrap()],
+        "create owned topic checkout",
+    )
+    .unwrap();
+    for (checkout, contents) in [(path.as_path(), "main\n"), (linked.as_path(), "topic\n")] {
+        fs::write(checkout.join("file"), contents).unwrap();
+        stage_path(checkout, "file").unwrap();
+        commit(checkout, contents.trim()).unwrap();
+    }
+    assert!(!run_git(&linked, &["rebase", "main"]).unwrap().status.success());
+    let status = read_status(&linked).unwrap();
+    assert!(status.rebase_in_progress && status.branch.is_none());
+
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+    let main = run_git(path, &["status", "--porcelain=v1", "--branch", "-z"])
+        .unwrap()
+        .stdout;
+    let conflict = run_git(&linked, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
+    let linked_file = fs::read(linked.join("file")).unwrap();
+    let blocked = checkout_branch(path, "topic").unwrap_err();
+    assert_eq!(
+        blocked.kind, "gitFailure",
+        "a detached owner is not a normal checkout"
+    );
+    assert!(blocked.message.contains(linked.to_str().unwrap()), "{blocked:?}");
+    let hint = blocked.hint.as_deref().unwrap();
+    assert!(
+        hint.contains("Worktrees") && hint.contains("rebase") && hint.contains("bisect"),
+        "{blocked:?}"
+    );
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+    assert_eq!(
+        run_git(path, &["status", "--porcelain=v1", "--branch", "-z"])
+            .unwrap()
+            .stdout,
+        main
+    );
+    assert_eq!(
+        run_git(&linked, &["ls-files", "--stage", "-z"]).unwrap().stdout,
+        conflict
+    );
+    assert_eq!(fs::read(linked.join("file")).unwrap(), linked_file);
+    assert!(read_status(&linked).unwrap().rebase_in_progress);
+}
+
+#[test]
 fn interactive_rebase_fixup_retains_preceding_message_and_original_tip_for_recovery() {
     let repository = Repository::new();
     let path = &repository.0;

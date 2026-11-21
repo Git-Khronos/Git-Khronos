@@ -1,5 +1,14 @@
 # Compatibility notes
 
+## Branch reserved by another checkout
+
+[Git worktree](https://git-scm.com/docs/git-worktree) documents branch
+occupancy and the detached marker in porcelain output. In owned Git
+fixtures, a conflicted rebase detached the linked checkout but still
+reserved its original branch. The app gives recovery guidance on the
+observed Git refusal without interpreting its text as checkout identity
+or authorizing any action. No external implementation was copied.
+
 ## GitLab account and project discovery
 
 Public GitLab REST v4 documentation defines the authenticated user and project
