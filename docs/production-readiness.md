@@ -2774,3 +2774,23 @@ The paired and atomic-marker reports are in
 `target/local-review/updater/jammy-builder/coherent-snapshot-release.tCQLzY8Z/focused/`.
 These are focused installed results, not the full 34-check matrix or
 production signing.
+
+## Installed guidance for a branch reserved by a rebase — 2026-11-21
+
+The same `worktree-reservation` scenario ran on both Ubuntu 24.04
+installers. With a real conflicted rebase in a linked checkout, the
+`bc1a577` build showed only Git's refusal and generic advice. The
+`bc80488` package told the user to open the named checkout in Worktrees
+and finish or stop the operation there before trying to switch elsewhere.
+Independent Git and filesystem checks confirmed that each checkout's
+HEAD, shared refs, index, config and working file, plus the pending rebase
+and its conflicts, were unchanged. Both inherited-Git checks passed on
+the fixed installer.
+
+The positive installer SHA-256 is
+`3dabd0cdb758e75951d4455451ce9d86ae872db691ed433003f0ef7a792ccac0`.
+Reports are under
+`target/local-review/coherent-checkout-snapshot.pg2K80sh/reserved-branch.X1POuJUw/red/`
+and
+`target/local-review/updater/jammy-builder/worktree-reservation-release.35QMYopM/focused/`.
+This is focused evidence for a different candidate, not the full release matrix.
