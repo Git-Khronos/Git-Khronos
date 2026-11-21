@@ -192,6 +192,18 @@ check that only the staged file was saved and that the unstaged and untracked
 neighbours stayed unchanged.
 The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 
+## Focused patch export
+
+Use `--suite patch-export --headless` to check the reviewed export paths
+against two owned tracked files. The empty scope must not offer a save.
+Restoring one selected file outside the app must leave that path visible
+as unavailable and block export until it is explicitly removed. The
+native command must also refuse the mixed selection without creating a
+file. Once the selection is repaired, the test opens and cancels the real
+GTK save picker, then verifies the native export independently with
+`git apply --numstat`.
+The exact-artifact Ubuntu 24.04 CI job also runs this suite.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a

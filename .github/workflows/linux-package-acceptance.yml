@@ -87,7 +87,7 @@ jobs:
         run: |
           python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
-      - name: Verify installed workspace and branch workflow reviews
+      - name: Verify installed workspace and Git workflow reviews
         if: matrix.ubuntu == '24.04'
         run: |
           python3 tools/native_acceptance.py --suite workspace-batch --headless --installed --package "$PACKAGE"
@@ -100,6 +100,7 @@ jobs:
           python3 tools/native_acceptance.py --suite submodule-initialize --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite submodule-update --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite stash-selection --headless --installed --package "$PACKAGE"
+          python3 tools/native_acceptance.py --suite patch-export --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite feature-rebase --headless --installed --package "$PACKAGE"
       - name: Verify installed packed-ref refresh under contention
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'

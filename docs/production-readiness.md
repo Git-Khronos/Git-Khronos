@@ -428,6 +428,19 @@ publisher key; see `verified-release.manual.json` in that directory.
 This evidence does not qualify the later patch-export fix or production
 publisher signing.
 
+The patch-export build at `4456b6e`, SHA-256
+`5e9a172b5d8ad5c1030c23b6d0e13d31f6b993154e2d0f2bfa5d5259ff9ef5e9`,
+passed three installed Ubuntu 24.04 scenarios. An empty tracked diff
+disabled the save picker. An external restore left one selected path
+visibly unavailable, and both the renderer and native command refused a
+partial export. Removing the stale path reopened the real GTK picker.
+Escape completed as cancellation without a Git error, unlike the
+previous packaged build. An independent native export produced the exact
+remaining one-file diff according to `git apply --numstat`. See
+`installed-patch-export.json` under
+`target/local-review/updater/jammy-builder/patch-picker-cancel.v8mHsyRm/`.
+This focused evidence does not substitute for the full release matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

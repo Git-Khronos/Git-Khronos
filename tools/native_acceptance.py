@@ -1149,7 +1149,7 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection",
+        "stash-selection", "patch-export",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1161,6 +1161,8 @@ def main():
     picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
     if picker_suite and not args.headless:
         parser.error("workspace folder picker suites require --headless (private Xvfb)")
+    if args.suite == "patch-export" and not args.headless:
+        parser.error("patch-export requires --headless (private Xvfb)")
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
     output.mkdir(parents=True)
     progress = ScenarioProgress(output, args.suite)
@@ -1325,6 +1327,9 @@ def main():
             elif args.suite == "stash-selection":
                 from native_stash_review_scenarios import stash_selection_scope
                 repository, repo_id = stash_selection_scope(driver, fixtures, report)
+            elif args.suite == "patch-export":
+                from native_patch_export_scenarios import patch_export_scope
+                repository, repo_id = patch_export_scope(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
