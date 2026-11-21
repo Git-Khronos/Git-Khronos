@@ -1147,7 +1147,8 @@ def main():
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
-        "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate", "feature-rebase",
+        "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
+        "workspace-locate-nearby", "feature-rebase",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1156,7 +1157,7 @@ def main():
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
-    picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate")
+    picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
     if picker_suite and not args.headless:
         parser.error("workspace folder picker suites require --headless (private Xvfb)")
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
@@ -1290,7 +1291,10 @@ def main():
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
             elif picker_suite:
                 from native_workspace_locate_scenarios import locate_workspace_paths
-                repository = locate_workspace_paths(driver, fixtures, report, args.suite == "workspace-bulk-locate")
+                repository = locate_workspace_paths(
+                    driver, fixtures, report, args.suite == "workspace-bulk-locate",
+                    start_nearby=args.suite == "workspace-locate-nearby",
+                )
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
             elif args.suite == "editor-close":
                 from native_editor_close_scenarios import editor_window_close

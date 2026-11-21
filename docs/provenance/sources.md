@@ -1887,8 +1887,11 @@ third-party implementation or assets were copied.
 
 - [X.Org Xlib manual](https://www.x.org/releases/current/doc/libX11/libX11/libX11.html)
 - [GTK3 chooser keyboard bindings](https://gitlab.gnome.org/GNOME/gtk/-/blob/gtk-3-24/gtk/gtkfilechooserwidget.c)
+- [Tauri dialog options](https://v2.tauri.app/reference/javascript/dialog/#opendialogoptions)
 
 Used for the public X11 window/focus contracts and GTK3 keyboard shortcuts.
+The native dialog's documented `defaultPath` option provides the saved-path
+starting hint.
 The harness drives the real chooser on the fixture display rather than
 replacing the native dialog. No upstream code or assets were copied and
 no application dependency was added.

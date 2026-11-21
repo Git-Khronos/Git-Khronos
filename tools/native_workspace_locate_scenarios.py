@@ -5,9 +5,11 @@ from native_folder_picker import respond_to_owned_picker
 from native_worktree_scenarios import checkout_footprint
 
 
-def locate_workspace_paths(driver, fixtures, report, batch):
+def locate_workspace_paths(driver, fixtures, report, batch, *, start_nearby=False):
     active = fixtures.repository('workspace-locate-active', commits=2)
-    first = fixtures.repository('workspace-locate-first', commits=2)
+    if start_nearby:
+        (fixtures.root / 'nearby').mkdir()
+    first = fixtures.repository('nearby/workspace-locate-first' if start_nearby else 'workspace-locate-first', commits=2)
     next_path = fixtures.repository('workspace-locate-next', commits=2)
     last = fixtures.repository('workspace-locate-last', commits=2)
     old_paths = [active, first, next_path, last]
@@ -19,8 +21,7 @@ def locate_workspace_paths(driver, fixtures, report, batch):
     before = [checkout_footprint(fixtures, repository, files) for repository in old_paths]
     actual = [active]
     for old in old_paths[1:]:
-        # The real chooser selects the sole visible row in the private home.
-        destination_root = fixtures.root / 'home' if old == first else fixtures.root
+        destination_root = (first.parent if start_nearby else fixtures.root / 'home') if old == first else fixtures.root
         destination = destination_root / (old.name + ' moved checkout')
         old.rename(destination)
         actual.append(destination)
@@ -61,7 +62,8 @@ def locate_workspace_paths(driver, fixtures, report, batch):
         driver.click_scrolled_text(choose, 'Locate and open…', wait_for_ready=True)
         first_title = f'Locate the new folder for {first.name}'
     evidence['pickerInputs'].append(respond_to_owned_picker(
-        driver.owned_display, driver.owned_session_application_pid, first_title, fixtures.root, actual[1]))
+        driver.owned_display, driver.owned_session_application_pid, first_title, fixtures.root, actual[1],
+        from_initial_location=start_nearby))
     wait_active(actual[1])
 
     if batch:
@@ -85,6 +87,10 @@ def locate_workspace_paths(driver, fixtures, report, batch):
     assert evidence['afterReload'] == expected
     assert [checkout_footprint(fixtures, repository, files) for repository in actual] == before
     evidence['checkoutsUnchanged'] = True
-    report['scenarios'].append('native-workspace-bulk-locate-stops-on-native-picker-cancel-and-preserves-saved-slots' if batch
-                               else 'native-workspace-locate-replaces-one-path-using-owned-native-folder-picker')
+    if batch:
+        report['scenarios'].append('native-workspace-bulk-locate-stops-on-native-picker-cancel-and-preserves-saved-slots')
+    elif start_nearby:
+        report['scenarios'].append('native-workspace-locate-starts-in-the-previous-parent-and-selects-renamed-checkout')
+    else:
+        report['scenarios'].append('native-workspace-locate-replaces-one-path-using-owned-native-folder-picker')
     return actual[1]

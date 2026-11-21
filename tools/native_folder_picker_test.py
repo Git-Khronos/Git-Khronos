@@ -77,6 +77,16 @@ class OwnedFolderPickerTests(unittest.TestCase):
                 respond_to_owned_picker(self.display, self.owner, self.title, root, folder)
             self.assertNotIn(call(456, 'o', 'Alt_L'), self.keyboard.key.call_args_list)
 
+    def test_initial_location_does_not_navigate_to_fixture_home(self):
+        with (TemporaryDirectory() as root,
+              patch('native_pointer.os.getpgid', return_value=123),
+              patch('native_folder_picker._PickerKeyboard', return_value=self.keyboard),
+              patch('native_folder_picker.time.sleep')):
+            folder = Path(root) / 'nearby' / 'moved checkout'
+            folder.mkdir(parents=True)
+            respond_to_owned_picker(self.display, self.owner, self.title, root, folder, from_initial_location=True)
+            self.assertEqual(self.keyboard.key.call_args_list, [call(456, 'Home'), call(456, 'o', 'Alt_L')])
+
     def test_releases_keys_after_an_uncertain_key_press(self):
         picker = object.__new__(_PickerKeyboard)
         picker.display = 'owned'

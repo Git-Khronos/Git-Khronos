@@ -59,6 +59,8 @@ selection. An unreadable saved path remains saved during restoration and is
 reported rather than treated as an explicit close.
 
 Repository overview can locate an unopened saved checkout at its new path.
+It passes the original saved path as a starting-location hint to the native
+picker. The hint does not open a checkout or change its saved membership.
 The folder picker and native open reply belong to the originating overview
 and workspace visit. Only a successful current reply can replace the old
 membership in its original slot, using the canonical path returned by Git

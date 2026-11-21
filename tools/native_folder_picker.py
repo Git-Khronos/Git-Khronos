@@ -108,19 +108,19 @@ class _PickerKeyboard(_X11Pointer):
                 raise RuntimeError('Could not release owned picker keys')
 
 
-def _require_only_visible_folder(fixture_root, folder):
-    home = Path(fixture_root).resolve(strict=True) / 'home'
-    if (home.is_symlink() or not home.is_dir() or folder.parent != home
+def _require_only_visible_folder(fixture_root, folder, from_initial_location):
+    directory = Path(fixture_root).resolve(strict=True) / ('nearby' if from_initial_location else 'home')
+    if (directory.is_symlink() or not directory.is_dir() or folder.parent != directory
         or folder.is_symlink() or not folder.is_dir()
-        or [entry for entry in home.iterdir() if not entry.name.startswith('.')] != [folder]):
-        raise RuntimeError('Expected the requested folder to be the only visible entry in the owned fixture home')
+        or [entry for entry in directory.iterdir() if not entry.name.startswith('.')] != [folder]):
+        raise RuntimeError('Expected the requested folder to be the only visible entry in the owned fixture directory')
 
 
-def respond_to_owned_picker(owned_display, resolve_owner, title, fixture_root, folder=None):
+def respond_to_owned_picker(owned_display, resolve_owner, title, fixture_root, folder=None, *, from_initial_location=False):
     display, server = require_owned_xvfb(owned_display, 'picker')
     if folder is not None:
         folder = Path(folder)
-        _require_only_visible_folder(fixture_root, folder)
+        _require_only_visible_folder(fixture_root, folder, from_initial_location)
     pid = resolve_owner()
     keyboard = _PickerKeyboard(display)
     try:
@@ -143,13 +143,14 @@ def respond_to_owned_picker(owned_display, resolve_owner, title, fixture_root, f
         if folder is None:
             keyboard.key(target, 'Escape')
         else:
-            # GTK3's Home shortcut focuses the file list in the fixture home.
-            # Select its only visible row instead of driving location autocomplete.
-            keyboard.key(target, 'Home', 'Alt_L')
-            time.sleep(.3)  # GTK enumerates the selected location asynchronously.
+            # Select the file list's only visible row, without location autocomplete.
+            # The initial-location test deliberately never navigates to another directory.
+            if not from_initial_location:
+                keyboard.key(target, 'Home', 'Alt_L')
+            time.sleep(.3)  # GTK enumerates locations asynchronously.
             keyboard.key(target, 'Home')
             time.sleep(.2)
-            _require_only_visible_folder(fixture_root, folder)
+            _require_only_visible_folder(fixture_root, folder, from_initial_location)
             if server.poll() is not None or resolve_owner() != pid or keyboard.picker(title, pid) != target:
                 raise RuntimeError('Owned folder picker changed before confirmation')
             keyboard.key(target, 'o', 'Alt_L')  # The English GTK Open mnemonic.

@@ -385,7 +385,8 @@ test('locates a moved checkout in its saved slot and revokes a late restore of t
     tabs: ['/owned/alpha', '/owned/new location', '/owned/beta'],
     calls: [
       { command: 'open_repository', path: movedPath },
-      { command: 'plugin:dialog|open', options: { directory: true, multiple: false, title: 'Locate the new folder for moved checkout' } },
+      { command: 'plugin:dialog|open', options: { directory: true, multiple: false, defaultPath: movedPath,
+        title: 'Locate the new folder for moved checkout' } },
       { command: 'open_repository', path: '/alias/selected folder' },
     ],
   });
@@ -514,7 +515,7 @@ test('locates selected checkouts in saved order and stops remaining prompts when
     current: ['/owned/alpha', '/owned/new location', '/owned/second location', ...chosenPaths.slice(2), '/owned/beta'],
     other: [movedPath], active: '/owned/second location',
     picked: chosenPaths.slice(0, 4).map((path, index) => ({
-      directory: true, multiple: false, title: `Locate the new folder for ${path} (${index + 1} of 5)`,
+      directory: true, multiple: false, defaultPath: path, title: `Locate the new folder for ${path} (${index + 1} of 5)`,
     })),
     opened: ['/alias/first replacement', '/alias/second replacement', '/alias/not-a-repository'],
   });

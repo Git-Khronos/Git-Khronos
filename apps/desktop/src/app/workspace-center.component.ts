@@ -592,7 +592,9 @@ export class WorkspaceCenterComponent implements OnDestroy {
     const busy = { status: 'cancelled' as const, error: 'Another repository operation started.' };
     if (this.git.busy()) return busy;
     try {
-      const choice = await open({ directory: true, multiple: false, title: `Locate the new folder for ${label}` });
+      const choice = await open({
+        directory: true, multiple: false, defaultPath: path, title: `Locate the new folder for ${label}`,
+      });
       if (!current()) return retired;
       if (typeof choice !== 'string' || !choice) return { status: 'cancelled', error: 'No replacement folder chosen.' };
       if (this.git.busy()) return busy;
