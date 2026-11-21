@@ -182,8 +182,14 @@ disappear before confirmation or cancellation.
 ### Blocked discard subset review
 
 The root owns file-action identity, preview requests and confirmation; the
-deferred review body owns rendering. The root-level subset chooser cannot
-start until the matching first review has rendered. Returning from the chooser
+deferred review body owns rendering. The root binds the confirmation to the
+active checkout visit, branch and HEAD. A stale review explains why it cannot
+be confirmed, even when a revisit still has the same repo ID and patch.
+Rendered controls identify the review they belong to; a retired control
+cannot submit, dismiss or change a replacement. A delayed bulk preview is
+discarded if another review opened in the meantime. The root-level subset
+chooser cannot start until the matching first review has rendered. Returning
+from the chooser
 discards the selection and restores focus only after that review is rendered
 again. Choosing a subset still requires a fresh native preview before any
 destructive confirmation. The Select all eligible and Clear selection controls
@@ -191,6 +197,9 @@ only update the current candidate list; neither starts a preview or touches
 excluded paths. `discard-recovery.spec.ts` holds the review chunk,
 asserts that no second preview starts during loading, and checks focus and
 the exact subset sent after the chunk is released.
+`diff-action-lifecycle.spec.ts` checks same-tip branch changes, return visits
+and retired submit controls. Native exact-patch and recovery checks remain
+authoritative when working bytes change independently.
 
 ### Repository change notifications
 

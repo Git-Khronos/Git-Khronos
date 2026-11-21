@@ -542,3 +542,94 @@ for (const action of ['hunk', 'lines']) {
     expect(result.error).toContain('active repository changed');
   });
 }
+
+for (const change of ['return visit', 'same-tip branch', 'HEAD']) {
+  test(`a file review refuses confirmation after a ${change} change`, async ({ page }) => {
+    await prepare(page);
+    const result = await page.evaluate(async change => {
+      const { app, git, repository, calls } = (window as any).__diffAction;
+      app.requestDiscardSelectedDiffLines();
+      if (change === 'return visit') {
+        git.activateRepository('other-diff');
+        git.activateRepository(repository.id);
+      } else {
+        git.repositories.update((items: any[]) => items.map(item => item.id !== repository.id ? item
+          : change === 'same-tip branch' ? { ...item, status: { ...item.status, branch: 'other-branch' } }
+          : { ...item, headOid: 'e'.repeat(40) }));
+      }
+      const pending = app.confirmFileAction();
+      (window as any).__diffAction.finish?.();
+      await pending;
+      return { writes: calls.filter((call: any) => call.command === 'apply_working_tree_lines'), error: git.error() };
+    }, change);
+    expect(result.writes).toEqual([]);
+    expect(result.error).toContain('Open a fresh file review');
+  });
+}
+
+test('a retired confirmation cannot dispatch its replacement review', async ({ page }) => {
+  await prepare(page);
+  const result = await page.evaluate(async () => {
+    const state = (window as any).__diffAction;
+    state.app.requestDiscardHunk('file.txt', 0);
+    const retired = state.app.pendingFileAction();
+    state.app.requestDiscardSelectedDiffLines();
+    const latest = state.app.pendingFileAction();
+    const pending = state.app.confirmFileAction(retired);
+    state.finish?.();
+    await pending;
+    return { active: state.app.pendingFileAction() === latest,
+      writes: state.calls.filter((call: any) => call.command.startsWith('apply_working_tree_')) };
+  });
+  expect(result).toEqual({ active: true, writes: [] });
+});
+
+test('the rendered review explains checkout changes and leaves Cancel available', async ({ page }) => {
+  await prepare(page);
+  await page.getByRole('group', { name: 'Selected line actions', exact: true })
+    .getByRole('button', { name: 'Discard', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  const confirm = dialog.getByRole('button', { name: 'Discard selected lines', exact: true });
+  await expect(confirm).toBeEnabled();
+  await page.evaluate(() => {
+    const { git, repository } = (window as any).__diffAction;
+    git.activateRepository('other-diff');
+    git.activateRepository(repository.id);
+  });
+  await expect(dialog.getByRole('alert')).toContainText('open a fresh file review');
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test('a delayed bulk discard preview cannot open for a later visit to the same checkout', async ({ page }) => {
+  await prepare(page);
+  const action = await page.evaluate(async () => {
+    const { app, git, repository } = (window as any).__diffAction;
+    let complete!: (preview: unknown) => void;
+    git.previewDiscard = () => new Promise(resolve => { complete = resolve; });
+    const pending = app.requestBulkDiscard();
+    git.activateRepository('other-diff');
+    git.activateRepository(repository.id);
+    complete({ paths: ['file.txt'], blockedPaths: [], skippedPaths: [] });
+    await pending;
+    return app.pendingFileAction();
+  });
+  expect(action).toBeNull();
+});
+
+test('a delayed bulk preview cannot reopen after a newer file review was opened and cancelled', async ({ page }) => {
+  await prepare(page);
+  const action = await page.evaluate(async () => {
+    const { app, git } = (window as any).__diffAction;
+    let complete!: (preview: unknown) => void;
+    git.previewDiscard = () => new Promise(resolve => { complete = resolve; });
+    const pending = app.requestBulkDiscard();
+    app.requestDiscardHunk('file.txt', 0);
+    app.dismissFileConfirmation();
+    complete({ paths: ['file.txt'], blockedPaths: [], skippedPaths: [] });
+    await pending;
+    return app.pendingFileAction();
+  });
+  expect(action).toBeNull();
+});

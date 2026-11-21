@@ -238,6 +238,10 @@ interface CommitEditReview {
   readonly targetOid: string;
 }
 
+interface FileActionReview extends PendingFileAction {
+  readonly checkout: string;
+}
+
 interface CommitDraft {
   readonly submission: object;
   summary: string;
@@ -1319,7 +1323,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   protected readonly pendingPublishBranch = signal<PendingPublishBranch | null>(null);
   protected readonly publishRemote = signal('');
-  protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
+  protected readonly pendingFileAction = signal<FileActionReview | null>(null);
+  private fileActionGeneration = 0;
   protected readonly fileConfirmationDetailsReady = signal<PendingFileAction | null>(null);
   private blockedDiscardBackFocus: PendingFileAction | null = null;
   protected readonly blockedDiscardChoicePaths = signal<string[] | null>(null);
@@ -2429,8 +2434,13 @@ export class AppComponent implements OnInit, OnDestroy {
     ? this.git.workingTreeFileDiff()
     : this.git.comparisonFileDiff() ?? this.git.commitFileDiff());
 
+  private readonly fileActionCheckout = computed(() => {
+    const repository = this.git.repository();
+    return JSON.stringify([this.git.activeRepositoryReadScope(), repository?.status.branch ?? null, repository?.headOid ?? null]);
+  });
+
   private readonly fileActionView = computed(() => [
-    this.git.activeRepositoryId(), this.git.commitDetails(), this.git.commitComparison(),
+    this.fileActionCheckout(), this.git.commitDetails(), this.git.commitComparison(),
     this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
   ]);
 
@@ -12785,23 +12795,24 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async requestBulkDiscard(selected = false): Promise<void> {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
+    const checkout = this.fileActionCheckout();
+    const generation = ++this.fileActionGeneration;
     const paths = selected ? this.selectedDiscardPaths().filter(path =>
       this.unstagedEntries().some(entry => entry.path === path)) : null;
     if (selected && !paths?.length) return;
     const preview = await this.git.previewDiscard(paths);
-    if (!preview || repositoryId !== this.git.activeRepositoryId()) return;
+    if (!preview || checkout !== this.fileActionCheckout() || generation !== this.fileActionGeneration) return;
     this.openFileConfirmation({
       kind: 'discard-bulk', path: `${preview.paths.length} unstaged files`,
       untracked: false, preview, repositoryId,
     }, this.workingTreeOptionsToggle()?.nativeElement ?? null);
   }
 
-  protected async chooseRootFilesFromBlockedDiscard(): Promise<void> {
-    const action = this.pendingFileAction();
+  protected async chooseRootFilesFromBlockedDiscard(action = this.pendingFileAction()): Promise<void> {
     const repositoryId = action?.repositoryId;
     if (!action || action.kind !== 'discard-bulk' || !action.preview?.blockedPaths.length || !repositoryId
       || this.fileConfirmationDetailsReady() !== action) return;
-    if (repositoryId !== this.git.activeRepositoryId()) {
+    if (!this.ownsFileActionReview(action)) {
       this.blockedDiscardChoiceError.set('The active repository changed. Close this review and inspect the other repository before continuing.');
       return;
     }
@@ -12813,7 +12824,7 @@ export class AppComponent implements OnInit, OnDestroy {
     try {
       const preview = await this.git.previewDiscard(null);
       if (request !== this.blockedDiscardChoiceRequest || this.pendingFileAction() !== action) return;
-      if (repositoryId !== this.git.activeRepositoryId()) {
+      if (!this.ownsFileActionReview(action)) {
         this.blockedDiscardChoiceError.set('The active repository changed while refreshing the file list. No files were discarded.');
         return;
       }
@@ -12822,7 +12833,7 @@ export class AppComponent implements OnInit, OnDestroy {
         return;
       }
 
-      const refreshedAction: PendingFileAction = {
+      const refreshedAction: FileActionReview = {
         ...action,
         path: 'Choose root-level files',
         preview,
@@ -12842,29 +12853,30 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected toggleBlockedDiscardChoicePath(path: string): void {
+  protected toggleBlockedDiscardChoicePath(path: string, action = this.pendingFileAction()): void {
     const candidates = this.blockedDiscardChoicePaths();
-    if (!candidates?.includes(path) || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    if (!action || !this.ownsFileActionReview(action) || !candidates?.includes(path)
+      || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
     this.blockedDiscardChoiceError.set(null);
     this.blockedDiscardChoiceSelectedPaths.update(paths => paths.includes(path)
       ? paths.filter(candidate => candidate !== path) : [...paths, path]);
   }
 
-  protected selectBlockedDiscardChoicePaths(all: boolean): void {
+  protected selectBlockedDiscardChoicePaths(all: boolean, action = this.pendingFileAction()): void {
     const candidates = this.blockedDiscardChoicePaths();
-    if (!candidates || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    if (!action || !this.ownsFileActionReview(action) || !candidates
+      || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
     if (this.blockedDiscardChoiceSelectedPaths().length === (all ? candidates.length : 0)) return;
     this.blockedDiscardChoiceError.set(null);
     this.blockedDiscardChoiceSelectedPaths.set(all ? [...candidates] : []);
   }
 
-  protected returnToBlockedDiscardReview(): void {
-    if (this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+  protected returnToBlockedDiscardReview(action = this.pendingFileAction()): void {
+    if (!action || !this.ownsFileActionReview(action) || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
     this.blockedDiscardChoiceRequest++;
     this.blockedDiscardChoiceLoading.set(false);
-    const action = this.pendingFileAction();
     if (action?.kind === 'discard-bulk' && action.preview) {
-      const restored: PendingFileAction = {
+      const restored: FileActionReview = {
         ...action,
         path: `${action.preview.paths.length} unstaged files`,
       };
@@ -12877,14 +12889,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.blockedDiscardChoiceError.set(null);
   }
 
-  protected async previewBlockedDiscardChoice(): Promise<void> {
-    const action = this.pendingFileAction();
+  protected async previewBlockedDiscardChoice(action = this.pendingFileAction()): Promise<void> {
     const repositoryId = action?.repositoryId;
     const candidates = this.blockedDiscardChoicePaths();
     const selected = this.blockedDiscardChoiceSelectedPaths();
     if (!action || action.kind !== 'discard-bulk' || !repositoryId || !candidates || !selected.length
       || selected.some(path => !candidates.includes(path))) return;
-    if (repositoryId !== this.git.activeRepositoryId()) {
+    if (!this.ownsFileActionReview(action)) {
       this.blockedDiscardChoiceError.set('The active repository changed. Close this review and inspect the other repository before continuing.');
       return;
     }
@@ -12896,7 +12907,7 @@ export class AppComponent implements OnInit, OnDestroy {
     try {
       const preview = await this.git.previewDiscard(selected);
       if (request !== this.blockedDiscardChoiceRequest || this.pendingFileAction() !== action) return;
-      if (repositoryId !== this.git.activeRepositoryId()) {
+      if (!this.ownsFileActionReview(action)) {
         this.blockedDiscardChoiceError.set('The active repository changed while preparing the selected-file preview. No files were discarded.');
         return;
       }
@@ -13034,8 +13045,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private async applyDiffChange(change: () => Promise<boolean>): Promise<void> {
     const groups = this.selectedDiffLineGroups();
-    const repositoryId = this.git.activeRepositoryId();
-    if (await change() && repositoryId === this.git.activeRepositoryId() && groups === this.selectedDiffLineGroups()) {
+    const checkout = this.fileActionCheckout();
+    const generation = this.fileActionGeneration;
+    if (await change() && checkout === this.fileActionCheckout() && generation === this.fileActionGeneration
+      && groups === this.selectedDiffLineGroups()) {
       this.selectedDiffLineGroups.set([]);
     }
   }
@@ -13123,19 +13136,30 @@ export class AppComponent implements OnInit, OnDestroy {
     }, returnFocus);
   }
 
-  protected async confirmFileAction(): Promise<void> {
-    const action = this.pendingFileAction();
-    if (!action) return;
+  protected ownsFileActionReview(action: FileActionReview): boolean {
+    return action === this.pendingFileAction() && action.repositoryId === this.git.activeRepositoryId()
+      && action.checkout === this.fileActionCheckout();
+  }
+
+  protected async confirmFileAction(action = this.pendingFileAction()): Promise<void> {
+    if (!action || action !== this.pendingFileAction() || this.git.busy()) return;
     const returnFocus = this.fileActionReturnFocus;
-    this.dismissFileConfirmation(false);
     if (!action.repositoryId || !this.git.requireRecoveryRepository(action.repositoryId)) {
+      this.dismissFileConfirmation(false);
       if (this.recoveryHistoryOpen()) this.focusRecoveryError(returnFocus);
       return;
     }
+    if (!this.ownsFileActionReview(action)) {
+      this.dismissFileConfirmation(false);
+      this.git.error.set('The checkout, branch or HEAD changed. Open a fresh file review before continuing.');
+      if (this.recoveryHistoryOpen()) this.focusRecoveryError(returnFocus);
+      return;
+    }
+    this.dismissFileConfirmation(false);
     if (action.kind === 'discard-bulk' && action.preview) {
       const selection = this.selectedDiscardPaths();
       const succeeded = await this.git.discardPrepared(action.preview, action.repositoryId);
-      if (succeeded && action.repositoryId === this.git.activeRepositoryId() && selection === this.selectedDiscardPaths()) {
+      if (succeeded && action.checkout === this.fileActionCheckout() && selection === this.selectedDiscardPaths()) {
         this.selectedDiscardPaths.set([]);
         this.discardSelectionMode.set(false);
       }
@@ -13759,8 +13783,11 @@ export class AppComponent implements OnInit, OnDestroy {
     }, { injector: this.injector });
   }
 
-  protected dismissFileConfirmation(restoreFocus = true): void {
+  protected dismissFileConfirmation(restoreFocus = true, action = this.pendingFileAction()): void {
+    if (action !== this.pendingFileAction()) return;
     const target = restoreFocus ? this.fileActionReturnFocus : null;
+    const generation = ++this.fileActionGeneration;
+    const checkout = this.fileActionCheckout();
     this.blockedDiscardChoiceRequest++;
     this.pendingFileAction.set(null);
     this.fileConfirmationDetailsReady.set(null);
@@ -13772,21 +13799,29 @@ export class AppComponent implements OnInit, OnDestroy {
     this.fileActionReturnFocus = null;
     if (target?.isConnected) {
       afterNextRender(() => {
-        if (target.isConnected && !target.closest('[inert]')) target.focus({ preventScroll: true });
+        if (generation === this.fileActionGeneration && checkout === this.fileActionCheckout()
+          && document.activeElement === document.body && target.isConnected && !target.closest('[inert]')) {
+          target.focus({ preventScroll: true });
+        }
       }, { injector: this.injector });
     }
   }
 
   private openFileConfirmation(
-    action: PendingFileAction,
+    input: PendingFileAction,
     returnFocus: HTMLElement | null = null,
   ): void {
-    action.repositoryId ??= this.git.activeRepositoryId() ?? undefined;
+    const action: FileActionReview = {
+      ...input,
+      repositoryId: input.repositoryId ?? this.git.activeRepositoryId() ?? undefined,
+      checkout: this.fileActionCheckout(),
+    };
     const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     this.fileActionReturnFocus = returnFocus ?? activeElement;
     this.fileConfirmationDetailsReady.set(null);
+    this.fileActionGeneration++;
     this.pendingFileAction.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
       if (this.pendingFileAction() !== action) return;
