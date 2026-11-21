@@ -541,26 +541,30 @@
           </div>
         }
         <div class="toolbar-overflow-control" (click)="$event.stopPropagation()">
-          <button class="tool-button" type="button" title="More repository actions" aria-label="More repository actions" aria-haspopup="menu" [attr.aria-controls]="moreActionsMenuOpen() ? 'compact-repository-actions-menu' : null" [attr.aria-expanded]="moreActionsMenuOpen()" (click)="toggleMoreActionsMenu($event)"><span><gc-icon name="more" /></span><small>More</small></button>
-          @if (moreActionsMenuOpen()) {
-            @let model = compactRepositoryActionsView();
-            @if (model) {
-              @defer (on immediate) {
+          <button #compactActionsToggle class="tool-button" type="button" title="More repository actions" aria-label="More repository actions" aria-haspopup="menu" [attr.aria-controls]="moreActionsMenuOpen() ? 'compact-repository-actions-menu' : null" [attr.aria-expanded]="moreActionsMenuOpen()" (click)="toggleMoreActionsMenu($event)"><span><gc-icon name="more" /></span><small>More</small></button>
+          @defer (when moreActionsMenuOpen(); prefetch on hover(compactActionsToggle)) {
+            @if (moreActionsMenuOpen()) {
+              @let model = compactRepositoryActionsView();
+              @if (model) {
                 <div gcCompactRepositoryActions id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu"
                      role="menu" aria-label="More repository actions" [view]="model"
                      (activate)="runCompactRepositoryAction($event, model)" (ready)="compactRepositoryActionsReady($event)"
                      (keydown)="handleToolbarActionMenuKeydown($event)"></div>
-              } @loading {
-                <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
-                  <p class="toolbar-menu-note" role="status">Loading repository actions…</p>
-                  <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Cancel</button>
-                </div>
-              } @error {
-                <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
-                  <p class="toolbar-menu-note" role="alert">Repository actions could not load. Restart Git Khronos before retrying.</p>
-                  <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Close</button>
-                </div>
               }
+            }
+          } @loading {
+            @if (moreActionsMenuOpen()) {
+              <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
+                <p class="toolbar-menu-note" role="status">Loading repository actions…</p>
+                <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Cancel</button>
+              </div>
+            }
+          } @error {
+            @if (moreActionsMenuOpen()) {
+              <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
+                <p class="toolbar-menu-note" role="alert">Repository actions could not load. Restart Git Khronos before retrying.</p>
+                <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Close</button>
+              </div>
             }
           }
         </div>
