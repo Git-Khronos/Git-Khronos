@@ -2891,6 +2891,18 @@ Reports: `target/local-review/stash-native-background.ZBmUqIg7/red/`
 and `target/local-review/updater/jammy-builder/stash-responsive-release.GyP3TSHc/focused/`.
 These are focused installed checks, not a release matrix.
 
+### Updates status retry
+
+The deferred Updates dialog now gives an unanswered native status read
+six seconds, retires its late reply, and pauses repeated polling. An explicit
+refresh or accepted native status resumes polling; installer and preference
+actions are never replayed. Reopening can retry failed event registration.
+The held-status and subscription regressions failed before the change.
+All 285 renderer unit tests, 19 updater browser checks and the AOT build
+passed. Initial raw bundle size stayed at 1,307,639 bytes. These source
+receipts are under `target/local-review/updater-read-timeout.SXr4VcWE/`;
+they do not qualify a newly built installer or production update feed.
+
 ## Installed commit and amend responsiveness — 2026-11-21
 
 With Git held in `commit_changes`, the `998c238` installer answered
