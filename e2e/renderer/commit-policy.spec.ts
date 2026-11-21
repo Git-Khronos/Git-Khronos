@@ -552,7 +552,82 @@ test('late commit success does not clear an in-progress co-author entry', async 
   await expect.poll(() => page.evaluate(() =>
     (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().headOid)).toBe('e'.repeat(40));
   await expect(name).toHaveValue('Next collaborator');
+  await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
 });
+
+for (const commitBeforeSwitch of [false, true]) {
+  test(`manual co-author input belongs to its checkout ${commitBeforeSwitch ? 'after a late commit' : 'across tab switches'}`, async ({ page }) => {
+    await setup(page, 1);
+    const summary = page.getByLabel('Commit summary', { exact: true });
+    const toggle = page.locator('.commit-composer .add-coauthor');
+    const name = page.locator('input[name=coAuthorName]');
+    const email = page.locator('input[name=coAuthorEmail]');
+    const original = page.locator('[data-repository-tab-id="browser-preview"]');
+    const other = page.locator('[data-repository-tab-id="other-coauthor"]');
+    await page.evaluate(() => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      git.repositories.update((items: any[]) => [...items, { ...git.repository(),
+        id: 'other-coauthor', path: '/other-coauthor', name: 'other-coauthor' }]);
+    });
+    await summary.fill('Original draft');
+    await toggle.click();
+    await name.fill('Original collaborator');
+    await email.fill('unfinished@');
+    if (commitBeforeSwitch) {
+      await page.evaluate(() => { (window as any).__commitPolicy.hold = true; });
+      await page.locator('.commit-form button[type=submit]').click();
+      await expect.poll(() => page.evaluate(() => typeof (window as any).__commitPolicy.finish)).toBe('function');
+    }
+
+    await other.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(name).toHaveValue('');
+    await expect(email).toHaveValue('');
+    await name.fill('Other collaborator');
+    if (commitBeforeSwitch) {
+      await page.evaluate(() => (window as any).__commitPolicy.finish());
+      await expect.poll(() => page.evaluate(() => {
+        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        return git.repositories().find((repo: any) => repo.id === 'browser-preview')?.headOid;
+      })).toBe('e'.repeat(40));
+    }
+
+    await original.click();
+    await expect(summary).toHaveValue(commitBeforeSwitch ? '' : 'Original draft');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(name).toHaveValue('Original collaborator');
+    await expect(email).toHaveValue('unfinished@');
+    await expect(page.getByLabel('Commit co-authors')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (window as any).__commitPolicy.calls
+      .filter((call: any) => call.command === 'commit_changes').map((call: any) => call.args.message)))
+      .toEqual(commitBeforeSwitch ? ['Original draft'] : []);
+    await other.click();
+    await toggle.click();
+    await expect(name).toHaveValue('Other collaborator');
+    await expect(email).toHaveValue('');
+    if (!commitBeforeSwitch) {
+      const reopened = await page.evaluate(() => {
+        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        return git.repositories().find((repo: any) => repo.id === 'browser-preview');
+      });
+      const backgroundTab = page.locator('.repo-tab').filter({ has: original });
+      await backgroundTab.hover();
+      await backgroundTab.getByRole('button', { name: /^Close / }).click();
+      await expect(original).toHaveCount(0);
+      await page.evaluate(repo => {
+        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        git.repositories.update((items: any[]) => [...items, repo]);
+      }, reopened);
+      await original.click();
+      await expect(summary).toHaveValue('');
+      await toggle.click();
+      await expect(name).toHaveValue('');
+      await expect(email).toHaveValue('');
+    }
+  });
+}
 
 test('compact policy disclosure supports keyboard access and contextual help without horizontal clipping', async ({ page }) => {
   await setup(page, 0);

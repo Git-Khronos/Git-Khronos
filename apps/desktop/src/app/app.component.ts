@@ -2000,6 +2000,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private workingTreeFileListResizeStartHeight = 0;
   private referenceOpenSnapshot: Record<ReferenceSection, boolean> | null = null;
   private readonly commitDrafts = new Map<string, CommitDraft>();
+  private readonly commitCoAuthorInputs = new Map<string, { name: string; email: string }>();
   private draftRepositoryId: string | null = null;
   private commitListElement: HTMLElement | null = null;
   private commitListResizeObserver: ResizeObserver | null = null;
@@ -7401,8 +7402,6 @@ export class AppComponent implements OnInit, OnDestroy {
     const submission = this.commitSubmission();
     const tab = this.commitTabLease();
     const savedAtSubmit = this.commitDrafts.get(repository.id);
-    const coAuthorDraftName = this.coAuthorName();
-    const coAuthorDraftEmail = this.coAuthorEmail();
     const { message, pushAfter, options } = submission;
     const pushTarget = pushAfter ? this.commitPushTarget() : null;
     const committed = await this.git.commit(message, {
@@ -7419,9 +7418,10 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const current = this.git.repository();
     const ownsTab = current?.id === repository.id && current.path === repository.path && this.commitTabLease() === tab;
-    if (ownsTab && this.commitSubmission() === submission
-      && this.coAuthorName() === coAuthorDraftName && this.coAuthorEmail() === coAuthorDraftEmail) {
-      this.resetCommitForm();
+    if (ownsTab && this.commitSubmission() === submission) {
+      // The manual fields aren't trailers until Add is used. Keep that
+      // separate draft without retaining a message that was already committed.
+      this.resetCommitForm(true);
       this.applyCommitTemplate();
     }
     if (pushAfter) {
@@ -7561,6 +7561,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected saveCommitDraft(): void {
     const repositoryId = this.draftRepositoryId ?? this.git.activeRepositoryId();
     if (!repositoryId) return;
+    const name = this.coAuthorName();
+    const email = this.coAuthorEmail();
+    if (name || email) this.commitCoAuthorInputs.set(repositoryId, { name, email });
+    else this.commitCoAuthorInputs.delete(repositoryId);
     this.commitDrafts.set(repositoryId, {
       submission: this.commitSubmission(),
       summary: this.commitMessage(),
@@ -7585,6 +7589,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.draftRepositoryId = repositoryId;
     this.resetCommitForm();
     if (!repositoryId) return;
+    const coAuthorInput = this.commitCoAuthorInputs.get(repositoryId);
+    if (coAuthorInput) {
+      this.coAuthorName.set(coAuthorInput.name);
+      this.coAuthorEmail.set(coAuthorInput.email);
+    }
     const draft = this.commitDrafts.get(repositoryId);
     if (!draft) {
       this.applyCommitTemplate();
@@ -7600,13 +7609,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.commitPolicy.set(draft.policy);
   }
 
-  private resetCommitForm(): void {
+  private resetCommitForm(keepManualCoAuthor = false): void {
     this.commitMessage.set('');
     this.commitDescription.set('');
     this.coAuthors.set([]);
-    this.coAuthorName.set('');
-    this.coAuthorEmail.set('');
-    this.coAuthorPickerOpen.set(false);
+    if (!keepManualCoAuthor || (!this.coAuthorName() && !this.coAuthorEmail())) {
+      this.coAuthorName.set('');
+      this.coAuthorEmail.set('');
+      this.coAuthorPickerOpen.set(false);
+    }
     this.amendPrevious.set(false);
     this.skipGitHooks.set(false);
     this.commitPolicy.set({ signOff: false, allowEmpty: false, author: null, committer: null });
@@ -10459,7 +10470,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeRepository(repoId: string): void {
     const wasActive = repoId === this.git.activeRepositoryId();
     const terminalWasOpen = this.terminalOpen();
-    if (!wasActive) this.commitDrafts.delete(repoId);
+    this.commitDrafts.delete(repoId);
+    this.commitCoAuthorInputs.delete(repoId);
     this.terminalRepositoryIds.update((ids) => ids.filter((id) => id !== repoId));
     this.git.closeRepository(repoId);
     if (terminalWasOpen) {
@@ -10473,7 +10485,6 @@ export class AppComponent implements OnInit, OnDestroy {
       this.terminalRepositoryId.set(null);
     }
     if (wasActive) {
-      this.commitDrafts.delete(repoId);
       this.restoreCommitDraft(repoId);
       this.selectWip();
       this.loadGraphPreferences();

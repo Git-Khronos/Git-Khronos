@@ -225,6 +225,16 @@ covers the renderer's selected destination and latest accepted repository
 snapshot; it is not a lock against external Git configuration changes.
 `commit-policy.spec.ts` covers both phases and the unchanged destination.
 
+### Manual co-author entry
+
+Text typed in the co-author picker belongs to the checkout's in-memory
+editor, not to the submitted commit message. It survives switching tabs
+without opening the picker in the destination tab. A successful commit
+can consume the matching message and added trailers without consuming
+the unsubmitted text. Closing the checkout abandons both drafts.
+`commit-policy.spec.ts` covers delayed commit completion, tab switches,
+and reuse of a closed tab's repository ID.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a
