@@ -157,6 +157,16 @@ entries, flags, refs, and config. Discard and undo must both preserve staging.
 The report retains raw index hashes and diagnostics when they differ; Git can
 refresh cache metadata without changing staged entries or flags.
 
+## Focused initialization of one submodule
+
+Use `--suite submodule-initialize --headless` with an owned local Git fixture.
+Opening an uninitialized checkout must focus Cancel in the selected path's
+review without initializing anything. Dismissing the review preserves the
+parent and returns focus to the row. Confirming explicitly must initialize
+only the selected path and its nested checkout, leaving a second top-level
+submodule uninitialized. Git independently checks the recorded commits,
+parent staging and refs, and the expected scope of local config changes.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a

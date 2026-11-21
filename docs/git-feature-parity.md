@@ -44,7 +44,9 @@ behavioral cases during the audit; grouping does not remove any listed action.
    qualification. See the
    [Gitflow guide](https://help.gitkraken.com/gitkraken-desktop/git-flow/).
 2. **Optional submodule automation:** clone can include submodules and explicit
-   management exists, but automatic update preferences are intentionally not
+   management exists. Opening a missing submodule now opens a scoped review;
+   it does not initialize or contact its remote without confirmation.
+   Automatic update preferences are intentionally not
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the
    [submodule guide](https://help.gitkraken.com/gitkraken-desktop/submodules/).

@@ -9,6 +9,7 @@ export interface WorktreeRegistrationRequest {
   repositoryId: string;
   returnFocus: HTMLElement | null;
   submodules?: boolean;
+  submoduleToInitialize?: string;
 }
 
 @Component({

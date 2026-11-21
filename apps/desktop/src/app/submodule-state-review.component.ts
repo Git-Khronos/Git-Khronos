@@ -80,6 +80,23 @@ import { submoduleFindings } from './submodule-findings';
                         <span>{{ finding.detail }}</span></li>
                     }
                   </ul>
+                  @if (canInitialize(entry)) {
+                    @if (confirming() === 'initialize:' + entry.path) {
+                      <div class="confirm" role="group" [attr.aria-label]="'Initialize ' + entry.path">
+                        <p>Initialize only <code>{{ entry.path }}</code> and its nested submodules at the commits recorded by Git.
+                          Git may contact their configured remotes. Other top-level submodules are not selected.</p>
+                        @if (syncing()) { <p role="status">Initializing {{ entry.path }}…</p> }
+                        <div class="row">
+                          <button type="button" [disabled]="unavailable() || syncing() || git.busy()" (click)="initialize(entry)">Initialize submodule</button>
+                          <button type="button" data-initialize-one-cancel [disabled]="syncing()" (click)="cancel('initialize-open', entry.path)">Cancel</button>
+                        </div>
+                      </div>
+                    } @else {
+                      <button type="button" [attr.data-initialize-open]="entry.path"
+                        [disabled]="unavailable() || syncing() || git.busy() || !!confirming()"
+                        (click)="openInitialize(entry)">Initialize submodule…</button>
+                    }
+                  }
                   @if (entry.name) {
                     @if (confirming() === 'branch:' + entry.path) {
                       <div class="confirm branch-confirm" role="group" [attr.aria-label]="'Change tracking branch for ' + entry.path">
@@ -177,7 +194,7 @@ import { submoduleFindings } from './submodule-findings';
             <p class="footnote">These are sequential observations. Nested submodules report their changes through their parent submodule.</p>
           }
           <gc-git-help topic="submodule" label="Learn about submodule state…" />
-          <footer><button type="button" [disabled]="unavailable()" (click)="reload()">Reload review</button>
+          <footer><button type="button" [disabled]="unavailable() || syncing()" (click)="reload()">Reload review</button>
             <button data-submodule-close type="button" [disabled]="loading() || syncing()" (click)="close()">Close</button></footer>
         </section>
       </div>
@@ -252,7 +269,8 @@ export class SubmoduleStateReviewComponent {
 
   constructor() {
     effect(() => {
-      if (this.request()) untracked(() => { this.syncNotice.set(''); this.confirming.set(null); void this.reload(); });
+      const target = this.request();
+      if (target) untracked(() => { this.syncNotice.set(''); void this.reload(target.submoduleToInitialize); });
     });
   }
 
@@ -434,7 +452,34 @@ export class SubmoduleStateReviewComponent {
   }
 
   initializableCount(result: SubmoduleStateReview): number {
-    return result.entries.filter(entry => !!entry.name && !!entry.indexOid && !entry.checkedOut).length;
+    return result.entries.filter(entry => this.canInitialize(entry)).length;
+  }
+
+  canInitialize(entry: SubmoduleState): boolean {
+    return !!entry.name && !!entry.indexOid && !!entry.declaredUrl && !entry.checkedOut && !entry.conflict;
+  }
+
+  openInitialize(entry: SubmoduleState): void {
+    if (!this.canInitialize(entry) || this.unavailable() || this.syncing() || this.git.busy()) return;
+    const target = this.request();
+    const confirmation = `initialize:${entry.path}`;
+    this.confirming.set(confirmation);
+    setTimeout(() => {
+      if (this.request() === target && this.confirming() === confirmation) {
+        this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-initialize-one-cancel]')?.focus();
+      }
+    });
+  }
+
+  initialize(entry: SubmoduleState): Promise<void> {
+    if (!this.canInitialize(entry) || this.confirming() !== `initialize:${entry.path}`
+      || !this.review()?.entries.includes(entry) || this.git.busy()) return Promise.resolve();
+    return this.run(async () => {
+      if (!await this.git.initializeSubmodule(entry.path)) {
+        throw new Error(this.git.error() ?? 'Submodule initialization did not complete.');
+      }
+      return `Initialized ${entry.path} at its recorded commit.`;
+    });
   }
 
   canUpdateAll(result: SubmoduleStateReview): boolean {
@@ -484,10 +529,11 @@ export class SubmoduleStateReviewComponent {
     return oid?.slice(0, 10) ?? 'Not recorded';
   }
 
-  async reload(): Promise<void> {
+  async reload(initializePath?: string): Promise<void> {
     const target = this.request();
     if (!target || this.unavailable()) return;
     this.loading.set(true);
+    this.confirming.set(null);
     this.review.set(null);
     this.error.set('');
     try {
@@ -497,6 +543,15 @@ export class SubmoduleStateReviewComponent {
       if (this.request() === target) this.error.set(this.message(failure));
     } finally {
       this.loading.set(false);
+    }
+    if (this.request() !== target) return;
+    if (initializePath && target.repositoryId === this.git.activeRepositoryId() && !this.error()) {
+      const entry = this.review()?.entries.find(candidate => candidate.path === initializePath);
+      if (entry && this.canInitialize(entry) && !this.git.busy()) {
+        this.openInitialize(entry);
+        return;
+      }
+      this.error.set(`${initializePath} is no longer available for initialization. Review its current state before continuing.`);
     }
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(
       this.error() || target.repositoryId !== this.git.activeRepositoryId() ? '[role=alert]' : '[data-submodule-result]')?.focus());

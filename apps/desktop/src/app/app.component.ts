@@ -7023,7 +7023,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeMoveRequest.set({ ...owner, worktree, returnFocus, repair: true });
   }
 
-  protected openWorktreeRegistrationReview(submodules?: boolean, returnFocus?: HTMLElement | null): void {
+  protected openWorktreeRegistrationReview(submodules?: boolean, returnFocus?: HTMLElement | null, submoduleToInitialize?: string): void {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
     const opener = returnFocus
@@ -7031,7 +7031,7 @@ export class AppComponent implements OnInit, OnDestroy {
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.actionOverlays.close('worktree');
     this.actionOverlays.close('submodule');
-    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules });
+    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules, submoduleToInitialize });
   }
 
   protected openLfsTracking(): void {
@@ -7361,18 +7361,17 @@ export class AppComponent implements OnInit, OnDestroy {
     this.focusSidebarActionMenu(event);
   }
 
-  protected async openSubmodule(submodule: Submodule): Promise<void> {
+  protected async openSubmodule(submodule: Submodule, returnFocus?: HTMLElement): Promise<void> {
     this.actionOverlays.close('submodule');
     if (!submodule.initialized) {
-      await this.git.initializeSubmodule(submodule.path);
+      this.reviewSubmoduleInitialization(submodule, returnFocus);
       return;
     }
     await this.openRepositoryPath(submodule.absolutePath);
   }
 
-  protected async initializeSubmodule(submodule: Submodule): Promise<void> {
-    this.actionOverlays.close('submodule');
-    await this.git.initializeSubmodule(submodule.path);
+  protected reviewSubmoduleInitialization(submodule: Submodule, returnFocus?: HTMLElement): void {
+    this.openWorktreeRegistrationReview(true, returnFocus, submodule.path);
   }
 
   protected async updateSubmodule(submodule: Submodule): Promise<void> {

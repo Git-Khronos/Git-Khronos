@@ -13,7 +13,7 @@ async function setup(page: Page): Promise<void> {
     const entry = (overrides: any) => ({ path: 'vendor/lane-engine', name: 'vendor/lane-engine', declaredUrl: '/lane', registeredUrl: '/lane',
       trackingBranch: null, urlMatches: true, headOid: a, indexOid: a, checkoutOid: a, conflict: null, checkedOut: true, commitChanged: false,
       trackedChanges: false, untrackedChanges: false, stagedChange: false, undeclared: false, missingGitlink: false, ...overrides });
-    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, initializedAll: false,
+    const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, clean: false, initializedAll: false, initializedOne: false,
       syncFail: false, holdSync: false, finishSync: null as any, checkoutFail: false, trackingBranch: null as string | null };
     (window as any).__submoduleReview = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -22,9 +22,10 @@ async function setup(page: Page): Promise<void> {
         if (fixture.fail) return Promise.reject({ kind: 'submoduleReviewUnavailable', message: 'The complete status exceeds the submodule review limit.', hint: 'Inspect submodules with local Git status and submodule status. This review changes nothing.' });
         const result = { gitmodulesPresent: true, entries: fixture.clean ? [entry({ trackingBranch: fixture.trackingBranch })] : [
           entry({ commitChanged: true, checkoutOid: b, trackedChanges: true }),
-          entry({ path: 'plugins/diff-driver', name: 'diff', checkedOut: fixture.initializedAll,
-            registeredUrl: fixture.initializedAll ? '/lane' : null, urlMatches: fixture.initializedAll ? true : null,
-            checkoutOid: fixture.initializedAll ? a : null }),
+          entry({ path: 'plugins/diff-driver', name: 'diff', checkedOut: fixture.initializedAll || fixture.initializedOne,
+            registeredUrl: fixture.initializedAll || fixture.initializedOne ? '/lane' : null,
+            urlMatches: fixture.initializedAll || fixture.initializedOne ? true : null,
+            checkoutOid: fixture.initializedAll || fixture.initializedOne ? a : null }),
           entry({ path: 'raw link', name: null, declaredUrl: null, registeredUrl: null, urlMatches: null, undeclared: true, checkedOut: false, headOid: null, stagedChange: true, checkoutOid: null }),
           entry({ path: 'merge/lib', indexOid: null, headOid: null, conflict: { base: a, ours: b, theirs: 'c'.repeat(40), mixedTypes: false } }),
           entry({ path: 'synced', urlMatches: false, registeredUrl: '/elsewhere' }),
@@ -51,6 +52,11 @@ async function setup(page: Page): Promise<void> {
         fixture.initializedAll = true;
         return Promise.resolve(git.repository());
       }
+      if (command === 'initialize_submodule') {
+        if (args.path !== 'plugins/diff-driver') return Promise.reject(Error('Unexpected submodule path'));
+        fixture.initializedOne = true;
+        return Promise.resolve(git.repository());
+      }
       if (command === 'update_all_submodules') return Promise.resolve(git.repository());
       if (command === 'set_submodule_tracking_branch') {
         const previousTrackingBranch = fixture.trackingBranch;
@@ -75,6 +81,52 @@ async function setup(page: Page): Promise<void> {
 }
 
 const opener = (page: Page) => page.locator('.submodule-actions').first();
+
+test('opening an uninitialized submodule reviews one path and requires explicit consent', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const active = git.repository();
+    git.repositories.update((items: any[]) => items.map(item => item.id === active.id ? {
+      ...item, submodules: [...item.submodules.filter((module: any) => module.path !== 'plugins/diff-driver'),
+        { name: 'diff', path: 'plugins/diff-driver',
+        absolutePath: active.path + '/plugins/diff-driver', url: '/lane', oid: 'a'.repeat(40),
+        headOid: null, initialized: false, outOfSync: false }],
+    } : item));
+  });
+  const openRow = page.getByRole('button', { name: 'Submodule plugins/diff-driver, /lane', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const review = dialog.getByRole('group', { name: 'Initialize plugins/diff-driver', exact: true });
+  const mutations = () => page.evaluate(() => (window as any).__submoduleReview.calls
+    .filter((call: any) => /^initialize_/.test(call.command)));
+
+  await expect(openRow).toContainText('Review initialization');
+  await openRow.click();
+  await expect(review).toContainText('Git may contact their configured remotes');
+  await expect(review.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  expect(await mutations()).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(openRow).toBeFocused();
+  expect(await mutations()).toEqual([]);
+
+  await page.getByRole('button', { name: 'Submodule actions for plugins/diff-driver' }).click();
+  await page.getByRole('menuitem', { name: 'Initialize…', exact: true }).click();
+  await expect(review.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  expect(await mutations()).toEqual([]);
+  await review.getByRole('button', { name: 'Initialize submodule', exact: true }).click();
+  await expect(dialog.locator('[data-submodule-sync]')).toContainText('Initialized plugins/diff-driver at its recorded commit.');
+  expect(await mutations()).toEqual([{
+    command: 'initialize_submodule', args: expect.objectContaining({ path: 'plugins/diff-driver' }),
+  }]);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  // The mocked sidebar snapshot is stale but the next native review is current.
+  await openRow.click();
+  await expect(dialog.getByRole('alert')).toContainText('no longer available for initialization');
+  await expect(review).toHaveCount(0);
+  expect(await mutations()).toHaveLength(1);
+});
 
 async function open(page: Page): Promise<void> {
   await opener(page).click();

@@ -1795,13 +1795,13 @@ export class GitKhronosService implements OnDestroy {
     return !this.error();
   }
 
-  async initializeSubmodule(path: string): Promise<void> {
-    await this.mutate(
+  async initializeSubmodule(path: string): Promise<boolean> {
+    return await this.mutate(
       'initialize_submodule',
       `Initializing ${path}…`,
       `Initialized ${path}`,
       { path },
-    );
+    ) === 'success';
   }
 
   async initializeAllSubmodules(): Promise<boolean> {

@@ -946,16 +946,16 @@
               </button>
               @for (submodule of visibleSubmodules(); track submodule.path) {
                 <div class="submodule-item" [class.not-initialized]="!submodule.initialized" [class.out-of-sync]="submodule.outOfSync" [title]="submodule.path + ' · ' + submodule.url" (contextmenu)="openSubmoduleMenu($event, submodule.path)">
-                  <button class="submodule-main" type="button" [attr.aria-label]="'Submodule ' + submodule.path + ', ' + submodule.url" [disabled]="git.busy()" (click)="openSubmodule(submodule)">
+                  <button class="submodule-main" type="button" [attr.aria-label]="'Submodule ' + submodule.path + ', ' + submodule.url" [disabled]="git.busy()" (click)="openSubmodule(submodule, $any($event.currentTarget))">
                     <span class="submodule-glyph"><gc-icon name="repo" [size]="13" /></span>
-                    <span><strong>{{ submodule.path }}</strong><small>{{ !submodule.initialized ? 'Added but not initialized' : submodule.outOfSync ? 'Out of sync' : shortOid(submodule.headOid ?? submodule.oid ?? '') }}</small></span>
+                    <span><strong>{{ submodule.path }}</strong><small>{{ !submodule.initialized ? 'Review initialization' : submodule.outOfSync ? 'Out of sync' : shortOid(submodule.headOid ?? submodule.oid ?? '') }}</small></span>
                   </button>
                   <button class="submodule-actions" type="button" title="Submodule actions" [attr.aria-label]="'Submodule actions for ' + submodule.path" aria-haspopup="menu" [attr.aria-expanded]="submoduleMenuPath() === submodule.path" (click)="toggleSubmoduleMenu($event, submodule.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (submoduleMenuPath() === submodule.path) {
                     <div #sidebarActionMenuElement class="worktree-card-menu list-menu submodule-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
                       <div><small>Submodule</small><strong>{{ submodule.path }}</strong></div>
                       @if (!submodule.initialized) {
-                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="initializeSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Initialize</button>
+                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="reviewSubmoduleInitialization(submodule)"><gc-icon name="refresh" [size]="12" />Initialize…</button>
                       } @else {
                         <button type="button" role="menuitem" (click)="openSubmodule(submodule)"><gc-icon name="folder-git" [size]="12" />Open submodule</button>
                         <button type="button" role="menuitem" [disabled]="git.busy()" (click)="updateSubmodule(submodule)"><gc-icon name="refresh" [size]="12" />Update to latest commit</button>
