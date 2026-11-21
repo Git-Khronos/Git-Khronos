@@ -286,7 +286,8 @@ fn begin_check(app: AppHandle, origin: Origin) -> Result<ApplicationUpdateStatus
         let result = async {
             let url = reqwest::Url::parse(transport::MANIFEST)
                 .map_err(|_| "The official update endpoint is invalid.")?;
-            let Some(bytes) = transport::read(&url, transport::MAX_MANIFEST, |_, _| {}).await?
+            let Some(bytes) =
+                transport::read(&url, transport::Resource::Manifest, |_, _| {}).await?
             else {
                 return Ok(None);
             };
@@ -407,7 +408,7 @@ fn begin_download(
         let mut last_event = Instant::now();
         let result = transport::read(
             &update.download_url,
-            transport::MAX_PACKAGE,
+            transport::Resource::Package,
             |count, total| {
                 let _ = with_runtime(&handle, |runtime| {
                     runtime.downloaded = count;

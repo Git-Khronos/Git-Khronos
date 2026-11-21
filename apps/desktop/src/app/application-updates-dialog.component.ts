@@ -1,5 +1,5 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, input, output, viewChild } from '@angular/core';
-import type { ApplicationUpdateStatus } from '@git-khronos/contracts';
+import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
+import { ipc, type ApplicationUpdateStatus } from '@git-khronos/contracts';
 import { ApplicationUpdatesService } from './application-updates.service';
 
 export interface ApplicationUpdatesRequest { readonly id: number; readonly returnFocus: HTMLElement | null }
@@ -41,8 +41,10 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
               <button class="primary" type="button" [disabled]="!state.canInstall || updates.actionPending()" (click)="install(target, state)">Install verified update</button>
             }
             @if (state.canInspect) { <button type="button" [disabled]="updates.actionPending()" (click)="inspect(target)">Inspect installation</button> }
+            <button type="button" [disabled]="updates.installing()" [attr.aria-disabled]="openingReleases() ? 'true' : null" (click)="browseReleases(target)">Browse official releases (opens browser)</button>
             <button type="button" [disabled]="updates.actionPending()" (click)="refresh(target)">Refresh status</button>
           </footer>
+          @if (releaseError()) { <p class="release-error" role="alert">Could not open the browser. Copy <code>{{ officialReleasesUrl }}</code> into your browser to check manually.</p> }
           <p class="help">Updates never change your repositories. Installation and restart are separate: a confirmed install does not mean this running window has switched versions.</p>
         } @else { <p role="status">Reading native update status…</p> }
         @if (updates.error()) { <p role="alert">{{ updates.error() }}</p> }
@@ -57,11 +59,12 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
     h2 { margin: 0; font-size: 19px; } h3 { font-size: 13px; } p { line-height: 1.5; }
     dl { margin: 0 0 14px; font-size: 13px; } dl > div { justify-content: space-between; padding: 4px 0; } dd { margin: 0; font-family: monospace; }
     button { padding: 8px 12px; border: 1px solid var(--overlay-border); border-radius: 5px; background: var(--inspector-row); color: var(--text); }
-    button:disabled { opacity: .5; cursor: not-allowed; } button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:disabled, button[aria-disabled=true] { opacity: .5; cursor: not-allowed; } button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .primary { color: var(--accent); } .automatic { display: flex; gap: 9px; align-items: center; font-size: 14px; margin-top: 16px; }
     .help { color: var(--muted); font-size: 12px; } .feedback { padding: 12px; border: 1px solid var(--overlay-border); border-radius: 5px; }
     .verified { color: var(--accent); font-size: 13px; } [role=alert] { color: var(--danger); } .notes p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
     footer { flex-wrap: wrap; margin-top: 16px; } progress { width: 100%; accent-color: var(--accent); }
+    .release-error { overflow-wrap: anywhere; }
   `],
 })
 export class ApplicationUpdatesDialogComponent {
@@ -69,6 +72,9 @@ export class ApplicationUpdatesDialogComponent {
   readonly ownsRequest = input.required<(request: ApplicationUpdatesRequest) => boolean>();
   readonly closed = output<ApplicationUpdatesRequest>();
   readonly updates = inject(ApplicationUpdatesService);
+  protected readonly officialReleasesUrl = 'https://github.com/Git-Khronos/Git-Khronos/releases';
+  protected readonly openingReleases = signal(false);
+  protected readonly releaseError = signal(false);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   constructor() {
@@ -89,6 +95,14 @@ export class ApplicationUpdatesDialogComponent {
   install(target: ApplicationUpdatesRequest, state: ApplicationUpdateStatus): void { if (this.owns(target)) void this.updates.install(state.offerId); }
   inspect(target: ApplicationUpdatesRequest): void { if (this.owns(target)) void this.updates.inspect(); }
   refresh(target: ApplicationUpdatesRequest): void { if (this.owns(target)) void this.updates.refresh(); }
+  async browseReleases(target: ApplicationUpdatesRequest): Promise<void> {
+    if (!this.owns(target) || !this.updates.native() || this.updates.installing() || this.openingReleases()) return;
+    this.openingReleases.set(true);
+    this.releaseError.set(false);
+    try { await ipc.open_external_url({ url: this.officialReleasesUrl }); }
+    catch { if (this.owns(target)) this.releaseError.set(true); }
+    finally { this.openingReleases.set(false); }
+  }
   automatic(event: Event, target: ApplicationUpdatesRequest): void {
     const input = event.target as HTMLInputElement;
     const enabled = input.checked;

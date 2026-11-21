@@ -5,8 +5,11 @@ use std::time::Duration;
 
 pub(super) const MANIFEST: &str =
     "https://github.com/Git-Khronos/Git-Khronos/releases/latest/download/latest.json";
-pub(super) const MAX_MANIFEST: usize = 256 * 1024;
-pub(super) const MAX_PACKAGE: usize = 512 * 1024 * 1024;
+#[derive(Clone, Copy)]
+pub(super) enum Resource {
+    Manifest,
+    Package,
+}
 
 pub(super) fn trusted_url(url: &Url) -> bool {
     url.scheme() == "https"
@@ -22,20 +25,20 @@ pub(super) fn trusted_url(url: &Url) -> bool {
 
 pub(super) async fn read(
     url: &Url,
-    limit: usize,
+    resource: Resource,
     progress: impl FnMut(usize, Option<usize>),
 ) -> Result<Option<Vec<u8>>, String> {
     if !trusted_url(url) {
         return Err("The update URL is not an approved HTTPS release source.".into());
     }
+    let (limit, timeout) = match resource {
+        Resource::Manifest => (256 * 1024, 20),
+        Resource::Package => (512 * 1024 * 1024, 300),
+    };
     let client = Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(if limit == MAX_MANIFEST {
-            20
-        } else {
-            300
-        }))
+        .timeout(Duration::from_secs(timeout))
         .user_agent(concat!("Git-Khronos/", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() >= 5 || !trusted_url(attempt.url()) {
@@ -51,16 +54,21 @@ pub(super) async fn read(
         .send()
         .await
         .map_err(|_| "The signed update source could not be reached.")?;
-    read_response(response, limit, progress).await
+    read_response(response, limit, resource, progress).await
 }
 
 async fn read_response(
     mut response: reqwest::Response,
     limit: usize,
+    resource: Resource,
     mut progress: impl FnMut(usize, Option<usize>),
 ) -> Result<Option<Vec<u8>>, String> {
     if response.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(None);
+    }
+    if matches!(resource, Resource::Manifest) && response.status() == reqwest::StatusCode::NOT_FOUND
+    {
+        return Err("The signed update manifest is unavailable. Browse official releases to check manually.".into());
     }
     if response.status() != reqwest::StatusCode::OK {
         return Err(format!(
@@ -115,6 +123,14 @@ mod tests {
     // Only the response-consumption boundary accepts this owned loopback stream;
     // the production URL/redirect/TLS policy has no environment or test bypass.
     fn consume(raw: &'static [u8], limit: usize) -> Result<Option<Vec<u8>>, String> {
+        consume_for(raw, limit, Resource::Package)
+    }
+
+    fn consume_for(
+        raw: &'static [u8],
+        limit: usize,
+        resource: Resource,
+    ) -> Result<Option<Vec<u8>>, String> {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
@@ -137,7 +153,7 @@ mod tests {
                 .send()
                 .await
                 .unwrap();
-            read_response(response, limit, |_, _| {}).await
+            read_response(response, limit, resource, |_, _| {}).await
         });
         server.join().unwrap();
         result
@@ -182,5 +198,16 @@ mod tests {
                 .unwrap_err()
                 .contains("503")
         );
+    }
+
+    #[test]
+    fn application_update_missing_manifest_is_not_an_up_to_date_result() {
+        let response = b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        assert!(
+            consume_for(response, 4, Resource::Manifest)
+                .unwrap_err()
+                .contains("Browse official releases")
+        );
+        assert!(consume(response, 4).unwrap_err().contains("HTTP 404"));
     }
 }

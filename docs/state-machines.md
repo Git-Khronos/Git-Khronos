@@ -801,8 +801,11 @@ own opener. Native state survives presentation closure. Pending install IPC is
 one-shot before a status event arrives; out-of-order native responses cannot
 replace newer revisions. Preference widgets reflect confirmed native state even
 when a write is refused or its response is lost. Browser preview never initiates
-an updater request. The native scheduler, not renderer timers or local storage,
-owns opt-in automatic checks and safe installation admission.
+an updater request. The manual browser fallback opens only the fixed official
+releases page on an explicit action and never converts a missing manifest into
+an up-to-date result, requests installation, or changes consent. Browser-open
+errors belong to the owning dialog. The native scheduler, not renderer timers
+or local storage, owns opt-in automatic checks and safe installation admission.
 
 Coverage: native `application_update` policy, signature/version binding, bounded
 transport, real signed inert package metadata and receipt/worker fault tests;

@@ -29,6 +29,10 @@ test.beforeEach(async ({ page }) => {
         if (command === 'plugin:event|listen') { const id = ++state.sequence; state.listeners.set(id, args); return Promise.resolve(id); }
         if (command === 'plugin:event|unlisten') return Promise.resolve();
         if (command === 'application_update_status') return Promise.resolve(state.status);
+        if (command === 'open_external_url') {
+          if (state.rejectBrowser) return Promise.reject({ message: 'Owned browser is unavailable' });
+          return Promise.resolve();
+        }
         if (command === 'set_automatic_application_updates') {
           if (state.rejectSetting) return Promise.reject({ message: 'Owned preference write failure' });
           state.replace({ automatic: args.enabled });
@@ -111,6 +115,32 @@ test('unconfigured publisher trust never exposes an install or automatic opt-in'
   expect(await page.evaluate(() => (window as any).__updates.calls.filter((call: any) => /^(check|download|install|set_automatic)_application_update/.test(call.command)))).toEqual([]);
 });
 
+test('manual release browsing uses the fixed URL without update trust or an installation request', async ({ page }) => {
+  const official = 'https://github.com/Git-Khronos/Git-Khronos/releases';
+  await page.evaluate(() => {
+    const state = (window as any).__updates;
+    state.rejectBrowser = true;
+    state.replace({ phase: 'unconfigured', configured: false, canCheck: false, message: 'Owned publisher signing key missing',
+      notes: 'Untrusted link: https://example.test/another-release' });
+  });
+  const dialog = await open(page);
+  const browse = dialog.getByRole('button', { name: 'Browse official releases (opens browser)', exact: true });
+  const calls = () => page.evaluate(() => (window as any).__updates.calls.filter((call: any) =>
+    /^(open_external_url|check_application_update|download_application_update|install_application_update|set_automatic_application_updates)$/.test(call.command)));
+  expect(await calls()).toEqual([]);
+  await browse.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('alert')).toContainText(official);
+  await expect(browse).toBeFocused();
+  const openBrowser = { command: 'open_external_url', args: { url: official } };
+  expect(await calls()).toEqual([openBrowser]);
+  await page.evaluate(() => { (window as any).__updates.rejectBrowser = false; });
+  await browse.click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  expect(await calls()).toEqual([openBrowser, openBrowser]);
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+});
+
 test('install remains one-shot and cannot be dismissed before the native outcome', async ({ page }) => {
   const dialog = await open(page);
   await dialog.getByRole('button', { name: 'Check for updates', exact: true }).click();
@@ -129,7 +159,7 @@ test('install remains one-shot and cannot be dismissed before the native outcome
   await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
 });
 
-for (const action of ['install', 'automatic', 'close']) {
+for (const action of ['install', 'automatic', 'close', 'browse']) {
   test(`outgoing Updates ${action} cannot consume a replacement dialog`, async ({ page }) => {
     const dialog = await open(page);
     await dialog.getByRole('button', { name: 'Check for updates', exact: true }).click();
@@ -141,10 +171,13 @@ for (const action of ['install', 'automatic', 'close']) {
       if (action === 'automatic') {
         const checkbox = old.querySelector<HTMLInputElement>('input[type=checkbox]')!; checkbox.checked = true;
         checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-      } else [...old.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === (action === 'close' ? 'Close' : 'Install verified update'))!.click();
+      } else {
+        const labels = { close: 'Close', install: 'Install verified update', browse: 'Browse official releases (opens browser)' };
+        [...old.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === labels[action as keyof typeof labels])!.click();
+      }
     }, action);
     await expect(dialog).toBeVisible();
-    expect(await page.evaluate(() => (window as any).__updates.calls.filter((call: any) => ['install_application_update', 'set_automatic_application_updates'].includes(call.command)))).toEqual([]);
+    expect(await page.evaluate(() => (window as any).__updates.calls.filter((call: any) => ['install_application_update', 'set_automatic_application_updates', 'open_external_url'].includes(call.command)))).toEqual([]);
   });
 }
 
