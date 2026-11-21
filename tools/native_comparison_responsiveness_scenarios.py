@@ -163,8 +163,11 @@ def ignore_responsiveness(driver, fixtures, report):
     }, records)
     assert (repository / '.gitignore').read_bytes() == b'*.log\n'
     assert fixtures.git(repository, 'ls-files', '--stage') == staged_before
+    assert fixtures.git(repository, 'ls-files', '--others', '--exclude-standard') == '.gitignore'
     paths = {entry['path'] for entry in result['status']['entries']}
-    assert paths == {'.gitignore', 'fixture.txt'}, paths
+    # Fast snapshots may defer the untracked scan. The separate Git oracle
+    # above proves the ignored paths disappear from complete status.
+    assert 'fixture.txt' in paths and not paths.intersection({'first.log', 'sibling.log'}), paths
 
     result = held_git_command(driver, gate, 'ignore_path', 'check-ignore', {
         'repoId': repo_id, 'path': 'fixture.txt', 'patternKind': 'file', 'stopTracking': True,

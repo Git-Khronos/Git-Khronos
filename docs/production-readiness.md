@@ -2905,3 +2905,22 @@ Positive installer SHA-256:
 `34e3e6938e3952433b36237d1c6927d63ff288298fd077e22bb9df1b33a59de2`.
 Reports: `target/local-review/commit-native-background.J5fzAc5z/red/`
 and `target/local-review/updater/jammy-builder/composer-responsive-release.3EACgEaV/focused/positive/`.
+
+## Installed ignore rule responsiveness — 2026-11-21
+
+The older installed build blocked updater status while Git validated a new
+ignore rule. On the `f1fdf10` installer, the status call settled with Git
+still held both when adding an extension rule and when adding a rule and
+untracking a selected file. Independent Git and file checks confirmed the
+extension rule preserved the index, only the selected file was later staged
+for removal, and all working files, refs and configuration stayed unchanged.
+
+The first positive run assumed the fast snapshot included a newly untracked
+.gitignore. The corrected fixture checks complete untracked status through
+independent Git instead. The rerun used the exact same installer and passed
+ignore, commit, stash, and comparison responsiveness.
+
+Installer SHA-256:
+`8f3f66df77f58620a563f5ccec94d280a41a133a94503f04d7ec60f066beb6fc`.
+Reports: `target/local-review/ignore-native-background.OVR8hj36/red/`
+and `target/local-review/updater/jammy-builder/ignore-responsive-release.6LNEj7Br/harness-recheck.ssXwPF6Q/`.
