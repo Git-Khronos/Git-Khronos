@@ -154,8 +154,9 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         # Reload through the normal persisted repository tab; preserve saved profiles.
         driver.reload(); driver.wait("return !!document.querySelector('.commit-row')")
         driver.click('.wip-nav')
-        driver.wait('return !!document.querySelector(' + json.dumps('[title="Open Merge Tool for ' + path + '"]') + ')')
-        driver.click('[title="Open Merge Tool for ' + path + '"]')
+        # The conflict row can exist before the split pane has finished laying
+        # out. Check and scroll the actual button before delivering one click.
+        driver.click_scrolled_text('[title="Open Merge Tool for ' + path + '"]', path, wait_for_ready=True)
         button('Review external merge program', '.merge-tool')
         conflict_bytes = target.read_bytes(); before_index = (repository / '.git/index').read_bytes()
         row = launch(3); assert_environment(row)
