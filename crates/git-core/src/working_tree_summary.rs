@@ -1,13 +1,16 @@
 use super::{
-    AppError, RepositoryStatus, ensure_success, file_statistics, numstat_entries, parse_numstat, read_status_with_options,
+    AppError, RepositoryStatus, StatusOverflow, ensure_success, file_statistics, git_cancellation,
+    is_explicit_bare_repository, numstat_entries, parse_numstat, parse_porcelain_status,
     run_git_with_stdout_limit, without_lazy_fetch,
 };
 use serde::Serialize;
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 const MAX_FILES: usize = 2_000;
+const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_STATS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_UNTRACKED_BYTES: u64 = 16 * 1024 * 1024;
+const RECAP_GIT_BUDGET: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Default, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +30,7 @@ pub struct WorkingTreeSummaries {
 /// Both recaps share one bounded status scan, and one side may still be
 /// available if the other requires unreadable or missing local objects.
 pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppError> {
-    without_lazy_fetch(|| {
+    inspect_recap(|| {
         let status = read_summary_status(path)?;
         Ok(WorkingTreeSummaries {
             staged: read_staged_summary(path, &status).ok(),
@@ -37,9 +40,54 @@ pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppEr
 }
 
 fn read_summary_status(path: &Path) -> Result<RepositoryStatus, AppError> {
+    if is_explicit_bare_repository(path) {
+        return Ok(RepositoryStatus::default());
+    }
     // An unstaged rename can be one porcelain record, but two diff records
     // if rename detection is disabled there. Use matching policy on both reads.
-    read_status_with_options(path, MAX_FILES, "all", Some(MAX_FILES))
+    let rename_limit = format!("status.renameLimit={MAX_FILES}");
+    let (output, truncated) = run_git_with_stdout_limit(
+        path,
+        &[
+            "-c",
+            &rename_limit,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--find-renames",
+        ],
+        MAX_STATUS_BYTES,
+    )?;
+    if truncated {
+        return Err(AppError::new(
+            "workingTreeSummaryStatusLimit",
+            "Git status exceeded the working-tree line count limit.",
+            None,
+        ));
+    }
+    ensure_success("read working-tree summary status", &output)?;
+    Ok(parse_porcelain_status(
+        &output.stdout,
+        RepositoryStatus::default(),
+        MAX_FILES,
+        false,
+        StatusOverflow::default(),
+    ))
+}
+
+fn inspect_recap<T>(action: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
+    without_lazy_fetch(|| git_cancellation::inspect_within(RECAP_GIT_BUDGET, action)).map_err(|error| {
+        if error.kind == "gitInspectionTimeout" {
+            AppError::new(
+                "workingTreeSummaryTimedOut",
+                "Git took too long to count working-tree lines.",
+                Some("Refresh the repository to retry."),
+            )
+        } else {
+            error
+        }
+    })
 }
 
 fn skipped_renames(stderr: &[u8]) -> bool {
@@ -90,7 +138,7 @@ fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<Working
 /// Unstaged changes are relative to the index, not HEAD. Never run external diff
 /// drivers or read through untracked symlinks while calculating this recap.
 pub fn working_tree_change_summary(path: &Path) -> Result<WorkingTreeChangeSummary, AppError> {
-    without_lazy_fetch(|| read_unstaged_summary(path, &read_summary_status(path)?))
+    inspect_recap(|| read_unstaged_summary(path, &read_summary_status(path)?))
 }
 
 fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<WorkingTreeChangeSummary, AppError> {
@@ -135,6 +183,7 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
     let mut untracked = Vec::new();
     let mut remaining = MAX_UNTRACKED_BYTES;
     for entry in entries {
+        git_cancellation::inspection_checkpoint()?;
         if entry.index_status == "?" {
             // The existing attribute-aware counter handles symlink blobs without
             // opening their targets. Bound aggregate regular-file reads as well.

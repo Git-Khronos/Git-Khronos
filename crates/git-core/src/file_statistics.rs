@@ -1,4 +1,4 @@
-use super::{AppError, ensure_success, run_git, run_git_with_stdout_limit};
+use super::{AppError, ensure_success, git_cancellation, run_git, run_git_with_stdout_limit};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
@@ -168,6 +168,7 @@ pub(super) fn untracked_additions(
     let mut matches = attributes.selected_attribute_matches(["diff"]);
     let mut counts = Vec::with_capacity(paths.len());
     for file in paths {
+        git_cancellation::inspection_checkpoint()?;
         attributes
             .at_path(file, None)
             .map_err(|_| invalid_statistics())?
@@ -180,6 +181,7 @@ pub(super) fn untracked_additions(
         let mode = policy.attribute(repository, state)?;
         counts.push(file_additions(repository, file, mode, policy.threshold));
     }
+    git_cancellation::inspection_checkpoint()?;
     Ok(counts)
 }
 

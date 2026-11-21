@@ -366,9 +366,13 @@ untracked text with the attribute-aware counter. Conflicted entries stay
 in their separate section. Binary or uncounted files are disclosed, not
 silently interpreted as no changes.
 
-Both sides share a status scan. Each summary counts at most 2,000 entries
+Both sides share a status scan capped at 4 MiB of stdout. If that scan is incomplete,
+neither side reports a total. Each summary counts at most 2,000 entries
 with 4 MiB of numstat output per side; untracked regular-file reads have an
-aggregate 16 MiB budget. Truncated or incomplete totals are labeled partial.
+aggregate 16 MiB budget. The recap gives its Git subprocesses a shared
+three-second deadline and checks it between local file probes. A timed-out
+side is unavailable without discarding a count that already finished;
+size-limited numstat totals are labeled partial.
 External diff and text conversion are disabled and untracked symlink targets
 are not opened. The same thread-scoped fetch-free policy used for file
 preview and incoming-link reads covers the status and both diffs. It

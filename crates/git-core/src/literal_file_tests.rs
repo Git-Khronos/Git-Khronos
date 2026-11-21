@@ -2141,6 +2141,89 @@ fn staged_summary_discloses_its_bound_without_erasing_the_unstaged_side() {
 
 #[cfg(unix)]
 #[test]
+fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
+    use std::os::unix::fs::PermissionsExt;
+
+    const MODE: &str = "GIT_KHRONOS_RECAP_FIXTURE_MODE";
+    const MARKER: &str = "GIT_KHRONOS_RECAP_FIXTURE_MARKER";
+    const REAL: &str = "GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT";
+    if let Ok(mode) = std::env::var(MODE) {
+        let repository = Repository::new();
+        repository.write("tracked.txt", b"baseline\n");
+        repository.commit("Base");
+        repository.write("tracked.txt", b"staged\n");
+        repository.git(&["add", "tracked.txt"]);
+        repository.write("tracked.txt", b"unstaged\n");
+
+        let started = std::time::Instant::now();
+        let result = working_tree_summaries(&repository.0);
+        match mode.as_str() {
+            "status" => assert_eq!(result.unwrap_err().kind, "workingTreeSummaryTimedOut"),
+            "limit" => assert_eq!(result.unwrap_err().kind, "workingTreeSummaryStatusLimit"),
+            "unstaged" => {
+                let recaps = result.unwrap();
+                let staged = recaps.staged.unwrap();
+                assert_eq!((staged.additions, staged.deletions, staged.partial), (1, 1, false));
+                assert!(recaps.unstaged.is_none());
+            }
+            _ => panic!("unexpected fixture mode"),
+        }
+        assert!(started.elapsed() < Duration::from_secs(7));
+        let pid = fs::read_to_string(std::env::var_os(MARKER).unwrap()).expect("fixture Git must start");
+        assert!(pid.trim().parse::<u32>().is_ok());
+        #[cfg(target_os = "linux")]
+        assert!(!Path::new("/proc").join(pid.trim()).exists());
+        return;
+    }
+
+    let fixture = Repository::new();
+    let marker = fixture.0.join("pid");
+    let helper = fixture.0.join("git");
+    fs::write(&helper, r#"#!/bin/sh
+case "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$5" in
+  status:-c:status)
+    printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER"
+    printf ' M tracked.txt\000'
+    exec sleep 10 ;;
+  limit:-c:status)
+    printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER"
+    exec dd if=/dev/zero bs=1048576 count=5 ;;
+esac
+if [ "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$4" = unstaged:diff:--numstat ]; then
+    printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER"
+    printf '99\t99\ttracked.txt\000'
+    exec sleep 10
+fi
+exec "$GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT" "$@"
+"#).unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let real_git = std::env::split_paths(&original_path)
+        .map(|entry| entry.join("git"))
+        .find(|candidate| candidate.is_absolute() && candidate.is_file())
+        .expect("Git must be available on PATH");
+    let path = std::env::join_paths(
+        std::iter::once(fixture.0.clone()).chain(std::env::split_paths(&original_path)),
+    ).unwrap();
+    for mode in ["status", "unstaged", "limit"] {
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "literal_file_tests::working_tree_recaps_reap_stalled_git_without_misreporting_counts", "--nocapture"])
+            .env("PATH", &path)
+            .env(MODE, mode)
+            .env(MARKER, &marker)
+            .env(REAL, &real_git)
+            .output().unwrap();
+        assert!(
+            result.status.success(), "{mode}:\n{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr),
+        );
+        fs::remove_file(&marker).unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn staged_summary_fails_locally_when_head_blob_is_missing_but_unstaged_still_counts() {
     let repository = Repository::new();
     repository.write("tracked.txt", b"head\n");

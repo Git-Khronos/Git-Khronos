@@ -21,6 +21,21 @@ pub(super) fn deadline() -> Option<std::time::Instant> {
     CURRENT.with(|slot| slot.borrow().as_ref().and_then(|context| context.deadline))
 }
 
+/// Cooperative checkpoint for local work between owned Git subprocesses.
+pub(super) fn inspection_checkpoint() -> Result<(), AppError> {
+    if deadline().is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+        return Err(AppError::new(
+            "gitInspectionTimeout",
+            "Git state inspection exceeded its time limit.",
+            None,
+        ));
+    }
+    if current().is_some_and(|token| token.is_cancelled()) {
+        return Err(operation_cancelled());
+    }
+    Ok(())
+}
+
 pub(super) fn with<T>(token: Option<&CancellationToken>, action: impl FnOnce() -> T) -> T {
     scoped(
         token.map(|token| Context {

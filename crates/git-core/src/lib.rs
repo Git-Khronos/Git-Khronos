@@ -7781,38 +7781,38 @@ fn read_status_with_limit_mode(
     entry_limit: usize,
     untracked_files: &str,
 ) -> Result<RepositoryStatus, AppError> {
-    read_status_with_options(path, entry_limit, untracked_files, None)
-}
-
-fn read_status_with_options(
-    path: &Path,
-    entry_limit: usize,
-    untracked_files: &str,
-    rename_limit: Option<usize>,
-) -> Result<RepositoryStatus, AppError> {
     if is_explicit_bare_repository(path) {
         return read_head_status(path);
     }
     let (output, output_truncated, overflow) =
-        run_status_with_limit(path, entry_limit, untracked_files, rename_limit)?;
-    let records = output.stdout.split(|byte| *byte == 0).collect::<Vec<_>>();
-    let operations = repository_operation_state(path)?;
-    let mut status = operations.into_status()?;
-    let mut index = 0;
+        run_status_with_limit(path, entry_limit, untracked_files)?;
+    Ok(parse_porcelain_status(
+        &output.stdout,
+        repository_operation_state(path)?.into_status()?,
+        entry_limit,
+        output_truncated,
+        overflow,
+    ))
+}
 
-    while index < records.len() {
-        let record = records[index];
+fn parse_porcelain_status(
+    stdout: &[u8],
+    mut status: RepositoryStatus,
+    entry_limit: usize,
+    output_truncated: bool,
+    overflow: StatusOverflow,
+) -> RepositoryStatus {
+    let mut records = stdout.split(|byte| *byte == 0);
+
+    while let Some(record) = records.next() {
         if record.is_empty() {
-            index += 1;
             continue;
         }
         if record.starts_with(b"## ") {
             parse_branch_header(&String::from_utf8_lossy(&record[3..]), &mut status);
-            index += 1;
             continue;
         }
         if record.len() < 3 {
-            index += 1;
             continue;
         }
 
@@ -7836,12 +7836,17 @@ fn read_status_with_options(
         let index_grouped = matches!(x, 'R' | 'C');
         let worktree_grouped = matches!(y, 'R' | 'C');
         let exact_rename = (x == 'R' && !worktree_grouped) || (y == 'R' && !index_grouped);
+        let previous = if index_grouped || worktree_grouped {
+            records.next()
+        } else {
+            None
+        };
         status.entry_count += 1;
         if status.entries.len() < entry_limit {
             status.entries.push(WorkingTreeEntry {
                 path: String::from_utf8_lossy(&record[3..]).into_owned(),
                 previous_path: if exact_rename && std::str::from_utf8(&record[3..]).is_ok() {
-                    records.get(index + 1)
+                    previous
                         .and_then(|previous| std::str::from_utf8(previous).ok())
                         .filter(|previous| !previous.is_empty())
                         .map(str::to_owned)
@@ -7851,12 +7856,6 @@ fn read_status_with_options(
                 conflicted,
             });
         }
-
-        index += if index_grouped || worktree_grouped {
-            2
-        } else {
-            1
-        };
     }
     status.staged += overflow.staged;
     status.unstaged += overflow.unstaged;
@@ -7864,7 +7863,7 @@ fn read_status_with_options(
     status.conflicted += overflow.conflicted;
     status.entry_count += overflow.entry_count;
     status.entries_truncated = output_truncated || status.entry_count > status.entries.len();
-    Ok(status)
+    status
 }
 
 fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
@@ -7915,24 +7914,15 @@ fn run_status_with_limit(
     path: &Path,
     entry_limit: usize,
     untracked_files: &str,
-    rename_limit: Option<usize>,
 ) -> Result<(Output, bool, StatusOverflow), AppError> {
     let untracked_argument = format!("--untracked-files={untracked_files}");
-    let rename_config = rename_limit.map(|limit| format!("status.renameLimit={limit}"));
-    let mut args = Vec::new();
-    if let Some(config) = &rename_config {
-        args.extend(["-c", config.as_str()]);
-    }
-    args.extend([
+    let args = [
         "status",
         "--porcelain=v1",
         "-z",
         "--branch",
         untracked_argument.as_str(),
-    ]);
-    if rename_limit.is_some() {
-        args.push("--find-renames");
-    }
+    ];
     if entry_limit == usize::MAX {
         let output = run_git(path, &args)?;
         ensure_success("read repository status", &output)?;
