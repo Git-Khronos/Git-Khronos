@@ -4731,6 +4731,45 @@ fn require_pull_checkout(path: &Path, checkout: &PullCheckout) -> Result<(), App
     Ok(())
 }
 
+fn require_unambiguous_pull_upstream(
+    path: &Path,
+    branch: &str,
+    cancellation: Option<&CancellationToken>,
+) -> Result<(), AppError> {
+    let key = format!("branch.{branch}.merge");
+    let (output, truncated) = run_git_with_stdout_limit_and_cancellation(
+        path,
+        &["config", "--null", "--get-all", &key],
+        64 * 1024,
+        cancellation,
+    )?;
+    if !truncated && output.status.code() == Some(1) && output.stdout.is_empty() {
+        // Let Git report its ordinary no-upstream error for this checkout.
+        return Ok(());
+    }
+    let unavailable = || {
+        AppError::new(
+            "pullUpstreamUnavailable",
+            "The configured Pull upstream could not be read safely. Nothing was fetched.",
+            Some("Review the branch upstream in Git, then retry."),
+        )
+    };
+    if truncated || !output.status.success() {
+        return Err(unavailable());
+    }
+    let values = output.stdout.strip_suffix(b"\0").ok_or_else(unavailable)?;
+    let mut sources = values.split(|&byte| byte == 0);
+    let first = sources.next().ok_or_else(unavailable)?;
+    if sources.any(|source| source != first) {
+        return Err(AppError::new(
+            "multiplePullUpstreams",
+            "More than one upstream branch is configured. Nothing was fetched or integrated.",
+            Some("Open this repository and review the destination in Pull options, or configure a single upstream before retrying the batch."),
+        ));
+    }
+    Ok(())
+}
+
 fn pull_from_remote_with_strategy_and_cancellation(
     path: &Path,
     strategy: &str,
@@ -4779,6 +4818,13 @@ fn pull_from_remote_with_strategy_and_cancellation(
     }
     if let Some(checkout) = checkout {
         require_pull_checkout(path, checkout)?;
+        // The workspace batch offers a single upstream per repository, not an
+        // octopus merge. Explicit toolbar Pull already pins exactly one source.
+        if remote.is_none()
+            && let Some(branch) = &checkout.branch
+        {
+            require_unambiguous_pull_upstream(path, branch, cancellation)?;
+        }
     }
     run_mutation_with_cancellation(path, &args, "pull from the remote", cancellation)
 }
@@ -9889,12 +9935,21 @@ fn run_git_with_stdout_limit(
     args: &[&str],
     limit: usize,
 ) -> Result<(Output, bool), AppError> {
+    run_git_with_stdout_limit_and_cancellation(path, args, limit, None)
+}
+
+fn run_git_with_stdout_limit_and_cancellation(
+    path: &Path,
+    args: &[&str],
+    limit: usize,
+    cancellation: Option<&CancellationToken>,
+) -> Result<(Output, bool), AppError> {
     // These commands inspect local LFS metadata. In particular, `lfs env`
     // fingerprints effective settings before and inside an authenticated action;
     // transport-only configuration would make an unchanged review look stale.
     let local_lfs_metadata = matches!(args, ["lfs", "env" | "ls-files", ..]);
     if authentication::is_transport(args) && !local_lfs_metadata {
-        return run_transport_with_stdout_limit(path, args, None, None, Some(limit));
+        return run_transport_with_stdout_limit(path, args, cancellation, None, Some(limit));
     }
     let mut command = git_in(path);
     command
@@ -9906,7 +9961,8 @@ fn run_git_with_stdout_limit(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     configure_process_tree(&mut command);
-    run_cancellable_command_with_stdout_limit(command, &CancellationToken::default(), Some(limit))
+    let default = CancellationToken::default();
+    run_cancellable_command_with_stdout_limit(command, cancellation.unwrap_or(&default), Some(limit))
 }
 
 fn run_git_with_input(

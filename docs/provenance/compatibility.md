@@ -1060,6 +1060,12 @@ submodules. Real fixtures enable recursive Git settings and verify that
 all three strategies leave nested refs, working files, and object availability
 unchanged while advancing the parent repository.
 
+Workspace Pull refuses to implicitly combine multiple upstreams. Git's
+[`branch.<name>.merge` configuration](https://git-scm.com/docs/git-config)
+allows multiple merge sources, whereas the workspace action presents one
+upstream per repository. The app leaves that configuration unchanged;
+a single explicit toolbar source remains available.
+
 Original real-Git fixtures use owned local bare remotes and publishers.
 They check exact divergent merge parents without local replay, fast-forward-only
 refusal with refreshed tracking tip and preserved local contents, rebase with

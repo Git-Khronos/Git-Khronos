@@ -711,6 +711,44 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
+test('workspace Pull explains an ambiguous upstream and continues to the next repository', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      const isFirst = args.repoId === fixture.first.id;
+      const repo = isFirst ? fixture.first : fixture.second;
+      if (command === 'pull_repository') {
+        fixture.calls.push({ command, args });
+        if (isFirst) throw {
+          kind: 'multiplePullUpstreams',
+          message: 'More than one upstream branch is configured. Nothing was fetched or integrated.',
+          hint: 'Open this repository and review the destination in Pull options, or configure a single upstream before retrying the batch.',
+        };
+        return repo;
+      }
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return repo;
+      if (command === 'refresh_repository_status') return repo.status;
+      throw Error(`Unexpected command: ${command}`);
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  await dialog.getByRole('button', { name: 'Pull selected (2)', exact: true }).click();
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — error: More than one upstream branch is configured. Nothing was fetched or integrated.');
+  await expect(results).toContainText('review the destination in Pull options');
+  await expect(results).toContainText('beta — success');
+  const calls = await page.evaluate(() => (window as any).__center.calls.filter(
+    ({ command }: any) => command === 'pull_repository',
+  ).map(({ args }: any) => args.repoId));
+  expect(calls).toEqual([
+    await page.evaluate(() => (window as any).__center.first.id), 'clean-repo',
+  ]);
+});
+
 test('workspace Pull honors the saved strategy and keeps it for the whole batch', async ({ page }) => {
   await page.getByRole('button', { name: 'Pull options', exact: true }).click();
   await page.locator('.pull-menu').getByRole('menuitemradio', { name: 'Make Fast-forward only the default pull strategy' }).click();

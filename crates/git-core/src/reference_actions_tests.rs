@@ -1469,6 +1469,60 @@ fn pull_fixture(divergent: bool, conflicting: bool) -> (Repository, PathBuf, Str
 }
 
 #[test]
+fn reviewed_implicit_pull_refuses_multiple_merge_sources_before_fetching() {
+    let (repository, publisher, base, incoming) = pull_fixture(false, false);
+    let path = &repository.0;
+    run_mutation(
+        &publisher, &["switch", "-c", "extra", &base], "branch from fixture base",
+    )
+    .unwrap();
+    fs::write(publisher.join("extra.txt"), b"unselected branch\n").unwrap();
+    stage_all(&publisher).unwrap();
+    commit(&publisher, "Independent extra changes").unwrap();
+    run_mutation(&publisher, &["push", "origin", "extra"], "seed extra branch").unwrap();
+    run_mutation(
+        path, &["config", "--add", "branch.main.merge", "refs/heads/extra"], "configure extra upstream",
+    )
+    .unwrap();
+
+    let checkout = PullCheckout {
+        head_oid: Some(base.clone()),
+        branch: Some("main".into()),
+    };
+    let token = CancellationToken::default();
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+    let fetch_head = fs::read(path.join(".git/FETCH_HEAD")).ok();
+    let index = fs::read(path.join(".git/index")).unwrap();
+    let configuration = fs::read(path.join(".git/config")).unwrap();
+    let error = pull_for_checkout_cancellable(path, "merge", None, None, &checkout, &token)
+        .unwrap_err();
+    assert_eq!(error.kind, "multiplePullUpstreams");
+    assert_eq!(repository.oid(), base);
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+    assert_eq!(fs::read(path.join(".git/FETCH_HEAD")).ok(), fetch_head);
+    assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), configuration);
+    assert!(!path.join("extra.txt").exists());
+    assert!(!path.join("remote-file").exists());
+
+    // Choosing the source explicitly can still pull a single branch without
+    // rewriting the user's multi-value Git configuration.
+    pull_for_checkout_cancellable(
+        path,
+        "merge",
+        Some("origin"),
+        Some("main"),
+        &checkout,
+        &token,
+    )
+    .unwrap();
+    assert_eq!(repository.oid(), incoming);
+    assert!(path.join("remote-file").exists());
+    assert!(!path.join("extra.txt").exists());
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), configuration);
+}
+
+#[test]
 fn pull_strategies_integrate_the_parent_gitlink_without_fetching_or_updating_submodules() {
     let publisher = Repository::new();
     let module = Repository::new();

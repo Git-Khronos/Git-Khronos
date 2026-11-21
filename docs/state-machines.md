@@ -258,6 +258,10 @@ strategy; it does not silently choose merge when omitted. Under the app's
 repository mutation lock, native refuses a changed checkout before starting
 Git, even when the new branch shares its old commit. This preflight isn't a lock against Git
 clients outside the app after the check.
+Before an implicit batch Pull, native also reads the checkout's configured
+merge sources. More than one distinct source is a per-repository error
+before fetching; the batch does not perform an undisclosed octopus merge.
+Explicit toolbar Pull still uses the single branch shown in its menu.
 
 Pull integrates the parent commit and its recorded submodule revisions.
 It does not fetch into or check out nested repositories, even when Git's
