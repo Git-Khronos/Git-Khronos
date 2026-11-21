@@ -5,6 +5,26 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Installed worktree-path and release-evidence checkpoint — 2026-11-21
+
+The Jammy-built candidate at `6278cbf` passed all 272 installed
+inherited-environment checks on disposable Ubuntu 24.04 after provisioning a
+matching Git 2.53 executable and helper directory. The same package passed the
+23 worktree, 47 GitLab, 46 setup/line-recap, 23 crash-recovery and 21 updater
+checks with Ubuntu 24.04's Git 2.43. The worktree test opened the exact owner
+path with an embedded line break and trailing space, without changing checkout
+data. The prior package failed at that navigation step. Test-only readiness
+fixes were used where needed; the candidate bytes did not change.
+
+Package SHA-256:
+`e852217d6311e76ad21f16f37361346870b655eb21da7e99a11a58f8c2f2faa5`.
+The installed full report is retained under
+`target/local-review/updater/jammy-builder/literal-path.yPwIKvTq/noble-coherent/`.
+The stricter release preflight accepted the report, matching the installed
+executable and desktop entry hashes and running version to the ABI-checked
+package. That check is not an asset signature, a live updater installation, or
+hosted CI approval. This candidate predates the saved-tab restoration fix.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native
