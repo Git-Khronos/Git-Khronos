@@ -265,6 +265,12 @@ distribution and suite; any missing or failed check causes a nonzero exit.
 Use the original `report.json` from each passing job. The command does not
 check the publisher key or authorize publication.
 
+During longer runs, inspect the adjacent `progress.json` for the last
+completed scenario and elapsed time. The harness replaces it atomically
+and logs progress periodically when scenarios finish. It is a progress
+snapshot, not release evidence; an interrupted run may leave it marked
+`running`. Only a completed `report.json` represents the suite outcome.
+
 For the bounded Git LFS counts regression, run
 `python3 tools/native_acceptance.py --suite lfs-counts --headless --package "$PACKAGE"`.
 Use a disposable runner with a Git LFS that supports `ls-files --json` on PATH,

@@ -25,6 +25,7 @@ import tempfile
 import time
 import traceback
 import uuid
+from native_progress import ScenarioProgress
 from xml.sax.saxutils import quoteattr
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
@@ -1125,18 +1126,20 @@ def main():
     args = parser.parse_args()
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
     output.mkdir(parents=True)
-    report = {"suite": args.suite, "scenarios": [], "passed": False,
+    progress = ScenarioProgress(output, args.suite)
+    report = {"suite": args.suite, "scenarios": progress, "passed": False,
               "inheritedGitEnvironment": args.suite == "environment" or args.inherited_git_environment,
               "platform": platform.platform(), "linuxDistribution": linux_distribution(),
-              "git": run("git", "--version"), "artifactsDirectory": str(output)}
+              "artifactsDirectory": str(output)}
     print(f"Native acceptance: starting {args.suite}. Evidence: {output}", file=sys.stderr, flush=True)
     children = []
     driver = None
     temporary_directory = None
     try:
-        for name in ("tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
+        for name in ("git", "tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
+        report["git"] = run("git", "--version")
         package = args.package.resolve(strict=True)
         assert package.name == expected_package_name, (package.name, expected_package_name)
         assert run("dpkg-deb", "-f", str(package), "Package") == "git-khronos"
@@ -1336,6 +1339,7 @@ def main():
                 report["passed"] = False
                 report["cleanupFailure"] = traceback.format_exc()
         (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+        progress.finish(report["passed"])
     print(json.dumps(report, indent=2), flush=True)
     print(f"Evidence: {output}", flush=True)
     return 0 if report["passed"] else 1
