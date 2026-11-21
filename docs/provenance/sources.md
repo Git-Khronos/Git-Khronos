@@ -46,6 +46,15 @@ fingerprint, redacted labels, request ownership and local-bare regressions are
 independently implemented. No external source code was copied. The preflight
 does not claim to lock an endpoint or make pushes to multiple servers atomic.
 
+## Selected branch transport
+
+- [Git push refspecs, tag and submodule options, and upstream setup](https://git-scm.com/docs/git-push)
+
+Used to limit an explicit branch operation to the selected ref, disambiguate
+local branches from same-named tags, and let Git retain ownership of the
+upstream update. The behavior is checked against owned local bare repositories.
+No source code was copied.
+
 ## Reviewed original-reference deletion
 
 - [Git reference update semantics](https://git-scm.com/docs/git-update-ref)

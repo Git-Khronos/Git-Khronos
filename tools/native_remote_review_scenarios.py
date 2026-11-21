@@ -24,6 +24,12 @@ def remote_review_workflows(driver, fixtures, report):
     fixtures.git(remote, 'init', '--bare')
     fixtures.git(repository, 'remote', 'add', 'origin', str(remote))
     assert fixtures.git(repository, 'remote', 'get-url', '--push', 'origin') == str(remote)
+    fixtures.git(repository, 'tag', '-a', 'main', '-m', 'Same-named tag must stay local')
+    fixtures.git(repository, 'tag', '-a', 'local-only', '-m', 'Unselected tag must stay local')
+    fixtures.git(repository, 'branch', 'unpublished')
+    fixtures.git(repository, 'config', 'push.followTags', 'true')
+    fixtures.git(repository, 'config', 'push.recurseSubmodules', 'only')
+    inspect_remote_refs = lambda: fixtures.git(remote, 'for-each-ref', '--format=%(refname)').splitlines()
     (repository / 'fixture.txt').write_text('Staged remote-review contents must stay local.\n')
     fixtures.git(repository, 'add', 'fixture.txt')
     (repository / 'untracked-note.txt').write_text('Untracked remote-review contents.\n')
@@ -42,6 +48,8 @@ def remote_review_workflows(driver, fixtures, report):
     driver.click_visible(publish + ' .confirm-action', 'Publish Branch')
     driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Published main to origin')")
     assert fixtures.git(remote, 'rev-parse', 'refs/heads/main') == original['head']
+    published_refs = inspect_remote_refs()
+    assert published_refs == ['refs/heads/main'], published_refs
     assert fixtures.git(repository, 'config', 'branch.main.remote') == 'origin'
     assert fixtures.git(repository, 'config', 'branch.main.merge') == 'refs/heads/main'
     published = snapshot()
@@ -84,9 +92,15 @@ def remote_review_workflows(driver, fixtures, report):
     driver.click_visible(force + ' .confirm-action', 'Force Push with Lease')
     driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Force push with lease complete')")
     assert fixtures.git(remote, 'rev-parse', 'refs/heads/main') == child
+    forced_refs = inspect_remote_refs()
+    assert forced_refs == published_refs, forced_refs
+    assert fixtures.git(repository, 'config', 'push.followTags') == 'true'
+    assert fixtures.git(repository, 'config', 'push.recurseSubmodules') == 'only'
+    assert fixtures.git(repository, 'tag', '--list').splitlines() == ['local-only', 'main']
     _preserved(before_fresh, snapshot())
     assert not marker.exists()
     report['scenarios'].append('native-fresh-force-review-pushes-reviewed-head-to-owned-local-remote')
+    report['scenarios'].append('native-scoped-branch-publish-and-force-do-not-transfer-unselected-refs')
 
     # An OID lease alone also matches a fork at the same base. Rebind only the
     # owned fixture's push URL after review and require refusal before any push.
@@ -149,6 +163,7 @@ def remote_review_workflows(driver, fixtures, report):
         'source': str(repository), 'localBareRemote': str(remote), 'networkRemoteUsed': False,
         'original': original, 'published': published, 'reviewedHead': child,
         'rejectedRemoteHead': remote_child, 'finalRemoteHead': fixtures.git(remote, 'rev-parse', 'refs/heads/main'),
+        'publishedRefs': published_refs, 'forcedRefs': forced_refs,
         'reboundLocalBareRemote': str(rebound), 'finalReboundHead': fixtures.git(rebound, 'rev-parse', 'refs/heads/main'),
         'beforeLfs': before_lfs, 'afterLfs': after_lfs, 'removedLfsOid': oid, 'commitAttempted': marker.exists(),
     }

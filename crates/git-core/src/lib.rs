@@ -4837,6 +4837,23 @@ pub fn push_cancellable(path: &Path, cancellation: &CancellationToken) -> Result
     run_mutation_with_cancellation(path, &["push"], "push to the remote", Some(cancellation))
 }
 
+fn run_scoped_branch_push(
+    path: &Path,
+    remote: &str,
+    refspec: &str,
+    extra_flags: &[&str],
+    operation: &str,
+    cancellation: Option<&CancellationToken>,
+) -> Result<(), AppError> {
+    // A selected branch is not permission to send reachable tags or to push a
+    // nested checkout. Leave configured mirror destinations to Git's refusal
+    // of mirror mode with an explicit refspec.
+    let mut args = vec!["push", "--no-follow-tags", "--recurse-submodules=no"];
+    args.extend_from_slice(extra_flags);
+    args.extend(["--", remote, refspec]);
+    run_mutation_with_cancellation(path, &args, operation, cancellation)
+}
+
 pub fn push_to_remote(path: &Path, remote: &str, branch: &str) -> Result<(), AppError> {
     push_to_remote_with_cancellation(path, remote, branch, None, None)
 }
@@ -4893,9 +4910,11 @@ fn push_to_remote_with_cancellation(
         "HEAD"
     };
     let refspec = format!("{source}:refs/heads/{branch}");
-    run_mutation_with_cancellation(
+    run_scoped_branch_push(
         path,
-        &["push", remote, &refspec],
+        remote,
+        &refspec,
+        &[],
         "push to the selected remote",
         cancellation,
     )
@@ -4967,9 +4986,11 @@ fn push_force_with_reviewed_lease(
     }
     let lease = format!("--force-with-lease=refs/heads/{branch}:{expected_remote_oid}");
     let refspec = format!("{expected_head_oid}:refs/heads/{branch}");
-    run_mutation_with_cancellation(
+    run_scoped_branch_push(
         path,
-        &["push", &lease, remote, &refspec],
+        remote,
+        &refspec,
+        &[&lease],
         "force-push to the selected remote safely",
         cancellation,
     )
@@ -5230,9 +5251,14 @@ fn publish_branch_with_cancellation(
             Some("Refresh the repository and try again."),
         ));
     }
-    run_mutation_with_cancellation(
+    // Qualifying both sides prevents a same-named tag from resolving as the
+    // source or destination. Git still owns the successful upstream update.
+    let refspec = format!("{local_reference}:{local_reference}");
+    run_scoped_branch_push(
         path,
-        &["push", "--set-upstream", remote, branch],
+        remote,
+        &refspec,
+        &["--set-upstream"],
         "publish that branch",
         cancellation,
     )
@@ -13550,6 +13576,205 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             .find(|branch| branch.name == "feature" && !branch.remote)
             .expect("find feature branch");
         assert_eq!(feature.upstream, None);
+    }
+
+    #[test]
+    fn selected_branch_push_leaves_unselected_tags_and_branches_local() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Selected"]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        let url = remote.to_str().unwrap();
+        repository.git(&["init", "--bare", url]);
+        repository.git(&["remote", "add", "origin", url]);
+        repository.git(&["branch", "private-branch"]);
+        repository.git(&["tag", "-a", "private-tag", "-m", "Unselected"]);
+        repository.git(&["config", "push.followTags", "true"]);
+        repository.git(&["config", "remote.origin.push", "refs/heads/*:refs/heads/*"]);
+        let head = repository.git_output(&["rev-parse", "HEAD"]);
+
+        push_to_remote_at_head_cancellable(
+            &repository.path,
+            "origin",
+            "selected",
+            head.trim(),
+            &CancellationToken::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "for-each-ref", "--format=%(refname)"])
+                .trim(),
+            "refs/heads/selected"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "rev-parse", "refs/heads/selected"])
+                .trim(),
+            head.trim()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["config", "--get", "push.followTags"])
+                .trim(),
+            "true"
+        );
+    }
+
+    #[test]
+    fn selected_branch_push_updates_parent_despite_submodules_only_config() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Parent"]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        let url = remote.to_str().unwrap();
+        repository.git(&["init", "--bare", url]);
+        repository.git(&["remote", "add", "origin", url]);
+        repository.git(&["config", "push.recurseSubmodules", "only"]);
+
+        push_to_remote(&repository.path, "origin", "parent").unwrap();
+
+        let refs =
+            repository.git_output(&["--git-dir", url, "for-each-ref", "--format=%(refname)"]);
+        assert_eq!(refs.trim(), "refs/heads/parent");
+        assert_eq!(
+            repository
+                .git_output(&["config", "--get", "push.recurseSubmodules"])
+                .trim(),
+            "only"
+        );
+    }
+
+    #[test]
+    fn publish_branch_uses_qualified_names_when_a_tag_has_the_same_name() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Publishable branch"]);
+        repository.git(&["branch", "release"]);
+        repository.git(&["tag", "-a", "release", "-m", "Do not publish this tag"]);
+        repository.git(&[
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Current checkout is different",
+        ]);
+        repository.git(&["config", "push.followTags", "true"]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        let url = remote.to_str().unwrap();
+        repository.git(&["init", "--bare", url]);
+        repository.git(&["remote", "add", "origin", url]);
+
+        publish_branch(&repository.path, "origin", "release").unwrap();
+
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "for-each-ref", "--format=%(refname)"])
+                .trim(),
+            "refs/heads/release"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "rev-parse", "refs/heads/release"])
+                .trim(),
+            repository
+                .git_output(&["rev-parse", "refs/heads/release"])
+                .trim()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["config", "--get", "branch.release.remote"])
+                .trim(),
+            "origin"
+        );
+        assert_eq!(
+            repository
+                .git_output(&["config", "--get", "branch.release.merge"])
+                .trim(),
+            "refs/heads/release"
+        );
+    }
+
+    #[test]
+    fn reviewed_force_push_updates_only_the_leased_branch_and_retains_config() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Seed updates"]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        let url = remote.to_str().unwrap();
+        repository.git(&["init", "--bare", url]);
+        repository.git(&["remote", "add", "team/upstream", url]);
+        repository.git(&[
+            "push",
+            "team/upstream",
+            "HEAD:refs/heads/selected",
+            "HEAD:refs/heads/keep",
+        ]);
+        let old = repository.git_output(&["rev-parse", "HEAD"]);
+        repository.git(&[
+            "commit",
+            "--amend",
+            "--allow-empty",
+            "-m",
+            "Rewritten selected branch",
+        ]);
+        let head = repository.git_output(&["rev-parse", "HEAD"]);
+        repository.git(&["branch", "unpublished"]);
+        repository.git(&["tag", "-a", "private", "-m", "Unselected annotation"]);
+        repository.git(&["config", "push.followTags", "true"]);
+        repository.git(&["config", "push.recurseSubmodules", "only"]);
+        let config = fs::read(repository.path.join(".git/config")).unwrap();
+        let review = review_push_destination(&repository.path, "team/upstream").unwrap();
+
+        push_force_with_lease_to_remote(
+            &repository.path,
+            "team/upstream",
+            "selected",
+            old.trim(),
+            head.trim(),
+            &review.state,
+        )
+        .unwrap();
+
+        let refs =
+            repository.git_output(&["--git-dir", url, "for-each-ref", "--format=%(refname)"]);
+        assert_eq!(refs.trim(), "refs/heads/keep\nrefs/heads/selected");
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "rev-parse", "refs/heads/keep"])
+                .trim(),
+            old.trim()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["--git-dir", url, "rev-parse", "refs/heads/selected"])
+                .trim(),
+            head.trim()
+        );
+        assert_eq!(
+            fs::read(repository.path.join(".git/config")).unwrap(),
+            config
+        );
+    }
+
+    #[test]
+    fn selected_branch_push_does_not_override_the_remote_mirror_policy() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Local branch"]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        let url = remote.to_str().unwrap();
+        repository.git(&["init", "--bare", url]);
+        repository.git(&["remote", "add", "mirror", url]);
+        repository.git(&["config", "remote.mirror.mirror", "true"]);
+
+        assert!(push_to_remote(&repository.path, "mirror", "selected").is_err());
+        assert!(
+            repository
+                .git_output(&["--git-dir", url, "for-each-ref"])
+                .is_empty()
+        );
+        assert_eq!(
+            repository
+                .git_output(&["config", "--get", "remote.mirror.mirror"])
+                .trim(),
+            "true"
+        );
     }
 
     #[test]

@@ -816,6 +816,15 @@ and busy state before dispatch. Publish remote selection and the handoff to the
 remote editor use the same guard. Force-push keeps the existing pinned local
 and remote object IDs and native force-with-lease authority unchanged.
 
+Push to a selected branch, Publish Branch and Force Push with Lease send only
+the requested branch ref. They do not inherit automatic annotated-tag push or
+recursive submodule push configuration. Publish uses the full local and remote
+branch names, even when a tag has the same name, and Git sets the upstream only
+as part of its successful push. Configured mirror mode still refuses an explicit
+branch refspec; the operation never falls back to a mirror push. These overrides
+apply per invocation; unscoped native Push and stored Git configuration are
+unchanged, apart from Publish's explicit upstream update.
+
 Each LFS preview belongs to one review instance: an older success, failure or
 loading completion cannot overwrite or close a replacement. Preview arrival
 does not steal focus from a control already inside the dialog. Exact cleanup
