@@ -33,6 +33,17 @@ strict installed release preflight accepted package SHA-256
 the report, receipt, and installer are retained under
 `target/local-review/updater/jammy-builder/live-recap.oD1hX1mY/`.
 
+The next Jammy candidate, `52b6dcb`, passed **190 installed checks** across the
+same six Ubuntu 24.04 suites with stock Git 2.43. Its staged rename reported
+`R  before.txt -> after.txt` and +2/−1; unstaging returned the original
+deletion and an untracked destination without changing the working file.
+All six reports matched the installed executable, desktop entry and package
+hashes. Package SHA-256:
+`d72c3bdbcfda9c563d05b50d257af2e19780f3a1c2f49fa12fe3833716c77c11`.
+The unchanged artifacts and reports are under
+`target/local-review/updater/jammy-builder/paired-index-rename.inkJbl3s/`.
+This does not qualify the subsequent rename diff or Tags restoration changes.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
