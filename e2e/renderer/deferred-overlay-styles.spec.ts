@@ -159,3 +159,53 @@ for (const outcome of ['opened', 'unavailable'] as const) {
     } finally { layout.release(); }
   });
 }
+
+for (const outcome of ['loaded', 'failed'] as const) {
+  test(`Recovery History loads its layout on demand and owns keyboard input while ${outcome}`, async ({ page }) => {
+    const layout = await interceptLayout(page, /class\s+_?RecoveryHistoryDialogComponent\b/, '.recovery-list', outcome === 'failed');
+    try {
+      await page.goto('/');
+      const draft = page.getByLabel('Commit summary', { exact: true });
+      await draft.fill('Keep my draft while checking recovery');
+      await page.evaluate(() => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        (window as any).__recoveryAmbientWrites = [];
+        app.git.stageAll = async () => { (window as any).__recoveryAmbientWrites.push('stage'); };
+        app.git.commit = async () => { (window as any).__recoveryAmbientWrites.push('commit'); };
+      });
+      const opener = page.getByRole('button', { name: 'Main menu', exact: true });
+      expect(layout.requests()).toBe(0);
+      expect(await layout.installed()).toBe(false);
+      await opener.click();
+      await page.getByRole('menuitem', { name: /Recovery History/ }).click();
+      await expect.poll(layout.requests).toBe(1);
+      const loader = page.getByRole('dialog', { name: 'Opening Recovery History', exact: true });
+      const cancel = loader.getByRole('button', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Control+Shift+Enter');
+      await expect(loader).toBeVisible();
+      expect(await layout.installed()).toBe(false);
+      layout.release();
+      if (outcome === 'loaded') {
+        const dialog = page.getByRole('dialog', { name: 'Recovery history', exact: true });
+        await expect(dialog.getByRole('searchbox')).toBeFocused();
+        await expect(dialog.locator('.recovery-list')).toHaveCSS('overflow-y', 'auto');
+        expect(await layout.installed()).toBe(true);
+        await page.keyboard.press('Control+Shift+Enter');
+        await expect(dialog).toBeVisible();
+      } else {
+        const error = page.getByRole('dialog', { name: 'Recovery History unavailable', exact: true });
+        await expect(error.getByRole('alert')).toContainText('Saved changes are unchanged');
+        await expect(error.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+        expect(await layout.installed()).toBe(false);
+      }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      await expect(draft).toHaveValue('Keep my draft while checking recovery');
+      expect(await page.evaluate(() => (window as any).__recoveryAmbientWrites)).toEqual([]);
+    } finally { layout.release(); }
+  });
+}

@@ -1,0 +1,66 @@
+/* Repository recovery history */
+.recovery-backdrop { position: fixed; z-index: 53; inset: 0; display: grid; place-items: center; padding: 22px; background: #080811cc; backdrop-filter: blur(4px); }
+.recovery-dialog { width: min(860px, 100%); max-height: min(780px, calc(100dvh - 44px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #55536f; border-radius: 8px; background: #202031; box-shadow: 0 30px 100px #000e; animation: recovery-panel-in .12s ease-out; }
+.recovery-dialog > header { display: grid; grid-template-columns: 42px minmax(0, 1fr) 28px; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid #3a394e; background: #272638; }
+.recovery-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #344f49; color: var(--accent); }
+.recovery-dialog > header div { min-width: 0; }
+.recovery-dialog > header small { color: #8e8c9d; font-size: 12px; font-weight: 850; letter-spacing: .1em; }
+.recovery-dialog > header h2 { margin: 2px 0; color: #f1f0f6; font-size: 17px; font-weight: 650; }
+.recovery-dialog > header p { margin: 0; color: #8e8c9f; font-size: 12px; }
+.recovery-dialog > header > button { align-self: start; display: grid; width: 27px; height: 27px; place-items: center; border-radius: 3px; background: transparent; color: #8e8d9f; }
+.recovery-dialog > header > button:hover { background: #39384d; color: white; }
+.recovery-toolbar { display: flex; gap: 7px; padding: 10px 12px; border-bottom: 1px solid #343347; background: #242335; }
+.recovery-toolbar label { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #45445d; border-radius: 4px; background: #181824; color: #8d8c9d; }
+.recovery-toolbar label:focus-within { border-color: var(--purple); color: #aaa8ff; }
+.recovery-toolbar input { width: 100%; height: 34px; border: 0; outline: 0; background: transparent; color: #e2e1e9; font-size: 12px; }
+.recovery-toolbar > button { width: 35px; display: grid; place-items: center; border: 1px solid #45445d; border-radius: 4px; background: #302f45; color: #a4a2b5; }
+.recovery-toolbar > button:hover:not(:disabled) { background: #3d3b55; color: white; }
+.recovery-guidance { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-bottom: 1px solid #343347; background: #21332f; color: #9eacaa; font-size: 12px; line-height: 1.4; }
+.recovery-guidance > gc-icon { flex: none; color: var(--accent); }
+.recovery-guidance strong { color: #c5e8df; }
+.recovery-list { min-height: 0; flex: 1; overflow: auto; padding: 7px; }
+.recovery-entry { display: grid; grid-template-columns: 29px minmax(0, 1fr) 78px auto; align-items: center; gap: 9px; min-height: 55px; margin-bottom: 3px; padding: 7px 9px; border: 1px solid transparent; border-radius: 5px; background: #282739; }
+.recovery-entry:hover, .recovery-entry.branching { border-color: #4a4962; background: #2d2c41; }
+.recovery-node { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 50%; background: #3b3951; color: #9b8ff5; }
+.recovery-copy { min-width: 0; display: grid; gap: 4px; }
+.recovery-copy strong { overflow: hidden; color: #dedde7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.recovery-copy small { overflow: hidden; color: #8e8c9e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.recovery-entry > code { color: #8f8da1; font-size: 12px; }
+.recovery-actions { display: flex; gap: 5px; }
+.recovery-actions button, .recovery-branch-form button { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #48475e; border-radius: 3px; background: #333248; color: #aaa9bb; font-size: 12px; white-space: nowrap; }
+.recovery-actions button:hover, .recovery-branch-form button:hover { background: #414058; color: white; }
+.recovery-actions button.primary, .recovery-branch-form button.primary { border-color: #4c8e7c; background: #356f62; color: #e5fff8; }
+.recovery-actions button:disabled, .recovery-branch-form button:disabled { opacity: .5; }
+.recovery-branch-form { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 6px; padding: 8px; border: 1px solid #4b4964; border-radius: 4px; background: #222133; }
+.recovery-branch-form label { display: grid; gap: 5px; color: #8e8ca0; font-size: 12px; }
+.recovery-branch-form input { width: 100%; height: 29px; padding: 0 8px; border: 1px solid #4a4962; border-radius: 3px; outline: none; background: #171722; color: white; font-size: 12px; }
+.recovery-branch-form input:focus { border-color: var(--purple); }
+.recovery-branch-error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.recovery-empty { min-height: 230px; display: grid; place-items: center; align-content: center; gap: 7px; color: #8e8c9d; }
+.recovery-empty strong { color: #b5b3c2; font-size: 13px; }
+.recovery-empty small { color: #8e8c9d; font-size: 12px; }
+.recovery-dialog > footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid #39384d; background: #252438; }
+.recovery-dialog > footer span { color: #8e8c9d; font-size: 12px; }
+.recovery-dialog > footer button { padding: 6px 11px; border: 1px solid #48475d; border-radius: 3px; background: #302f45; color: #bbb9c9; font-size: 12px; }
+@media (max-width: 720px) {
+  .recovery-backdrop { padding: 10px; }
+  .recovery-entry { grid-template-columns: 29px minmax(0, 1fr) auto; }
+  .recovery-entry > code { display: none; }
+  .recovery-actions { grid-column: 2 / -1; }
+  .recovery-branch-form { grid-column: 1 / -1; grid-template-columns: 1fr auto; }
+  .recovery-branch-form label { grid-column: 1 / -1; }
+}
+
+@keyframes recovery-panel-in { from { opacity: 0; transform: translateY(-7px) scale(.99); } }
+@media (prefers-reduced-motion: reduce) { .recovery-dialog { animation: none; } }
+
+.capture-actions button { min-height: 28px; padding: 5px 9px; border: 1px solid var(--graph-menu-border); border-radius: 3px; background: var(--graph-menu-surface); color: var(--text); }
+.operation-captures { padding: 12px; border-bottom: 1px solid var(--graph-menu-border); color: var(--text); }
+.operation-captures h3 { margin: 0 0 8px; font-size: 14px; }
+.operation-captures p, .operation-capture small { font-size: 12px; line-height: 1.5; }
+.operation-capture { display: grid; gap: 8px; padding: 12px 0; overflow-wrap: anywhere; border-top: 1px solid var(--graph-menu-border); }
+.capture-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.recovery-capture-form { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--graph-menu-border); }
+.recovery-capture-form label { display: grid; gap: 6px; font-size: 12px; }
+.recovery-capture-form input { min-width: 0; padding: 7px; background: var(--graph-menu-surface); color: var(--text); border: 1px solid var(--graph-menu-border); }
+.recovery-error { color: var(--danger, #ef9cab); overflow-wrap: anywhere; }

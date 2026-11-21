@@ -1015,12 +1015,13 @@ export class GitKhronosService {
     this.trackedFileSearchBusy.set(false);
   }
 
-  async loadReflog(): Promise<void> {
+  async loadReflog(): Promise<string | null> {
     const repository = this.repository();
-    if (!repository) return;
+    if (!repository) return null;
     const request = ++this.reflogRequest;
     this.reflogBusy.set(true);
-    this.error.set(null);
+    const current = () => request === this.reflogRequest && repository.id === this.activeRepositoryId()
+      && repository.path === this.repository()?.path;
     try {
       const result: ReflogPage = this.browserPreview()
         ? {
@@ -1034,11 +1035,12 @@ export class GitKhronosService {
             truncated: false,
           }
         : await ipc.load_reflog({ repoId: repository.id });
-      if (request === this.reflogRequest && repository.id === this.activeRepositoryId()) {
+      if (current()) {
         this.reflog.set(result);
       }
+      return null;
     } catch (error: unknown) {
-      if (request === this.reflogRequest) this.error.set(this.formatError(error));
+      return current() ? this.formatError(error) : null;
     } finally {
       if (request === this.reflogRequest) this.reflogBusy.set(false);
     }
@@ -2361,14 +2363,17 @@ export class GitKhronosService {
       { token: preview.token });
   }
 
-  async loadOperationRecoveries(repositoryId: string): Promise<OperationRecovery[] | null> {
-    if (!this.requireRecoveryRepository(repositoryId)) return null;
-    let records: OperationRecovery[] | null = null;
-    const result = await this.run('Loading saved operation recovery…', async () => {
-      records = this.browserPreview() ? []
-        : await ipc.load_operation_recoveries({ repoId: repositoryId });
-    }, repositoryId);
-    return result === 'success' ? records : null;
+  async loadOperationRecoveries(
+    repositoryId: string,
+  ): Promise<{ records: OperationRecovery[]; error: null } | { records: null; error: string }> {
+    try {
+      const records = this.browserPreview() ? [] : await ipc.load_operation_recoveries({ repoId: repositoryId });
+      return { records, error: null };
+    } catch (error: unknown) {
+      // The Recovery History request, not the application activity lane, owns
+      // this read result and any error. A closed request cannot show a toast later.
+      return { records: null, error: this.formatError(error) };
+    }
   }
 
   async restoreOperationRecovery(id: string, branch: string, repositoryId: string): Promise<void> {

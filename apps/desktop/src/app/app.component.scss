@@ -558,6 +558,7 @@
 }
 .context-section-label-danger { color: #c9798b; }
 .confirmation-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 18px; background: #080811b8; backdrop-filter: blur(3px); }
+.recovery-history-fallback { z-index: 53; }
 .confirmation-backdrop.over-recovery { z-index: 54; }
 .confirmation-dialog { width: min(460px, 100%); display: grid; grid-template-columns: 39px minmax(0, 1fr); gap: 12px; padding: 18px; border: 1px solid #51506b; border-radius: 7px; background: #242337; box-shadow: 0 28px 90px #000d; animation: palette-in var(--motion-disclosure) var(--ease-out); }
 .saved-discards-dialog { grid-template-columns: minmax(0, 1fr); max-height: calc(100dvh - 36px); overflow: auto; }

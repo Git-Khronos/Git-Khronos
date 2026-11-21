@@ -1171,7 +1171,13 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingWorktreeAction = signal<PendingWorktreeRemoval | null>(null);
   protected readonly forceWorktreeRemoval = signal(false);
   protected readonly activityLogOpen = signal(false);
-  protected readonly recoveryHistoryOpen = signal(false);
+  private readonly recoveryHistoryOwner = signal<RepositoryReviewScope | null>(null);
+  protected readonly recoveryHistoryOpen = computed(() => !!this.recoveryHistoryOwner());
+  private readonly recoveryHistoryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('recoveryHistoryLoaderClose');
+  private readonly recoveryHistoryLoaderFocus = afterRenderEffect(() => {
+    if (this.recoveryHistoryOpen()) this.recoveryHistoryLoaderClose()?.nativeElement.focus();
+  });
+  protected readonly recoveryReadError = signal<string | null>(null);
   protected readonly recoveryQuery = signal('');
   protected readonly recoveryBranchEntry = signal<ReflogEntry | null>(null);
   protected readonly recoveryBranchName = signal('');
@@ -1388,8 +1394,6 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly recoveryCaptureBusy = signal(false);
   protected readonly recoveryCaptureAction = signal<{ record: OperationRecovery; kind: 'restore' | 'remove' } | null>(null);
   protected readonly recoveryCaptureBranch = signal('');
-  private recoveryRepositoryId: string | null = null;
-  private recoveryHistoryReturnFocus: HTMLElement | null = null;
   protected readonly filteredOperationRecoveries = computed(() => {
     const query = this.recoveryQuery().trim().toLowerCase();
     return (this.operationRecoveries() ?? []).filter((entry) =>
@@ -4688,6 +4692,27 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissFileConfirmation(true);
       return;
     }
+    if (this.recoveryHistoryOpen() && !this.pendingFileAction()) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeRecoveryHistory();
+      } else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+      } else {
+        const dialog = document.querySelector<HTMLElement>('.recovery-dialog, .recovery-history-fallback [role="dialog"]');
+        if (!(event.target instanceof Node) || !dialog?.contains(event.target)) {
+          if (['Tab', 'Enter', ' '].includes(event.key)) {
+            event.preventDefault();
+            (this.recoveryHistoryLoaderClose()?.nativeElement
+              ?? dialog?.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled)'))?.focus();
+          }
+        } else if (event.key === 'Tab' && this.recoveryHistoryLoaderClose()) {
+          event.preventDefault();
+          this.recoveryHistoryLoaderClose()?.nativeElement.focus();
+        }
+      }
+      return;
+    }
     if (event.key === 'Escape' && this.diffFileMenuOpen()) {
       event.preventDefault();
       event.stopPropagation();
@@ -4842,11 +4867,6 @@ export class AppComponent implements OnInit, OnDestroy {
     if (event.key === 'Escape' && this.activityLogOpen()) {
       event.preventDefault();
       this.closeActivityLogs();
-      return;
-    }
-    if (event.key === 'Escape' && this.recoveryHistoryOpen()) {
-      event.preventDefault();
-      this.closeRecoveryHistory();
       return;
     }
     if (event.key === 'Escape' && this.pendingBranchAction()) {
@@ -11949,6 +11969,7 @@ export class AppComponent implements OnInit, OnDestroy {
     savedDiscardsLoading: this.savedDiscardsLoading,
     recoveryQuery: this.recoveryQuery,
     recoveryCaptureBusy: this.recoveryCaptureBusy,
+    recoveryReadError: this.recoveryReadError,
     recoveryCaptureAction: this.recoveryCaptureAction,
     recoveryCaptureBranch: this.recoveryCaptureBranch,
     operationRecoveries: this.operationRecoveries,
@@ -11973,52 +11994,69 @@ export class AppComponent implements OnInit, OnDestroy {
   }));
 
   protected async openRecoveryHistory(): Promise<void> {
-    this.recoveryHistoryReturnFocus = document.querySelector<HTMLElement>('[aria-label="Main menu"]');
-    this.recoveryRepositoryId = this.git.activeRepositoryId();
+    const repository = this.captureRepositoryEditorOwner();
+    if (!repository || this.git.busy() || this.recoveryHistoryOwner()) return;
     this.appMenuOpen.set(false);
     this.activityLogOpen.set(false);
-    this.recoveryQuery.set('');
-    this.recoveryBranchEntry.set(null);
-    this.recoveryBranchName.set('');
-    this.operationRecoveries.set(null);
-    this.recoveryCaptureAction.set(null);
-    this.recoveryBranchError.set(null);
-    this.recoveryHistoryOpen.set(true);
+    this.recoveryHistoryOwner.set({
+      ...repository,
+      returnFocus: document.querySelector<HTMLElement>('[aria-label="Main menu"]'),
+    });
     await this.refreshRecoveryHistory();
   }
 
+  private reviewRecoveryRepository(owner: RepositoryReviewScope): boolean {
+    if (this.ownsRepositoryScope(owner)) return true;
+    this.git.error.set('The active repository changed. Close this dialog and review the intended repository.');
+    return false;
+  }
+
+  private isCurrentRecoveryHistory(owner: RepositoryReviewScope): boolean {
+    return this.recoveryHistoryOwner() === owner && this.ownsRepositoryScope(owner);
+  }
+
   protected async refreshRecoveryHistory(): Promise<void> {
-    if (this.git.busy() || this.recoveryCaptureBusy()) return;
-    const repositoryId = this.recoveryRepositoryId;
-    if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
+    const owner = this.recoveryHistoryOwner();
+    if (!owner || this.git.busy() || this.recoveryCaptureBusy()) return;
+    if (!this.reviewRecoveryRepository(owner)) {
+      this.focusRecoveryError(null, owner);
+      return;
+    }
+    this.recoveryReadError.set(null);
+    this.git.error.set(null);
     this.recoveryCaptureBusy.set(true);
     try {
-      await this.git.loadReflog();
-      const reflogError = this.git.error();
-      const records = await this.git.loadOperationRecoveries(repositoryId);
-      if (reflogError) this.git.error.set([reflogError, this.git.error()].filter(Boolean).join(' '));
-      if (this.recoveryHistoryOpen() && this.recoveryRepositoryId === repositoryId) {
-        this.operationRecoveries.set(records);
+      const reflogError = await this.git.loadReflog();
+      if (!this.isCurrentRecoveryHistory(owner)) return;
+      const result = await this.git.loadOperationRecoveries(owner.repositoryId);
+      if (this.isCurrentRecoveryHistory(owner)) {
+        this.recoveryReadError.set([reflogError, result.error].filter(Boolean).join(' ') || null);
+        this.operationRecoveries.set(result.records);
       }
     } finally {
-      this.recoveryCaptureBusy.set(false);
+      if (this.recoveryHistoryOwner() === owner) this.recoveryCaptureBusy.set(false);
     }
   }
 
   protected beginRecoveryCaptureAction(record: OperationRecovery, kind: 'restore' | 'remove'): void {
-    this.recoveryCaptureAction.set({ record, kind });
+    const owner = this.recoveryHistoryOwner();
+    if (!owner || !this.isCurrentRecoveryHistory(owner)) return;
+    const action = { record, kind };
+    this.recoveryCaptureAction.set(action);
     this.recoveryCaptureBranch.set(`recovery/${this.shortOid(record.headOid)}`);
     afterNextRender(() => {
+      if (!this.isCurrentRecoveryHistory(owner) || this.recoveryCaptureAction() !== action) return;
       const form = document.querySelector<HTMLElement>('.recovery-capture-form');
       form?.querySelector<HTMLElement>(kind === 'restore' ? 'input' : '[data-capture-cancel]')?.focus();
     }, { injector: this.injector });
   }
 
   protected cancelRecoveryCaptureAction(): void {
+    const owner = this.recoveryHistoryOwner();
     const action = this.recoveryCaptureAction();
     this.recoveryCaptureAction.set(null);
     afterNextRender(() => {
-      if (!action) return;
+      if (!owner || !action || !this.isCurrentRecoveryHistory(owner) || this.recoveryCaptureAction()) return;
       const captures = [...document.querySelectorAll<HTMLElement>('.operation-capture')];
       const capture = captures.find((element) => element.dataset['captureId'] === action.record.id);
       capture?.querySelector<HTMLElement>(`[data-capture-action="${action.kind}"]`)?.focus();
@@ -12027,8 +12065,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmRecoveryCaptureAction(): Promise<void> {
     const action = this.recoveryCaptureAction();
-    const repositoryId = this.recoveryRepositoryId;
-    if (!action || !repositoryId || this.git.busy() || this.recoveryCaptureBusy()) return;
+    const owner = this.recoveryHistoryOwner();
+    if (!action || !owner || this.git.busy() || this.recoveryCaptureBusy()) return;
+    if (!this.reviewRecoveryRepository(owner)) {
+      this.focusRecoveryError(null, owner);
+      return;
+    }
+    const { repositoryId } = owner;
     if (action.kind === 'restore') {
       const branch = this.recoveryCaptureBranch().trim();
       if (!branch) return;
@@ -12036,16 +12079,17 @@ export class AppComponent implements OnInit, OnDestroy {
     } else {
       await this.git.forgetOperationRecovery(action.record.id, repositoryId);
     }
+    if (!this.isCurrentRecoveryHistory(owner) || this.recoveryCaptureAction() !== action) return;
     if (this.git.error()) {
-      afterNextRender(() => {
-        document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
-      }, { injector: this.injector });
+      this.focusRecoveryError(null, owner);
       return;
     }
     this.recoveryCaptureAction.set(null);
     await this.refreshRecoveryHistory();
     afterNextRender(() => {
-      document.querySelector<HTMLElement>('[aria-label="Refresh recovery history"]')?.focus();
+      if (this.isCurrentRecoveryHistory(owner)) {
+        document.querySelector<HTMLElement>('[aria-label="Refresh recovery history"]')?.focus();
+      }
     }, { injector: this.injector });
   }
 
@@ -12060,19 +12104,24 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected closeRecoveryHistory(): void {
-    this.recoveryHistoryOpen.set(false);
+    const owner = this.recoveryHistoryOwner();
+    if (!owner) return;
+    this.recoveryHistoryOwner.set(null);
     this.recoveryQuery.set('');
     this.recoveryBranchEntry.set(null);
     this.recoveryBranchName.set('');
     this.recoveryCaptureAction.set(null);
     this.operationRecoveries.set(null);
-    this.recoveryRepositoryId = null;
+    this.recoveryCaptureBusy.set(false);
+    this.savedDiscardsLoading.set(false);
+    this.recoveryReadError.set(null);
     this.recoveryBranchError.set(null);
     this.git.clearReflog();
-    const opener = this.recoveryHistoryReturnFocus;
-    this.recoveryHistoryReturnFocus = null;
+    const opener = owner.returnFocus;
     afterNextRender(() => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      if (!this.recoveryHistoryOwner() && opener?.isConnected && this.canRestoreFocusFrom(null)) {
+        opener.focus({ preventScroll: true });
+      }
     }, { injector: this.injector });
   }
 
@@ -12081,55 +12130,57 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async viewRecoveryEntry(entry: ReflogEntry): Promise<void> {
-    if (!this.recoveryRepositoryId || !this.git.requireRecoveryRepository(this.recoveryRepositoryId)) return;
+    const owner = this.recoveryHistoryOwner();
+    if (!owner || !this.reviewRecoveryRepository(owner)) return;
     this.closeRecoveryHistory();
     await this.jumpToCommit(entry.oid);
   }
 
   protected beginRecoveryBranch(entry: ReflogEntry): void {
-    if (this.git.busy()) return;
+    const owner = this.recoveryHistoryOwner();
+    if (this.git.busy() || !owner || !this.isCurrentRecoveryHistory(owner)) return;
     this.recoveryBranchEntry.set(entry);
     this.recoveryBranchName.set(`recovery/${this.shortOid(entry.oid)}`);
     this.recoveryBranchError.set(null);
-    setTimeout(() => {
+    afterNextRender(() => {
+      if (!this.isCurrentRecoveryHistory(owner) || this.recoveryBranchEntry() !== entry) return;
       const input = document.querySelector<HTMLInputElement>('.recovery-branch-form input');
       input?.focus();
       input?.select();
-    });
+    }, { injector: this.injector });
   }
 
   protected async createRecoveryBranch(): Promise<void> {
     const entry = this.recoveryBranchEntry();
     const name = this.recoveryBranchName().trim();
-    const repositoryId = this.recoveryRepositoryId;
-    if (!entry || !name || !repositoryId || this.git.busy()) return;
-    if (!this.git.requireRecoveryRepository(repositoryId)) {
-      afterNextRender(() => {
-        document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
-      }, { injector: this.injector });
+    const owner = this.recoveryHistoryOwner();
+    if (!entry || !name || !owner || this.git.busy()) return;
+    if (!this.reviewRecoveryRepository(owner)) {
+      this.focusRecoveryError(null, owner);
       return;
     }
+    const { repositoryId } = owner;
     const form = document.querySelector<HTMLElement>('.recovery-branch-form');
     const returnFocus = form?.closest('.recovery-entry')?.querySelector<HTMLButtonElement>('.recovery-actions .primary');
     this.recoveryBranchError.set(null);
     const result = await this.git.createBranchReference(name, entry.oid, repositoryId);
-    if (!result || !this.recoveryHistoryOpen() || this.recoveryRepositoryId !== repositoryId
-      || this.git.activeRepositoryId() !== repositoryId || this.recoveryBranchEntry() !== entry) return;
+    if (!result || !this.isCurrentRecoveryHistory(owner) || this.recoveryBranchEntry() !== entry) return;
     if (result.status === 'success') {
       this.recoveryBranchEntry.set(null);
       this.recoveryBranchName.set('');
       queueMicrotask(() => requestAnimationFrame(() => {
-        if (this.recoveryHistoryOpen() && this.git.activeRepositoryId() === repositoryId
+        if (this.isCurrentRecoveryHistory(owner)
           && !this.recoveryBranchEntry() && this.canRestoreFocusFrom(form)
           && returnFocus?.isConnected && !returnFocus.disabled) {
           returnFocus.focus({ preventScroll: true });
         }
       }));
-      await this.git.loadReflog();
+      const readError = await this.git.loadReflog();
+      if (readError && this.isCurrentRecoveryHistory(owner)) this.recoveryReadError.set(readError);
     } else {
       this.recoveryBranchError.set(result.error ?? 'Branch creation was interrupted. Try again.');
       queueMicrotask(() => requestAnimationFrame(() => {
-        if (this.recoveryHistoryOpen() && this.git.activeRepositoryId() === repositoryId
+        if (this.isCurrentRecoveryHistory(owner)
           && this.recoveryBranchEntry() === entry && this.canRestoreFocusFrom(form)) {
           form?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
         }
@@ -13046,29 +13097,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async openSavedDiscardsFromHistory(event: MouseEvent): Promise<void> {
     const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const repositoryId = this.recoveryRepositoryId;
-    if (!opener || !repositoryId || this.git.busy() || this.recoveryCaptureBusy()) return;
-    if (!this.git.requireRecoveryRepository(repositoryId)) {
-      this.focusRecoveryError(opener);
+    const owner = this.recoveryHistoryOwner();
+    if (!opener || !owner || this.git.busy() || this.recoveryCaptureBusy()) return;
+    if (!this.reviewRecoveryRepository(owner)) {
+      this.focusRecoveryError(opener, owner);
       return;
     }
     this.savedDiscardsLoading.set(true);
     try {
-      const recoveries = await this.git.loadDiscardRecoveries(repositoryId);
-      if (!opener.isConnected || !this.recoveryHistoryOpen() || this.recoveryRepositoryId !== repositoryId) return;
-      if (!this.git.requireRecoveryRepository(repositoryId) || !recoveries) {
-        this.focusRecoveryError(opener);
+      const recoveries = await this.git.loadDiscardRecoveries(owner.repositoryId);
+      if (!opener.isConnected || this.recoveryHistoryOwner() !== owner) return;
+      if (!this.reviewRecoveryRepository(owner) || !recoveries) {
+        this.focusRecoveryError(opener, owner);
         return;
       }
-      this.showSavedDiscards(repositoryId, recoveries, opener);
+      this.showSavedDiscards(owner.repositoryId, recoveries, opener);
     } finally {
-      this.savedDiscardsLoading.set(false);
+      if (this.recoveryHistoryOwner() === owner) this.savedDiscardsLoading.set(false);
     }
   }
 
-  private focusRecoveryError(opener: HTMLElement | null): void {
+  private focusRecoveryError(opener: HTMLElement | null, owner = this.recoveryHistoryOwner()): void {
+    if (!owner) return;
     afterNextRender(() => {
-      if (this.recoveryHistoryOpen() && (!opener || opener.isConnected)) {
+      if (this.recoveryHistoryOwner() === owner && (!opener || opener.isConnected)) {
         document.querySelector<HTMLElement>('.recovery-dialog .recovery-error')?.focus();
       }
     }, { injector: this.injector });

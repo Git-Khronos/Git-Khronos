@@ -34,7 +34,7 @@ import { TextValueDirective } from './text-value.directive';
             <h3>Saved operation captures</h3>
             <p>Restore saved history and any captured changes on a new branch. Captures stay protected until you remove them. Reset captures exclude untracked, ignored and submodule files; deleted stashes keep everything the stash saved.</p>
             @if (host.recoveryCaptureBusy()) { <p role="status">Reading saved captures...</p> }
-            @if (host.git.error()) { <p class="recovery-error" role="alert" tabindex="-1">{{ host.git.error() }}</p> }
+            @if (host.git.error() || host.recoveryReadError(); as error) { <p class="recovery-error" role="alert" tabindex="-1">{{ error }}</p> }
             @for (record of host.filteredOperationRecoveries(); track record.id) {
               <article class="operation-capture" [attr.data-capture-id]="record.id">
                 <strong>{{ record.label }}</strong>
@@ -96,18 +96,7 @@ import { TextValueDirective } from './text-value.directive';
       </section>
     </div>
   `,
-  styles: `
-    .capture-actions button { min-height: 28px; padding: 5px 9px; border: 1px solid var(--graph-menu-border); border-radius: 3px; background: var(--graph-menu-surface); color: var(--text); }
-    .operation-captures { padding: 12px; border-bottom: 1px solid var(--graph-menu-border); color: var(--text); }
-    .operation-captures h3 { margin: 0 0 8px; font-size: 14px; }
-    .operation-captures p, .operation-capture small { font-size: 12px; line-height: 1.5; }
-    .operation-capture { display: grid; gap: 8px; padding: 12px 0; overflow-wrap: anywhere; border-top: 1px solid var(--graph-menu-border); }
-    .capture-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .recovery-capture-form { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--graph-menu-border); }
-    .recovery-capture-form label { display: grid; gap: 6px; font-size: 12px; }
-    .recovery-capture-form input { min-width: 0; padding: 7px; background: var(--graph-menu-surface); color: var(--text); border: 1px solid var(--graph-menu-border); }
-    .recovery-error { color: var(--danger, #ef9cab); overflow-wrap: anywhere; }
-  `,
+  styleUrl: './recovery-history-dialog.component.scss',
 })
 export class RecoveryHistoryDialogComponent {
   readonly view = input.required<RecoveryHistoryView>();

@@ -834,6 +834,17 @@ worktrees, local changes, conflicts, and history ancestry.
 integration and refusal of moved tips, detached or different HEAD, and nonlocal
 refs with colliding names.
 
+Recovery History owns its deferred layout and retains an eager, dismissible
+loading/error shell. Both phases consume workspace keyboard shortcuts and
+restore focus only if no newer surface took it. A distinct open request owns
+the repository path and ID, capture/ref query state and focus callbacks.
+Closing invalidates pending reflog and saved-operation capture reads; a stale
+success or failure cannot populate or announce errors in a reopened history. A still-open
+review from another repository reports the mismatch and refuses mutations.
+The nested discarded-change history remains an independent dialog.
+`operation-recovery.spec.ts`, `discard-recovery.spec.ts`, and
+`deferred-overlay-styles.spec.ts` cover these boundaries.
+
 ### Application update intent, consent and installation receipts
 
 Application updates are application-global, not a repository mutation lifecycle.

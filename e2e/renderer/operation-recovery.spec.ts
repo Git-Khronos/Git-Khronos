@@ -222,3 +222,58 @@ test('keeps reflog branch creation scoped to the reviewed repository', async ({ 
   expect(await page.evaluate(() => (window as any).__operationTest.calls.some(
     (call: { command: string }) => call.command === 'create_branch_at'))).toBe(false);
 });
+
+for (const late of ['success', 'failure'] as const) {
+  test(`a late recovery read ${late} does not affect a reopened Recovery History`, async ({ page }) => {
+    await mockRecovery(page);
+    await page.evaluate(() => {
+      const host = window as any;
+      const invoke = host.__TAURI_INTERNALS__.invoke;
+      let calls = 0;
+      host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+        if (command !== 'load_operation_recoveries') return invoke(command, args);
+        if (++calls > 1) {
+          return Promise.resolve(host.__operationTest.records.map((record: any) => ({ ...record, label: 'Current saved capture' })));
+        }
+        return new Promise((resolve, reject) => {
+          host.__finishRetiredRecoveryRead = (fail: boolean) => fail
+            ? reject({ message: 'Stale recovery read failure' })
+            : resolve(host.__operationTest.records.map((record: any) => ({ ...record, label: 'Retired saved capture' })));
+        });
+      };
+    });
+    await openRecovery(page);
+    const dialog = page.getByRole('dialog', { name: 'Recovery history' });
+    await expect(dialog.getByRole('status')).toContainText('Reading saved captures');
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__finishRetiredRecoveryRead)).toBe('function');
+    await dialog.getByRole('button', { name: 'Close recovery history', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await openRecovery(page);
+    const current = dialog.getByText('Current saved capture', { exact: true });
+    await expect(current).toBeVisible();
+    await dialog.getByRole('searchbox').fill('Current');
+    await page.evaluate(async (fail) => {
+      (window as any).__finishRetiredRecoveryRead(fail);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }, late === 'failure');
+    await expect(current).toBeVisible();
+    await expect(dialog.getByRole('searchbox')).toBeFocused();
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByText('Stale recovery read failure')).toHaveCount(0);
+  });
+}
+
+test('keeps the Recovery History footer reachable in a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 660, height: 380 });
+  await mockRecovery(page);
+  await openRecovery(page);
+  const dialog = page.getByRole('dialog', { name: 'Recovery history' });
+  const footer = dialog.getByRole('button', { name: 'Close', exact: true });
+  await expect(footer).toBeInViewport();
+  await expect.poll(() => dialog.locator('.recovery-list').evaluate(
+    list => list.scrollHeight > list.clientHeight,
+  )).toBe(true);
+  await footer.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
+});
