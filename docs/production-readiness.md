@@ -387,6 +387,10 @@ initialized only that path and its nested checkout. The second top-level
 checkout, parent index, refs and declaration were unchanged. See
 `installed-submodule.json` under
 `target/local-review/updater/jammy-builder/submodule-init-review.Vvp7sZoU/`.
+The same package subsequently passed all 14 release-matrix checks, including
+279 installed Ubuntu 22.04 environment scenarios. The strict updater preflight
+accepted its raw installed report with the fixture publisher key. The directory
+contains `installed-release-matrix.json` and `jammy-installed-preflight.sha256`.
 This focused report does not qualify the later per-submodule remote update.
 
 The remote-update build at `1c31484`, SHA-256
