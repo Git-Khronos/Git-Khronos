@@ -369,6 +369,14 @@ scenarios covering discard, recovery, and file-action lifecycles passed.
 The chunk hold confirms the subset chooser cannot request a second preview
 until the blocked review has rendered. Evidence is under
 `target/local-review/lazy-discard-choice.YB9vDTk6/`.
+The installed build at `65b0d19`, SHA-256
+`05c798c99eaa70e3a582ffb8e0a286c852af699397099e74cd640fded7a45680`,
+passed both real discard-subset scenarios. Neither reviewing nor going back
+changed files. Confirmation restored only the selected file to the staged
+contents and undo restored its original working edit. Other files, staged
+entries and their flags, refs, and config were unchanged. See
+`installed-discard.json` under
+`target/local-review/updater/jammy-builder/blocked-discard-subset.cfQLbcP6/`.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
