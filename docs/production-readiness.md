@@ -269,6 +269,22 @@ with the fixture publisher key. See `installed-release-matrix.json` and
 results do not qualify the later draft handoff, bulk close, or batch-stop
 changes.
 
+The batch-stop build at `2f260db` has SHA-256
+`1b31c5633f09f16f176df4cd1a94b1aba06652ca5c72d4cfc14f1d31aebb15ef`.
+The same offline Ubuntu 24.04 test first reached a held Git fetch on the
+previous package but found no stop control. On the new package, stopping
+left the active fetch running and prevented the queued checkout's Git
+command from dispatching. An explicit follow-up successfully fetched the
+previously skipped checkout. Independent Git reads found only the expected
+remote-tracking ref changes, with HEAD, local refs, index, config and
+working files preserved. The new package also passed an APT simulation
+without changing the host package database. The new package passed the
+focused suite both with the normal CI invocation and with inherited Git
+environment checks enabled. Those exact-artifact summaries and the
+baseline failure report are retained under
+`target/local-review/updater/jammy-builder/workspace-batch-stop.QCqMqMMd/`.
+This is a focused result, not full release qualification.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

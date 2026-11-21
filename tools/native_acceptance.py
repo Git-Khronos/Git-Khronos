@@ -1147,6 +1147,7 @@ def main():
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
+        "workspace-batch",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1245,6 +1246,9 @@ def main():
             if args.suite == "watcher-refresh":
                 from native_watcher_scenarios import watcher_status_environment
                 application_env.update(watcher_status_environment(fixtures))
+            if args.suite == "workspace-batch":
+                from native_workspace_batch_scenarios import workspace_fetch_environment
+                application_env.update(workspace_fetch_environment(fixtures))
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
@@ -1280,6 +1284,10 @@ def main():
                 repository = fixtures.repository()
                 repo_id = open_ui(driver, repository)
                 editor_window_close(driver, fixtures, repository, report)
+            elif args.suite == "workspace-batch":
+                from native_workspace_batch_scenarios import workspace_batch_stop
+                repository = workspace_batch_stop(driver, fixtures, report)
+                repo_id = driver.invoke("open_repository", path=str(repository))["id"]
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

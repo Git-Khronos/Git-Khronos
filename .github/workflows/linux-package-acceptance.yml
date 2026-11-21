@@ -87,6 +87,9 @@ jobs:
         run: |
           python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - name: Verify installed workspace batch stop with real Git
+        if: matrix.ubuntu == '24.04'
+        run: python3 tools/native_acceptance.py --suite workspace-batch --headless --installed --package "$PACKAGE"
       - name: Verify installed packed-ref refresh under contention
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
         run: python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"
