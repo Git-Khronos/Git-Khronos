@@ -54,6 +54,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state',
   ]],
   ['feature-rebase', 'native-feature-rebase-uses-configured-development-without-moving-sibling-refs'],
+  ['commit-rewrite', [
+    'native-commit-rewrite-refuses-a-stale-branch-at-the-same-head',
+    'native-commit-editor-rewrites-only-the-reviewed-branch-and-keeps-staged-and-working-bytes',
+  ]],
 ];
 
 const RELEASE_MATRIX = [

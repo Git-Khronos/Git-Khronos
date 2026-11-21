@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 27);
+  assert.equal(complete.checks.length, 28);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -169,6 +169,18 @@ test('the installed tracked-file review must prove distinct native paths and cor
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
       ['tracked-file-search']);
+  }
+});
+
+test('the installed rewrite review needs both the stale refusal and the real editor rewrite', () => {
+  const fixtures = matrixFixtures();
+  const rewrite = fixtures.find(report => report.suite === 'commit-rewrite');
+  for (const scenario of rewrite.scenarios) {
+    const partial = { ...rewrite, scenarios: [scenario] };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== rewrite), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
+      ['commit-rewrite']);
   }
 });
 

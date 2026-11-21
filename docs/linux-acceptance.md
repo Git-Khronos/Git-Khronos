@@ -248,7 +248,8 @@ Both native edit commands must reject a review for another branch at the
 same HEAD. A subsequent edit through the installed commit inspector must
 rewrite only the checked-out branch, select the replacement commit, and
 preserve the other branch, commit trees, index, config and working bytes.
-This focused reproduction does not replace the release matrix.
+Both scenarios are required by the Ubuntu 24.04 workflow and exact-package
+release checklist.
 
 ## Focused feature rebase review
 
