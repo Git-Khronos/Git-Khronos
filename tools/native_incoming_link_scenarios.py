@@ -4,9 +4,28 @@ import json
 import shlex
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 from native_acceptance import open_ui
+
+
+def restore_incoming_link_session(driver, repository, report, *, during_failure):
+    try:
+        if not driver.session:
+            if during_failure:
+                report['incomingLinkCleanup'] = 'no-active-session'
+                return
+            raise RuntimeError('Incoming link scenario has no active session to restore')
+        for row in driver.invoke('incoming_repository_links')['requests']:
+            driver.invoke('acknowledge_incoming_repository_link', requestId=row['id'])
+        driver.invoke('dismiss_incoming_repository_link_overflow')
+        open_ui(driver, repository)
+    except Exception as error:
+        if not during_failure:
+            raise
+        # A broken session cannot replace the primary launch/transport error.
+        report['incomingLinkCleanup'] = type(error).__name__
 
 
 def live_application_processes(observation):
@@ -334,9 +353,6 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         report['scenarios'].append('native-incoming-redacted-malformed-oversize-bounded-fifo-overflow-and-owned-git-state-preservation')
     finally:
         try:
-            for row in snapshot()['requests']:
-                driver.invoke('acknowledge_incoming_repository_link', requestId=row['id'])
-            driver.invoke('dismiss_incoming_repository_link_overflow')
-            open_ui(driver, original_repository)
+            restore_incoming_link_session(driver, original_repository, report, during_failure=sys.exc_info()[0] is not None)
         finally:
             git_config.write_bytes(original_git_config)

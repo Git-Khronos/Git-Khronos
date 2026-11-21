@@ -270,7 +270,7 @@ def stash_delete_confirmation(driver, fixtures, report):
       const bounds = element.getBoundingClientRect();
       element.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: bounds.left + 10, clientY: bounds.top + 10}));
     """, row)
-    driver.click_text('.stash-context-menu [role="menuitem"]', 'Delete Stash…')
+    driver.click_scrolled_text('.stash-context-menu [role="menuitem"]', 'Delete Stash…', wait_for_ready=True)
     dialog = 'gc-stash-delete-dialog [role="alertdialog"]'
     driver.wait(f"return document.querySelector('{dialog}')?.contains(document.activeElement) && document.activeElement.textContent === 'Cancel'")
     lock = repository / ".git/refs/stash.lock"

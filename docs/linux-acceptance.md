@@ -58,6 +58,9 @@ a reftable repository; it is not part of the Git 2.39 compatibility gate.
 Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
 operations are not retried after an uncertain reply.
+The private headless display stays initialized between app processes so a
+WebView restart doesn't also race an X server reset. If a restart fails,
+inbox cleanup must not replace the original error with an invalid session ID.
 
 For a long run, read the evidence directory's `progress.json`. It identifies
 the acceptance worker PID in its process namespace, current phase, phase start (seconds into the

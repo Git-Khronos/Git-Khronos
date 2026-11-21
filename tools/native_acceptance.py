@@ -1241,7 +1241,9 @@ def main():
             report["sessionBus"] = start_private_dbus(fixtures, children, log)
             owned_display = None
             if args.headless:
-                display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                # Keep the private display alive between owned app processes;
+                # otherwise the last client disconnect can race GTK restart.
+                display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
                                            env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
                 children.append(display)
                 if not select.select([display.stdout], [], [], 15)[0]:

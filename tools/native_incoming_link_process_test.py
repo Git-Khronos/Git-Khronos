@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from native_incoming_link_scenarios import observe_settled_singleton, singleton_owner_pid
+from native_incoming_link_scenarios import observe_settled_singleton, restore_incoming_link_session, singleton_owner_pid
 
 
 class SingletonObservationTest(unittest.TestCase):
@@ -51,3 +51,21 @@ class SingletonObservationTest(unittest.TestCase):
         new_owner = dict(ownerPid=52, processes=[self.owner | {'pid': 52}])
         with patch('native_incoming_link_scenarios.time.sleep'):
             self.assertIsNone(observe_settled_singleton(Mock(side_effect=[owned_child, new_owner]), {}, 'before'))
+
+
+class IncomingLinkCleanupTest(unittest.TestCase):
+    def test_an_absent_session_is_not_contacted_after_failed_restart(self):
+        driver = Mock(session=None)
+        report = {}
+        restore_incoming_link_session(driver, '/owned/repository', report, during_failure=True)
+        driver.invoke.assert_not_called()
+        self.assertEqual(report['incomingLinkCleanup'], 'no-active-session')
+
+    def test_cleanup_does_not_mask_primary_failure_but_otherwise_must_succeed(self):
+        driver = Mock(session='owned-session')
+        driver.invoke.side_effect = RuntimeError('invalid session id')
+        report = {}
+        restore_incoming_link_session(driver, '/owned/repository', report, during_failure=True)
+        self.assertEqual(report['incomingLinkCleanup'], 'RuntimeError')
+        with self.assertRaisesRegex(RuntimeError, 'invalid session id'):
+            restore_incoming_link_session(driver, '/owned/repository', {}, during_failure=False)
