@@ -128,7 +128,7 @@ The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 Use `--suite workspace-locate --headless` to select a moved checkout through
 the app's native GTK folder picker. Use `--suite workspace-bulk-locate --headless`
 to select the first folder, cancel the second picker, and check that the third
-path is left pending. After a fresh WebView load, only the successful relocation
+path is reported as skipped without showing its picker. After a fresh WebView load, only the successful relocation
 must replace its original saved slot; a separate layout and all checkout
 footprints must be unchanged.
 
@@ -137,6 +137,7 @@ Keyboard input is restricted to the exact titled window of the owned app on
 the runner's private Xvfb display, using the English GTK3 shortcuts. A key sent
 is not proof of a successful selection: the test waits for the exact moved path
 to become active and verifies saved membership and Git data independently.
+The exact-artifact Ubuntu 24.04 CI job runs both suites on the installed package.
 
 ## Focused feature rebase review
 

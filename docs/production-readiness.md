@@ -334,6 +334,16 @@ setup and restore run explicitly expected the embedded fixture key. See
 This focused result does not qualify bulk relocation or substitute for
 the full release matrix.
 
+The bulk-relocation package at `257c2f3`, SHA-256
+`dae6240e0196ef30a4d88b304e389f1c0d92fe132223c0afa4c5009ec43b6f46`,
+passed the individual and batch relocation suites in disposable Ubuntu 24.04
+using its actual GTK folder picker. The batch selected one replacement,
+cancelled the next chooser, and did not request a third. After a WebView reload
+only the chosen saved slot changed; all four checkouts kept their Git
+footprints and the other layout kept its original paths. The older candidate
+did not offer the bulk action. See `installed-locate.json` under
+`target/local-review/updater/jammy-builder/workspace-locate-latest.ROf8O4Ys/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
