@@ -1883,6 +1883,16 @@ helper limits injection to the harness-owned Xvfb display and checks the
 extracted application's PID and visible X window before a right press. No
 third-party implementation or assets were copied.
 
+## Owned GTK folder-picker acceptance
+
+- [X.Org Xlib manual](https://www.x.org/releases/current/doc/libX11/libX11/libX11.html)
+- [GTK3 chooser keyboard bindings](https://gitlab.gnome.org/GNOME/gtk/-/blob/gtk-3-24/gtk/gtkfilechooserwidget.c)
+
+Used for the public X11 window/focus contracts and GTK3 keyboard shortcuts.
+The harness drives the real chooser on the fixture display rather than
+replacing the native dialog. No upstream code or assets were copied and
+no application dependency was added.
+
 ## Linux package cache completion
 
 - Task up-to-date checks: https://taskfile.dev/docs/guide/up-to-date

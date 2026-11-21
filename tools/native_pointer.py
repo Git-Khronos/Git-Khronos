@@ -130,17 +130,22 @@ class _X11Pointer:
         self.sync()
 
 
-@contextmanager
-def owned_right_press(owned_display, resolve_session_owner, x, y):
-    """Press once on the owned app and always release, even after an uncertain press."""
+def require_owned_xvfb(owned_display, input_kind):
     if not owned_display:
-        raise RuntimeError('Native pointer input requires an owned private Xvfb display')
+        raise RuntimeError(f'Native {input_kind} input requires an owned private Xvfb display')
     display_name, server = owned_display
     if (not re.fullmatch(r':\d+', display_name) or not server
         or not isinstance(server.args, (list, tuple)) or tuple(server.args[:2]) != ('Xvfb', '-displayfd')
         or server.pid <= 1 or server.poll() is not None
         or os.getpgid(server.pid) != server.pid):
-        raise RuntimeError('Refusing pointer input without the live, owned Xvfb process')
+        raise RuntimeError(f'Refusing {input_kind} input without the live, owned Xvfb process')
+    return display_name, server
+
+
+@contextmanager
+def owned_right_press(owned_display, resolve_session_owner, x, y):
+    """Press once on the owned app and always release, even after an uncertain press."""
+    display_name, server = require_owned_xvfb(owned_display, 'pointer')
     pid = resolve_session_owner()
     pointer = _X11Pointer(display_name)
     try:
