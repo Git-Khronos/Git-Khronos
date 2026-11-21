@@ -1,6 +1,30 @@
 """Ordinary desktop clone controls with real pinned loopback SSH transport."""
 import json
+import os
 from pathlib import Path
+
+
+def wait_for_ssh_clone_outcome(driver, journal):
+    outcome = driver.wait("""
+      const dialog = document.querySelector('gc-repository-dialog');
+      if (!dialog) return { kind: 'closed' };
+      const error = dialog.querySelector('gc-gitlab-clone [role="alert"]');
+      const message = error?.getClientRects().length ? error.textContent.trim() : '';
+      return message ? { kind: 'error', message: message.slice(0, 1024) } : null;
+    """, 60)
+    if outcome["kind"] == "closed":
+        return
+    note = ""
+    try:
+        with (journal.parent / "server.log").open("rb") as log:
+            tail = log.seek(0, os.SEEK_END)
+            log.seek(max(0, tail - 8192))
+            if b"not allowed because account is locked" in log.read(8192):
+                note = " The private SSH fixture refused the locked login; run it with an unlocked disposable account."
+    except OSError:
+        pass
+    message = outcome["message"].rstrip(".")
+    raise AssertionError(f"Reviewed GitLab SSH clone reported: {message}.{note}")
 
 
 def gitlab_ssh_clone(driver, fixtures, original_repository, report, connection,
@@ -43,7 +67,7 @@ def gitlab_ssh_clone(driver, fixtures, original_repository, report, connection,
         assert "owned-api-fixture-token" not in review
         driver.screenshot(Path(report["artifactsDirectory"]) / "gitlab-clone-native-ssh-review.png")
         button("Clone reviewed GitLab project", "gc-gitlab-clone button")
-        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        wait_for_ssh_clone_outcome(driver, journal)
         assert fixtures.git(checkout, "rev-parse", "HEAD") == head
         assert fixtures.git(checkout, "symbolic-ref", "--short", "HEAD") == "topic/reviewed"
         assert fixtures.git(checkout, "rev-parse", "--is-shallow-repository") == "true"

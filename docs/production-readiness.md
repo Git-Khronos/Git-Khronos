@@ -1738,3 +1738,36 @@ under the unchanged error limit; the 900 kB warning remains. The 40 owning
 renderer tests and 86 neighboring cases passed. A publisher-key-enabled Debian
 package also passed 271 native cases. That local package is not the Jammy
 release artifact and was not published or installed.
+
+## Jammy candidate with staged and unstaged recaps — 2026-11-21
+
+A network-disabled Ubuntu 22.04 build of source
+`fbd0db399ffcb92dc837e6955a6745a2f8d71ba2` produced
+`Git-Khronos_0.1.6_amd64.deb` with the publisher public key compiled in.
+Installer SHA-256:
+`8db18dfc761ad4a2d305da69ca86457fc07af74ac75a2623ec74a05c58d90c97`.
+It declared the glibc 2.35 baseline, required symbols through GLIBC_2.34,
+and passed the release ABI and strict receipt/evidence checks.
+
+The extracted package passed all **272 native environment scenarios** on
+WSL2, including the configured publisher key and automatic updates off by
+default. Before staging a partially staged file, its two section totals were
+staged +1/−1 and unstaged +4/−3. After staging it, they were +2/−1 and +2/−2.
+The binary exclusion remained visible, and the pre-staging read preserved the
+owned Git index, references, configuration, and working files.
+
+The identical installer passed APT dependency and package checks in a disposable
+Ubuntu 24.04 container, then **45 installed GitLab catalogue scenarios**,
+including real fixture HTTPS and loopback SSH. The harness checked the installed
+binary and desktop entry against the archive before launching WebKitGTK.
+The WSL host's extracted SSH fixture refused the reviewed clone; the same
+bytes succeeded with a disposable login in Ubuntu. This does not establish a
+host-specific pinned launcher, a live self-update, or installed coverage on the
+other supported distributions for this exact build.
+
+Local evidence is under
+`target/local-review/updater/jammy-builder/qualification.d77zWOu2/`:
+`work/artifacts/` has the unchanged installer, build receipt and ABI record;
+`work/native-environment/` and `work/noble-native/` have the reports.
+All 92 package regressions also passed. Nothing was installed on the host, signed,
+tagged, or published as part of this qualification.

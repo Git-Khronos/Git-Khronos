@@ -3,7 +3,8 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from native_gitlab_ssh_scenarios import wait_for_ssh_clone_outcome
 from native_gitlab_ssh_fixture import accepted_upload, serve_upload, sshd_helper_config, VIRTUAL_REPOSITORY
 
 
@@ -23,6 +24,26 @@ class GitLabSshFixtureTests(unittest.TestCase):
                 sshd_helper_config(prefix / "sbin/sshd"),
                 f'SshdSessionPath "{session}"\nSshdAuthPath "{auth}"\n',
             )
+
+    def test_native_clone_wait_accepts_close_and_observes_without_replay(self):
+        driver = Mock()
+        driver.wait.return_value = {"kind": "closed"}
+        wait_for_ssh_clone_outcome(driver, Path("unused-journal.jsonl"))
+        self.assertEqual(len(driver.method_calls), 1)
+        self.assertIn("gc-gitlab-clone [role=", driver.wait.call_args.args[0])
+
+    def test_native_clone_refusal_reports_terminal_feedback_without_dumping_fixture_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = Path(directory) / "uploads.jsonl"
+            log = journal.parent / "server.log"
+            log.write_bytes(b"Private fixture noise\nUser unavailable not allowed because account is locked\n")
+            driver = Mock()
+            driver.wait.return_value = {"kind": "error", "message": "Git transport failed"}
+            with self.assertRaisesRegex(AssertionError, "Git transport failed.*locked login") as caught:
+                wait_for_ssh_clone_outcome(driver, journal)
+            self.assertNotIn("Private fixture noise", str(caught.exception))
+            self.assertEqual(len(driver.method_calls), 1)
+            self.assertFalse(journal.exists())
 
     def test_accepts_only_the_literal_owned_upload(self):
         self.assertTrue(accepted_upload("git-upload-pack '" + VIRTUAL_REPOSITORY + "'"))

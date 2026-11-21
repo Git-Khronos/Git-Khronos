@@ -376,7 +376,9 @@ Its private CA and SSH identity/known-hosts configuration apply only to the owne
 application process. The SSH server accepts one read-only test repository command.
 It changes no host trust, keys, agent, accounts or system service and contacts no
 real GitLab account. Missing prerequisites fail the suite rather than skipping
-SSH coverage. See the [GitLab discovery](specifications/gitlab-projects.md) and
+SSH coverage. Run an unavailable private SSH login in a disposable container
+instead of changing host account authentication. The SSH clone acceptance
+surfaces visible terminal feedback immediately without issuing another click. See the [GitLab discovery](specifications/gitlab-projects.md) and
 [reviewed clone](specifications/gitlab-reviewed-clone.md) specifications.
 
 `test-lfs` runs the normally ignored Rust LFS integration checks serially with
