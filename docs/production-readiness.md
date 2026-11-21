@@ -3006,3 +3006,21 @@ counters rather than waiting for a connection after the UI has refused it.
 These two reruns do not replace the remainder of the qualification matrix.
 Raw reports, including failed attempts, are under
 `target/local-review/updater/jammy-builder/working-tree-release.4wNlfYM8/`.
+
+## Installed Pull scope proof — 2026-11-21
+
+On the older `a953fe3` installer the workspace batch integrated two
+configured upstreams, and the parent Pull fetched the new child commit.
+On the 0.1.6 installer from `b966672` the same two Ubuntu 24.04 suites
+passed. The batch refused the ambiguous repository before fetch, advanced
+the other repository, and preserved the original Git configuration. A
+separate toolbar Pull integrated only the displayed branch. The nested
+checkout tests show that the parent advanced to its new gitlink without
+fetching the child object or changing the nested checkout.
+
+Installer SHA-256:
+`f8244573c029f3d3c1ef54f30c57f576cd82a30d4f1c95d3d5143f8158e073a7`.
+Failing and passing reports are in
+`target/local-review/native-pull-scope.Oh9N6pIp/` and
+`target/local-review/updater/jammy-builder/pull-scope-release.Lb6rguwE/focused/results/`,
+respectively. These are focused passes, not complete release qualification.
