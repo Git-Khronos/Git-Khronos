@@ -216,6 +216,25 @@ this variant. It verifies that automatic updates remain off and that a pinned
 key alone does not create an installable offer. No release was published and
 this qualification did not exercise a live download or privileged install.
 
+### Ubuntu 22.04 reference candidate
+
+A publisher-key-enabled `v0.1.6` amd64 Debian candidate built on Ubuntu 22.04
+from source commit `7ce41a0` passed the release ABI check and 271 extracted-package
+native environment scenarios. The package declared the glibc 2.35 baseline and
+its highest required version was GLIBC_2.34. The same bytes also installed
+unchanged in a disposable Ubuntu 24.04 container: the package database reported
+it configured, the installed executable and desktop entry matched the archive,
+and the executable's shared libraries resolved.
+
+The strict preflight matched the build receipt, ABI, native report and publisher
+key before signing Debian SHA-256
+`e430d3248f54017b8044191e17e1fa462cd5cfb3b832f8b6887c918f97db2411`.
+The local staging set contains the signed manifest, unchanged package, package
+and exact-source CycloneDX inventories, and verified `SHA256SUMS`. This is local
+release evidence, not a published release or a verified live self-update.
+Publication must preserve the exact package bytes behind the manifest URL and
+must not substitute a rebuild or skip the release runtime matrix.
+
 On Linux, a verified package can be downloaded even if the desktop cannot
 authorize an in-app installation. For Debian and RPM, a missing or unusable
 `/usr/bin/pkexec` disables the install action and suppresses automatic installer
