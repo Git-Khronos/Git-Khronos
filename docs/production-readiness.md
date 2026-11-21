@@ -1771,3 +1771,26 @@ Local evidence is under
 `work/native-environment/` and `work/noble-native/` have the reports.
 All 92 package regressions also passed. Nothing was installed on the host, signed,
 tagged, or published as part of this qualification.
+
+## Installed worktree navigation with literal Linux paths — 2026-11-21
+
+An offline Jammy build of `6be75d18266a56e82d51b04ba937446a9173fb6b`
+produced `Git-Khronos_0.1.6_amd64.deb`, SHA-256
+`080167d2c64cf5dab179cf125bb13c106846241c5af51283726170f4bb2c0202`.
+The release ABI check accepted the declared glibc 2.35 baseline; the highest
+required version was GLIBC_2.34. This build includes the literal-path fix and
+the stale branch-switch refusal flow. The follow-up commit `61237ff` changes
+only test setup for symlinked temporary directories.
+
+The same installer passed APT checks in an offline Ubuntu 24.04 container and
+passed the installed **worktrees (21)** and **GitLab (45)** scenarios. Both
+reports matched the installed executable and desktop entry to the archive.
+The occupied branch case opened an existing dirty checkout whose directory
+name contains Unicode, a tab and a newline; cancelling or navigating changed
+neither checkout's HEAD, references, index, config nor working files. A change
+of owner after review was refused without attempting a fallback switch.
+
+Reports and the package are under
+`target/local-review/updater/jammy-builder/qualification.YKPSJUk/`, in
+`installed-noble/` and `work/artifacts/` respectively. This is not a signed
+or published release and does not substitute for the hosted runtime matrix.
