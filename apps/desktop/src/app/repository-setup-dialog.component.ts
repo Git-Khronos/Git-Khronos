@@ -1,3 +1,4 @@
+import { RepositoryFormStylesComponent } from './repository-form-styles.component';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, inject, input, untracked, viewChild } from '@angular/core';
 import type { Signal, WritableSignal } from '@angular/core';
 import { GitKhronosService } from './git-khronos.service';
@@ -44,7 +45,7 @@ export interface RepositorySetupView {
 
 @Component({
   selector: 'gc-repository-setup-dialog',
-  imports: [IconComponent, TextValueDirective],
+  imports: [RepositoryFormStylesComponent, IconComponent, TextValueDirective],
   templateUrl: './repository-setup-dialog.component.html',
   styleUrl: './repository-setup-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

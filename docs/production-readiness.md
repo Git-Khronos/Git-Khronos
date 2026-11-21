@@ -446,6 +446,10 @@ All 12 hosted Ubuntu 24.04 workspace and Git review suites also passed on
 that exact installer; `installed-noble-workflow-reviews.json` records each
 suite separately. The local release checklist now requires those focused
 reviews alongside the original 14 distribution and suite checks.
+The separate installed worktree suite passed 21 scenarios, including
+the three occupied-branch checks (Cancel, explicit owner navigation, and
+refusal after a changed owner). See
+`workflow-reviews/installed-workflow-reviews.json` in the same directory.
 This focused evidence does not substitute for the full release matrix.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
@@ -538,6 +542,18 @@ Budgets were unchanged. The verified before/after reports are retained
 locally under `target/local-review/lazy-diff-workspace/`. Chromium against
 the final production output requested no diff module before opening a file
 and one copy on opening it. These are asset measurements, not boot time.
+
+The shared repository-form styles now load with whichever of the repository
+manager, repository setup or workspace editor opens first. Common form
+primitives used elsewhere remain in the startup stylesheet. Comparing
+emitted static assets against `4456b6e` measured
+**1,359,203 → 1,355,213 initial bytes**; CSS fell by 3,990 bytes.
+The moved rules appear in one lazy chunk and no initial asset. Budgets did
+not change; the initial warning remains 455,213 bytes above its 900 kB
+limit. Chromium against the built assets requested that chunk only on
+the first open and applied the compact layout on all three entry paths.
+Measurements are under
+`target/local-review/repository-form-styles.7lafCH55/`.
 
 ## Hosted form-binding mock contract correction — 2026-11-20
 

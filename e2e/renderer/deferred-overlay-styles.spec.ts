@@ -25,6 +25,41 @@ async function interceptLayout(page: Page, component: RegExp, selector: string, 
   return { release, requests: () => requests, delivered: () => delivered, installed };
 }
 
+for (const form of ['manager', 'setup', 'workspace'] as const) {
+  test(`shared repository form styles load on the first ${form} dialog, not at startup`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.commit-row').first()).toBeVisible();
+    const stylesInstalled = () => page.evaluate(() => Array.from(document.styleSheets).some(sheet =>
+      Array.from(sheet.cssRules).some(rule => rule.cssText.includes('.repository-backdrop'))));
+    expect(await stylesInstalled()).toBe(false);
+
+    let title;
+    if (form === 'manager') {
+      await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
+      title = 'Repository management';
+      await page.getByRole('tab', { name: 'Clone', exact: true }).click();
+    } else if (form === 'setup') {
+      await page.getByRole('button', { name: 'Create worktree', exact: true }).click();
+      title = 'Create Worktree';
+    } else {
+      await page.getByRole('button', { name: 'Workspace: Default', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'New workspace', exact: true }).click();
+      title = 'New Workspace';
+    }
+    const dialog = page.getByRole('dialog', { name: title, exact: true });
+    await expect(dialog).toBeVisible();
+    await page.setViewportSize({ width: 460, height: 720 });
+    await expect(dialog).toHaveCSS('display', 'flex');
+    await expect(dialog.locator('.repository-form-body')).toHaveCSS('overflow-y', 'auto');
+    await expect(dialog.locator('.repository-form-body')).toHaveCSS('padding-left', '14px');
+    await expect(dialog.locator('.repository-form footer')).toHaveCSS('flex-wrap', 'wrap');
+    await expect(page.locator('.repository-backdrop')).toHaveCSS('position', 'fixed');
+    expect(await stylesInstalled()).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
 for (const outcome of ['loaded', 'failed', 'closed'] as const) {
   test(`repository setup's lazy module is keyboard-safe when ${outcome}`, async ({ page }) => {
     const layout = await interceptLayout(page, /class\s+_?RepositorySetupDialogComponent\b/, '.worktree-dialog-fields', outcome === 'failed');

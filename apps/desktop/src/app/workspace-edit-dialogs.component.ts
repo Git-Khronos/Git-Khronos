@@ -1,3 +1,4 @@
+import { RepositoryFormStylesComponent } from './repository-form-styles.component';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, input, output, viewChild } from '@angular/core';
 import type { RepositoryWorkspace } from './git-khronos.service';
 import { IconComponent } from './icon.component';
@@ -6,7 +7,7 @@ import { TextValueDirective } from './text-value.directive';
 @Component({
   selector: 'gc-workspace-edit-dialogs',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, TextValueDirective],
+  imports: [RepositoryFormStylesComponent, IconComponent, TextValueDirective],
   templateUrl: './workspace-edit-dialogs.component.html',
   styleUrl: './workspace-edit-dialogs.component.scss',
 })

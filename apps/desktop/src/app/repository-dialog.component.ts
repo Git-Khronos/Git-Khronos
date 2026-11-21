@@ -1,3 +1,4 @@
+import { RepositoryFormStylesComponent } from './repository-form-styles.component';
 import { HostedRepositoryBrowserComponent } from './hosted-repository-browser.component';
 import { GitLabProjectsComponent } from './gitlab-projects.component';
 import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, ViewEncapsulation, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
@@ -26,11 +27,12 @@ export class RepositoryFormDrafts {
 /** Loaded on demand so repository management stays out of the startup bundle. */
 @Component({
   selector: 'gc-repository-dialog',
-  imports: [FormsModule, IconComponent, HostedRepositoryBrowserComponent, GitLabProjectsComponent],
+  imports: [RepositoryFormStylesComponent, FormsModule, IconComponent, HostedRepositoryBrowserComponent, GitLabProjectsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   styleUrl: './repository-dialog.component.scss',
   template: `
+  <gc-repository-form-styles />
   <div class="repository-backdrop" (click)="close()">
     <section #dialog class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
       <header class="repository-dialog-header">

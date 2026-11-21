@@ -1,3 +1,4 @@
+<gc-repository-form-styles />
 @if (mode(); as formMode) {
   <div class="repository-backdrop" (click)="editClosed.emit()">
     <section class="repository-dialog workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title" (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
