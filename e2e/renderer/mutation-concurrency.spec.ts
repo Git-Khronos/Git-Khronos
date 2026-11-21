@@ -121,12 +121,19 @@ for (const first of ['restore', 'operation']) {
     const result = await page.evaluate(async first => {
       const { git, repository, before } = (window as any).__concurrentMutations;
       git.workspaces.set([{ ...git.activeWorkspace(), repositoryPaths: [repository.path], activeRepositoryPath: repository.path }]);
+      git.repositories.set([]);
+      git.activeRepositoryId.set(null);
       let finishRestore!: (snapshot: unknown) => void;
       let finishOperation!: () => void;
+      let restoreStarted!: () => void;
+      let operationStarted!: () => void;
+      const restoreInFlight = new Promise<void>(resolve => { restoreStarted = resolve; });
+      const operationInFlight = new Promise<void>(resolve => { operationStarted = resolve; });
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => command === 'open_repository'
-        ? new Promise(resolve => { finishRestore = resolve; }) : Promise.resolve(before) };
+        ? new Promise(resolve => { finishRestore = resolve; restoreStarted(); }) : Promise.resolve(before) };
       const restoring = git.restoreRepositories();
-      const running = git.run('Concurrent action', () => new Promise<void>(resolve => { finishOperation = resolve; }));
+      const running = git.run('Concurrent action', () => new Promise<void>(resolve => { finishOperation = resolve; operationStarted(); }));
+      await Promise.all([restoreInFlight, operationInFlight]);
       if (first === 'restore') { finishRestore(repository); await restoring; }
       else { finishOperation(); await running; }
       const during = git.busy();

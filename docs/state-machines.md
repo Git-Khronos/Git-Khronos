@@ -605,6 +605,19 @@ Coverage: `repository-location.spec.ts`, renderer
 late refusal after a tab switch), branch-panel interaction tests, and the
 real-Git occupied-branch test preserving both worktrees.
 
+### Saved workspace repositories
+
+Saved workspace paths are membership, not a mirror of the open tabs.
+Restoration can be deferred, or fail when a folder is unavailable. Tab
+activation, workspace switches and tab reorder keep unopened paths. An open
+can replace a saved alias with the canonical checkout path; closing a tab
+removes that checkout from the active workspace. Repository overview offers an
+explicit retry and a workspace-only removal for each unopened path. Removal
+revokes pending restoration for that exact path. A late native result cannot
+add it back, and the same path saved in another workspace is unaffected.
+
+Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`.
+
 ### Transient overlays (F46)
 
 `OverlayController<T>` owns a read-only `activeOverlay` signal, a discriminated

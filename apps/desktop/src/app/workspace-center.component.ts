@@ -53,6 +53,23 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
             </article>
           } @empty { <p>{{ git.repositories().length ? 'No repositories match these filters.' : 'Open a repository in this workspace to see its status.' }}</p> }
         </div>
+        @if (unopenedPaths().length || savedPathNotice()) {
+          <section class="saved-repositories" aria-label="Saved repositories not open">
+            @if (savedPathNotice()) { <p role="status">{{ savedPathNotice() }}</p> }
+            @if (unopenedPaths().length) {
+              <h3>Saved repositories not open</h3>
+              <p>These paths are still in this workspace. Removing one does not change files on disk.</p>
+              <ul>@for (path of unopenedPaths(); track path) {
+                <li><code>{{ path }}</code>
+                  <div class="tools">
+                    <button type="button" [attr.aria-label]="'Retry opening ' + path" [disabled]="overviewBusy() || git.browserPreview()" (click)="retrySavedPath(path)">Retry opening</button>
+                    <button type="button" [attr.aria-label]="'Remove ' + path + ' from workspace'" [disabled]="overviewBusy()" (click)="removeSavedPath(path)">Remove from workspace</button>
+                  </div>
+                </li>
+              }</ul>
+            }
+          </section>
+        }
       } @else if (panel() === 'files') {
         <p>Browse repository files, including ignored files. Git metadata, nested repositories and symbolic-link targets are excluded. Deleting ignored files is disabled because they are not covered by Git recovery. Tracked deletion requires a clean committed file without index flags that hide changes.</p>
         @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
@@ -125,7 +142,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
   `,
   styles: [`
     .backdrop { position: fixed; inset: 0; z-index: 65; background: #080811b8; display: grid; place-items: center; padding: 18px; }
-    section { box-sizing: border-box; width: min(900px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; color: var(--text); background: var(--inspector-list); border: 1px solid var(--inspector-divider); border-radius: 7px; }
+    .backdrop > section { box-sizing: border-box; width: min(900px, 100%); max-height: calc(100dvh - 36px); overflow: auto; padding: 20px; color: var(--text); background: var(--inspector-list); border: 1px solid var(--inspector-divider); border-radius: 7px; }
     header, nav, .tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; } nav { justify-content: start; margin: 12px 0; }
     h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; margin: 0 0 8px; } p, dd, dt, label, small, code { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
     article, aside, form { border: 1px solid var(--inspector-divider); border-radius: 5px; padding: 14px; margin: 12px 0; } article p { margin: 8px 0; }
@@ -136,6 +153,8 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
     .profile-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .profile-layout > * { min-width: 0; } .tools { justify-content: start; }
     gc-background-operation-warnings { position: sticky; top: 0; z-index: 1; background: var(--inspector-list); }
     .repositories article > header { align-items: start; } .repositories article > header > label { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; } .repositories article > header > div { min-width: 0; flex: 1; }
+    .saved-repositories { margin-block-start: 20px; } .saved-repositories li + li { margin-block-start: 12px; }
+    .saved-repositories code { white-space: break-spaces; } .saved-repositories .tools { margin-block-start: 4px; }
     .file-tools { align-items: end; } .file-tools > label, .file-tools form { flex: 1 1 220px; min-width: 180px; } .file-tools form { display: flex; align-items: end; gap: 8px; } .file-tools form label { flex: 1; }
     .file-list { max-height: 45vh; overflow: auto; } .file-entry { display: grid; grid-template-columns: minmax(0,1fr) max-content max-content; align-items: center; gap: 10px; } .file-entry code { white-space: break-spaces; overflow-wrap: anywhere; } .danger { color: var(--danger); }
     @media(max-width:650px) {
@@ -152,6 +171,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly suspended = input(false);
   readonly closed = output<void>();
   readonly repositorySelected = output<string>();
+  readonly savedRepositoryRequested = output<string>();
   readonly openFileRequested = output<RepositoryFiles['files'][number]>();
   readonly panel = signal<'overview' | 'identities' | 'hosting' | 'files'>('overview');
   readonly query = signal('');
@@ -163,6 +183,12 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly openingRepositories = signal(false);
   readonly bulkRunning = signal(false);
   readonly bulkError = signal('');
+  readonly savedPathNotice = signal('');
+  readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning());
+  readonly unopenedPaths = computed(() => {
+    const opened = new Set(this.git.repositories().map(repository => repository.path));
+    return (this.git.activeWorkspace()?.repositoryPaths ?? []).filter(path => !opened.has(path));
+  });
   readonly profiles = signal<IdentityProfile[]>([]);
   readonly editingId = signal<string | null>(null);
   readonly label = signal(''); readonly name = signal(''); readonly email = signal('');
@@ -419,6 +445,17 @@ export class WorkspaceCenterComponent implements OnDestroy {
     }, { injector: this.injector });
   }
   activate(repositoryId: string): void { if (!this.git.busy() && !this.openingRepositories() && !this.bulkRunning()) { this.repositorySelected.emit(repositoryId); this.close(false); } }
+  retrySavedPath(path: string): void {
+    if (this.destroyed || this.overviewBusy() || this.git.browserPreview()
+      || this.request().workspaceId !== this.git.activeWorkspaceId() || !this.unopenedPaths().includes(path)) return;
+    this.close();
+    this.savedRepositoryRequested.emit(path);
+  }
+  removeSavedPath(path: string): void {
+    if (this.destroyed || this.overviewBusy() || !this.git.removeUnopenedWorkspaceRepository(this.request().workspaceId, path)) return;
+    this.savedPathNotice.set(`Removed ${path} from this workspace. No files were changed.`);
+    afterNextRender(() => { if (!this.destroyed) this.focusFirst(); }, { injector: this.injector });
+  }
   toggleSelected(repositoryId: string, selected: boolean): void {
     this.selectedRepositoryIds.update(ids => selected
       ? ids.includes(repositoryId) ? ids : [...ids, repositoryId]

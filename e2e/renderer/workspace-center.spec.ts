@@ -113,6 +113,88 @@ test('shows local repository state, filters attention and opens a repository', a
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('clean-repo');
 });
 
+test('retries a saved path and replaces it with the canonical checkout without losing other saved paths', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const workspace = git.activeWorkspace();
+    git.workspaces.update((items: any[]) => items.map(item => item.id === workspace.id ? {
+      ...item, repositoryPaths: [fixture.first.path, '/saved/alias', '/saved/offline', fixture.second.path],
+    } : item));
+    fixture.canonical = { ...fixture.first, id: 'canonical-checkout', path: '/owned/canonical', name: 'Canonical' };
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      if (command === 'open_repository') {
+        fixture.calls.push(args.path);
+        if (args.path === '/saved/alias') return fixture.canonical;
+      }
+      throw Error(`Unexpected command: ${command}`);
+    } };
+  });
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await expect(saved).toContainText('/saved/offline');
+  await saved.getByRole('button', { name: 'Retry opening /saved/alias' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/canonical');
+  const state = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return { saved: git.activeWorkspace().repositoryPaths, opened: (window as any).__center.calls };
+  });
+  expect(state).toEqual({
+    saved: ['/owned/alpha', '/owned/canonical', '/saved/offline', '/owned/beta'],
+    opened: ['/saved/alias'],
+  });
+});
+
+test('removing a saved path revokes its pending restore only in this workspace', async ({ page }) => {
+  await page.evaluate(async () => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const path = '/saved/removable';
+    const workspace = git.activeWorkspace();
+    git.workspaces.update((items: any[]) => [
+      ...items.map(item => item.id === workspace.id ? { ...item, repositoryPaths: [fixture.first.path, path, fixture.second.path] } : item),
+      { id: 'keep-saved-path', name: 'Keep saved path', repositoryPaths: [path], activeRepositoryPath: path },
+    ]);
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      fixture.calls.push(command);
+      if (command === 'open_repository') return new Promise(resolve => {
+        fixture.finishRestore = () => resolve({ ...fixture.first, id: 'not-reopened', path });
+      });
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+    const restoration = { workspaceId: workspace.id, pending: new Set([path]), failed: new Set() };
+    git.repositoryRestoration = restoration;
+    fixture.restore = git.restoreRepositoryTabs(restoration);
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishRestore)).toBe('function');
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Remove /saved/removable from workspace' }).click();
+  await expect(dialog.getByRole('region', { name: 'Saved repositories not open' })).toContainText('No files were changed.');
+  await expect(dialog.getByLabel('Filter repositories')).toBeFocused();
+  const state = await page.evaluate(async () => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    fixture.finishRestore();
+    await fixture.restore;
+    const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
+    return {
+      open: git.repositories().map((repository: any) => repository.path),
+      current: workspaces.find((workspace: any) => workspace.id === git.activeWorkspaceId()).repositoryPaths,
+      other: workspaces.find((workspace: any) => workspace.id === 'keep-saved-path').repositoryPaths,
+      opens: fixture.calls.filter((command: string) => command === 'open_repository').length,
+    };
+  });
+  expect(state).toEqual({
+    open: ['/owned/alpha', '/owned/beta'],
+    current: ['/owned/alpha', '/owned/beta'],
+    other: ['/saved/removable'],
+    opens: 1,
+  });
+});
+
 test('refreshes every local repository, retains failed cached rows and performs no transport', async ({ page }) => {
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;

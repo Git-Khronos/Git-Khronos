@@ -2701,7 +2701,7 @@
 
 @if (workspaceCenterRequest(); as request) {
   @defer (on immediate) {
-    <gc-workspace-center [request]="request" [suspended]="!!fileContentDialog()" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" (openFileRequested)="openWorkspaceFile($event)" />
+    <gc-workspace-center [request]="request" [suspended]="!!fileContentDialog()" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" (savedRepositoryRequested)="openRepositoryPath($event)" (openFileRequested)="openWorkspaceFile($event)" />
   } @placeholder {
     <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading workspace center" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="status">Loading workspace center…</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
   } @error {

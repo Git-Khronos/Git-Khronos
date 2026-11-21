@@ -685,11 +685,14 @@ export class GitKhronosService implements OnDestroy {
         throw error;
       }
       opened.snapshot = snapshot;
+      this.repositoryRestoration?.pending.delete(path);
+      this.repositoryRestoration?.failed.delete(path);
       this.storeSnapshot(snapshot, true);
+      this.orderRestoredRepositoryTabs(path, snapshot.path);
       this.setActiveRepository(snapshot.id);
       this.clearInspection();
       this.remember(snapshot.path);
-      this.persistOpenTabs();
+      this.persistOpenTabs({ canonical: { requested: path, resolved: snapshot.path } });
       this.forgetClosedRepository(snapshot.path);
       report(`Opened ${snapshot.name}`);
     });
@@ -3107,7 +3110,18 @@ export class GitKhronosService implements OnDestroy {
     }
     this.error.set(null);
     this.activity.set('Ready');
-    this.persistOpenTabs();
+    this.persistOpenTabs({ removedPath: closingRepository.path });
+  }
+
+  removeUnopenedWorkspaceRepository(workspaceId: string, path: string): boolean {
+    if (this.busy() || workspaceId !== this.activeWorkspaceId()
+      || !this.activeWorkspace()?.repositoryPaths.includes(path)
+      || this.repositories().some(repository => repository.path === path)) return false;
+    // A queued or in-flight restore must not reinsert a removed membership.
+    this.repositoryRestoration?.pending.delete(path);
+    this.repositoryRestoration?.failed.delete(path);
+    this.persistOpenTabs({ removedPath: path });
+    return true;
   }
 
   async reopenClosedRepository(): Promise<boolean> {
@@ -3538,7 +3552,7 @@ export class GitKhronosService implements OnDestroy {
     this.setActiveRepository(snapshot.id);
     this.clearInspection();
     this.remember(snapshot.path);
-    this.persistOpenTabs(this.incomingRepositoryLinksPending());
+    this.persistOpenTabs({ preserveSavedOrder: this.incomingRepositoryLinksPending() });
     report(activity);
     this.deferMetadataRefresh(snapshot.id);
   }
@@ -3921,20 +3935,26 @@ export class GitKhronosService implements OnDestroy {
     // Explicit tab closure can also revoke this exact pending path.
     if (!this.ownsRepositoryRestoration(restoration) || !restoration.pending.delete(path)) return false;
     if (!this.repositories().some(repository => repository.id === snapshot.id)) {
-      const saved = this.activeWorkspace()?.repositoryPaths ?? [];
-      const ranks = new Map(saved.map((savedPath, index) => [savedPath, index]));
-      ranks.set(snapshot.path, ranks.get(path) ?? saved.length);
       this.storeSnapshot(snapshot, true);
-      this.repositories.update(repositories => [...repositories].sort((left, right) =>
-        (ranks.get(left.path) ?? saved.length) - (ranks.get(right.path) ?? saved.length)));
+      this.orderRestoredRepositoryTabs(path, snapshot.path);
       this.setDeferredMetadataState(snapshot.id, 'loading');
     }
     if (!this.repository()) {
       this.setActiveRepository(snapshot.id);
       this.deferMetadataRefresh(snapshot.id);
     }
-    this.persistOpenTabs();
+    this.persistOpenTabs({ canonical: { requested: path, resolved: snapshot.path } });
     return true;
+  }
+
+  private orderRestoredRepositoryTabs(requested: string, resolved: string): void {
+    const saved = this.activeWorkspace()?.repositoryPaths ?? [];
+    const ranks = new Map(saved.map((path, index) => [path, index]));
+    const requestedRank = ranks.get(requested);
+    if (requestedRank === undefined) return;
+    ranks.set(resolved, Math.min(requestedRank, ranks.get(resolved) ?? saved.length));
+    this.repositories.update(repositories => [...repositories].sort((left, right) =>
+      (ranks.get(left.path) ?? saved.length) - (ranks.get(right.path) ?? saved.length)));
   }
 
   private async restoreRepositoryTabs(restoration: RepositoryRestoration): Promise<void> {
@@ -3956,25 +3976,28 @@ export class GitKhronosService implements OnDestroy {
   private reportRestoreFailures(paths: readonly string[]): void {
     const labels = paths.map((path) => this.pathLabel(path));
     this.error.set(
-      `Could not restore ${paths.length} saved ${paths.length === 1 ? 'repository' : 'repositories'}: ${labels.join(', ')}. Check the folder or reopen it from Recent repositories.`,
+      `Could not restore ${paths.length} saved ${paths.length === 1 ? 'repository' : 'repositories'}: ${labels.join(', ')}. Open Repository overview to retry or remove saved paths.`,
     );
   }
 
-  private persistOpenTabs(preserveSavedPaths = false): void {
+  private persistOpenTabs({ removedPath, canonical, preserveSavedOrder = false }: {
+    removedPath?: string;
+    canonical?: { requested: string; resolved: string };
+    preserveSavedOrder?: boolean;
+  } = {}): void {
     const loadedPaths = this.repositories().map((repository) => repository.path);
-    const savedPaths = this.activeWorkspace()?.repositoryPaths ?? [];
-    const restoration = this.repositoryRestoration;
-    let repositoryPaths = loadedPaths;
-    if (preserveSavedPaths) {
+    const savedPaths = [...new Set((this.activeWorkspace()?.repositoryPaths ?? [])
+      .filter(path => path !== removedPath)
+      .map(path => canonical && path === canonical.requested ? canonical.resolved : path))];
+    let repositoryPaths: string[];
+    if (preserveSavedOrder) {
       repositoryPaths = [...new Set([...savedPaths, ...loadedPaths])];
-    } else if (restoration && this.ownsRepositoryRestoration(restoration)) {
+    } else {
+      // Preserve unloaded intent after restoration settles, while reflecting
+      // the live tab order in the slots that already hold open repositories.
       const loaded = new Set(loadedPaths);
       let index = 0;
-      repositoryPaths = savedPaths.flatMap(path => {
-        if (loaded.has(path)) return [loadedPaths[index++]];
-        if (restoration.pending.has(path) || restoration.failed.has(path)) return [path];
-        return [];
-      });
+      repositoryPaths = savedPaths.map(path => loaded.has(path) ? loadedPaths[index++] : path);
       repositoryPaths.push(...loadedPaths.slice(index));
     }
     const activeRepositoryPath = this.repository()?.path ?? null;

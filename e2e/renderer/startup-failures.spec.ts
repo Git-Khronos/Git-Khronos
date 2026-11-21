@@ -98,8 +98,9 @@ test('preserves unavailable paths when another saved repository restores', async
       repositoryPaths: ['/repos/missing-project', snapshot.path],
       activeRepositoryPath: '/repos/missing-project',
     };
-    localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify([savedWorkspace]));
-    git.workspaces.set([savedWorkspace]);
+    const other = { id: 'other', name: 'Other', repositoryPaths: [], activeRepositoryPath: null };
+    localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify([savedWorkspace, other]));
+    git.workspaces.set([savedWorkspace, other]);
     git.activeWorkspaceId.set('default');
     git.repositories.set([]);
     git.activeRepositoryId.set(null);
@@ -112,6 +113,8 @@ test('preserves unavailable paths when another saved repository restores', async
           if (args.path === snapshot.path) return snapshot;
           throw new Error('Folder is unavailable');
         }
+        if (command === 'refresh_repository') return snapshot;
+        if (command === 'refresh_repository_status') return snapshot.status;
         throw new Error(`Unexpected command: ${command}`);
       },
     };
@@ -127,6 +130,22 @@ test('preserves unavailable paths when another saved repository restores', async
   });
   expect(state.restoredPaths).toEqual(['/repos/available-project']);
   expect(state.savedPaths).toEqual(['/repos/missing-project', '/repos/available-project']);
+
+  await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.activateRepository(git.activeRepositoryId());
+    await git.switchWorkspace('other');
+  });
+  const afterSwitch = await page.evaluate(() => JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!)[0].repositoryPaths);
+  expect(afterSwitch).toEqual(['/repos/missing-project', '/repos/available-project']);
+
+  await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    await git.switchWorkspace('default');
+    git.closeRepository(git.activeRepositoryId());
+  });
+  const afterClose = await page.evaluate(() => JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!)[0].repositoryPaths);
+  expect(afterClose).toEqual(['/repos/missing-project']);
 });
 
 test('announces operation outcomes in a persistent status region', async ({ page }) => {
