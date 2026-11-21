@@ -2626,6 +2626,100 @@ fn local_checkout_updates_the_parent_gitlink_without_switching_the_nested_checko
 }
 
 #[test]
+fn worktree_and_branch_removal_keeps_the_checkout_when_recovery_cannot_be_saved() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let head = repository.oid();
+    let linked = path.join(".git/recovery-required-worktree");
+    let target = linked.to_str().unwrap();
+    run_mutation(
+        path,
+        &["worktree", "add", "-b", "recovery-required", target, &head],
+        "create a linked checkout in the owned fixture",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["update-ref", "refs/git-khronos/recovery", &head],
+        "block writes under the recovery ref namespace",
+    )
+    .unwrap();
+    let before = run_git(path, &["worktree", "list", "--porcelain", "-z"])
+        .unwrap()
+        .stdout;
+    assert_eq!(
+        remove_worktree(path, target, true, false).unwrap_err().kind,
+        "worktreeRecoveryUnavailable"
+    );
+    assert!(linked.join("file").is_file(), "Recovery failure removed the checkout");
+    assert_eq!(rev(path, "refs/heads/recovery-required"), head);
+    assert_eq!(
+        run_git(path, &["worktree", "list", "--porcelain", "-z"])
+            .unwrap()
+            .stdout,
+        before
+    );
+
+    run_mutation(
+        path,
+        &["update-ref", "-d", "refs/git-khronos/recovery", &head],
+        "unblock recovery storage",
+    )
+    .unwrap();
+    let untracked = linked.join("pending.txt");
+    fs::write(&untracked, b"uncommitted linked checkout data\n").unwrap();
+    assert_eq!(remove_worktree(path, target, true, false).unwrap_err().kind, "gitFailure");
+    assert!(untracked.is_file());
+    assert!(operation_recoveries(path).unwrap().is_empty());
+    remove_worktree(path, target, true, true).unwrap();
+    assert!(!linked.exists());
+    assert!(reference_tip(path, "refs/heads/recovery-required").is_none());
+    let recovery = operation_recoveries(path).unwrap();
+    assert_eq!(recovery.len(), 1);
+    assert_eq!(recovery[0].head_oid, head);
+}
+
+#[test]
+#[cfg(unix)]
+fn worktree_removal_reports_partial_success_and_keeps_recovery_when_git_refuses_branch_deletion() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repository = Repository::new();
+    let path = &repository.0;
+    let head = repository.oid();
+    let linked = path.join(".git/remove-branch-after-worktree");
+    let target = linked.to_str().unwrap();
+    run_mutation(
+        path,
+        &["worktree", "add", "-b", "owned-blocked-delete", target, &head],
+        "create owned linked checkout",
+    )
+    .unwrap();
+    let hooks = path.join(".git/owned-hooks");
+    fs::create_dir(&hooks).unwrap();
+    let hook = hooks.join("reference-transaction");
+    fs::write(
+        &hook,
+        b"#!/bin/sh\n[ \"$1\" = prepared ] || exit 0\nwhile read old new ref; do\n  [ \"$ref\" != refs/heads/owned-blocked-delete ] || exit 1\ndone\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
+    run_mutation(
+        path,
+        &["config", "core.hooksPath", hooks.to_str().unwrap()],
+        "enable an owned branch-deletion refusal hook",
+    )
+    .unwrap();
+    let error = remove_worktree(path, target, true, false).unwrap_err();
+    assert_eq!(error.kind, "worktreeRemovedBranchRemovalIncomplete");
+    assert!(!linked.exists());
+    assert_eq!(rev(path, "refs/heads/owned-blocked-delete"), head);
+    let records = operation_recoveries(path).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].head_oid, head);
+}
+
+#[test]
 fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktrees() {
     let repository = Repository::new();
     let path = &repository.0;

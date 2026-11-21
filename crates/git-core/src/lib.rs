@@ -3415,24 +3415,62 @@ pub fn remove_worktree(
         arguments.push("--force");
     }
     arguments.push(target);
-    run_mutation(path, &arguments, "remove that worktree")?;
-    if let Some(branch) = branch_to_delete {
-        let (tip, record) = protect_branch_tip(path, &branch, None)?;
-        let reference = format!("refs/heads/{branch}");
-        operation_recovery::with_commit_recovery(
-            path,
-            record,
-            || {
-                run_mutation(
-                    path,
-                    &["branch", "-D", "--", &branch],
-                    "delete that worktree branch",
+    let Some(branch) = branch_to_delete else {
+        return run_mutation(path, &arguments, "remove that worktree");
+    };
+    let affected_checkout = Path::new(target);
+    let changes = read_status(affected_checkout)?.entry_count;
+    let (tip, record) = protect_branch_tip(path, &branch, Some(&worktree.oid)).map_err(|error| {
+        if error.kind == "branchDeleteReviewChanged" {
+            error
+        } else {
+            AppError::new(
+                "worktreeRecoveryUnavailable",
+                "The worktree was not removed because its branch recovery could not be saved.",
+                Some("Check repository storage and permissions. Retry only once recovery is available."),
+            )
+        }
+    })?;
+    let reference = format!("refs/heads/{branch}");
+    let removed = std::cell::Cell::new(false);
+    operation_recovery::with_commit_recovery(
+        path,
+        record,
+        || {
+            let current = managed_worktree(path, target)?;
+            if current.branch.as_deref() != Some(branch.as_str())
+                || current.oid != tip
+                || current.current
+                || current.locked
+                || read_status(affected_checkout)?.entry_count != changes
+            {
+                return Err(AppError::new(
+                    "worktreeRemovalChanged",
+                    "The linked checkout changed while branch recovery was saved. No worktree was removed.",
+                    Some("Refresh and review the linked checkout again."),
+                ));
+            }
+            run_mutation(path, &arguments, "remove that worktree")?;
+            removed.set(true);
+            let incomplete = || {
+                AppError::new(
+                    "worktreeRemovedBranchRemovalIncomplete",
+                    "The worktree was removed, but its branch deletion did not complete.",
+                    Some("The original branch tip was saved in Recovery History. Refresh and review the current branch before deleting it separately."),
                 )
-            },
-            || reference_tip(path, &reference).as_deref() == Some(tip.as_str()),
-        )?;
-    }
-    Ok(())
+            };
+            if reference_tip(path, &reference).as_deref() != Some(tip.as_str()) {
+                return Err(incomplete());
+            }
+            run_mutation(
+                path,
+                &["branch", "-D", "--", &branch],
+                "delete that worktree branch",
+            )
+            .map_err(|_| incomplete())
+        },
+        || !removed.get() && reference_tip(path, &reference).as_deref() == Some(tip.as_str()),
+    )
 }
 
 pub fn checkout_commit(path: &Path, oid: &str) -> Result<(), AppError> {
@@ -8944,8 +8982,9 @@ fn managed_worktree(path: &Path, target: &str) -> Result<Worktree, AppError> {
             None,
         ));
     }
-    let status = read_status(path)?;
-    read_worktrees(path, &status, true)?
+    // Mutation lookup only needs the registrations. Callers that need file
+    // status inspect the selected checkout, not every linked repository.
+    read_worktrees(path, &RepositoryStatus::default(), false)?
         .into_iter()
         .find(|worktree| worktree.path == target)
         .ok_or_else(|| {

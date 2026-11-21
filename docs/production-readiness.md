@@ -3178,6 +3178,14 @@ Git retains its existing merged-branch and linked-worktree safeguards.
 The new installed check is required by the checkout scope gate for future
 candidates; this is a preflight, not a lock against independent Git clients.
 
+A linked-worktree removal that also deletes its branch now saves the branch
+commit before removing the directory. An owned fixture that blocked the
+recovery ref namespace reproduced loss of the checkout on the older
+`ca3a347` installer as well as in the source regression.
+The corrected operation leaves the directory and registration intact. A
+separate fixture refuses branch deletion after checkout removal and verifies
+that the partial outcome is reported and the recovery commit survives.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

@@ -403,6 +403,7 @@ test('split passing reports cannot combine to satisfy a required suite', () => {
     ['environment', [
       'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
       'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
+      'native-worktree-and-branch-removal-requires-recovery-before-removing-checkout',
     ]],
   ]) {
     const full = fixtures.find(report => report.suite === suite);

@@ -1463,7 +1463,8 @@ def main():
                 application_updates_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "worktrees"):
                 progress.enter_phase("occupied-worktree-navigation")
-                from native_worktree_scenarios import occupied_branch_navigation
+                from native_worktree_scenarios import occupied_branch_navigation, worktree_recovery_before_removal
+                worktree_recovery_before_removal(driver, fixtures, report)
                 occupied_branch_navigation(driver, fixtures, report)
             if args.suite in ("full", "environment", "setup-keyboard"):
                 progress.enter_phase("setup-keyboard")

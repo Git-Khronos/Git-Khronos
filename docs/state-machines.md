@@ -501,6 +501,15 @@ choice; the older scalar action view is derived from that request. Later edits
 to a preferences draft cannot change the reviewed sparse payload or count.
 These UI records are transient intent, not native mutation capabilities.
 
+Removing a linked checkout **and its branch** first saves its branch commit
+in Recovery History. If that save fails, neither is removed. Native then
+rechecks the linked branch, commit, and observed change count before Git
+removes the checkout. Git retains its own dirty-checkout guard unless the
+user explicitly forces removal. If the checkout was removed but the branch
+could not be removed, the result identifies the partial operation and
+keeps the saved commit. Recovery here protects committed history, not
+uncommitted files in a worktree that the user chose to force-remove.
+
 A scope effect retires mismatched requests without restoring focus into another
 checkout. Confirmation independently checks ID/path and request identity before
 calling the service, including the pre-effect interval. Rendered request aliases

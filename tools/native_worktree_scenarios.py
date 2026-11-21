@@ -44,6 +44,33 @@ def checkout_footprint(fixtures, repository, files=('fixture.txt',)):
     }
 
 
+def worktree_recovery_before_removal(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('worktree-required-recovery', commits=2)
+    linked = fixtures.root / 'owned-worktree-recovery'
+    branch = 'owned-removal-branch'
+    fixtures.git(repository, 'worktree', 'add', '-b', branch, str(linked))
+    head = fixtures.git(linked, 'rev-parse', 'HEAD')
+    # A file ref at this namespace prevents creation of the recovery child.
+    fixtures.git(repository, 'update-ref', 'refs/git-khronos/recovery', head)
+    repo_id = open_ui(driver, repository)
+    before = checkout_footprint(fixtures, linked)
+    registration = fixtures.git(repository, 'worktree', 'list', '--porcelain')
+    try:
+        driver.invoke('remove_worktree', repoId=repo_id, path=str(linked),
+                      deleteBranch=True, force=False)
+    except RuntimeError as failure:
+        error = json.loads(str(failure))
+    else:
+        raise AssertionError('Worktree removal succeeded without saving recovery')
+    assert (linked / 'fixture.txt').is_file(), 'Worktree was removed while its branch recovery was unavailable'
+    assert error['kind'] == 'worktreeRecoveryUnavailable', error
+    assert checkout_footprint(fixtures, linked) == before
+    assert fixtures.git(repository, 'worktree', 'list', '--porcelain') == registration
+    report['scenarios'].append('native-worktree-and-branch-removal-requires-recovery-before-removing-checkout')
+
+
 def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 
