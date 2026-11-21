@@ -18,7 +18,8 @@ import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component'
 import { WindowsLauncherComponent } from './windows-launcher.component';
 import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } from './application-updates-dialog.component';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
-import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
+import type { FileMediaSelection } from './file-media.component';
+import { DiffWorkspaceComponent } from './diff-workspace.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
@@ -48,8 +49,6 @@ import { TextValueDirective } from './text-value.directive';
 import { type UnlistenFn } from '@tauri-apps/api/event';
 import { events, type BranchComparison } from '@git-khronos/contracts';
 import { StashDeleteDialogComponent, type StashDeleteRequest } from './stash-delete-dialog.component';
-import { FileBlameComponent } from './file-blame.component';
-import { FileHistoryComponent } from './file-history.component';
 import type {
   Branch,
   CommitFile,
@@ -704,7 +703,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -719,7 +718,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly historySearchToggle = viewChild<ElementRef<HTMLButtonElement>>('historySearchToggle');
-  private readonly diffFileMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('diffFileMenuToggle');
   private readonly detailReferenceStackElement = viewChild<ElementRef<HTMLElement>>('detailReferenceStackElement');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
@@ -755,7 +753,21 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
   private readonly editedCommitSummaryInput = viewChild<ElementRef<HTMLInputElement>>('editedCommitSummaryInput');
-  private readonly focusedDiff = viewChild<ElementRef<HTMLElement>>('focusedDiff');
+  private readonly diffWorkspace = viewChild<unknown, ElementRef<HTMLElement>>('diffWorkspace', { read: ElementRef });
+  private readonly diffWorkspaceLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('diffWorkspaceLoaderClose');
+  private diffWorkspaceLoaderFocused = false;
+  private readonly diffWorkspaceRenderFocus = afterRenderEffect(() => {
+    const fallback = this.diffWorkspaceLoaderClose()?.nativeElement;
+    const workspace = this.diffWorkspace()?.nativeElement;
+    const active = document.activeElement;
+    if (fallback && (active === this.diffViewerOpener || active === document.body)) {
+      fallback.focus({ preventScroll: true });
+      this.diffWorkspaceLoaderFocused = true;
+    } else if (workspace && this.diffWorkspaceLoaderFocused) {
+      this.diffWorkspaceLoaderFocused = false;
+      if (active === document.body) workspace.querySelector<HTMLElement>('.diff-workspace')?.focus({ preventScroll: true });
+    }
+  });
   private readonly graphSettingsToggle = viewChild<ElementRef<HTMLButtonElement>>('graphSettingsToggle');
   private readonly graphSettingsPanel = viewChild<ElementRef<HTMLElement>>('graphSettingsPanel');
   private readonly graphColumns = viewChild<ElementRef<HTMLElement>>('graphColumns');
@@ -5095,7 +5107,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     const editing = !!target?.closest('input, textarea, [contenteditable="true"]');
-    const inFileWorkspace = !!target?.closest('.diff-workspace');
+    const inFileWorkspace = !!target?.closest('.diff-workspace, .diff-workspace-loading');
     const terminalEditing = !!target?.closest('gc-terminal-panel');
     const terminalShortcut = (event.altKey && key === 't') || (command && event.key === '`');
     if (event.key === 'F6' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -5122,12 +5134,12 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (!editing && this.diffViewerOpen() && event.altKey && !command && (key === 'arrowup' || key === 'arrowdown')) {
       event.preventDefault();
-      void this.navigateDiffFile(key === 'arrowup' ? -1 : 1);
+      if (this.diffWorkspace()) void this.navigateDiffFile(key === 'arrowup' ? -1 : 1);
       return;
     }
     if (!editing && this.diffViewerOpen() && !command && key === 'f7') {
       event.preventDefault();
-      this.navigateDiffHunk(event.shiftKey ? -1 : 1);
+      if (this.diffWorkspace()) this.navigateDiffHunk(event.shiftKey ? -1 : 1);
       return;
     }
     if (!command) {
@@ -9967,7 +9979,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private captureDiffViewport(): DiffViewportPosition | null {
-    const primary = this.focusedDiff()?.nativeElement;
+    const primary = this.diffWorkspace()?.nativeElement.querySelector<HTMLElement>('.diff-primary-view');
     const scroller = primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary;
     if (!scroller?.getClientRects().length) return null;
     const bounds = scroller.getBoundingClientRect();
@@ -9989,7 +10001,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private restoreDiffViewport(position: DiffViewportPosition): void {
-    const primary = this.focusedDiff()?.nativeElement;
+    const primary = this.diffWorkspace()?.nativeElement.querySelector<HTMLElement>('.diff-primary-view');
     const scroller = primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary;
     if (!scroller) return;
     let top = position.top;
@@ -10092,7 +10104,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.afterDiffRender(() => {
       this.scrollToDiffHunk(this.activeDiffHunk());
       if (document.activeElement === previousFocus || document.activeElement === document.body) {
-        const primary = this.focusedDiff()?.nativeElement;
+        const primary = this.diffWorkspace()?.nativeElement.querySelector<HTMLElement>('.diff-primary-view');
         (primary?.querySelector<HTMLElement>('.split-diff-body') ?? primary)?.focus({ preventScroll: true });
       }
     });
@@ -10143,7 +10155,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeDiffFileMenu(restoreFocus = false): void {
     this.diffFileMenuOpen.set(false);
-    if (restoreFocus) setTimeout(() => this.diffFileMenuToggle()?.nativeElement.focus({ preventScroll: true }));
+    if (restoreFocus) setTimeout(() => this.diffWorkspace()?.nativeElement.querySelector<HTMLButtonElement>('.diff-file-position')?.focus({ preventScroll: true }));
   }
 
   protected diffFileTargetPath(target: DiffFileNavigationTarget): string {
@@ -10191,13 +10203,86 @@ export class AppComponent implements OnInit, OnDestroy {
       if (target.source === 'comparison') await this.inspectComparisonFile(target.file);
       else await this.inspectCommitFile(target.file);
     }
-    if (restoreFocus) setTimeout(() => this.diffFileMenuToggle()?.nativeElement.focus({ preventScroll: true }));
+    if (restoreFocus) setTimeout(() => this.diffWorkspace()?.nativeElement.querySelector<HTMLButtonElement>('.diff-file-position')?.focus({ preventScroll: true }));
   }
 
   protected jumpToDiffHunk(index: number): void {
     this.activeDiffHunk.set(index);
     this.afterDiffRender(() => this.scrollToDiffHunk(index));
   }
+
+  /** Renderer model for the on-demand diff. Repository and viewport state stay in the shell. */
+  readonly diffWorkspaceView = {
+    activeDiff: () => this.activeDiff(),
+    activeDiffCommitContext: () => this.activeDiffCommitContext(),
+    activeDiffFileChangeStats: () => this.activeDiffFileChangeStats(),
+    activeDiffFileIndex: () => this.activeDiffFileIndex(),
+    activeDiffFileStatus: () => this.activeDiffFileStatus(),
+    activeDiffFileTargets: () => this.activeDiffFileTargets(),
+    activeDiffHunk: () => this.activeDiffHunk(),
+    activeDiffLabel: () => this.activeDiffLabel(),
+    activeDiffRevision: () => this.activeDiffRevision(),
+    activeMediaSelection: () => this.activeMediaSelection(),
+    activeWorkingTreeDiff: () => this.activeWorkingTreeDiff(),
+    diffFileMenuOpen: () => this.diffFileMenuOpen(),
+    diffFontSize: () => this.diffFontSize(),
+    diffHunks: () => this.diffHunks(),
+    diffInsightMode: () => this.diffInsightMode(),
+    diffLines: () => this.diffLines(),
+    diffMapMarks: () => this.diffMapMarks(),
+    diffStats: () => this.diffStats(),
+    diffTabSize: () => this.diffTabSize(),
+    diffViewMode: () => this.diffViewMode(),
+    diffWordWrap: () => this.diffWordWrap(),
+    selectableWorkingTreeDiff: () => this.selectableWorkingTreeDiff(),
+    selectedDiffLines: () => this.selectedDiffLines(),
+    sidebarVisible: () => this.sidebarVisible(),
+    splitDiffRows: () => this.splitDiffRows(),
+    busy: () => this.git.busy(),
+    detailsBusy: () => this.git.detailsBusy(),
+    blameCount: () => this.git.fileBlame()?.length ?? 0,
+    historyFileCount: () => this.historySearch.files().length,
+    historyFileComplete: () => this.historySearch.fileComplete(),
+    primaryShortcutKey: this.primaryShortcutKey,
+    clearSelectedLines: () => this.selectedDiffLineGroups.set([]),
+    showContent: () => this.diffInsightMode.set('content'),
+    authorColor: (name: string, email: string) => this.rebaseAuthorColor(name, email),
+    tokenizeBlame: (text: string, path: string) => this.blameSyntaxTokens(text, path),
+    initials: this.initials.bind(this),
+    applyHunk: this.applyHunk.bind(this),
+    applySelectedDiffLines: this.applySelectedDiffLines.bind(this),
+    canInspectActiveFile: this.canInspectActiveFile.bind(this),
+    closeDiffViewer: this.closeDiffViewer.bind(this),
+    copyContextValue: this.copyContextValue.bind(this),
+    diffFileStatusLabel: this.diffFileStatusLabel.bind(this),
+    diffFileTargetContext: this.diffFileTargetContext.bind(this),
+    diffFileTargetKey: this.diffFileTargetKey.bind(this),
+    diffFileTargetPath: this.diffFileTargetPath.bind(this),
+    diffFileTargetStatus: this.diffFileTargetStatus.bind(this),
+    fileDirectory: this.fileDirectory.bind(this),
+    fileName: this.fileName.bind(this),
+    handleDiffFileMenuKeydown: this.handleDiffFileMenuKeydown.bind(this),
+    handleDiffModeKeydown: this.handleDiffModeKeydown.bind(this),
+    isDiffLineSelected: this.isDiffLineSelected.bind(this),
+    isUntrackedPath: this.isUntrackedPath.bind(this),
+    jumpToDiffHunk: this.jumpToDiffHunk.bind(this),
+    navigateBlame: this.navigateBlame.bind(this),
+    navigateDiffFile: this.navigateDiffFile.bind(this),
+    navigateDiffHunk: this.navigateDiffHunk.bind(this),
+    openHistoricalFile: this.openHistoricalFile.bind(this),
+    panelWidth: this.panelWidth.bind(this),
+    reloadWorkingTreeDiff: this.reloadWorkingTreeDiff.bind(this),
+    requestDiscardHunk: this.requestDiscardHunk.bind(this),
+    requestDiscardSelectedDiffLines: this.requestDiscardSelectedDiffLines.bind(this),
+    selectDiffFile: this.selectDiffFile.bind(this),
+    setDiffPreference: this.setDiffPreference.bind(this),
+    setDiffViewMode: this.setDiffViewMode.bind(this),
+    showFileBlame: this.showFileBlame.bind(this),
+    showFileDiff: this.showFileDiff.bind(this),
+    showFileHistory: this.showFileHistory.bind(this),
+    toggleDiffFileMenu: this.toggleDiffFileMenu.bind(this),
+    toggleDiffLineSelection: this.toggleDiffLineSelection.bind(this),
+  };
 
   private openDiffViewer(): void {
     const generation = ++this.diffViewerGeneration;
@@ -10228,6 +10313,7 @@ export class AppComponent implements OnInit, OnDestroy {
       '.commit-panel .commit-file.selected, .commit-panel .file-row.selected .file-name-button',
     ) ?? this.diffViewerOpener;
     this.diffViewerOpen.set(false);
+    this.diffWorkspaceLoaderFocused = false;
     this.diffFileMenuOpen.set(false);
     this.diffViewerOpener = null;
     this.selectedDiffLineGroups.set([]);
@@ -10284,7 +10370,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private scrollToDiffHunk(index: number, behavior?: ScrollBehavior): void {
-    const primary = this.focusedDiff()?.nativeElement;
+    const primary = this.diffWorkspace()?.nativeElement.querySelector<HTMLElement>('.diff-primary-view');
     const line = primary?.querySelector<HTMLElement>(`[data-diff-hunk="${index}"]`);
     if (!primary || !line) return;
     const wrapped = this.diffWordWrap();
@@ -14317,7 +14403,7 @@ export class AppComponent implements OnInit, OnDestroy {
       && !inside(this.workingTreeOptionsToggle()?.nativeElement, this.workingTreeOptionsMenu()?.nativeElement)) {
       this.workingTreeOptionsOpen.set(false);
     }
-    if (this.diffFileMenuOpen() && !inside(this.diffFileMenuToggle()?.nativeElement, '#diff-file-menu')) this.diffFileMenuOpen.set(false);
+    if (this.diffFileMenuOpen() && !inside(this.diffWorkspace()?.nativeElement.querySelector<HTMLButtonElement>('.diff-file-position'), '#diff-file-menu')) this.diffFileMenuOpen.set(false);
     const expandedReferenceOid = this.expandedReferenceStackOid();
     if (expandedReferenceOid) {
       const targetElement = target instanceof Element ? target : target.parentElement;

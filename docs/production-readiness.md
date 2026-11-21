@@ -398,6 +398,16 @@ bytes. The warning limit is still exceeded by 495,619 bytes; the error limit
 has 54,381 bytes of headroom. No budget changed. The measured difference is
 in emitted assets, not a startup latency measurement.
 
+Deferring the focused diff viewer and its dedicated styles reduced the
+initial renderer from **1,401,626 to 1,361,018 bytes** (40,608 bytes less).
+Initial CSS fell from 150,101 to 130,452 bytes; the diff component loads
+when a file diff is opened. The initial warning still exceeds the
+900 kB budget by 461,018 bytes, with 88,982 bytes of error-limit headroom.
+Budgets were unchanged. The verified before/after reports are retained
+locally under `target/local-review/lazy-diff-workspace/`. Chromium against
+the final production output requested no diff module before opening a file
+and one copy on opening it. These are asset measurements, not boot time.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native

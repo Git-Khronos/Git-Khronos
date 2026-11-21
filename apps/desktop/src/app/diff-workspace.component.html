@@ -1,0 +1,184 @@
+@let view = model();
+@if (view.activeDiff(); as diff) {
+  <section
+    class="diff-workspace"
+    tabindex="-1"
+    [class.sidebar-collapsed]="!view.sidebarVisible()"
+    [class.word-wrap]="view.diffWordWrap()"
+    [style.--diff-font-size]="view.diffFontSize() + 'px'"
+    [style.--diff-tab-size]="view.diffTabSize()"
+    [style.left.px]="view.panelWidth('sidebar')"
+    [style.right.px]="view.panelWidth('details')"
+    aria-label="Diff viewer"
+  >
+    <header class="diff-workspace-toolbar">
+      <button class="diff-back" type="button" (click)="view.closeDiffViewer()" title="Back to graph (Esc)" aria-label="Back to commit graph"><gc-icon name="chevron-left" [size]="13" /><span>Graph</span></button>
+      <div class="diff-file-identity" [attr.title]="view.activeWorkingTreeDiff()?.previousPath ? view.activeWorkingTreeDiff()?.previousPath + ' → ' + diff.path : diff.path">
+        <span class="diff-file-status" [attr.data-status]="view.activeDiffFileStatus()" [attr.aria-label]="view.diffFileStatusLabel(view.activeDiffFileStatus())">{{ view.activeDiffFileStatus() }}</span>
+        <div>
+          <strong>{{ view.fileName(diff.path) }}</strong>
+          <small>
+            @if (view.activeWorkingTreeDiff()?.previousPath; as previousPath) {
+              <span class="diff-rename-source" [title]="previousPath">Renamed from {{ previousPath }}</span>
+            } @else {
+              <span class="diff-file-directory">{{ view.fileDirectory(diff.path) || './' }}</span>
+              @if (view.activeDiffCommitContext(); as commitSubject) { <i class="diff-source-separator" aria-hidden="true">·</i><span class="diff-source-context" [title]="commitSubject">{{ commitSubject }}</span> }
+            }
+            <i>·</i><b>{{ view.activeDiffLabel() }}</b>
+          </small>
+        </div>
+        @if (view.activeDiffFileChangeStats(); as stats) {
+          <span class="diff-file-change-stats" [attr.aria-label]="stats.additions + ' additions and ' + stats.deletions + ' deletions'">
+            <b>+{{ stats.additions }}</b><i>−{{ stats.deletions }}</i>
+          </span>
+        }
+        <button class="diff-copy-path" type="button" [attr.aria-label]="'Copy path for ' + diff.path" title="Copy full file path" (click)="view.copyContextValue(diff.path)"><gc-icon name="copy" [size]="11" /></button>
+      </div>
+      <div class="diff-file-picker" (click)="$event.stopPropagation()">
+        <nav class="diff-file-navigation" aria-label="Navigate changed files">
+          <button type="button" aria-label="Previous changed file" aria-keyshortcuts="Alt+ArrowUp" title="Previous file (Alt+↑)" [disabled]="view.detailsBusy() || view.activeDiffFileIndex() <= 0" (click)="view.navigateDiffFile(-1)"><gc-icon name="chevron-up" [size]="11" /></button>
+          <button class="diff-file-position" type="button" aria-haspopup="menu" [attr.aria-controls]="view.diffFileMenuOpen() ? 'diff-file-menu' : null" [attr.aria-expanded]="view.diffFileMenuOpen()" [attr.aria-label]="'Choose changed file, ' + (view.activeDiffFileIndex() >= 0 ? view.activeDiffFileIndex() + 1 : 0) + ' of ' + view.activeDiffFileTargets().length" title="Choose a changed file" (click)="view.toggleDiffFileMenu($event)"><span>{{ view.activeDiffFileIndex() >= 0 ? view.activeDiffFileIndex() + 1 : 0 }} of {{ view.activeDiffFileTargets().length }}<small> {{ view.activeDiffFileTargets().length === 1 ? 'file' : 'files' }}</small></span><gc-icon name="chevron-down" [size]="9" /></button>
+          <button type="button" aria-label="Next changed file" aria-keyshortcuts="Alt+ArrowDown" title="Next file (Alt+↓)" [disabled]="view.detailsBusy() || view.activeDiffFileIndex() < 0 || view.activeDiffFileIndex() >= view.activeDiffFileTargets().length - 1" (click)="view.navigateDiffFile(1)"><gc-icon name="chevron-down" [size]="11" /></button>
+        </nav>
+        @if (view.diffFileMenuOpen()) {
+          <div id="diff-file-menu" class="diff-file-menu" role="menu" aria-label="Changed files" (keydown)="view.handleDiffFileMenuKeydown($event)">
+            <header><span>Changed files</span><b>{{ view.activeDiffFileTargets().length }}</b></header>
+            @for (target of view.activeDiffFileTargets(); track model().diffFileTargetKey(target); let index = $index) {
+              <button type="button" role="menuitemradio" [attr.aria-checked]="index === view.activeDiffFileIndex()" [class.current]="index === view.activeDiffFileIndex()" [attr.title]="view.diffFileTargetPath(target)" (click)="view.selectDiffFile(index)">
+                <span class="change-kind" [attr.data-status]="view.diffFileTargetStatus(target)">{{ view.diffFileTargetStatus(target) }}</span>
+                <span><strong>{{ view.fileName(view.diffFileTargetPath(target)) }}</strong><small>{{ view.fileDirectory(view.diffFileTargetPath(target)) || './' }}</small></span>
+                <em>{{ view.diffFileTargetContext(target) }}</em>
+                @if (index === view.activeDiffFileIndex()) { <gc-icon name="check" [size]="11" /> }
+              </button>
+            }
+          </div>
+        }
+      </div>
+      <div class="diff-mode-toggle" role="group" aria-label="Diff layout" (keydown)="view.handleDiffModeKeydown($event)">
+        <button type="button" data-diff-mode="hunk" title="Grouped changes with working-tree hunk actions" [class.active]="view.diffViewMode() === 'hunk'" [attr.aria-pressed]="view.diffViewMode() === 'hunk'" [attr.tabindex]="view.diffViewMode() === 'hunk' ? 0 : -1" (click)="view.setDiffViewMode('hunk')">Hunk</button>
+        <button type="button" data-diff-mode="inline" title="Compact unified file changes" [class.active]="view.diffViewMode() === 'inline'" [attr.aria-pressed]="view.diffViewMode() === 'inline'" [attr.tabindex]="view.diffViewMode() === 'inline' ? 0 : -1" (click)="view.setDiffViewMode('inline')">Inline</button>
+        <button type="button" data-diff-mode="split" aria-label="Split" aria-describedby="diff-split-layout-hint" title="Compare before and after; stacks vertically in narrow workspaces" [class.active]="view.diffViewMode() === 'split'" [attr.aria-pressed]="view.diffViewMode() === 'split'" [attr.tabindex]="view.diffViewMode() === 'split' ? 0 : -1" (click)="view.setDiffViewMode('split')"><span class="diff-mode-split-wide" aria-hidden="true">Split</span><span class="diff-mode-split-compact" aria-hidden="true">Stacked</span></button>
+        <span id="diff-split-layout-hint" class="sr-only">Before and after comparison. In narrow workspaces, panels are stacked vertically.</span>
+      </div>
+      <div class="diff-workspace-actions">
+        <div class="diff-insight-toggle" role="group" aria-label="File view">
+          <button type="button" [class.active]="view.diffInsightMode() === 'diff'" [attr.aria-pressed]="view.diffInsightMode() === 'diff'" (click)="view.showFileDiff()">Diff</button>
+          <button type="button" [class.active]="view.diffInsightMode() === 'content'" [attr.aria-pressed]="view.diffInsightMode() === 'content'" [disabled]="!view.activeMediaSelection()" (click)="view.showContent()">Content</button>
+          <button type="button" [class.active]="view.diffInsightMode() === 'history'" [attr.aria-pressed]="view.diffInsightMode() === 'history'" [disabled]="!view.canInspectActiveFile()" (click)="view.showFileHistory()">History</button>
+          <button type="button" [class.active]="view.diffInsightMode() === 'blame'" [attr.aria-pressed]="view.diffInsightMode() === 'blame'" [disabled]="!view.canInspectActiveFile()" (click)="view.showFileBlame()">Blame</button>
+        </div>
+        @if (view.diffInsightMode() === 'diff') {
+          <div class="diff-hunk-nav" aria-label="Navigate changes">
+            <button type="button" aria-label="Previous change" aria-keyshortcuts="Shift+F7" [disabled]="!view.diffHunks().length || view.activeDiffHunk() === 0" (click)="view.navigateDiffHunk(-1)" title="Previous change (Shift+F7)"><gc-icon name="chevron-up" [size]="10" /></button>
+            <span>{{ view.diffHunks().length ? view.activeDiffHunk() + 1 : 0 }} / {{ view.diffHunks().length }}</span>
+            <button type="button" aria-label="Next change" aria-keyshortcuts="F7" [disabled]="!view.diffHunks().length || view.activeDiffHunk() === view.diffHunks().length - 1" (click)="view.navigateDiffHunk(1)" title="Next change (F7)"><gc-icon name="chevron-down" [size]="10" /></button>
+          </div>
+          @if (view.selectedDiffLines(); as selection) {
+            <div class="selected-line-actions" role="group" aria-label="Selected line actions">
+              <span>{{ selection.lineIndices.length }} selected</span>
+              <button type="button" [disabled]="view.busy() || diff.truncated" title="Apply only the selected changes to the index; the working file stays unchanged" (click)="view.applySelectedDiffLines()">{{ view.activeWorkingTreeDiff()?.staged ? 'Unstage' : 'Stage' }}</button>
+              @if (!view.activeWorkingTreeDiff()?.staged && !view.isUntrackedPath(diff.path)) { <button class="discard" type="button" [disabled]="view.busy() || diff.truncated" (click)="view.requestDiscardSelectedDiffLines()">Discard</button> }
+              <button class="clear" type="button" title="Clear line selection" aria-label="Clear selected lines" (click)="view.clearSelectedLines()"><gc-icon name="x" [size]="9" /></button>
+            </div>
+          }
+          <button class="diff-wrap-toggle" type="button" [class.active]="view.diffWordWrap()" (click)="view.setDiffPreference('word-wrap', !view.diffWordWrap())" title="Toggle word wrap">Word Wrap</button>
+          @if (view.activeWorkingTreeDiff()) {
+            <button type="button" aria-label="Reload diff" title="Reload the current file and clear selected lines" [disabled]="view.busy() || view.detailsBusy()" (click)="view.reloadWorkingTreeDiff()"><gc-icon name="refresh" [size]="13" /></button>
+          }
+        }
+      </div>
+      <button class="diff-close" type="button" aria-label="Close diff" title="Close diff (Esc)" (click)="view.closeDiffViewer()"><gc-icon name="x" [size]="13" /></button>
+    </header>
+    <div class="diff-content-shell" [class.insight-open]="view.diffInsightMode() !== 'diff'">
+      @if (view.diffInsightMode() === 'content') {
+        @defer (on immediate) {
+          <gc-file-media [selection]="view.activeMediaSelection()" />
+        } @loading {
+          <div class="file-insight-panel" role="status"><p>Opening content view…</p></div>
+        } @error {
+          <div class="file-insight-panel" role="alert"><p>Content view could not open. Return to Diff, preserve drafts and restart to try again.</p></div>
+        }
+      }
+      <div [style.display]="view.diffInsightMode() === 'history' ? 'contents' : 'none'">
+        @defer (when view.diffInsightMode() === 'history') {
+          <gc-file-history [path]="diff.path" [revision]="view.activeDiffRevision()!" [authorColor]="view.authorColor" [initials]="view.initials" (navigate)="view.openHistoricalFile($event.oid, $event.path, $event.previousPath)" />
+        }
+      </div>
+      <div [style.display]="view.diffInsightMode() === 'blame' ? 'contents' : 'none'">
+        @defer (when view.diffInsightMode() === 'blame') {
+          <gc-file-blame [path]="diff.path" [tokenize]="view.tokenizeBlame" (navigate)="view.navigateBlame($event.oid, $event.path, $event.parent)" />
+        }
+      </div>
+      @if (view.diffViewMode() === 'split') {
+        <div class="split-diff diff-primary-view workspace-focus-region" role="region" aria-label="Before and after file changes" tabindex="-1">
+          <div class="split-diff-head"><span>Before</span><span>After</span><span class="split-diff-stacked-head">Stacked comparison · before then after</span></div>
+          <div class="split-diff-body workspace-focus-region" tabindex="0" role="region" aria-label="Before and after source lines">
+            <div class="diff-lines">
+            @for (row of view.splitDiffRows(); track $index) {
+              @if (row.kind === 'header' || row.kind === 'hunk') {
+                <div class="split-marker {{ row.kind }}" [class.active-hunk]="row.hunkIndex === view.activeDiffHunk()" [attr.data-diff-hunk]="row.hunkIndex">{{ row.label }}</div>
+              } @else {
+                <div class="split-row">
+                  <div class="split-side" data-side="Before" [attr.data-diff-old-line]="row.left && row.left.hunkIndex !== null ? row.left.oldLine : null" [class.deletion]="row.left?.kind === 'deletion'" [class.empty]="!row.left">
+                    <span>{{ row.left?.oldLine }}</span><code>@if (row.left; as left) {@for (token of left.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}}</code>
+                  </div>
+                  <div class="split-side" data-side="After" [attr.data-diff-new-line]="row.right && row.right.hunkIndex !== null ? row.right.newLine : null" [class.addition]="row.right?.kind === 'addition'" [class.empty]="!row.right">
+                    <span>{{ row.right?.newLine }}</span><code>@if (row.right; as right) {@for (token of right.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}}</code>
+                  </div>
+                </div>
+              }
+            }
+            </div>
+          </div>
+        </div>
+      } @else {
+        <div class="focus-diff-view diff-primary-view {{ view.diffViewMode() }}" role="region" aria-label="File changes" tabindex="-1">
+          <div class="diff-lines">
+          @for (line of view.diffLines(); track $index) {
+            <div class="focus-diff-line {{ line.kind }}" [attr.data-diff-old-line]="line.hunkIndex !== null ? line.oldLine : null" [attr.data-diff-new-line]="line.hunkIndex !== null ? line.newLine : null" [class.active-hunk]="line.kind === 'hunk' && line.hunkIndex === view.activeDiffHunk()" [class.line-selected]="view.isDiffLineSelected(line)" [attr.data-diff-hunk]="line.kind === 'hunk' ? line.hunkIndex : null">
+              <span>@if (line.kind === 'addition' && view.selectableWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="view.isDiffLineSelected(line)" [disabled]="view.busy() || diff.truncated" [attr.aria-pressed]="view.isDiffLineSelected(line)" aria-label="{{ view.isDiffLineSelected(line) ? 'Deselect' : 'Select' }} added line {{ line.newLine }}" (click)="view.toggleDiffLineSelection(line)">{{ view.isDiffLineSelected(line) ? '✓' : '+' }}</button> } @else { {{ line.oldLine }} }</span>
+              <span>@if (line.kind === 'deletion' && view.selectableWorkingTreeDiff()) { <button class="diff-line-selector" type="button" [class.selected]="view.isDiffLineSelected(line)" [disabled]="view.busy() || diff.truncated" [attr.aria-pressed]="view.isDiffLineSelected(line)" aria-label="{{ view.isDiffLineSelected(line) ? 'Deselect' : 'Select' }} removed line {{ line.oldLine }}" (click)="view.toggleDiffLineSelection(line)">{{ view.isDiffLineSelected(line) ? '✓' : '−' }}</button> } @else { {{ line.newLine }} }</span>
+              <div class="focus-diff-code"><code>@for (token of line.tokens; track $index) {<span class="syntax-{{ token.kind }}" [class.word-change]="token.changed">{{ token.text }}</span>}</code>
+                @if (view.diffViewMode() === 'hunk' && line.kind === 'hunk' && line.hunkIndex !== null && view.selectableWorkingTreeDiff(); as workingDiff) {
+                  <div class="focus-hunk-actions">
+                    <button type="button" [disabled]="view.busy() || diff.truncated" (click)="view.applyHunk(workingDiff.path, workingDiff.staged, line.hunkIndex)">{{ workingDiff.staged ? 'Unstage Hunk' : 'Stage Hunk' }}</button>
+                    @if (!workingDiff.staged) { <button class="discard" type="button" [disabled]="view.busy() || diff.truncated || view.isUntrackedPath(workingDiff.path)" (click)="view.requestDiscardHunk(workingDiff.path, line.hunkIndex)">Discard Hunk</button> }
+                  </div>
+                }
+              </div>
+            </div>
+          }
+          </div>
+        </div>
+      }
+      <aside class="diff-minimap" aria-label="File change mini-map">
+        <div class="diff-minimap-track">
+          @for (mark of view.diffMapMarks(); track $index) { <i class="{{ mark.kind }}" [style.top.%]="mark.position"></i> }
+          @for (hunk of view.diffHunks(); track hunk.index) { <button type="button" [class.active]="hunk.index === view.activeDiffHunk()" [style.top.%]="hunk.position" (click)="view.jumpToDiffHunk(hunk.index)" aria-label="Jump to change {{ hunk.index + 1 }}" title="Jump to change {{ hunk.index + 1 }}"></button> }
+        </div>
+      </aside>
+    </div>
+    <footer class="diff-workspace-footer">
+      @if (view.diffInsightMode() === 'content') {
+        <span>Selected file content · no implicit fetch</span>
+      } @else if (view.diffInsightMode() === 'history') {
+        <span>{{ view.historyFileCount() }} commits in file history{{ view.historyFileComplete() ? ' · complete' : ' · more history may remain' }}</span>
+      } @else if (view.diffInsightMode() === 'blame') {
+        <span>{{ view.blameCount() }} blame lines loaded</span>
+      } @else {
+        <span>{{ view.diffLines().length }} lines</span>
+        <span class="diff-additions">+{{ view.diffStats().additions }}</span>
+        <span class="diff-deletions">−{{ view.diffStats().deletions }}</span>
+        @if (view.activeWorkingTreeDiff()?.previousPath) { <strong>Stage or unstage the whole rename from Changes.</strong> }
+        @if (diff.truncated) { <strong>Preview truncated at 256 KB</strong> }
+        <nav class="diff-footer-hunk-nav" aria-label="Navigate changes compact">
+          <button type="button" aria-label="Previous change" aria-keyshortcuts="Shift+F7" [disabled]="!view.diffHunks().length || view.activeDiffHunk() === 0" (click)="view.navigateDiffHunk(-1)" title="Previous change (Shift+F7)"><gc-icon name="chevron-up" [size]="9" /></button>
+          <span>{{ view.diffHunks().length ? view.activeDiffHunk() + 1 : 0 }} / {{ view.diffHunks().length }}</span>
+          <button type="button" aria-label="Next change" aria-keyshortcuts="F7" [disabled]="!view.diffHunks().length || view.activeDiffHunk() === view.diffHunks().length - 1" (click)="view.navigateDiffHunk(1)" title="Next change (F7)"><gc-icon name="chevron-down" [size]="9" /></button>
+        </nav>
+        <button class="diff-footer-wrap-toggle" type="button" [class.active]="view.diffWordWrap()" [attr.aria-pressed]="view.diffWordWrap()" (click)="view.setDiffPreference('word-wrap', !view.diffWordWrap())" title="Toggle word wrap">Wrap</button>
+      }
+      <i></i><span><kbd>{{ view.primaryShortcutKey }}</kbd><kbd>D</kbd> Open</span><span><kbd>Esc</kbd> Close</span>
+    </footer>
+  </section>
+}

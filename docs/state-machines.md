@@ -128,6 +128,17 @@ Timers for dialog-mode focus retain the originating focus request and
 cannot focus a retired dialog. `workspace.spec.ts` exercises the closing
 gap as well as the ordinary keyboard path from Clone and Initialize.
 
+### Deferred diff workspace
+
+The diff viewer's on-demand component renders the shell's current diff
+model. The shell still owns file selection, viewport restoration,
+navigation and Git operations. Before the viewer loads, the fallback can
+return to the graph and the diff shortcuts cannot move an invisible file
+or hunk. Closing unmounts the request; a late chunk cannot reopen it.
+When the loading fallback held focus, a rendered viewer takes it only
+if no other control took focus. Loading, closing and failed import
+are covered by `diff-workspace-loading.spec.ts`.
+
 ### Working-tree line recap freshness
 
 Porcelain status describes file states, not file contents. A successful

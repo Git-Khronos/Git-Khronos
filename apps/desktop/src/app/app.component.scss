@@ -791,3 +791,15 @@
 .file-section-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 
 .branch-drop-load-error { position: fixed; z-index: 34; right: 12px; bottom: calc(var(--statusbar-height) + 8px); max-width: min(360px, calc(100vw - 24px)); padding: 8px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--overlay-surface); color: var(--overlay-text); }
+.diff-workspace-loading {
+  position: fixed;
+  z-index: 20;
+  inset-block-start: 102px;
+  inset-inline-start: 12px;
+  width: min(420px, calc(100% - 24px));
+  padding: 12px;
+  border: 1px solid var(--overlay-border);
+  border-radius: 5px;
+  background: var(--inspector-list);
+  color: var(--text);
+}
