@@ -9,6 +9,7 @@ import {
   model,
   output,
   signal,
+  ViewEncapsulation,
   viewChild,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
@@ -26,6 +27,8 @@ const ACTIVITY_LOG_HEIGHT_KEY = 'git-khronos.ui.activity-log-height';
   selector: 'gc-activity-log-drawer',
   imports: [DatePipe, IconComponent],
   templateUrl: './activity-log-drawer.component.html',
+  encapsulation: ViewEncapsulation.None,
+  styleUrl: './activity-log-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ActivityLogDrawerComponent {

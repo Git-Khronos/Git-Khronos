@@ -789,13 +789,14 @@ risks, not a completed migration or new exhaustive characterization. These
 domain-specific migrations require separate behavioral coverage; no generic
 state wrapper should erase error distinctions, accepted writes, or capabilities.
 
-### Preferences chunk and styles
+### Deferred overlay styles
 
-The Preferences component owns its layout and category styles. They load with
-the deferred component and are scoped to its host, including embedded panels.
-Only the launcher, backdrop, and modal shell remain in the startup stylesheet
-so loading and failure states stay visible even when the feature chunk never
-arrives. `deferred-preferences.spec.ts` covers both paths.
+Preferences, Repository Management, and Activity Logs load their content
+styles with their deferred components. Selectors are scoped to the component
+host, including embedded panels. Shared modal form and shell rules and
+launcher/status controls remain in the startup stylesheet. The Preferences
+shell still styles loading and failure states when its feature chunk never
+arrives. `deferred-overlay-styles.spec.ts` covers these boundaries.
 
 ### Application update intent, consent and installation receipts
 

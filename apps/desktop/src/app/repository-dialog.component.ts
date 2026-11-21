@@ -1,6 +1,6 @@
 import { HostedRepositoryBrowserComponent } from './hosted-repository-browser.component';
 import { GitLabProjectsComponent } from './gitlab-projects.component';
-import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, ViewEncapsulation, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
@@ -28,6 +28,8 @@ export class RepositoryFormDrafts {
   selector: 'gc-repository-dialog',
   imports: [FormsModule, IconComponent, HostedRepositoryBrowserComponent, GitLabProjectsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
+  styleUrl: './repository-dialog.component.scss',
   template: `
   <div class="repository-backdrop" (click)="close()">
     <section #dialog class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
