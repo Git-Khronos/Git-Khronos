@@ -279,6 +279,14 @@ the unsubmitted text. Closing the checkout abandons both drafts.
 `commit-policy.spec.ts` covers delayed commit completion, tab switches,
 and reuse of a closed tab's repository ID.
 
+The selected commit's reference strip is loaded on demand. The inspector
+keeps rendering commit text and files while that module is pending or
+unavailable. The parent retains ownership of actions, selection, and the
+hover/keyboard stack; dismissing the inspector or selecting Working
+Directory does not mount a late reference strip. The loader and menu
+behavior are covered by `commit-reference-loading.spec.ts` and the
+reference-stack interaction tests.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a

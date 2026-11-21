@@ -22,6 +22,7 @@ import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } fro
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import type { FileMediaSelection } from './file-media.component';
 import { DiffWorkspaceComponent } from './diff-workspace.component';
+import { CommitReferenceStripComponent } from './commit-reference-strip.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
@@ -681,7 +682,7 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -706,7 +707,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly historySearchToggle = viewChild<ElementRef<HTMLButtonElement>>('historySearchToggle');
-  private readonly detailReferenceStackElement = viewChild<ElementRef<HTMLElement>>('detailReferenceStackElement');
+  private readonly commitReferenceStrip = viewChild<CommitReferenceStripComponent>('commitReferenceStrip');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
@@ -9332,7 +9333,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cancelDetailReferenceStackClose();
     this.detailReferenceStackCloseTimer = setTimeout(() => {
       this.detailReferenceStackCloseTimer = null;
-      if (this.detailReferenceStackElement()?.nativeElement.matches(':hover, :focus-within')) return;
+      if (this.commitReferenceStrip()?.stackElement()?.nativeElement.matches(':hover, :focus-within')) return;
       this.detailReferenceStackOpen.set(false);
     }, 160);
   }
@@ -9947,6 +9948,42 @@ export class AppComponent implements OnInit, OnDestroy {
     this.activeDiffHunk.set(index);
     this.afterDiffRender(() => this.scrollToDiffHunk(index));
   }
+
+  /** Commit reference actions remain owned by the active workspace. */
+  readonly commitReferenceStripView = {
+    branchForDecoration: this.branchForDecoration.bind(this),
+    branchForReferenceGroup: this.branchForReferenceGroup.bind(this),
+    branchTrackingLabel: this.branchTrackingLabel.bind(this),
+    checkoutBranch: this.checkoutBranch.bind(this),
+    checkoutRemoteBranch: this.checkoutRemoteBranch.bind(this),
+    closeTagPreview: this.closeTagPreview.bind(this),
+    collapseDetailReferenceStack: this.collapseDetailReferenceStack.bind(this),
+    compactReferenceSummary: this.compactReferenceSummary.bind(this),
+    decorationKind: this.decorationKind.bind(this),
+    decorationLabel: this.decorationLabel.bind(this),
+    detailReferenceStackCollapsed: () => this.detailReferenceStackCollapsed(),
+    detailReferenceStackOpen: () => this.detailReferenceStackOpen(),
+    graphLaneColor: this.graphLaneColor.bind(this),
+    handleDetailReferenceStackFocusOut: this.handleDetailReferenceStackFocusOut.bind(this),
+    handleDetailReferenceStackMenuKeydown: this.handleDetailReferenceStackMenuKeydown.bind(this),
+    handleDetailReferenceStackTriggerKeydown: this.handleDetailReferenceStackTriggerKeydown.bind(this),
+    handleReferenceActionKeydown: this.handleReferenceActionKeydown.bind(this),
+    jumpToReference: this.jumpToReference.bind(this),
+    openBranchMenu: this.openBranchMenu.bind(this),
+    openCheckpointMenu: this.openCheckpointMenu.bind(this),
+    openDetailReferenceStack: this.openDetailReferenceStack.bind(this),
+    openDetailReferenceStackFromTrigger: this.openDetailReferenceStackFromTrigger.bind(this),
+    openOriginalReferenceMenu: this.openOriginalReferenceMenu.bind(this),
+    openRemoteMenu: this.openRemoteMenu.bind(this),
+    openTagMenu: this.openTagMenu.bind(this),
+    referenceGroupHeading: this.referenceGroupHeading.bind(this),
+    referenceGroups: this.referenceGroups.bind(this),
+    releaseDetailReferenceStack: this.releaseDetailReferenceStack.bind(this),
+    remoteIconForDecoration: this.remoteIconForDecoration.bind(this),
+    scheduleDetailReferenceStackClose: this.scheduleDetailReferenceStackClose.bind(this),
+    scheduleTagPreview: this.scheduleTagPreview.bind(this),
+    tagPreview: () => this.tagPreview(),
+  };
 
   /** Renderer model for the on-demand diff. Repository and viewport state stay in the shell. */
   readonly diffWorkspaceView = {
@@ -14325,7 +14362,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.dismissGraphReferenceStack();
       }
     }
-    const detailStack = this.detailReferenceStackElement()?.nativeElement;
+    const detailStack = this.commitReferenceStrip()?.stackElement()?.nativeElement;
     if (this.detailReferenceStackOpen() && !inside(detailStack)) {
       this.cancelDetailReferenceStackClose();
       this.detailReferenceStackOpen.set(false);

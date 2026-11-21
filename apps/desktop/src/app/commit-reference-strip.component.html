@@ -1,0 +1,89 @@
+@let references = model();
+@let commit = selection();
+<div class="commit-detail-refs" aria-label="Commit references">
+  <span
+    #detailReferenceStackElement
+    class="commit-detail-ref-stack"
+    [class.multi-ref]="commit.decorations.length > 1"
+    [class.is-open]="references.detailReferenceStackOpen()"
+    [class.escape-collapsed]="references.detailReferenceStackCollapsed()"
+    (pointerenter)="commit.decorations.length > 1 ? references.openDetailReferenceStack() : null"
+    (pointerleave)="commit.decorations.length > 1 ? references.scheduleDetailReferenceStackClose() : null; references.releaseDetailReferenceStack()"
+    (focusin)="commit.decorations.length > 1 ? references.openDetailReferenceStack() : null"
+    (focusout)="commit.decorations.length > 1 ? references.handleDetailReferenceStackFocusOut($event) : null"
+    (keydown.escape)="references.collapseDetailReferenceStack($event)"
+  >
+  <ng-template #detailReference let-decoration>
+    @if (references.branchForDecoration(decoration); as branch) {
+      <button
+        class="ref-pill {{ references.decorationKind(decoration) }} interactive-detail-ref lane-color-{{ references.graphLaneColor(commit.oid) }}"
+        [class.current-ref]="branch.current"
+        type="button"
+        [attr.tabindex]="commit.decorations.length > 1 ? -1 : null"
+        [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null"
+        aria-haspopup="menu"
+        title="{{ branch.current ? 'Current branch ' + branch.name : 'Double-click to checkout ' + branch.name }}{{ branch.tracking ? ' · ' + branch.tracking : '' }}"
+        (click)="references.jumpToReference($event, branch.oid)"
+        (dblclick)="branch.current ? null : references.checkoutBranch(branch.name)"
+        (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
+        (contextmenu)="references.openBranchMenu($event, branch.name, branch.oid)"
+      ><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="9" />{{ references.decorationLabel(decoration) }}@if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ references.branchTrackingLabel(branch.tracking) }}</small> }</button>
+    } @else if (references.decorationKind(decoration) === 'remote') {
+      <button class="ref-pill remote interactive-detail-ref lane-color-{{ references.graphLaneColor(commit.oid) }}" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Remote branch {{ references.decorationLabel(decoration) }}" aria-haspopup="menu" title="Click to view branch tip · Double-click or press Enter to fetch and check out the local branch · Right-click for actions" (click)="references.jumpToReference($event, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'remote', references.decorationLabel(decoration), commit.oid)" (keydown.enter)="references.checkoutRemoteBranch($event, references.decorationLabel(decoration))" (dblclick)="references.checkoutRemoteBranch($event, references.decorationLabel(decoration))" (contextmenu)="references.openRemoteMenu($event, references.decorationLabel(decoration), commit.oid)"><gc-icon [name]="references.remoteIconForDecoration(decoration)" [size]="9" />{{ references.decorationLabel(decoration) }}</button>
+    } @else if (references.decorationKind(decoration) === 'tag') {
+      <button class="ref-pill tag interactive-detail-ref interactive-tag-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Tag {{ references.decorationLabel(decoration) }}" [attr.aria-describedby]="references.tagPreview()?.name === references.decorationLabel(decoration) ? 'tag-reference-preview' : null" aria-haspopup="menu" title="View tag {{ references.decorationLabel(decoration) }} · Right-click for actions" (mouseenter)="references.scheduleTagPreview($event, references.decorationLabel(decoration), commit.oid)" (mouseleave)="references.closeTagPreview()" (focus)="references.scheduleTagPreview($event, references.decorationLabel(decoration), commit.oid, true)" (blur)="references.closeTagPreview()" (click)="references.jumpToReference($event, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'tag', references.decorationLabel(decoration), commit.oid)" (contextmenu)="references.openTagMenu($event, references.decorationLabel(decoration), commit.oid)"><gc-icon name="tag" [size]="9" />{{ references.decorationLabel(decoration) }}</button>
+    } @else if (references.decorationKind(decoration) === 'original') {
+      <button class="ref-pill checkpoint interactive-detail-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Original reference {{ references.decorationLabel(decoration) }}" aria-haspopup="menu" title="{{ references.decorationLabel(decoration) }} · Click or right-click for actions" (click)="references.openOriginalReferenceMenu($event, decoration, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'original', references.decorationLabel(decoration), commit.oid)" (contextmenu)="references.openOriginalReferenceMenu($event, decoration, commit.oid)"><gc-icon name="archive" [size]="9" />{{ references.decorationLabel(decoration) }}</button>
+    } @else if (references.decorationKind(decoration) === 'checkpoint') {
+      <button class="ref-pill checkpoint interactive-detail-ref" type="button" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" aria-label="Copilot checkpoint {{ decoration }}" aria-haspopup="menu" title="{{ decoration }} · Click or right-click for actions" (click)="references.openCheckpointMenu($event, decoration, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'checkpoint', decoration, commit.oid)" (contextmenu)="references.openCheckpointMenu($event, decoration, commit.oid)"><gc-icon name="archive" [size]="9" />{{ references.decorationLabel(decoration) }}</button>
+    } @else {
+      <span class="ref-pill {{ references.decorationKind(decoration) }}" [attr.tabindex]="commit.decorations.length > 1 ? -1 : null" [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null" title="{{ decoration }}">{{ references.decorationLabel(decoration) }}</span>
+    }
+  </ng-template>
+  @if (commit.decorations.length > 1) {
+    @let detailReferenceSummary = references.compactReferenceSummary(commit.decorations);
+    <button
+      class="reference-stack-trigger detail-reference-stack-trigger"
+      type="button"
+      [attr.aria-expanded]="references.detailReferenceStackOpen()"
+      [attr.aria-label]="detailReferenceSummary.ariaLabel"
+      aria-haspopup="menu"
+      [title]="detailReferenceSummary.ariaLabel"
+      (click)="references.openDetailReferenceStackFromTrigger($event)"
+      (contextmenu)="references.openDetailReferenceStackFromTrigger($event, true)"
+      (keydown)="references.handleDetailReferenceStackTriggerKeydown($event)"
+    ><span class="reference-stack-locations" aria-hidden="true">@for (location of detailReferenceSummary.locations; track location.decoration) { <gc-icon [class.local-reference-location]="location.kind === 'head' || location.kind === 'local'" [class.remote-reference-location]="location.kind === 'remote'" [name]="location.kind === 'tag' ? 'tag' : location.kind === 'remote' ? references.remoteIconForDecoration(location.decoration) : location.kind === 'checkpoint' || location.kind === 'original' ? 'archive' : location.kind === 'head' ? 'check' : 'branch'" [size]="9" /> }</span><span class="reference-stack-label">{{ detailReferenceSummary.label }}</span>@if (detailReferenceSummary.hiddenCount) { <b>+{{ detailReferenceSummary.hiddenCount }}</b> }</button>
+    <span class="detail-reference-popover" role="menu" aria-label="References on selected commit" (keydown)="references.handleDetailReferenceStackMenuKeydown($event)">
+      @let selectedReferenceGroups = references.referenceGroups(commit.decorations);
+      <span class="ref-stack-heading" aria-hidden="true"><gc-icon name="branch" [size]="10" />{{ references.referenceGroupHeading(selectedReferenceGroups) }}</span>
+      @for (group of selectedReferenceGroups; track group.key) {
+        <span class="grouped-reference-row" [class.current-reference-group]="group.current">
+          <span class="grouped-reference-locations">
+            @for (location of group.locations; track location.decoration) {
+              @if (references.branchForDecoration(location.decoration); as branch) {
+                <button class="grouped-reference-location local lane-color-{{ references.graphLaneColor(commit.oid) }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" (click)="references.jumpToReference($event, branch.oid)" (dblclick)="branch.current ? null : references.checkoutBranch(branch.name)" (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="references.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
+              } @else if (location.kind === 'remote') {
+                <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to fetch and check out the local branch" (click)="references.jumpToReference($event, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'remote', location.label, commit.oid)" (keydown.enter)="references.checkoutRemoteBranch($event, location.label)" (dblclick)="references.checkoutRemoteBranch($event, location.label)" (contextmenu)="references.openRemoteMenu($event, location.label, commit.oid)"><gc-icon [name]="references.remoteIconForDecoration(location.decoration)" [size]="10" /></button>
+              } @else if (location.kind === 'tag') {
+                <button class="grouped-reference-location tag" type="button" role="menuitem" aria-label="Tag {{ location.label }}" title="Tag {{ location.label }} · Right-click for actions" (mouseenter)="references.scheduleTagPreview($event, location.label, commit.oid)" (mouseleave)="references.closeTagPreview()" (focus)="references.scheduleTagPreview($event, location.label, commit.oid, true)" (blur)="references.closeTagPreview()" (click)="references.jumpToReference($event, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'tag', location.label, commit.oid)" (contextmenu)="references.openTagMenu($event, location.label, commit.oid)"><gc-icon name="tag" [size]="10" /></button>
+              } @else if (location.kind === 'original') {
+                <button class="grouped-reference-location checkpoint" type="button" role="menuitem" aria-label="Original reference {{ location.label }}" aria-haspopup="menu" title="{{ location.label }} · Click or right-click for actions" (click)="references.openOriginalReferenceMenu($event, location.decoration, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'original', location.label, commit.oid)" (contextmenu)="references.openOriginalReferenceMenu($event, location.decoration, commit.oid)"><gc-icon name="archive" [size]="10" /></button>
+              } @else if (location.kind === 'checkpoint') {
+                <button class="grouped-reference-location checkpoint" type="button" role="menuitem" aria-label="Copilot checkpoint {{ location.decoration }}" aria-haspopup="menu" title="{{ location.decoration }} · Click or right-click for actions" (click)="references.openCheckpointMenu($event, location.decoration, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'checkpoint', location.decoration, commit.oid)" (contextmenu)="references.openCheckpointMenu($event, location.decoration, commit.oid)"><gc-icon name="archive" [size]="10" /></button>
+              } @else {
+                <span class="grouped-reference-location" title="{{ location.decoration }}"><gc-icon name="branch" [size]="10" /></span>
+              }
+            }
+          </span>
+          <span class="grouped-reference-label">{{ group.label }}</span>
+          @if (references.branchForReferenceGroup(group); as branch) { @if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ references.branchTrackingLabel(branch.tracking) }}</small> } }
+        </span>
+      }
+    </span>
+  } @else {
+    @for (decoration of commit.decorations; track $index) {
+      <ng-container [ngTemplateOutlet]="detailReference" [ngTemplateOutletContext]="{ $implicit: decoration }"></ng-container>
+    }
+  }
+  </span>
+</div>
