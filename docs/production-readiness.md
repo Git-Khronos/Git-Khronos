@@ -420,6 +420,13 @@ to staged-only left one eligible checked file. Git verified that only that
 file entered the stash and both neighbours were unchanged. See
 `installed-stash-selection.json` under
 `target/local-review/updater/jammy-builder/stash-selection-scope.RzMp7V7N/`.
+The same installer passed all 14 required release-matrix checks across
+Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. The full installed
+Ubuntu 22.04 environment run passed 279 scenarios. The combined matrix
+and publisher preflight matched the package SHA-256 and the fixture
+publisher key; see `verified-release.manual.json` in that directory.
+This evidence does not qualify the later patch-export fix or production
+publisher signing.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
