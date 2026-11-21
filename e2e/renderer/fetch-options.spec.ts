@@ -79,6 +79,29 @@ test('all-remotes pruning requires opt-in and discloses branch-only and partial 
   expect(call.args.options).toEqual({ remote: null, prune: true });
 });
 
+for (const scope of ['all remotes', 'one of two', 'only configured remote']) {
+  test(`successful Fetch options resumes a paused background fetch only if it covers the repository: ${scope}`, async ({ page }) => {
+    await setup(page);
+    await page.evaluate(onlyOne => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const source = git.repository();
+      if (onlyOne) git.repositories.set([{ ...source, remotes: source.remotes.filter((remote: any) => remote.name === 'origin') }]);
+      git.backgroundFetchErrors.set({ [source.id]: 'Owned previous authentication failure', other: 'Other tab failure' });
+    }, scope === 'only configured remote');
+    const background = page.locator('.auto-fetch-status');
+    await expect(background).toHaveText('Fetch failed');
+    await openOptions(page);
+    const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+    await dialog.getByLabel('Fetch from').selectOption(scope === 'all remotes' ? '' : 'origin');
+    await dialog.getByRole('button', { name: 'Fetch branches', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    if (scope === 'one of two') await expect(background).toHaveText('Fetch failed');
+    else await expect(background).not.toHaveText('Fetch failed');
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
+      .git.backgroundFetchErrors().other)).toBe('Other tab failure');
+  });
+}
+
 test('failed fetch retains scope and focuses its explicit native error for retry', async ({ page }) => {
   await setup(page);
   await openOptions(page);

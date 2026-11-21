@@ -1041,28 +1041,24 @@ export class GitKhronosService implements OnDestroy {
     const request = this.operations.beginBackground(repository.id);
     if (!request) return false;
     const visit = this.workspaceVisit;
-    this.backgroundFetchErrors.update((errors) => {
-      const updated = { ...errors };
-      delete updated[repository.id];
-      return updated;
-    });
+    const generation = this.statusGeneration(repository.id);
+    const ownsOutcome = () => this.workspaceVisit === visit && generation === this.statusGeneration(repository.id)
+      && this.repositories().some(candidate => candidate.id === repository.id && candidate.path === repository.path);
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
-      if (this.workspaceVisit !== visit || this.busy()
-        || !this.repositories().some((candidate) => candidate.id === repository.id && candidate.path === repository.path)) return false;
-      const generation = this.statusGeneration(repository.id);
+      if (!ownsOutcome() || this.busy()) return false;
       this.operations.advanceBackground(request, 'fetching');
       const snapshot = await ipc.sync_repository({ repoId: repository.id });
       this.operations.advanceBackground(request, 'reconciling');
       // A successful fetch changed the checkout, not the snapshot of a retired workspace visit.
-      if (snapshot && this.workspaceVisit === visit && generation === this.statusGeneration(repository.id)) {
-        await this.storeRefreshedSnapshot(snapshot);
+      if (snapshot?.id === repository.id && snapshot.path === repository.path && ownsOutcome()) {
+        await this.storeRefreshedSnapshot(snapshot, ownsOutcome);
       } else if (snapshot && this.workspaceVisit !== visit
         && this.repositories().some(candidate => candidate.id === repository.id && candidate.path === repository.path)) {
         this.deferMetadataRefresh(repository.id);
       }
-      if (this.repositories().some((candidate) => candidate.id === repository.id)) {
+      if (ownsOutcome()) {
         this.backgroundFetchLastAt.update((timestamps) => ({
           ...timestamps,
           [repository.id]: Date.now(),
@@ -1070,10 +1066,9 @@ export class GitKhronosService implements OnDestroy {
       }
       return true;
     } catch (error: unknown) {
-      this.backgroundFetchErrors.update((errors) => ({
-        ...errors,
-        [repository.id]: this.formatError(error),
-      }));
+      if (ownsOutcome()) {
+        this.backgroundFetchErrors.update((errors) => ({ ...errors, [repository.id]: this.formatError(error) }));
+      }
       return false;
     } finally {
       this.operations.completeBackground(request);
@@ -2216,24 +2211,42 @@ export class GitKhronosService implements OnDestroy {
       fetch_repository: ['Fetching…', 'Fetch complete'],
       push_repository: ['Pushing…', 'Push complete'],
     } as const;
-    const repositoryId = this.activeRepositoryId();
+    const resumed = operation === 'fetch_repository' ? this.captureFetchRecovery(target.remote ?? null) : null;
     const result = await this.mutate(operation, labels[operation][0], labels[operation][1], target);
-    // Retry state belongs to the initiating repository and this operation's
-    // result, not whichever tab or error toast is visible on completion.
-    if (operation === 'fetch_repository' && result === 'success') {
-      if (repositoryId) this.backgroundFetchErrors.update((errors) => {
-        const updated = { ...errors };
-        delete updated[repositoryId];
-        return updated;
-      });
-    }
+    if (result === 'success') resumed?.();
   }
 
   async fetchBranches(options: FetchOptions, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
-    return this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
+    const resumed = this.captureFetchRecovery(options.remote);
+    const result = await this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
       `Fetch complete${options.prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
       { options });
+    if (result === 'success') resumed?.();
+    return result;
+  }
+
+  private captureFetchRecovery(remote: string | null): (() => void) | null {
+    const repository = this.repository();
+    if (!repository) return null;
+    const { id, path } = repository;
+    const failure = this.backgroundFetchErrors()[id];
+    if (!failure) return null;
+    const coversRepository = (snapshot: RepositorySnapshot) =>
+      remote === null || (snapshot.remotes.length === 1 && snapshot.remotes[0].name === remote);
+    if (!coversRepository(repository)) return null;
+    return () => {
+      // A single remote in a multi-remote checkout does not prove the
+      // background auth refusal was resolved. Keep any later failure too.
+      const current = this.repositories().find(candidate => candidate.id === id && candidate.path === path);
+      if (!current || !coversRepository(current)) return;
+      this.backgroundFetchErrors.update(errors => {
+        if (errors[id] !== failure) return errors;
+        const updated = { ...errors };
+        delete updated[id];
+        return updated;
+      });
+    };
   }
 
   reviewPushDestination(remote: string, repositoryId: string): Promise<PushDestinationReview | null> {

@@ -1227,6 +1227,11 @@ any active phase. Busy and repository identity are atomic read-only projections;
 obsolete cleanup cannot release a newer owner. Repository-keyed failure/timestamp
 history, automatic authentication-retry suppression, history barriers, inbox
 pausing, and closed-repository reconciliation retain their existing owners.
+An older background result cannot set a timestamp or pause a reopened tab.
+A successful manual Fetch (including Fetch options) clears a retained pause
+only when it covers all remotes or the checkout's one configured remote.
+Success against one of several remotes does not prove that an earlier refusal
+was resolved.
 Foreground branch-mutation admission remains a separate lock. Recovery,
 post-write inspection, receipts, and warning delivery are not collapsed into
 the tracker.

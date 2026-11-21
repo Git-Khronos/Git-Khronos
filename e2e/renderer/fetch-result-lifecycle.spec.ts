@@ -53,3 +53,43 @@ for (const scenario of ['tab-switch', 'unrelated-error', 'dismissed-failure', 'c
     if (scenario === 'dismissed-failure') expect(result.error).toBeNull();
   });
 }
+
+for (const scope of ['same tab', 'reopened tab']) {
+  test(`a late automatic Fetch failure belongs to its original checkout: ${scope}`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.commit-row').first()).toBeVisible();
+    const actual = await page.evaluate(async reopen => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repository = git.repository();
+      git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+      let started!: () => void;
+      let fail!: () => void;
+      const dispatched = new Promise<void>(resolve => { started = resolve; });
+      (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+        if (command === 'sync_repository') return new Promise((_resolve, reject) => {
+          fail = () => reject({ message: 'Owned late authentication refusal' });
+          started();
+        });
+        if (command === 'open_repository' || command === 'refresh_repository') return Promise.resolve(repository);
+        if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+        return Promise.resolve(null);
+      } };
+      const pending = git.fetchInBackground(repository.id);
+      await Promise.race([dispatched, pending.then(() => { throw new Error('Automatic Fetch was not dispatched'); })]);
+      if (reopen) {
+        git.closeRepository(repository.id);
+        await git.openRepository(repository.path);
+      }
+      fail();
+      await pending;
+      return {
+        active: git.activeRepositoryId(), expected: repository.id,
+        failure: git.backgroundFetchErrors()[repository.id] ?? null,
+        fetching: git.backgroundFetchBusy(),
+      };
+    }, scope === 'reopened tab');
+    expect(actual.active).toBe(actual.expected);
+    expect(actual.failure).toBe(scope === 'same tab' ? 'Owned late authentication refusal' : null);
+    expect(actual.fetching).toBe(false);
+  });
+}

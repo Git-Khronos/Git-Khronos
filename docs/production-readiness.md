@@ -3104,6 +3104,15 @@ and verified automatic updates were off with publisher trust configured.
 Both reports remain under `non-pruning-fetch-release.V8T90CRs/`; this
 focused run does not substitute for the full Linux matrix.
 
+Successful manual Fetch options now re-enable an automatic Fetch paused
+by an earlier failure only when the manual scope covers the repository.
+One of multiple remotes is not enough. A background reply from a closed
+checkout cannot pause its reopened tab. The three regression assertions
+failed on the old renderer, then passed with 44 related cases. AOT build
+passed with 311 more raw initial JavaScript bytes and unchanged CSS.
+Renderer receipts are under `target/local-review/fetch-retry-scope.O2fbig8N/`.
+This renderer change is newer than the installed `ef28d9d` proof above.
+
 ### Detached-checkout native hit target
 
 The first Ubuntu 24.04 run of the fast-Git package opened the context
