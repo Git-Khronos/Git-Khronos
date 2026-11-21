@@ -16253,6 +16253,38 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
     }
 
     #[test]
+    fn stages_selected_tail_after_patch_like_text_inside_a_hunk() {
+        let repository = TestRepository::new();
+        let original = "-- old heading\nkeep one\nkeep two\nold tail\n";
+        let changed = "++ new heading\nkeep one\nkeep two\nnew tail";
+        repository.write("heading.txt", original);
+        repository.git(&["add", "--", "heading.txt"]);
+        repository.git(&["commit", "-m", "Before patch-like text"]);
+        repository.write("heading.txt", changed);
+        let preview = working_tree_file_diff(&repository.path, "heading.txt", false).unwrap();
+        assert!(preview.patch.contains("--- old heading\n+++ new heading\n"));
+        assert!(preview.patch.contains("+new tail\n\\ No newline at end of file"));
+
+        apply_working_tree_lines_with_preview(
+            &repository.path,
+            "heading.txt",
+            false,
+            0,
+            &[2, 3],
+            "stage",
+            Some(&preview.patch),
+        )
+        .expect("stage only the reviewed tail change");
+        let staged = run_git(&repository.path, &["show", ":heading.txt"]).unwrap();
+        assert!(staged.status.success());
+        assert_eq!(staged.stdout, b"-- old heading\nkeep one\nkeep two\nnew tail");
+        assert_eq!(
+            fs::read(repository.path.join("heading.txt")).unwrap(),
+            changed.as_bytes()
+        );
+    }
+
+    #[test]
     fn handles_independent_insertions_and_deletions_in_a_line_selection() {
         let repository = TestRepository::new();
         let original = (1..=10)

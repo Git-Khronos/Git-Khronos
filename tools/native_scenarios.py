@@ -3266,6 +3266,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     operation_storage_boundaries(driver, fixtures, report)
     file_selection_boundaries(driver, fixtures, report)
     file_workflows(driver, fixtures, report)
+    stage_after_patch_like_source_text(driver, fixtures, report)
     advanced(driver, fixtures, report)
 
 
@@ -4241,6 +4242,36 @@ def file_selection_boundaries(driver, fixtures, report):
         "native-literal-tracked-stash-preview",
         "native-literal-untracked-stash-preview",
     ])
+
+
+def stage_after_patch_like_source_text(driver, fixtures, report):
+    repository = fixtures.repository("ui-patch-like-source-text", 2)
+    file = repository / "fixture.txt"
+    file.write_bytes(b"-- old heading\nkeep one\nkeep two\nold tail\n")
+    fixtures.git(repository, "add", "--", file.name)
+    fixtures.git(repository, "commit", "-qm", "Before patch-like heading")
+    head = fixtures.git(repository, "rev-parse", "HEAD")
+    current = b"++ new heading\nkeep one\nkeep two\nnew tail"
+    file.write_bytes(current)
+    open_ui(driver, repository)
+    driver.click_visible(".wip-nav")
+    driver.click_visible('[title="View changes in fixture.txt"]')
+    driver.click_visible('[data-diff-mode="inline"]')
+    driver.wait("""const diff = document.querySelector('[aria-label="Diff viewer"]');
+      return diff?.querySelector('.diff-additions')?.textContent.trim() === '+2'
+        && diff.querySelector('.diff-deletions')?.textContent.trim() === '−2';""")
+    assert driver.script("""return [...document.querySelectorAll('.focus-diff-line')].some(row =>
+      row.textContent.includes('No newline at end of file') && !row.hasAttribute('data-diff-old-line')
+        && !row.hasAttribute('data-diff-new-line'));""")
+    driver.click_visible('[aria-label="Select added line 4"]:not(:disabled)')
+    driver.click_visible('[aria-label="Selected line actions"] button:not(:disabled)', 'Stage')
+    driver.wait("""return !!document.querySelector('[aria-label="Unstage fixture.txt"]:not(:disabled)');""")
+    staged = fixtures.git(repository, "diff", "--cached", "--", file.name)
+    assert "-old tail\n+new tail\n\\ No newline at end of file" in staged, staged
+    assert "--- old heading" not in staged and "+++ new heading" not in staged, staged
+    assert fixtures.git(repository, "rev-parse", "HEAD") == head
+    assert file.read_bytes() == current
+    report["scenarios"].append("native-ui-stages-later-lines-without-selecting-patch-like-source-content")
 
 
 def file_workflows(driver, fixtures, report):

@@ -2482,6 +2482,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const patch = diff?.patch;
     if (!patch) return [];
     const patchLines = patch.split('\n');
+    // split() adds an empty entry for the patch's terminating newline. A
+    // real empty context line has its own row, even with suppressBlankEmpty.
+    if (patchLines.at(-1) === '') patchLines.pop();
     const decorate = shouldDecorateDiff(patch.length, patchLines.length);
     let oldLine = 0;
     let newLine = 0;
@@ -2489,6 +2492,7 @@ export class AppComponent implements OnInit, OnDestroy {
     let currentHunkIndex: number | null = null;
     let changeIndex = 0;
     const lines = patchLines.map((text): DiffLine => {
+      if (text.startsWith('diff --git ')) currentHunkIndex = null;
       const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
       if (hunk) {
         oldLine = Number(hunk[1]);
@@ -2497,7 +2501,11 @@ export class AppComponent implements OnInit, OnDestroy {
         changeIndex = 0;
         return { text, kind: 'hunk', oldLine: null, newLine: null, hunkIndex: currentHunkIndex, changeIndices: [], segments: [], tokens: [] };
       }
-      if (text.startsWith('+++') || text.startsWith('---') || text.startsWith('diff ') || text.startsWith('index ')) {
+      // Only the first byte of a hunk body identifies a change. Content
+      // starting with ++ or -- must still advance the native change index.
+      // Backslash notices (such as a missing final newline) consume neither
+      // a source line nor a change index.
+      if (currentHunkIndex === null || text.startsWith('\\ ')) {
         return { text, kind: 'header', oldLine: null, newLine: null, hunkIndex: null, changeIndices: [], segments: [], tokens: [] };
       }
       if (text.startsWith('+')) {

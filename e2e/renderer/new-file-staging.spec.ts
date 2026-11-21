@@ -3,16 +3,17 @@ import { expect, test, type Page } from '@playwright/test';
 const file = 'fresh.txt';
 const patch = 'diff --git a/fresh.txt b/fresh.txt\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/fresh.txt\n@@ -0,0 +1,3 @@\n+first\n+second\n+third\n';
 
-async function mockNewFile(page: Page, truncated = false, stale = false, staged = false): Promise<void> {
+async function mockNewFile(page: Page, truncated = false, stale = false, staged = false,
+  trackedPatch?: string): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
-  await page.evaluate(({ file, patch, truncated, stale, staged }) => {
+  await page.evaluate(({ file, patch, truncated, stale, staged, tracked }) => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
     const repository = git.repository();
     const status = {
-      ...repository.status, staged: staged ? 1 : 0, unstaged: 0, untracked: staged ? 0 : 1, entryCount: 1,
-      entries: [{ path: file, originalPath: null, indexStatus: staged ? 'A' : '?',
-        worktreeStatus: staged ? ' ' : '?', conflicted: false }],
+      ...repository.status, staged: staged ? 1 : 0, unstaged: tracked ? 1 : 0, untracked: staged || tracked ? 0 : 1, entryCount: 1,
+      entries: [{ path: file, originalPath: null, indexStatus: staged ? 'A' : tracked ? '.' : '?',
+        worktreeStatus: staged ? ' ' : tracked ? 'M' : '?', conflicted: false }],
     };
     git.repositories.update((repositories: any[]) => repositories.map((item) =>
       item.id === repository.id ? { ...item, status } : item));
@@ -38,7 +39,7 @@ async function mockNewFile(page: Page, truncated = false, stale = false, staged 
         return Promise.reject(new Error(`Unexpected command ${command}`));
       },
     };
-  }, { file, patch, truncated, stale, staged });
+  }, { file, patch: trackedPatch ?? patch, truncated, stale, staged, tracked: trackedPatch !== undefined });
   await page.getByTitle(`${staged ? 'View staged changes in' : 'View changes in'} ${file}`).click();
   await expect(page.getByLabel('Diff viewer')).toBeVisible();
 }
@@ -61,6 +62,33 @@ test('stages only chosen new-file lines with the displayed native preview', asyn
       lineIndices: [1], action: 'stage', expectedPatch: patch },
   });
   expect(calls.some((call: { command: string }) => ['stage_path', 'stage_all'].includes(call.command))).toBe(false);
+});
+
+test('patch-like text inside a hunk retains its line numbers and exact native selection', async ({ page }) => {
+  const trackedPatch = [
+    'diff --git a/fresh.txt b/fresh.txt', 'index 1111111..2222222 100644',
+    '--- a/fresh.txt', '+++ b/fresh.txt', '@@ -1,4 +1,4 @@',
+    '--- old heading', '+++ new heading', ' keep one', ' keep two', '-old tail', '+new tail',
+    '\\ No newline at end of file', '',
+  ].join('\n');
+  await mockNewFile(page, false, false, false, trackedPatch);
+  const diff = page.getByLabel('Diff viewer');
+  await expect(diff.locator('.diff-additions')).toHaveText('+2');
+  await expect(diff.locator('.diff-deletions')).toHaveText('−2');
+  await expect(diff.getByRole('button', { name: 'Select added line 1', exact: true })).toBeVisible();
+  await expect(diff.getByRole('button', { name: 'Select removed line 1', exact: true })).toBeVisible();
+  const marker = diff.locator('.focus-diff-line').filter({ hasText: 'No newline at end of file' });
+  await expect(marker).toBeVisible();
+  await expect(marker).not.toHaveAttribute('data-diff-new-line', /./);
+  await expect(marker).not.toHaveAttribute('data-diff-old-line', /./);
+  await diff.getByRole('button', { name: 'Select added line 4', exact: true }).click();
+  await diff.getByRole('group', { name: 'Selected line actions' }).getByRole('button', { name: 'Stage', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).__newFileTest.calls);
+  expect(calls.find((call: { command: string }) => call.command === 'apply_working_tree_lines')).toEqual({
+    command: 'apply_working_tree_lines',
+    args: { repoId: expect.any(String), path: file, staged: false, hunkIndex: 0,
+      lineIndices: [2, 3], action: 'stage', expectedPatch: trackedPatch },
+  });
 });
 
 test('allows explicit full-hunk staging of a new text file', async ({ page }) => {

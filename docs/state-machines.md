@@ -95,6 +95,12 @@ Native Git reads the current diff and refuses partial selected exports; the
 destination must be a new file outside the repository and its metadata.
 `patch-exchange.spec.ts` covers the renderer gate before and after the picker.
 
+Diff line actions submit hunk-relative indices against the exact displayed
+native patch. Within a hunk, only the first prefix character determines an
+addition or deletion: file content that begins with `++` or `--` is still
+selectable. End-of-file notices are shown without consuming a source line or
+a change index.
+
 ### Deferred saved-tab restoration
 
 Saved workspace tab paths are the intent; loaded repository snapshots and the
