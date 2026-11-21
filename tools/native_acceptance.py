@@ -1140,7 +1140,7 @@ def main():
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
-        "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope",
+        "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1246,6 +1246,9 @@ def main():
             if args.suite == "workspace-batch":
                 from native_workspace_batch_scenarios import workspace_fetch_environment
                 application_env.update(workspace_fetch_environment(fixtures))
+            if args.suite == "first-status":
+                from native_first_status_scenarios import first_status_environment
+                application_env.update(first_status_environment(fixtures))
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
@@ -1333,6 +1336,9 @@ def main():
             elif args.suite == "file-review-scope":
                 from native_file_review_scope_scenarios import file_review_scope
                 repository, repo_id = file_review_scope(driver, fixtures, report)
+            elif args.suite == "first-status":
+                from native_first_status_scenarios import first_status
+                repository, repo_id = first_status(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

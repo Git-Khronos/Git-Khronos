@@ -559,6 +559,12 @@ status, resolving each linked checkout's actual index rather than treating its
 `.git` pointer file as a directory. No personal repository or installed app is
 used, and the default driver still uses one private Xvfb display and session bus.
 
+The separate `first-status` suite holds Git's first complete file scan in an
+owned checkout. It checks that history is usable while file counts remain
+unknown, then releases the read and verifies the exact staged and unstaged
+line recaps without changing either the index or the files. To run it, use
+the command above with `--suite first-status`.
+
 Read-only completion observations are not mutation retries. In particular,
 partial-discard refusal acceptance waits for the confirmation to close and the
 exact native refusal to render before checking file/index/recovery invariants;
