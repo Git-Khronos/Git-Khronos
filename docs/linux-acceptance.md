@@ -607,6 +607,21 @@ to ensure the test did not silently get a quiet debounce interval. The
 local release matrix requires both checks in one passing Jammy watcher
 report. The fixture does not modify Git on the host.
 
+For Pull scope, Ubuntu 24.04 qualification runs two independent suites
+against the installed package:
+
+```sh
+python3 tools/native_acceptance.py --suite workspace-pull-upstreams --headless --installed --package "$PACKAGE"
+python3 tools/native_acceptance.py --suite pull-submodule-scope --headless --installed --package "$PACKAGE"
+```
+
+The workspace suite verifies that a multi-upstream repository is skipped
+before fetch, a second repository still advances, and an explicit toolbar
+Pull integrates only the displayed branch. The submodule suite enables
+Git recursion in a fixture and verifies that Pull records the new gitlink
+without fetching or checking out the nested revision. Both use independent
+Git reads in disposable repositories.
+
 The `file-media` suite runs the same native image and file-content checks
 as the full toolkit, including actual WebKit decoding. It centers each row
 before its click so a partially clipped row under a sticky heading is not

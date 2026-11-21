@@ -1149,6 +1149,7 @@ def main():
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
+        "workspace-pull-upstreams", "pull-submodule-scope",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
@@ -1328,6 +1329,10 @@ def main():
                 from native_workspace_batch_scenarios import workspace_batch_stop
                 repository = workspace_batch_stop(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite in ("workspace-pull-upstreams", "pull-submodule-scope"):
+                from native_pull_scope_scenarios import pull_submodule_scope, workspace_pull_upstreams
+                scenario = pull_submodule_scope if args.suite == "pull-submodule-scope" else workspace_pull_upstreams
+                repository, repo_id = scenario(driver, fixtures, report)
             elif args.suite == "feature-rebase":
                 from native_feature_rebase_scenarios import feature_rebase_on_configured_development
                 repository, repo_id = feature_rebase_on_configured_development(driver, fixtures, report)

@@ -105,7 +105,8 @@ test('distinguishes an incomplete run from a passing run and refuses malformed s
 
 const requiredMatrix = {
   'ubuntu:22.04': ['smoke', 'gitlab', 'watcher-refresh', 'lfs-counts', 'lfs-snapshot-timeout', 'environment'],
-  'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
+  'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-pull-upstreams', 'pull-submodule-scope',
+    'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
     'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope',
@@ -130,7 +131,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 35);
+  assert.equal(complete.checks.length, 37);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -312,6 +313,23 @@ test('installed recap evidence must prove diff sides stay distinct even for the 
   const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== recaps), priorEvidence]);
   assert.equal(matrix.complete, false);
   assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['working-tree-recaps']);
+});
+
+test('installed Pull requires both repository-scope and explicit single-branch evidence', () => {
+  const fixtures = matrixFixtures();
+  for (const { suite, scenario } of [
+    { suite: 'workspace-pull-upstreams',
+      scenario: 'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch' },
+    { suite: 'pull-submodule-scope',
+      scenario: 'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule' },
+  ]) {
+    const original = fixtures.find(report => report.suite === suite);
+    assert.ok(original.scenarios.includes(scenario));
+    const incomplete = { ...original, scenarios: original.scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== original), incomplete]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), [suite]);
+  }
 });
 
 test('installed Browse must reject a retired reply and still open a fresh selection', () => {

@@ -26,6 +26,14 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-workspace-pull-refuses-same-tip-external-checkout-before-fetch',
     'native-workspace-pull-honors-fast-forward-only-on-diverged-repository',
   ]],
+  ['workspace-pull-upstreams', [
+    'native-workspace-pull-skips-multiple-upstreams-before-fetch-and-continues-the-batch',
+    'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch',
+  ]],
+  ['pull-submodule-scope', [
+    'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule',
+    'native-pull-options-describe-separate-submodule-checkout-scope',
+  ]],
   ['workspace-saved-removal', 'native-workspace-review-removes-only-selected-saved-paths-and-persists-across-reload'],
   ['workspace-locate', 'native-workspace-locate-replaces-one-path-using-owned-native-folder-picker'],
   ['workspace-bulk-locate', 'native-workspace-bulk-locate-stops-on-native-picker-cancel-and-preserves-saved-slots'],
