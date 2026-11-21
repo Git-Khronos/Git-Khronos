@@ -60,6 +60,16 @@ recovery, and incoming links. All six reports were matched to the installed
 executable and launcher. This checkpoint does not qualify the later Tags
 changes or replace the full matrix.
 
+The Tags restoration candidate at `b80a99e` passed all **32 installed
+remote-review checks** on Ubuntu 24.04 with Git 2.43. These include pushing,
+renaming and deleting a tag through the actual sidebar after opening the
+fixture, while preserving the dirty checkout and using only owned local refs.
+The report and package hashes match the installer
+`4150bffd1d7a4c479ef773eaae29b54e420b95f13c172e57688a0ce22baa386f` in
+`target/local-review/updater/jammy-builder/tags-restore.W7HdWROR/`.
+This package predates the Tags loading/retry presentation and per-workspace
+metadata isolation.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
