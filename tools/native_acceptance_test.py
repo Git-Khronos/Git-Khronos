@@ -19,10 +19,23 @@ from unittest.mock import MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
-    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
+    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, linux_distribution, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
     verified_installed_file, menu_tab_focus, probe_git_toolchain,
 )
+
+
+class LinuxDistributionTests(unittest.TestCase):
+    @patch("native_acceptance.platform.freedesktop_os_release")
+    def test_uses_userspace_not_kernel_and_handles_missing_fields(self, release):
+        release.return_value = {"ID": "debian", "VERSION_ID": "12", "PRETTY_NAME": "Debian GNU/Linux 12"}
+        self.assertEqual(linux_distribution(), {"id": "debian", "versionId": "12"})
+        release.return_value = {"ID": "arch"}
+        self.assertEqual(linux_distribution(), {"id": "arch", "versionId": None})
+        release.return_value = {}
+        self.assertIsNone(linux_distribution())
+        release.side_effect = OSError("no release file")
+        self.assertIsNone(linux_distribution())
 
 
 class GitToolchainPreflightTests(unittest.TestCase):

@@ -208,7 +208,8 @@ Each runner then runs native smoke and GitLab HTTPS/SSH catalogue acceptance
 using `--installed`. Before launching `/usr/bin/git-khronos`, the harness
 requires its SHA-256 to equal the package's extracted executable. Repositories,
 profile, Xvfb display and session bus remain private fixtures. Reports retain
-the package/executable hashes, actual executable path and runtime platform.
+the package/executable hashes, actual executable path, runtime platform and
+Linux userspace distribution separately (a container may share the host kernel).
 On Debian 12, the incoming-link suite includes smoke and also verifies cold
 saved-tab restoration with the distribution's Git 2.39 and an inherited Git
 context. Acceptance is not limited to the newer Git used by the Jammy builder.
@@ -231,6 +232,21 @@ Ubuntu and Debian runtime matrix entry successfully. A failed or unavailable
 runner, unsatisfied dependency, absent WebDriver, loader failure or scenario
 failure blocks publication; it is not skipped support.
 The build-job checksums cover the same package and inventories later published.
+
+To summarize retained installed reports against one Jammy-built package:
+
+```sh
+node tools/report-installed-acceptance.mjs "$PACKAGE" \
+  "$RESULTS"/setup-keyboard/*/report.json "$RESULTS"/worktrees/*/report.json
+```
+
+The command checks the package ABI, installer hash, and installed executable
+and launcher hashes before reporting each suite and Git version. It exits
+nonzero if a supplied suite failed or any report mismatches the package.
+Scenario counts are per report and are not added across potentially overlapping
+suites. Older reports may not identify the userspace distribution. This
+summary is not signing approval; it does not replace the release preflight or
+the required runtime matrix.
 
 ## Focused linked-worktree navigation acceptance
 

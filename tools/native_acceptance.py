@@ -34,6 +34,16 @@ from native_webdriver_errors import stale_element_refusal
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def linux_distribution():
+    """Identify userspace separately from the shared host/container kernel."""
+    try:
+        release = platform.freedesktop_os_release()
+    except OSError:
+        return None
+    identifier = release.get("ID")
+    return {"id": identifier, "versionId": release.get("VERSION_ID")} if identifier else None
+
+
 def expected_debian_package():
     version = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["version"]
     if not isinstance(version, str) or not version:
@@ -1092,7 +1102,8 @@ def main():
     output.mkdir(parents=True)
     report = {"suite": args.suite, "scenarios": [], "passed": False,
               "inheritedGitEnvironment": args.suite == "environment" or args.inherited_git_environment,
-              "platform": platform.platform(), "git": run("git", "--version"), "artifactsDirectory": str(output)}
+              "platform": platform.platform(), "linuxDistribution": linux_distribution(),
+              "git": run("git", "--version"), "artifactsDirectory": str(output)}
     print(f"Native acceptance: starting {args.suite}. Evidence: {output}", file=sys.stderr, flush=True)
     children = []
     driver = None
