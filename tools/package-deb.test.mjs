@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
 import { checkEvidence } from './check-debian-update-evidence.mjs';
+import { checkInstalledDeb } from './check-installed-deb.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
@@ -21,6 +22,56 @@ const outputs = [
   'dist/apps/desktop/3rdpartylicenses.txt',
   'dist/apps/desktop/browser/index.html',
 ];
+
+test('checks the installed launcher and executable bytes even when the package versions match', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-installed-check-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const candidate = join(root, 'candidate');
+  const installed = join(root, 'installed');
+  const database = join(root, 'dpkg');
+  const executable = 'usr/bin/git-khronos';
+  const launcher = 'usr/share/applications/git-khronos.desktop';
+  for (const directory of [candidate, installed]) {
+    for (const [file, data, mode] of [[executable, 'new build', 0o755], [launcher, 'new launcher', 0o644]]) {
+      const path = join(directory, file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, data, { mode });
+    }
+  }
+  await mkdir(database);
+  await mkdir(join(candidate, 'DEBIAN'));
+  const metadata = (version, architecture) =>
+    `Package: git-khronos\nVersion: ${version}\nArchitecture: ${architecture}\nMaintainer: Fixture <fixture@example.test>\nDescription: Owned test archive\n`;
+  await writeFile(join(candidate, 'DEBIAN/control'), metadata('0.1.6', 'amd64'));
+  const packagePath = join(root, 'Git-Khronos_0.1.6_amd64.deb');
+  const build = spawnSync('dpkg-deb', ['--root-owner-group', '--build', candidate, packagePath], { encoding: 'utf8' });
+  assert.equal(build.status, 0, build.stderr);
+  const status = join(database, 'status');
+  const setStatus = (version = '0.1.6', state = 'installed') =>
+    writeFile(status, metadata(version, 'amd64') + `Status: install ok ${state}\n\n`);
+  const check = () => checkInstalledDeb(packagePath, { root: installed, administrativeDirectory: database });
+
+  await setStatus();
+  assert.equal(check().version, '0.1.6');
+  assert.deepEqual(check().files, [join(installed, executable), join(installed, launcher)]);
+  await writeFile(join(installed, executable), 'old build');
+  await writeFile(join(installed, launcher), 'old launcher');
+  assert.throws(check, /Version 0\.1\.6 matches, but .*usr\/bin\/git-khronos differs; .*git-khronos\.desktop differs/);
+  await writeFile(join(installed, executable), 'new build');
+  await writeFile(join(installed, launcher), 'new launcher');
+  await chmod(join(installed, executable), 0o644);
+  assert.throws(check, /Expected a regular, bounded executable/);
+  await chmod(join(installed, executable), 0o755);
+  await rm(join(installed, launcher));
+  await symlink(join(candidate, launcher), join(installed, launcher));
+  assert.throws(check, /git-khronos\.desktop could not be checked/);
+  await setStatus('0.1.5');
+  assert.throws(check, /Installed 0\.1\.5 \(amd64\) does not match package 0\.1\.6/);
+  await setStatus('0.1.6', 'unpacked');
+  assert.throws(check, /is unpacked, not installed/);
+  await writeFile(status, '');
+  assert.throws(check, /is not installed/);
+});
 
 test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriver packages', async (t) => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
@@ -1084,6 +1135,18 @@ test('installer keeps fresh-install removal refusal and guards the actual legacy
   };
   await mock('sudo', '#!/bin/sh\n[ "$1" = -- ] || exit 99\nshift\nexec "$@"\n');
   await mock('dpkg-query', '#!/bin/sh\nprintf "%s" "$GIT_KHRONOS_TEST_LEGACY_STATUS"\n');
+  await writeFile(join(f.root, 'tools/check-installed-deb.mjs'), `import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const root = process.env.GIT_KHRONOS_PACKAGE_FIXTURE;
+assert.equal(readFileSync(join(root, 'apt-acted'), 'utf8'), 'fixture action only');
+assert.equal(process.argv[2], ${JSON.stringify(f.artifact)});
+if (process.env.GIT_KHRONOS_TEST_INSTALLED_MISMATCH) {
+  console.error('Installed fixture payload differs');
+  process.exit(1);
+}
+writeFileSync(join(root, 'installed-checked'), process.argv[2]);
+`);
   await mock('apt-get', `#!/usr/bin/env node
 import { writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -1101,13 +1164,13 @@ if (option) {
 }
 writeFileSync(root + '/apt-acted', 'fixture action only');
 `);
-  const run = (status, actions) => spawnSync('bash', [f.script, 'install'], {
+  const run = (status, actions, mismatch = false) => spawnSync('bash', [f.script, 'install'], {
     encoding: 'utf8', timeout: 10000,
     // This installer scenario owns its package under f.root. An inherited
     // Cargo target must never redirect verification to a real build artifact.
     env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: f.root, PATH: `${bin}:${process.env.PATH}`,
       GIT_KHRONOS_PACKAGE_FIXTURE: f.root, GIT_KHRONOS_TEST_LEGACY_STATUS: status,
-      GIT_KHRONOS_APT_ACTIONS: actions },
+      GIT_KHRONOS_APT_ACTIONS: actions, GIT_KHRONOS_TEST_INSTALLED_MISMATCH: mismatch ? '1' : '' },
   });
   const application = 'git-khronos - < 0.1.0 /tmp/fixture.deb\n';
   for (const [status, actions, accepted] of [
@@ -1117,6 +1180,7 @@ writeFileSync(root + '/apt-acted', 'fixture action only');
     ['installed', `VERSION 2\n\n${application}unrelated-package 1 > - **REMOVE**\n`, false],
   ]) {
     await rm(join(f.root, 'apt-acted'), { force: true });
+    await rm(join(f.root, 'installed-checked'), { force: true });
     const result = run(status, actions);
     assert.equal(result.status === 0, accepted, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
     const args = JSON.parse(await readFile(join(f.root, 'apt-args.json'), 'utf8'));
@@ -1129,12 +1193,23 @@ writeFileSync(root + '/apt-acted', 'fixture action only');
       await assert.rejects(stat(dirname(path)), { code: 'ENOENT' },
         `guard cleanup failed for ${status}/${accepted}: ${result.stderr}`);
     }
-    if (accepted) assert.equal(await readFile(join(f.root, 'apt-acted'), 'utf8'), 'fixture action only');
+    if (accepted) {
+      assert.equal(await readFile(join(f.root, 'apt-acted'), 'utf8'), 'fixture action only');
+      assert.equal(await readFile(join(f.root, 'installed-checked'), 'utf8'), f.artifact);
+      assert.match(result.stdout, /Restart any running instance/);
+    }
     else {
       await assert.rejects(stat(join(f.root, 'apt-acted')), { code: 'ENOENT' });
-      assert.doesNotMatch(result.stdout, /Git Khronos is installed/);
+      await assert.rejects(stat(join(f.root, 'installed-checked')), { code: 'ENOENT' });
+      assert.doesNotMatch(result.stdout, /Restart any running instance/);
     }
   }
+  const mismatch = run('', '', true);
+  assert.notEqual(mismatch.status, 0);
+  assert.match(mismatch.stderr, /Installed fixture payload differs/);
+  assert.equal(await readFile(join(f.root, 'apt-acted'), 'utf8'), 'fixture action only');
+  await assert.rejects(stat(join(f.root, 'installed-checked')), { code: 'ENOENT' });
+  assert.doesNotMatch(mismatch.stdout, /Restart any running instance/);
 });
 
 test('uninstaller recognizes unpacked and partially configured packages without purging data', async (t) => {

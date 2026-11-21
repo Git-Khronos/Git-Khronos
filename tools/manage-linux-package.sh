@@ -234,6 +234,12 @@ print_package() {
   printf '%s\n' "$package_file"
 }
 
+installed_status() {
+  local package_file="${1:-}"
+  [[ -n "$package_file" ]] || package_file="$(latest_package)"
+  node "${script_dir}/check-installed-deb.mjs" "$package_file"
+}
+
 install_package() {
   local mode="$1" package_file legacy_status transition_directory guard
   package_file="$(latest_package)"
@@ -281,7 +287,8 @@ install_package() {
       run_as_root apt-get install --reinstall --no-remove "$package_file"
       ;;
   esac
-  printf '\nGit Khronos is installed. Launch it from the application menu or run git-khronos.\n'
+  installed_status "$package_file"
+  printf '\nStart Git Khronos from the application menu or run git-khronos. Restart any running instance to use this build.\n'
 }
 
 uninstall_package() {
@@ -307,7 +314,8 @@ case "${1:-}" in
   verify) verify_package ;;
   install) install_package apply ;;
   simulate-install) install_package simulate ;;
+  installed-status) [[ $# -le 2 ]] || fail "usage: $0 installed-status [PACKAGE.deb]"; installed_status "${2:-}" ;;
   uninstall) uninstall_package ;;
   print-package) print_package ;;
-  *) fail "usage: $0 {name|verify|install|simulate-install|uninstall|print-package}" ;;
+  *) fail "usage: $0 {name|verify|install|simulate-install|installed-status|uninstall|print-package}" ;;
 esac

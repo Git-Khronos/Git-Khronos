@@ -149,8 +149,13 @@ task package:deb:path
 `task install:linux:dry-run` builds or reuses the verified local package and
 shows APT's plan without installing anything or asking for administrator access.
 `task install:linux` (also `task install:system`) installs the package
-system-wide; `task uninstall:system` removes the package while keeping
-repositories and preferences. Ordinary local builds retain their glibc 2.39
+system-wide and checks the installed executable and desktop entry.
+`task install:linux:status` repeats that comparison against the local
+package without building, installing, or needing administrator access.
+It catches older files with the same version number. It does not inspect a
+running process or a pinned shortcut; restart the app after installing.
+`task uninstall:system` removes the package while keeping repositories and
+preferences. Ordinary local builds retain their glibc 2.39
 floor and are not portable release packages. The release package target,
 `pnpm nx run desktop:package-ubuntu`, is limited to Ubuntu 22.04 amd64 and checks
 the Jammy glibc 2.35 baseline without rewriting generated runtime dependencies.

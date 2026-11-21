@@ -161,6 +161,13 @@ tasks:
     cmds:
       - tools/manage-linux-package.sh simulate-install
 
+  install:system:status:
+    aliases: [install:linux:status]
+    desc: Check the installed executable and launcher against the local Debian package without building or installing
+    platforms: [linux]
+    cmds:
+      - tools/manage-linux-package.sh installed-status
+
   uninstall:system:
     aliases: [uninstall:linux]
     desc: Remove the system-wide Debian/Ubuntu installation
