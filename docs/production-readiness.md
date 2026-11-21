@@ -114,6 +114,10 @@ The passing installer SHA-256 is
 `e6baff195cbda587a83516b5be900e8f6b2bf28cfcbf30990a8ef20371d00824`
 in `target/local-review/updater/jammy-builder/lfs-counts.huiFc5to/`.
 It does not include the subsequent LFS inspection timeout.
+The same exact package later completed all **278 installed environment
+scenarios** on Ubuntu 24.04 with Git 2.53 and passed the strict
+release-evidence preflight. The eight stock-Git scenario reports and the
+full report were independently matched against the same installer.
 
 That same installer also passed the focused counts suite on Ubuntu 22.04
 with Git 2.56.1 and the checksum-verified Git LFS 3.7.1 release archive.
