@@ -41,7 +41,10 @@ async function openReview(page: Page, review: Review, gap = false) {
     if (review === 'force-push') app.forcePushDestination.set({ state: 'd'.repeat(64), destinations: ['Owned destination fixture'] });
     const [signal, request] = requests[review];
     (window as any).__confirmationSignal = signal;
-    app[signal].set(request);
+    // The file review must capture the real checkout identity and wait for
+    // its deferred details. A manually seeded signal is intentionally stale.
+    if (review === 'file') app.openFileConfirmation(request);
+    else app[signal].set(request);
     if (gap) {
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }));
