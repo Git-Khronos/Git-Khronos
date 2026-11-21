@@ -2794,3 +2794,20 @@ Reports are under
 and
 `target/local-review/updater/jammy-builder/worktree-reservation-release.35QMYopM/focused/`.
 This is focused evidence for a different candidate, not the full release matrix.
+
+## Frozen 0.1.6 installer: full 34-check Linux matrix — 2026-11-21
+
+The `f9e3f2f` package passed all 34 required installed checks on
+Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. The exact-artifact
+verifier accepted 42 original reports, including 287 scenarios from the
+Ubuntu 22.04 environment suite. That lane's original Docker launch failed
+before any tests because of an invalid container name; only the affected
+lane was rerun against the same installer and harness.
+
+Installer SHA-256:
+`9700ad49d54d8c919624377e2ca11aea2702399c75ed94fc9868dfac13790573`.
+The combined receipt is
+`target/local-review/updater/jammy-builder/linux-next.cgHmcnFR/jammy-recovered.tit2e5vZ/verified-release.json`.
+Publisher preflight passed with the fixture trust key. This is local
+qualification of those bytes, not production signing, publication,
+or qualification of changes committed after the candidate was frozen.
