@@ -188,6 +188,19 @@ See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`
 in the candidate directory. This does not qualify subsequent renderer
 changes or replace hosted qualification and publisher signing.
 
+The checkout-visit candidate at `ed9b22c` also passed all 14 exact-package
+matrix checks, including all 278 installed Jammy environment scenarios, and
+passed the strict publisher-key evidence preflight. The package SHA-256 is
+`ceaca378b84f1a726aff2913ffadb194d428592bdce9a7467cac8ceb0d5e398a`. The
+installer, matrix, checked digest, and APT simulation are retained in
+`target/local-review/updater/jammy-builder/checkout-visit.i7iBachS/`.
+An initial Debian 12 incoming-link report failed before dispatch because a
+second observed PID disappeared during inspection. It is retained alongside
+the matrix. A same-bytes rerun using the corrected process observation passed
+incoming links (26), GitLab (47), and updates (21). The verification still
+requires the same live private-bus owner before and after delivery. This
+candidate does not include durable unavailable workspace paths.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
