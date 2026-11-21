@@ -179,10 +179,14 @@ environment scenarios on Ubuntu 24.04 and the optional strict preflight
 against that report. Its package SHA-256 is
 `afee62f618bc7da092d8f5a87db0ca7d839f6eb9e818b8ed2bc50a09e778e3ca`,
 under `target/local-review/updater/jammy-builder/writer-lock.IhuAdfLz/`.
-Local reports match 13 of the 14 release-matrix checks on these exact bytes.
 The Jammy full run initially stopped on a partially obscured image row;
 the focused media suite then passed all 30 checks with the corrected
-harness. The Jammy full-suite rerun remains separate from the Noble result.
+harness. A fresh Jammy full-suite run on the same package passed all 278
+scenarios in 605 seconds. All 14 required release-matrix checks now match
+these exact bytes, and the Jammy strict preflight accepted the same digest.
+See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`
+in the candidate directory. This does not qualify subsequent renderer
+changes or replace hosted qualification and publisher signing.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
