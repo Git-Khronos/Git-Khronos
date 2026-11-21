@@ -907,15 +907,24 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
         "return document.querySelector('gc-workspace-center [role=alertdialog]').textContent"
     )
     driver.click_text("gc-workspace-center [role=alertdialog] button", "Delete file")
-    driver.wait("""return document.querySelector('gc-workspace-center [role=status]')
-      ?.textContent.includes('Deleted native-recovery-file.bin and saved it to Recovery History')""")
+    # The deleted entry is removed by an asynchronous listing refresh. On
+    # slower WebKit builds, success text can be present before the modal's
+    # contents and focus have settled. Wait for the refreshed list and the
+    # dismissal target, not just early acknowledgement of the write.
+    driver.wait("""const workspace = document.querySelector('gc-workspace-center');
+      return !!workspace && !workspace.querySelector('[role=alertdialog]')
+        && [...workspace.querySelectorAll('[role=status]')].some(element =>
+          element.textContent.includes('Deleted native-recovery-file.bin and saved it to Recovery History'))
+        && ![...workspace.querySelectorAll('.file-entry code')].some(element =>
+          element.textContent.trim() === 'native-recovery-file.bin')
+        && [...workspace.querySelectorAll('.file-tools button')].some(button =>
+          !button.disabled && button.textContent.trim() === 'Refresh files');""")
     assert not file.exists()
-    driver.click_text("gc-workspace-center header button", "Close")
+    driver.click_visible("gc-workspace-center header button", "Close")
+    driver.wait("return !document.querySelector('gc-workspace-center')")
 
-    driver.click('[aria-label="Main menu"]')
-    driver.wait("""return [...document.querySelectorAll('.app-menu-popover [role=menuitem] strong')]
-      .some(element => element.textContent.trim() === 'Recovery History')""")
-    driver.click_text(".app-menu-popover [role=menuitem] strong", "Recovery History")
+    driver.click_visible('[aria-label="Main menu"]')
+    driver.click_visible(".app-menu-popover [role=menuitem] strong", "Recovery History")
     driver.click_scrolled_text('.recovery-dialog .operation-captures[aria-label="Discarded changes"] button',
                                'Open discarded-change recovery…', wait_for_ready=True)
     driver.wait("""return document.querySelector('.saved-discards-dialog [aria-label="Files in this capture"]')
