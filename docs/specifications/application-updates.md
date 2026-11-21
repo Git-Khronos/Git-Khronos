@@ -158,6 +158,21 @@ the resulting package. Check the release version, pinned key, and exact-artifact
 qualification before signing. Provide the passphrase through the signer's
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` environment only for the signing process.
 
+Retain the package build receipt and the completed native environment report
+alongside the exact package. For a publisher-key-enabled Debian build, the
+report must include the configured-trust scenario
+(`GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1` selects its expected outcome).
+The local preflight produces the qualified digest only when the build receipt
+and native report agree on the package and publisher key:
+
+```sh
+QUALIFIED_PACKAGE_SHA256=$(node tools/check-debian-update-evidence.mjs \
+  "$BUILD_RECEIPT" "$NATIVE_REPORT" "$PUBLIC_KEY_FILE") || exit 1
+```
+
+These are operator-owned local records, not signed provenance attestations.
+The release stager separately verifies the actual package bytes.
+
 With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
 
