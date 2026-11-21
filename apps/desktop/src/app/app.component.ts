@@ -6753,15 +6753,18 @@ export class AppComponent implements OnInit, OnDestroy {
       if (closeManager) this.repositoryDialog.set(null);
       return;
     }
+    const workspaceId = this.git.activeWorkspaceId();
     this.saveCommitDraft();
-    await this.git.openRepository(path);
-    if (!this.git.error()) {
-      this.syncOpenTerminalToActiveRepository();
-      this.restoreCommitDraft();
-      if (closeManager) this.repositoryDialog.set(null);
-      this.selectWip();
-      this.loadGraphPreferences();
-    }
+    const opened = await this.git.openRepository(path);
+    const active = this.git.repository();
+    // A background read can report its own error while this open succeeds.
+    if (opened.status !== 'success' || workspaceId !== this.git.activeWorkspaceId()
+      || active?.id !== opened.repositoryId || active.path !== opened.path) return;
+    this.syncOpenTerminalToActiveRepository();
+    this.restoreCommitDraft();
+    if (closeManager) this.repositoryDialog.set(null);
+    this.selectWip();
+    this.loadGraphPreferences();
   }
 
   protected async selectWorktreeWip(worktree: Worktree): Promise<void> {

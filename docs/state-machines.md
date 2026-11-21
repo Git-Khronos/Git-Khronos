@@ -617,6 +617,9 @@ removes that checkout from the active workspace. Repository overview offers an
 explicit retry and a workspace-only removal for each unopened path. Removal
 revokes pending restoration for that exact path. A late native result cannot
 add it back, and the same path saved in another workspace is unaffected.
+After an explicit open, the shell restores the new checkout's draft and
+view only when the successful reply still identifies the active checkout.
+Unrelated background errors do not decide whether to switch the draft.
 
 Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`, and the
 packaged `workspace-restore` suite.

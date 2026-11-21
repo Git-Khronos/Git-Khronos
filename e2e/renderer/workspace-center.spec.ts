@@ -113,7 +113,7 @@ test('shows local repository state, filters attention and opens a repository', a
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('clean-repo');
 });
 
-test('retries a saved path and replaces it with the canonical checkout without losing other saved paths', async ({ page }) => {
+test('retries a saved path, preserves membership and does not carry a draft into the opened checkout', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -123,6 +123,13 @@ test('retries a saved path and replaces it with the canonical checkout without l
       ...item, repositoryPaths: [fixture.first.path, '/saved/alias', '/saved/offline', fixture.second.path],
     } : item));
     fixture.canonical = { ...fixture.first, id: 'canonical-checkout', path: '/owned/canonical', name: 'Canonical' };
+    const openRepository = git.openRepository.bind(git);
+    git.openRepository = async (path: string) => {
+      const result = await openRepository(path);
+      // A separate read can report a problem while the successful open settles.
+      git.error.set('An unrelated background read failed.');
+      return result;
+    };
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       if (command === 'open_repository') {
         fixture.calls.push(args.path);
@@ -137,6 +144,7 @@ test('retries a saved path and replaces it with the canonical checkout without l
   await saved.getByRole('button', { name: 'Retry opening /saved/alias' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.status-repository-path')).toHaveText('/owned/canonical');
+  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('');
   const state = await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
     return { saved: git.activeWorkspace().repositoryPaths, opened: (window as any).__center.calls };
@@ -145,6 +153,8 @@ test('retries a saved path and replaces it with the canonical checkout without l
     saved: ['/owned/alpha', '/owned/canonical', '/saved/offline', '/owned/beta'],
     opened: ['/saved/alias'],
   });
+  await page.getByRole('tab', { name: /^Alpha(?:,|$)/i }).click();
+  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('Workspace draft');
 });
 
 test('removing a saved path revokes its pending restore only in this workspace', async ({ page }) => {
