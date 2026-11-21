@@ -95,6 +95,19 @@ run `git-khronos` in a terminal, then open a local repository. Local Git
 workflows need no online account. GitHub reviews and checks use the separately
 installed, authenticated GitHub CLI (`gh`) when requested.
 
+### Application updates
+
+Open **Updates** from the main menu or the welcome screen to check manually.
+Automatic updates are off by default and can be enabled or disabled there.
+The updater needs a build that contains the publisher's verification key and a
+signed update manifest in the official GitHub release. The controls alone do
+not mean a signed update is available. If your installed build has no publisher
+key, install a trusted release manually once before using the updater.
+
+On Linux, a verified package may still need approval from the system's
+authorization prompt. If your desktop session cannot provide it, use the
+official installer instead.
+
 ## Build from source
 
 ### Requirements
@@ -151,6 +164,7 @@ the guide's native build check.
 
 - [Git and provider capability inventory](docs/clean-room-capabilities.md)
 - [Linux package acceptance and release gates](docs/linux-acceptance.md)
+- [Signed application updates](docs/specifications/application-updates.md)
 - [State ownership and lifecycle guidance](docs/state-machines.md)
 - [Branch workflows](docs/specifications/branch-workflows.md)
 
@@ -170,7 +184,9 @@ to the UI.
 Git Khronos has no telemetry, advertisements, or hosted account service.
 Application settings stay on the device. Git operations contact only the
 selected remotes, and GitHub reviews use the separately installed `gh` CLI
-when explicitly requested; Git Khronos does not operate a hosted backend.
+when explicitly requested. The updater contacts GitHub Releases for manual
+checks or downloads, or after you opt in to automatic updates. It does not use
+Git credentials. Git Khronos does not operate a hosted backend.
 
 ## License
 

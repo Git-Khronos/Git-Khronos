@@ -66,8 +66,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
   recommend OpenSSH and Git LFS, and ship the license and third-party notices.
   The release workflow implements package and source CycloneDX inventories,
   SHA256SUMS, and publication gated on exact-package Linux runtime acceptance.
-  This describes workflow implementation, not a verified latest release.
-  AppImage and signed updates remain)
+  Signed Debian update controls, local publisher-key builds, and manifest
+  staging are implemented; the public signed release feed and installed
+  update/restart qualification remain. AppImage also remains)
 - [ ] English accessibility review and externalized UI strings
   (an automated structural audit covers names, labels, dialogs, ARIA references,
   focusability and reading order in 16 preview states and open overlays;
