@@ -525,7 +525,7 @@ export type WindowsShortcutRepairPlan = { target: string | null; arguments: stri
 export type WorkingFileWriteStatus = "unchanged" | "saved" | "unconfirmed"
 export type WorkingTextEncoding = "utf8" | "utf16Le" | "utf16Be" | "windows1252"
 export type WorkingTreeChangeSummary = { additions: number; deletions: number; uncountedFiles: number; partial: boolean }
-export type WorkingTreeEntry = { path: string; indexStatus: string; worktreeStatus: string; conflicted: boolean }
+export type WorkingTreeEntry = { path: string; previousPath?: string | null; indexStatus: string; worktreeStatus: string; conflicted: boolean }
 export type WorkingTreeFileDiff = { path: string; staged: boolean; patch: string; truncated: boolean }
 export type WorkingTreeSummaries = { staged: WorkingTreeChangeSummary | null; unstaged: WorkingTreeChangeSummary | null }
 export type Worktree = { path: string; oid: string; branch: string | null; current: boolean; locked: boolean; prunable: boolean; statusLoaded: boolean; changes: number; ahead: number; behind: number }
@@ -673,6 +673,8 @@ export function stage_all(args: { repoId: string }): Promise<RepositoryStatus> {
 export function unstage_all(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_all", args); }
 export function stage_path(args: { repoId: string; path: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_path", args); }
 export function unstage_path(args: { repoId: string; path: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_path", args); }
+export function stage_worktree_rename(args: { repoId: string; source: string; destination: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_worktree_rename", args); }
+export function unstage_index_rename(args: { repoId: string; source: string; destination: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_index_rename", args); }
 export function discard_path(args: { repoId: string; path: string; untracked: boolean }): Promise<RepositoryStatus> { return TAURI_INVOKE("discard_path", args); }
 export function manage_reference(args: { repoId: string; action: string; name: string; expectedOid?: string | null; message?: string | null; url?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("manage_reference", args); }
 export function configure_remote(args: { repoId: string; previousName?: string | null; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("configure_remote", args); }
@@ -953,6 +955,8 @@ export type CommandMap = {
   unstage_all: typeof unstage_all;
   stage_path: typeof stage_path;
   unstage_path: typeof unstage_path;
+  stage_worktree_rename: typeof stage_worktree_rename;
+  unstage_index_rename: typeof unstage_index_rename;
   discard_path: typeof discard_path;
   manage_reference: typeof manage_reference;
   configure_remote: typeof configure_remote;

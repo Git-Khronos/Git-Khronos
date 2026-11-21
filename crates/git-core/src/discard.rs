@@ -563,6 +563,7 @@ fn inspect_discard_status(path: &Path) -> Result<Vec<WorkingTreeEntry>, AppError
         );
         entries.push(WorkingTreeEntry {
             path: String::from_utf8_lossy(&record[3..]).into_owned(),
+            previous_path: None,
             index_status: x.to_string(),
             worktree_status: y.to_string(),
             conflicted,

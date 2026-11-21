@@ -1846,6 +1846,62 @@ fn unstaged_summary_counts_only_edits_in_an_intent_to_add_rename() {
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
 }
 
+#[cfg(unix)]
+#[test]
+fn reviewed_index_rename_moves_both_literal_paths_and_preserves_unrelated_edits() {
+    let repository = Repository::new();
+    let source = "old\t[*].txt";
+    let destination = "new\n[*].txt";
+    let contents = b"alpha\nbeta\ngamma\n";
+    repository.write(source, contents);
+    repository.write("staged.txt", b"before\n");
+    repository.write("unstaged.txt", b"before\n");
+    repository.commit("Base");
+    repository.write("staged.txt", b"separate staged edit\n");
+    repository.git(&["add", "--", "staged.txt"]);
+    repository.write("unstaged.txt", b"separate unstaged edit\n");
+    fs::rename(repository.0.join(source), repository.0.join(destination)).unwrap();
+    repository.git(&["--literal-pathspecs", "add", "-N", "--", destination]);
+
+    let status = || repository.git(&["--no-optional-locks", "status", "--porcelain=v1", "-z"]);
+    let baseline = status();
+    let index = || fs::read(repository.0.join(".git/index")).unwrap();
+    let initial_index = index();
+    let head = repository.git(&["rev-parse", "HEAD"]);
+    assert!(baseline.starts_with(format!(" R {destination}\0{source}\0").as_bytes()));
+    let shown = read_status(&repository.0).unwrap();
+    let row = shown.entries.iter().find(|entry| entry.path == destination).unwrap();
+    assert_eq!(row.previous_path.as_deref(), Some(source));
+
+    let wrong = stage_worktree_rename(&repository.0, "unstaged.txt", destination).unwrap_err();
+    assert_eq!(wrong.kind, "staleWorkingTreeRename");
+    assert_eq!(index(), initial_index);
+    repository.git(&["config", "core.sparseCheckout", "true"]);
+    let sparse = stage_worktree_rename(&repository.0, source, destination).unwrap_err();
+    assert_eq!(sparse.kind, "sparseRenameIndexUnsupported");
+    assert_eq!(index(), initial_index);
+    repository.git(&["config", "--unset", "core.sparseCheckout"]);
+    stage_worktree_rename(&repository.0, source, destination).unwrap();
+    let staged = status();
+    assert!(staged.starts_with(format!("R  {destination}\0{source}\0").as_bytes()));
+    assert!(staged.ends_with(b"M  staged.txt\0 M unstaged.txt\0"));
+
+    let staged_index = index();
+    let wrong_side = stage_worktree_rename(&repository.0, source, destination).unwrap_err();
+    assert_eq!(wrong_side.kind, "staleWorkingTreeRename");
+    assert_eq!(index(), staged_index);
+    unstage_index_rename(&repository.0, source, destination).unwrap();
+    // Reset removes the intent-to-add entry: only the index moved, so the
+    // destination is now untracked rather than a grouped worktree rename.
+    let unstaged = status();
+    assert!(unstaged.starts_with(format!(" D {source}\0").as_bytes()));
+    assert!(unstaged.ends_with(format!("M  staged.txt\0 M unstaged.txt\0?? {destination}\0").as_bytes()));
+    assert_eq!(repository.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(repository.git(&["show", ":staged.txt"]), b"separate staged edit\n");
+    assert_eq!(fs::read(repository.0.join(destination)).unwrap(), contents);
+    assert_eq!(fs::read(repository.0.join("unstaged.txt")).unwrap(), b"separate unstaged edit\n");
+}
+
 #[test]
 fn unstaged_summary_discloses_bounded_untracked_files_without_reading_them() {
     let repository = Repository::new();
@@ -1855,6 +1911,33 @@ fn unstaged_summary_discloses_bounded_untracked_files_without_reading_them() {
     assert_eq!(summary.additions, 0);
     assert_eq!(summary.uncounted_files, 1);
     assert!(summary.partial);
+}
+
+#[test]
+fn reviewed_index_rename_refuses_directory_pathspec_expansion() {
+    let repository = Repository::new();
+    repository.write("from", b"renamed content\n");
+    fs::create_dir(repository.0.join("to")).unwrap();
+    repository.write("to/keep", b"independent content\n");
+    repository.commit("Base");
+    fs::remove_dir_all(repository.0.join("to")).unwrap();
+    fs::rename(repository.0.join("from"), repository.0.join("to")).unwrap();
+    fs::create_dir(repository.0.join("from")).unwrap();
+    repository.write("from/keep", b"new untracked content\n");
+    repository.git(&["add", "-N", "--", "to"]);
+    let index = || fs::read(repository.0.join(".git/index")).unwrap();
+    let status = || repository.git(&["--no-optional-locks", "status", "--porcelain=v1", "-z"]);
+    assert!(status().windows(b" R to\0from\0".len()).any(|part| part == b" R to\0from\0"));
+    let before = index();
+    assert_eq!(stage_worktree_rename(&repository.0, "from", "to").unwrap_err().kind, "staleWorkingTreeRename");
+    assert_eq!(index(), before);
+
+    fs::remove_dir_all(repository.0.join("from")).unwrap();
+    repository.git(&["add", "--", "from", "to"]);
+    assert!(status().starts_with(b"R  to\0from\0D  to/keep\0"));
+    let before = index();
+    assert_eq!(unstage_index_rename(&repository.0, "from", "to").unwrap_err().kind, "staleWorkingTreeRename");
+    assert_eq!(index(), before);
 }
 
 #[cfg(unix)]

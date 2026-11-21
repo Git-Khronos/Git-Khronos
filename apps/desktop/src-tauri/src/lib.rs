@@ -775,6 +775,34 @@ async fn unstage_path(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn stage_worktree_rename(
+    repo_id: String,
+    source: String,
+    destination: String,
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, move |repository| {
+        git_khronos_git_core::stage_worktree_rename(repository, &source, &destination)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn unstage_index_rename(
+    repo_id: String,
+    source: String,
+    destination: String,
+    app: AppHandle,
+) -> Result<RepositoryStatus, AppError> {
+    mutate_working_tree_background(repo_id, app, move |repository| {
+        git_khronos_git_core::unstage_index_rename(repository, &source, &destination)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn discard_path(
     repo_id: String,
     path: String,
@@ -4222,6 +4250,8 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             unstage_all,
             stage_path,
             unstage_path,
+            stage_worktree_rename,
+            unstage_index_rename,
             discard_path,
             reference_commands::manage_reference,
             reference_commands::configure_remote,

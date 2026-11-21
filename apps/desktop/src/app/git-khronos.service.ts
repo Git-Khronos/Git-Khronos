@@ -158,6 +158,7 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
       const other = right.entries[index];
       return !!other
         && entry.path === other.path
+        && entry.previousPath === other.previousPath
         && entry.indexStatus === other.indexStatus
         && entry.worktreeStatus === other.worktreeStatus
         && entry.conflicted === other.conflicted;
@@ -1111,12 +1112,50 @@ export class GitKhronosService {
     return false;
   }
 
-  async stagePath(path: string): Promise<void> {
+  renameSourceForPath(path: string, staged: boolean): string | null | undefined {
+    const entry = this.repository()?.status.entries.find(candidate => candidate.path === path);
+    return (staged ? entry?.indexStatus : entry?.worktreeStatus) === 'R'
+      ? entry?.previousPath ?? null : undefined;
+  }
+
+  async stagePath(path: string, scope?: { repositoryPath?: string; renameSource?: string | null }): Promise<void> {
+    if (scope && scope.repositoryPath !== this.repository()?.path) return;
+    const currentSource = this.renameSourceForPath(path, false);
+    const source = scope ? scope.renameSource : currentSource;
+    if (scope && source === undefined && currentSource !== undefined) {
+      this.error.set('This path is now part of a rename. Review both paths before staging.');
+      return;
+    }
+    if (source === null) {
+      this.error.set('The original path of this rename is unavailable. Refresh or review the paths in Git.');
+      return;
+    }
+    if (source !== undefined) {
+      await this.mutateWorkingTree('stage_worktree_rename', `Staging rename to ${path}…`, 'Rename staged',
+        { source, destination: path });
+      return;
+    }
     await this.mutateWorkingTree('stage_path', `Staging ${path}…`, 'File staged', { path },
       (status) => predictStagePath(status, path));
   }
 
-  async unstagePath(path: string): Promise<void> {
+  async unstagePath(path: string, scope?: { repositoryPath?: string; renameSource?: string | null }): Promise<void> {
+    if (scope && scope.repositoryPath !== this.repository()?.path) return;
+    const currentSource = this.renameSourceForPath(path, true);
+    const source = scope ? scope.renameSource : currentSource;
+    if (scope && source === undefined && currentSource !== undefined) {
+      this.error.set('This path is now part of a rename. Review both paths before unstaging.');
+      return;
+    }
+    if (source === null) {
+      this.error.set('The original path of this rename is unavailable. Refresh or review the paths in Git.');
+      return;
+    }
+    if (source !== undefined) {
+      await this.mutateWorkingTree('unstage_index_rename', `Unstaging rename to ${path}…`, 'Rename unstaged',
+        { source, destination: path });
+      return;
+    }
     await this.mutateWorkingTree('unstage_path', `Unstaging ${path}…`, 'File unstaged', { path },
       (status) => predictUnstagePath(status, path));
   }

@@ -86,3 +86,19 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary']['externalEdit'] = {'unstagedRecap': live_recap,
                                                    'stagedRecap': staged, 'footprint': expected_after_edit}
     report['scenarios'].append('native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain')
+
+    driver.click_visible('[aria-label="Stage after.txt"]')
+    staged_rename = recaps((0, 0), (2, 1), uncounted=0)
+    indexed = checkout_footprint(fixtures, renamed, (new_name.name,))
+    assert indexed['status'] == 'R  before.txt -> after.txt', indexed['status']
+    driver.click_visible('[aria-label="Unstage after.txt"]')
+    driver.wait('return !document.querySelector(\'[aria-label="Unstage after.txt"]\')'
+                ' && !!document.querySelector(\'[aria-label="Stage before.txt"]\')')
+    unindexed = checkout_footprint(fixtures, renamed, (new_name.name,))
+    assert unindexed['status'] == 'D before.txt\n?? after.txt', unindexed['status']
+    for snapshot in (indexed, unindexed):
+        for key in ('head', 'branch', 'references', 'configSha256', 'files'):
+            assert snapshot[key] == expected_after_edit[key], 'Rename index action changed ' + key
+    report['unstagedLineSummary']['indexRename'] = {'recaps': staged_rename,
+                                                   'afterStage': indexed, 'afterUnstage': unindexed}
+    report['scenarios'].append('native-worktree-rename-stages-and-unstages-both-paths-without-changing-files')

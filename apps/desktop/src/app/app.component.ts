@@ -454,6 +454,8 @@ interface FileContextMenuState {
   staged: boolean;
   untracked: boolean;
   conflicted: boolean;
+  renameSource?: string | null;
+  renameRepositoryPath?: string;
 }
 
 interface WorkingTreeDisplayRow {
@@ -12673,6 +12675,8 @@ export class AppComponent implements OnInit, OnDestroy {
       staged,
       untracked: entry.indexStatus === '?',
       conflicted: entry.conflicted,
+      renameSource: (staged ? entry.indexStatus : entry.worktreeStatus) === 'R' ? entry.previousPath ?? null : undefined,
+      renameRepositoryPath: this.git.repository()?.path,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 260)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 310)),
     };
@@ -12949,8 +12953,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const menu = this.fileContextMenu();
     if (!menu) return;
     this.actionOverlays.close('file');
-    if (menu.staged) await this.git.unstagePath(menu.path);
-    else await this.git.stagePath(menu.path);
+    const scope = { repositoryPath: menu.renameRepositoryPath, renameSource: menu.renameSource };
+    if (menu.staged) await this.git.unstagePath(menu.path, scope);
+    else await this.git.stagePath(menu.path, scope);
   }
 
   protected requestDiscardFile(): void {

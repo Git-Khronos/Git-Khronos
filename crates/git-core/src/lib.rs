@@ -17,6 +17,8 @@ mod configured_tools;
 mod discard;
 mod file_content;
 mod file_statistics;
+mod index_rename;
+pub use index_rename::{stage_worktree_rename, unstage_index_rename};
 mod working_tree_summary;
 pub use working_tree_summary::{WorkingTreeChangeSummary, WorkingTreeSummaries, working_tree_change_summary, working_tree_summaries};
 mod file_tool_model;
@@ -557,6 +559,8 @@ impl RepositoryStatus {
 #[serde(rename_all = "camelCase")]
 pub struct WorkingTreeEntry {
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
     pub index_status: String,
     pub worktree_status: String,
     pub conflicted: bool,
@@ -7700,17 +7704,26 @@ fn read_status_with_options(
                 status.unstaged += 1;
             }
         }
+        let index_grouped = matches!(x, 'R' | 'C');
+        let worktree_grouped = matches!(y, 'R' | 'C');
+        let exact_rename = (x == 'R' && !worktree_grouped) || (y == 'R' && !index_grouped);
         status.entry_count += 1;
         if status.entries.len() < entry_limit {
             status.entries.push(WorkingTreeEntry {
                 path: String::from_utf8_lossy(&record[3..]).into_owned(),
+                previous_path: if exact_rename && std::str::from_utf8(&record[3..]).is_ok() {
+                    records.get(index + 1)
+                        .and_then(|previous| std::str::from_utf8(previous).ok())
+                        .filter(|previous| !previous.is_empty())
+                        .map(str::to_owned)
+                } else { None },
                 index_status: x.to_string(),
                 worktree_status: y.to_string(),
                 conflicted,
             });
         }
 
-        index += if matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C') {
+        index += if index_grouped || worktree_grouped {
             2
         } else {
             1

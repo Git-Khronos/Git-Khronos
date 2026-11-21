@@ -83,6 +83,20 @@ Full snapshots already provide a fresh status input. Clean or hidden recaps
 do not start reads just because a refresh ran. `unstaged-summary.spec.ts`
 exercises unchanged-status updates and superseded counts.
 
+### Working-tree rename index actions
+
+An unambiguous Git rename row retains both literal paths. Stage and Unstage
+submit those paths together with their checkout context; native Git status
+must still confirm the same pair on the requested side of the index before
+the single index operation runs. A reviewed rename that now matches a copy,
+an ambiguous pair or the wrong side is refused, not silently reduced to a
+one-file operation. A missing exact source is likewise refused. Grouped
+actions refuse sparse checkouts or a directory replacement that would expand
+the index change beyond the two reviewed file paths.
+The renderer waits for the returned status instead of predicting a half
+rename. The operation does not move working files, and the review is not a
+lock against independent Git processes.
+
 ### Source-bound branch, sparse-checkout and worktree-removal reviews
 
 Branch deletion/rebase and worktree removal requests capture the repository ID,
