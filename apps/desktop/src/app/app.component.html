@@ -1082,32 +1082,13 @@
               <strong id="graph-column-settings-title">Graph settings</strong>
               <button type="button" aria-label="Close graph settings" title="Close graph settings" (click)="closeGraphSettings(true)"><gc-icon name="x" [size]="12" /></button>
             </header>
-            <div class="column-settings-scroll">
-              <strong>Layout</strong>
-              <button class="fit-graph-column" type="button" (click)="fitGraphColumnToBranches($event)"><gc-icon name="maximize" [size]="12" /><span>Fit all {{ graphRequiredLaneCount() }} branch {{ graphRequiredLaneCount() === 1 ? 'path' : 'paths' }}<small>{{ graphMaximumWidth() }} px</small></span></button>
-              <label><input type="checkbox" [checked]="compactGraphColumn()" (change)="setCompactGraphColumn($any($event.target).checked)" /> Compact Graph Column</label>
-              <label><input type="checkbox" [checked]="showGraphScrollMarkers()" (change)="setGraphScrollMarkers($any($event.target).checked)" /> Scroll Markers</label>
-              <label title="When off, widening a column narrows the others so the history always fits the panel"><input type="checkbox" [checked]="graphHorizontalScroll()" (change)="setGraphHorizontalScroll($any($event.target).checked)" /> Horizontal Scrolling</label>
-              <i class="settings-divider"></i>
-              <strong>Branch visibility</strong>
-              <label><input type="checkbox" [checked]="smartBranchVisibility()" (change)="setSmartBranchVisibility($any($event.target).checked)" /> Smart Branch Visibility</label>
-              <label title="Include Copilot checkpoint references and their history"><input #checkpointVisibility type="checkbox" [checked]="!!git.repository()?.showCheckpoints" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (change)="setCheckpointVisibility(checkpointVisibility.checked, checkpointVisibility)" /> Show Copilot checkpoints</label>
-              <i class="settings-divider"></i>
-              <strong>Columns</strong>
-              @for (column of graphColumnOrder(); track column) {
-                <div class="column-setting-row">
-                  <label><input type="checkbox" [checked]="graphColumnVisible(column)" (change)="setGraphColumn(column, $any($event.target).checked)" /> {{ graphColumnLabels[column] }}</label>
-                  <span class="column-reorder-actions" role="group" [attr.aria-label]="'Reorder ' + graphColumnLabels[column] + ' column'">
-                    <button type="button" [disabled]="graphColumnOrderIndex(column) === 0" [attr.aria-label]="'Move ' + graphColumnLabels[column] + ' column left'" [title]="'Move ' + graphColumnLabels[column] + ' column left'" (click)="moveGraphColumn(column, -1)"><gc-icon name="chevron-left" [size]="11" /></button>
-                    <button type="button" [disabled]="graphColumnOrderIndex(column) === graphColumnOrder().length - 1" [attr.aria-label]="'Move ' + graphColumnLabels[column] + ' column right'" [title]="'Move ' + graphColumnLabels[column] + ' column right'" (click)="moveGraphColumn(column, 1)"><gc-icon name="chevron-right" [size]="11" /></button>
-                  </span>
-                </div>
-              }
-              <small class="column-settings-hint">Drag headers or use the arrow buttons to reorder columns.</small>
-            </div>
-            <footer class="column-settings-footer">
-              <button class="restore-graph-defaults" type="button" (click)="restoreGraphDefaults()"><gc-icon name="reset" [size]="11" />Restore graph defaults</button>
-            </footer>
+            @defer (on immediate) {
+              <gc-graph-settings-options #graphSettingsOptions [model]="graphSettingsView" />
+            } @loading (after 120ms) {
+              <p class="graph-settings-state" role="status">Loading graph controls…</p>
+            } @error {
+              <p class="graph-settings-state" role="alert">Graph controls could not load. Close settings and restart Git Khronos to try again.</p>
+            }
           </div>
         }
         @if (selectedCommits().length > 1) {

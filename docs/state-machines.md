@@ -289,6 +289,14 @@ Directory does not mount a late reference strip. The loader and menu
 behavior are covered by `commit-reference-loading.spec.ts` and the
 reference-stack interaction tests.
 
+### Graph settings controls
+
+Opening graph settings mounts the positioned dialog, close button and
+keyboard scope immediately. The settings options load separately. A
+failed or abandoned import cannot change graph settings, move focus, or
+reopen the dialog. A contextual dialog is fitted again when its options
+mount so an initially short shell cannot push the controls off-screen.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a
