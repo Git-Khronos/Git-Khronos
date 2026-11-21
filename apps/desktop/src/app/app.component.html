@@ -2265,12 +2265,14 @@
   }
   @if (pendingFileAction(); as action) {
     @let currentReview = ownsFileActionReview(action);
+    @let ignoreRuleOnly = action.kind === 'ignore' && action.untracked;
+    @let ignoreLabel = ignoreRuleOnly ? 'Add ignore rule' : 'Ignore and stop tracking';
     <div class="confirmation-backdrop" [class.over-recovery]="recoveryHistoryOpen() && savedDiscardConfirmation()" (click)="dismissFileConfirmation(true, action)">
       <section #fileConfirmationDialog class="confirmation-dialog" [class.discard-recovery-confirmation]="action.recovery"
         [class.choosing-discard-paths]="action.kind === 'discard-bulk' && blockedDiscardChoicePaths() !== null" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
-        <div class="confirmation-icon" [class.danger]="action.kind !== 'restore-commit'"><gc-icon [name]="action.kind === 'ignore' ? 'file' : action.kind === 'restore-commit' ? 'archive-restore' : 'trash'" [size]="19" /></div>
+        <div class="confirmation-icon" [class.danger]="!ignoreRuleOnly && action.kind !== 'restore-commit'"><gc-icon [name]="action.kind === 'ignore' ? 'file' : action.kind === 'restore-commit' ? 'archive-restore' : 'trash'" [size]="19" /></div>
         <div class="confirmation-copy">
-          <span>{{ action.kind === 'discard-bulk' ? 'Discard unstaged changes' : action.kind === 'recover-discard' ? 'Recover discarded changes' : action.kind === 'forget-discard' ? 'Remove recovery capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : 'Ignore and stop tracking' }}</span>
+          <span>{{ action.kind === 'discard-bulk' ? 'Discard unstaged changes' : action.kind === 'recover-discard' ? 'Recover discarded changes' : action.kind === 'forget-discard' ? 'Remove recovery capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : ignoreLabel }}</span>
           <h2 id="file-confirmation-title">{{ action.kind === 'restore-commit' && (action.paths?.length ?? 0) > 1 ? (action.paths?.length ?? 0) + ' selected files' : action.path }}</h2>
           @if (!currentReview) {
             <p role="alert">The checkout, branch or HEAD changed. Cancel and open a fresh file review before continuing.</p>
@@ -2301,7 +2303,7 @@
                 {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : 'Choose root files…' }}
               </button>
             }
-            <button class="confirm-action" [class.danger]="action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="!currentReview || git.busy() || fileConfirmationDetailsReady() !== action || (action.kind === 'discard-bulk' && (action.preview?.blockedPaths.length ?? 0) > 0)" (click)="confirmFileAction(action)">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : 'Ignore and stop tracking' }}</button>
+            <button class="confirm-action" [class.danger]="!ignoreRuleOnly && action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="!currentReview || git.busy() || fileConfirmationDetailsReady() !== action || (action.kind === 'discard-bulk' && (action.preview?.blockedPaths.length ?? 0) > 0)" (click)="confirmFileAction(action)">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : ignoreLabel }}</button>
           }
         </footer>
       </section>

@@ -22,8 +22,8 @@
     <div class="context-divider"></div>
     <div class="context-subheading">Ignore</div>
     <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('ignore-file')"><span><gc-icon name="file" [size]="13" /></span>Ignore file{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-    <button type="button" role="menuitem" [disabled]="busy() || !hasExtension()" (click)="choose('ignore-extension')"><span><gc-icon name="file" [size]="13" /></span>Ignore all with this extension{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-    <button type="button" role="menuitem" [disabled]="busy() || !hasParentDirectory()" (click)="choose('ignore-directory')"><span><gc-icon name="folder-git" [size]="13" /></span>Ignore directory{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
+    <button type="button" role="menuitem" [disabled]="busy() || !hasExtension()" (click)="choose('ignore-extension')"><span><gc-icon name="file" [size]="13" /></span>Ignore all with this extension{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
+    <button type="button" role="menuitem" [disabled]="busy() || !hasParentDirectory()" (click)="choose('ignore-directory')"><span><gc-icon name="folder-git" [size]="13" /></span>Ignore directory{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
   }
 } @else {
   @let menu = request.value;

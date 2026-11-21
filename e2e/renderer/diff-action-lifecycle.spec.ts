@@ -1,14 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function prepare(page: Page): Promise<void> {
+async function prepare(page: Page, untrackedPath?: string): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
-  await page.evaluate(async () => {
+  await page.evaluate(async untrackedPath => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     const original = git.repository();
-    const status = { ...original.status, staged: 0, unstaged: 2, untracked: 0, conflicted: 0, entryCount: 2,
-      entries: ['file.txt', 'new.txt'].map(path => ({ path, indexStatus: ' ', worktreeStatus: 'M', conflicted: false })) };
+    const status = untrackedPath
+      ? { ...original.status, staged: 0, unstaged: 0, untracked: 1, conflicted: 0, entryCount: 1,
+          entries: [{ path: untrackedPath, indexStatus: '?', worktreeStatus: '?', conflicted: false }] }
+      : { ...original.status, staged: 0, unstaged: 2, untracked: 0, conflicted: 0, entryCount: 2,
+          entries: ['file.txt', 'new.txt'].map(path => ({ path, indexStatus: ' ', worktreeStatus: 'M', conflicted: false })) };
     const repository = { ...original, status };
     git.repositories.set([repository, { ...repository, id: 'other-diff', path: '/fixture/other-diff' }]);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -53,9 +56,11 @@ async function prepare(page: Page): Promise<void> {
       return Promise.resolve(repository);
     } };
     app.selectWip();
-    await app.inspectWorkingTreeFile('file.txt', false);
-    app.toggleDiffLineSelection({ hunkIndex: 0, changeIndices: [0] });
-  });
+    if (!untrackedPath) {
+      await app.inspectWorkingTreeFile('file.txt', false);
+      app.toggleDiffLineSelection({ hunkIndex: 0, changeIndices: [0] });
+    }
+  }, untrackedPath);
 }
 
 for (const action of ['discard', 'ignore', 'restore-commit']) {
@@ -150,8 +155,8 @@ test('ignore options use Git path separators for literal backslashes and extensi
     }, path);
     const menu = page.locator('.file-context-menu');
     await expect(menu.locator('.context-heading')).toContainText(path);
-    const extensionAction = menu.getByRole('menuitem', { name: 'Ignore all with this extension', exact: true });
-    const directoryAction = menu.getByRole('menuitem', { name: 'Ignore directory', exact: true });
+    const extensionAction = menu.getByRole('menuitem', { name: 'Ignore all with this extension…', exact: true });
+    const directoryAction = menu.getByRole('menuitem', { name: 'Ignore directory…', exact: true });
     if (extension) await expect(extensionAction, path).toBeEnabled();
     else await expect(extensionAction, path).toBeDisabled();
     if (directory) await expect(directoryAction, path).toBeEnabled();
@@ -159,29 +164,41 @@ test('ignore options use Git path separators for literal backslashes and extensi
   }
 });
 
-test('a literal backslash filename reaches the extension action unchanged', async ({ page }) => {
-  await prepare(page);
-  const path = 'report.part\\suffix';
-  await page.evaluate(path => {
-    const state = (window as any).__diffAction;
-    const status = {
-      ...state.repository.status, staged: 0, unstaged: 0, untracked: 1, entryCount: 1,
-      entries: [{ path, indexStatus: '?', worktreeStatus: '?', conflicted: false }],
-    };
-    state.git.repositories.update((repositories: any[]) => repositories.map(repository =>
-      repository.id === state.repository.id ? { ...repository, status } : repository));
-  }, path);
+for (const { patternKind, path, menuName, scope } of [
+  { patternKind: 'extension', path: 'report.part\\suffix', menuName: 'Ignore all with this extension',
+    scope: 'untracked files and directories with this extension throughout the repository' },
+  { patternKind: 'directory', path: 'nested/report.txt', menuName: 'Ignore directory',
+    scope: 'untracked files in this directory and its subdirectories' },
+]) {
+  test(`untracked ${patternKind} ignore shows its scope and does not change the index`, async ({ page }) => {
+    await prepare(page, path);
 
-  await page.getByRole('button', { name: `View changes in ${path}`, exact: true }).click({ button: 'right' });
-  const menu = page.locator('.file-context-menu');
-  await expect(menu.getByRole('menuitem', { name: 'Ignore directory', exact: true })).toBeDisabled();
-  await menu.getByRole('menuitem', { name: 'Ignore all with this extension', exact: true }).click();
-  expect(await page.evaluate(() => (window as any).__diffAction.calls
-    .filter((call: any) => call.command === 'ignore_path')
-    .map((call: any) => call.args))).toEqual([
-    expect.objectContaining({ path, patternKind: 'extension', stopTracking: false }),
-  ]);
-});
+    const row = page.getByRole('button', { name: `View changes in ${path}`, exact: true });
+    const menu = page.locator('.file-context-menu');
+    const action = menu.getByRole('menuitem', { name: `${menuName}…`, exact: true });
+    const dialog = page.getByRole('alertdialog', { name: path });
+    const calls = () => page.evaluate(() => (window as any).__diffAction.calls
+      .filter((call: any) => call.command === 'ignore_path')
+      .map((call: any) => call.args));
+
+    await row.click({ button: 'right' });
+    if (patternKind === 'extension') {
+      await expect(menu.getByRole('menuitem', { name: 'Ignore directory…', exact: true })).toBeDisabled();
+    }
+    await action.click();
+    await expect(dialog).toContainText(scope);
+    await expect(dialog).toContainText('No files are deleted or staged.');
+    expect(await calls()).toEqual([]);
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(await calls()).toEqual([]);
+
+    await row.click({ button: 'right' });
+    await action.click();
+    await dialog.getByRole('button', { name: 'Add ignore rule', exact: true }).click();
+    expect(await calls()).toEqual([expect.objectContaining({ path, patternKind, stopTracking: false })]);
+  });
+}
 
 for (const { pattern, menuName, scope } of [
   { pattern: 'file', menuName: 'Ignore file and stop tracking…', scope: null },

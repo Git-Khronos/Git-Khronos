@@ -13217,14 +13217,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu || menu.staged) return;
     const returnFocus = this.fileContextMenuReturnFocus;
     this.dismissFileActionMenu();
-    if (menu.untracked) {
+    if (menu.untracked && patternKind === 'file') {
       await this.git.ignorePath(menu.path, patternKind, false);
       return;
     }
     this.openFileConfirmation({
       kind: 'ignore',
       path: menu.path,
-      untracked: false,
+      untracked: menu.untracked,
       patternKind,
     }, returnFocus);
   }
@@ -13282,7 +13282,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const succeeded = await this.git.restoreFilesFromCommit(action.oid, action.paths?.length ? action.paths : [action.path]);
       if (succeeded && view === this.fileActionView()) this.selectWip();
     } else if (action.patternKind) {
-      await this.git.ignorePath(action.path, action.patternKind, true);
+      await this.git.ignorePath(action.path, action.patternKind, !action.untracked);
     }
   }
 

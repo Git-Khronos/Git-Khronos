@@ -30,7 +30,7 @@ async function openReview(page: Page, review: Review, gap = false) {
       publish: ['pendingPublishBranch', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null, branch: repository.status.branch }],
       'workspace-delete': ['pendingWorkspaceDelete', { id: 'owned-review', name: 'Owned workspace' }],
       'lfs-prune': ['lfsPruneReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null }],
-      file: ['pendingFileAction', { kind: 'ignore', path: 'owned.txt', untracked: true, repositoryId: repository.id }],
+      file: ['pendingFileAction', { kind: 'ignore', path: 'owned.txt', untracked: true, patternKind: 'extension', repositoryId: repository.id }],
       branch: ['pendingBranchAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
         kind: 'delete', branch: 'owned-review' }],
       'stored-reference': ['pendingStoredReferenceDelete', { kind: 'original', repoId: repository.id, reference: 'refs/original/owned-review', oid }],

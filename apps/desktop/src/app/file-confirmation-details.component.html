@@ -62,11 +62,15 @@
     } @else if (action.kind === 'restore-commit') {
       <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ (action.oid || '').slice(0, 8) }} and stage the result for your next commit.</p>
     } @else {
-      <p>This adds or reuses a rule in the repository’s .gitignore and stages removal of this file from Git’s index. The file stays on disk.</p>
+      @if (action.untracked) {
+        <p>This adds or reuses a rule in the repository’s .gitignore. Tracked files stay tracked. No files are deleted or staged.</p>
+      } @else {
+        <p>This adds or reuses a rule in the repository’s .gitignore and stages removal of this file from Git’s index. The file stays on disk.</p>
+      }
       @if (action.patternKind === 'extension') {
-        <p>The rule may also ignore other untracked files and directories with this extension throughout the repository. Other tracked files stay tracked.</p>
+        <p>The rule may also ignore other untracked files and directories with this extension throughout the repository.{{ action.untracked ? '' : ' Other tracked files stay tracked.' }}</p>
       } @else if (action.patternKind === 'directory') {
-        <p>The rule may also ignore other untracked files in this directory and its subdirectories. Other tracked files stay tracked.</p>
+        <p>The rule may also ignore other untracked files in this directory and its subdirectories.{{ action.untracked ? '' : ' Other tracked files stay tracked.' }}</p>
       }
     }
     @if ((action.kind === 'discard' || action.kind === 'discard-hunk' || action.kind === 'discard-lines') && action.path.includes('/')) {

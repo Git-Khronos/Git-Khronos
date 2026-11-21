@@ -14855,6 +14855,52 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
     }
 
     #[test]
+    fn broad_untracked_ignore_rules_preserve_the_index_and_working_files() {
+        for (kind, rule, matching, decoy) in [
+            ("extension", "*.log\n", "same.log", "folder/other.txt"),
+            ("directory", "/folder/\n", "folder/other.txt", "same.log"),
+        ] {
+            let repository = TestRepository::new();
+            fs::create_dir(repository.path.join("folder")).unwrap();
+            repository.write(".gitignore", "# staged rules\n");
+            repository.write("folder/tracked.log", "staged edit\n");
+            repository.git(&["add", "--", ".gitignore", "folder/tracked.log"]);
+            repository.write("folder/tracked.log", "working edit\n");
+            repository.write("folder/selected.log", "selected\n");
+            repository.write(matching, "match\n");
+            repository.write(decoy, "decoy\n");
+            let staged = repository.git_output(&["ls-files", "--stage"]);
+
+            ignore_path(&repository.path, "folder/selected.log", kind, false).unwrap();
+
+            assert_eq!(repository.git_output(&["ls-files", "--stage"]), staged);
+            assert_eq!(
+                fs::read_to_string(repository.path.join(".gitignore")).unwrap(),
+                format!("# staged rules\n{rule}")
+            );
+            for (file, content, expected) in [
+                ("folder/selected.log", "selected\n", 0),
+                (matching, "match\n", 0),
+                (decoy, "decoy\n", 1),
+                ("folder/tracked.log", "working edit\n", 1),
+            ] {
+                assert_eq!(
+                    fs::read_to_string(repository.path.join(file)).unwrap(),
+                    content
+                );
+                assert_eq!(
+                    run_git(&repository.path, &["check-ignore", "--quiet", "--", file])
+                        .unwrap()
+                        .status
+                        .code(),
+                    Some(expected),
+                    "{kind} rule: {file}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn ignore_directory_untracks_only_the_selected_file_and_preserves_other_changes() {
         let repository = TestRepository::new();
         #[cfg(not(target_os = "linux"))]

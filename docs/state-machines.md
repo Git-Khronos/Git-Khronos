@@ -201,6 +201,15 @@ the exact subset sent after the chunk is released.
 and retired submit controls. Native exact-patch and recovery checks remain
 authoritative when working bytes change independently.
 
+### Ignore rule review
+
+Ignoring one untracked path applies directly. Directory and extension rules
+can hide other untracked paths, so they use the checkout-bound file review
+even for an untracked selection. Cancel makes no Git request. Confirming an
+untracked selection adds the rule without requesting an index change;
+confirming a tracked selection can untrack only the selected file.
+`diff-action-lifecycle.spec.ts` covers both scopes and dispatch arguments.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a
