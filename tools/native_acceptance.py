@@ -1067,9 +1067,9 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     # manually refreshing it or replacing renderer state with IPC results.
     driver.click('.wip-nav')
     untracked = repository / "native-untracked.txt"
-    from native_watcher_scenarios import observe_untracked_refresh
-    with observe_untracked_refresh(driver, fixtures, report, repo_id,
-                                   os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1") as mark:
+    from native_watcher_scenarios import observe_repository_changes, observe_untracked_refresh
+    trace_watcher = os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1"
+    with observe_untracked_refresh(driver, fixtures, report, repo_id, trace_watcher) as mark:
         mark('create')
         untracked.write_text("discovered by the native status refresh\n")
         driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
@@ -1082,17 +1082,27 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     report["scenarios"].append("native-untracked-file-discovery-and-removal")
     # Branch changes outside the app must not discard untracked discovery while
     # the renderer reconciles the new HEAD's metadata.
-    fixtures.git(repository, "checkout", "-q", "-b", "native-status-probe")
-    untracked.write_text("untracked after an external checkout\n")
-    driver.wait('return !!document.querySelector(\'[aria-label^="Switch branch, current native-status-probe"]\')')
-    driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-    driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
-    untracked.unlink()
-    fixtures.git(repository, "checkout", "-q", "main")
-    fixtures.git(repository, "branch", "-D", "native-status-probe")
-    driver.wait('return !!document.querySelector(\'[aria-label^="Switch branch, current main"]\')')
-    driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-    assert not fixtures.git(repository, "status", "--porcelain")
+    probe = '[aria-label^="Switch branch, current native-status-probe,"]'
+    with observe_repository_changes(driver, fixtures, report, 'externalCheckoutObservation',
+                                    repository_id=repo_id, enabled=trace_watcher, selector=probe) as mark:
+        mark('checkout-start')
+        fixtures.git(repository, "checkout", "-q", "-b", "native-status-probe")
+        untracked.write_text("untracked after an external checkout\n")
+        assert fixtures.git(repository, "symbolic-ref", "--short", "HEAD") == "native-status-probe"
+        mark('git-checkout-complete')
+        driver.wait(f'return !!document.querySelector({json.dumps(probe)})')
+        mark('branch-rendered')
+        driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+        driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
+        mark('untracked-rendered')
+        untracked.unlink()
+        fixtures.git(repository, "checkout", "-q", "main")
+        fixtures.git(repository, "branch", "-D", "native-status-probe")
+        mark('git-restored-main')
+        driver.wait('return !!document.querySelector(\'[aria-label^="Switch branch, current main"]\')')
+        driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+        mark('main-rendered')
+        assert not fixtures.git(repository, "status", "--porcelain")
     report["scenarios"].append("native-external-checkout-and-untracked-discovery")
     repository_file_discard_recovery(driver, fixtures, repository, repo_id, report)
     checkpoint_lifecycle(driver, fixtures, repository, repo_id, checkpoints, report,

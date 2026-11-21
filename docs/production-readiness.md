@@ -246,6 +246,17 @@ on the same bytes. See `installed-release-matrix.json` and
 `jammy-installed-preflight.sha256` in the candidate directory. These
 results predate the later commit-draft and bulk-open fixes.
 
+The bulk-open build at `5893e70` has SHA-256
+`89abe87c72c22902fe315df705ece11ac8f63247b41eff9af678736ba309d8b8`
+and passed an APT simulation without changing the host package database.
+Multiple initial native runs timed out waiting for the toolbar to reflect an
+external checkout; a failure screenshot captured the new branch after the
+deadline. Exact-package traced watcher runs on Ubuntu 22.04 and 24.04 passed
+and observed actual watcher notifications and Git status reads. Those passes
+did not reproduce the original delay or establish its cause. The initial
+reports and the traced reports are retained under
+`target/local-review/updater/jammy-builder/bulk-open.BPaQhVGy/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

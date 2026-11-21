@@ -44,7 +44,9 @@ For watcher diagnosis, run `watcher-refresh` with
 `GIT_KHRONOS_NATIVE_TRACE_WATCHER=1`. The report records the native events,
 Git status read modes, and when the untracked row disappears. This does not
 force a refresh, change the convergence timeout, or substitute for the Git
-oracle after deletion.
+oracle after deletion. Smoke also checks Git's actual branch independently
+of the toolbar, and the trace distinguishes the external checkout,
+notifications, and the rendered branch and untracked row.
 
 ## Focused setup keyboard check
 
