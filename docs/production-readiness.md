@@ -322,6 +322,18 @@ accepted that exact SHA-256 with the fixture publisher key; see
 This does not qualify the later lazy diff and bulk relocation changes, or
 imply production signing or publication.
 
+The lazy-diff candidate at `b621971` has SHA-256
+`e64cbdd4bf985638142d3c7e1d87b4511afbd84125b7464e5a9ecb3892a1bda3`.
+On disposable Ubuntu 24.04 the exact installed package passed 30 file/media
+scenarios, 50 keyboard/setup scenarios (with fixture publisher trust), and
+the saved-workspace restore scenario. The first setup invocation selected
+the missing-key expectation despite building with fixture trust. The fresh
+setup and restore run explicitly expected the embedded fixture key. See
+`installed-focused.json` in
+`target/local-review/updater/jammy-builder/lazy-diff-workspace.wLdk9Bsw/`.
+This focused result does not qualify bulk relocation or substitute for
+the full release matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
