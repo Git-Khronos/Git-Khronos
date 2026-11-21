@@ -2,6 +2,9 @@ import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { isTauri } from '@tauri-apps/api/core';
 import { events, ipc, type ApplicationUpdateStatus } from '@git-khronos/contracts';
 
+const STATUS_READ_TIMEOUT_MS = 6_000;
+const STATUS_READ_TIMEOUT = Symbol('application-update-status-timeout');
+
 @Injectable({ providedIn: 'root' })
 export class ApplicationUpdatesService {
   readonly state = signal<ApplicationUpdateStatus | null>(null);
@@ -17,6 +20,7 @@ export class ApplicationUpdatesService {
   private disposed = false;
   private unlisten: (() => void) | null = null;
   private refreshing: Promise<void> | null = null;
+  private statusPollingPaused = false;
   private acceptedStatusGeneration = 0;
 
   constructor() {
@@ -30,8 +34,14 @@ export class ApplicationUpdatesService {
     if (!this.listening) {
       this.listening = true;
       void events.applicationUpdateChanged.listen(({ payload }) => this.accept(payload.state)).then(unlisten => {
-        if (this.disposed) unlisten(); else this.unlisten = unlisten;
-      }, () => this.liveError.set('Live update notifications are unavailable. This dialog still refreshes native status.'));
+        if (this.disposed) { unlisten(); return; }
+        this.unlisten = unlisten;
+        this.liveError.set('');
+      }, () => {
+        if (this.disposed) return;
+        this.listening = false;
+        this.liveError.set('Live update notifications are unavailable. This dialog still refreshes native status.');
+      });
     }
     await this.refresh();
   }
@@ -53,22 +63,46 @@ export class ApplicationUpdatesService {
       || (superseded && previous.revision === value.revision))) return;
     if (previous && previous.offerId !== value.offerId) this.error.set('');
     this.acceptedStatusGeneration++;
+    this.statusPollingPaused = false;
     this.statusError.set('');
     this.state.set(value);
   }
 
   refresh(): Promise<void> {
+    return this.readStatus(true);
+  }
+
+  pollStatus(): Promise<void> {
+    return this.readStatus(false);
+  }
+
+  private readStatus(explicit: boolean): Promise<void> {
     if (!this.native() || this.disposed) return Promise.resolve();
     if (this.refreshing) return this.refreshing;
+    if (!explicit && this.statusPollingPaused) return Promise.resolve();
     const generation = this.acceptedStatusGeneration;
-    this.refreshing = ipc.application_update_status().then(
-      value => this.accept(value, generation),
+    let timer!: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<typeof STATUS_READ_TIMEOUT>(resolve => {
+      timer = setTimeout(() => resolve(STATUS_READ_TIMEOUT), STATUS_READ_TIMEOUT_MS);
+    });
+    this.refreshing = Promise.race([ipc.application_update_status(), deadline]).then(
+      value => {
+        if (this.disposed) return;
+        if (value !== STATUS_READ_TIMEOUT) { this.accept(value, generation); return; }
+
+        // Abandon this view's read, not the native updater. Don't let the
+        // dialog timer keep queuing requests into an unresponsive bridge.
+        this.statusPollingPaused = true;
+        if (generation === this.acceptedStatusGeneration) {
+          this.statusError.set('Native update status did not respond in time. Select Refresh status to retry.');
+        }
+      },
       () => {
         if (!this.disposed && generation === this.acceptedStatusGeneration) {
           this.statusError.set('Native update status could not be read. Refresh status before starting a new update.');
         }
       },
-    ).finally(() => { this.refreshing = null; });
+    ).finally(() => { clearTimeout(timer); this.refreshing = null; });
     return this.refreshing;
   }
 

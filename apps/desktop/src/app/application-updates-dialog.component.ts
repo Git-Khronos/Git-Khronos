@@ -89,7 +89,7 @@ export class ApplicationUpdatesDialogComponent {
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   constructor() {
     void this.updates.activate();
-    const timer = setInterval(() => { if (this.owns(this.request())) void this.updates.refresh(); }, 1500);
+    const timer = setInterval(() => { if (this.owns(this.request())) void this.updates.pollStatus(); }, 1500);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
     afterNextRender(() => {
       if (this.owns(this.request())) {

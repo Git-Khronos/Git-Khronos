@@ -1509,6 +1509,11 @@ releases page on an explicit action and never converts a missing manifest into
 an up-to-date result, requests installation, or changes consent. Browser-open
 errors belong to the owning dialog. The native scheduler, not renderer timers
 or local storage, owns opt-in automatic checks and safe installation admission.
+An unanswered renderer status read is retired after six seconds. Only an
+explicit refresh or accepted native status can resume polling, and the retired
+reply can no longer change the view. A read timeout never retries an update
+operation or changes consent. Reopening the dialog can retry a failed event
+subscription.
 
 Coverage: native `application_update` policy, signature/version binding, bounded
 transport, real signed inert package metadata and receipt/worker fault tests;

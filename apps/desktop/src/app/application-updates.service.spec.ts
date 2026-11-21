@@ -59,6 +59,67 @@ describe('native-owned application updates service', () => {
     expect(bridge.listen).toHaveBeenCalledTimes(1);
   });
 
+  it('retires an unanswered status read without starting automatic replacements', async () => {
+    vi.useFakeTimers();
+    try {
+      const unanswered = deferred<ApplicationUpdateStatus>();
+      bridge.status.mockReturnValueOnce(unanswered.promise);
+      const service = create();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(service.statusError()).toContain('did not respond in time');
+      expect(service.state()).toBeNull();
+
+      await service.pollStatus();
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(1);
+      await service.refresh();
+      expect(bridge.status).toHaveBeenCalledTimes(2);
+      expect(service.statusError()).toBe('');
+      expect(service.state()?.revision).toBe(1);
+
+      // Even a higher revision cannot revive this retired read.
+      unanswered.resolve(state({ revision: 90, automatic: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.state()?.automatic).toBe(false);
+      expect(service.state()?.revision).toBe(1);
+
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(3);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a timeout cannot invalidate newer native events or replay an updater action', async () => {
+    vi.useFakeTimers();
+    try {
+      bridge.status.mockReturnValueOnce(new Promise(() => {}));
+      const service = create();
+      emit(state({ revision: 3, automatic: true }));
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(service.state()?.automatic).toBe(true);
+      expect(service.statusError()).toBe('');
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(1);
+      emit(state({ revision: 4, automatic: false }));
+      bridge.status.mockResolvedValueOnce(state({ revision: 4, automatic: false }));
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(2);
+      expect(bridge.check).not.toHaveBeenCalled();
+      expect(bridge.install).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('retries a failed live subscription on activation and clears the fallback notice', async () => {
+    bridge.listen.mockRejectedValueOnce(new Error('Owned event registration failure'));
+    const service = create();
+    await service.refresh();
+    expect(service.liveError()).toContain('unavailable');
+    await service.activate();
+    expect(bridge.listen).toHaveBeenCalledTimes(2);
+    expect(service.liveError()).toBe('');
+    emit(state({ revision: 3, automatic: true }));
+    expect(service.state()?.automatic).toBe(true);
+  });
+
   it('cannot let an old action response replace newer native offer state', async () => {
     const service = create(); await service.refresh();
     const check = deferred<ApplicationUpdateStatus>(); bridge.check.mockReturnValue(check.promise);

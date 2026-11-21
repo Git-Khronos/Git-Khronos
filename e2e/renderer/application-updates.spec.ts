@@ -258,6 +258,33 @@ test('release browsing stays usable during a pending status read without stackin
   await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
 });
 
+test('unanswered updater status can be retried without its late reply replacing current state', async ({ page }) => {
+  await page.clock.install();
+  await page.evaluate(() => { (window as any).__updates.holdStatus = true; });
+  const dialog = await open(page, false);
+  await expect(dialog.getByRole('status')).toContainText('Reading native update status');
+  await page.clock.fastForward(7000);
+  await expect(dialog.getByRole('alert')).toContainText('did not respond in time');
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+  await page.clock.fastForward(7000);
+  const reads = () => page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => call.command === 'application_update_status').length);
+  expect(await reads()).toBe(1);
+  await expect(dialog.getByRole('button', { name: /Browse official releases/ })).toBeEnabled();
+  await page.evaluate(() => { (window as any).__updates.holdStatus = false; });
+  await dialog.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+  await page.evaluate(() => {
+    const state = (window as any).__updates;
+    state.finishStatus(true, { ...state.status, revision: 90, automatic: true, message: 'Retired updater status' });
+  });
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+  await expect(dialog).not.toContainText('Retired updater status');
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(check_|install_|download_|set_automatic_)/.test(call.command)))).toEqual([]);
+});
+
 test('stale status disables new update actions but still permits disabling automatic mode', async ({ page }) => {
   await page.evaluate(() => (window as any).__updates.replace({
     automatic: true, offerId: 'owned-ready', offeredVersion: '0.2.0', verified: true,
