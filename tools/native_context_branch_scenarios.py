@@ -5,7 +5,7 @@ from native_worktree_scenarios import checkout_footprint
 
 
 def context_branch_workflow(driver, fixtures, report):
-    from native_acceptance import open_ui
+    from native_acceptance import open_ui, seed_commit_draft
     from native_setup_keyboard_scenarios import _chord
 
     repository = fixtures.repository('context-branch-review', commits=3)
@@ -20,8 +20,7 @@ def context_branch_workflow(driver, fixtures, report):
     target = fixtures.git(repository, 'rev-parse', 'refs/heads/owned-create-base')
     open_ui(driver, repository)
     draft = 'Owned commit draft must survive context branch creation'
-    driver.script('''const field = document.querySelector('#commit-summary');
-      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+    seed_commit_draft(driver, repository, draft)
     driver.wait("return !!document.querySelector('.commit-form button[type=submit]:not(:disabled)')")
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
     driver.context_click('[aria-label="Local branch owned-create-base"]')

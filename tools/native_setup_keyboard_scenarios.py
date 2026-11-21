@@ -19,7 +19,7 @@ def _chord(driver, key, shift=False):
 
 
 def setup_keyboard_isolation(driver, fixtures, report):
-    from native_acceptance import open_ui
+    from native_acceptance import open_ui, seed_commit_draft
 
     repository = fixtures.repository('setup-keyboard-isolation', commits=2)
     (repository / 'fixture.txt').write_text('Reviewed staged contents.\n')
@@ -32,9 +32,8 @@ def setup_keyboard_isolation(driver, fixtures, report):
     fixtures.git(repository, 'branch', 'owned-keyboard-branch')
     repo_id = open_ui(driver, repository)
     draft = 'Setup dialogs must not commit this draft'
-    driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
-      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
     ready = "return !!document.querySelector('.commit-form button[type=submit]:not(:disabled)')"
+    seed_commit_draft(driver, repository, draft)
     driver.wait(ready)
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
     observed = {}
@@ -109,8 +108,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     fixtures.git(repository, 'branch', 'owned-palette-rename')
     open_ui(driver, repository)
-    driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
-      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+    seed_commit_draft(driver, repository, draft)
     driver.wait(ready)
     rename_before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
     _chord(driver, 'p')

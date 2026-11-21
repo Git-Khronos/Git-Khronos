@@ -21,9 +21,29 @@ from urllib.error import HTTPError, URLError
 from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, linux_distribution, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
-    verified_installed_file, menu_tab_focus, probe_git_toolchain,
+    verified_installed_file, menu_tab_focus, probe_git_toolchain, seed_commit_draft,
     wait_webdriver_ready, webdriver_ports,
 )
+
+
+class CommitDraftReadinessTests(unittest.TestCase):
+    def test_draft_is_seeded_once_after_the_active_checkout_form_is_ready(self):
+        driver = MagicMock()
+        repository = Path('/owned/checkout "with spaces"')
+        seed_commit_draft(driver, repository, 'Owned draft')
+        self.assertEqual([entry[0] for entry in driver.mock_calls], ['wait', 'script'])
+        predicate = driver.wait.call_args.args[0]
+        self.assertIn(json.dumps(str(repository)), predicate)
+        self.assertIn('.commit-form #commit-summary', predicate)
+        self.assertIn("!field.closest('[inert]')", predicate)
+        self.assertEqual(driver.script.call_args.args[1:], ('Owned draft',))
+
+    def test_readiness_timeout_never_attempts_to_seed_a_draft(self):
+        driver = MagicMock()
+        driver.wait.side_effect = TimeoutError('No editable form')
+        with self.assertRaisesRegex(TimeoutError, 'No editable form'):
+            seed_commit_draft(driver, Path('/owned/pending'), 'Owned draft')
+        driver.script.assert_not_called()
 
 
 class LinuxDistributionTests(unittest.TestCase):

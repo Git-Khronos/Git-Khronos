@@ -699,6 +699,16 @@ def open_ui(driver, repository):
     return driver.invoke("open_repository", path=str(repository))["id"]
 
 
+def seed_commit_draft(driver, repository, draft):
+    """Wait for the editable form; history can paint before the first file scan."""
+    driver.wait("""const field = document.querySelector('.commit-form #commit-summary');
+      return document.querySelector('.status-repository-path')?.textContent.trim() === """ + json.dumps(str(repository)) + """
+        && field?.getClientRects().length > 0 && !field.disabled && !field.readOnly
+        && !field.closest('[inert]');""")
+    driver.script('''const field = document.querySelector('.commit-form #commit-summary');
+      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+
+
 def checkpoint_fixture(fixtures, repository):
     head = fixtures.git(repository, "rev-parse", "HEAD")
     tree = fixtures.git(repository, "rev-parse", "HEAD^{tree}")

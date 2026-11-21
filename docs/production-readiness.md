@@ -2679,3 +2679,24 @@ Matched production builds reduced initial assets from **1,336,204** to
 **1,332,226** bytes (3,978 bytes). The 900 kB warning and 1.45 MB hard limit
 are unchanged. The tab menu styles and action markup are absent from the
 initial asset list; this measures bytes, not startup latency.
+
+## Installed late clone recovery — 2026-11-21
+
+On Ubuntu 24.04, a real folder chooser and an owned HTTPS Git server held the
+manual clone mid-transfer while Repository Management closed and reopened.
+The earlier package from `474c97d` completed the clone but incorrectly made
+it active. The package from `6c52d4e` kept the original checkout active, saved
+the clone once, and let the user open it from Recents without another Git
+request. Independent Git checks confirmed the fetched commit and unchanged
+original checkout and remote source. The fixed installer SHA-256 is
+`66ea004a676f14b3bb5bea8edcadfc7ff0b12a905ec3ff7fc3a0d3adcf3a72d1`.
+The paired reports are in `target/local-review/repository-creation-installed.*`.
+These are focused installed checks with fixture trust, not full qualification.
+
+The earlier package's broad Jammy run reached 242 scenarios before the
+setup keyboard harness tried to seed a commit draft before the first file scan
+had mounted the form. Setup, context branch creation, and reference review
+now wait for the requested checkout's visible, editable commit form before
+seeding a draft. Waiting only for graph history is not sufficient.
+The focused Jammy rerun on the same package passed 52 scenarios with the
+private inherited Git context and expected fixture publisher trust.

@@ -6,7 +6,7 @@ from native_worktree_scenarios import checkout_footprint
 
 
 def reference_review_workflows(driver, fixtures, report):
-    from native_acceptance import open_ui
+    from native_acceptance import open_ui, seed_commit_draft
 
     repository = fixtures.repository('reference-review-workflows', commits=2)
     remote = fixtures.root / 'owned-reference-review-remote.git'
@@ -25,8 +25,7 @@ def reference_review_workflows(driver, fixtures, report):
     hook.chmod(0o700)
     open_ui(driver, repository)
     draft = 'Reference dialogs must not commit this staged draft'
-    driver.script('''const field = document.querySelector('[aria-label="Commit summary"]');
-      field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
+    seed_commit_draft(driver, repository, draft)
     driver.click_visible('#reference-section-tags .sidebar-heading')
     modal = 'gc-reference-action-dialog [role=alertdialog]'
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'untracked-note.txt'))
