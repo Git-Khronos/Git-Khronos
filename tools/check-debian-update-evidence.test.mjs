@@ -44,6 +44,14 @@ test('reads bounded regular local files and refuses symlinks and oversized evide
     const paths = ['receipt.json', 'report.json', 'key.pub'].map(name => join(root, name));
     await Promise.all([JSON.stringify(receipt), JSON.stringify(report), key].map((value, i) => writeFile(paths[i], value)));
     assert.equal(await checkEvidence(...paths), sha);
+    const packagePath = join(root, 'fixture.deb');
+    await assert.rejects(checkEvidence(...paths, packagePath), /requires a completed Ubuntu 22.04 build receipt/);
+    await writeFile(paths[0], JSON.stringify({ ...receipt, checksum: 'ubuntu-jammy:fixture' }));
+    await writeFile(packagePath, 'unqualified package bytes');
+    await assert.rejects(checkEvidence(...paths, packagePath), /differs from the qualified artifact/);
+    const packageLink = join(root, 'linked-package.deb');
+    await symlink(packagePath, packageLink);
+    await assert.rejects(checkEvidence(...paths, packageLink), { code: 'ELOOP' });
     const link = join(root, 'linked-report.json');
     await symlink(paths[1], link);
     await assert.rejects(checkEvidence(paths[0], link, paths[2]));

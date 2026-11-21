@@ -176,11 +176,45 @@ mod tests {
     use super::linux::stage;
     use sha2::{Digest, Sha256};
     use std::{fs, path::PathBuf};
+    use tauri_plugin_updater::{Updater, UpdaterExt};
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/application_updates/fixtures")
             .join(name)
+    }
+
+    fn manifest_consumer(
+        installed_version: &str,
+        verification_key: &str,
+        target: &str,
+    ) -> (tauri::App<tauri::test::MockRuntime>, Updater) {
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.package_info_mut().version = installed_version.parse().unwrap();
+        context.config_mut().plugins.0.insert(
+            "updater".into(),
+            serde_json::json!({"pubkey": verification_key, "requireSignedVersion": true}),
+        );
+        let app = tauri::test::mock_builder()
+            .plugin(
+                tauri_plugin_updater::Builder::new()
+                    .pubkey(verification_key)
+                    .build(),
+            )
+            .build(context)
+            .unwrap();
+        let updater = app
+            .updater_builder()
+            .target(target)
+            .endpoints(vec![
+                "https://github.com/Git-Khronos/Git-Khronos/releases/latest/download/latest.json"
+                    .parse()
+                    .unwrap(),
+            ])
+            .unwrap()
+            .build()
+            .unwrap();
+        (app, updater)
     }
 
     #[test]
@@ -203,7 +237,8 @@ mod tests {
             .unwrap();
             let manifest_bytes = fs::read(staged.join("latest.json")).unwrap();
             let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
-            let platform = &manifest["platforms"][format!("linux-{rust_arch}-deb")];
+            let target = format!("linux-{rust_arch}-deb");
+            let platform = &manifest["platforms"][&target];
             assert_eq!(manifest["version"], "0.2.0");
             assert_eq!(
                 platform["url"],
@@ -215,7 +250,22 @@ mod tests {
                 platform["signature"],
                 fs::read_to_string(signature).unwrap().trim()
             );
-            assert_eq!(fs::read(staged.join(&name)).unwrap(), bytes);
+            let staged_bytes = fs::read(staged.join(&name)).unwrap();
+            assert_eq!(staged_bytes, bytes);
+            let key = fs::read_to_string(fixture("public.key")).unwrap();
+            // The publisher and consumer are distinct: exercise the real
+            // updater against the exact manifest and bytes emitted by staging.
+            // Simulate each manifest target without changing process-wide
+            // bundle detection or introducing a network endpoint override.
+            let (_app, updater) = manifest_consumer("0.1.0", key.trim(), &target);
+            let offer = updater.restore_update(manifest.clone()).unwrap().unwrap();
+            assert_eq!(offer.version, "0.2.0");
+            assert_eq!(Some(offer.download_url.as_str()), platform["url"].as_str());
+            offer.verify(&staged_bytes).unwrap();
+            let (_app, current) = manifest_consumer("0.2.0", key.trim(), &target);
+            assert!(current.restore_update(manifest.clone()).unwrap().is_none());
+            let (_app, unsupported) = manifest_consumer("0.1.0", key.trim(), "linux-x86_64-rpm");
+            assert!(unsupported.restore_update(manifest).is_err());
             assert_eq!(
                 fs::read_to_string(staged.join("update-assets.sha256")).unwrap(),
                 format!(

@@ -170,16 +170,19 @@ Retain the package build receipt and the completed native environment report
 alongside the exact package. For a publisher-key-enabled Debian build, the
 report must include the configured-trust scenario
 (`GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1` selects its expected outcome).
-The local preflight produces the qualified digest only when the build receipt
-and native report agree on the package and publisher key:
+Before preparing assets for publication, run the strict preflight. It also
+requires the Jammy build profile and repeats the release ABI check on a private
+snapshot of the exact package:
 
 ```sh
 QUALIFIED_PACKAGE_SHA256=$(node tools/check-debian-update-evidence.mjs \
-  "$BUILD_RECEIPT" "$NATIVE_REPORT" "$PUBLIC_KEY_FILE") || exit 1
+  --release-package "$PACKAGE" "$BUILD_RECEIPT" "$NATIVE_REPORT" "$PUBLIC_KEY_FILE") || exit 1
 ```
 
 These are operator-owned local records, not signed provenance attestations.
-The release stager separately verifies the actual package bytes.
+For a local test build only, omit `--release-package` to check the matching
+build and runtime evidence without asserting the Ubuntu ABI. The release stager
+separately verifies the actual package bytes.
 
 With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:

@@ -1,10 +1,13 @@
 // Match operator-owned local build and acceptance evidence. These JSON records
 // are not signatures; the release stager still verifies the package itself.
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { constants, createWriteStream } from 'node:fs';
+import { mkdtemp, open, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
+import { checkPackage } from './check-linux-abi.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const TRUST_SCENARIO = 'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer';
@@ -49,18 +52,50 @@ export function qualifiedPackageDigest(receipt, report, publicKey) {
   return digest;
 }
 
-export async function checkEvidence(receiptPath, reportPath, keyPath) {
-  return qualifiedPackageDigest(
-    JSON.parse(await readBounded(receiptPath, 65536)),
+export async function checkEvidence(receiptPath, reportPath, keyPath, releasePackage) {
+  const receipt = JSON.parse(await readBounded(receiptPath, 65536));
+  const digest = qualifiedPackageDigest(
+    receipt,
     JSON.parse(await readBounded(reportPath, 4 * 1024 * 1024)),
     await readBounded(keyPath, 4096));
+  if (releasePackage !== undefined) {
+    if (typeof receipt.checksum !== 'string' || !/^ubuntu-jammy:[A-Za-z0-9_:+/=.-]+$/.test(receipt.checksum)) {
+      throw new Error('Publication requires a completed Ubuntu 22.04 build receipt');
+    }
+    const source = await open(releasePackage, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    let temporary;
+    try {
+      const info = await source.stat();
+      if (!info.isFile() || info.size < 1 || info.size > 512 * 1024 * 1024) {
+        throw new Error('Expected a bounded, regular release package');
+      }
+      temporary = await mkdtemp(join(tmpdir(), 'git-khronos-release-evidence-'));
+      const snapshot = join(temporary, 'candidate.deb');
+      const hash = createHash('sha256');
+      const bytes = source.createReadStream({ autoClose: false, end: info.size - 1 });
+      bytes.on('data', chunk => hash.update(chunk));
+      await pipeline(bytes, createWriteStream(snapshot, { flags: 'wx', mode: 0o600 }));
+      if (hash.digest('hex') !== digest) throw new Error('The release package differs from the qualified artifact');
+      if (checkPackage(snapshot).packageSha256 !== digest) {
+        throw new Error('The ABI-checked release package differs from the qualified artifact');
+      }
+    } finally {
+      await source.close();
+      if (temporary) await rm(temporary, { recursive: true, force: true });
+    }
+  }
+  return digest;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
   try {
-    if (args.length !== 3) throw new Error('Usage: check-debian-update-evidence BUILD-RECEIPT NATIVE-REPORT PUBLIC-KEY');
-    console.log(await checkEvidence(...args));
+    let releasePackage;
+    if (args[0] === '--release-package') [, releasePackage] = args.splice(0, 2);
+    if (args.length !== 3 || args.some(arg => arg.startsWith('--'))) {
+      throw new Error('Usage: check-debian-update-evidence [--release-package PACKAGE] BUILD-RECEIPT NATIVE-REPORT PUBLIC-KEY');
+    }
+    console.log(await checkEvidence(...args, releasePackage));
   } catch (error) {
     console.error(`Git Khronos: ${error.message}`);
     process.exitCode = 1;

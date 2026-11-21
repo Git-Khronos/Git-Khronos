@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
+import { checkEvidence } from './check-debian-update-evidence.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputs = [
@@ -640,10 +642,32 @@ test('Ubuntu ABI gate inspects the actual packaged ELF without running it', asyn
   const result = checkPackage(f.artifact);
   assert.equal(result.glibc.declared, '2.35');
   assert.match(result.packageSha256, /^[0-9a-f]{64}$/);
+  const key = 'owned-fixture-key';
+  const receipt = {
+    version: 1, checksum: 'ubuntu-jammy:fixture',
+    buildConfiguration: { updaterPublicKeySha256: createHash('sha256').update(key).digest('hex') },
+    outputs: { package: { sha256: result.packageSha256 } },
+  };
+  const report = {
+    suite: 'environment', passed: true, packageSha256: result.packageSha256,
+    scenarios: ['native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer'],
+    applicationUpdates: { nativeStatus: { packageFormat: 'deb', configured: true, automatic: false, offerId: null, canInstall: false } },
+  };
+  const evidence = ['receipt.json', 'report.json', 'public.key'].map(name => join(f.root, name));
+  const saveEvidence = async () => {
+    await Promise.all([JSON.stringify(receipt), JSON.stringify(report), key]
+      .map((value, index) => writeFile(evidence[index], value)));
+  };
+  await saveEvidence();
+  assert.equal(await checkEvidence(...evidence, f.artifact), result.packageSha256);
   const control = await readFile(join(f.payload, 'DEBIAN/control'), 'utf8');
   await f.put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6 (>= 2.39)'));
   f.build();
   assert.throws(() => checkPackage(f.artifact), /Release libc6 floor is 2.39/);
+  receipt.outputs.package.sha256 = report.packageSha256 = createHash('sha256')
+    .update(await readFile(f.artifact)).digest('hex');
+  await saveEvidence();
+  await assert.rejects(checkEvidence(...evidence, f.artifact), /Release libc6 floor is 2.39/);
   await f.put('usr/bin/git-khronos', '#!/bin/sh\nexit 0\n');
   f.build();
   assert.throws(() => checkPackage(f.artifact), /Command failed/);
