@@ -13,6 +13,13 @@ installed keyboard/setup checks on both Ubuntu 24.04 (Git 2.43) and Debian 12
 previous package's +4/−0. Debian 12 also passed the worktree (23) and updater
 (21) checks on the same bytes. Package SHA-256:
 `8bbab05106e6195e2ec43e4ff9d0062d5bfe64ab5752a3747690d322947248aa`.
+The same package passed all 273 installed inherited-environment checks with
+Git 2.53 on Ubuntu 24.04 and the strict release preflight. The report, checksum
+and installer are retained under
+`target/local-review/updater/jammy-builder/rename-recap.Eqmxn2eV/`.
+To inspect installation without changing the host, pass the exact retained
+`.deb` to `bash install.sh --deb "$PACKAGE" --dry-run`; `task install:linux`
+instead builds and installs the current checkout.
 The next candidate includes the same-status refresh fix and an installed
 external-edit test; these earlier package results do not qualify that fix.
 
