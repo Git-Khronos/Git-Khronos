@@ -158,12 +158,12 @@ test('late preparation after switching away and back cannot reopen captured merg
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const source = (window as any).__mergeRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
-    app.git.activeRepositoryId.set('merge-other');
+    app.git.activateRepository('merge-other');
   });
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('merge-other');
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    app.git.activeRepositoryId.set((window as any).__mergeRebase.original.id);
+    app.git.activateRepository((window as any).__mergeRebase.original.id);
   });
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId()))
     .toBe(await page.evaluate(() => (window as any).__mergeRebase.original.id));
@@ -180,7 +180,25 @@ test('loaded merge review closes on repository switch without rewriting another 
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const source = (window as any).__mergeRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
-    app.git.activeRepositoryId.set('merge-other');
+    app.git.activateRepository('merge-other');
+  });
+  await expect(dialog).toHaveCount(0);
+  expect((await page.evaluate(() => (window as any).__mergeRebase.calls))
+    .some((call: any) => call.command === 'execute_merge_rebase')).toBe(false);
+});
+
+test('a merge-preserving review cannot start after returning to the same checkout before render', async ({ page }) => {
+  await openReview(page);
+  const dialog = page.getByRole('dialog', { name: 'Rebase preserving merges', exact: true });
+  const start = dialog.getByRole('button', { name: 'Start merge-preserving rebase', exact: true });
+  await expect(start).toBeEnabled();
+  await start.evaluate(button => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const original = git.repository();
+    git.repositories.update((items: any[]) => [...items, { ...original, id: 'merge-other', path: '/owned/merge-other' }]);
+    git.activateRepository('merge-other');
+    git.activateRepository(original.id);
+    (button as HTMLButtonElement).click();
   });
   await expect(dialog).toHaveCount(0);
   expect((await page.evaluate(() => (window as any).__mergeRebase.calls))

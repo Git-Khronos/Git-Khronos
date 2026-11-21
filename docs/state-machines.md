@@ -67,6 +67,15 @@ The native listing has a five-second ceiling and respects any earlier
 deadline. On timeout Git is stopped without publishing partial results,
 and the palette distinguishes a failed file search from no matches.
 
+### Rebase review
+
+Both the interactive editor and the merge-preserving review belong to one
+active checkout visit. Accepting a prepared plan, starting Git, and
+applying navigation or focus changes cannot cross visits. An
+away-and-back tab change retires the earlier review even when the renderer
+never drew the intervening checkout. The original native mutation receipt
+still belongs to the command; retiring the review does not cancel or replay it.
+
 ### Diff patch export
 
 The patch panel owns the reviewed diff scope and explicit path selection.

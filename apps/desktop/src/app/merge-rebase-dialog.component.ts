@@ -5,6 +5,7 @@ import { GitHelpComponent } from './git-help.component';
 
 export interface MergeRebaseDialogState {
   repositoryId: string;
+  checkoutScope: string;
   plan: MergeRebasePlan;
   returnFocus: HTMLElement | null;
 }
@@ -44,7 +45,7 @@ export interface MergeRebaseDialogState {
           <p>If Git is now paused, close this review and use the operation controls rather than restarting replay.</p> }
         <gc-git-help topic="merge-rebase" label="Learn about preserving merge topology…" />
         <footer><button data-merge-rebase-cancel type="button" [disabled]="git.busy()" (click)="close()">Cancel</button>
-          <button type="button" [disabled]="git.busy() || failed() || state().repositoryId !== git.activeRepositoryId()" (click)="start()">Start merge-preserving rebase</button></footer>
+          <button type="button" [disabled]="git.busy() || failed() || state().checkoutScope !== git.activeRepositoryReadScope()" (click)="start()">Start merge-preserving rebase</button></footer>
       </section>
     </div>
   `,
@@ -75,7 +76,7 @@ export class MergeRebaseDialogComponent {
     const state = this.state();
     this.closed.emit();
     setTimeout(() => {
-      if (state.repositoryId !== this.git.activeRepositoryId()) return;
+      if (state.checkoutScope !== this.git.activeRepositoryReadScope()) return;
       if (state.returnFocus?.isConnected && state.returnFocus.getClientRects().length) state.returnFocus.focus();
       else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
     });
@@ -84,7 +85,9 @@ export class MergeRebaseDialogComponent {
   protected async start(): Promise<void> {
     if (this.failed() || this.git.busy()) return;
     const state = this.state();
+    if (state.checkoutScope !== this.git.activeRepositoryReadScope()) return;
     const success = await this.git.executeMergeRebase(state.repositoryId, state.plan.request);
+    if (this.state() !== state || state.checkoutScope !== this.git.activeRepositoryReadScope()) return;
     if (success) this.close();
     else {
       this.failed.set(true);

@@ -406,7 +406,7 @@ test('changing repositories closes the plan and refuses stale execution against 
     (window as any).__savedRebase = app.interactiveRebase();
     const other = { ...app.git.repository(), id: 'other-fixture', name: 'Other fixture' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
-    app.git.activeRepositoryId.set(other.id);
+    app.git.activateRepository(other.id);
   });
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   await page.evaluate(async () => {
@@ -430,12 +430,12 @@ test('late preparation cannot reopen a plan after switching away and back', asyn
     (window as any).__originalRepositoryId = app.git.activeRepositoryId();
     const other = { ...app.git.repository(), id: 'other-fixture', name: 'Other fixture' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
-    app.git.activeRepositoryId.set(other.id);
+    app.git.activateRepository(other.id);
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    app.git.activeRepositoryId.set((window as any).__originalRepositoryId);
+    app.git.activateRepository((window as any).__originalRepositoryId);
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.evaluate(() => (window as any).__resolveRebasePreparation());
@@ -444,6 +444,42 @@ test('late preparation cannot reopen a plan after switching away and back', asyn
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__rebaseCalls
     .some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
+});
+
+test('a late rebase plan cannot reopen after an away-and-back transition within one render', async ({ page }) => {
+  await page.getByRole('button', { name: 'Close interactive rebase' }).click();
+  await page.evaluate(() => { (window as any).__deferRebasePreparation = true; });
+  await page.locator('.branch-item').filter({ hasText: 'feature/partial-staging' }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Interactive rebase main onto feature/partial-staging' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveRebasePreparation)).toBe('function');
+  const changedVisit = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const original = git.repository();
+    const originalScope = git.activeRepositoryReadScope();
+    git.repositories.update((items: any[]) => [...items, { ...original, id: 'transient-rebase-fixture', path: '/owned/rebase-other' }]);
+    git.activateRepository('transient-rebase-fixture');
+    git.activateRepository(original.id);
+    (window as any).__resolveRebasePreparation();
+    return git.activeRepositoryReadScope() !== originalScope;
+  });
+  expect(changedVisit).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).ng
+    .getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
+});
+
+test('a reviewed rebase cannot start after returning to the same checkout before render', async ({ page }) => {
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const original = app.git.repository();
+    app.git.repositories.update((items: any[]) => [...items, { ...original, id: 'transient-rebase-fixture', path: '/owned/rebase-other' }]);
+    app.git.activateRepository('transient-rebase-fixture');
+    app.git.activateRepository(original.id);
+    await app.executeInteractiveRebase();
+  });
+  expect(await page.evaluate(() => (window as any).__rebaseCalls
+    .some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
+  await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
 });
 
 

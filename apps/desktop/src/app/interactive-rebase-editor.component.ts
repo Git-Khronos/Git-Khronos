@@ -12,6 +12,7 @@ export interface RebaseStepView extends InteractiveRebaseCommit {
 }
 export interface InteractiveRebaseState {
   repositoryId: string;
+  checkoutScope: string;
   source: string;
   target: string;
   base: string;

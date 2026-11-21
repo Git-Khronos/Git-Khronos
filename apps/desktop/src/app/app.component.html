@@ -2232,7 +2232,7 @@
       @if (interactiveRebase(); as rebase) {
       <gc-interactive-rebase-editor [state]="rebase" [selected]="selectedRebaseOid()" [dragged]="draggedRebaseOid()"
         [ready]="canExecuteInteractiveRebase() && !git.busy()" [colorFor]="rebaseAuthorColor"
-        (closed)="interactiveRebase.set(null)" (selectedChanged)="selectRebaseStep($event)"
+        (closed)="closeInteractiveRebase()" (selectedChanged)="selectRebaseStep($event)"
         (actionChanged)="setRebaseAction($event.oid, $event.action)" (messageChanged)="updateRebaseMessage($event.oid, $event.message)"
         (dragStarted)="startRebaseStepDrag($event.event, $event.oid)" (dropped)="dropRebaseStep($event.event, $event.oid)"
         (dragEnded)="draggedRebaseOid.set(null)" (planChanged)="updateRebasePlan($event)" (stepMoved)="moveRebaseStep($event.oid, $event.direction)"

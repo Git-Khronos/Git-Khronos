@@ -172,7 +172,7 @@ test('loaded whole-history review is invalidated on repository switch without ex
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'root-other', path: '/owned/other' }]);
-    app.git.activeRepositoryId.set('root-other');
+    app.git.activateRepository('root-other');
   });
   await expect(dialog).toHaveCount(0);
   const fixture = await page.evaluate(() => (window as any).__selectedRebase);
@@ -259,7 +259,7 @@ test('repository switching invalidates an onto destination and cannot execute ca
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'onto-other', path: '/owned/other' }]);
-    app.git.activeRepositoryId.set('onto-other');
+    app.git.activateRepository('onto-other');
   });
   await expect(dialog).toHaveCount(0);
   const calls = await page.evaluate(() => (window as any).__selectedRebase.calls);
@@ -365,12 +365,12 @@ test('repository switch cancels selected review and delayed preparation cannot r
     const git = app.git;
     const source = (window as any).__selectedRebase.original;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'selected-other', path: '/owned/other' }]);
-    git.activeRepositoryId.set('selected-other');
+    git.activateRepository('selected-other');
   });
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('selected-other');
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    app.git.activeRepositoryId.set((window as any).__selectedRebase.original.id);
+    app.git.activateRepository((window as any).__selectedRebase.original.id);
   });
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId()))
     .toBe(await page.evaluate(() => (window as any).__selectedRebase.original.id));
@@ -389,7 +389,7 @@ test('loaded selected review closes on repository switch without executing again
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'selected-other', path: '/owned/other' }]);
-    app.git.activeRepositoryId.set('selected-other');
+    app.git.activateRepository('selected-other');
   });
   await expect(dialog).toHaveCount(0);
   const fixture = await page.evaluate(() => (window as any).__selectedRebase);

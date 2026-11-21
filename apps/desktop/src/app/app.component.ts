@@ -2206,12 +2206,8 @@ export class AppComponent implements OnInit, OnDestroy {
         this.savedDiscardsReturnFocus = null;
         this.referenceAction.set(null);
         this.stashDialog.set(null);
-        this.rebaseRequest++;
-        this.interactiveRebase.set(null);
-        this.mergeRebaseReview.set(null);
         this.mergePreviewRequest.set(null);
         this.branchWorkflowRequest.set(null);
-        this.selectedRebaseOid.set(null);
         this.pendingHistoryAction.set(null);
       });
     });
@@ -2220,6 +2216,10 @@ export class AppComponent implements OnInit, OnDestroy {
       untracked(() => {
         const request = this.checkoutWorktreeRequest();
         if (request && request.scope !== scope) this.checkoutWorktreeRequest.set(null);
+        const rebase = this.interactiveRebase();
+        if (rebase && rebase.checkoutScope !== scope) this.closeInteractiveRebase();
+        const mergeRebase = this.mergeRebaseReview();
+        if (mergeRebase && mergeRebase.checkoutScope !== scope) this.mergeRebaseReview.set(null);
       });
     });
     this.applyAppTheme(this.appTheme());
@@ -3966,6 +3966,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const state = this.interactiveRebase();
     const first = state?.steps.find((step) => step.action !== 'drop');
     return !!state?.steps.length
+      && state.checkoutScope === this.git.activeRepositoryReadScope()
       && (!state.root || !!first)
       && first?.action !== 'squash' && first?.action !== 'fixup'
       && state.steps.every((step) => step.action !== 'reword' || !!step.message.trim());
@@ -4083,6 +4084,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (steps[1]) steps[1].message = 'Clarify graph column preferences\n\nKeep widths and order per repository.';
         this.interactiveRebase.set({
           repositoryId: repository.id,
+          checkoutScope: this.git.activeRepositoryReadScope(),
           source,
           target,
           base: commits[0].parents[0] ?? '',
@@ -4537,8 +4539,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (event.key === 'Escape' && this.interactiveRebase()) {
       event.preventDefault();
-      this.interactiveRebase.set(null);
-      this.selectedRebaseOid.set(null);
+      this.closeInteractiveRebase();
       return;
     }
     if (event.key === 'Escape' && this.branchDropMenu()) {
@@ -8765,11 +8766,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!menu || menu.kind !== 'branch' || !source || !repositoryId || source === menu.label || this.git.busy()) return;
     const returnFocus = this.contextMenuReturnFocus;
+    const checkoutScope = this.git.activeRepositoryReadScope();
     this.actionOverlays.close('context');
     const request = ++this.rebaseRequest;
     const plan = await this.git.prepareMergeRebase(repositoryId, source, menu.label);
-    if (plan && request === this.rebaseRequest && repositoryId === this.git.activeRepositoryId()) {
-      this.mergeRebaseReview.set({ repositoryId, plan, returnFocus });
+    if (plan && request === this.rebaseRequest && checkoutScope === this.git.activeRepositoryReadScope()) {
+      this.mergeRebaseReview.set({ repositoryId, checkoutScope, plan, returnFocus });
     }
   }
 
@@ -8800,8 +8802,14 @@ export class AppComponent implements OnInit, OnDestroy {
     else this.rebaseLoaderClose()?.nativeElement.focus();
   }
   protected closeRebaseReviewLoader(): void {
-    this.interactiveRebase.set(null);
+    this.rebaseRequest++;
+    this.closeInteractiveRebase();
     this.mergeRebaseReview.set(null);
+  }
+  protected closeInteractiveRebase(): void {
+    this.interactiveRebase.set(null);
+    this.selectedRebaseOid.set(null);
+    this.draggedRebaseOid.set(null);
   }
   protected readonly rebaseAuthorColor = (name: string, email: string): string => this.authorColor(name, email);
   protected moveRebaseStep(oid: string, direction: -1 | 1): void {
@@ -8885,15 +8893,19 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async executeInteractiveRebase(): Promise<void> {
     const state = this.interactiveRebase();
     if (!state || !this.git.requireRecoveryRepository(state.repositoryId)) return;
+    if (state.checkoutScope !== this.git.activeRepositoryReadScope()) {
+      this.closeInteractiveRebase();
+      return;
+    }
+    if (this.git.busy() || !this.canExecuteInteractiveRebase()) return;
     const steps: InteractiveRebaseStep[] = state.steps.map((step) => ({
       oid: step.oid,
       action: step.action,
       message: step.action === 'reword' ? step.message.trim() : null,
     }));
-    this.interactiveRebase.set(null);
-    this.selectedRebaseOid.set(null);
+    this.closeInteractiveRebase();
     await this.git.executeInteractiveRebase(state.source, state.target, steps, state.selectionOids, state.root, state.ontoOid);
-    if (this.repositoryOperation().rebaseInProgress) this.selectWip();
+    if (state.checkoutScope === this.git.activeRepositoryReadScope() && this.repositoryOperation().rebaseInProgress) this.selectWip();
   }
 
   protected async controlRebase(action: 'continue' | 'skip' | 'abort'): Promise<void> {
@@ -9008,15 +9020,17 @@ export class AppComponent implements OnInit, OnDestroy {
   private async openInteractiveRebase(source: string, target: string, selectionOids?: string[], root = false): Promise<void> {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
+    const checkoutScope = this.git.activeRepositoryReadScope();
     const request = ++this.rebaseRequest;
     const plan = await this.git.prepareInteractiveRebase(source, target, selectionOids, root);
-    if (!plan || request !== this.rebaseRequest || repositoryId !== this.git.activeRepositoryId()) return;
+    if (!plan || request !== this.rebaseRequest || checkoutScope !== this.git.activeRepositoryReadScope()) return;
     const steps = plan.commits.map((commit): RebaseStepView => ({
       ...commit,
       action: 'pick',
     }));
     this.interactiveRebase.set({
       repositoryId,
+      checkoutScope,
       source: plan.source,
       target: plan.target,
       base: plan.base,
