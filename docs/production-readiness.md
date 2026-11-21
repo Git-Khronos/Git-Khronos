@@ -3104,6 +3104,16 @@ and verified automatic updates were off with publisher trust configured.
 Both reports remain under `non-pruning-fetch-release.V8T90CRs/`; this
 focused run does not substitute for the full Linux matrix.
 
+The unchanged `ef28d9d` installer subsequently passed the full Linux
+verification for that source: 37/37 gates and 52 passing reports across
+five Ubuntu and Debian versions. The initial Ubuntu 24.04 GitLab run
+refused Connect before an API request or a fixture TLS negotiation was
+recorded. Its isolated recheck passed 47 scenarios, including one
+negotiated TLS connection and one expected API request at Connect.
+The fixture-key installer, checksum, verification JSON and successful
+APT preview are in `target/local-review/qualified-0.1.6-ef28d9d/`. This
+does not qualify the later checkout change or the production publisher.
+
 Successful manual Fetch options now re-enable an automatic Fetch paused
 by an earlier failure only when the manual scope covers the repository.
 One of multiple remotes is not enough. A background reply from a closed
@@ -3112,6 +3122,9 @@ failed on the old renderer, then passed with 44 related cases. AOT build
 passed with 311 more raw initial JavaScript bytes and unchanged CSS.
 Renderer receipts are under `target/local-review/fetch-retry-scope.O2fbig8N/`.
 This renderer change is newer than the installed `ef28d9d` proof above.
+The later `4b6d990` installer independently passed the focused native
+Updates (19 cases) and working-tree recaps (8 cases) suites. This is not
+a full matrix for that package.
 
 ### Detached-checkout native hit target
 
