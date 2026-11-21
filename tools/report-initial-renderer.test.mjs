@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -84,10 +84,18 @@ test('CLI cross-checks file sizes against metadata in the selected output direct
     const args = [fileURLToPath(new URL('./report-initial-renderer.mjs', import.meta.url)), root];
     const report = JSON.parse(execFileSync(process.execPath, args, { encoding: 'utf8' }));
     assert.equal(report.initialBytes, 3);
+    const recorded = join(root, 'initial-renderer.json');
+    const receipt = execFileSync(process.execPath, [...args, '--record'], { encoding: 'utf8' });
+    assert.match(receipt, /Initial renderer: 3 bytes/);
+    assert.deepEqual(JSON.parse(readFileSync(recorded, 'utf8')), report);
+    assert.deepEqual(readdirSync(browser).sort(), ['index.html', 'main.js']);
+    assert.deepEqual(readdirSync(root).sort(), ['browser', 'browser-stats.json', 'initial-renderer.json']);
+    rmSync(recorded);
     writeFileSync(asset, 'changed');
-    const mismatch = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    const mismatch = spawnSync(process.execPath, [...args, '--record'], { encoding: 'utf8' });
     assert.equal(mismatch.status, 1);
     assert.match(mismatch.stderr, /asset size differ: main.js/);
+    assert.equal(existsSync(recorded), false);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

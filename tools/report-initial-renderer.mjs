@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -85,7 +85,10 @@ export function initialRendererReport(html, metadata, budget) {
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
-    if (process.argv.length !== 3) throw new Error('Usage: node tools/report-initial-renderer.mjs BUILD-OUTPUT-DIRECTORY');
+    const record = process.argv.length === 4 && process.argv[3] === '--record';
+    if (process.argv.length !== 3 && !record) {
+      throw new Error('Usage: node tools/report-initial-renderer.mjs BUILD-OUTPUT-DIRECTORY [--record]');
+    }
     const directory = resolve(process.argv[2]);
     const angular = JSON.parse(readFileSync(new URL('../angular.json', import.meta.url), 'utf8'));
     const budget = angular.projects.desktop.architect.build.configurations.production.budgets.find(item => item.type === 'initial');
@@ -100,7 +103,22 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
         throw new Error(`Build metadata and emitted asset size differ: ${asset.path}`);
       }
     }
-    console.log(JSON.stringify(report, null, 2));
+    const json = JSON.stringify(report, null, 2);
+    if (!record) console.log(json);
+    else {
+      // Keep diagnostics beside the production browser directory, not inside
+      // Tauri's packaged assets. Do not leave a partial report on write failure.
+      const destination = join(directory, 'initial-renderer.json');
+      const temporary = mkdtempSync(join(directory, '.initial-renderer-'));
+      try {
+        const staged = join(temporary, 'report.json');
+        writeFileSync(staged, json + '\n');
+        renameSync(staged, destination);
+      } finally {
+        rmSync(temporary, { recursive: true, force: true });
+      }
+      console.log(`Initial renderer: ${report.initialBytes} bytes (${report.warningOverageBytes} over warning, ${report.errorHeadroomBytes} error headroom). Report: ${destination}`);
+    }
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

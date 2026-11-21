@@ -103,6 +103,14 @@ jobs:
           package="$(task --silent package:deb:path)"
           mkdir -p test-results
           node tools/check-linux-abi.mjs "$package" > test-results/ubuntu-abi-build.json
+      - name: Retain measured build diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-build-diagnostics-${{ github.run_attempt }}
+          path: |
+            dist/apps/desktop/initial-renderer.json
+            test-results/ubuntu-abi-build.json
+          if-no-files-found: error
       - name: Install checksum-verified Syft
         run: |
           version=1.57.1

@@ -97,6 +97,7 @@ tasks:
       - THIRD_PARTY_NOTICES.md
       - tools/check-node.mjs
       - tools/check-production-renderer.mjs
+      - tools/report-initial-renderer.mjs
       - tools/prepare-linux-package.mjs
       - tools/prepare-rust-notices.mjs
       - tools/prepare-frontend-notices.mjs

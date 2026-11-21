@@ -525,8 +525,8 @@ new build. The sizing evidence is local at
 To reproduce a before/after report without touching the package build output:
 
 ```sh
-pnpm nx run desktop:build --stats-json --output-path=target/local-review/bundle-size
-node tools/report-initial-renderer.mjs target/local-review/bundle-size
+pnpm nx run desktop:build --output-path=target/local-review/bundle-size
+cat target/local-review/bundle-size/initial-renderer.json
 ```
 
 The report follows the generated index and its static imports, cross-checks
@@ -534,6 +534,10 @@ the emitted file sizes and prints the configured budget headroom. It reports
 the bundler's unverified input ranking separately and identifies chunks whose
 input attribution exceeds their emitted size. Lazy-only chunks are excluded,
 and the report doesn't change the Angular build gate.
+Production builds record the report beside `browser/`, so it does not get
+embedded in the desktop app. The release candidate workflow retains it with
+the build ABI report as a diagnostic artifact, not a downloadable installer
+asset or a signing receipt.
 
 The file-action menu extraction moved the working-tree and historical menu
 contents behind the first context-menu request. A before/after production

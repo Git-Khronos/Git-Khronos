@@ -26,6 +26,7 @@
           "configurations": {
             "production": {
               "define": { "GIT_KHRONOS_BROWSER_PREVIEW_FIXTURES": "false" },
+              "statsJson": true,
               "budgets": [
                 { "type": "initial", "maximumWarning": "900kB", "maximumError": "1.45MB" },
                 { "type": "anyComponentStyle", "maximumWarning": "76kB", "maximumError": "80kB" }

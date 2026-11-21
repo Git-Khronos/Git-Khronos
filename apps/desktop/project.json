@@ -99,13 +99,14 @@
       "executor": "nx:run-commands",
       "defaultConfiguration": "production",
       "cache": true,
-      "inputs": ["production", "^production", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
+      "inputs": ["production", "^production", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs", "{workspaceRoot}/tools/report-initial-renderer.mjs"],
       "outputs": ["{options.output-path}"],
       "options": {
         "output-path": "dist/apps/desktop",
         "commands": [
           { "command": "ng build desktop", "forwardAllArgs": true },
-          { "command": "node tools/check-production-renderer.mjs \"{args.output-path}/browser\"", "forwardAllArgs": false }
+          { "command": "node tools/check-production-renderer.mjs \"{args.output-path}/browser\"", "forwardAllArgs": false },
+          { "command": "node tools/report-initial-renderer.mjs \"{args.output-path}\" --record", "forwardAllArgs": false }
         ],
         "parallel": false
       },
