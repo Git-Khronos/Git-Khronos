@@ -220,8 +220,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
   repository data and local settings kept)
 - [ ] Expanded Git LFS diagnostics
   (tracking-rule listing, reviewed root untrack and working/index effective
-  attributes, bounded local-object diagnostics and reviewed single-file cache
-  fetch with local-transfer retry/cancellation, SHA-256-verified single-pointer
+  attributes, bounded checkout counts and local-object diagnostics, and
+  reviewed single-file cache fetch with local-transfer retry/cancellation,
+  SHA-256-verified single-pointer
   hydration and reviewed file lock/unlock/force-unlock against a local lock
   server and reviewed removal of unreferenced cached objects are qualified; live
   HTTPS/SSH LFS transfer, hosted-lock and packaged acceptance remain)

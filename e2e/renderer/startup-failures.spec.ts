@@ -139,9 +139,25 @@ test('announces operation outcomes in a persistent status region', async ({ page
   await expect(status).toHaveText('Git status: Fetch completed');
 });
 
-test('shows checked-out LFS pointers in the toolbar and options', async ({ page }) => {
+test('shows LFS entries without full working-tree files in the toolbar and options', async ({ page }) => {
   await page.goto('/?lfs-preview');
   await expect(page.locator('.lfs-pointer-count')).toHaveText('2');
   await page.getByRole('button', { name: 'Git LFS options', exact: true }).click();
-  await expect(page.locator('.lfs-menu-status')).toContainText('2 still pointers');
+  await expect(page.locator('.lfs-menu-status')).toContainText('2 not materialized');
+});
+
+test('discloses an unavailable LFS count without reporting zero or blocking LFS work', async ({ page }) => {
+  await page.goto('/?lfs-preview');
+  await expect(page.locator('.lfs-pointer-count')).toHaveText('2');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((repositories: any[]) => repositories.map(repo => ({
+      ...repo, lfs: { ...repo.lfs, trackedFiles: null, pointerFiles: null },
+    })));
+  });
+  await expect(page.locator('.lfs-pointer-count')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Git LFS options', exact: true }).click();
+  await expect(page.locator('.lfs-menu-status')).toContainText('File counts unavailable');
+  await expect(page.locator('.lfs-menu-status')).not.toContainText('0 tracked files');
+  await expect(page.getByRole('menuitem', { name: /Pull LFS objects/ })).toBeEnabled();
 });

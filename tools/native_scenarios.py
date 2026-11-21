@@ -4470,6 +4470,7 @@ def advanced(driver, fixtures, report):
     assert call("lfs_tracking_rules")["patterns"]
     assert call("lfs_file_attributes", file="object.native-bin")["attributes"]
     report["scenarios"].append("native-lfs-initialize-track-commit-inspect")
+    lfs_checkout_counts(driver, fixtures, report)
 
     contents = b"protected native CRLF object\n"
     pointer = fixtures.git(repository, "lfs", "clean", input=contents)
@@ -4525,6 +4526,31 @@ def advanced(driver, fixtures, report):
     assert fixtures.git(repository, "rev-parse", f"refs/replace/{pointer_oid}").strip() == replacement_oid
     report["scenarios"].append("native-lfs-prune-protects-original-pointer-behind-replacement-ref")
     lfs_prune_scan_cancellation(driver, fixtures, repository, repo_id, report)
+
+
+def lfs_checkout_counts(driver, fixtures, report):
+    from native_worktree_scenarios import checkout_footprint
+
+    repository = fixtures.repository("lfs-checkout-counts", commits=1)
+    fixtures.git(repository, "lfs", "install", "--local")
+    fixtures.git(repository, "lfs", "track", "*.bin")
+    tricky = "part\n" + "0" * 64 + " - looks-like-another-record.bin"
+    names = (tricky, "ordinary.bin")
+    (repository / tricky).write_bytes(b"Full local data\n")
+    ordinary = repository / "ordinary.bin"
+    ordinary.write_bytes(b"Data to replace with a pointer\n")
+    fixtures.git(repository, "add", "--", ".gitattributes", *names)
+    fixtures.git(repository, "commit", "-qm", "Owned LFS sidebar count fixture")
+    ordinary.write_text(fixtures.git(repository, "show", "HEAD:ordinary.bin") + "\n")
+    fixtures.git(repository, "config", "lfs.fetchinclude", "missing.bin")
+    before = checkout_footprint(fixtures, repository, names)
+    repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+    counts = driver.invoke("refresh_repository", repoId=repo_id)["lfs"]
+    assert counts["available"] and counts["enabled"], counts
+    assert (counts["trackedFiles"], counts["pointerFiles"]) == (2, 1), counts
+    assert checkout_footprint(fixtures, repository, names) == before
+    report["lfsCheckoutCounts"] = {"tracked": 2, "notMaterialized": 1, "unchanged": True}
+    report["scenarios"].append("native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters")
 
 
 def lfs_empty_store_review(driver, fixtures, repository, repo_id, report):

@@ -248,6 +248,14 @@ suites. Older reports may not identify the userspace distribution. This
 summary is not signing approval; it does not replace the release preflight or
 the required runtime matrix.
 
+For the bounded Git LFS counts regression, run
+`python3 tools/native_acceptance.py --suite lfs-counts --headless --package "$PACKAGE"`.
+Use a disposable runner with Git LFS on PATH, and add `--installed` when
+the exact package is installed there. The owned checkout uses a literal
+newline in one LFS path, keeps another file as a pointer, and sets a
+nonmatching LFS transfer filter. All counts must still match the checkout
+and the read must leave its index and working files unchanged.
+
 ## Focused linked-worktree navigation acceptance
 
 From the repository root, the `worktrees` suite runs the normal packaged smoke

@@ -639,6 +639,10 @@ Used for:
   connection and preserve safe overrides. No upstream implementation was copied.
 - Initializing repository-local Git LFS filters and hooks.
 - Adding ordinary or lockable tracking patterns through `.gitattributes`.
+- Counting current checkout entries from the bounded structured listing, not
+  from display lines. Owned fixtures exercised literal newline filenames and
+  the checkout flag with Git LFS 3.3.0, 3.4.1 and 3.7.1. No implementation was
+  copied.
 - Pulling objects required by the current checkout through the documented Git LFS CLI.
 - Reviewed single-file cache fetch at pinned committed HEAD, configured remote
   selection, include/exclude override semantics, disabled recent/history

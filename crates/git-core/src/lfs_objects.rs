@@ -1,5 +1,7 @@
 use super::*;
 
+const MAX_LFS_LIST_BYTES: usize = 2 * 1024 * 1024;
+
 #[derive(Debug, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LfsObjectFile {
@@ -41,7 +43,7 @@ pub fn lfs_objects(path: &Path) -> Result<LfsObjects, AppError> {
     let (output, truncated) = run_git_with_stdout_limit(
         path,
         &["lfs", "ls-files", "--json", "--include=", "--exclude="],
-        2 * 1024 * 1024,
+        MAX_LFS_LIST_BYTES,
     )?;
     ensure_success(
         "inspect Git LFS objects (requires JSON-capable Git LFS)",
@@ -61,6 +63,31 @@ pub fn lfs_objects(path: &Path) -> Result<LfsObjects, AppError> {
         file.working_state = working_state(path, file)?;
     }
     Ok(objects)
+}
+
+pub(super) fn checkout_counts(path: &Path) -> Option<(usize, usize)> {
+    let (output, truncated) = without_lazy_fetch(|| {
+        run_git_with_stdout_limit(
+            path,
+            &["lfs", "ls-files", "--json", "--include=", "--exclude="],
+            MAX_LFS_LIST_BYTES,
+        )
+    })
+    .ok()?;
+    if truncated || !output.status.success() {
+        return None;
+    }
+    count_listing(&output.stdout)
+}
+
+fn count_listing(bytes: &[u8]) -> Option<(usize, usize)> {
+    // Just count structured records. Unlike object review, this does not
+    // interpret names as filesystem paths or read the files they identify.
+    let listing: LfsObjects = serde_json::from_slice(bytes).ok()?;
+    Some((
+        listing.files.len(),
+        listing.files.iter().filter(|file| !file.checkout).count(),
+    ))
 }
 
 pub(super) fn parse_objects(bytes: &[u8]) -> Result<LfsObjects, AppError> {
@@ -164,6 +191,28 @@ fn object_read_error(error: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checkout_counts_accept_empty_and_literal_newline_names_but_not_partial_lists() {
+        assert_eq!(count_listing(br#"{"files":null}"#), Some((0, 0)));
+        assert_eq!(count_listing(br#"{"files":[]}"#), Some((0, 0)));
+        let first = serde_json::json!({
+            "name": format!("nested\n{} - looks-like-a-record.bin", "0".repeat(64)),
+            "size": 5, "checkout": true, "downloaded": true, "oid_type": "sha256",
+            "oid": "a".repeat(64), "version": "https://git-lfs.github.com/spec/v1"
+        });
+        let mut second = first.clone();
+        second["name"] = serde_json::json!("remote-only.bin");
+        second["checkout"] = serde_json::json!(false);
+        let listing = serde_json::to_vec(&serde_json::json!({"files": [first, second]})).unwrap();
+        assert_eq!(count_listing(&listing), Some((2, 1)));
+        assert_eq!(count_listing(&listing[..listing.len() - 1]), None);
+        assert_eq!(
+            count_listing(br#"{"files":[{"name":"incomplete.bin"}]}"#),
+            None
+        );
+        assert_eq!(count_listing(br#"{}"#), None);
+    }
 
     #[test]
     fn object_json_null_is_empty_but_missing_invalid_or_duplicate_records_fail() {

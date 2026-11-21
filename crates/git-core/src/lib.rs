@@ -378,7 +378,7 @@ pub struct LfsInfo {
     pub available: bool,
     pub version: Option<String>,
     pub tracked_files: Option<usize>,
-    /// Tracked files currently checked out as LFS pointers.
+    /// Entries Git LFS did not report as full objects in the working tree.
     pub pointer_files: Option<usize>,
 }
 
@@ -4792,8 +4792,7 @@ fn run_lfs_mutation_with_cancellation(
     operation: &str,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
-    let info = read_lfs_info(path);
-    if !info.enabled {
+    if !lfs_enabled(path) {
         return Err(AppError::new(
             "lfsNotEnabled",
             "Git LFS is not enabled for this repository.",
@@ -8163,22 +8162,13 @@ fn read_submodules(path: &Path) -> Result<Vec<Submodule>, AppError> {
     Ok(submodules)
 }
 
-fn read_lfs_info(path: &Path) -> LfsInfo {
-    let version_output = run_git(path, &["lfs", "version"]);
-    let available = version_output
-        .as_ref()
-        .is_ok_and(|output| output.status.success());
-    let version = version_output
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
+fn lfs_enabled(path: &Path) -> bool {
     let attributes = run_git(
         path,
         &[
             "grep",
             "-I",
-            "-l",
+            "-q",
             "-e",
             "filter=lfs",
             "--",
@@ -8188,28 +8178,25 @@ fn read_lfs_info(path: &Path) -> LfsInfo {
     );
     let tracking_configured = attributes
         .as_ref()
-        .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
+        .is_ok_and(|output| output.status.success())
         || path.join(".lfsconfig").is_file();
     let locally_installed = run_git(path, &["config", "--local", "--get", "filter.lfs.process"])
         .is_ok_and(|output| output.status.success() && !output.stdout.is_empty());
-    let enabled = tracking_configured || locally_installed;
-    if !enabled {
-        return LfsInfo {
-            enabled: false,
-            available,
-            version,
-            tracked_files: None,
-            pointer_files: None,
-        };
-    }
-    let counts = available
-        .then(|| {
-            run_git(path, &["lfs", "ls-files"])
-                .ok()
-                .filter(|output| output.status.success())
-                .map(|output| count_lfs_files(&String::from_utf8_lossy(&output.stdout)))
-        })
-        .flatten();
+    tracking_configured || locally_installed
+}
+
+fn read_lfs_info(path: &Path) -> LfsInfo {
+    let version_output = run_git_with_stdout_limit(path, &["lfs", "version"], 4 * 1024);
+    let available = version_output
+        .as_ref()
+        .is_ok_and(|(output, truncated)| !truncated && output.status.success());
+    let version = version_output
+        .ok()
+        .filter(|(output, truncated)| !truncated && output.status.success())
+        .map(|(output, _)| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let enabled = lfs_enabled(path);
+    let counts = if enabled && available { lfs_objects::checkout_counts(path) } else { None };
     let tracked_files = counts.map(|(tracked, _)| tracked);
     let pointer_files = counts.map(|(_, pointers)| pointers);
     LfsInfo {
@@ -8219,18 +8206,6 @@ fn read_lfs_info(path: &Path) -> LfsInfo {
         tracked_files,
         pointer_files,
     }
-}
-
-/// Counts `git lfs ls-files` lines (`<oid> <*|-> <path>`); `-` marks a file
-/// checked out as a pointer, whether or not its object is cached locally.
-fn count_lfs_files(output: &str) -> (usize, usize) {
-    output.lines().filter(|line| !line.trim().is_empty()).fold(
-        (0, 0),
-        |(tracked, pointers), line| {
-            let pointer = line.split_whitespace().nth(1) == Some("-");
-            (tracked + 1, pointers + usize::from(pointer))
-        },
-    )
 }
 
 fn read_sparse_checkout_info(path: &Path) -> SparseCheckoutInfo {
@@ -9883,14 +9858,31 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
-    fn counts_lfs_pointer_files() {
-        let output = "4d7a2146 * assets/logo.png\n\
-                      9f86d081 - assets/video file.mp4\n\
-                      \n\
-                      2c26b46b - docs/manual.pdf\n";
-        assert_eq!(count_lfs_files(output), (3, 2));
-        assert_eq!(count_lfs_files(""), (0, 0));
+    fn lfs_sidebar_counts_real_newline_files_and_ignores_transfer_filters() {
+        let repository = TestRepository::new();
+        if ensure_lfs_available(&repository.path).is_err() {
+            return;
+        }
+        repository.git(&["config", "core.hooksPath", ".git/hooks"]);
+        repository.git(&["lfs", "install", "--local"]);
+        repository.git(&["lfs", "track", "*.bin"]);
+        let tricky = format!("part\n{} - looks-like-a-record.bin", "0".repeat(64));
+        repository.write(&tricky, "materialized first file\n");
+        repository.write("ordinary.bin", "materialized second file\n");
+        repository.git(&["add", "--", ".gitattributes", &tricky, "ordinary.bin"]);
+        repository.git(&["commit", "-m", "Owned LFS fixture"]);
+        let pointer = repository.git_output(&["show", "HEAD:ordinary.bin"]);
+        repository.write("ordinary.bin", &pointer);
+        repository.git(&["config", "lfs.fetchinclude", "nonexistent.bin"]);
+        let index = fs::read(repository.path.join(".git/index")).unwrap();
+        let info = read_lfs_info(&repository.path);
+        assert!(info.enabled && info.available);
+        assert_eq!(info.tracked_files, Some(2));
+        assert_eq!(info.pointer_files, Some(1));
+        assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read_to_string(repository.path.join("ordinary.bin")).unwrap(), pointer);
     }
 
     #[test]
