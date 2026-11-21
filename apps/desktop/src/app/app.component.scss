@@ -380,6 +380,33 @@
 .commit-quick-actions button:disabled { opacity: .45; }
 .commit-quick-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-quick-actions button gc-icon { flex: 0 0 auto; color: var(--accent); }
+.activity-log-fallback {
+  position: fixed;
+  z-index: 22;
+  inset-inline-end: 0;
+  bottom: var(--statusbar-height);
+  width: min(440px, calc(100vw - 20px));
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--overlay-border);
+  border-radius: 6px 0 0;
+  background: var(--canvas);
+  color: var(--overlay-text);
+  box-shadow: -12px -10px 40px #0009;
+  p { flex: 1; margin: 0; overflow-wrap: anywhere; }
+  button {
+    padding: 6px 10px;
+    border: 1px solid var(--overlay-control-border);
+    border-radius: 4px;
+    background: var(--overlay-control);
+    color: var(--overlay-text);
+  }
+  button:focus-visible { outline: 2px solid var(--purple); outline-offset: 1px; }
+}
+
 .commit-form { display: flex; flex-direction: column; gap: 7px; padding: 12px; }
 .commit-field { position: relative; min-width: 0; display: block; }
 .commit-field > span { position: absolute; z-index: 1; top: 4px; left: 9px; color: var(--inspector-muted); font-size: var(--font-size-caption); font-weight: 700; line-height: 1; }

@@ -1862,9 +1862,23 @@
 
   @if (activityLogOpen()) {
     @defer (on immediate) {
-      <gc-activity-log-drawer [(tab)]="activityLogTab" (closed)="closeActivityLogs()" />
+      <gc-activity-log-drawer [(tab)]="activityLogTab" [mayTakeFocus]="activityLogMayTakeFocus" (closed)="closeActivityLogs()" />
+    } @loading {
+      <ng-container [ngTemplateOutlet]="activityLogFallback" [ngTemplateOutletContext]="{ failed: false }" />
+    } @error {
+      <ng-container [ngTemplateOutlet]="activityLogFallback" [ngTemplateOutletContext]="{ failed: true }" />
     }
   }
+  <ng-template #activityLogFallback let-failed="failed">
+    <section class="activity-log-fallback" [attr.aria-label]="failed ? 'Activity logs unavailable' : 'Loading activity logs'">
+      @if (failed) {
+        <p role="alert">Activity logs could not load. Close this panel and restart Git Khronos to try again.</p>
+      } @else {
+        <p role="status">Loading activity logs…</p>
+      }
+      <button #activityLogLoaderClose type="button" (click)="closeActivityLogs()">{{ failed ? 'Close' : 'Cancel' }}</button>
+    </section>
+  </ng-template>
 
   @if (repositoryDialog(); as mode) {
     @defer (on immediate) {

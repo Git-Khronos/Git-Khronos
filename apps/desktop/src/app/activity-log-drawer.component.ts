@@ -6,6 +6,7 @@ import {
   ElementRef,
   HostListener,
   inject,
+  input,
   model,
   output,
   signal,
@@ -35,6 +36,7 @@ export class ActivityLogDrawerComponent {
   protected readonly git = inject(GitKhronosService);
   private readonly drawer = viewChild.required<ElementRef<HTMLElement>>('drawer');
   readonly tab = model.required<ActivityLogTab>();
+  readonly mayTakeFocus = input.required<() => boolean>();
   readonly closed = output<void>();
   protected readonly maximumHeight = signal(this.availableHeight());
   protected readonly minimumHeight = computed(() => Math.min(MINIMUM_ACTIVITY_LOG_HEIGHT, this.maximumHeight()));
@@ -63,9 +65,11 @@ export class ActivityLogDrawerComponent {
   });
 
   constructor() {
-    afterNextRender(() => this.drawer().nativeElement
-      .querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]:not(:disabled)')
-      ?.focus());
+    afterNextRender(() => {
+      if (this.mayTakeFocus()()) this.drawer().nativeElement
+        .querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]:not(:disabled)')
+        ?.focus({ preventScroll: true });
+    });
   }
 
   protected clear(): void {

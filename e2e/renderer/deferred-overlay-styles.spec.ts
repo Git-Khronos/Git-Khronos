@@ -215,6 +215,51 @@ for (const outcome of ['loaded', 'failed'] as const) {
   });
 }
 
+for (const outcome of ['cancelled', 'failed', 'focus moved'] as const) {
+  test(`activity log has a recoverable non-modal loading experience when ${outcome}`, async ({ page }) => {
+    const layout = await interceptLayout(page, /class\s+_?ActivityLogDrawerComponent\b/, '.activity-lines', outcome === 'failed');
+    try {
+      await page.goto('/');
+      const opener = page.getByRole('button', { name: 'Activity notifications', exact: true });
+      const loading = page.getByRole('region', { name: 'Loading activity logs', exact: true });
+      const drawer = page.getByRole('region', { name: 'Activity logs', exact: true });
+      const summary = page.getByLabel('Commit summary', { exact: true });
+      await opener.click();
+      await expect.poll(layout.requests).toBe(1);
+      await expect(loading.getByRole('status')).toHaveText('Loading activity logs…');
+      await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+      if (outcome === 'cancelled') {
+        await page.keyboard.press('Escape');
+        await expect(opener).toBeFocused();
+        await expect(opener).toHaveAttribute('aria-expanded', 'false');
+      } else if (outcome === 'focus moved') {
+        await summary.fill('Keep working while the log loads');
+        await expect(summary).toBeFocused();
+      }
+      layout.release();
+      await expect.poll(layout.delivered).toBe(1);
+      await expect(loading).toHaveCount(0);
+      if (outcome === 'failed') {
+        const failure = page.getByRole('region', { name: 'Activity logs unavailable', exact: true });
+        await expect(failure.getByRole('alert')).toContainText('could not load');
+        const close = failure.getByRole('button', { name: 'Close', exact: true });
+        await expect(close).toBeFocused();
+        await close.press('Enter');
+        await expect(opener).toBeFocused();
+        await expect(opener).toHaveAttribute('aria-expanded', 'false');
+        await expect(failure).toHaveCount(0);
+      } else if (outcome === 'focus moved') {
+        await expect(drawer).toBeVisible();
+        await expect(summary).toBeFocused();
+        await expect(summary).toHaveValue('Keep working while the log loads');
+      } else {
+        await expect(drawer).toHaveCount(0);
+        await expect(opener).toBeFocused();
+      }
+    } finally { layout.release(); }
+  });
+}
+
 for (const outcome of ['opened', 'unavailable'] as const) {
   test(`branch drop keeps its layout off the startup path and can be ${outcome}`, async ({ page }) => {
     const layout = await interceptLayout(page, /class\s+_?BranchDropMenuComponent\b/, '.branch-drop-advice', outcome === 'unavailable');

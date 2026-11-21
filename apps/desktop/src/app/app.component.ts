@@ -1204,6 +1204,16 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly pendingWorktreeAction = signal<PendingWorktreeRemoval | null>(null);
   protected readonly forceWorktreeRemoval = signal(false);
   protected readonly activityLogOpen = signal(false);
+  private readonly activityLogLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('activityLogLoaderClose');
+  protected readonly activityLogMayTakeFocus = (): boolean => {
+    const active = document.activeElement;
+    return this.activityLogOpen() && (active === document.body || active === this.activityLogOpener
+      || active === this.activityLogLoaderClose()?.nativeElement);
+  };
+  private readonly activityLogLoaderFocus = afterRenderEffect(() => {
+    const button = this.activityLogLoaderClose()?.nativeElement;
+    if (button && this.activityLogMayTakeFocus()) button.focus({ preventScroll: true });
+  });
   private readonly recoveryHistoryOwner = signal<RepositoryReviewScope | null>(null);
   protected readonly recoveryHistoryOpen = computed(() => !!this.recoveryHistoryOwner());
   private readonly recoveryHistoryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('recoveryHistoryLoaderClose');
@@ -6099,10 +6109,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeActivityLogs(): void {
     const opener = this.activityLogOpener;
+    const focused = document.activeElement;
+    const restoreFocus = this.activityLogMayTakeFocus()
+      || !!focused?.closest('gc-activity-log-drawer');
     this.activityLogOpen.set(false);
     this.activityLogOpener = null;
     queueMicrotask(() => {
-      if (opener?.isConnected) opener.focus();
+      if (restoreFocus && !this.activityLogOpen() && opener?.isConnected
+        && (document.activeElement === focused || document.activeElement === document.body)
+        && !opener.closest('[inert]')) opener.focus({ preventScroll: true });
     });
   }
 
