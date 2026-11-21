@@ -1151,7 +1151,7 @@ def main():
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
-        "repository-open-scope", "detached-checkout", "working-tree-recaps",
+        "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1266,7 +1266,7 @@ def main():
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
-            if args.suite == "repository-open-scope":
+            if args.suite in ("repository-open-scope", "checkout-snapshot"):
                 application_env.update(fixtures.history_environment())
             if args.suite in ("gitlab", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
@@ -1367,6 +1367,9 @@ def main():
             elif args.suite == "detached-checkout":
                 from native_detached_checkout_scenarios import reviewed_detached_checkout
                 repository, repo_id = reviewed_detached_checkout(driver, fixtures, report)
+            elif args.suite == "checkout-snapshot":
+                from native_checkout_snapshot_scenarios import coherent_checkout_snapshot
+                repository, repo_id = coherent_checkout_snapshot(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

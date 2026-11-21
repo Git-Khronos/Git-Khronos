@@ -1439,17 +1439,19 @@ pub fn snapshot_with_limits_startup_and_checkpoint_visibility(
     _status_limit: usize,
     show_checkpoints: bool,
 ) -> Result<RepositoryData, AppError> {
-    let mut status = read_head_status(path)?;
-    status.files_unscanned = Some(true);
-    snapshot_with_status(
-        path,
-        commit_limit,
-        false,
-        false,
-        false,
-        show_checkpoints,
-        status,
-    )
+    snapshot_with_checkout_retry(|| {
+        let mut status = read_head_status(path)?;
+        status.files_unscanned = Some(true);
+        snapshot_with_status(
+            path,
+            commit_limit,
+            false,
+            false,
+            false,
+            show_checkpoints,
+            status,
+        )
+    })
 }
 
 fn snapshot_with_options(
@@ -1461,16 +1463,61 @@ fn snapshot_with_options(
     untracked_files: &str,
     show_checkpoints: bool,
 ) -> Result<RepositoryData, AppError> {
-    let status = read_status_with_limit_mode(path, status_limit, untracked_files)?;
-    snapshot_with_status(
-        path,
-        commit_limit,
-        include_linked_worktree_status,
-        include_all_branch_tracking,
-        true,
-        show_checkpoints,
-        status,
-    )
+    snapshot_with_checkout_retry(|| {
+        let status = read_status_with_limit_mode(path, status_limit, untracked_files)?;
+        snapshot_with_status(
+            path,
+            commit_limit,
+            include_linked_worktree_status,
+            include_all_branch_tracking,
+            true,
+            show_checkpoints,
+            status,
+        )
+    })
+}
+
+fn snapshot_with_checkout_retry(
+    mut read: impl FnMut() -> Result<RepositoryData, AppError>,
+) -> Result<RepositoryData, AppError> {
+    // Status, refs and history are read separately. A switch by another Git
+    // process can cross those reads, even when both branches share one tip.
+    // Compare the already gathered samples; the stable path adds no Git reads.
+    for _ in 0..2 {
+        let snapshot = read()?;
+        if snapshot_checkout_agrees(&snapshot) {
+            return Ok(snapshot);
+        }
+    }
+    Err(AppError::new(
+        "checkoutChangedDuringRead",
+        "The checkout changed while Git Khronos was reading the repository.",
+        Some("Wait for the other Git operation to finish, then refresh or reopen the repository."),
+    ))
+}
+
+fn snapshot_checkout_agrees(snapshot: &RepositoryData) -> bool {
+    if snapshot.bare {
+        return true;
+    }
+    let head = snapshot.head_oid.as_deref();
+    let branch = snapshot.status.branch.as_deref();
+    let registration = snapshot.worktrees.iter().find(|tree| tree.current);
+    if registration.is_some_and(|tree| {
+        // Git lists an all-zero HEAD in an unborn worktree.
+        let registered_head = (!tree.oid.is_empty() && !tree.oid.bytes().all(|byte| byte == b'0'))
+            .then_some(tree.oid.as_str());
+        tree.branch.as_deref() != branch || registered_head != head
+    }) {
+        return false;
+    }
+    // A missing branch-list row is not detach evidence. A present current
+    // row for a different branch or tip is evidence the samples disagree.
+    !snapshot.branches.iter().any(|item| {
+        !item.remote
+            && item.current
+            && (Some(item.name.as_str()) != branch || Some(item.oid.as_str()) != head)
+    })
 }
 
 fn snapshot_with_status(
@@ -3387,7 +3434,7 @@ pub fn checkout_commit_reviewed(
     } else {
         None
     };
-    let symbolic = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    let symbolic = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
     if !symbolic.status.success() && symbolic.status.code() != Some(1) {
         ensure_success("read the current branch", &symbolic)?;
     }
@@ -7943,11 +7990,14 @@ fn parse_porcelain_status(
 fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
     // --short may return "heads/main" when a tag also uses "main". The
     // initial snapshot and later porcelain status must name the same branch.
-    let branch = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    let branch = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
     let branch = if branch.status.success() {
         std::str::from_utf8(&branch.stdout)
             .ok()
-            .and_then(|raw| raw.trim_end_matches(['\r', '\n']).strip_prefix("refs/heads/"))
+            .map(|raw| {
+                let reference = raw.trim_end_matches(['\r', '\n']);
+                reference.strip_prefix("refs/heads/").unwrap_or(reference)
+            })
             .filter(|name| !name.is_empty())
             .map(str::to_owned)
     } else {
@@ -14094,6 +14144,64 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             .expect("fast topic branch");
         assert_eq!(fast_topic.upstream.as_deref(), Some("origin/topic"));
         assert_eq!(fast_topic.tracking, None);
+    }
+
+    #[test]
+    fn snapshot_retries_mixed_worktree_and_status_reads_at_the_same_tip() {
+        let repository = TestRepository::new();
+        repository.write("fixture.txt", "one\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Fixture").unwrap();
+        let old = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        repository.git_output(&["switch", "-c", "parallel"]);
+        let fresh = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        assert_eq!(fresh.head_oid, old.head_oid);
+        assert_eq!(fresh.status.branch.as_deref(), Some("parallel"));
+        assert!(snapshot_checkout_agrees(&old));
+        assert!(snapshot_checkout_agrees(&fresh));
+
+        let mixed = RepositoryData {
+            status: old.status,
+            ..fresh.clone()
+        };
+        let mut reads = [mixed.clone(), fresh.clone()].into_iter();
+        let settled =
+            snapshot_with_checkout_retry(|| Ok(reads.next().expect("at most two reads"))).unwrap();
+        assert_eq!(settled.status.branch, fresh.status.branch);
+        assert!(
+            reads.next().is_none(),
+            "the inconsistent first sample was accepted"
+        );
+
+        let mut attempts = 0;
+        let refusal = snapshot_with_checkout_retry(|| {
+            attempts += 1;
+            Ok(mixed.clone())
+        })
+        .unwrap_err();
+        assert_eq!(refusal.kind, "checkoutChangedDuringRead");
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn checkout_consistency_accepts_unborn_and_symbolic_branch_aliases() {
+        let repository = TestRepository::new();
+        let unborn = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        assert!(unborn.head_oid.is_none());
+        assert!(snapshot_checkout_agrees(&unborn));
+        repository.write("fixture.txt", "one\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Fixture").unwrap();
+        repository.git_output(&["symbolic-ref", "refs/heads/alias", "refs/heads/main"]);
+        repository.git_output(&["symbolic-ref", "HEAD", "refs/heads/alias"]);
+        let aliased = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        assert_eq!(aliased.status.branch.as_deref(), Some("main"));
+        assert!(snapshot_checkout_agrees(&aliased));
+        let oid = aliased.head_oid.unwrap();
+        checkout_commit_reviewed(&repository.path, &oid, Some(&oid), Some("main")).unwrap();
+        let detached = snapshot_with_limits_startup(&repository.path, 5, 20).unwrap();
+        assert_eq!(detached.status.branch, None);
+        assert_eq!(detached.head_oid.as_deref(), Some(oid.as_str()));
     }
 
     #[test]

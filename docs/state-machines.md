@@ -483,6 +483,13 @@ presence or current marker of a branch-list row. A missing or older metadata
 row may withhold tracking details but cannot display a false detached HEAD,
 attach a real detached HEAD to the old branch, or navigate to an old tip.
 
+Status and worktree registration are sampled separately. If the collected
+branch or HEAD samples disagree, native code rereads the snapshot once. If
+they still disagree, it asks the user to refresh instead of publishing mixed
+checkout state. This check does not lock the repository or replay writes.
+The installed `checkout-snapshot` scenario switches branches at the same
+commit during a native read to exercise the retry.
+
 **Checkout this commit** reviews the destination commit, repository path,
 and current checkout before dispatch. The user must explicitly choose
 **Check out detached HEAD**; Cancel is the initial focus. A changed checkout
