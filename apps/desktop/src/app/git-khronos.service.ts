@@ -564,6 +564,7 @@ export class GitKhronosService implements OnDestroy {
             current: false,
             remote: false,
             upstream: null,
+            upstreamTarget: null,
             tracking: null,
           });
         }

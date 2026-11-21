@@ -2670,25 +2670,25 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly toolbarRemotes = computed(() => {
     const repository = this.git.repository();
-    const upstream = this.currentBranch()?.upstream ?? null;
-    const order = new Map(buildRemoteNameOrder(
-      repository?.remotes.map((remote) => remote.name) ?? [],
-      upstream,
-    ));
+    const trackedRemote = this.configuredUpstreamTarget()?.remote;
+    const order = buildRemoteNameOrder(repository?.remotes.map((remote) => remote.name) ?? [], null);
     return [...(repository?.remotes ?? [])].sort((left, right) =>
-      (order.get(left.name) ?? Number.MAX_SAFE_INTEGER)
-        - (order.get(right.name) ?? Number.MAX_SAFE_INTEGER)
-      || left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }),
+      Number(right.name === trackedRemote) - Number(left.name === trackedRemote)
+      || compareRemoteNames(left.name, right.name, order),
     );
+  });
+
+  protected readonly configuredUpstreamTarget = computed(() => {
+    const target = this.currentBranch()?.upstreamTarget;
+    return target && this.git.repository()?.remotes.some(remote => remote.name === target.remote)
+      ? target : null;
   });
 
   protected readonly currentRemote = computed<Remote | null>(() => {
     const remotes = this.toolbarRemotes();
     const selected = this.selectedRemoteName();
-    const upstream = this.currentBranch()?.upstream ?? '';
-    const upstreamRemote = upstream.includes('/') ? upstream.slice(0, upstream.indexOf('/')) : '';
     return remotes.find((remote) => remote.name === selected)
-      ?? remotes.find((remote) => remote.name === upstreamRemote)
+      ?? remotes.find((remote) => remote.name === this.configuredUpstreamTarget()?.remote)
       ?? remotes.find((remote) => remote.name === 'origin')
       ?? remotes[0]
       ?? null;
@@ -2698,8 +2698,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const branch = this.currentBranch();
     const remote = this.currentRemote();
     if (!branch || !remote) return null;
-    const prefix = `${remote.name}/`;
-    return branch.upstream?.startsWith(prefix) ? branch.upstream.slice(prefix.length) : branch.name;
+    const target = this.configuredUpstreamTarget();
+    return target?.remote === remote.name ? target.branch : branch.name;
   });
 
   private readonly branchPushPlan = computed<BranchPushPlan | null>(() => {
@@ -2715,9 +2715,9 @@ export class AppComponent implements OnInit, OnDestroy {
   });
 
   protected readonly currentRemoteIsUpstream = computed(() => {
-    const upstream = this.currentBranch()?.upstream;
+    const target = this.configuredUpstreamTarget();
     const remote = this.currentRemote();
-    return !!upstream && !!remote && upstream.startsWith(`${remote.name}/`);
+    return !!target && target.remote === remote?.name;
   });
 
   protected readonly currentRemoteRoleLabel = computed(() => {
@@ -11785,6 +11785,26 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.pull(strategy, remote.name, branch);
   }
 
+  protected syncConfiguredUpstream(
+    direction: 'push' | 'pull',
+    displayedTarget: NonNullable<Branch['upstreamTarget']>,
+    displayedRepository: RepositorySnapshot,
+  ): void {
+    if (displayedRepository !== this.git.repository() || displayedRepository.bare || this.git.busy()) return;
+    const target = this.configuredUpstreamTarget();
+    const current = this.currentBranch();
+    const sync = this.currentBranchSync();
+    if (!target || target.remote !== displayedTarget.remote || target.branch !== displayedTarget.branch
+      || !current || sync.gone) return;
+    if (direction === 'push' && sync.ahead) {
+      void this.git.remote('push_repository', {
+        remote: target.remote, branch: target.branch, expectedHeadOid: current.oid,
+      });
+    } else if (direction === 'pull' && sync.behind) {
+      void this.git.pull(this.pullStrategy(), target.remote, target.branch);
+    }
+  }
+
   protected setDefaultPullStrategy(event: Event, strategy: PullStrategy): void {
     event.preventDefault();
     event.stopPropagation();
@@ -11854,12 +11874,11 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     const branch = this.currentBranch();
     const remote = this.currentRemote();
-    const remoteBranch = this.currentRemoteBranch();
-    if (!repository || !branch || !remote || !remoteBranch || !branch.upstream) return;
-    const trackingRef = `refs/remotes/${branch.upstream}`;
-    const tracking = repository.branches.find(candidate => candidate.remote && candidate.fullName === trackingRef);
+    const target = this.configuredUpstreamTarget();
+    if (!repository || !branch || !remote || !target) return;
+    const tracking = repository.branches.find(candidate => candidate.remote && candidate.fullName === target.trackingRef);
     if (!tracking) {
-      this.git.error.set(`Cannot safely force push because ${branch.upstream} has no fetched tracking ref. Fetch the remote, then review the force-push target again.`);
+      this.git.error.set(`Cannot safely force push because ${target.remote}/${target.branch} has no fetched tracking ref. Fetch the remote, then review the force-push target again.`);
       return;
     }
     this.git.error.set(null);
@@ -11870,7 +11889,7 @@ export class AppComponent implements OnInit, OnDestroy {
       branchRef: branch.fullName,
       branchName: branch.name,
       remote: remote.name,
-      remoteBranch,
+      remoteBranch: target.branch,
       expectedRemoteOid: tracking.oid,
       expectedHeadOid: branch.oid,
     };

@@ -38,7 +38,7 @@ export type ApplicationUpdateChanged = { state: ApplicationUpdateStatus }
 export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; installBlocker?: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
-export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }
+export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; upstreamTarget: UpstreamTarget | null; tracking: string | null }
 /**
  * How two local branches relate, read without touching HEAD, the index or
  * the working tree. `incoming` commits exist only on `source`; `outgoing`
@@ -500,6 +500,7 @@ export type ToolProfile = { version: number; id: string; name: string; role: Too
 export type ToolRole = "editor" | "diff" | "merge" | "terminal"
 export type TrackedFileSearch = { paths: string[]; truncated: boolean }
 export type UpdatePhase = "unconfigured" | "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "installed" | "refused" | "uncertain" | "failed"
+export type UpstreamTarget = { remote: string; branch: string; trackingRef: string }
 export type WindowsLauncherInspection = { supported: boolean; interopUnavailable: boolean; message: string | null; distribution: string | null; appIdentity: string | null; identitySource: string | null; conflictingIdentities: string[];
 /**
  * Launcher used by every working Git Khronos shortcut, when they agree.

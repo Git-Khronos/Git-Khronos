@@ -571,6 +571,14 @@ pub struct WorkingTreeEntry {
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+pub struct UpstreamTarget {
+    pub remote: String,
+    pub branch: String,
+    pub tracking_ref: String,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct Branch {
     pub full_name: String,
     pub name: String,
@@ -578,6 +586,7 @@ pub struct Branch {
     pub current: bool,
     pub remote: bool,
     pub upstream: Option<String>,
+    pub upstream_target: Option<UpstreamTarget>,
     pub tracking: Option<String>,
 }
 
@@ -4667,6 +4676,7 @@ fn pull_from_remote_with_strategy_and_cancellation(
         }
     };
 
+    let branch_ref;
     let mut args = vec!["pull"];
     args.extend(strategy_arguments);
     match (remote, branch) {
@@ -4674,8 +4684,11 @@ fn pull_from_remote_with_strategy_and_cancellation(
             validate_remote_name(path, remote)?;
             require_remote(path, remote)?;
             validate_branch_name(path, branch)?;
+            // A short fetch name can resolve to a tag even when the remote has
+            // a branch of the same name. The UI selected a branch, not a tag.
+            branch_ref = format!("refs/heads/{branch}");
             args.push(remote);
-            args.push(branch);
+            args.push(&branch_ref);
         }
         (None, None) => {}
         _ => {
@@ -8229,12 +8242,14 @@ fn read_branches(
     // branch divergence from `git status`; full snapshots retain all tracking.
     // Names are action inputs: strip the known namespace, rather than using
     // ambiguity-dependent abbreviations such as `heads/main` or `remotes/x/y`.
-    let format = if include_all_tracking {
-        "%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(HEAD)%1f%(upstream:lstrip=2)%1f%(upstream:track)%1f%(symref)%1e"
+    let tracking_format = if include_all_tracking {
+        "%(upstream:track)"
     } else {
-        "%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(HEAD)%1f%(upstream:lstrip=2)%1f%1f%(symref)%1e"
+        ""
     };
-    let format_argument = format!("--format={format}");
+    let format_argument = format!(
+        "--format=%(refname)%1f%(refname:lstrip=2)%1f%(objectname)%1f%(HEAD)%1f%(upstream)%1f{tracking_format}%1f%(symref)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1e"
+    );
     let output = run_git(
         path,
         &[
@@ -8253,9 +8268,25 @@ fn read_branches(
                 .trim_start_matches('\n')
                 .split('\x1f')
                 .collect::<Vec<_>>();
-            (fields.len() >= 7 && fields[6].trim_end_matches('\n').is_empty()).then(|| {
+            (fields.len() == 9 && fields[6].is_empty()).then(|| {
                 let current = fields[3].trim() == "*";
                 let remote = fields[0].starts_with("refs/remotes/");
+                let upstream_ref = fields[4];
+                // Git supplies the remote and source ref independently of the
+                // tracking ref name (which may come from a custom fetch refspec).
+                let upstream_target = match (
+                    non_empty(fields[7]).filter(|name| name != "."),
+                    fields[8].strip_prefix("refs/heads/").and_then(non_empty),
+                ) {
+                    (Some(remote), Some(branch)) if !upstream_ref.is_empty() => {
+                        Some(UpstreamTarget {
+                            remote,
+                            branch,
+                            tracking_ref: upstream_ref.to_owned(),
+                        })
+                    }
+                    _ => None,
+                };
                 let tracking = non_empty(
                     fields[5]
                         .trim_end_matches('\n')
@@ -8268,7 +8299,8 @@ fn read_branches(
                     oid: fields[2].to_owned(),
                     current,
                     remote,
-                    upstream: non_empty(fields[4].trim_end_matches('\n')),
+                    upstream: upstream_ref.splitn(3, '/').nth(2).and_then(non_empty),
+                    upstream_target,
                     tracking: (!remote)
                         .then_some(tracking)
                         .flatten()
@@ -18697,6 +18729,98 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                 assert!(remote.remote && !remote.current);
             }
         }
+    }
+
+    #[test]
+    fn branch_snapshots_report_git_upstream_targets_without_parsing_tracking_names() {
+        let repository = TestRepository::new();
+        repository.write("tracked.txt", "base\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Base").unwrap();
+        let oid = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        repository.git(&["remote", "add", "team/source", "."]);
+        // Manual configuration can have overlapping names even though
+        // `remote add` rejects this combination for conventional refspecs.
+        repository.git(&["config", "remote.team.url", "."]);
+        repository.git(&[
+            "config",
+            "remote.team/source.fetch",
+            "+refs/heads/*:refs/remotes/cache/*",
+        ]);
+        repository.git(&["update-ref", "refs/remotes/cache/review/topic", &oid]);
+        repository.git(&["config", "branch.main.remote", "team/source"]);
+        repository.git(&["config", "branch.main.merge", "refs/heads/review/topic"]);
+        repository.git(&["branch", "team/source/local"]);
+
+        let current = |full_tracking| {
+            let status = snapshot(&repository.path).unwrap().status;
+            read_branches(&repository.path, &status, full_tracking)
+                .unwrap()
+                .into_iter()
+                .find(|branch| branch.current)
+                .unwrap()
+        };
+        for full_tracking in [false, true] {
+            let branch = current(full_tracking);
+            assert_eq!(branch.upstream.as_deref(), Some("cache/review/topic"));
+            let target = branch.upstream_target.unwrap();
+            assert_eq!(target.remote, "team/source");
+            assert_eq!(target.branch, "review/topic");
+            assert_eq!(target.tracking_ref, "refs/remotes/cache/review/topic");
+        }
+
+        repository.git(&[
+            "branch",
+            "--set-upstream-to=refs/heads/team/source/local",
+            "main",
+        ]);
+        for full_tracking in [false, true] {
+            let branch = current(full_tracking);
+            assert_eq!(branch.upstream.as_deref(), Some("team/source/local"));
+            assert!(branch.upstream_target.is_none());
+        }
+    }
+
+    #[test]
+    fn explicit_pull_integrates_the_selected_branch_not_a_same_named_remote_tag() {
+        let remote = TestRepository::new();
+        remote.write("tracked.txt", "base\n");
+        stage_all(&remote.path).unwrap();
+        commit(&remote.path, "Base").unwrap();
+        remote.git(&["branch", "-m", "review/topic"]);
+        remote.git(&["tag", "review/topic"]);
+
+        let local = TestRepository::new();
+        local.git(&["remote", "add", "origin", remote.path.to_str().unwrap()]);
+        pull_from_remote_with_strategy(
+            &local.path,
+            "ff-only",
+            Some("origin"),
+            Some("review/topic"),
+        )
+        .unwrap();
+        let old_head = snapshot(&local.path).unwrap().head_oid.unwrap();
+
+        remote.write("tracked.txt", "branch tip\n");
+        stage_all(&remote.path).unwrap();
+        commit(&remote.path, "Branch tip").unwrap();
+        let expected = snapshot(&remote.path).unwrap().head_oid.unwrap();
+        assert_ne!(old_head, expected);
+        pull_from_remote_with_strategy(
+            &local.path,
+            "ff-only",
+            Some("origin"),
+            Some("review/topic"),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot(&local.path).unwrap().head_oid.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            fs::read(local.path.join("tracked.txt")).unwrap(),
+            b"branch tip\n"
+        );
     }
 
     #[test]

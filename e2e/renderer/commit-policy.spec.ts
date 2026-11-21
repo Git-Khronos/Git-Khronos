@@ -477,6 +477,9 @@ for (const route of ['tracked', 'unpublished', 'detached'] as const) {
         branches: item.branches.map((branch: any) => !branch.current ? branch : {
           ...branch, current: route !== 'detached',
           upstream: route === 'tracked' ? 'origin/target/topic' : null,
+          upstreamTarget: route === 'tracked' ? {
+            remote: 'origin', branch: 'target/topic', trackingRef: 'refs/remotes/origin/target/topic',
+          } : null,
         }),
       })));
     }, route);

@@ -1783,9 +1783,23 @@
       } @else {
         <span class="status-branch unborn" title="This repository does not have any commits yet"><gc-icon name="git-commit" [size]="10" />No commits yet</span>
       }
-      @if (currentBranchSync().ahead) { <button class="status-sync outgoing" type="button" [disabled]="git.busy()" aria-label="{{ currentBranchSync().ahead }} {{ currentBranchSync().ahead === 1 ? 'commit' : 'commits' }} ahead of {{ currentBranchSync().upstream ?? 'upstream' }}, push now" title="{{ pushToolbarLabel() }}" (click)="pushCurrentBranch()"><gc-icon name="push" [size]="9" />Ahead {{ currentBranchSync().ahead }}</button> }
-      @if (currentBranchSync().behind) { <button class="status-sync incoming" type="button" [disabled]="git.busy()" aria-label="{{ currentBranchSync().behind }} {{ currentBranchSync().behind === 1 ? 'commit' : 'commits' }} behind {{ currentBranchSync().upstream ?? 'upstream' }}, pull now" title="{{ pullToolbarLabel() }} · {{ pullStrategyLabel() }}" (click)="git.pull(pullStrategy())"><gc-icon name="pull" [size]="9" />Behind {{ currentBranchSync().behind }}</button> }
-      @if (currentBranchSync().gone) { <span class="status-sync missing" title="The configured upstream branch no longer exists"><gc-icon name="warning" [size]="9" />Upstream missing</span> }
+      @let sync = currentBranchSync();
+      @if (sync.gone) {
+        <span class="status-sync missing" title="The configured upstream branch no longer exists"><gc-icon name="warning" [size]="9" />Upstream missing</span>
+      } @else if (configuredUpstreamTarget(); as upstream) {
+        @let target = upstream.remote + '/' + upstream.branch;
+        @if (sync.ahead) {
+          @let outgoing = sync.ahead + (sync.ahead === 1 ? ' commit' : ' commits');
+          <button class="status-sync outgoing" type="button" [disabled]="git.busy() || repo.bare" aria-label="{{ outgoing }} ahead of {{ target }}, push now" title="Push {{ outgoing }} to {{ target }}" (click)="syncConfiguredUpstream('push', upstream, repo)"><gc-icon name="push" [size]="9" />Ahead {{ sync.ahead }}</button>
+        }
+        @if (sync.behind) {
+          @let incoming = sync.behind + (sync.behind === 1 ? ' commit' : ' commits');
+          <button class="status-sync incoming" type="button" [disabled]="git.busy() || repo.bare" aria-label="{{ incoming }} behind {{ target }}, pull now" title="Pull {{ incoming }} from {{ target }} · {{ pullStrategyLabel() }}" (click)="syncConfiguredUpstream('pull', upstream, repo)"><gc-icon name="pull" [size]="9" />Behind {{ sync.behind }}</button>
+        }
+      } @else {
+        @if (sync.ahead) { <span class="status-sync outgoing" title="Ahead of {{ sync.upstream ?? 'the configured upstream' }} · No remote branch to push to"><gc-icon name="push" [size]="9" />Ahead {{ sync.ahead }}</span> }
+        @if (sync.behind) { <span class="status-sync incoming" title="Behind {{ sync.upstream ?? 'the configured upstream' }} · No remote branch to pull from"><gc-icon name="pull" [size]="9" />Behind {{ sync.behind }}</span> }
+      }
       @if (repo.status.entryCount) { <button class="status-changes" type="button" title="Open working directory changes" aria-label="Open working directory changes ({{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }})" [class.active]="changesOpen()" (click)="openWorkingDirectory()"><gc-icon name="file" [size]="10" /><span>{{ repo.status.entryCount }}</span><em>{{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</em></button> }
       <span class="status-spacer"></span>
       @if (!git.browserPreview() && autoFetchIntervalMinutes()) {

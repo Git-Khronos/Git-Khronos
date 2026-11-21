@@ -91,6 +91,7 @@ async function installBackend(page: Page, options: { fail?: boolean; hold?: bool
           current: !referenceOnly,
           remote: false,
           upstream: remote?.name ?? null,
+          upstreamTarget: remote ? { remote: remote.name.split('/')[0], branch: name, trackingRef: remote.fullName } : null,
           tracking: null,
         } satisfies Branch);
         snapshot = referenceOnly
@@ -1136,7 +1137,7 @@ for (const activation of ['dblclick', 'keyboard'] as const) {
         status: { ...candidate.status, branch: 'dev' },
         branches: [
           ...candidate.branches.map(branch => branch.name === 'main' && !branch.remote ? { ...branch, current: false } : branch),
-          { ...main, name: 'dev', fullName: 'refs/heads/dev', oid, current: true, upstream: null },
+          { ...main, name: 'dev', fullName: 'refs/heads/dev', oid, current: true, upstream: null, upstreamTarget: null },
         ],
         commits: candidate.commits.map(commit => commit.oid !== oid ? commit : {
           ...commit, decorations: ['HEAD -> dev', 'origin/main', 'tag: mixed-chip'],

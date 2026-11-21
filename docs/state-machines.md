@@ -236,6 +236,19 @@ ID rather than a symbolic HEAD so a later move cannot change the commits
 the transport sends. This is a regular, non-force push.
 `commit-policy.spec.ts` covers both phases and the unchanged destination.
 
+### Upstream status actions versus toolbar sync
+
+The ahead/behind status badges compare the checkout with its configured
+upstream. Their actions target that same remote branch, independently of
+the toolbar's selected remote. The toolbar and the composer still use the
+selected remote, showing upstream counts only when the toolbar targets it.
+Git reports the upstream's remote name, source branch, and local tracking
+ref separately; a tracking ref may use a different namespace or name.
+Local-only upstreams retain their counts without remote action buttons.
+An explicit pull fetches the full branch ref, not a same-named remote tag.
+`pull-strategies.spec.ts` covers both destinations and local-only tracking;
+Git core tests cover custom fetch mappings and the remote tag collision.
+
 ### Manual co-author entry
 
 Text typed in the co-author picker belongs to the checkout's in-memory

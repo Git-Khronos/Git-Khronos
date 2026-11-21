@@ -62,7 +62,7 @@ test.beforeEach(async ({ page }) => {
       if (review === 'publish') {
         const repository = git.repository();
         git.repositories.update((items: any[]) => items.map(item => item.id === repository.id ? { ...item,
-          branches: item.branches.map((branch: any) => branch.current ? { ...branch, upstream: null } : branch) } : item));
+          branches: item.branches.map((branch: any) => branch.current ? { ...branch, upstream: null, upstreamTarget: null } : branch) } : item));
         app.pushCurrentBranch();
       } else if (review === 'force') app.requestForcePush();
       else app.requestLfsPrune();

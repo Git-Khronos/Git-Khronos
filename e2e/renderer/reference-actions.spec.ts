@@ -383,6 +383,11 @@ test('renaming a remote saves URL changes in one operation and keeps its prefere
           name: branch.remote ? rename(branch.name) : branch.name,
           fullName: branch.remote ? `refs/remotes/${rename(branch.name)}` : branch.fullName,
           upstream: rename(branch.upstream),
+          upstreamTarget: branch.upstreamTarget?.remote === args.previousName ? {
+            ...branch.upstreamTarget,
+            remote: args.name,
+            trackingRef: `refs/remotes/${rename(branch.upstream)}`,
+          } : branch.upstreamTarget,
         })),
       });
     };

@@ -29,6 +29,7 @@ test.beforeEach(async ({ page }) => {
           if ((window as any).__pullFailure) return Promise.reject((window as any).__pullFailure);
           return Promise.resolve((window as any).__pullSnapshot);
         }
+        if (command === 'push_repository') return Promise.resolve((window as any).__pullSnapshot);
         if (['abort_merge', 'abort_rebase'].includes(command)) {
           const snapshot = (window as any).__pullSnapshot;
           (window as any).__pullSnapshot = {
@@ -42,6 +43,89 @@ test.beforeEach(async ({ page }) => {
     };
   });
 });
+
+test('status badges sync with the configured upstream, not the selected toolbar remote', async ({ page }) => {
+  const headOid = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const snapshot = git.repository();
+    const next = {
+      ...snapshot, status: { ...snapshot.status, ahead: 1, behind: 1 },
+      branches: snapshot.branches.map((branch: any) => branch.current
+        ? { ...branch, tracking: 'ahead 1, behind 1' } : branch),
+    };
+    (window as any).__pullSnapshot = next;
+    git.repositories.update((items: any[]) => items.map(item => item.id === next.id ? next : item));
+    return next.headOid;
+  });
+  await page.getByRole('button', { name: /Select remote, current origin/ }).click();
+  await page.getByRole('menu', { name: 'Select remote for pull and push' })
+    .getByRole('menuitemradio', { name: /^upstream/ }).click();
+  await expect(page.getByRole('button', { name: 'Push to upstream/main', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pull from upstream/main', exact: true })).toBeVisible();
+  const ahead = page.getByRole('button', { name: '1 commit ahead of origin/main, push now', exact: true });
+  const behind = page.getByRole('button', { name: '1 commit behind origin/main, pull now', exact: true });
+  await ahead.click();
+  await behind.click();
+  await page.getByRole('button', { name: 'Push to upstream/main', exact: true }).click();
+  await page.getByRole('button', { name: 'Pull from upstream/main', exact: true }).click();
+
+  const calls = await page.evaluate(() => (window as any).__pullCalls.filter(
+    (call: any) => ['push_repository', 'pull_repository'].includes(call.command),
+  ));
+  expect(calls).toEqual([
+    expect.objectContaining({ command: 'push_repository', args: expect.objectContaining({ remote: 'origin', branch: 'main', expectedHeadOid: headOid }) }),
+    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ remote: 'origin', branch: 'main', strategy: 'merge' }) }),
+    expect.objectContaining({ command: 'push_repository', args: expect.objectContaining({ remote: 'upstream', branch: 'main', expectedHeadOid: headOid }) }),
+    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ remote: 'upstream', branch: 'main', strategy: 'merge' }) }),
+  ]);
+  await expect(ahead).toHaveAttribute('title', 'Push 1 commit to origin/main');
+  await expect(behind).toHaveAttribute('title', 'Pull 1 commit from origin/main · Fast-forward if possible');
+});
+
+for (const fixture of ['custom tracking ref', 'local upstream'] as const) {
+  test(`status actions use Git's upstream target with a ${fixture}`, async ({ page }) => {
+    const local = fixture === 'local upstream';
+    await page.evaluate(local => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const snapshot = git.repository();
+      const next = {
+        ...snapshot, status: { ...snapshot.status, ahead: 2, behind: 1 },
+        remotes: [
+          ...snapshot.remotes,
+          ...['team', 'team/source'].map(name => ({ ...snapshot.remotes[0], name })),
+        ],
+        branches: snapshot.branches.map((branch: any) => branch.current
+          ? {
+            ...branch, tracking: 'ahead 2, behind 1',
+            upstream: local ? 'team/source/local' : 'cache/review/topic',
+            upstreamTarget: local ? null : {
+              remote: 'team/source', branch: 'review/topic', trackingRef: 'refs/remotes/cache/review/topic',
+            },
+          } : branch),
+      };
+      (window as any).__pullSnapshot = next;
+      git.repositories.update((items: any[]) => items.map(item => item.id === next.id ? next : item));
+    }, local);
+
+    if (local) {
+      await expect(page.getByRole('button', { name: /Select remote, current origin/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Push to origin/main', exact: true })).toBeVisible();
+      await expect(page.locator('span.status-sync.outgoing')).toHaveAttribute('title', /Ahead of team\/source\/local/);
+      await expect(page.locator('span.status-sync.incoming')).toHaveAttribute('title', /Behind team\/source\/local/);
+      await expect(page.locator('button.status-sync')).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('button', { name: /Select remote, current team\/source/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Push 2 commits to team/source/review/topic', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: '1 commit behind team/source/review/topic, pull now', exact: true }).click();
+    }
+    const calls = await page.evaluate(() => (window as any).__pullCalls.filter(
+      (call: any) => ['push_repository', 'pull_repository'].includes(call.command),
+    ));
+    expect(calls).toEqual(local ? [] : [
+      expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ remote: 'team/source', branch: 'review/topic' }) }),
+    ]);
+  });
+}
 
 for (const [strategy, label] of [
   ['merge', 'Fast-forward if possible'],
