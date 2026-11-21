@@ -73,6 +73,13 @@ commit, then the native command must retry and agree on the branch in
 porcelain status, the branch list, and the active worktree. The retry must
 not change Git state. A passing smoke run alone cannot satisfy this check.
 
+Use `--suite worktree-reservation` to exercise branch checkout while a
+linked checkout has a real stopped rebase. The linked checkout is detached,
+but Git still reserves its original branch. The test selects Checkout
+branch in the packaged UI, checks that the error names the owning path
+and explains what to do, then verifies that both checkouts and the pending
+conflict are unchanged.
+
 Use `--suite working-tree-recaps` to check staged and unstaged line totals
 without running all setup workflows. It checks the displayed counts and
 their accessible labels together, including singular counts and exclusions.

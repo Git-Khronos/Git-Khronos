@@ -1,6 +1,7 @@
 """Occupied-branch navigation through the packaged UI and owned linked checkouts."""
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 
@@ -26,9 +27,15 @@ def checkout_footprint(fixtures, repository, files=('fixture.txt',)):
     index = _git_path(fixtures, repository, 'index')
     config = _git_path(fixtures, repository, 'config')
     git = lambda *args: fixtures.git(repository, '--no-optional-locks', *args)
+    symbolic = subprocess.run(
+        ['git', '-C', str(repository), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
+        env=fixtures.env, capture_output=True, timeout=10,
+    )
+    if symbolic.returncode != 1:
+        symbolic.check_returncode()
     return {
         'head': git('rev-parse', 'HEAD'),
-        'branch': git('symbolic-ref', '--short', 'HEAD'),
+        'branch': symbolic.stdout.decode().strip() if symbolic.returncode == 0 else None,
         'references': git('show-ref'),
         'status': git('status', '--porcelain=v1'),
         'indexSha256': _sha256(index),
@@ -141,3 +148,48 @@ def occupied_branch_navigation(driver, fixtures, report):
         'before': before, 'afterCancel': after_cancel, 'afterNavigation': after_navigation,
         'afterOwnedOwnershipChange': changed, 'afterStaleReviewRefusal': after_refusal,
     }
+
+
+def reserved_branch_guidance(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    source = fixtures.repository('reserved-branch-guidance', commits=3)
+    owner = fixtures.root / 'checkout with pending rebase'
+    branch = 'owned/rebase-topic'
+    fixtures.git(source, 'worktree', 'add', '-b', branch, str(owner))
+    for checkout, content in ((source, 'main change\n'), (owner, 'topic change\n')):
+        (checkout / 'fixture.txt').write_text(content)
+        fixtures.git(checkout, 'commit', '-am', content.strip())
+    # Create a real stopped rebase; no mocked native response or hand-written Git state.
+    rebase = subprocess.run(
+        ['git', '-C', str(owner), 'rebase', 'main'], env=fixtures.env,
+        capture_output=True, timeout=15,
+    )
+    assert rebase.returncode == 1, rebase.stderr
+
+    def footprints():
+        return {
+            'source': checkout_footprint(fixtures, source),
+            'owner': checkout_footprint(fixtures, owner),
+            'rebaseHead': fixtures.git(owner, 'rev-parse', '--verify', 'REBASE_HEAD'),
+            'conflicts': fixtures.git(owner, 'ls-files', '--unmerged'),
+        }
+
+    repo_id = open_ui(driver, source)
+    before = footprints()
+    assert before['source']['branch'] == 'main' and before['owner']['branch'] is None
+    assert before['rebaseHead'] == fixtures.git(source, 'rev-parse', 'refs/heads/' + branch)
+    assert before['conflicts']
+    driver.context_click('.branch-item[aria-label="Local branch ' + branch + '"]')
+    driver.click_visible('.graph-action-menu button', 'Checkout branch')
+    message = driver.wait("""const toast = document.querySelector('.error-toast');
+      return toast?.getClientRects().length ? toast.textContent.trim() : null;""")
+    assert branch in message and str(owner) in message, message
+    driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(source)))
+    assert not driver.script('return !!document.querySelector("gc-checkout-worktree-dialog [role=dialog]")')
+    after = footprints()
+    assert after == before, 'Refused checkout changed the source or the pending rebase'
+    report['reservedBranchGuidance'] = {'before': before, 'after': after, 'message': message}
+    assert all(term in message for term in ('In Worktrees', 'rebase or bisect', 'Do not force')), message
+    report['scenarios'].append('native-detached-rebase-reservation-guides-checkout-without-changing-either-worktree')
+    return source, repo_id
