@@ -2078,3 +2078,16 @@ passthrough, disabling the textual authentication-agent fallback, and dpkg's
 restricted exit-status range. Only the fixed Debian installer maps 126/127 to a
 pre-execution refusal; other ambiguous outcomes remain unconfirmed. Independently
 implemented behavior; no upstream source code or documentation text copied.
+
+
+## Signed Debian release publication
+
+- [GitHub workflow run API](https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run)
+  and [download-artifact action](https://github.com/actions/download-artifact/blob/v4/README.md):
+  used to select artifacts from a specific successful workflow attempt and
+  transfer the verified asset bundle.
+- [GitHub deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+  and [GitHub CLI release creation](https://cli.github.com/manual/gh_release_create):
+  used for the separate, protected publication job and release asset upload.
+
+No source code copied.

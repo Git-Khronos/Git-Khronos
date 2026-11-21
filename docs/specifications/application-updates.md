@@ -257,8 +257,48 @@ This requires the amd64 installer, canonical `latest.json`, both CycloneDX
 inventories, and one exact checksum entry for each. It verifies the manifest's
 version-bound signature and version-specific official URL against the same
 package. The inventory checks are local integrity and format checks, not
-signed provenance. The verifier does not create a tag or upload anything, and
-the signed publication workflow still needs to consume the verified assets.
+signed provenance. The verifier does not create a tag or upload anything. The manual workflow
+below runs the same verifier on the assets it will hand off for publication.
+
+### Publishing the signed GitHub release
+
+The release and publication workflows are separate, manual runs on the
+official repository's `main` branch. Creating a tag no longer builds or
+publishes a release from the updated workflow. Ensure the tag is on a commit
+containing the updated workflow: a tag pointing at an older commit can still
+select its old tag-triggered workflow. Protect stable version tags against
+changes and deletion.
+
+1. Set the repository Actions variable `GIT_KHRONOS_UPDATER_PUBLIC_KEY`
+   to the publisher **public** key file contents. Before allowing publication,
+   configure the `signed-release` environment to allow only `main` and require
+   release reviewers. Set repository variable
+   `GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED` to `true` only after configuring
+   those protections. The private key and passphrase never enter GitHub.
+2. Dispatch **Qualify Debian release candidate** on `main` with the existing
+   stable tag (for example, `v0.1.6`). Wait for the whole run to pass. Download
+   `debian-candidate-<attempt>` and `debian-candidate-evidence-<attempt>`
+   from that run. The package is built once, qualifies unchanged in the five
+   installed-runtime jobs, and additionally passes the publisher trust and
+   default-off checks on Jammy. If a rerun does not produce both artifacts
+   under its own attempt, start a fresh candidate run rather than mixing attempts.
+3. Use the downloaded `.deb`, `build-receipt.json`, and evidence
+   `report.json` for the strict preflight and offline signature command above.
+   Sign those exact package bytes without rebuilding. The artifact is retained
+   for seven days; preserve it and the evidence separately for longer reviews.
+4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate
+   run ID, and only the **public** `.deb.sig` content. The read-only verification
+   job checks the successful run, attempt, exact tag commit, qualification
+   digest, and publisher signature before creating `latest.json`. With
+   publication disabled, the workflow stops after retaining the five verified
+   assets for review. To approve an enabled release, review the workflow inputs
+   and verification outcome in the protected deployment.
+5. The write job rechecks the transferred files and tag and refuses to replace
+   the current stable release with an equal or older version. It publishes only
+   the installer, signed manifest, two inventories, and checksums. Confirm the
+   public manifest matches the staged manifest and smoke-test the update check
+   from a supported installation with the matching pinned key. An already
+   published tag is not a repair target for this workflow.
 
 On Linux, a verified package can be downloaded even if the desktop cannot
 authorize an in-app installation. For Debian and RPM, a missing or unusable

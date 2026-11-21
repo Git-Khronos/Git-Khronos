@@ -1,0 +1,177 @@
+name: Publish signed Debian release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable release tag used by the successful candidate run
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful Qualify Debian release candidate run ID
+        required: true
+        type: string
+      signature:
+        description: Public .deb.sig content, NEVER the private key or passphrase
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: signed-debian-publication
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  verify:
+    name: Validate candidate evidence and signed assets
+    if: github.ref == 'refs/heads/main' && github.repository == 'Git-Khronos/Git-Khronos'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      tag-commit: ${{ steps.candidate.outputs.commit }}
+      artifact-id: ${{ steps.assets.outputs.artifact-id }}
+      checksums-sha256: ${{ steps.prepare.outputs.checksums_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Resolve the successful candidate workflow attempt
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]]
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          commit="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
+          git merge-base --is-ancestor "$commit" HEAD
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/candidate-run.json"
+          selection="$(node tools/check-debian-candidate-run.mjs "$RUNNER_TEMP/candidate-run.json" "$RUN_ID")"
+          read -r attempt_head attempt <<< "$selection"
+          git merge-base --is-ancestor "$attempt_head" HEAD
+          git merge-base --is-ancestor "$commit" "$attempt_head"
+          printf 'attempt=%s\ncommit=%s\n' "$attempt" "$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: debian-candidate-${{ steps.candidate.outputs.attempt }}
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: debian-candidate-evidence-${{ steps.candidate.outputs.attempt }}
+          path: candidate-evidence
+      - name: Match candidate to the requested tag commit
+        env:
+          RUN_ID: ${{ inputs.candidate_run_id }}
+          TAG_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          node tools/check-debian-candidate-run.mjs "$RUNNER_TEMP/candidate-run.json" \
+            "$RUN_ID" candidate/candidate.json "$RELEASE_TAG" "$TAG_COMMIT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - name: Install verification prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx run desktop:build --output-style=static
+      - name: Prepare and reverify exactly the assets to upload
+        id: prepare
+        env:
+          PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
+          PACKAGE_SIGNATURE: ${{ inputs.signature }}
+        run: |
+          set -euo pipefail
+          test -n "$PUBLIC_KEY"
+          test -n "$PACKAGE_SIGNATURE"
+          printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/publisher.pub"
+          printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
+          output="$(mktemp -d)"
+          directory="$(bash tools/prepare-signed-debian-release.sh candidate candidate-evidence/report.json \
+            "$RUNNER_TEMP/publisher.pub" "$RUNNER_TEMP/package.sig" "$RELEASE_TAG" "$output")"
+          checksum="$(sha256sum -- "$directory/SHA256SUMS")"
+          printf 'directory=%s\nchecksums_sha256=%s\n' "$directory" "${checksum%% *}" >> "$GITHUB_OUTPUT"
+      - name: Retain the verified public assets for the publish job
+        uses: actions/upload-artifact@v4
+        id: assets
+        with:
+          name: signed-debian-release-${{ github.run_attempt }}
+          path: ${{ steps.prepare.outputs.directory }}/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish exact signed assets to GitHub Releases
+    if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: signed-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4, supports artifact-ids
+        with:
+          merge-multiple: true
+          artifact-ids: ${{ needs.verify.outputs.artifact-id }}
+          path: release-assets
+      - name: Verify tag and transferred assets, then publish
+        working-directory: release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_COMMIT: ${{ needs.verify.outputs.tag-commit }}
+          CHECKSUMS_SHA256: ${{ needs.verify.outputs.checksums-sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$TAG_COMMIT" =~ ^[a-f0-9]{40}$ && "$CHECKSUMS_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          version="${RELEASE_TAG#v}"
+          deb="Git-Khronos_${version}_amd64.deb"
+          assets=("$deb" "${deb%.deb}.cdx.json" "Git-Khronos_${version}_source.cdx.json" latest.json)
+          for file in "${assets[@]}" SHA256SUMS; do
+            test -f "$file" && test ! -L "$file" || exit 1
+          done
+          printf '%s  SHA256SUMS\n' "$CHECKSUMS_SHA256" | sha256sum --check --strict
+          sha256sum -- "${assets[@]}" | cmp -- SHA256SUMS
+
+          tag_ref="refs/tags/$RELEASE_TAG"
+          refs="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" "$tag_ref" "$tag_ref^{}")"
+          remote_commit="$(awk -v tag="$tag_ref" '$2==tag { object=$1 } $2==tag "^{}" { peeled=$1 }
+            END { print (peeled ? peeled : object) }' <<< "$refs")"
+          test "$remote_commit" = "$TAG_COMMIT" || {
+            echo "Release tag no longer points at the verified commit." >&2
+            exit 1
+          }
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          dpkg --compare-versions "$version" gt "${latest#v}" || {
+            echo "Refusing to replace the latest release with the same or an older version." >&2
+            exit 1
+          }
+          gh release create "$RELEASE_TAG" "${assets[@]}" SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
+            --title "Git Khronos ${version}" \
+            --notes "Publisher-signed amd64 Debian package built on Ubuntu 22.04 and tested unchanged on Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. Git 2.39 or newer is required; stock Ubuntu 22.04 Git is insufficient. Neither the installer nor the package adds APT repositories. Includes the signed updater manifest, CycloneDX inventories, and SHA256SUMS."

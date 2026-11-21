@@ -9,6 +9,9 @@ on:
       ref:
         type: string
         required: true
+      expect-update-trust:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -83,6 +86,23 @@ jobs:
         run: |
           python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - name: Qualify publisher trust on the exact installed Jammy candidate
+        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        env:
+          GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST: "1"
+        run: |
+          python3 tools/native_acceptance.py --suite environment --headless --installed \
+            --package "$PACKAGE" --output test-results/native/release-qualification
+          reports=(test-results/native/release-qualification/environment-*/report.json)
+          test "${#reports[@]}" -eq 1
+          cp -- "${reports[0]}" test-results/native/release-qualification/report.json
+      - uses: actions/upload-artifact@v4
+        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        with:
+          name: debian-candidate-evidence-${{ github.run_attempt }}
+          path: test-results/native/release-qualification/report.json
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:

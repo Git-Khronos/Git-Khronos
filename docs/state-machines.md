@@ -746,7 +746,7 @@ installer/package-transition files must not be modified by this task.
 | D02 Installer/package manager | `install.sh`, `tools/manage-linux-package.sh` | Validate -> select source/download/local -> verify -> fresh/legacy/already-present transaction -> install/uninstall -> inspect/cleanup. | Installer/package tests |
 | D03 APT guard parser | `tools/guard-linux-package-transition.sh` | Version header -> config frame -> terminator -> allowed action records -> required app action -> accept, otherwise refuse. | Package-transition tests |
 | D04 Validation resource ownership | `tools/run-validation.mjs`, `owned-command.mjs`, native harness | Started evidence -> owned child -> exit/abort -> graceful/forced cleanup -> reaped/pipes closed -> one report. | Owned-command/validation/native harness tests |
-| D05 CI/release | `.github/workflows/ci.yml`, `release.yml` | Select checks -> build/test artifacts; release validates tag/version/ancestry -> package -> checksum/SBOM -> upload/publish. | Workflow definitions and package tests; no live CI audit implied |
+| D05 CI/release | `.github/workflows/ci.yml`, `release.yml`, `publish-signed-debian.yml` | Validate tag/version/ancestry -> build once with pinned trust -> qualify unchanged package -> sign offline -> verify exact assets read-only -> protected publication. Ordinary CI does not publish. | Workflow definitions and package tests; no live CI audit implied |
 | D06 IPC generation | `tools/generate-ipc.mjs`, Rust exporter, contracts | Rust schema -> Specta -> AST adapter -> generated bindings -> freshness/type checks; request/event lifetime remains caller-owned. | `contracts:check`, generator tests, unit `ipc-contract.spec.ts` |
 
 ## Already-explicit state: preserve, do not rewrite

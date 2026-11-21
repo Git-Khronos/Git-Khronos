@@ -1,13 +1,10 @@
-name: Debian release
+name: Qualify Debian release candidate
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing version tag to build and publish
+        description: Existing stable version tag on main to build and qualify
         required: true
         type: string
 
@@ -15,32 +12,35 @@ permissions:
   contents: read
 
 env:
-  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
 
 concurrency:
-  group: release-${{ inputs.release_tag || github.ref }}
+  group: release-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
   debian:
     name: Build Ubuntu package on Jammy
+    if: github.ref == 'refs/heads/main' && github.repository == 'Git-Khronos/Git-Khronos'
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: ./.github/actions/jammy-git
-      - name: Require release commit to be on main
+          persist-credentials: false
+      - name: Check out the tagged commit
+        id: tag
         run: |
-          git fetch origin main
-          case "$RELEASE_TAG" in
-            v*) ;;
-            *) echo "Release tag must start with v." >&2; exit 1 ;;
-          esac
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           release_commit="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
-          git merge-base --is-ancestor "$release_commit" origin/main
+          git merge-base --is-ancestor "$release_commit" HEAD
+          git checkout --detach "$release_commit"
+          echo "commit=$release_commit" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/jammy-git
       - uses: pnpm/action-setup@v4
         with:
           version: 12.14.0
@@ -89,8 +89,16 @@ jobs:
             fi
           done
           pnpm nx run desktop:package-test --output-style=static
-      - name: Build Debian package
+      - name: Build Debian package with pinned publisher trust
+        env:
+          GIT_KHRONOS_UPDATER_PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
         run: |
+          GIT_KHRONOS_UPDATER_PUBLIC_KEY="$(printf '%s' "$GIT_KHRONOS_UPDATER_PUBLIC_KEY")"
+          test -n "$GIT_KHRONOS_UPDATER_PUBLIC_KEY" || {
+            echo "Configure the release publisher public key before building." >&2
+            exit 1
+          }
+          export GIT_KHRONOS_UPDATER_PUBLIC_KEY
           pnpm nx run desktop:package-ubuntu --output-style=static
           package="$(task --silent package:deb:path)"
           mkdir -p test-results
@@ -119,7 +127,16 @@ jobs:
           test "$(dpkg-deb -f "$package" Version)" = "$version"
           test "$(dpkg-deb -f "$package" Architecture)" = amd64
           mkdir -p release-assets
+          test "$asset" = "Git-Khronos_${version}_amd64.deb"
           cp -- "$package" release-assets/
+          cp -- "${CARGO_TARGET_DIR:-target}/release/.git-khronos-package-build.v1.json" \
+            release-assets/build-receipt.json
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" --arg tag "$RELEASE_TAG" \
+            --arg commit "$(git rev-parse HEAD)" --arg runId "$GITHUB_RUN_ID" \
+            --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            '{schema: 1, $repository, $tag, $commit, $runId, $attempt}' \
+            > release-assets/candidate.json
           syft scan "file:$PWD/release-assets/$asset" \
             -o "cyclonedx-json=$PWD/release-assets/${asset%.deb}.cdx.json"
           syft scan "dir:$GITHUB_WORKSPACE" \
@@ -143,45 +160,16 @@ jobs:
           )
       - uses: actions/upload-artifact@v4
         with:
-          name: release-assets
+          name: debian-candidate-${{ github.run_attempt }}
           path: release-assets/*
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   linux-runtime:
     name: Qualify the exact release package
     needs: debian
     uses: ./.github/workflows/linux-package-acceptance.yml
     with:
-      artifact-name: release-assets
-      ref: ${{ inputs.release_tag || github.ref_name }}
-
-  publish:
-    name: Publish GitHub release
-    needs: [debian, linux-runtime]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-assets
-          path: release-assets
-      - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version="${RELEASE_TAG#v}"
-          gh release create "$RELEASE_TAG" \
-            "release-assets/Git-Khronos_${version}_amd64.deb" \
-            "release-assets/Git-Khronos_${version}_amd64.cdx.json" \
-            "release-assets/Git-Khronos_${version}_source.cdx.json" \
-            release-assets/SHA256SUMS \
-            --verify-tag \
-            --latest \
-            --title "Git Khronos ${version}" \
-            --notes "One amd64 Debian package built on Ubuntu 22.04 (glibc 2.35) and qualified unchanged on Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13. Git >=2.39 is required: Ubuntu 22.04 users must separately provision a maintained newer Git; stock Jammy Git 2.34 is insufficient. Debian's standard repositories provide a sufficient Git. Neither the installer nor this package adds APT repositories. Disposable Jammy CI uses the externally maintained git-core/ppa, not Ubuntu's stock Git. Includes CycloneDX package and source dependency inventories and SHA256SUMS."
+      artifact-name: debian-candidate-${{ github.run_attempt }}
+      ref: ${{ needs.debian.outputs.commit }}
+      expect-update-trust: true
