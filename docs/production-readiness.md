@@ -2811,3 +2811,27 @@ The combined receipt is
 Publisher preflight passed with the fixture trust key. This is local
 qualification of those bytes, not production signing, publication,
 or qualification of changes committed after the candidate was frozen.
+
+## Installed partial working-directory comparison — 2026-11-21
+
+On Ubuntu 24.04, the `f9e3f2f` installer counted a 17 MiB untracked
+text fixture with the other edits and displayed +4/−0 as a complete
+total. The `8578d57` installer displayed +3/−0 as partial, kept the
+uncounted file selectable, opened the smaller file's diff, and kept
+the repository and all fixture files unchanged. Both inherited-Git
+checks also passed. The positive package SHA-256 is
+`ee3ba64124dd2b9e936c3abf2b3a94bc3e8253dd6f2439c728211084b52801b6`.
+The negative report is under
+`target/local-review/comparison-line-budget.YXATMbjf/red/` and the positive
+report under
+`target/local-review/updater/jammy-builder/comparison-budget-release.ztzmLeOP/focused/`.
+
+## Deferred co-author picker — 2026-11-21
+
+The commit co-author picker now loads its fields and styles only when
+opened, while the composer retains draft state. Seven Chromium tests
+covered the real composer, including blocked and failed chunk loads.
+Matched production builds lowered initial renderer assets from
+1,334,924 to 1,331,923 bytes. The picker markup moved out of the initial
+asset set. The 900 kB warning remains; this comparison measures bytes,
+not startup time.
