@@ -24,9 +24,18 @@ def reviewed_detached_checkout(driver, fixtures, report):
     dialog = 'gc-history-review-dialog [role=alertdialog]'
     detached = '.statusbar button[aria-label^="View detached HEAD commit"]'
 
-    def open_review():
+    def open_review(branch):
         row = f'.commit-row[data-commit-oid="{target}"]'
-        driver.wait(f'return !!document.querySelector({json.dumps(row)})?.getClientRects().length')
+        branch_row = f'#reference-section-local [aria-label^="Local branch {branch}, current"]'
+        # Startup paints history before the dirty checkout's WIP row can be
+        # inserted above it. Resolve the right-click target after that shift.
+        driver.wait(f"""
+          const target = document.querySelector({json.dumps(row)});
+          const wip = document.querySelector('.commit-row.wip-row:not(.linked-worktree)');
+          return !!document.querySelector({json.dumps(branch_row)})
+            && !!target?.getClientRects().length && !!wip?.getClientRects().length
+            && target.getBoundingClientRect().top >= wip.getBoundingClientRect().bottom;
+        """)
         driver.context_click(row)
         driver.click_scrolled_text('.context-menu button', 'Checkout this commit', wait_for_ready=True)
         state = driver.wait(f"""
@@ -41,7 +50,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     driver.wait('return !!document.querySelector("gc-root")')
     repo_id = open_ui(driver, repository)
     before = checkout_footprint(fixtures, repository, files)
-    review = open_review()
+    review = open_review('main')
     assert str(repository) in review and target[:8] in review and 'detached HEAD' in review
     assert 'Current branch: main' in review and 'Current branch: heads/main' not in review, review
     assert checkout_footprint(fixtures, repository, files) == before
@@ -66,7 +75,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     report['scenarios'].append('native-detached-checkout-refuses-a-stale-branch-at-the-same-tip')
 
     repo_id = open_ui(driver, repository)
-    review = open_review()
+    review = open_review('parallel')
     assert 'Current branch: parallel' in review and 'Current branch: heads/parallel' not in review, review
     driver.click_visible(dialog + ' .confirm-action', 'Check out detached HEAD')
     driver.wait(f'return !document.querySelector({json.dumps(dialog)}) && !!document.querySelector({json.dumps(detached)})')
