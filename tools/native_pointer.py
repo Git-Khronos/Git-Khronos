@@ -5,7 +5,7 @@ import os
 import re
 from contextlib import contextmanager
 
-from native_window_close import _WindowAttributes, _visible_regular_window, owned_application_pid
+from native_window_close import _WindowAttributes, _visible_regular_window
 
 
 class _X11Pointer:
@@ -131,7 +131,7 @@ class _X11Pointer:
 
 
 @contextmanager
-def owned_right_press(owned_display, executable, x, y):
+def owned_right_press(owned_display, resolve_session_owner, x, y):
     """Press once on the owned app and always release, even after an uncertain press."""
     if not owned_display:
         raise RuntimeError('Native pointer input requires an owned private Xvfb display')
@@ -141,12 +141,12 @@ def owned_right_press(owned_display, executable, x, y):
         or server.pid <= 1 or server.poll() is not None
         or os.getpgid(server.pid) != server.pid):
         raise RuntimeError('Refusing pointer input without the live, owned Xvfb process')
-    pid = owned_application_pid(executable)
+    pid = resolve_session_owner()
     pointer = _X11Pointer(display_name)
     try:
         pointer.move(x, y)
         target = pointer.require_owned_window(x, y, pid)
-        if server.poll() is not None or owned_application_pid(executable) != pid:
+        if server.poll() is not None or resolve_session_owner() != pid:
             raise RuntimeError('The owned display or application changed before pointer input')
         try:
             pointer.button(True)

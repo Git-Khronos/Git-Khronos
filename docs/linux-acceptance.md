@@ -24,6 +24,12 @@ Git in `PATH`, provision its matching helpers where that executable looks for
 them; the fixture intentionally discards inherited `GIT_*` overrides. This
 preflight does not replace the application's initial and final integrity checks.
 
+Headless right clicks use the application owner on that test's private D-Bus
+session, verified against the packaged executable and the target Xvfb window.
+A second process using the same installed executable does not become a click
+target. The owner is checked again before dispatch, and input is never replayed
+after an uncertain reply.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do

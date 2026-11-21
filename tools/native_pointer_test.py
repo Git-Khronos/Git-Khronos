@@ -1,5 +1,8 @@
 import ctypes as c
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,7 +10,7 @@ from unittest.mock import MagicMock, call, patch
 
 from native_acceptance import Driver
 from native_pointer import _X11Pointer, owned_right_press
-from native_window_close import _WindowAttributes
+from native_window_close import _WindowAttributes, owned_application_pid
 
 
 class OwnedPointerTests(unittest.TestCase):
@@ -15,20 +18,19 @@ class OwnedPointerTests(unittest.TestCase):
         self.server = SimpleNamespace(args=['Xvfb', '-displayfd', '1'], pid=123,
                                       poll=MagicMock(return_value=None))
         self.display = (':42', self.server)
-        self.executable = Path('/owned/package/usr/bin/git-khronos')
+        self.owner = MagicMock(return_value=789)
 
     def test_press_checks_display_and_window_then_releases_once(self):
         pointer = MagicMock()
         pointer.require_owned_window.return_value = 456
         with patch('native_pointer.os.getpgid', return_value=123), \
-                patch('native_pointer.owned_application_pid', return_value=789) as pid, \
                 patch('native_pointer._X11Pointer', return_value=pointer) as factory:
-            with owned_right_press(self.display, self.executable, 200, 300) as delivery:
+            with owned_right_press(self.display, self.owner, 200, 300) as delivery:
                 self.assertEqual(delivery, {'pid': 789, 'windowId': 456, 'x': 200, 'y': 300})
                 self.assertEqual(pointer.method_calls, [
                     call.move(200, 300), call.require_owned_window(200, 300, 789), call.button(True)])
         factory.assert_called_once_with(':42')
-        self.assertEqual(pid.call_args_list, [call(self.executable), call(self.executable)])
+        self.assertEqual(self.owner.call_args_list, [call(), call()])
         self.assertEqual(pointer.method_calls, [
             call.move(200, 300), call.require_owned_window(200, 300, 789),
             call.button(True), call.button(False), call.close()])
@@ -41,10 +43,9 @@ class OwnedPointerTests(unittest.TestCase):
                 if fail_press:
                     pointer.button.side_effect = [RuntimeError('uncertain press'), None]
                 with patch('native_pointer.os.getpgid', return_value=123), \
-                        patch('native_pointer.owned_application_pid', return_value=789), \
                         patch('native_pointer._X11Pointer', return_value=pointer):
                     with self.assertRaises(RuntimeError):
-                        with owned_right_press(self.display, self.executable, 200, 300):
+                        with owned_right_press(self.display, self.owner, 200, 300):
                             raise RuntimeError('context event not observed')
                 self.assertEqual(pointer.button.call_args_list, [call(True), call(False)])
                 pointer.close.assert_called_once_with()
@@ -58,30 +59,29 @@ class OwnedPointerTests(unittest.TestCase):
             (':42', SimpleNamespace(args=['Xvfb', '-displayfd'], pid=123, poll=MagicMock(return_value=1))),
         ]
         with patch('native_pointer.os.getpgid', return_value=123), \
-                patch('native_pointer.owned_application_pid') as pid, \
                 patch('native_pointer._X11Pointer') as factory:
             for display in cases:
                 with self.subTest(display=display):
                     with self.assertRaises(RuntimeError):
-                        with owned_right_press(display, self.executable, 1, 2):
+                        with owned_right_press(display, self.owner, 1, 2):
                             self.fail('Unowned display accepted')
-            pid.assert_not_called()
+            self.owner.assert_not_called()
             factory.assert_not_called()
         with patch('native_pointer.os.getpgid', return_value=999), \
                 patch('native_pointer._X11Pointer') as factory:
             with self.assertRaises(RuntimeError):
-                with owned_right_press(self.display, self.executable, 1, 2):
+                with owned_right_press(self.display, self.owner, 1, 2):
                     self.fail('Unowned process group accepted')
             factory.assert_not_called()
 
     def test_refuses_changed_owner_before_press(self):
+        self.owner.side_effect = [789, 790]
         pointer = MagicMock()
         pointer.require_owned_window.return_value = 456
         with patch('native_pointer.os.getpgid', return_value=123), \
-                patch('native_pointer.owned_application_pid', side_effect=[789, 790]), \
                 patch('native_pointer._X11Pointer', return_value=pointer):
             with self.assertRaisesRegex(RuntimeError, 'changed before pointer input'):
-                with owned_right_press(self.display, self.executable, 1, 2):
+                with owned_right_press(self.display, self.owner, 1, 2):
                     self.fail('Changed owner accepted')
         pointer.button.assert_not_called()
         pointer.close.assert_called_once_with()
@@ -90,10 +90,9 @@ class OwnedPointerTests(unittest.TestCase):
         pointer = MagicMock()
         pointer.require_owned_window.side_effect = RuntimeError('not owned')
         with patch('native_pointer.os.getpgid', return_value=123), \
-                patch('native_pointer.owned_application_pid', return_value=789), \
                 patch('native_pointer._X11Pointer', return_value=pointer):
             with self.assertRaisesRegex(RuntimeError, 'not owned'):
-                with owned_right_press(self.display, self.executable, 1, 2):
+                with owned_right_press(self.display, self.owner, 1, 2):
                     self.fail('Wrong window accepted')
         pointer.button.assert_not_called()
         pointer.close.assert_called_once_with()
@@ -102,10 +101,9 @@ class OwnedPointerTests(unittest.TestCase):
         pointer = MagicMock()
         self.server.poll.side_effect = [None, 1]
         with patch('native_pointer.os.getpgid', return_value=123), \
-                patch('native_pointer.owned_application_pid', return_value=789), \
                 patch('native_pointer._X11Pointer', return_value=pointer):
             with self.assertRaisesRegex(RuntimeError, 'changed before pointer input'):
-                with owned_right_press(self.display, self.executable, 1, 2):
+                with owned_right_press(self.display, self.owner, 1, 2):
                     self.fail('Stopped display accepted')
         pointer.button.assert_not_called()
         pointer.close.assert_called_once_with()
@@ -180,11 +178,44 @@ class DriverContextClickTests(unittest.TestCase):
         press.return_value.__enter__.return_value = delivery
         with patch('native_pointer.owned_right_press', press):
             self.driver.context_click('.owned-row')
-        press.assert_called_once_with(self.driver.owned_display, self.driver.executable, 10, 20)
+        press.assert_called_once_with(self.driver.owned_display, self.driver.owned_session_application_pid, 10, 20)
         self.assertEqual(self.driver.native_pointer_deliveries, [delivery])
         self.assertIn('context', self.driver.wait.call_args_list[1].args[0])
         self.assertIn('release', self.driver.wait.call_args_list[2].args[0])
         self.assertEqual(self.driver.script.call_count, 2)
+
+    def test_private_session_distinguishes_two_live_processes_using_the_same_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # Multicall coreutils builds use argv[0] to choose the applet.
+            executable = Path(directory).resolve() / 'sleep'
+            shutil.copyfile(shutil.which('sleep'), executable)
+            executable.chmod(0o700)
+            self.driver.executable = executable
+            address = 'unix:abstract=git-khronos-test-owned'
+            self.driver.session_bus_address = address
+            children = []
+            try:
+                for bus in (address, address + '-other'):
+                    children.append(subprocess.Popen([executable, '20'],
+                                                     env={'DBUS_SESSION_BUS_ADDRESS': bus}))
+                self.assertTrue(all(child.poll() is None for child in children))
+                with self.assertRaisesRegex(RuntimeError, 'exactly one process'):
+                    owned_application_pid(executable)
+                with patch.object(self.driver, 'single_instance_bus_call',
+                                  return_value=f'method return\n uint32 {children[0].pid}') as reply:
+                    self.assertEqual(self.driver.owned_session_application_pid(), children[0].pid)
+                    reply.assert_called_once_with('GetConnectionUnixProcessID')
+                with patch.object(self.driver, 'single_instance_bus_call',
+                                  return_value=f'uint32 {children[1].pid}'):
+                    with self.assertRaisesRegex(RuntimeError, 'not the reviewed application'):
+                        self.driver.owned_session_application_pid()
+                with patch.object(self.driver, 'single_instance_bus_call', return_value='uint32 1'):
+                    with self.assertRaisesRegex(RuntimeError, 'did not identify'):
+                        self.driver.owned_session_application_pid()
+            finally:
+                for child in children:
+                    child.terminate()
+                    child.wait(timeout=3)
 
     def test_visible_session_never_injects_into_inherited_display(self):
         with patch.dict(os.environ, {'DISPLAY': ':0'}), \

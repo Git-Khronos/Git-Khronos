@@ -175,6 +175,26 @@ class Driver:
                    '/org/freedesktop/DBus', 'org.freedesktop.DBus.' + method,
                    'string:' + identifier + '.SingleInstance')
 
+    def owned_session_application_pid(self):
+        """Resolve the active app on this fixture's bus, not every process sharing its executable."""
+        if not self.session or self.executable is None or not self.session_bus_address:
+            raise RuntimeError('Native pointer input requires an owned WebDriver session and executable')
+        reply = self.single_instance_bus_call('GetConnectionUnixProcessID').splitlines()
+        kind, _, value = (reply[-1].strip() if reply else '').partition(' ')
+        if (kind != 'uint32' or not value.isascii() or not value.isdecimal()
+                or len(value) > 10 or not 1 < int(value) <= 0xffffffff):
+            raise RuntimeError('The private session bus did not identify an application process')
+        pid = int(value)
+        proc = Path('/proc') / str(pid)
+        expected_bus = ('DBUS_SESSION_BUS_ADDRESS=' + self.session_bus_address).encode()
+        try:
+            if (proc.stat().st_uid == os.geteuid() and (proc / 'exe').readlink() == self.executable
+                    and expected_bus in (proc / 'environ').read_bytes().split(b'\0')):
+                return pid
+        except OSError as error:
+            raise RuntimeError('Could not verify the private session application process') from error
+        raise RuntimeError('The private session owner is not the reviewed application')
+
     def wait_single_instance_release(self, timeout=10):
         deadline = time.monotonic() + timeout
         while True:
@@ -428,7 +448,8 @@ class Driver:
         try:
             if self.owned_display:
                 from native_pointer import owned_right_press
-                with owned_right_press(self.owned_display, self.executable, geometry['x'], geometry['y']) as delivery:
+                with owned_right_press(self.owned_display, self.owned_session_application_pid,
+                                       geometry['x'], geometry['y']) as delivery:
                     self.wait('return window.__nativeContextCheck?.context', 5)
                 self.wait('return window.__nativeContextCheck?.release', 5)
                 self.native_pointer_deliveries.append(delivery)
