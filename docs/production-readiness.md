@@ -73,6 +73,9 @@ fixture, while preserving the dirty checkout and using only owned local refs.
 The report and package hashes match the installer
 `4150bffd1d7a4c479ef773eaae29b54e420b95f13c172e57688a0ce22baa386f` in
 `target/local-review/updater/jammy-builder/tags-restore.W7HdWROR/`.
+The same candidate passed all **277 installed environment scenarios** with
+Git 2.53, including the real tag workflows, and passed the exact-package
+release preflight.
 This package predates the Tags loading/retry presentation and per-workspace
 metadata isolation.
 
