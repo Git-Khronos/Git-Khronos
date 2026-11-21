@@ -7,6 +7,7 @@ export type IntegrationStrategy = 'ff-only' | 'merge' | 'squash' | 'rebase';
 
 export interface IntegrateBranchDialogRequest {
   repositoryId: string;
+  repositoryPath: string;
   /** Branch that receives the changes. */
   target: string;
   /** Branch whose changes are brought in; chosen in the dialog when absent. */
@@ -18,6 +19,7 @@ export interface IntegrationChoice {
   target: string;
   source: string;
   strategy: IntegrationStrategy | 'interactive';
+  comparedTips?: Pick<BranchComparison, 'sourceOid' | 'targetOid'>;
 }
 
 type Relationship = 'up-to-date' | 'behind' | 'diverged' | 'unknown';
@@ -180,7 +182,7 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
 
   private readonly localBranches = computed(() => {
     const repo = this.git.repository();
-    if (!repo || repo.id !== this.request().repositoryId) return [];
+    if (!repo || repo.id !== this.request().repositoryId || repo.path !== this.request().repositoryPath) return [];
     return repo.branches.filter(branch => !branch.remote);
   });
   readonly sourceChoices = computed(() => this.localBranches().map(branch => branch.name).filter(name => name !== this.target()));
@@ -378,7 +380,12 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
   choose(strategy: IntegrationChoice['strategy']): void {
     const source = this.source();
     if (!source) return;
-    this.chosen.emit({ target: this.target(), source, strategy });
+    const target = this.target();
+    const comparison = this.comparison();
+    const comparedTips = comparison && comparison.source === source && comparison.target === target
+      ? { sourceOid: comparison.sourceOid, targetOid: comparison.targetOid }
+      : undefined;
+    this.chosen.emit({ target, source, strategy, comparedTips });
   }
 
   ngOnDestroy(): void { this.destroyed = true; }

@@ -83,6 +83,11 @@ test('recommends fast-forward when the current branch is only behind', async ({ 
     { command: 'integrate_branch', args: expect.objectContaining({ name: 'release', strategy: 'ff-only' }) },
   ]);
   expect(await calls(page, 'checkout_branch')).toEqual([]);
+  const [{ args }] = await calls(page, 'integrate_branch');
+  expect(args.review).toEqual({
+    receivingBranch: 'main', receivingOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+    sourceBranch: 'release', sourceOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+  });
 });
 
 test('recommends merge for diverged branches and warns before rebasing pushed commits', async ({ page }) => {
@@ -245,12 +250,19 @@ for (const advance of [false, true]) {
     await expect.poll(() => calls(page, 'checkout_branch')).toEqual([
       expect.objectContaining({ args: expect.objectContaining({ name: 'release' }) }),
     ]);
+    const [{ args }] = await calls(page, 'checkout_branch');
+    expect(args.review).toEqual({
+      receivingBranch: 'release', receivingOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+      sourceBranch: 'main', sourceOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+    });
     if (advance) {
       await expect(page.getByText(/Checked out release, but a branch changed/)).toBeVisible();
       expect(await calls(page, 'integrate_branch')).toEqual([]);
     } else {
       await expect.poll(() => calls(page, 'integrate_branch')).toEqual([
-        expect.objectContaining({ args: expect.objectContaining({ name: 'main', strategy: 'ff-only' }) }),
+        expect.objectContaining({
+          args: expect.objectContaining({ name: 'main', strategy: 'ff-only', review: args.review }),
+        }),
       ]);
     }
   });
@@ -262,5 +274,14 @@ test('a native comparison of different branch tips retires the drop even before 
     .dragTo(page.getByRole('button', { name: /Local branch main, current/ }));
   await expect(page.getByText(/A branch changed after you dropped it/)).toBeVisible();
   await expect(page.getByRole('menu', { name: 'Branch drop actions' })).toHaveCount(0);
+  expect(await calls(page, 'integrate_branch')).toEqual([]);
+});
+
+test('a dialog comparison whose tips no longer match the snapshot cannot start integration', async ({ page }) => {
+  await installBackend(page, { incomingCount: 1, outgoingCount: 0, outgoingPublished: 0, sourceOid: '9'.repeat(40) });
+  const dialog = await openFromBranchMenu(page, 'release');
+  await dialog.getByRole('button', { name: 'Fast-forward main', exact: true }).click();
+  await expect(page.getByText(/The repository or reviewed branches changed/)).toBeVisible();
+  expect(await calls(page, 'checkout_branch')).toEqual([]);
   expect(await calls(page, 'integrate_branch')).toEqual([]);
 });

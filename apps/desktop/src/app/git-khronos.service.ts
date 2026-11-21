@@ -10,6 +10,7 @@ import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
+  BranchIntegrationReview,
   CommitAuthorInput,
   CommitComparison,
   CommitDetails,
@@ -1430,11 +1431,11 @@ export class GitKhronosService {
     if (succeeded) this.setHistoryUndone(repo.id, entry, undone);
   }
 
-  async checkout(name: string): Promise<MutationResult | null> {
+  async checkout(name: string, review?: BranchIntegrationReview): Promise<MutationResult | null> {
     return this.runBranchMutation(async () => {
       const repository = this.repository();
       const beforeBranch = repository?.status.branch;
-      const result = await this.mutateWithResult('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name });
+      const result = await this.mutateWithResult('checkout_branch', `Checking out ${name}…`, `Checked out ${name}`, { name, ...(review ? { review } : {}) });
       if (result?.status === 'success') this.recordCheckout(repository?.id, beforeBranch);
       return result;
     });
@@ -1760,11 +1761,14 @@ export class GitKhronosService {
     return ipc.compare_branches({ repoId, target, source });
   }
 
-  async integrateBranch(name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
+  async integrateBranch(
+    name: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase', review?: BranchIntegrationReview,
+  ): Promise<void> {
     const verbs = { merge: 'Merging', 'ff-only': 'Fast-forwarding', squash: 'Squashing', rebase: 'Rebasing' };
     await this.mutate('integrate_branch', `${verbs[strategy]} ${name}…`, `${verbs[strategy]} ${name} complete`, {
       name,
       strategy,
+      ...(review ? { review } : {}),
     });
   }
 

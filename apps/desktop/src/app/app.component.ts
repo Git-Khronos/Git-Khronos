@@ -518,7 +518,7 @@ interface GhostBranchState {
   commitOid: string;
 }
 
-interface BranchDropReview {
+interface ReviewedBranchPair {
   repositoryId: string;
   repositoryPath: string;
   source: string;
@@ -528,7 +528,7 @@ interface BranchDropReview {
 }
 
 interface BranchDropState {
-  review: BranchDropReview;
+  review: ReviewedBranchPair;
   preferred: { x: number; y: number };
   x: number;
   y: number;
@@ -869,7 +869,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarContextMenuReturnFocus: HTMLElement | null = null;
   private branchDropMenuReturnFocus: HTMLElement | null = null;
-  private focusedBranchDrop: BranchDropReview | null = null;
+  private focusedBranchDrop: ReviewedBranchPair | null = null;
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
@@ -2042,7 +2042,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.branchDropAdvice(); // Refit after delayed comparison text is rendered.
       if (!operation || !element) return;
       untracked(() => {
-        if (!this.branchDropReviewMatches(operation.review)) return;
+        if (!this.reviewedBranchPairMatches(operation.review)) return;
         const errorClose = this.branchDropLoadErrorClose()?.nativeElement;
         if (!errorClose) {
           const { x, y } = this.fittedMenuPosition(element, operation.preferred);
@@ -2056,7 +2056,7 @@ export class AppComponent implements OnInit, OnDestroy {
     });
     effect(() => {
       const review = this.branchDropMenu()?.review;
-      if (review && !this.branchDropReviewMatches(review)) {
+      if (review && !this.reviewedBranchPairMatches(review)) {
         untracked(() => this.dismissBranchDropMenu(true));
       }
     });
@@ -4269,7 +4269,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('branch-drop')) {
       const branches = this.git.repository()?.branches.filter((candidate) => !candidate.remote) ?? [];
       if (branches.length > 1) {
-        const review = this.captureBranchDrop(
+        const review = this.captureBranchPair(
           branches.find((branch) => !branch.current)?.name ?? branches[0].name,
           branches.find((branch) => branch.current)?.name ?? branches[1].name,
         );
@@ -4536,7 +4536,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const receiving = target ?? repository?.status.branch;
     if (!repository || !receiving || this.git.busy()) return;
     this.actionOverlays.close('context');
-    this.integrationRequest.set({ repositoryId: repository.id, target: receiving, source, returnFocus });
+    this.integrationRequest.set({ repositoryId: repository.id, repositoryPath: repository.path, target: receiving, source, returnFocus });
   }
 
   protected openContextIntegration(): void {
@@ -4558,16 +4558,22 @@ export class AppComponent implements OnInit, OnDestroy {
     const request = this.integrationRequest();
     if (!request || this.git.busy()) return;
     this.integrationRequest.set(null);
+    const review = this.captureBranchPair(choice.source, choice.target);
+    if (!review || review.repositoryId !== request.repositoryId || review.repositoryPath !== request.repositoryPath
+      || (choice.comparedTips && (choice.comparedTips.sourceOid !== review.sourceOid || choice.comparedTips.targetOid !== review.targetOid))) {
+      this.git.error.set('The repository or reviewed branches changed. Refresh and open the integration review again.');
+      return;
+    }
     if (choice.strategy === 'interactive') {
       await this.openInteractiveRebase(choice.target, choice.source);
       return;
     }
-    await this.checkoutThenIntegrate(choice.target, choice.source, choice.strategy);
+    await this.checkoutThenIntegrate(choice.target, choice.source, choice.strategy, review);
   }
 
   protected openIntegrationFromDrop(): void {
     const review = this.branchDropMenu()?.review;
-    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
+    if (!review || this.git.busy() || !this.reviewedBranchPairMatches(review)) return;
     const returnFocus = this.branchDropMenuReturnFocus;
     this.dismissBranchDropMenu();
     this.openIntegrationDialog(review.source, returnFocus, review.target);
@@ -4575,23 +4581,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
   /** Switches to `checkout` when needed, then integrates `integrate` into it. */
   private async checkoutThenIntegrate(
-    checkout: string, integrate: string, strategy: BranchDropStrategy, review?: BranchDropReview,
+    checkout: string, integrate: string, strategy: BranchDropStrategy, review: ReviewedBranchPair,
   ): Promise<void> {
-    if (review && !this.branchDropReviewMatches(review)) return;
-    const repositoryId = this.git.activeRepositoryId();
+    if (!this.reviewedBranchPairMatches(review)) return;
+    const receiveIntoTarget = checkout === review.target;
+    const nativeReview = {
+      receivingBranch: checkout,
+      receivingOid: receiveIntoTarget ? review.targetOid : review.sourceOid,
+      sourceBranch: integrate,
+      sourceOid: receiveIntoTarget ? review.sourceOid : review.targetOid,
+    };
+    const repositoryId = review.repositoryId;
     if (this.git.repository()?.status.branch !== checkout) {
-      const result = await this.git.checkout(checkout);
+      const result = await this.git.checkout(checkout, nativeReview);
       if (result?.status !== 'success'
         || this.git.activeRepositoryId() !== repositoryId
         || this.git.repository()?.status.branch !== checkout) return;
     }
-    if (review && !this.branchDropReviewMatches(review)) {
+    if (!this.reviewedBranchPairMatches(review)) {
       if (this.git.repository()?.path === review.repositoryPath && this.git.activeRepositoryId() === review.repositoryId) {
         this.git.error.set(`Checked out ${checkout}, but a branch changed. No integration was started. Review the branches and try again.`);
       }
       return;
     }
-    await this.git.integrateBranch(integrate, strategy);
+    await this.git.integrateBranch(integrate, strategy, nativeReview);
   }
 
   protected previewContextMerge(): void {
@@ -8831,7 +8844,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }, returnFocus);
       return;
     }
-    const review = source ? this.captureBranchDrop(source, target) : null;
+    const review = source ? this.captureBranchPair(source, target) : null;
     if (!review) return;
     event.preventDefault();
     event.stopPropagation();
@@ -8848,7 +8861,7 @@ export class AppComponent implements OnInit, OnDestroy {
     void this.loadBranchDropComparison(review);
   }
 
-  private captureBranchDrop(source: string, target: string): BranchDropReview | null {
+  private captureBranchPair(source: string, target: string): ReviewedBranchPair | null {
     const repository = this.git.repository();
     if (!repository || source === target) return null;
     const sourceBranch = repository.branches.find(branch => !branch.remote && branch.name === source);
@@ -8860,16 +8873,16 @@ export class AppComponent implements OnInit, OnDestroy {
     };
   }
 
-  private branchDropReviewMatches(review: BranchDropReview): boolean {
-    const current = this.captureBranchDrop(review.source, review.target);
+  private reviewedBranchPairMatches(review: ReviewedBranchPair): boolean {
+    const current = this.captureBranchPair(review.source, review.target);
     return current?.repositoryId === review.repositoryId && current.repositoryPath === review.repositoryPath
       && current.sourceOid === review.sourceOid && current.targetOid === review.targetOid;
   }
 
-  private async loadBranchDropComparison(review: BranchDropReview): Promise<void> {
+  private async loadBranchDropComparison(review: ReviewedBranchPair): Promise<void> {
     try {
       const comparison = await this.git.compareBranches(review.repositoryId, review.target, review.source);
-      if (this.branchDropMenu()?.review !== review || !this.branchDropReviewMatches(review)) return;
+      if (this.branchDropMenu()?.review !== review || !this.reviewedBranchPairMatches(review)) return;
       if (comparison.source !== review.source || comparison.target !== review.target) return;
       if (comparison.sourceOid !== review.sourceOid || comparison.targetOid !== review.targetOid) {
         this.dismissBranchDropMenu(true);
@@ -8919,7 +8932,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async runBranchDrop(strategy: BranchDropStrategy): Promise<void> {
     const review = this.branchDropMenu()?.review;
-    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
+    if (!review || this.git.busy() || !this.reviewedBranchPairMatches(review)) return;
     this.dismissBranchDropMenu();
     const checkout = strategy === 'rebase' ? review.source : review.target;
     const integrate = strategy === 'rebase' ? review.target : review.source;
@@ -8928,7 +8941,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async openInteractiveRebaseFromDrop(): Promise<void> {
     const review = this.branchDropMenu()?.review;
-    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
+    if (!review || this.git.busy() || !this.reviewedBranchPairMatches(review)) return;
     this.dismissBranchDropMenu();
     await this.openInteractiveRebase(review.source, review.target);
   }

@@ -182,3 +182,116 @@ fn merge_squash_and_rebase_keep_their_git_semantics() {
     );
     assert_eq!(rebased.git(&["log", "-1", "--format=%s", "main"]), "Main 1");
 }
+
+fn integration_review(fixture: &Fixture) -> BranchIntegrationReview {
+    let comparison = compare_branches(fixture.path(), "main", "feature").unwrap();
+    BranchIntegrationReview {
+        receiving_branch: comparison.target,
+        receiving_oid: comparison.target_oid,
+        source_branch: comparison.source,
+        source_oid: comparison.source_oid,
+    }
+}
+
+#[test]
+fn integrate_exact_local_branch_even_when_a_tag_shadows_its_name() {
+    for (strategy, ahead) in [("merge", 1), ("ff-only", 0), ("squash", 1), ("rebase", 1)] {
+        let fixture = Fixture::new();
+        fixture.diverge(ahead, 1);
+        let branch_tip = fixture.git(&["rev-parse", "refs/heads/feature"]);
+        fixture.git(&["tag", "-a", "-m", "Different object", "feature", "HEAD"]);
+        assert_ne!(fixture.git(&["rev-parse", "feature^{commit}"]), branch_tip);
+        integrate_branch(fixture.path(), "feature", strategy).unwrap();
+        assert!(fixture.path().join("feature-0").exists(), "{strategy}");
+        if strategy == "ff-only" {
+            assert_eq!(fixture.git(&["rev-parse", "HEAD"]), branch_tip);
+        } else if strategy == "rebase" {
+            assert_eq!(fixture.git(&["rev-parse", "HEAD^"]), branch_tip);
+        }
+    }
+}
+
+#[test]
+fn tag_or_remote_name_without_a_local_branch_does_not_satisfy_integration() {
+    let fixture = Fixture::new();
+    fixture.diverge(0, 1);
+    let initial = fixture.git(&["rev-parse", "HEAD"]);
+    fixture.git(&["tag", "feature-release", "feature"]);
+    fixture.git(&["update-ref", "refs/tags/refs/heads/feature-release", "feature"]);
+    fixture.git(&["update-ref", "refs/remotes/origin/feature-release", "feature"]);
+    assert_eq!(
+        integrate_branch(fixture.path(), "feature-release", "ff-only").unwrap_err().kind,
+        "branchNotFound"
+    );
+    assert_eq!(
+        compare_branches(fixture.path(), "main", "feature-release").unwrap_err().kind,
+        "branchNotFound"
+    );
+    assert_eq!(fixture.git(&["rev-parse", "HEAD"]), initial);
+    assert_eq!(fixture.git(&["status", "--porcelain"]), "");
+}
+
+#[test]
+fn reviewed_integration_refuses_either_moved_tip_or_another_current_branch() {
+    for moved in ["source", "receiving", "different-branch", "detached"] {
+        let fixture = Fixture::new();
+        fixture.diverge(0, 1);
+        let review = integration_review(&fixture);
+        match moved {
+            "source" => {
+                fixture.git(&["switch", "feature"]);
+                fixture.commit_file("new-source", "New source tip");
+                fixture.git(&["switch", "main"]);
+            }
+            "receiving" => fixture.commit_file("new-main", "New receiving tip"),
+            "different-branch" => {
+                fixture.git(&["switch", "-c", "other"]);
+            }
+            _ => {
+                fixture.git(&["switch", "--detach", "HEAD"]);
+            }
+        }
+        fs::write(fixture.path().join("owned.txt"), "unsaved worktree data\n").unwrap();
+        let before_head = fixture.git(&["rev-parse", "HEAD"]);
+        let before_refs = fixture.git(&["for-each-ref", "refs/heads"]);
+        let before_status = fixture.git(&["status", "--porcelain"]);
+        assert_eq!(
+            integrate_branch_with_review(fixture.path(), "feature", "ff-only", Some(&review))
+                .unwrap_err().kind,
+            "integrationReviewChanged",
+            "{moved}"
+        );
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), before_head, "{moved}");
+        assert_eq!(fixture.git(&["for-each-ref", "refs/heads"]), before_refs, "{moved}");
+        assert_eq!(fixture.git(&["status", "--porcelain"]), before_status, "{moved}");
+        assert!(!fixture.path().join("feature-0").exists(), "{moved}");
+    }
+}
+
+#[test]
+fn reviewed_checkout_does_not_switch_if_a_branch_moved_after_preview() {
+    let fixture = Fixture::new();
+    fixture.diverge(1, 1);
+    let review = integration_review(&fixture);
+    fixture.git(&["switch", "feature"]);
+    fixture.commit_file("new-source", "New source tip");
+    assert_eq!(
+        checkout_branch_for_integration(fixture.path(), "main", &review).unwrap_err().kind,
+        "integrationReviewChanged"
+    );
+    assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/feature");
+    assert!(fixture.path().join("new-source").exists());
+}
+
+#[test]
+fn reviewed_checkout_then_merge_uses_the_reviewed_object_and_branch_subject() {
+    let fixture = Fixture::new();
+    fixture.diverge(1, 1);
+    let review = integration_review(&fixture);
+    fixture.git(&["switch", "feature"]);
+    fixture.git(&["tag", "-a", "-m", "Different object", "feature", "refs/heads/main"]);
+    checkout_branch_for_integration(fixture.path(), "main", &review).unwrap();
+    integrate_branch_with_review(fixture.path(), "feature", "merge", Some(&review)).unwrap();
+    assert_eq!(fixture.git(&["rev-parse", "HEAD^2"]), review.source_oid);
+    assert_eq!(fixture.git(&["log", "-1", "--format=%s"]), "Merge branch 'feature'");
+}

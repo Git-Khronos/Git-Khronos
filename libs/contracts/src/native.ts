@@ -50,6 +50,11 @@ export type BranchComparison = { target: string; source: string; targetOid: stri
  * rebasing would rewrite commits other people may have.
  */
 outgoingPublished: number; incoming: ComparedCommit[]; outgoing: ComparedCommit[] }
+/**
+ * The two local branch tips a user reviewed, in the native operation's
+ * direction: receive into the checked-out branch, bring in the source.
+ */
+export type BranchIntegrationReview = { receivingBranch: string; receivingOid: string; sourceBranch: string; sourceOid: string }
 export type BranchWorkflowBinding = { branch: string; expectedOid: string | null; createAt: string | null }
 export type BranchWorkflowControl = { action: "continue"; retry: boolean } | { action: "abort" } | { action: "acknowledge" }
 export type BranchWorkflowFinishOptions = { mergePolicy: BranchWorkflowMergePolicy; mergeMessage: string | null; tag: BranchWorkflowTagRequest | null; deleteTopic: boolean }
@@ -687,7 +692,7 @@ export function ignore_path(args: { repoId: string; path: string; patternKind: s
 export function commit_changes(args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("commit_changes", args); }
 export function update_head_message(args: { repoId: string; expectedOid: string; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
 export function edit_commit(args: { repoId: string; expectedHead: string; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("edit_commit", args); }
-export function checkout_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
+export function checkout_branch(args: { repoId: string; name: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
 export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
 export function sync_checkout_remote_branch(args: { repoId: string; name: string; operationId: string }): Promise<RemoteCheckoutResult> { return TAURI_INVOKE("sync_checkout_remote_branch", args); }
 export function create_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch", args); }
@@ -719,7 +724,7 @@ export function set_branch_upstream(args: { repoId: string; branch: string; upst
 export function delete_branch(args: { repoId: string; name: string; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
 export function delete_checkpoint_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_checkpoint_reference", args); }
 export function delete_original_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_original_reference", args); }
-export function integrate_branch(args: { repoId: string; name: string; strategy: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }
+export function integrate_branch(args: { repoId: string; name: string; strategy: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }
 export function continue_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_merge", args); }
 export function abort_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_merge", args); }
 export function prepare_interactive_rebase(args: { repoId: string; source: string; target: string; selectionOids?: string[] | null; root?: boolean | null }): Promise<InteractiveRebasePlan> { return TAURI_INVOKE("prepare_interactive_rebase", args); }

@@ -2091,3 +2091,16 @@ implemented behavior; no upstream source code or documentation text copied.
   used for the separate, protected publication job and release asset upload.
 
 No source code copied.
+
+
+## Exact local branch integration
+
+- [Git revision selection](https://git-scm.com/docs/gitrevisions) documents
+  shorthand ref resolution, including tags taking precedence over local heads.
+- [Git show-ref](https://git-scm.com/docs/git-show-ref) specifies exact-match
+  local ref lookup. [Git merge](https://git-scm.com/docs/git-merge) and
+  [Git rebase](https://git-scm.com/docs/git-rebase) define integration
+  operands and the native behavior preserved for each strategy.
+
+Used for local-branch resolution, pinning the reviewed source commit, and
+real-Git behavioral tests. No source code copied.

@@ -813,12 +813,26 @@ The branch-drop menu also loads on demand, with a root-styled failure notice.
 The drop owns the repository path and ID and the source and target branch
 tips. A changed snapshot retires it, and comparison results must match both the
 active drop request and its tips; a native comparison detecting newer tips
-retires the review even before the snapshot changes. A checkout required by a direct drop
-strategy must succeed; if its refreshed snapshot shows moved refs, the follow-up
-integration is not sent. The rendered menu is refitted after late comparison
-text without retaking focus. `deferred-overlay-styles.spec.ts` covers deferred
-layout and failure; `integration-dialog.spec.ts` covers drop scope and checkout
-handoff. These renderer guards do not replace native Git validation.
+retires the review even before the snapshot changes. The rendered menu refits
+after late comparison text without retaking focus.
+
+Both a direct drop and the merge/rebase chooser send the receiving and source
+branch names and tips to native before switching or integrating. The native
+repository operation lock serializes app mutations; Git resolves only exact
+local refs, checks both tips and the receiving HEAD just before integration,
+and integrates the verified source commit rather than a moving source name.
+An ordinary checkout does not require this review. If checkout succeeds but a
+tip then changes, the app can remain on the new branch without integrating.
+This is not a transaction with external Git processes: another process can
+still change the receiving HEAD or ref between validation and Git acquiring
+its own locks. The integration command continues to rely on Git's checks for
+worktrees, local changes, conflicts, and history ancestry.
+
+`deferred-overlay-styles.spec.ts` covers the deferred layout, and
+`integration-dialog.spec.ts` covers ownership and the checkout handoff.
+`branch_comparison_tests.rs` uses real Git repositories to verify unchanged-tip
+integration and refusal of moved tips, detached or different HEAD, and nonlocal
+refs with colliding names.
 
 ### Application update intent, consent and installation receipts
 

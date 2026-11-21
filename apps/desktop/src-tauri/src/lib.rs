@@ -1,5 +1,5 @@
 use git_khronos_git_core::{
-    AppError, CancellationToken, CommitAuthorInput, CommitComparison, CommitDetails,
+    AppError, BranchIntegrationReview, CancellationToken, CommitAuthorInput, CommitComparison, CommitDetails,
     CommitFileDiff, CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions,
     FileBlameLine, FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep,
     MINIMUM_GIT_VERSION, ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic,
@@ -9,6 +9,7 @@ use git_khronos_git_core::{
     apply_working_tree_hunk_with_preview as git_apply_working_tree_hunk,
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     begin_rebase_split as git_begin_rebase_split, checkout_branch as git_checkout_branch,
+    checkout_branch_for_integration as git_checkout_branch_for_integration,
     checkout_commit as git_checkout_commit, checkout_remote_branch as git_checkout_remote_branch,
     cherry_pick_commits_with_options as git_cherry_pick_commits,
     clone_repository_with_submodules as git_clone_repository, commit_details as git_commit_details,
@@ -34,7 +35,8 @@ use git_khronos_git_core::{
     file_history as git_file_history, ignore_path as git_ignore_path,
     initialize_all_submodules_cancellable as git_initialize_all_submodules_cancellable,
     initialize_lfs as git_initialize_lfs, initialize_repository as git_initialize_repository,
-    initialize_submodule as git_initialize_submodule, integrate_branch as git_integrate_branch,
+    initialize_submodule as git_initialize_submodule,
+    integrate_branch_with_review as git_integrate_branch,
     mark_bisect as git_mark_bisect, move_head_if_current as git_move_head,
     perform_repository_maintenance as git_perform_repository_maintenance,
     pop_stash_checked as git_pop_stash_entry,
@@ -1079,9 +1081,13 @@ fn edit_commit(
 fn checkout_branch(
     repo_id: String,
     name: String,
+    review: Option<BranchIntegrationReview>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_checkout_branch(path, &name))
+    mutate_and_refresh(&repo_id, &state, |path| match review.as_ref() {
+        Some(review) => git_checkout_branch_for_integration(path, &name, review),
+        None => git_checkout_branch(path, &name),
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1612,10 +1618,11 @@ fn integrate_branch(
     repo_id: String,
     name: String,
     strategy: String,
+    review: Option<BranchIntegrationReview>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_integrate_branch(path, &name, &strategy)
+        git_integrate_branch(path, &name, &strategy, review.as_ref())
     })
 }
 

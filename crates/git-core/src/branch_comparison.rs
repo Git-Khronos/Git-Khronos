@@ -37,12 +37,8 @@ pub fn compare_branches(
     target: &str,
     source: &str,
 ) -> Result<BranchComparison, AppError> {
-    validate_branch_name(path, target)?;
-    validate_branch_name(path, source)?;
-    let target_ref = format!("refs/heads/{target}");
-    let source_ref = format!("refs/heads/{source}");
-    let target_oid = branch_tip(path, &target_ref, target)?;
-    let source_oid = branch_tip(path, &source_ref, source)?;
+    let (_, target_oid) = local_branch_ref_and_tip(path, target)?;
+    let (_, source_oid) = local_branch_ref_and_tip(path, source)?;
     let base = run_git(path, &["merge-base", &target_oid, &source_oid])?;
     let merge_base = match base.status.code() {
         Some(0) => Some(String::from_utf8_lossy(&base.stdout).trim().to_owned()),
@@ -69,19 +65,6 @@ pub fn compare_branches(
         incoming: list(path, &incoming_range)?,
         outgoing: list(path, &outgoing_range)?,
     })
-}
-
-fn branch_tip(path: &Path, reference: &str, name: &str) -> Result<String, AppError> {
-    let spec = format!("{reference}^{{commit}}");
-    let output = run_git(path, &["rev-parse", "--verify", "--quiet", &spec])?;
-    if !output.status.success() {
-        return Err(AppError::new(
-            "branchNotFound",
-            format!("The branch {name} no longer exists."),
-            Some("Refresh the repository and choose the branches again."),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 fn count(path: &Path, range: &[&str]) -> Result<u32, AppError> {

@@ -3317,22 +3317,127 @@ fn is_unmerged_branch_refusal(stderr: &[u8]) -> bool {
     String::from_utf8_lossy(stderr).contains("is not fully merged")
 }
 
-pub fn integrate_branch(path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
+/// The two local branch tips a user reviewed, in the native operation's
+/// direction: receive into the checked-out branch, bring in the source.
+#[derive(Debug, Clone, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchIntegrationReview {
+    pub receiving_branch: String,
+    pub receiving_oid: String,
+    pub source_branch: String,
+    pub source_oid: String,
+}
+
+fn local_branch_ref_and_tip(path: &Path, name: &str) -> Result<(String, String), AppError> {
     validate_branch_name(path, name)?;
-    let args: Vec<&str> = match strategy {
-        "merge" => vec!["merge", "--no-edit", name],
-        "ff-only" => vec!["merge", "--ff-only", name],
-        "squash" => vec!["merge", "--squash", name],
-        "rebase" => vec!["rebase", name],
-        _ => {
-            return Err(AppError::new(
-                "invalidIntegrationStrategy",
-                "That branch integration strategy is not supported.",
-                Some("Choose merge, fast-forward, squash, or rebase."),
-            ));
+    let reference = format!("refs/heads/{name}");
+    // Unlike rev-parse, show-ref --verify cannot fall back to tags or remote refs.
+    let output = run_git(path, &["show-ref", "--verify", "--hash", "--", &reference])?;
+    if !output.status.success() {
+        return Err(AppError::new(
+            "branchNotFound",
+            format!("Local branch '{name}' no longer exists."),
+            Some("Refresh the repository and choose the branch again."),
+        ));
+    }
+    let tip = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    validate_commit_oid(&tip)?;
+    Ok((reference, tip))
+}
+
+fn integration_review_changed() -> AppError {
+    AppError::new(
+        "integrationReviewChanged",
+        "The checked-out branch or a reviewed branch tip changed. No integration was started.",
+        Some("Refresh the repository and review both branches again."),
+    )
+}
+
+fn validate_integration_review(
+    path: &Path,
+    review: &BranchIntegrationReview,
+) -> Result<(String, String), AppError> {
+    validate_commit_oid(&review.receiving_oid)?;
+    validate_commit_oid(&review.source_oid)?;
+    let stale_if_missing = |error: AppError| {
+        if error.kind == "branchNotFound" {
+            integration_review_changed()
+        } else {
+            error
         }
     };
-    run_mutation(path, &args, "integrate that branch")
+    let (receiving_ref, receiving_tip) =
+        local_branch_ref_and_tip(path, &review.receiving_branch).map_err(stale_if_missing)?;
+    let (_, source_tip) =
+        local_branch_ref_and_tip(path, &review.source_branch).map_err(stale_if_missing)?;
+    if review.receiving_branch == review.source_branch
+        || !receiving_tip.eq_ignore_ascii_case(&review.receiving_oid)
+        || !source_tip.eq_ignore_ascii_case(&review.source_oid)
+    {
+        return Err(integration_review_changed());
+    }
+    Ok((receiving_ref, source_tip))
+}
+
+pub fn checkout_branch_for_integration(
+    path: &Path,
+    name: &str,
+    review: &BranchIntegrationReview,
+) -> Result<(), AppError> {
+    if name != review.receiving_branch {
+        return Err(integration_review_changed());
+    }
+    validate_integration_review(path, review)?;
+    run_mutation(path, &["switch", "--no-guess", "--", name], "switch branches")
+}
+
+pub fn integrate_branch(path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
+    integrate_branch_with_review(path, name, strategy, None)
+}
+
+pub fn integrate_branch_with_review(
+    path: &Path,
+    name: &str,
+    strategy: &str,
+    review: Option<&BranchIntegrationReview>,
+) -> Result<(), AppError> {
+    // Reject unsupported strategies before looking up refs or changing Git state.
+    if !matches!(strategy, "merge" | "ff-only" | "squash" | "rebase") {
+        return Err(AppError::new(
+            "invalidIntegrationStrategy",
+            "That branch integration strategy is not supported.",
+            Some("Choose merge, fast-forward, squash, or rebase."),
+        ));
+    }
+    let operand = if let Some(review) = review {
+        if review.source_branch != name {
+            return Err(integration_review_changed());
+        }
+        let (receiving_ref, source_tip) = validate_integration_review(path, review)?;
+        let head = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
+        if !head.status.success()
+            || String::from_utf8_lossy(&head.stdout).trim() != receiving_ref
+            || !reference_tip(path, "HEAD")
+                .is_some_and(|oid| oid.eq_ignore_ascii_case(&review.receiving_oid))
+        {
+            return Err(integration_review_changed());
+        }
+        // Git consumes the actual reviewed object, never a source ref that
+        // could resolve differently between the check and process startup.
+        source_tip
+    } else {
+        local_branch_ref_and_tip(path, name)?.0
+    };
+    let message = format!("Merge branch '{name}'");
+    let args: &[&str] = match strategy {
+        "merge" if review.is_some() => &["merge", "--no-edit", "-m", &message, "--", &operand],
+        "merge" => &["merge", "--no-edit", "--", &operand],
+        "ff-only" => &["merge", "--ff-only", "--", &operand],
+        "squash" => &["merge", "--squash", "--", &operand],
+        "rebase" => &["rebase", "--", &operand],
+        _ => unreachable!(),
+    };
+    run_mutation(path, args, "integrate that branch")
 }
 
 pub fn continue_merge(path: &Path) -> Result<(), AppError> {
