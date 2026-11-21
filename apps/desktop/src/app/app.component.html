@@ -1868,8 +1868,7 @@
   @if (repositoryDialog(); as mode) {
     @defer (on immediate) {
       <gc-repository-dialog #repositoryManager [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [ownsRequest]="ownsRepositoryDialog" [favoriteShortcut]="favoriteShortcut"
-        (closed)="closeRepositoryManager()" (browse)="browseFromRepositoryManager()" (openFavorite)="openFavoriteRepository($event)"
-        (openPath)="openRepositoryPath($event, true)" (opening)="saveCommitDraft()" (opened)="finishRepositoryCreation()" />
+        (closed)="closeRepositoryManager()" (openExisting)="openManagedRepository($event)" (opening)="saveCommitDraft()" (opened)="finishRepositoryCreation()" />
     } @loading {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading repository management">
         <p role="status">Loading repository management…</p>

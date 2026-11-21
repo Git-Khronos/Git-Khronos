@@ -677,15 +677,6 @@ export class GitKhronosService implements OnDestroy {
     }, repoId);
   }
 
-  async chooseRepository(): Promise<void> {
-    try {
-      const selected = await open({ directory: true, multiple: false, title: 'Open a Git repository' });
-      if (typeof selected === 'string') await this.openRepository(selected);
-    } catch (error: unknown) {
-      this.error.set(error instanceof Error ? error.message : String(error));
-    }
-  }
-
   async chooseDirectory(title: string, current: () => boolean = () => true): Promise<string | null> {
     try {
       const selected = await open({ directory: true, multiple: false, title });
@@ -696,8 +687,10 @@ export class GitKhronosService implements OnDestroy {
     }
   }
 
-  openRepository(path: string, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
-    return this.openRepositoryRequest(path, replacement);
+  openRepository(path: string, replacement?: SavedRepositoryReplacement, owner?: () => boolean): Promise<OpenRepositoryResult> {
+    const scope = this.activeRepositoryReadScope();
+    return this.openRepositoryRequest(path, replacement, undefined, undefined,
+      owner && (() => owner() && this.activeRepositoryReadScope() === scope));
   }
 
   openReviewedWorktree(path: string, review: ReviewedWorktreeOpen): Promise<OpenRepositoryResult> {
@@ -709,6 +702,7 @@ export class GitKhronosService implements OnDestroy {
     replacement?: SavedRepositoryReplacement,
     reopening?: ClosedRepository,
     reviewedWorktree?: ReviewedWorktreeOpen,
+    owner?: () => boolean,
   ): Promise<OpenRepositoryResult> {
     const workspaceId = this.activeWorkspaceId();
     const visit = this.workspaceVisit;
@@ -723,10 +717,11 @@ export class GitKhronosService implements OnDestroy {
     const opened: { snapshot?: RepositorySnapshot; failure?: string; retired?: boolean } = {};
     const status = await this.run('Opening repository…', async report => {
       const retired = () => {
-        if (canReplace() && canReopen() && canOpenWorktree()) return false;
+        if ((!owner || owner()) && canReplace() && canReopen() && canOpenWorktree()) return false;
         opened.retired = true;
         report(reviewedWorktree ? 'Reviewed checkout was not opened'
-          : reopening ? 'Closed tab was not reopened' : 'Saved path replacement was not applied');
+          : reopening ? 'Closed tab was not reopened'
+          : replacement ? 'Saved path replacement was not applied' : 'Repository was not opened');
         return true;
       };
       if (retired()) return;
@@ -747,7 +742,7 @@ export class GitKhronosService implements OnDestroy {
           throw new Error('That repository is already in this workspace. The saved path was not replaced.');
         }
       } catch (error: unknown) {
-        if ((replacement || reopening || reviewedWorktree) && retired()) return;
+        if (retired()) return;
         opened.failure = this.formatError(error);
         throw error;
       }

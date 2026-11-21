@@ -99,7 +99,7 @@ import { LfsPruneDialogComponent } from './lfs-prune-dialog.component';
 import { RepositoryConfirmationsComponent, type ForcePushReview, type WorktreeRemovalReview } from './repository-confirmations.component';
 import { ErrorToastComponent } from './error-toast.component';
 import { KeyboardShortcutsDialogComponent } from './keyboard-shortcuts-dialog.component';
-import { RepositoryDialogComponent, type RepositoryDialogMode } from './repository-dialog.component';
+import { RepositoryDialogComponent, type ManagedRepositoryOpen, type RepositoryDialogMode } from './repository-dialog.component';
 import { LfsTrackingDialogComponent, type LfsTrackingRequest } from './lfs-tracking-dialog.component';
 import { WorktreeMoveDialogComponent, type WorktreeMoveRequest } from './worktree-move-dialog.component';
 import { WorktreeRegistrationDialogComponent, type SubmoduleReviewTarget, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
@@ -1115,6 +1115,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly identityEmail = signal('');
   protected readonly repositoryDialog = signal<RepositoryDialogMode | null>(null);
   protected readonly repositoryDialogFocusRequest = signal(0);
+  private repositoryChooserRequest = 0;
   protected readonly ownsRepositoryDialog = (request: number): boolean =>
     this.repositoryDialog() !== null && this.repositoryDialogFocusRequest() === request;
   private readonly repositoryManager = viewChild<unknown, ElementRef<HTMLElement>>('repositoryManager', { read: ElementRef });
@@ -6381,7 +6382,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly openWorkspaceRepository = (path: string, replacement?: SavedRepositoryReplacement) =>
-    this.openRepositoryPath(path, false, replacement);
+    this.openRepositoryPath(path, replacement);
   protected readonly closeWorkspaceRepositories = (request: WorkspaceTabsCloseRequest): boolean => {
     if (this.git.busy() || !request.tabs.length || request.workspaceId !== this.git.activeWorkspaceId()
       || request.scope !== this.git.activeRepositoryReadScope()) return false;
@@ -6395,18 +6396,14 @@ export class AppComponent implements OnInit, OnDestroy {
     return true;
   };
 
-  protected async openRepositoryPath(path: string, closeManager = false, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
+  protected async openRepositoryPath(path: string, replacement?: SavedRepositoryReplacement, owner?: () => boolean): Promise<OpenRepositoryResult> {
+    if (owner && !owner()) return { status: 'cancelled', error: null };
     const current = this.git.repository();
-    if (!replacement && path === current?.path) {
-      if (closeManager) this.repositoryDialog.set(null);
-      return { status: 'success', repositoryId: current.id, path };
-    }
-    return this.openRepositoryWithDraft(() => this.git.openRepository(path, replacement), closeManager);
+    if (!replacement && path === current?.path) return { status: 'success', repositoryId: current.id, path };
+    return this.openRepositoryWithDraft(() => this.git.openRepository(path, replacement, owner));
   }
 
-  private async openRepositoryWithDraft(
-    open: () => Promise<OpenRepositoryResult>, closeManager = false,
-  ): Promise<OpenRepositoryResult> {
+  private async openRepositoryWithDraft(open: () => Promise<OpenRepositoryResult>): Promise<OpenRepositoryResult> {
     const workspaceId = this.git.activeWorkspaceId();
     this.saveCommitDraft();
     const opened = await open();
@@ -6416,7 +6413,6 @@ export class AppComponent implements OnInit, OnDestroy {
       && active?.id === opened.repositoryId && active.path === opened.path) {
       this.syncOpenTerminalToActiveRepository();
       this.restoreCommitDraft();
-      if (closeManager) this.repositoryDialog.set(null);
       this.selectWip();
       this.loadGraphPreferences();
     }
@@ -7745,12 +7741,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected openFavoriteRepository(path: string): void {
     const repository = this.git.repositories().find((candidate) => candidate.path === path);
-    if (repository) {
-      this.activateRepository(repository.id);
-      this.repositoryDialog.set(null);
-    } else {
-      void this.openRepositoryPath(path, true);
-    }
+    if (repository) this.activateRepository(repository.id);
+    else void this.openRepositoryPath(path);
   }
 
   protected async createBranch(): Promise<void> {
@@ -10307,18 +10299,19 @@ export class AppComponent implements OnInit, OnDestroy {
       this.openRepositoryManager('manager', returnFocus);
       return;
     }
-    const previous = this.git.activeRepositoryId();
-    this.saveCommitDraft();
-    await this.git.chooseRepository();
-    if (this.git.activeRepositoryId() !== previous) {
-      this.syncOpenTerminalToActiveRepository();
-      this.restoreCommitDraft();
-      this.selectWip();
-      this.loadGraphPreferences();
-    }
+    const request = ++this.repositoryChooserRequest;
+    const current = this.repositoryNavigationOwner(() => this.repositoryChooserRequest === request);
+    const path = await this.git.chooseDirectory('Open a Git repository', current);
+    if (path && current()) await this.openRepositoryPath(path, undefined, current);
+  }
+
+  private repositoryNavigationOwner(owner: () => boolean): () => boolean {
+    const scope = this.git.activeRepositoryReadScope();
+    return () => owner() && this.git.activeRepositoryReadScope() === scope;
   }
 
   protected openRepositoryManager(mode: RepositoryDialogMode = 'manager', returnFocus?: HTMLElement | null): void {
+    this.repositoryChooserRequest++;
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
@@ -10354,10 +10347,15 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => tabs[next]?.focus());
   }
 
-  protected async browseFromRepositoryManager(): Promise<void> {
-    const previous = this.git.activeRepositoryId();
-    await this.chooseRepository();
-    if (this.git.activeRepositoryId() !== previous) this.repositoryDialog.set(null);
+  protected async openManagedRepository(request: ManagedRepositoryOpen): Promise<void> {
+    const current = this.repositoryNavigationOwner(request.current);
+    if (!current()) return;
+    const path = request.kind === 'picker' ? await this.git.chooseDirectory('Open a Git repository', current) : request.path;
+    if (!path || !current()) return;
+    const favorite = request.kind === 'favorite' && this.git.repositories().find(repository => repository.path === path);
+    if (favorite) this.activateRepository(favorite.id);
+    else if ((await this.openRepositoryPath(path, undefined, current)).status !== 'success') return;
+    if (request.current()) this.repositoryDialog.set(null);
   }
 
   protected finishRepositoryCreation(): void {

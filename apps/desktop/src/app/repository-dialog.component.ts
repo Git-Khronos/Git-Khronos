@@ -8,6 +8,10 @@ import { IconComponent } from './icon.component';
 
 export type RepositoryDialogMode = 'manager' | 'clone' | 'init';
 
+export type ManagedRepositoryOpen =
+  | { kind: 'picker'; current: () => boolean }
+  | { kind: 'favorite' | 'recent'; path: string; current: () => boolean };
+
 /** Keeps clone and initialize drafts while the dialog is closed and reopened. */
 @Injectable({ providedIn: 'root' })
 export class RepositoryFormDrafts {
@@ -50,7 +54,7 @@ export class RepositoryFormDrafts {
           @if (git.browserPreview()) {
             <div class="browser-preview-notice"><gc-icon name="terminal" [size]="16" /><span><strong>Sample-data preview</strong><small>Local repositories and Git commands are available in the desktop app. Run <code>task dev</code> to use them.</small></span></div>
           }
-          <button class="repository-action-card" type="button" [disabled]="git.browserPreview()" (click)="browse.emit()"><span><gc-icon name="folder-git" [size]="22" /></span><div><strong>Open a repository</strong><small>Browse to an existing local Git working tree</small></div>@if (git.browserPreview()) { <b>Desktop only</b> } @else { <i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i> }</button>
+          <button class="repository-action-card" type="button" [disabled]="git.browserPreview()" (click)="requestExistingRepository('picker')"><span><gc-icon name="folder-git" [size]="22" /></span><div><strong>Open a repository</strong><small>Browse to an existing local Git working tree</small></div>@if (git.browserPreview()) { <b>Desktop only</b> } @else { <i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i> }</button>
           <button class="repository-action-card" type="button" (click)="openMode('clone')"><span><gc-icon name="copy" [size]="22" /></span><div><strong>Clone a repository</strong><small>Download a remote repository to this machine</small></div><i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i></button>
           <button class="repository-action-card" type="button" (click)="openMode('init')"><span><gc-icon name="repo" [size]="22" /></span><div><strong>Initialize a repository</strong><small>Create a new local Git working tree</small></div><i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i></button>
           @if (repositoryHistoryCount() >= 3) {
@@ -63,10 +67,10 @@ export class RepositoryFormDrafts {
             <div class="manager-repository-empty" role="region" aria-label="No matching repositories"><gc-icon name="search" [size]="16" /><span><strong>No matching repositories</strong><small>Try part of a repository name or folder path.</small></span><button type="button" (click)="clearRepositoryFilter()">Clear filter</button></div>
           }
           @if (filteredFavoritePaths().length) {
-            <div class="manager-repositories manager-favorites"><h3>Favorites</h3>@for (path of filteredFavoritePaths(); track path) { @let index = git.favoritePaths().indexOf(path); <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="openFavorite.emit(path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><kbd>{{ index < 9 ? favoriteShortcut() + ' ' + (index + 1) : '' }}</kbd></button><button class="manager-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
+            <div class="manager-repositories manager-favorites"><h3>Favorites</h3>@for (path of filteredFavoritePaths(); track path) { @let index = git.favoritePaths().indexOf(path); <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('favorite', path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><kbd>{{ index < 9 ? favoriteShortcut() + ' ' + (index + 1) : '' }}</kbd></button><button class="manager-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
           }
           @if (filteredRecentPaths().length) {
-            <div class="manager-repositories manager-recents"><h3>Recently opened</h3>@for (path of filteredRecentPaths(); track path) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="openPath.emit(path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span></button><button class="manager-favorite-toggle" type="button" title="Add {{ git.pathLabel(path) }} to favorites" [attr.aria-label]="'Add ' + git.pathLabel(path) + ' to favorites'" aria-pressed="false" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
+            <div class="manager-repositories manager-recents"><h3>Recently opened</h3>@for (path of filteredRecentPaths(); track path) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('recent', path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span></button><button class="manager-favorite-toggle" type="button" title="Add {{ git.pathLabel(path) }} to favorites" [attr.aria-label]="'Add ' + git.pathLabel(path) + ' to favorites'" aria-pressed="false" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
           }
         </div>
       } @else if (mode() === 'clone') {
@@ -168,9 +172,7 @@ export class RepositoryDialogComponent {
   readonly favoriteShortcut = input('');
   readonly cloneOnly = input(false);
   readonly closed = output<void>();
-  readonly browse = output<void>();
-  readonly openFavorite = output<string>();
-  readonly openPath = output<string>();
+  readonly openExisting = output<ManagedRepositoryOpen>();
   /** Emitted before a clone or initialization starts, then after it opens a repository. */
   readonly opening = output<void>();
   readonly opened = output<void>();
@@ -179,6 +181,7 @@ export class RepositoryDialogComponent {
   private readonly managerRepositoryFilter = viewChild<ElementRef<HTMLInputElement>>('managerRepositoryFilter');
   private destinationPicker = 0;
   private formVisit = 0;
+  private existingRepositoryRequest = 0;
   protected readonly creationNotice = signal('');
 
   constructor() {
@@ -341,15 +344,26 @@ export class RepositoryDialogComponent {
     this.creationNotice.set('');
   }
 
-  private creationOwner(mode: 'clone' | 'init'): () => boolean {
+  private formOwner(mode: RepositoryDialogMode): () => boolean {
     const owner = this.focusRequest();
     const visit = this.formVisit;
     return () => this.formVisit === visit && this.focusRequest() === owner
       && this.ownsRequest()(owner) && this.mode() === mode;
   }
 
+  protected requestExistingRepository(kind: 'picker'): void;
+  protected requestExistingRepository(kind: 'favorite' | 'recent', path: string): void;
+  protected requestExistingRepository(kind: ManagedRepositoryOpen['kind'], path?: string): void {
+    const owner = this.formOwner('manager');
+    if (!owner()) return;
+    const request = ++this.existingRepositoryRequest;
+    const current = () => request === this.existingRepositoryRequest && owner();
+    if (kind === 'picker') this.openExisting.emit({ kind, current });
+    else if (path) this.openExisting.emit({ kind, path, current });
+  }
+
   protected async submitClone(): Promise<void> {
-    const current = this.creationOwner('clone');
+    const current = this.formOwner('clone');
     if (!current() || this.hostedMode() || this.gitlabMode() || !this.cloneReady() || this.git.busy()) return;
     this.destinationPicker++;
     this.creationNotice.set('');
@@ -369,7 +383,7 @@ export class RepositoryDialogComponent {
   }
 
   protected async submitInit(): Promise<void> {
-    const current = this.creationOwner('init');
+    const current = this.formOwner('init');
     if (!current() || !this.initReady() || this.git.busy()) return;
     this.destinationPicker++;
     this.creationNotice.set('');

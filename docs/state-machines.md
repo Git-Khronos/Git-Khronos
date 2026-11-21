@@ -240,6 +240,13 @@ mode, and its own invocation. Closing, switching modes, or starting another
 picker retires the old reply; neither a path nor an error from it may replace
 the shared form draft. A path confirmed while its form is still current
 remains a draft across ordinary closes and reopens.
+
+An ordinary Browse, Recent, or Favorite open is a read, not a filesystem
+creation. Its picker and native reply belong to the active checkout visit
+and the current Browse request. A closed, replaced, or superseded request
+does not activate a tab, change saved membership, or announce a late
+failure in the replacement dialog. A live request can still open the
+selected repository normally.
 Clone (URL or provider review) and Initialize separate navigation ownership
 from the native result. Only the originating form and repository visit may
 activate the new checkout. If that visit retires after dispatch, a confirmed
