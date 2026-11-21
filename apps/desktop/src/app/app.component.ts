@@ -6,6 +6,7 @@ import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
+import { FileActionMenuComponent, type FileMenuAction } from './file-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
 import { SavedDiscardListComponent } from './saved-discard-list.component';
 import { FileConfirmationDetailsComponent, type PendingFileAction } from './file-confirmation-details.component';
@@ -450,6 +451,7 @@ interface FileContextMenuState {
   content: FileMediaSelection | null;
   x: number;
   y: number;
+  preferredPosition: { x: number; y: number };
   path: string;
   staged: boolean;
   untracked: boolean;
@@ -485,6 +487,7 @@ interface CommitFileContextMenuState {
   repositoryId: string | null;
   x: number;
   y: number;
+  preferredPosition: { x: number; y: number };
   oid: string;
   file: CommitFile;
   paths: string[];
@@ -498,10 +501,11 @@ interface StashContextMenuState {
   repositoryId: string;
 }
 
-type ActionOverlay =
+export type FileActionMenu = { kind: 'file'; value: FileContextMenuState }
+  | { kind: 'commitFile'; value: CommitFileContextMenuState };
+
+type ActionOverlay = FileActionMenu
   | { kind: 'context'; value: ContextMenuState }
-  | { kind: 'file'; value: FileContextMenuState }
-  | { kind: 'commitFile'; value: CommitFileContextMenuState }
   | { kind: 'stash'; value: StashContextMenuState }
   | { kind: 'repositoryTab'; value: RepositoryTabMenuState }
   | { kind: 'remoteGroup'; value: RemoteGroupMenuState }
@@ -696,7 +700,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
-    GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -986,12 +990,16 @@ export class AppComponent implements OnInit, OnDestroy {
   private windowsLauncherReturnFocus: HTMLElement | null = null;
   private readonly windowsLauncherLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('windowsLauncherLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
-  protected readonly fileContextMenu = computed(() => {
+  protected readonly fileActionMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
+    return active?.kind === 'file' || active?.kind === 'commitFile' ? active : null;
+  });
+  protected readonly fileContextMenu = computed(() => {
+    const active = this.fileActionMenu();
     return active?.kind === 'file' ? active.value : null;
   });
   protected readonly commitFileContextMenu = computed(() => {
-    const active = this.actionOverlays.activeOverlay();
+    const active = this.fileActionMenu();
     return active?.kind === 'commitFile' ? active.value : null;
   });
   protected readonly stashContextMenu = computed(() => {
@@ -4531,11 +4539,12 @@ export class AppComponent implements OnInit, OnDestroy {
           this.selectedPanelFiles.set(paths);
           this.panelFileSelectionSource.set('comparison');
           this.panelFileSelectionAnchor.set(file.path);
+          const position = { x: Math.max(20, window.innerWidth - 620), y: 345 };
           this.actionOverlays.open({ kind: 'commitFile', value: {
             content: this.commitMediaSelection(file, comparison.targetOid, 'comparison'),
             repositoryId: this.git.activeRepositoryId(),
-            x: Math.max(20, window.innerWidth - 620),
-            y: 345,
+            ...position,
+            preferredPosition: position,
             oid: comparison.targetOid,
             file,
             paths,
@@ -12670,6 +12679,7 @@ export class AppComponent implements OnInit, OnDestroy {
     entry: WorkingTreeEntry,
     staged: boolean,
     focusMenu = true,
+    opener: HTMLElement | null = null,
   ): void {
     event.preventDefault();
     event.stopPropagation();
@@ -12678,9 +12688,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.close('context');
     this.actionOverlays.close('stash');
     this.actionOverlays.close('commitFile');
-    const returnTarget = this.fileMenuReturnTarget(event);
-    if (focusMenu && returnTarget) this.fileContextMenuReturnFocus = returnTarget;
-    else if (!focusMenu) this.fileContextMenuReturnFocus = null;
+    this.fileContextMenuReturnFocus = focusMenu ? opener ?? this.fileMenuReturnTarget(event) : null;
     const preferredPosition = { x: event.clientX, y: event.clientY };
     const state: FileContextMenuState = {
       content: this.workingMediaSelection(entry.path, staged),
@@ -12690,11 +12698,11 @@ export class AppComponent implements OnInit, OnDestroy {
       conflicted: entry.conflicted,
       renameSource: (staged ? entry.indexStatus : entry.worktreeStatus) === 'R' ? entry.previousPath ?? null : undefined,
       renameRepositoryPath: this.git.repository()?.path,
+      preferredPosition,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 260)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 310)),
     };
-    this.actionOverlays.open({ kind: 'file', value: state }, this.fileContextMenuReturnFocus);
-    this.settleFileActionMenuPosition('working', `${entry.path}:${staged}`, preferredPosition, focusMenu);
+    this.openFileActionMenu({ kind: 'file', value: state }, focusMenu);
   }
 
   protected openCommitFileMenu(
@@ -12703,6 +12711,7 @@ export class AppComponent implements OnInit, OnDestroy {
     oid: string,
     source: 'commit' | 'comparison',
     focusMenu = true,
+    opener: HTMLElement | null = null,
   ): void {
     event.preventDefault();
     event.stopPropagation();
@@ -12710,9 +12719,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.close('context');
     this.actionOverlays.close('stash');
     this.actionOverlays.close('file');
-    const returnTarget = this.fileMenuReturnTarget(event);
-    if (focusMenu && returnTarget) this.fileContextMenuReturnFocus = returnTarget;
-    else if (!focusMenu) this.fileContextMenuReturnFocus = null;
+    this.fileContextMenuReturnFocus = focusMenu ? opener ?? this.fileMenuReturnTarget(event) : null;
     const selected = this.panelFileSelectionSource() === source && this.selectedPanelFiles().includes(file.path)
       ? this.selectedPanelFiles()
       : [file.path];
@@ -12720,22 +12727,17 @@ export class AppComponent implements OnInit, OnDestroy {
     this.panelFileSelectionSource.set(source);
     this.panelFileSelectionAnchor.set(file.path);
     const preferredPosition = { x: event.clientX, y: event.clientY };
-    this.actionOverlays.open({ kind: 'commitFile', value: {
+    this.openFileActionMenu({ kind: 'commitFile', value: {
       content: this.commitMediaSelection(file, oid, source),
       repositoryId: this.git.activeRepositoryId(),
       file,
       oid,
       paths: selected,
       source,
+      preferredPosition,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.x, window.innerWidth - 278)),
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 245)),
-    } }, this.fileContextMenuReturnFocus);
-    this.settleFileActionMenuPosition(
-      'commit',
-      `${source}:${oid}:${file.path}`,
-      preferredPosition,
-      focusMenu,
-    );
+    } }, focusMenu);
   }
 
   protected handleFileActionKeydown(
@@ -12749,11 +12751,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = this.fileMenuReturnTarget(event);
     if (!target) return;
     const bounds = target.getBoundingClientRect();
-    this.fileContextMenuReturnFocus = target;
     this.openFileMenu(new MouseEvent('contextmenu', {
       clientX: Math.min(bounds.right - 10, bounds.left + 240),
       clientY: bounds.bottom,
-    }), entry, staged, true);
+    }), entry, staged, true, target);
   }
 
   protected handleCommitFileActionKeydown(
@@ -12768,11 +12769,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const target = this.fileMenuReturnTarget(event);
     if (!target) return;
     const bounds = target.getBoundingClientRect();
-    this.fileContextMenuReturnFocus = target;
     this.openCommitFileMenu(new MouseEvent('contextmenu', {
       clientX: Math.min(bounds.right - 10, bounds.left + 250),
       clientY: bounds.bottom,
-    }), file, oid, source, true);
+    }), file, oid, source, true, target);
   }
 
   protected viewContextFileContent(source: 'working' | 'commit'): void {
@@ -14307,47 +14307,73 @@ export class AppComponent implements OnInit, OnDestroy {
     )));
   }
 
-  private settleFileActionMenuPosition(
-    target: 'working' | 'commit',
-    key: string,
-    preferred: { x: number; y: number },
-    focusMenu: boolean,
-  ): void {
-    const isCurrent = () => {
-      const working = this.fileContextMenu();
-      const commit = this.commitFileContextMenu();
-      const activeKey = target === 'working'
-        ? working && `${working.path}:${working.staged}`
-        : commit && `${commit.source}:${commit.oid}:${commit.file.path}`;
-      return activeKey === key;
-    };
+  private openFileActionMenu(request: FileActionMenu, focusMenu: boolean): void {
+    const initialFocus = document.activeElement;
+    this.actionOverlays.open(request, this.fileContextMenuReturnFocus);
+    // The controller adds return-focus metadata to its own overlay record.
+    const current = () => this.fileActionMenu()?.value === request.value;
     queueMicrotask(() => requestAnimationFrame(() => this.runWhenElementRendered(
-      () => isCurrent() ? this.fileActionMenuElement()?.nativeElement : undefined,
-      (element) => {
-        const working = this.fileContextMenu();
-        const commit = this.commitFileContextMenu();
-        if (!isCurrent()) return;
-
-        const x = Math.max(
-          VIEWPORT_MENU_GUTTER,
-          Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
-        );
-        const y = Math.max(
-          VIEWPORT_MENU_GUTTER,
-          Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
-        );
-        if (target === 'working' && working && (working.x !== x || working.y !== y)) {
-          this.actionOverlays.open({ kind: 'file', value: { ...working, x, y } }, this.fileContextMenuReturnFocus);
-        } else if (target === 'commit' && commit && (commit.x !== x || commit.y !== y)) {
-          this.actionOverlays.open({ kind: 'commitFile', value: { ...commit, x, y } }, this.fileContextMenuReturnFocus);
-        }
-        if (focusMenu) {
-          element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
-        }
-      },
+      () => this.fileActionMenuElement()?.nativeElement,
+      (element) => this.fitFileActionMenu(request, element, focusMenu
+        && (document.activeElement === initialFocus || this.canRestoreFocusFrom(element))),
       30,
-      isCurrent,
+      current,
     )));
+  }
+
+  protected fileActionMenuReady(request: FileActionMenu): void {
+    const element = this.fileActionMenuElement()?.nativeElement;
+    if (!element || this.fileActionMenu() !== request) return;
+    const active = document.activeElement;
+    const fallbackFocused = element.contains(active) && !element.querySelector('gc-file-action-menu')?.contains(active);
+    // The loading button may have just been removed. Don't take focus from
+    // a control the user reached elsewhere while the chunk was loading.
+    const restoreInside = fallbackFocused || (!!this.fileContextMenuReturnFocus
+      && (active === document.body || active === this.fileContextMenuReturnFocus));
+    this.fitFileActionMenu(request, element, restoreInside);
+  }
+
+  private fitFileActionMenu(request: FileActionMenu, element: HTMLElement, focus: boolean): void {
+    const { x, y } = this.fittedMenuPosition(element, request.value.preferredPosition);
+    if (request.value.x !== x || request.value.y !== y) {
+      const next: FileActionMenu = request.kind === 'file'
+        ? { kind: 'file', value: { ...request.value, x, y } }
+        : { kind: 'commitFile', value: { ...request.value, x, y } };
+      this.actionOverlays.open(next, this.fileContextMenuReturnFocus);
+    }
+    if (focus) element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+  }
+
+  protected closeFileMenuLoader(request: FileActionMenu): void {
+    if (this.fileActionMenu() === request) this.dismissFileActionMenu(true);
+  }
+
+  protected runFileMenuAction(request: FileActionMenu, action: FileMenuAction): void {
+    if (this.fileActionMenu() !== request) return;
+    if (request.kind === 'file') {
+      switch (action) {
+        case 'merge-tool': this.dismissFileActionMenu(); void this.openConflictTool(request.value.path); break;
+        case 'content': void this.viewContextFileContent('working'); break;
+        case 'changes': void this.viewFileChanges(); break;
+        case 'take-current': void this.resolveContextConflict('current'); break;
+        case 'take-incoming': void this.resolveContextConflict('incoming'); break;
+        case 'stage-toggle': void this.toggleFileStaging(); break;
+        case 'lfs': this.configureLfsForContextFile(); break;
+        case 'discard': this.requestDiscardFile(); break;
+        case 'ignore-file': this.requestIgnoreFile('file'); break;
+        case 'ignore-extension': this.requestIgnoreFile('extension'); break;
+        case 'ignore-directory': this.requestIgnoreFile('directory'); break;
+      }
+    } else {
+      switch (action) {
+        case 'content': void this.viewContextFileContent('commit'); break;
+        case 'changes': void this.viewCommitFileChanges(); break;
+        case 'history': void this.viewCommitFileInsight('history'); break;
+        case 'blame': void this.viewCommitFileInsight('blame'); break;
+        case 'apply-stash': this.requestApplyStashFileFromMenu(); break;
+        case 'restore': this.requestRestoreCommitFile(); break;
+      }
+    }
   }
 
   protected graphActionMenuReady(): void {
@@ -14424,10 +14450,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private dismissFileActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.fileContextMenuReturnFocus : null;
+    const menu = restoreFocus ? this.fileActionMenuElement()?.nativeElement ?? null : null;
     this.actionOverlays.close('file');
     this.actionOverlays.close('commitFile');
     this.fileContextMenuReturnFocus = null;
-    if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
+    if (target) queueMicrotask(() => {
+      if (!this.fileActionMenu() && target.isConnected && this.canRestoreFocusFrom(menu)) {
+        target.focus({ preventScroll: true });
+      }
+    });
   }
 
   private dismissSidebarActionMenu(restoreFocus = false): void {

@@ -214,6 +214,13 @@ the bundler's unverified input ranking separately and identifies chunks whose
 input attribution exceeds their emitted size. Lazy-only chunks are excluded,
 and the report doesn't change the Angular build gate.
 
+The file-action menu extraction moved the working-tree and historical menu
+contents behind the first context-menu request. A before/after production
+build measured **1,399,397 → 1,395,619 initial bytes**, a reduction of 3,778
+bytes. The warning limit is still exceeded by 495,619 bytes; the error limit
+has 54,381 bytes of headroom. No budget changed. The measured difference is
+in emitted assets, not a startup latency measurement.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native

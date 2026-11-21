@@ -2248,54 +2248,23 @@
       </section></div>
     }
   }
-  @if (fileContextMenu(); as menu) {
-    <div
-      #fileActionMenuElement
-      class="context-menu file-context-menu"
-      role="menu"
-      [style.left.px]="menu.x"
-      [style.top.px]="menu.y"
-      (click)="$event.stopPropagation()"
-      (keydown)="handleFileContextMenuKeydown($event)"
-    >
-      <div class="context-heading"><span>{{ menu.conflicted ? 'Conflicted file' : menu.staged ? 'Staged file' : menu.untracked ? 'Untracked file' : 'Modified file' }}</span><strong>{{ menu.path }}</strong></div>
-      @if (menu.conflicted) {
-        <button type="button" role="menuitem" (click)="actionOverlays.close('file'); openConflictTool(menu.path)"><span><gc-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
-        <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('working')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
-        <div class="context-divider"></div>
-        <div class="context-subheading">Resolve conflict</div>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="resolveContextConflict('current')"><span><gc-icon name="check" [size]="13" /></span>Take current</button>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="resolveContextConflict('incoming')"><span><gc-icon name="check" [size]="13" /></span>Take incoming</button>
-      } @else {
-        <button type="button" role="menuitem" (click)="viewFileChanges()"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
-        <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('working')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="toggleFileStaging()"><span><gc-icon name="check" [size]="13" /></span>{{ menu.staged ? 'Unstage file' : 'Stage file' }}</button>
-        <div class="context-divider"></div>
-        <button type="button" role="menuitem" (click)="configureLfsForContextFile()"><span><gc-icon name="server" [size]="13" /></span>Configure Git LFS for this file type…</button>
-      }
-      @if (!menu.conflicted && !menu.staged) {
-        <div class="context-divider"></div>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="git.busy()" (click)="requestDiscardFile()"><span><gc-icon name="trash" [size]="13" /></span>Discard changes…</button>
-        <div class="context-divider"></div>
-        <div class="context-subheading">Ignore</div>
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestIgnoreFile('file')"><span><gc-icon name="file" [size]="13" /></span>Ignore file{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-        <button type="button" role="menuitem" [disabled]="git.busy() || !fileHasExtension(menu.path)" (click)="requestIgnoreFile('extension')"><span><gc-icon name="file" [size]="13" /></span>Ignore all with this extension{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-        <button type="button" role="menuitem" [disabled]="git.busy() || !fileHasParentDirectory(menu.path)" (click)="requestIgnoreFile('directory')"><span><gc-icon name="folder-git" [size]="13" /></span>Ignore directory{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-      }
-    </div>
-  }
-  @if (commitFileContextMenu(); as menu) {
-    <div #fileActionMenuElement class="context-menu commit-file-context-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleFileContextMenuKeydown($event)">
-      <div class="context-heading"><span>{{ menu.paths.length === 1 ? 'File' : menu.paths.length + ' files selected' }} at {{ shortOid(menu.oid) }}</span><strong>{{ menu.paths.length === 1 ? menu.file.path : 'Restore or inspect the focused file' }}</strong></div>
-      <button type="button" role="menuitem" (click)="viewCommitFileChanges()"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
-      <button type="button" role="menuitem" [disabled]="!menu.content" (click)="viewContextFileContent('commit')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
-      <button type="button" role="menuitem" (click)="viewCommitFileInsight('history')"><span><gc-icon name="history" [size]="13" /></span>View file history</button>
-      <button type="button" role="menuitem" (click)="viewCommitFileInsight('blame')"><span><gc-icon name="git-commit" [size]="13" /></span>Blame file</button>
-      <div class="context-divider"></div>
-      @if (isStashFileMenu(menu)) {
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestApplyStashFileFromMenu()"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply stashed changes for this file…</button>
-      } @else {
-        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="requestRestoreCommitFile()"><span><gc-icon name="archive-restore" [size]="13" /></span>{{ menu.paths.length === 1 ? 'Restore file' : 'Restore ' + menu.paths.length + ' selected files' }} from this commit…</button>
+  @if (fileActionMenu(); as request) {
+    <div #fileActionMenuElement class="context-menu" [class.file-context-menu]="request.kind === 'file'"
+      [class.commit-file-context-menu]="request.kind === 'commitFile'" role="menu"
+      [style.left.px]="request.value.x" [style.top.px]="request.value.y"
+      (click)="$event.stopPropagation()" (keydown)="handleFileContextMenuKeydown($event)">
+      @defer (on immediate) {
+        <gc-file-action-menu [context]="request" [busy]="git.busy()"
+          [hasExtension]="request.kind === 'file' && fileHasExtension(request.value.path)"
+          [hasParentDirectory]="request.kind === 'file' && fileHasParentDirectory(request.value.path)"
+          [stash]="request.kind === 'commitFile' && isStashFileMenu(request.value)"
+          (chosen)="runFileMenuAction($event.request, $event.action)" (ready)="fileActionMenuReady($event)" />
+      } @placeholder {
+        <p role="status">Loading file actions…</p>
+        <button type="button" role="menuitem" (click)="closeFileMenuLoader(request)">Cancel</button>
+      } @error {
+        <p role="alert">File actions could not load. Restart the application to retry.</p>
+        <button type="button" role="menuitem" (click)="closeFileMenuLoader(request)">Close</button>
       }
     </div>
   }

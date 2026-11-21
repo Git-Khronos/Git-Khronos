@@ -4345,8 +4345,8 @@ def file_workflows(driver, fixtures, report):
       const bounds = element.getBoundingClientRect();
       element.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: bounds.left + 10, clientY: bounds.top + 10}));
     """, entry)
-    driver.wait("return !!document.querySelector('.commit-file-context-menu')")
-    driver.click_text('.commit-file-context-menu [role="menuitem"]', 'Restore file from this commit…')
+    driver.click_scrolled_text('.commit-file-context-menu [role="menuitem"]',
+                               'Restore file from this commit…', wait_for_ready=True)
     driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
     driver.click_text('[role="alertdialog"] button', 'Restore and stage file')
     driver.wait("return !!document.querySelector('.wip-panel-title') && !!document.querySelector('[aria-label=\"Unstage fixture.txt\"]')")

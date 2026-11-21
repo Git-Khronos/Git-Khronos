@@ -158,6 +158,37 @@ test('replaces the previous menu when right-clicking a different kind of target'
   await expect(page.locator('.tab-context-menu')).toHaveCount(0);
 });
 
+test('a cold file menu can be cancelled and reopened before its actions load', async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/chunk-[^/?]+\.js(?:\?.*)?$/, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const trigger = page.locator('#unstaged-files-list .file-name-button').first();
+  const menu = page.locator('.file-context-menu');
+  try {
+    await trigger.click({ button: 'right' });
+    const cancel = menu.getByRole('menuitem', { name: 'Cancel', exact: true });
+    await expect(menu.getByRole('status')).toHaveText('Loading file actions…');
+    await expect(cancel).toBeFocused();
+    await cancel.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await trigger.click({ button: 'right' });
+    await expect(cancel).toBeFocused();
+    release();
+    const changes = menu.getByRole('menuitem', { name: 'View changes', exact: true });
+    await expect(changes).toBeFocused();
+    await changes.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    release();
+  }
+});
+
 test('replaces an action menu when opening grouped reference triggers', async ({ page }) => {
   const oid = '83e6d15fb82672899688b93f59251dfc669888a3';
   await page.locator(`[data-commit-oid="${oid}"]`).click();
