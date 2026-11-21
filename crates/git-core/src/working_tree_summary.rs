@@ -9,7 +9,6 @@ use std::{path::Path, time::Duration};
 const MAX_FILES: usize = 2_000;
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_STATS_BYTES: usize = 4 * 1024 * 1024;
-const MAX_UNTRACKED_BYTES: u64 = 16 * 1024 * 1024;
 const RECAP_GIT_BUDGET: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Default, Serialize, specta::Type)]
@@ -205,7 +204,7 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
             }
         }
     }
-    let counts = file_statistics::untracked_additions(path, &untracked, Some(MAX_UNTRACKED_BYTES))?;
+    let counts = file_statistics::untracked_additions(path, &untracked)?;
     summary.partial |= counts.partial;
     for additions in counts.counts {
         if let Some(additions) = additions {

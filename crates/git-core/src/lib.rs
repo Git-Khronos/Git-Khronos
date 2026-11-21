@@ -821,6 +821,7 @@ pub struct CommitComparison {
     pub target_oid: String,
     pub working_tree: bool,
     pub files: Vec<CommitFile>,
+    pub line_totals_partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -6322,6 +6323,7 @@ pub fn compare_commits(
         target_oid: target_oid.to_owned(),
         working_tree: false,
         files: parse_commit_files_with_stats(&output.stdout, &stats_output.stdout),
+        line_totals_partial: false,
     })
 }
 
@@ -6358,7 +6360,7 @@ pub fn compare_commit_with_working_tree(
         .filter(|entry| entry.index_status == "?" && !known.contains(entry.path.as_str()))
         .collect();
     let paths: Vec<_> = entries.iter().map(|entry| entry.path.as_str()).collect();
-    let counts = file_statistics::untracked_additions(path, &paths, None)?;
+    let counts = file_statistics::untracked_additions(path, &paths)?;
     for (entry, additions) in entries.into_iter().zip(counts.counts) {
         files.push(CommitFile {
             status: "A".to_owned(),
@@ -6374,6 +6376,7 @@ pub fn compare_commit_with_working_tree(
         target_oid: base_oid.to_owned(),
         working_tree: true,
         files,
+        line_totals_partial: counts.partial,
     })
 }
 
@@ -13943,6 +13946,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(comparison.base_oid, base);
         assert_eq!(comparison.target_oid, target);
         assert!(!comparison.working_tree);
+        assert!(!comparison.line_totals_partial);
         assert!(
             comparison
                 .files
@@ -13982,6 +13986,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(comparison.base_oid, base);
         assert_eq!(comparison.target_oid, base);
         assert!(comparison.working_tree);
+        assert!(!comparison.line_totals_partial);
         assert!(comparison.files.iter().any(|file| {
             file.path == "forest.txt"
                 && file.status == "M"
@@ -14015,6 +14020,34 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             compare_commit_file_with_working_tree(&repository.path, &base, "trail.txt", None)
                 .expect("compare untracked file with working directory");
         assert!(untracked.patch.contains("+north"));
+    }
+
+    #[test]
+    fn compares_working_directory_with_an_explicit_partial_line_count_on_large_untracked_files() {
+        let repository = TestRepository::new();
+        repository.git_output(&["commit", "--allow-empty", "-m", "Base"]);
+        let base = repository.git_output(&["rev-parse", "HEAD"]);
+        // Forced text without allocating or writing a large buffer. The first
+        // file exceeds the aggregate budget; it must still be selectable and
+        // must not prevent counting the later small file.
+        repository.write(".gitattributes", "a-large.txt diff\n");
+        fs::File::create(repository.path.join("a-large.txt"))
+            .unwrap()
+            .set_len(17 * 1024 * 1024)
+            .unwrap();
+        repository.write("z-small.txt", "one\ntwo\n");
+
+        let comparison = compare_commit_with_working_tree(&repository.path, base.trim()).unwrap();
+        assert!(comparison.line_totals_partial);
+        let find = |path: &str| comparison.files.iter().find(|file| file.path == path).unwrap();
+        assert_eq!(find("a-large.txt").additions, None);
+        assert_eq!(find("z-small.txt").additions, Some(2));
+        assert_eq!(find("z-small.txt").deletions, Some(0));
+        assert_eq!(repository.git_output(&["rev-parse", "HEAD"]), base);
+        assert_eq!(
+            fs::metadata(repository.path.join("a-large.txt")).unwrap().len(),
+            17 * 1024 * 1024,
+        );
     }
 
     #[test]

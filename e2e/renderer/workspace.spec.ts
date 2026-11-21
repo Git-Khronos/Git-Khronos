@@ -7810,6 +7810,30 @@ test('compares a graph commit with the current working directory', async ({ page
   await expect(diffViewer).toContainText('160acd10 → WIP');
 });
 
+test('keeps uncounted comparison files selectable and marks the totals partial', async ({ page }) => {
+  const row = page.locator('[data-commit-oid="160acd10ef9e0c202cd3985aa41ee45d971bbb11"]');
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Compare with working directory' }).click();
+  const panel = page.locator('.commit-panel');
+  await expect(panel.getByRole('img', { name: '55 additions and 15 deletions' })).toBeVisible();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.commitComparison.update((comparison: any) => ({
+      ...comparison,
+      lineTotalsPartial: true,
+      files: comparison.files.map((file: any) => file.path === 'docs/interface-notes.md'
+        ? { ...file, additions: null, deletions: null } : file),
+    }));
+  });
+  await expect(panel.getByRole('img', { name: '43 additions and 15 deletions; 1 binary or uncounted file excluded; partial totals' })).toBeVisible();
+  await expect(panel.getByText('Some files could not be counted.', { exact: false })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Changed Files (4)' })).toBeVisible();
+  const file = panel.getByRole('button', { name: 'Open diff for docs/interface-notes.md' });
+  await expect(file).toContainText('not counted');
+  await file.click();
+  await expect(page.getByRole('region', { name: 'Diff viewer' })).toBeVisible();
+});
+
 test('selects WIP and a commit for comparison with Ctrl-click', async ({ page }) => {
   const wip = page.locator('.wip-row').first();
   const wipNode = wip.locator('.wip-node');

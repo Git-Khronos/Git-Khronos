@@ -4,6 +4,8 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
+const MAX_UNTRACKED_BYTES: u64 = 16 * 1024 * 1024;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Mode {
     Auto,
@@ -151,17 +153,14 @@ pub(super) struct UntrackedAdditions {
 }
 
 struct ReadBudget {
-    remaining: Option<u64>,
+    remaining: u64,
     partial: bool,
 }
 
 impl ReadBudget {
     fn reserve(&mut self, size: u64) -> bool {
-        let Some(remaining) = &mut self.remaining else {
-            return true;
-        };
-        if let Some(next) = remaining.checked_sub(size) {
-            *remaining = next;
+        if let Some(next) = self.remaining.checked_sub(size) {
+            self.remaining = next;
             true
         } else {
             self.partial = true;
@@ -178,7 +177,6 @@ impl ReadBudget {
 pub(super) fn untracked_additions(
     repository: &Path,
     paths: &[&str],
-    byte_limit: Option<u64>,
 ) -> Result<UntrackedAdditions, AppError> {
     if paths.is_empty() {
         return Ok(UntrackedAdditions {
@@ -187,7 +185,7 @@ pub(super) fn untracked_additions(
         });
     }
     let mut budget = ReadBudget {
-        remaining: byte_limit,
+        remaining: MAX_UNTRACKED_BYTES,
         partial: false,
     };
     let mut policy = Policy::load(repository)?;

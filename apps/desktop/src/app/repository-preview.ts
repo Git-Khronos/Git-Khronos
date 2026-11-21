@@ -109,6 +109,7 @@ export function createPreviewCommitComparison(baseOid: string, targetOid: string
     baseOid,
     targetOid,
     workingTree: false,
+    lineTotalsPartial: false,
     files: [
       { status: 'M', path: 'apps/desktop/src/app/app.component.ts', previousPath: null, additions: 19, deletions: 7 },
       { status: 'A', path: 'apps/desktop/src/app/compare-panel.scss', previousPath: null, additions: 34, deletions: 0 },
@@ -121,6 +122,7 @@ export function createPreviewWorkingTreeComparison(baseOid: string): CommitCompa
     baseOid,
     targetOid: baseOid,
     workingTree: true,
+    lineTotalsPartial: false,
     files: [
       { status: 'M', path: 'apps/desktop/src/app/app.component.html', previousPath: null, additions: 16, deletions: 5 },
       { status: 'M', path: 'apps/desktop/src/app/app.component.scss', previousPath: null, additions: 8, deletions: 3 },

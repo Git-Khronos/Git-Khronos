@@ -37,7 +37,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
             cursor: state.filePages === 1 ? { revision: args.revision, path: args.path, historicalPath: 'old.txt', offset: 100 } : null, complete: state.filePages > 1 });
         }
         if (command === 'inspect_blame_navigation') return Promise.resolve({ oid: oldOid, path: 'old.txt', parents: [parentOid], parentPath: 'before.txt' });
-        if (command === 'compare_history_revisions') return Promise.resolve({ baseOid: parentOid, targetOid: oldOid, workingTree: false, files: [] });
+        if (command === 'compare_history_revisions') return Promise.resolve({ baseOid: parentOid, targetOid: oldOid, workingTree: false, lineTotalsPartial: false, files: [] });
         if (command === 'refresh_repository') return Promise.resolve(app.git.repository());
         if (command === 'refresh_repository_status') return Promise.resolve(app.git.repository().status);
         return Promise.reject({ message: `Unexpected history command ${command}` });

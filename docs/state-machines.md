@@ -442,6 +442,12 @@ and the inspector must still be visible and Git idle. A clean section shows
 zero; two clean sections or a hidden inspector skip the native read.
 Filtering, collapse, and list/tree presentation do not redefine the totals.
 
+A comparison against the working directory uses the same 16 MiB untracked
+line-count budget. Exceeding that budget does not remove paths from the
+comparison or disable their individual diffs. The native result marks the
+aggregate line counts partial, and a file without a count is not labeled
+binary solely because its numbers are unavailable.
+
 Coverage: `unstaged-summary.spec.ts`, real Git tests for both summaries,
 and the packaged `native_unstaged_summary_scenarios.py` fixture. Packaged
 qualification is a separate gate; source coverage is not evidence that

@@ -3888,9 +3888,10 @@ export class AppComponent implements OnInit, OnDestroy {
     0,
     COMMIT_FILE_OVERSCAN_ROWS,
   ));
-  protected readonly comparisonFileStats = computed(() => summarizeFileChanges(
-    this.git.commitComparison()?.files ?? [],
-  ));
+  protected readonly comparisonFileStats = computed(() => {
+    const comparison = this.git.commitComparison();
+    return summarizeFileChanges(comparison?.files ?? [], comparison?.lineTotalsPartial);
+  });
 
   // The root owns repository state and dispatch. The deferred palette only
   // sees a read-only facade for selecting and ranking its command options.
@@ -4142,6 +4143,7 @@ export class AppComponent implements OnInit, OnDestroy {
             baseOid: commits[2].oid,
             targetOid: commits[0].oid,
             workingTree: false,
+            lineTotalsPartial: false,
             files: [
               { status: 'M', path: 'apps/desktop/src/app/app.component.ts', previousPath: null, additions: 19, deletions: 7 },
               { status: 'A', path: 'apps/desktop/src/app/compare-panel.scss', previousPath: null, additions: 34, deletions: 0 },

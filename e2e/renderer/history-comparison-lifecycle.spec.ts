@@ -6,7 +6,7 @@ async function prepare(page: Page): Promise<void> {
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
-    const state: any = { app, replies: [], calls: [], fresh: { baseOid: 'new-base', targetOid: 'new-target', workingTree: false, files: [] } };
+    const state: any = { app, replies: [], calls: [], fresh: { baseOid: 'new-base', targetOid: 'new-target', workingTree: false, lineTotalsPartial: false, files: [] } };
     (window as any).__historyComparison = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
