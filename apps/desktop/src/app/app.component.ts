@@ -1099,6 +1099,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly identityEmail = signal('');
   protected readonly repositoryDialog = signal<RepositoryDialogMode | null>(null);
   protected readonly repositoryDialogFocusRequest = signal(0);
+  protected readonly ownsRepositoryDialog = (request: number): boolean =>
+    this.repositoryDialog() !== null && this.repositoryDialogFocusRequest() === request;
   private readonly repositoryManager = viewChild<unknown, ElementRef<HTMLElement>>('repositoryManager', { read: ElementRef });
   private readonly repositoryManagerLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositoryManagerLoaderClose');
   private readonly repositoryManagerLoaderFocus = effect(() => {
@@ -10580,7 +10582,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.repositoryDialog.set(null);
     this.repositoryDialogOpener = null;
     queueMicrotask(() => {
-      if (!this.repositoryDialog() && this.repositoryDialogFocusRequest() === request && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (!this.repositoryDialog() && !this.commandPaletteOpen() && this.repositoryDialogFocusRequest() === request
+        && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
 

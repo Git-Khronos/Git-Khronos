@@ -7390,6 +7390,31 @@ test('switches complete repository tab sets with persistent workspaces', async (
   await expect(page.getByRole('button', { name: 'Workspace: Default' })).toBeVisible();
 });
 
+test('closing repository management immediately releases the command palette shortcut', async ({ page }) => {
+  await page.keyboard.press('Control+P');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill('clone repository');
+  await palette.getByRole('option').filter({ hasText: 'Clone Repository' }).click();
+  const manager = page.getByRole('dialog', { name: 'Repository management' });
+  const close = manager.getByRole('button', { name: 'Close repository management' });
+  await close.press('Control+P');
+  await expect(manager).toBeVisible();
+  await expect(palette).toHaveCount(0);
+
+  // Keep the closing DOM as the keyboard target: a deferred Angular render
+  // can have removed ownership without yet removing the focused button.
+  const stillMounted = await close.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    if (!button.isConnected) return false;
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }));
+    return true;
+  });
+  expect(stillMounted).toBe(true);
+  await expect(manager).toHaveCount(0);
+  await expect(palette.getByRole('combobox', { name: 'Search commands' })).toBeFocused();
+  await expect(palette.getByRole('option').first()).toContainText('Clone Repository');
+});
+
 test('finds repositories, references, and changed files from the command palette', async ({ page }) => {
   await page.keyboard.press('Control+P');
   const search = page.getByRole('combobox', { name: 'Search commands' });

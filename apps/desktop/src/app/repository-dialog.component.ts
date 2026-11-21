@@ -160,6 +160,8 @@ export class RepositoryDialogComponent {
   readonly mode = model.required<RepositoryDialogMode>();
   /** Incremented by the opener to move focus to the selected mode's first control. */
   readonly focusRequest = input(0);
+  /** Ask the host synchronously: a closed request can still have mounted DOM. */
+  readonly ownsRequest = input<(request: number) => boolean>(() => true);
   readonly favoriteShortcut = input('');
   readonly cloneOnly = input(false);
   readonly closed = output<void>();
@@ -175,13 +177,16 @@ export class RepositoryDialogComponent {
 
   constructor() {
     effect(() => {
-      this.focusRequest();
+      const request = this.focusRequest();
       const mode = untracked(this.mode);
-      window.setTimeout(() => this.focusMode(mode));
+      this.scheduleModeFocus(mode, request);
     });
   }
 
-  protected close(): void { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.closed.emit(); }
+  protected close(): void {
+    if (!this.ownsRequest()(this.focusRequest())) return;
+    this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.closed.emit();
+  }
   protected toggleHostedMode(): void {
     if (this.git.busy()) return;
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
@@ -194,17 +199,23 @@ export class RepositoryDialogComponent {
     if (this.gitlabMode()) { this.closeGitlabMode(); return; }
     this.hostedBrowser()?.dismiss(); this.hostedMode.set(false);
     this.gitlabMode.set(true);
-    window.setTimeout(() => this.focusMode('clone'));
+    this.scheduleModeFocus('clone');
   }
   protected closeGitlabMode(): void {
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
-    window.setTimeout(() => this.focusMode('clone'));
+    this.scheduleModeFocus('clone');
   }
   protected setMode(mode: RepositoryDialogMode): void {
     if (this.cloneOnly() && mode !== 'clone') return;
     if (mode !== 'clone') { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false); }
     else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
     this.mode.set(mode);
+  }
+
+  private scheduleModeFocus(mode: RepositoryDialogMode, request = this.focusRequest()): void {
+    window.setTimeout(() => {
+      if (this.ownsRequest()(request) && this.mode() === mode) this.focusMode(mode);
+    });
   }
 
   private focusMode(mode: RepositoryDialogMode): void {
@@ -219,7 +230,7 @@ export class RepositoryDialogComponent {
 
   protected openMode(mode: Exclude<RepositoryDialogMode, 'manager'>): void {
     this.setMode(mode);
-    window.setTimeout(() => this.focusMode(mode));
+    this.scheduleModeFocus(mode);
   }
 
   private destinationPath(parent: string, folder: string): string {
@@ -243,7 +254,7 @@ export class RepositoryDialogComponent {
   }
 
   protected handleTabKey(event: KeyboardEvent): void {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    if (!this.ownsRequest()(this.focusRequest()) || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const modes: RepositoryDialogMode[] = this.cloneOnly() ? ['clone'] : ['manager', 'clone', 'init'];
     const tabs = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'));
     const current = Math.max(0, modes.indexOf(this.mode()));
@@ -254,10 +265,12 @@ export class RepositoryDialogComponent {
     else next = (current - 1 + modes.length) % modes.length;
     event.preventDefault();
     this.setMode(modes[next]);
-    queueMicrotask(() => tabs[next]?.focus());
+    const request = this.focusRequest();
+    queueMicrotask(() => { if (this.ownsRequest()(request)) tabs[next]?.focus(); });
   }
 
   protected trapFocus(event: KeyboardEvent): void {
+    if (!this.ownsRequest()(this.focusRequest())) return;
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat || event.isComposing)) {

@@ -120,6 +120,14 @@ field or deletion's Cancel button after render; the loader exposes only a
 non-mutating close action. `workspace-edit-dialogs.spec.ts` covers cancellation
 and load failure with saved state unchanged.
 
+Repository management likewise owns keyboard shortcuts while its shell
+request is live, not while the deferred dialog happens to remain mounted.
+Closing retires that ownership immediately: a key reaching the old
+focused button can reopen the command palette without another keystroke.
+Timers for dialog-mode focus retain the originating focus request and
+cannot focus a retired dialog. `workspace.spec.ts` exercises the closing
+gap as well as the ordinary keyboard path from Clone and Initialize.
+
 ### Working-tree line recap freshness
 
 Porcelain status describes file states, not file contents. A successful

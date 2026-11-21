@@ -2040,7 +2040,7 @@
 
   @if (repositoryDialog(); as mode) {
     @defer (on immediate) {
-      <gc-repository-dialog #repositoryManager [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [favoriteShortcut]="favoriteShortcut"
+      <gc-repository-dialog #repositoryManager [mode]="mode" (modeChange)="repositoryDialog.set($event)" [focusRequest]="repositoryDialogFocusRequest()" [ownsRequest]="ownsRepositoryDialog" [favoriteShortcut]="favoriteShortcut"
         (closed)="closeRepositoryManager()" (browse)="browseFromRepositoryManager()" (openFavorite)="openFavoriteRepository($event)"
         (openPath)="openRepositoryPath($event, true)" (opening)="saveCommitDraft()" (opened)="finishRepositoryCreation()" />
     } @loading {
