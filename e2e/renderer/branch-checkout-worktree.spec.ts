@@ -23,6 +23,7 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
     const fixture = { calls: [] as any[], changed: false, missing: false, failRefresh: false,
       checkoutFailure: null as string | null,
       hold: false, finish: null as any, holdOpen: false, finishOpen: null as any, changedOpen: null as string | null,
+      holdStatus: false, finishStatus: null as any,
       ownerPath, branch: branch.name, sourcePath: source.path, sourceId: source.id };
     (window as any).__checkoutWorktree = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -56,7 +57,15 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
           branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === args.name })) });
       }
       if (command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
-      if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+      if (command === 'refresh_repository_status') {
+        const status = git.repository().status;
+        if (fixture.holdStatus && fixture.calls.some(call => call.command === 'refresh_repository')) {
+          return new Promise(resolve => {
+            fixture.finishStatus = () => resolve({ ...status, entryCount: 777 });
+          });
+        }
+        return Promise.resolve(status);
+      }
       if (command === 'inspect_commit') return Promise.resolve({ oid: args.oid, message: 'Owned fixture commit',
         signature: { status: 'unsigned', signer: null, key: null, fingerprint: null, trust: null }, files: [], filesTruncated: false });
       return Promise.reject(new Error(`Unexpected ${command}`));
@@ -261,6 +270,7 @@ for (const mode of ['changed', 'missing', 'failRefresh'] as const) {
     await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
     await expect(dialog.getByRole('alert')).toBeVisible();
     await expect(dialog.getByRole('alert')).toBeFocused();
+    await expect(page.locator('.error-toast')).toHaveCount(0);
     await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
     expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
       .filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
@@ -349,6 +359,71 @@ test('late refresh cannot navigate after the source repository changes', async (
   await expect(page.locator('.status-repository-path')).toHaveText('/workspace/unrelated');
   expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
     .some((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toBe(false);
+});
+
+test('leaving and returning to a checkout discards the old review refresh and its file scan', async ({ page }) => {
+  const fixture = await setup(page);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await page.evaluate(() => { (window as any).__checkoutWorktree.hold = true; });
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finish)).toBe('function');
+  const before = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const source = git.repository();
+    const fixture = (window as any).__checkoutWorktree;
+    const other = { ...source, id: 'other-review-visit', path: '/owned/other-review-visit' };
+    git.repositories.update((tabs: any[]) => [...tabs, other]);
+    git.activateRepository(other.id);
+    git.activateRepository(source.id);
+    fixture.changed = true;
+    const reads = fixture.calls.length;
+    fixture.finish();
+    return reads;
+  });
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  expect(await page.evaluate(({ before, ownerPath }) => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const fixture = (window as any).__checkoutWorktree;
+    return {
+      owner: git.repository().worktrees.find((tree: any) => tree.path === ownerPath)?.branch,
+      commands: fixture.calls.slice(before).map((call: any) => call.command)
+        .filter((command: string) => ['refresh_repository_status', 'open_repository'].includes(command)),
+    };
+  }, { before, ownerPath: fixture.ownerPath })).toEqual({ owner: fixture.branch, commands: [] });
+  await expect(page.locator('.error-toast')).toHaveCount(0);
+});
+
+test('Escape during ownership inspection retires the pending refresh', async ({ page }) => {
+  const fixture = await setup(page);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await page.evaluate(() => { (window as any).__checkoutWorktree.hold = true; });
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finish)).toBe('function');
+  await expect(dialog.getByRole('status')).toHaveText('Checking branch ownership…');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => (window as any).__checkoutWorktree.finish());
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .some((call: any) => call.command === 'open_repository'))).toBe(false);
+});
+
+test('a file scan that returns after review cancellation cannot change working-tree counts', async ({ page }) => {
+  const fixture = await setup(page);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await page.evaluate(() => { (window as any).__checkoutWorktree.holdStatus = true; });
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finishStatus)).toBe('function');
+  const countLabel = page.locator('.wip-nav small');
+  const count = await countLabel.innerText();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => (window as any).__checkoutWorktree.finishStatus());
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(countLabel).toHaveText(count);
+  await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
 });
 
 test('graph double-click and context-menu checkout use the same occupancy review', async ({ page }) => {

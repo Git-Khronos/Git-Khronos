@@ -32,7 +32,7 @@ export interface CheckoutWorktreeRequest {
           <p role="status">{{ phase() === 'checking' ? 'Checking branch ownership…' : 'Opening existing checkout…' }}</p>
         }
         <footer>
-          <button type="button" [disabled]="phase() === 'checking'" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
+          <button type="button" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
           <button type="button" [disabled]="phase() !== 'idle' || git.busy() || request().prunable || !!error()" (click)="confirm()">Open existing checkout</button>
         </footer>
       </section>
@@ -68,7 +68,7 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   ngOnDestroy(): void { this.destroyed = true; }
 
   close(): void {
-    if (this.phase() === 'checking' || this.closing) return;
+    if (this.closing) return;
     this.closing = true;
     this.closed.emit();
   }
@@ -79,12 +79,12 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     this.phase.set('checking');
     this.dialog()?.nativeElement.focus();
     try {
-      await this.git.refresh();
+      const refresh = await this.git.refresh({ stillCurrent: () => this.owns(request), inlineFailure: true });
       const current = this.git.repository();
       if (!current || !this.owns(request)) return;
       const owner = branchCheckoutOwner(current, request.branch);
-      if (this.git.error() || !owner || owner.path !== request.worktreePath || owner.prunable) {
-        this.showError(request, this.git.error()
+      if (refresh.status !== 'success' || !owner || owner.path !== request.worktreePath || owner.prunable) {
+        this.showError(request, refresh.error
           ?? 'Branch ownership changed or the checkout is unavailable. Close this review and select the branch again.');
         return;
       }

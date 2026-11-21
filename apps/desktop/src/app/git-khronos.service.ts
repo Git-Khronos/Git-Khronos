@@ -823,14 +823,43 @@ export class GitKhronosService implements OnDestroy {
     return !this.error();
   }
 
-  async refresh(): Promise<void> {
+  async refresh({ stillCurrent, inlineFailure = false }: {
+    stillCurrent?: () => boolean;
+    inlineFailure?: boolean;
+  } = {}): Promise<{ status: 'success' | 'error' | 'cancelled'; error: string | null }> {
     const repo = this.repository();
-    if (!repo) return;
-    await this.run('Refreshing…', async report => {
-      const refreshed = await this.storeRefreshedSnapshot(await ipc.refresh_repository({ repoId: repo.id }));
-      if (!refreshed) throw new Error('Could not refresh repository status. Try again.');
+    if (!repo) return { status: 'cancelled', error: null };
+    const scope = this.activeRepositoryReadScope();
+    const generation = this.statusGeneration(repo.id);
+    const current = () => scope === this.activeRepositoryReadScope()
+      && generation === this.statusGeneration(repo.id) && (stillCurrent?.() ?? true);
+    let retired = false;
+    let failure: string | null = null;
+    const status = await this.run('Refreshing…', async report => {
+      const discardIfRetired = () => {
+        if (current()) return false;
+        retired = true;
+        report('Repository refresh no longer applies');
+        return true;
+      };
+      if (discardIfRetired()) return;
+      try {
+        const snapshot = await ipc.refresh_repository({ repoId: repo.id });
+        if (discardIfRetired()) return;
+        if (snapshot.id !== repo.id || snapshot.path !== repo.path) {
+          throw new Error('The refreshed repository no longer matches the current checkout. Try again.');
+        }
+        const refreshed = await this.storeRefreshedSnapshot(snapshot, current);
+        if (discardIfRetired()) return;
+        if (!refreshed) throw new Error('Could not refresh repository status. Try again.');
+      } catch (error: unknown) {
+        if (discardIfRetired()) return;
+        failure = this.formatError(error);
+        throw error;
+      }
       report('Repository refreshed');
-    }, repo.id);
+    }, repo.id, null, false, true, { announceFailure: !inlineFailure });
+    return retired ? { status: 'cancelled', error: null } : { status, error: failure };
   }
 
   async refreshWorkspaceOverview(): Promise<Record<string, { at: number | null; error: string | null }>> {
@@ -956,9 +985,10 @@ export class GitKhronosService implements OnDestroy {
     repositoryId: string | null,
     force: boolean,
     refreshChangedBranch: boolean,
+    current = () => true,
   ): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
-    if (!repository
+    if (!repository || !current()
       || this.browserPreview()
       || (!force && (this.busy()
         || this.backgroundFetchRepositoryId() === repository.id
@@ -969,7 +999,7 @@ export class GitKhronosService implements OnDestroy {
     try {
       const status = await ipc.refresh_repository_status({ repoId: repository.id });
       const currentRepository = this.repositories().find((candidate) => candidate.id === repository.id);
-      if (this.workspaceVisit !== visit || !currentRepository || currentRepository.path !== repository.path) return false;
+      if (!current() || this.workspaceVisit !== visit || !currentRepository || currentRepository.path !== repository.path) return false;
       // Preserve pending predictions and results from newer mutations.
       if (generation !== this.statusGeneration(repository.id)
         || this.pendingWorkingTreeMutations.has(repository.id)) return true;
@@ -982,13 +1012,13 @@ export class GitKhronosService implements OnDestroy {
         const finishHistoryBarrier = this.beginHistoryBarrier();
         try {
           if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
-          if (this.workspaceVisit !== visit || generation !== this.statusGeneration(repository.id)
+          if (!current() || this.workspaceVisit !== visit || generation !== this.statusGeneration(repository.id)
             || !this.repositories().some((candidate) => candidate.id === repository.id)) return true;
           const snapshot = await ipc.refresh_repository({ repoId: repository.id });
           // Branch changes need metadata too, but its fast status omits untracked
           // discovery. Reconcile it just like other metadata refreshes.
-          if (this.workspaceVisit === visit && generation === this.statusGeneration(repository.id)) {
-            return await this.storeRefreshedSnapshot(snapshot);
+          if (current() && this.workspaceVisit === visit && generation === this.statusGeneration(repository.id)) {
+            return await this.storeRefreshedSnapshot(snapshot, current);
           }
         } finally {
           finishHistoryBarrier();
@@ -4193,17 +4223,17 @@ export class GitKhronosService implements OnDestroy {
     this.deferredMetadataTimers.set(workspaceId, timers);
   }
 
-  private async storeRefreshedSnapshot(snapshot: RepositorySnapshot): Promise<boolean> {
+  private async storeRefreshedSnapshot(snapshot: RepositorySnapshot, current = () => true): Promise<boolean> {
     const previous = this.repositories().find((repository) => repository.id === snapshot.id);
-    if (!previous || previous.path !== snapshot.path) return false;
+    if (!current() || !previous || previous.path !== snapshot.path) return false;
     const workspace = this.activeWorkspaceId();
     const visit = this.workspaceVisit;
     const generation = this.statusGeneration(snapshot.id);
     // Metadata snapshots omit untracked discovery. Keep known entries visible
     // until the asynchronous status scan can discover additions and removals.
     this.storeSnapshot({ ...snapshot, status: preserveUntrackedEntries(previous.status, snapshot.status) });
-    const refreshed = await this.refreshStatus(snapshot.id, true, false);
-    if (refreshed && this.workspaceVisit === visit && this.statusGeneration(snapshot.id) === generation
+    const refreshed = await this.refreshStatus(snapshot.id, true, false, current);
+    if (refreshed && current() && this.workspaceVisit === visit && this.statusGeneration(snapshot.id) === generation
       && this.repositories().some(repository => repository.id === snapshot.id && repository.path === snapshot.path)) {
       this.setDeferredMetadataState(snapshot.id, undefined, workspace);
     }
