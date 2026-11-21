@@ -11,7 +11,7 @@ import { BackgroundOperationWarningsComponent } from './background-operation-war
 
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
-interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close'; status: 'pending' | 'success' | 'error' | 'cancelled'; detail: string | null }
+interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
   selector: 'gc-workspace-center',
@@ -37,7 +37,12 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
         <p role="status">{{ rows().length }} of {{ git.repositories().length }} open repositories shown{{ refreshing() ? ' · reading local repositories' : '' }}</p>
         @if (bulkError()) { <p role="alert">{{ bulkError() }}</p> }
         @if (bulkResults().length) {
-          <aside aria-label="Repository action results"><h3>Repository action results</h3><ul>@for (result of bulkResults(); track result.id + result.action) {
+          <aside aria-label="Repository action results"><h3 #bulkResultsTitle tabindex="-1">Repository action results</h3>
+          @if (bulkRunning() && (hasQueuedRemoteActions() || bulkStopRequested())) {
+            <button #bulkStopButton type="button" [attr.aria-disabled]="bulkStopRequested()" (click)="requestBulkStop()">Stop after current repository</button>
+          }
+          @if (bulkRunning() && bulkStopRequested()) { <p role="status">The current operation can finish. No further repositories will be started.</p> }
+          <ul>@for (result of bulkResults(); track result.id + result.action) {
             <li><strong>{{ git.pathLabel(result.path) }}</strong> — {{ result.status }}{{ result.detail ? ': ' + result.detail : '' }}</li>
           }</ul></aside>
         }
@@ -157,7 +162,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
     article, aside, form { border: 1px solid var(--inspector-divider); border-radius: 5px; padding: 14px; margin: 12px 0; } article p { margin: 8px 0; }
     dl { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 4px 16px; } dd { margin: 0; } label { display: block; } form input, input[type=search] { display: block; box-sizing: border-box; width: 100%; margin: 4px 0 10px; } form label { margin-bottom: 10px; }
     button, input { color: var(--text); background: var(--inspector-row); border: 1px solid var(--inspector-divider); padding: 7px 10px; min-height: 32px; } input[type=checkbox] { min-height: auto; }
-    button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; } button[aria-pressed=true] { border-color: var(--accent); }
+    button { cursor: pointer; } button:disabled, button[aria-disabled=true] { opacity: .5; cursor: default; } button[aria-pressed=true] { border-color: var(--accent); }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } [role=alert] { color: var(--danger); }
     .profile-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .profile-layout > * { min-width: 0; } .tools { justify-content: start; }
     gc-background-operation-warnings { position: sticky; top: 0; z-index: 1; background: var(--inspector-list); }
@@ -198,6 +203,9 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly bulkResults = signal<WorkspaceActionResult[]>([]);
   readonly openingRepositories = signal(false);
   readonly bulkRunning = signal(false);
+  readonly bulkStopRequested = signal(false);
+  readonly hasQueuedRemoteActions = computed(() => this.bulkResults().some(result =>
+    result.status === 'pending' && (result.action === 'fetch' || result.action === 'pull')));
   readonly bulkError = signal('');
   readonly savedPathNotice = signal('');
   readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning());
@@ -224,6 +232,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly reviewDialog = viewChild<ElementRef<HTMLElement>>('reviewDialog');
   private readonly reviewCancel = viewChild<ElementRef<HTMLButtonElement>>('reviewCancel');
+  private readonly bulkStopButton = viewChild<ElementRef<HTMLButtonElement>>('bulkStopButton');
+  private readonly bulkResultsTitle = viewChild<ElementRef<HTMLElement>>('bulkResultsTitle');
   private readonly injector = inject(Injector);
   private deleteOpener: HTMLElement | null = null;
   private tabCloseOpener: HTMLButtonElement | null = null;
@@ -518,6 +528,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   async runBulk(action: 'fetch' | 'pull'): Promise<void> {
     if (this.git.busy() || this.openingRepositories() || this.bulkRunning() || this.git.browserPreview() || !this.selectedRepositoryIds().length) return;
     this.bulkError.set('');
+    this.bulkStopRequested.set(false);
     this.bulkRunning.set(true);
     const workspaceId = this.git.activeWorkspaceId();
     const selected = this.selectedRepositoryIds().map(id => this.git.repositories().find(repo => repo.id === id)).filter((repo): repo is RepositorySnapshot => !!repo);
@@ -525,20 +536,53 @@ export class WorkspaceCenterComponent implements OnDestroy {
     try {
       for (const repository of selected) {
         if (this.destroyed) return;
+        if (this.bulkStopRequested()) break;
         if (workspaceId !== this.git.activeWorkspaceId()) {
-          this.setBulkResult(repository.id, action, 'cancelled', 'Workspace changed before this repository was processed.');
-          continue;
+          this.retireQueuedRemoteActions('Workspace changed before this repository was processed.');
+          break;
         }
         if (!this.git.repositories().some(item => item.id === repository.id && item.path === repository.path)) {
           this.setBulkResult(repository.id, action, 'error', 'Repository is no longer open.');
           continue;
         }
+        this.setBulkResult(repository.id, action, 'running', null);
         const result = await runWorkspaceRemote(this.git, repository.id, action);
-        if (!this.destroyed) this.setBulkResult(repository.id, action, result.status, result.error);
+        if (this.destroyed) return;
+        this.setBulkResult(repository.id, action, result.status, result.error);
+        if (result.status === 'cancelled') {
+          this.retireQueuedRemoteActions('Not started because the current operation was cancelled.');
+          break;
+        }
       }
     } catch (error: unknown) {
-      if (!this.destroyed) this.bulkError.set(this.git.formatError(error));
-    } finally { if (!this.destroyed) this.bulkRunning.set(false); }
+      if (!this.destroyed) {
+        const detail = this.git.formatError(error);
+        this.bulkError.set(detail);
+        this.bulkResults.update(results => results.map(result => result.status === 'running'
+          ? { ...result, status: 'error', detail } : result));
+        this.retireQueuedRemoteActions('Not started because the batch ended unexpectedly.');
+      }
+    } finally {
+      if (!this.destroyed) {
+        const hadFocus = this.bulkStopButton()?.nativeElement === document.activeElement;
+        this.bulkRunning.set(false);
+        if (hadFocus) afterNextRender(() => {
+          if (!this.destroyed && !this.suspended() && this.panel() === 'overview' && document.activeElement === document.body) {
+            this.bulkResultsTitle()?.nativeElement.focus();
+          }
+        }, { injector: this.injector });
+      }
+    }
+  }
+  requestBulkStop(): void {
+    if (!this.destroyed && this.bulkRunning() && !this.bulkStopRequested() && this.hasQueuedRemoteActions()) {
+      this.retireQueuedRemoteActions('Stopped before this repository was started.');
+    }
+  }
+  private retireQueuedRemoteActions(detail: string): void {
+    this.bulkStopRequested.set(true);
+    this.bulkResults.update(results => results.map(result => result.status === 'pending'
+      ? { ...result, status: 'cancelled', detail } : result));
   }
   async openMultipleRepositories(): Promise<void> {
     if (this.git.busy() || this.openingRepositories() || this.bulkRunning() || this.git.browserPreview()) return;

@@ -634,6 +634,11 @@ existing close-and-discard-draft behavior without deleting repository files
 or changing another workspace's saved paths. Closing all tabs keeps the
 workspace available; dismissing the overview focuses the replacement workspace
 switcher on the welcome screen.
+Bulk fetch and pull advance one repository at a time. Stopping the queue
+marks only undispatched repositories as not started and leaves the current
+native operation to report its actual outcome. If the native operation itself
+is cancelled, the batch also retires all remaining work. Ordinary Git
+errors still leave other repositories eligible for their own attempt.
 
 Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`, and the
 packaged `workspace-restore` suite.

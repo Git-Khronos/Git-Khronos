@@ -268,6 +268,83 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
+test('a native cancellation stops the remaining selected pulls', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      fixture.calls.push({ command, args });
+      if (command === 'pull_repository') {
+        if (args.repoId === fixture.first.id) throw { kind: 'operationCancelled', message: 'Stopped by the user.' };
+        return fixture.second;
+      }
+      const repository = args.repoId === fixture.second.id ? fixture.second : fixture.first;
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return repository;
+      if (command === 'refresh_repository_status') return repository.status;
+      throw Error(`Unexpected command: ${command}`);
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  await dialog.getByRole('button', { name: 'Pull selected (2)', exact: true }).click();
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — cancelled');
+  await expect(results).toContainText('beta — cancelled: Not started because the current operation was cancelled.');
+  expect(await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    return fixture.calls.filter((call: any) => call.command === 'pull_repository').map((call: any) => call.args.repoId);
+  })).toHaveLength(1);
+});
+
+test('stop after current keeps its real outcome and skips undispatched fetches', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    fixture.hold = true;
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      fixture.calls.push({ command, args });
+      const repository = args.repoId === fixture.second.id ? fixture.second : fixture.first;
+      if (command === 'fetch_repository') {
+        if (fixture.hold) return new Promise(resolve => { fixture.finishFetch = () => resolve(repository); });
+        return Promise.resolve(repository);
+      }
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(repository);
+      if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  const fetch = dialog.getByRole('button', { name: 'Fetch selected (2)', exact: true });
+  await fetch.click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishFetch)).toBe('function');
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — running');
+  const stop = results.getByRole('button', { name: 'Stop after current repository', exact: true });
+  await stop.click();
+  await expect(results).toContainText('beta — cancelled: Stopped before this repository was started.');
+  await expect(results).toContainText('alpha — running');
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    fixture.hold = false;
+    fixture.finishFetch();
+  });
+  await expect(results).toContainText('alpha — success');
+  await expect(results.getByRole('heading')).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__center.calls
+    .filter((call: any) => ['fetch_repository', 'cancel_git_operation'].includes(call.command))
+    .map((call: any) => call.command))).toEqual(['fetch_repository']);
+
+  await fetch.click();
+  await expect(results).toContainText('beta — success');
+  expect(await page.evaluate(() => (window as any).__center.calls
+    .filter((call: any) => call.command === 'fetch_repository'))).toHaveLength(3);
+});
+
 test('opens multiple selected directories, keeps individual outcomes and switches commit drafts', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
