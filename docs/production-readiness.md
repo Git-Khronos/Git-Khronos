@@ -2992,3 +2992,17 @@ unchanged while inspecting. It passed on the same `a953fe3` installer in
 `target/local-review/native-tree-sides.y0BzNo9l/`, where the updated verifier
 reports 35/35 checks from 50 passing reports (`verified-release-35.json`).
 The newer renderer is being built and qualified separately.
+
+The newer renderer's 0.1.6 Linux package was built from `df1edc7`, SHA-256
+`57277c06c396636c5e9ca737d4ab000eb0e30a818e22257cc56120ad01705542`.
+Its original Jammy watcher run removed the expected graph row but did not
+prove continuous notifications: there was a quiet gap before deletion. With
+the measured-burst harness (`11c46f0`), the same package passed the watcher
+suite with 734 ms of continuous notification warm-up and a 101 ms maximum gap.
+The same package's Debian 12 GitLab suite passed all 47 scenarios on rerun
+with unchanged TLS verification. The original initial connection refusal
+was not reproduced; `8a8d8d6` now records its UI outcome and safe request
+counters rather than waiting for a connection after the UI has refused it.
+These two reruns do not replace the remainder of the qualification matrix.
+Raw reports, including failed attempts, are under
+`target/local-review/updater/jammy-builder/working-tree-release.4wNlfYM8/`.
