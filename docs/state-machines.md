@@ -627,6 +627,13 @@ Unrelated background errors do not decide whether to switch the draft.
 Bulk open uses the same shell action for each new checkout, in selection
 order, keeping individual outcomes in the overview. Closing the overview
 stops undispatched paths without undoing a native open already in flight.
+Bulk close reviews the exact tabs, including selections hidden by a filter.
+It refuses the complete request if any identity or path changes before
+confirmation. The shell closes any selected active tab last, using the
+existing close-and-discard-draft behavior without deleting repository files
+or changing another workspace's saved paths. Closing all tabs keeps the
+workspace available; dismissing the overview focuses the replacement workspace
+switcher on the welcome screen.
 
 Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`, and the
 packaged `workspace-restore` suite.

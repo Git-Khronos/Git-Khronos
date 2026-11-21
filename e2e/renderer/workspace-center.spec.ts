@@ -392,6 +392,90 @@ test('a bulk pull invalidates its old diff without clearing a newer inspection',
   expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.workingTreeFileDiff()?.path)).toBe('new.txt');
 });
 
+test('reviews filtered-out selections and closes only those tabs without touching Git', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const gamma = { ...fixture.second, id: 'keep-open', name: 'Gamma', path: '/owned/gamma' };
+    git.repositories.update((items: any[]) => [...items, gamma]);
+    const active = git.activeWorkspace();
+    git.workspaces.update((items: any[]) => [
+      ...items.map(item => item.id === active.id ? {
+        ...item, repositoryPaths: [fixture.first.path, fixture.second.path, gamma.path, '/owned/unavailable'],
+      } : item),
+      { id: 'other-saved', name: 'Other saved', repositoryPaths: [fixture.first.path], activeRepositoryPath: fixture.first.path },
+    ]);
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      fixture.calls.push(command);
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  const filter = dialog.getByLabel('Filter repositories');
+  await filter.fill('gamma');
+  const trigger = dialog.getByRole('button', { name: 'Close selected (2)…', exact: true });
+  await trigger.click();
+  const review = dialog.getByRole('alertdialog', { name: 'Close selected repository tabs?' });
+  await expect(review.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await expect(review).toContainText('/owned/alpha');
+  await expect(review).toContainText('/owned/beta');
+  await expect(review).not.toContainText('/owned/gamma');
+  await expect(review).toContainText('commit drafts will be discarded');
+  await page.keyboard.press('Escape');
+  await expect(review).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('tab')).toHaveCount(3);
+
+  await trigger.click();
+  await review.getByRole('button', { name: 'Close 2 tabs', exact: true }).click();
+  await expect(review).toHaveCount(0);
+  await expect(filter).toBeFocused();
+  await expect(dialog.getByLabel('Repository action results')).toContainText('alpha — success: Tab closed');
+  await expect(dialog.getByLabel('Repository action results')).toContainText('beta — success: Tab closed');
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/gamma');
+  const state = await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return { open: git.repositories().map((repo: any) => repo.path), saved: git.activeWorkspace().repositoryPaths,
+      other: git.workspaces().find((item: any) => item.id === 'other-saved').repositoryPaths,
+      ipc: fixture.calls };
+  });
+  expect(state).toEqual({ open: ['/owned/gamma'], saved: ['/owned/gamma', '/owned/unavailable'],
+    other: ['/owned/alpha'], ipc: [] });
+});
+
+test('refuses the whole close review when a selected tab no longer matches its reviewed path', async ({ page }) => {
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  await dialog.getByRole('button', { name: 'Close selected (2)…', exact: true }).click();
+  const review = dialog.getByRole('alertdialog', { name: 'Close selected repository tabs?' });
+  await expect(review).toContainText('/owned/beta');
+  await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((items: any[]) => items.map(item => item.id === 'clean-repo' ? { ...item, path: '/owned/beta-replacement' } : item));
+  });
+  await review.getByRole('button', { name: 'Close 2 tabs', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('No tabs were closed');
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/alpha');
+});
+
+test('closing all selected tabs leaves the workspace available', async ({ page }) => {
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Select shown', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Close selected (2)…', exact: true }).click();
+  await dialog.getByRole('alertdialog').getByRole('button', { name: 'Close 2 tabs' }).click();
+  await expect(dialog).toContainText('0 of 0 open repositories');
+  await expect(dialog.getByRole('button', { name: 'Close selected (0)…', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('gc-welcome-launcher')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Workspace: Default' })).toBeFocused();
+});
+
 test('an open response cannot attach to a workspace that changed while opening', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

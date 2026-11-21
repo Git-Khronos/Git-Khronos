@@ -21,7 +21,7 @@ import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
-import { WorkspaceCenterComponent, type WorkspaceCenterRequest } from './workspace-center.component';
+import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -6749,6 +6749,18 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly openWorkspaceRepository = (path: string) => this.openRepositoryPath(path);
+  protected readonly closeWorkspaceRepositories = (request: WorkspaceTabsCloseRequest): boolean => {
+    if (this.git.busy() || !request.tabs.length || request.workspaceId !== this.git.activeWorkspaceId()
+      || request.scope !== this.git.activeRepositoryReadScope()) return false;
+    const openPaths = new Map(this.git.repositories().map(repository => [repository.id, repository.path]));
+    const selected = new Set(request.tabs.map(tab => tab.id));
+    if (selected.size !== request.tabs.length || request.tabs.some(tab => openPaths.get(tab.id) !== tab.path)) return false;
+    const active = this.git.activeRepositoryId();
+    // Do not activate another tab that is about to be closed.
+    for (const id of selected) if (id !== active) this.closeRepository(id);
+    if (active && selected.has(active)) this.closeRepository(active);
+    return true;
+  };
 
   protected async openRepositoryPath(path: string, closeManager = false): Promise<OpenRepositoryResult> {
     const current = this.git.repository();

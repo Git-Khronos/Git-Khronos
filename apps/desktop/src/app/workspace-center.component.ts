@@ -10,7 +10,8 @@ import { runRepositoryFileAction } from './repository-file-actions';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
-interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open'; status: 'pending' | 'success' | 'error' | 'cancelled'; detail: string | null }
+export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
+interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close'; status: 'pending' | 'success' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
   selector: 'gc-workspace-center',
@@ -18,7 +19,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" [inert]="suspended()" (click)="close()"><section #dialog role="dialog" aria-modal="true" aria-label="Workspace center" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div [inert]="!!pendingFileDelete()">
+      <div [inert]="reviewPending()">
       <header><div><h2 id="workspace-center-title">Workspace center</h2><p>{{ git.activeWorkspace().name }}</p></div><button type="button" (click)="close()">Close</button></header>
       @if (!suspended() && git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
       <nav aria-label="Workspace center sections"><button type="button" [attr.aria-pressed]="panel() === 'overview'" (click)="panel.set('overview')">Repository overview</button><button type="button" [attr.aria-pressed]="panel() === 'files'" (click)="panel.set('files')">Repository files</button><button type="button" [attr.aria-pressed]="panel() === 'identities'" (click)="panel.set('identities')">Identity profiles</button><button type="button" [attr.aria-pressed]="panel() === 'hosting'" (click)="panel.set('hosting')">Reviews and checks</button></nav>
@@ -31,7 +32,8 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || !rows().length" (click)="selectShown()">Select shown</button>
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || !selectedRepositoryIds().length" (click)="selectedRepositoryIds.set([])">Clear selection</button>
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('fetch')">Fetch selected ({{ selectedRepositoryIds().length }})</button>
-          <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button></div>
+          <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button>
+          <button type="button" [disabled]="overviewBusy() || !selectedOpenTabs().length" (click)="reviewTabClose($event)">Close selected ({{ selectedOpenTabs().length }})…</button></div>
         <p role="status">{{ rows().length }} of {{ git.repositories().length }} open repositories shown{{ refreshing() ? ' · reading local repositories' : '' }}</p>
         @if (bulkError()) { <p role="alert">{{ bulkError() }}</p> }
         @if (bulkResults().length) {
@@ -130,12 +132,19 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
       }
       </div>
       @if (pendingFileDelete(); as deletion) {
-        <aside #deleteDialog role="alertdialog" aria-modal="true" aria-labelledby="file-delete-title" tabindex="-1" [attr.aria-busy]="fileMutating()">
+        <aside #reviewDialog role="alertdialog" aria-modal="true" aria-labelledby="file-delete-title" tabindex="-1" [attr.aria-busy]="fileMutating()">
           <h3 id="file-delete-title">Delete {{ deletion.file.path }}?</h3>
           @if (deletion.file.tracked) { <p>This clean committed file will be removed from disk and its deletion staged. The current commit retains its contents.</p> }
           @else { <p>This untracked file will be removed from disk and saved to Recovery History so it can be restored.</p> }
           @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
-          <div class="tools"><button #deleteCancel type="button" [disabled]="git.busy() || fileMutating()" (click)="cancelDelete()">Cancel</button><button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="deleteFile()">Delete file</button></div>
+          <div class="tools"><button #reviewCancel type="button" [disabled]="git.busy() || fileMutating()" (click)="cancelDelete()">Cancel</button><button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="deleteFile()">Delete file</button></div>
+        </aside>
+      } @else if (pendingTabsClose(); as review) {
+        <aside #reviewDialog role="alertdialog" aria-modal="true" aria-labelledby="tabs-close-title" aria-describedby="tabs-close-description" tabindex="-1">
+          <h3 id="tabs-close-title">Close selected repository tabs?</h3>
+          <p id="tabs-close-description">These tabs will be removed from this workspace. Their commit drafts will be discarded and their terminals closed. Repository folders, Git data and working files stay on disk.</p>
+          <ul class="close-paths">@for (tab of review.tabs; track tab.id) { <li><code>{{ tab.path }}</code></li> }</ul>
+          <div class="tools"><button #reviewCancel type="button" (click)="cancelTabClose()">Cancel</button><button type="button" class="danger" [disabled]="overviewBusy()" (click)="closeReviewedTabs()">Close {{ review.tabs.length }} {{ review.tabs.length === 1 ? 'tab' : 'tabs' }}</button></div>
         </aside>
       }
     </section></div>
@@ -155,6 +164,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
     .repositories article > header { align-items: start; } .repositories article > header > label { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; } .repositories article > header > div { min-width: 0; flex: 1; }
     .saved-repositories { margin-block-start: 20px; } .saved-repositories li + li { margin-block-start: 12px; }
     .saved-repositories code { white-space: break-spaces; } .saved-repositories .tools { margin-block-start: 4px; }
+    .close-paths code { white-space: break-spaces; }
     .file-tools { align-items: end; } .file-tools > label, .file-tools form { flex: 1 1 220px; min-width: 180px; } .file-tools form { display: flex; align-items: end; gap: 8px; } .file-tools form label { flex: 1; }
     .file-list { max-height: 45vh; overflow: auto; } .file-entry { display: grid; grid-template-columns: minmax(0,1fr) max-content max-content; align-items: center; gap: 10px; } .file-entry code { white-space: break-spaces; overflow-wrap: anywhere; } .danger { color: var(--danger); }
     @media(max-width:650px) {
@@ -169,6 +179,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<WorkspaceCenterRequest>();
   readonly openRepository = input.required<(path: string) => Promise<OpenRepositoryResult>>();
+  readonly closeRepositories = input.required<(request: WorkspaceTabsCloseRequest) => boolean>();
   readonly suspended = input(false);
   readonly closed = output<void>();
   readonly repositorySelected = output<string>();
@@ -180,6 +191,10 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly refreshing = signal(false);
   readonly refreshes = signal<Record<string, { at: number | null; error: string | null }>>({});
   readonly selectedRepositoryIds = signal<string[]>([]);
+  readonly selectedOpenTabs = computed(() => {
+    const selected = new Set(this.selectedRepositoryIds());
+    return this.git.repositories().filter(repository => selected.has(repository.id));
+  });
   readonly bulkResults = signal<WorkspaceActionResult[]>([]);
   readonly openingRepositories = signal(false);
   readonly bulkRunning = signal(false);
@@ -204,11 +219,14 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly newFilePath = signal('');
   readonly filePage = signal(0);
   readonly pendingFileDelete = signal<{ file: RepositoryFiles['files'][number]; repositoryId: string; path: string } | null>(null);
+  readonly pendingTabsClose = signal<WorkspaceTabsCloseRequest | null>(null);
+  readonly reviewPending = computed(() => !!this.pendingFileDelete() || !!this.pendingTabsClose());
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
-  private readonly deleteDialog = viewChild<ElementRef<HTMLElement>>('deleteDialog');
-  private readonly deleteCancel = viewChild<ElementRef<HTMLButtonElement>>('deleteCancel');
+  private readonly reviewDialog = viewChild<ElementRef<HTMLElement>>('reviewDialog');
+  private readonly reviewCancel = viewChild<ElementRef<HTMLButtonElement>>('reviewCancel');
   private readonly injector = inject(Injector);
   private deleteOpener: HTMLElement | null = null;
+  private tabCloseOpener: HTMLButtonElement | null = null;
   private fileRequest = 0;
   private fileCursors: (string | null)[] = [null];
   private fileQueryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -248,14 +266,17 @@ export class WorkspaceCenterComponent implements OnDestroy {
         }
       });
     });
-    effect(() => { if (this.request().workspaceId !== this.git.activeWorkspaceId()) { this.pendingFileDelete.set(null); this.close(); } });
+    effect(() => {
+      if (this.request().workspaceId !== this.git.activeWorkspaceId()) {
+        this.pendingFileDelete.set(null);
+        this.pendingTabsClose.set(null);
+        this.close(false);
+      }
+    });
     effect(() => { const pending = this.pending(); if (pending && (pending.repositoryId !== this.git.activeRepositoryId() || pending.path !== this.git.repository()?.path)) this.pending.set(null); });
     afterNextRender(() => this.focusFirst());
     afterRenderEffect(() => {
-      if (this.pendingFileDelete()) {
-        if (this.fileMutating()) this.deleteDialog()?.nativeElement.focus();
-        else this.deleteCancel()?.nativeElement.focus();
-      }
+      if (this.reviewPending()) this.focusReview();
     });
   }
   needsAttention(repo: RepositorySnapshot): boolean { const s = repo.status; return !!(s.staged || s.unstaged || s.untracked || s.conflicted || s.ahead || s.behind || s.mergeInProgress || s.rebaseInProgress || s.historyOperation || s.mailPatchInProgress || s.bisectInProgress); }
@@ -463,6 +484,37 @@ export class WorkspaceCenterComponent implements OnDestroy {
       : ids.filter(id => id !== repositoryId));
   }
   selectShown(): void { this.selectedRepositoryIds.set([...new Set([...this.selectedRepositoryIds(), ...this.rows().map(repo => repo.id)])]); }
+  reviewTabClose(event: MouseEvent): void {
+    if (this.destroyed || this.suspended() || this.overviewBusy() || this.reviewPending()
+      || this.request().workspaceId !== this.git.activeWorkspaceId()) return;
+    const tabs = this.selectedOpenTabs().map(({ id, path }) => ({ id, path }));
+    if (!tabs.length) return;
+    this.tabCloseOpener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+    this.bulkError.set('');
+    this.pendingTabsClose.set({ workspaceId: this.request().workspaceId, scope: this.git.activeRepositoryReadScope(), tabs });
+  }
+  cancelTabClose(): void {
+    const opener = this.tabCloseOpener;
+    this.tabCloseOpener = null;
+    this.pendingTabsClose.set(null);
+    afterNextRender(() => {
+      if (this.destroyed || this.reviewPending() || this.suspended()) return;
+      if (opener?.isConnected && !opener.disabled) opener.focus();
+      else this.focusFirst();
+    }, { injector: this.injector });
+  }
+  closeReviewedTabs(): void {
+    const review = this.pendingTabsClose();
+    if (!review || this.destroyed || this.suspended() || this.overviewBusy()) return;
+    this.cancelTabClose();
+    if (!this.closeRepositories()(review)) {
+      this.bulkError.set('Repository tabs changed. Review your selection again. No tabs were closed.');
+      return;
+    }
+    const closed = new Set(review.tabs.map(tab => tab.id));
+    this.selectedRepositoryIds.update(ids => ids.filter(id => !closed.has(id)));
+    this.bulkResults.set(review.tabs.map(tab => ({ ...tab, action: 'close', status: 'success', detail: 'Tab closed' })));
+  }
   async runBulk(action: 'fetch' | 'pull'): Promise<void> {
     if (this.git.busy() || this.openingRepositories() || this.bulkRunning() || this.git.browserPreview() || !this.selectedRepositoryIds().length) return;
     this.bulkError.set('');
@@ -549,24 +601,36 @@ export class WorkspaceCenterComponent implements OnDestroy {
   close(restoreFocus = true): void {
     if (this.destroyed) return;
     if (this.pendingFileDelete()) { this.cancelDelete(); return; }
+    if (this.pendingTabsClose()) { this.cancelTabClose(); return; }
     const opener = this.request().returnFocus; this.closed.emit();
-    if (restoreFocus) setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus(); });
+    if (restoreFocus) setTimeout(() => {
+      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
+      else {
+        const fallback = document.querySelector<HTMLButtonElement>('button.workspace-toggle:not(:disabled)')
+          ?? document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]');
+        fallback?.focus();
+      }
+    });
   }
   private focusFirst(): void { const dialog = this.dialog()?.nativeElement; const target = dialog?.querySelector<HTMLInputElement>('input[type=search]') ?? dialog?.querySelector<HTMLButtonElement>('button'); target?.focus(); }
+  private focusReview(): void {
+    const cancel = this.reviewCancel()?.nativeElement;
+    const busy = this.pendingFileDelete() && (this.fileMutating() || this.git.busy());
+    (!busy && cancel && !cancel.disabled ? cancel : this.reviewDialog()?.nativeElement)?.focus();
+  }
   @HostListener('document:focusin') containFocus(): void {
     if (this.destroyed || this.suspended()) return;
-    const dialog = this.pendingFileDelete() ? this.deleteDialog()?.nativeElement : this.dialog()?.nativeElement;
+    const dialog = this.reviewPending() ? this.reviewDialog()?.nativeElement : this.dialog()?.nativeElement;
     if (dialog && !dialog.contains(document.activeElement)) {
-      if (this.pendingFileDelete()) {
-        if (this.fileMutating()) dialog.focus(); else this.deleteCancel()?.nativeElement.focus();
-      } else this.focusFirst();
+      if (this.reviewPending()) this.focusReview();
+      else this.focusFirst();
     }
   }
   handleKey(event: KeyboardEvent): void {
-    if (this.pendingFileDelete()) {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.cancelDelete(); return; }
+    if (this.reviewPending()) {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return; }
       if (event.key === 'Tab') {
-        const controls = [...(this.deleteDialog()?.nativeElement.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+        const controls = [...(this.reviewDialog()?.nativeElement.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
         if (!controls.length) { event.preventDefault(); }
         else if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
         else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus(); }
