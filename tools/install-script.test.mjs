@@ -205,3 +205,35 @@ test('rejects conflicting and unknown options', () => {
   assert.match(run(['--frobnicate']).stderr, /unknown option '--frobnicate'/);
   assert.match(run(['--version', '1.0; rm -rf /']).stderr, /not a valid version/);
 });
+
+test('incomplete selectors and conflicting actions never reach downloads, builds, or APT', () => {
+  const bin = join(root, 'reject-actions-bin');
+  mkdirSync(bin);
+  for (const name of ['curl', 'git', 'task', 'apt-get']) {
+    const command = join(bin, name);
+    writeFileSync(command, '#!/bin/sh\nprintf "%s\\n" "unexpected action: $0" >&2\nexit 99\n');
+    chmodSync(command, 0o755);
+  }
+  for (const [args, diagnostic] of [
+    [['--from-source', '--uninstall'], /--from-source and --uninstall cannot be combined/],
+    [['--uninstall', '--from-source'], /--from-source and --uninstall cannot be combined/],
+    [['--deb'], /--deb requires a file path/],
+    [['--deb', ''], /--deb requires a file path/],
+    [['--version'], /--version requires a value/],
+    [['--version', ''], /--version requires a value/],
+    [['--version', 'v'], /--version requires a version/],
+  ]) {
+    const result = spawnSync('bash', [installer, '--dry-run', ...args], {
+      encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, diagnostic);
+    assert.doesNotMatch(result.stderr, /unexpected action:/);
+  }
+  const consumedFlag = spawnSync('bash', [installer, '--deb', '--dry-run'], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(consumedFlag.status, 1);
+  assert.match(consumedFlag.stderr, /--deb requires a file path/);
+  assert.doesNotMatch(consumedFlag.stderr, /unexpected action:/);
+});

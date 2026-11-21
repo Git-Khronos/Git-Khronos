@@ -75,12 +75,13 @@ parse_arguments() {
   while (($#)); do
     case "$1" in
       --version)
-        (($# >= 2)) || fail "--version requires a value."
+        (($# >= 2)) && [[ -n "$2" && "$2" != -* ]] || fail "--version requires a value."
         version="${2#v}"
+        [[ -n "$version" ]] || fail "--version requires a version after the 'v' prefix."
         shift 2
         ;;
       --deb)
-        (($# >= 2)) || fail "--deb requires a file path."
+        (($# >= 2)) && [[ -n "$2" && "$2" != -* ]] || fail "--deb requires a file path. Prefix dash-leading names with './'."
         local_package="$2"
         shift 2
         ;;
@@ -92,6 +93,7 @@ parse_arguments() {
         shift 2
         ;;
       --from-source)
+        [[ "$action" != "uninstall" ]] || fail "--from-source and --uninstall cannot be combined."
         action="source"
         if (($# >= 2)) && [[ "$2" != -* ]]; then
           source_ref="$2"
@@ -99,7 +101,11 @@ parse_arguments() {
         fi
         shift
         ;;
-      --uninstall) action="uninstall"; shift ;;
+      --uninstall)
+        [[ "$action" != "source" ]] || fail "--from-source and --uninstall cannot be combined."
+        action="uninstall"
+        shift
+        ;;
       --dry-run) dry_run=true; shift ;;
       -y|--yes) assume_yes=true; shift ;;
       -h|--help) usage; exit 0 ;;
