@@ -171,7 +171,7 @@ import {
 import { orderBranchesCurrentFirst } from './branch-order';
 import { describeWorkingTreeStatus } from './working-tree-status';
 import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
-import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
+import { PULL_STRATEGY_CHOICES, PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { ResizePointer } from './resize-pointer';
 
 interface ActiveGraphLane {
@@ -1543,6 +1543,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly moreActionsMenuOpen = this.toolbarOverlays.isOpen('moreActions');
   protected readonly workingTreeOptionsOpen = signal(false);
   protected readonly pullStrategy = signal<PullStrategy>(this.readPullStrategy());
+  protected readonly pullStrategyChoices = PULL_STRATEGY_CHOICES;
   protected readonly showToolbarLabels = signal(this.readUiPreference('toolbar-labels', true));
   protected readonly showWorktreeTabGroups = signal(this.readUiPreference('worktree-tab-groups', true));
   protected readonly highlightRelatedCommits = signal(this.readUiPreference('highlight-related-commits', true));
@@ -11862,8 +11863,8 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected pullStrategyLabel(): string {
-    return PULL_STRATEGY_LABEL[this.pullStrategy()];
+  protected pullStrategyLabel(strategy: PullStrategy = this.pullStrategy()): string {
+    return PULL_STRATEGY_LABEL[strategy];
   }
 
   protected pullToolbarLabel(): string {

@@ -437,9 +437,19 @@
                 @if (currentRemoteIsUpstream()) { <b>{{ currentBranchSync().behind ? currentBranchSync().behind + ' incoming' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
               </header>
               <div class="menu-caption">Pull strategy</div>
-              <div class="pull-strategy-row" [class.default]="pullStrategy() === 'merge'"><button type="button" role="menuitem" (click)="executePullStrategy('merge')"><gc-icon name="pull" [size]="13" /><span><strong>Fast-forward if possible @if (pullStrategy() === 'merge') { <em class="default-strategy-badge">Default</em> }</strong><small>Merge when fast-forward is not possible</small></span></button><button class="pull-default" type="button" role="menuitemradio" title="{{ pullStrategy() === 'merge' ? 'Default pull strategy' : 'Make Fast-forward if possible the default' }}" aria-label="{{ pullStrategy() === 'merge' ? 'Fast-forward if possible is the default pull strategy' : 'Make Fast-forward if possible the default pull strategy' }}" [attr.aria-checked]="pullStrategy() === 'merge'" (click)="setDefaultPullStrategy($event, 'merge')"><gc-icon name="star" [size]="12" /></button></div>
-              <div class="pull-strategy-row" [class.default]="pullStrategy() === 'ff-only'"><button type="button" role="menuitem" (click)="executePullStrategy('ff-only')"><gc-icon name="pull" [size]="13" /><span><strong>Fast-forward only @if (pullStrategy() === 'ff-only') { <em class="default-strategy-badge">Default</em> }</strong><small>Stop if a merge would be required</small></span></button><button class="pull-default" type="button" role="menuitemradio" title="{{ pullStrategy() === 'ff-only' ? 'Default pull strategy' : 'Make Fast-forward only the default' }}" aria-label="{{ pullStrategy() === 'ff-only' ? 'Fast-forward only is the default pull strategy' : 'Make Fast-forward only the default pull strategy' }}" [attr.aria-checked]="pullStrategy() === 'ff-only'" (click)="setDefaultPullStrategy($event, 'ff-only')"><gc-icon name="star" [size]="12" /></button></div>
-              <div class="pull-strategy-row" [class.default]="pullStrategy() === 'rebase'"><button type="button" role="menuitem" (click)="executePullStrategy('rebase')"><gc-icon name="pull" [size]="13" /><span><strong>Rebase @if (pullStrategy() === 'rebase') { <em class="default-strategy-badge">Default</em> }</strong><small>Replay local commits on the upstream branch</small></span></button><button class="pull-default" type="button" role="menuitemradio" title="{{ pullStrategy() === 'rebase' ? 'Default pull strategy' : 'Make Rebase the default' }}" aria-label="{{ pullStrategy() === 'rebase' ? 'Rebase is the default pull strategy' : 'Make Rebase the default pull strategy' }}" [attr.aria-checked]="pullStrategy() === 'rebase'" (click)="setDefaultPullStrategy($event, 'rebase')"><gc-icon name="star" [size]="12" /></button></div>
+              @for (choice of pullStrategyChoices; track choice.id) {
+                @let selected = pullStrategy() === choice.id;
+                @let label = pullStrategyLabel(choice.id);
+                <div class="pull-strategy-row" [class.default]="selected">
+                  <button type="button" role="menuitem" (click)="executePullStrategy(choice.id)">
+                    <gc-icon name="pull" [size]="13" /><span><strong>{{ label }} @if (selected) { <em class="default-strategy-badge">Default</em> }</strong><small>{{ choice.description }}</small></span>
+                  </button>
+                  <button class="pull-default" type="button" role="menuitemradio"
+                    [title]="selected ? 'Default pull strategy' : 'Make ' + label + ' the default'"
+                    [attr.aria-label]="selected ? label + ' is the default pull strategy' : 'Make ' + label + ' the default pull strategy'"
+                    [attr.aria-checked]="selected" (click)="setDefaultPullStrategy($event, choice.id)"><gc-icon name="star" [size]="12" /></button>
+                </div>
+              }
               @if (repo.submodules.length) {
                 <p id="pull-submodule-scope" class="toolbar-menu-note">Pull does not update submodule checkouts. Use Submodules to update them separately.</p>
               }

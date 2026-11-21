@@ -156,6 +156,24 @@ for (const [strategy, label] of [
   });
 }
 
+test('keyboard chooses the default Pull strategy without starting a pull', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pull options', exact: true }).press('Enter');
+  const menu = page.getByRole('menu', { name: 'Pull options', exact: true });
+  await expect(menu.getByRole('menuitem', { name: /^Fast-forward if possible/ })).toBeFocused();
+  await expect(menu.getByRole('menuitem')).toHaveCount(3);
+  await expect(menu.getByRole('menuitemradio', { checked: true })).toHaveCount(1);
+  await page.keyboard.press('End');
+  const rebase = menu.getByRole('menuitemradio', { name: 'Make Rebase the default pull strategy' });
+  await expect(rebase).toBeFocused();
+  await expect(rebase).toHaveAttribute('title', 'Make Rebase the default');
+  await page.keyboard.press('Space');
+  await expect(menu.getByRole('menuitemradio', { name: 'Rebase is the default pull strategy', checked: true })).toBeFocused();
+  await expect(menu.getByRole('menuitemradio', { checked: true })).toHaveCount(1);
+  await expect(menu.getByRole('menuitemradio', { name: 'Make Fast-forward if possible the default pull strategy', checked: false })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__pullCalls
+    .filter(({ command }: any) => command === 'pull_repository'))).toEqual([]);
+});
+
 test('Pull options describe submodule checkout scope without starting Git', async ({ page }) => {
   const configureSubmodules = async (hasSubmodules: boolean) => page.evaluate(hasSubmodules => {
     const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
