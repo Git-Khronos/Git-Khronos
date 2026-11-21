@@ -682,7 +682,7 @@ pub fn stash_and_checkout(
             message: message.into(),
         },
     )?;
-    run_mutation(path, &["switch", "--no-overwrite-ignore", "--", name], "check out the selected branch").map_err(|error| AppError::new(
+    switch_checkout(path, &["--", name], "check out the selected branch").map_err(|error| AppError::new(
         "checkoutFailedAfterStash", error.message,
         Some("Your changes remain saved in the latest stash. Review the repository before retrying checkout.")))
 }

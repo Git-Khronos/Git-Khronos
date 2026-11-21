@@ -75,6 +75,16 @@ Used for independently implemented canonical-name framing and a hook-aware,
 non-dereferencing Git transaction with a locked direct-object lease. Display decorations are not used to
 reconstruct reference authority. No external implementation code was copied.
 
+## Local checkout scope
+
+- [Git switch branch guessing and nested checkout options](https://git-scm.com/docs/git-switch)
+- [Git checkout ignored-file collision policy](https://git-scm.com/docs/git-checkout)
+- [Git merge ignored-file collision policy](https://git-scm.com/docs/git-merge)
+
+These sources informed explicit app checkout options. Git performs the
+working-tree mutation and checks collisions; the app does not guess or
+rerun a failed switch. No source code was copied.
+
 ## Linux worktree path resolution
 
 - [Linux `openat2(2)` manual](https://man7.org/linux/man-pages/man2/openat2.2.html)

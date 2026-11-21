@@ -5,7 +5,47 @@ from native_acceptance import open_ui
 from native_worktree_scenarios import checkout_footprint
 
 
+def guarded_checkout_targets(driver, fixtures, report):
+    repository = fixtures.repository('guarded-checkout-targets', commits=2)
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'remote', 'add', 'origin', str(fixtures.root / 'unused-checkout-remote'))
+    fixtures.git(repository, 'config', 'checkout.guess', 'true')
+    fixtures.git(repository, 'branch', 'selected')
+    fixtures.git(repository, 'update-ref', 'refs/remotes/origin/selected', head)
+    fixtures.git(repository, 'switch', '-c', 'tracks-settings')
+    settings = repository / 'settings.local'
+    settings.write_text('Tracked settings on the target branch.\n')
+    fixtures.git(repository, 'add', 'settings.local')
+    fixtures.git(repository, 'commit', '-qm', 'Track settings on the target branch')
+    target = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'switch', 'main')
+    (repository / '.git/info/exclude').write_text('/settings.local\n')
+    settings.write_text('Ignored local settings must survive checkout.\n')
+    assert fixtures.git(repository, 'check-ignore', 'settings.local') == 'settings.local'
+    repo_id = open_ui(driver, repository)
+    fixtures.git(repository, 'branch', '-D', 'selected')
+    files = ('fixture.txt', 'settings.local')
+    before = checkout_footprint(fixtures, repository, files)
+
+    def refused(command, kind, **payload):
+        try:
+            driver.invoke(command, repoId=repo_id, **payload)
+        except RuntimeError as refusal:
+            error = json.loads(str(refusal))
+            assert error['kind'] == kind, error
+        else:
+            raise AssertionError(f'{command} changed the reviewed checkout unexpectedly')
+        assert checkout_footprint(fixtures, repository, files) == before
+
+    refused('checkout_branch', 'localBranchNotFound', name='selected', review=None)
+    report['scenarios'].append('native-stale-local-checkout-does-not-recreate-remote-tracking-branch')
+    refused('checkout_branch', 'gitFailure', name='tracks-settings', review=None)
+    refused('checkout_commit', 'gitFailure', oid=target, expectedHeadOid=head, expectedBranch='main')
+    report['scenarios'].append('native-branch-and-detached-checkout-preserve-an-ignored-local-file')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
+    guarded_checkout_targets(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

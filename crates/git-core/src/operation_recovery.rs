@@ -862,15 +862,9 @@ pub fn restore_operation_branch(path: &Path, id: &str, branch: &str) -> Result<(
     if let Some(oid) = &record.snapshot_oid {
         reject_obstructing_files(path, oid)?;
     }
-    run_mutation(
+    switch_checkout(
         path,
-        &[
-            "switch",
-            "--no-overwrite-ignore",
-            "-c",
-            branch,
-            &record.head_oid,
-        ],
+        &["-c", branch, "--", &record.head_oid],
         "create the operation recovery branch",
     )?;
     if let Some(oid) = &record.snapshot_oid {

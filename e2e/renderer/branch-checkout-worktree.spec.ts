@@ -101,15 +101,21 @@ test('graph double click recovers when another checkout took the branch after th
   expect(await calls()).toEqual(['checkout_branch', 'refresh_repository', 'refresh_repository', 'open_repository']);
 });
 
-for (const failure of ['other Git error', 'refresh failed'] as const) {
-  test(`late checkout refusal keeps normal error feedback when ${failure === 'refresh failed' ? 'the refresh failed' : 'Git reports a different error'}`, async ({ page }) => {
+for (const [reason, kind, failRefresh] of [
+  ['Git reports a different error', 'gitFailure', false],
+  ['the refresh failed', 'branchInAnotherWorktree', true],
+  ['the local branch was deleted', 'localBranchNotFound', false],
+] as const) {
+  test(`late checkout refusal keeps normal error feedback when ${reason}`, async ({ page }) => {
     const fixture = await setup(page);
-    await loseCachedOwner(page, failure === 'refresh failed' ? 'branchInAnotherWorktree' : 'gitFailure', failure === 'refresh failed');
+    await loseCachedOwner(page, kind, failRefresh);
     await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
     await expect(page.locator('.error-toast')).toContainText(`Checkout ${fixture.branch} in ${fixture.sourcePath}: Owned checkout refused`);
     await expect(page.getByRole('dialog', { name: 'Branch is open in another checkout' })).toHaveCount(0);
     expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter(
       (entry: any) => entry.command === 'open_repository'))).toEqual([]);
+    expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter(
+      (entry: any) => entry.command === 'checkout_branch'))).toHaveLength(1);
   });
 }
 

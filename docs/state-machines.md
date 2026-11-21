@@ -1043,6 +1043,11 @@ classifies a fresh, bounded registration read without parsing Git's error text.
 The same source checkout may then offer navigation if refresh confirms an owner;
 it never retries the switch or opens the owner without confirmation. Unrelated
 errors or failed ownership reads retain the ordinary Git error.
+If the selected local branch disappears, native reports that fact rather than
+creating a local branch from a same-named remote. Checkout uses Git's
+no-overwrite guard for ignored files and leaves initialized nested checkouts
+alone. The fast-forward in reviewed remote checkout also refuses an ignored
+file collision; a completed fetch and local switch can precede that refusal.
 Ordinary worktree snapshots use Git's NUL-delimited porcelain format so
 embedded newlines and tabs in registered paths survive navigation unchanged.
 

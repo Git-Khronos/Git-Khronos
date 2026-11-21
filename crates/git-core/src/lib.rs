@@ -3157,15 +3157,38 @@ fn parse_raw_commit(raw: &[u8]) -> Result<RawCommit, AppError> {
     Ok(commit)
 }
 
+fn switch_checkout(path: &Path, target: &[&str], operation: &str) -> Result<(), AppError> {
+    // A switch is not consent to create a guessed branch, overwrite an
+    // ignored local file, or move an initialized nested checkout.
+    let mut args = vec![
+        "switch",
+        "--no-guess",
+        "--no-overwrite-ignore",
+        "--no-recurse-submodules",
+    ];
+    args.extend_from_slice(target);
+    run_mutation(path, &args, operation)
+}
+
 pub fn checkout_branch(path: &Path, name: &str) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    run_mutation(path, &["switch", "--", name], "switch branches").map_err(|mut error| {
-        // Git makes the switch decision. Only classify a refusal when a fresh
-        // registration read confirms another owner; never parse Git's prose.
-        if error.kind == "gitFailure"
-            && worktree_diagnostics::branch_has_other_checkout(path, name).unwrap_or(false)
-        {
-            error.kind = "branchInAnotherWorktree".into();
+    switch_checkout(path, &["--", name], "switch branches").map_err(|mut error| {
+        // Git makes the switch decision. Use fresh refs and registrations to
+        // classify a refusal rather than parsing Git's prose.
+        if error.kind == "gitFailure" {
+            let reference = format!("refs/heads/{name}");
+            if run_git(path, &["show-ref", "--verify", "--quiet", &reference])
+                .is_ok_and(|output| output.status.code() == Some(1))
+            {
+                return AppError::new(
+                    "localBranchNotFound",
+                    format!("Local branch '{name}' no longer exists."),
+                    Some("Refresh the repository. To create a tracking branch, explicitly select its remote branch."),
+                );
+            }
+            if worktree_diagnostics::branch_has_other_checkout(path, name).unwrap_or(false) {
+                error.kind = "branchInAnotherWorktree".into();
+            }
         }
         error
     })
@@ -3197,9 +3220,9 @@ pub fn checkout_remote_branch(path: &Path, name: &str) -> Result<(), AppError> {
             Some("Fetch the remotes and try again."),
         ));
     }
-    run_mutation(
+    switch_checkout(
         path,
-        &["switch", "--track", "--", name],
+        &["--track", "--", &reference],
         "create a local tracking branch",
     )
 }
@@ -3249,15 +3272,15 @@ pub fn set_branch_upstream(
 
 pub fn create_branch(path: &Path, name: &str) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    run_mutation(path, &["switch", "-c", name], "create the branch")
+    switch_checkout(path, &["-c", name], "create the branch")
 }
 
 pub fn create_branch_at(path: &Path, name: &str, oid: &str) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
     validate_commit_oid(oid)?;
-    run_mutation(
+    switch_checkout(
         path,
-        &["switch", "-c", name, oid],
+        &["-c", name, "--", oid],
         "create the branch at that commit",
     )
 }
@@ -3413,7 +3436,7 @@ pub fn remove_worktree(
 
 pub fn checkout_commit(path: &Path, oid: &str) -> Result<(), AppError> {
     validate_commit_oid(oid)?;
-    run_mutation(path, &["switch", "--detach", oid], "check out that commit")
+    switch_checkout(path, &["--detach", "--", oid], "check out that commit")
 }
 
 /// Revalidate the checkout shown by the detach review. Git still owns the
@@ -3599,7 +3622,7 @@ pub fn checkout_branch_for_integration(
         return Err(integration_review_changed());
     }
     validate_integration_review(path, review)?;
-    run_mutation(path, &["switch", "--no-guess", "--", name], "switch branches")
+    switch_checkout(path, &["--", name], "switch branches")
 }
 
 pub fn integrate_branch(path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
@@ -13499,6 +13522,54 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(branch.tracking.as_deref(), Some("ahead 1"));
 
         fs::remove_dir_all(parent).expect("remove tracking fixture directory");
+    }
+
+    #[test]
+    fn remote_checkout_fast_forward_refuses_to_overwrite_an_ignored_file() {
+        let local = TestRepository::new();
+        local.git(&["commit", "--allow-empty", "-m", "Seed"]);
+        let old = local.git_output(&["rev-parse", "HEAD"]);
+        let receiver = local.path.join(".git/receiver.git");
+        let url = receiver.to_str().unwrap();
+        local.git(&["init", "--bare", url]);
+        local.git(&["remote", "add", "origin", url]);
+        local.git(&["push", "origin", "HEAD:refs/heads/topic"]);
+        local.git(&["branch", "--track", "topic", "origin/topic"]);
+        local.git(&["switch", "-c", "publisher"]);
+        local.write("settings.local", "New tracked upstream settings\n");
+        local.git(&["add", "settings.local"]);
+        local.git(&["commit", "-m", "Track upstream settings"]);
+        let incoming = local.git_output(&["rev-parse", "HEAD"]);
+        local.git(&["push", url, "HEAD:refs/heads/topic"]);
+        local.git(&["switch", "main"]);
+        fs::write(local.path.join(".git/info/exclude"), "/settings.local\n").unwrap();
+        local.write("settings.local", "Keep these ignored local settings\n");
+        let before_index = local.git_output(&["ls-files", "--stage", "-z"]);
+
+        let error =
+            sync_checkout_remote_branch(&local.path, "origin/topic", &CancellationToken::default())
+                .unwrap_err();
+
+        assert_eq!(error.kind, "remoteCheckoutUpdateFailed");
+        assert_eq!(
+            local
+                .git_output(&["symbolic-ref", "--short", "HEAD"])
+                .trim(),
+            "topic"
+        );
+        assert_eq!(local.git_output(&["rev-parse", "HEAD"]), old);
+        assert_eq!(
+            local.git_output(&["rev-parse", "refs/remotes/origin/topic"]),
+            incoming
+        );
+        assert_eq!(
+            local.git_output(&["ls-files", "--stage", "-z"]),
+            before_index
+        );
+        assert_eq!(
+            fs::read_to_string(local.path.join("settings.local")).unwrap(),
+            "Keep these ignored local settings\n"
+        );
     }
 
     #[test]

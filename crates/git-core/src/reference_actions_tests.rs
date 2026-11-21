@@ -2019,6 +2019,196 @@ fn pull_strategy_overlapping_dirty_changes_are_preserved_without_automatic_stash
 }
 
 #[test]
+fn local_checkout_never_recreates_a_deleted_branch_from_a_remote_tracking_ref() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let head = repository.oid();
+    run_mutation(
+        path,
+        &["remote", "add", "origin", ".git/unused"],
+        "remote fixture",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "checkout.guess", "true"],
+        "enable Git guessing",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["branch", "selected"],
+        "create the previously displayed branch",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["update-ref", "refs/remotes/origin/selected", &head],
+        "track the matching branch",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["branch", "-D", "selected"],
+        "delete the selected local branch externally",
+    )
+    .unwrap();
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+    let config = fs::read(path.join(".git/config")).unwrap();
+
+    let error = checkout_branch(path, "selected").unwrap_err();
+
+    assert_eq!(error.kind, "localBranchNotFound");
+    assert_eq!(repository.oid(), head);
+    assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("main"));
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+}
+
+#[test]
+fn checkout_refuses_to_overwrite_an_ignored_local_file() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let head = repository.oid();
+    run_mutation(path, &["switch", "-c", "settings"], "create fixture branch").unwrap();
+    fs::write(
+        path.join("settings.local"),
+        b"tracked settings on the other branch\n",
+    )
+    .unwrap();
+    stage_path(path, "settings.local").unwrap();
+    commit(path, "Track settings on the other branch").unwrap();
+    let target = repository.oid();
+    run_mutation(
+        path,
+        &["switch", "main"],
+        "return to the main fixture branch",
+    )
+    .unwrap();
+    fs::write(path.join(".git/info/exclude"), b"/settings.local\n").unwrap();
+    fs::write(
+        path.join("settings.local"),
+        b"untracked local settings to keep\n",
+    )
+    .unwrap();
+    fs::write(path.join("file"), b"unrelated staged work\n").unwrap();
+    stage_path(path, "file").unwrap();
+    let index = run_git(path, &["ls-files", "--stage", "-z"])
+        .unwrap()
+        .stdout;
+    let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+
+    assert!(checkout_branch(path, "settings").is_err());
+    assert!(checkout_commit_reviewed(path, &target, Some(&head), Some("main")).is_err());
+
+    assert_eq!(
+        fs::read(path.join("settings.local")).unwrap(),
+        b"untracked local settings to keep\n"
+    );
+    assert_eq!(repository.oid(), head);
+    assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("main"));
+    assert_eq!(
+        run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
+        index
+    );
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+}
+
+#[test]
+fn local_checkout_updates_the_parent_gitlink_without_switching_the_nested_checkout() {
+    let child = Repository::new();
+    let parent = Repository::new();
+    let path = &parent.0;
+    let child_path = path.join("modules/child");
+    let old = child.oid();
+    run_mutation(
+        path,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--",
+            child.0.to_str().unwrap(),
+            "modules/child",
+        ],
+        "register owned child",
+    )
+    .unwrap();
+    commit(path, "Add child").unwrap();
+    run_mutation(
+        path,
+        &["switch", "-c", "updated"],
+        "create another parent branch",
+    )
+    .unwrap();
+    fs::write(child_path.join("file"), b"new nested contents\n").unwrap();
+    stage_path(&child_path, "file").unwrap();
+    run_mutation(
+        &child_path,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "New child version",
+        ],
+        "commit the new owned child version",
+    )
+    .unwrap();
+    let new = run_git(&child_path, &["rev-parse", "HEAD"]).unwrap().stdout;
+    let new = std::str::from_utf8(new.trim_ascii()).unwrap();
+    stage_path(path, "modules/child").unwrap();
+    commit(path, "Record the new child version").unwrap();
+    run_mutation(
+        path,
+        &["switch", "--no-recurse-submodules", "main"],
+        "return parent to main",
+    )
+    .unwrap();
+    run_mutation(
+        &child_path,
+        &["switch", "--detach", &old],
+        "restore the original child",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "submodule.recurse", "true"],
+        "enable Git recursion",
+    )
+    .unwrap();
+
+    checkout_branch(path, "updated").unwrap();
+
+    assert_eq!(
+        run_git(path, &["rev-parse", ":modules/child"])
+            .unwrap()
+            .stdout
+            .trim_ascii(),
+        new.as_bytes()
+    );
+    assert_eq!(
+        run_git(&child_path, &["rev-parse", "HEAD"])
+            .unwrap()
+            .stdout
+            .trim_ascii(),
+        old.as_bytes()
+    );
+    assert_eq!(
+        run_git(path, &["config", "submodule.recurse"])
+            .unwrap()
+            .stdout
+            .trim_ascii(),
+        b"true"
+    );
+}
+
+#[test]
 fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktrees() {
     let repository = Repository::new();
     let path = &repository.0;
@@ -2050,7 +2240,7 @@ fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktre
     let refs = run_git(path, &["show-ref"]).unwrap().stdout;
     assert_eq!(
         checkout_branch(path, "absent-local-branch").unwrap_err().kind,
-        "gitFailure"
+        "localBranchNotFound"
     );
     let blocked = checkout_branch(path, "occupied").unwrap_err();
     assert_eq!(blocked.kind, "branchInAnotherWorktree");

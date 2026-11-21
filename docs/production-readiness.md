@@ -3135,6 +3135,23 @@ Release and hotfix Finish took 15.8 and 7.4 seconds in the isolated
 installed branch-workflow check. These are measured on this package and
 host, not a controlled comparison with the older installer.
 
+### Scoped checkout and ignored-file preservation
+
+The ordinary local-branch and detached checkout paths now refuse
+collisions with ignored local files, leave nested checkouts alone, and
+do not guess a remote-tracking branch when a selected local branch is
+gone. Reviewed remote checkout uses the same switch policy and guards
+its subsequent fast-forward. Its earlier fetch and local branch switch
+remain reportable partial results if that fast-forward is refused.
+
+Four real-Git regressions reproduced before the fix and passed on Git
+2.39.5 and 2.53.0. Checkout, operation recovery, and stash source filters
+passed, together with strict Clippy. The installed `ef28d9d` baseline
+recreated the deleted branch under the new scope scenario. That is a red
+check on the old package, not a failing gate in its original matrix.
+Exact source and installed baseline receipts are in
+`target/local-review/safe-checkout.BIlSZSgx/`.
+
 ### Working-tree recap during refresh
 
 An unchanged-status recount now keeps previously measured totals

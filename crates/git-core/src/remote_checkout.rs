@@ -1,7 +1,7 @@
 use crate::{
     AppError, CancellationToken, ensure_success, fetch_options, operation_cancelled, read_remotes,
     resolve_repository, run_git, run_git_with_cancellation, run_git_with_stdout_limit,
-    run_mutation, validate_branch_name, worktree_diagnostics,
+    run_mutation, switch_checkout, validate_branch_name, worktree_diagnostics,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -272,17 +272,9 @@ pub fn sync_checkout_remote_branch(
     let local_ref = format!("refs/heads/{local}");
     let existing = run_git(path, &["show-ref", "--verify", "--quiet", &local_ref])?;
     if existing.status.code() == Some(1) {
-        run_mutation(
+        switch_checkout(
             path,
-            &[
-                "switch",
-                "--no-recurse-submodules",
-                "--track",
-                "-c",
-                &local,
-                "--",
-                &target,
-            ],
+            &["--track", "-c", &local, "--", &target],
             "create a local tracking branch",
         )?;
         return Ok(RemoteCheckoutOutcome::Created);
@@ -307,11 +299,7 @@ pub fn sync_checkout_remote_branch(
     if cancellation.is_cancelled() {
         return Err(operation_cancelled());
     }
-    run_mutation(
-        path,
-        &["switch", "--no-recurse-submodules", "--", &local],
-        "switch branches",
-    )?;
+    switch_checkout(path, &["--", &local], "switch branches")?;
     if outcome == RemoteCheckoutOutcome::Updated {
         if cancellation.is_cancelled() {
             return Err(AppError::new(
@@ -333,7 +321,22 @@ pub fn sync_checkout_remote_branch(
                 Some("Refresh and inspect the branch before retrying."),
             ));
         }
-        run_mutation(path, &["-c", "merge.autostash=false", "merge", "--ff-only", "--no-autostash", &remote_oid], "fast-forward the local branch").map_err(|mut error| {
+        run_mutation(
+            path,
+            &[
+                "-c",
+                "merge.autostash=false",
+                "-c",
+                "submodule.recurse=false",
+                "merge",
+                "--ff-only",
+                "--no-autostash",
+                "--no-overwrite-ignore",
+                "--",
+                &remote_oid,
+            ],
+            "fast-forward the local branch",
+        ).map_err(|mut error| {
             error.kind = "remoteCheckoutUpdateFailed".into();
             error.hint = Some("The local branch was checked out, but the update did not complete. Preserve changes and inspect the branch and working files before retrying.".into());
             error
