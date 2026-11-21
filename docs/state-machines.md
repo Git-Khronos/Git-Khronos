@@ -789,6 +789,14 @@ risks, not a completed migration or new exhaustive characterization. These
 domain-specific migrations require separate behavioral coverage; no generic
 state wrapper should erase error distinctions, accepted writes, or capabilities.
 
+### Preferences chunk and styles
+
+The Preferences component owns its layout and category styles. They load with
+the deferred component and are scoped to its host, including embedded panels.
+Only the launcher, backdrop, and modal shell remain in the startup stylesheet
+so loading and failure states stay visible even when the feature chunk never
+arrives. `deferred-preferences.spec.ts` covers both paths.
+
 ### Application update intent, consent and installation receipts
 
 Application updates are application-global, not a repository mutation lifecycle.

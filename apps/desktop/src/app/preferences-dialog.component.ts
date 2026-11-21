@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  ViewEncapsulation,
   viewChild,
 } from '@angular/core';
 import { ConfiguredToolsPanelComponent } from './configured-tools-panel.component';
@@ -60,6 +61,10 @@ const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
   imports: [FormsModule, ConfiguredToolsPanelComponent, IconComponent, IntegrityPanelComponent, PatchExchangePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './preferences-dialog.component.html',
+  // The stylesheet scopes its selectors to this host. Avoid changing CSS
+  // specificity or excluding descendants supplied by the embedded panels.
+  encapsulation: ViewEncapsulation.None,
+  styleUrl: './preferences-dialog.component.scss',
 })
 export class PreferencesDialogComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
