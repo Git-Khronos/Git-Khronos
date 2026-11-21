@@ -7,6 +7,19 @@ artifacts, not checked-in or published reports.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
+The next candidate, `d2b57e7`, includes the saved-tab restoration fix.
+Its Jammy-built package SHA-256 is
+`13611be47d0e628ea24b3d83b5de144c669a80bbac549adc821ef8e42a6f3bcc`.
+The exact bytes passed 272 installed environment scenarios on Ubuntu 24.04
+with coherent Git 2.53 helpers. This followed a harness-only correction that
+binds right clicks to the private session's app instead of globally matching
+its executable path. The final report and strict release preflight are under
+`target/local-review/updater/jammy-builder/workspace-tabs.IDQ2jPmP/`.
+With stock Git 2.43, the same bytes passed incoming links (26), worktrees (23),
+setup/recaps (46), application updates (21), GitLab (47), and recovery (23).
+This is local evidence; the exact package does not yet include the subsequent
+rename-counting or same-status refresh refinements.
+
 The Jammy-built candidate at `6278cbf` passed all 272 installed
 inherited-environment checks on disposable Ubuntu 24.04 after provisioning a
 matching Git 2.53 executable and helper directory. The same package passed the
