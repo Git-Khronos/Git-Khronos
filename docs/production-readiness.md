@@ -3024,3 +3024,26 @@ Failing and passing reports are in
 `target/local-review/native-pull-scope.Oh9N6pIp/` and
 `target/local-review/updater/jammy-builder/pull-scope-release.Lb6rguwE/focused/results/`,
 respectively. These are focused passes, not complete release qualification.
+
+### Branch workflow qualification timing
+
+The isolated Ubuntu 22.04 branch-workflow suite passed all four cases with
+the same `df1edc7` installer after giving reviewed operations their own
+60-second test window. The release and hotfix finishes took 44.3 and
+47.7 seconds respectively in that run, beyond the old general 30-second
+wait. The scenario continues to check Git parentage, tags, cleanup, and
+recovery state; it does not replay the Apply click. See the report under
+`target/local-review/updater/jammy-builder/working-tree-release.4wNlfYM8/jammy-workflow.RkKTxmy0/`
+for those timings. The full environment suite was restarted separately.
+
+### Shared Pull strategy menu rows
+
+One tracked template now renders the three strategy rows and uses the
+same labels as the toolbar and workspace overview. Changing the default
+retains focus without issuing Pull; selecting a one-off strategy still
+dispatches only that action. No deferred chunk or extra first-open load was
+introduced. Same-settings production builds measured 1,311,523 → 1,309,852
+raw initial bytes (−1,671 JavaScript bytes; CSS unchanged), with 244 fewer
+gzip bytes and 102 fewer Brotli bytes. The 900 kB initial warning remains.
+All 21 focused browser cases passed. See `pull-menu-*` under the startup
+profile receipts directory.
