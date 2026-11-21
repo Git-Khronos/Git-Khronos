@@ -259,6 +259,16 @@ repository mutation lock, native refuses a changed checkout before starting
 Git, even when the new branch shares its old commit. This preflight isn't a lock against Git
 clients outside the app after the check.
 
+### Remote branch rename and deletion
+
+Before sending a rename or deletion, native checks that Git's configured
+fetch mappings uniquely resolve the selected tracking ref to the same
+remote branch name. A displayed alias can share its commit with another
+branch; the commit lease alone does not prove the destination. Symbolic
+aliases, conflicting mappings, and mappings to a differently named branch
+are refused without a push. A rename also checks that the new name will be
+tracked before changing either the remote branch or local upstreams.
+
 ### Manual co-author entry
 
 Text typed in the co-author picker belongs to the checkout's in-memory

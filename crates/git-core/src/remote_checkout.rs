@@ -95,6 +95,41 @@ fn selected_mapping(path: &Path, name: &str) -> Result<(String, String, String),
     Ok(candidates.remove(0))
 }
 
+/// Rename and delete operate on a named branch, not just an OID. Refuse when
+/// the selected tracking ref is an alias for a different source branch or
+/// is also claimed by another configured remote.
+pub(crate) fn require_direct_remote_branch_mapping(
+    path: &Path,
+    remote: &str,
+    branch: &str,
+) -> Result<(), AppError> {
+    let name = format!("{remote}/{branch}");
+    let (mapped_remote, _, mapped_branch) = selected_mapping(path, &name)?;
+    if mapped_remote != remote || mapped_branch != branch {
+        return Err(AppError::new(
+            "unsupportedRemoteMapping",
+            "The selected tracking ref maps to a different remote branch. Nothing was sent.",
+            Some("Review the remote fetch mapping in Git before renaming or deleting the branch."),
+        ));
+    }
+    require_direct_tracking_ref(path, &format!("refs/remotes/{name}"))
+}
+
+fn require_direct_tracking_ref(path: &Path, reference: &str) -> Result<(), AppError> {
+    let symbolic = run_git(path, &["symbolic-ref", "--quiet", reference])?;
+    if symbolic.status.success() {
+        return Err(AppError::new(
+            "invalidRemoteBranch",
+            "Select a remote branch, not a symbolic alias.",
+            None,
+        ));
+    }
+    if symbolic.status.code() != Some(1) {
+        ensure_success("check the remote tracking ref", &symbolic)?;
+    }
+    Ok(())
+}
+
 fn ancestor(path: &Path, first: &str, second: &str) -> Result<bool, AppError> {
     let output = run_git(path, &["merge-base", "--is-ancestor", first, second])?;
     match output.status.code() {
@@ -173,17 +208,7 @@ pub fn sync_checkout_remote_branch(
 ) -> Result<RemoteCheckoutOutcome, AppError> {
     let (remote, source, local) = selected_mapping(path, name)?;
     let target = format!("refs/remotes/{name}");
-    let symbolic = run_git(path, &["symbolic-ref", "--quiet", &target])?;
-    if symbolic.status.success() {
-        return Err(AppError::new(
-            "invalidRemoteBranch",
-            "Select a remote branch, not a symbolic alias.",
-            None,
-        ));
-    }
-    if symbolic.status.code() != Some(1) {
-        ensure_success("check the remote reference", &symbolic)?;
-    }
+    require_direct_tracking_ref(path, &target)?;
     let namespace = format!("refs/remotes/{remote}/");
     if !target.starts_with(&namespace) {
         return Err(AppError::new(

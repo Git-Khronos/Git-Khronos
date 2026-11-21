@@ -110,6 +110,8 @@ pub fn rename_remote_branch(
     validate_branch_name(path, new_name)?;
     refuse_same_name(name, new_name)?;
     validate_commit_oid(expected_oid)?;
+    crate::remote_checkout::require_direct_remote_branch_mapping(path, remote, name)?;
+    crate::remote_checkout::require_direct_remote_branch_mapping(path, remote, new_name)?;
     let tracking = format!("refs/remotes/{remote}/{name}");
     let new_tracking = format!("refs/remotes/{remote}/{new_name}");
     if reference_tip(path, &tracking).as_deref() != Some(expected_oid) {

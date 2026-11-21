@@ -9620,6 +9620,101 @@ fn reference_actions_delete_only_the_leased_remote_branch() {
 }
 
 #[test]
+fn reference_actions_refuse_destructive_writes_through_a_tracking_alias() {
+    let repository = Repository::new();
+    let remote = repository.0.join("origin.git");
+    run_mutation(
+        &repository.0,
+        &["init", "--bare", remote.to_str().unwrap()],
+        "create owned remote",
+    )
+    .unwrap();
+    add_remote(&repository.0, "origin", remote.to_str().unwrap()).unwrap();
+    run_mutation(
+        &repository.0,
+        &[
+            "push",
+            "origin",
+            "HEAD:refs/heads/source",
+            "HEAD:refs/heads/alias",
+        ],
+        "seed two owned remote branches at the same commit",
+    )
+    .unwrap();
+    run_mutation(
+        &repository.0,
+        &[
+            "config",
+            "--replace-all",
+            "remote.origin.fetch",
+            "+refs/heads/source:refs/remotes/origin/alias",
+        ],
+        "configure the exact fetch alias",
+    )
+    .unwrap();
+    let oid = repository.oid();
+    let token = CancellationToken::default();
+    let before = repository.remote_refs("origin");
+    let deleted = transport_reference(
+        &repository.0,
+        "origin",
+        "alias",
+        "branch",
+        true,
+        Some(&oid),
+        &token,
+    );
+    assert_eq!(deleted.unwrap_err().kind, "unsupportedRemoteMapping");
+    assert_eq!(repository.remote_refs("origin"), before);
+    let renamed = rename_remote_branch(&repository.0, "origin", "alias", "renamed", &oid, &token);
+    assert_eq!(renamed.unwrap_err().kind, "unsupportedRemoteMapping");
+    assert_eq!(repository.remote_refs("origin"), before);
+    assert_eq!(repository.oid(), oid);
+}
+
+#[test]
+fn remote_branch_rename_refuses_to_create_an_unmapped_tracking_ref() {
+    let repository = Repository::new();
+    let remote = repository.0.join("origin.git");
+    run_mutation(
+        &repository.0,
+        &["init", "--bare", remote.to_str().unwrap()],
+        "create owned remote",
+    )
+    .unwrap();
+    add_remote(&repository.0, "origin", remote.to_str().unwrap()).unwrap();
+    run_mutation(
+        &repository.0,
+        &["push", "origin", "HEAD:refs/heads/source"],
+        "seed the selected remote branch",
+    )
+    .unwrap();
+    run_mutation(
+        &repository.0,
+        &[
+            "config",
+            "--add",
+            "remote.origin.fetch",
+            "^refs/heads/excluded",
+        ],
+        "exclude the new name from the owned fetch mapping",
+    )
+    .unwrap();
+    let before = repository.remote_refs("origin");
+    let error = rename_remote_branch(
+        &repository.0,
+        "origin",
+        "source",
+        "excluded",
+        &repository.oid(),
+        &CancellationToken::default(),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind, "ambiguousRemoteBranch");
+    assert_eq!(repository.remote_refs("origin"), before);
+}
+
+#[test]
 fn reference_actions_validate_both_urls_before_changing_configuration() {
     let repository = Repository::new();
     configure_remote_urls(

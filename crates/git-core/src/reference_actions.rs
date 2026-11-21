@@ -137,6 +137,7 @@ pub fn transport_reference(
         }
         "branch" if delete => {
             validate_branch_name(path, name)?;
+            crate::remote_checkout::require_direct_remote_branch_mapping(path, remote, name)?;
             format!("refs/heads/{name}")
         }
         _ => {
