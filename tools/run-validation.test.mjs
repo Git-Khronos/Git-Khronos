@@ -119,20 +119,32 @@ if (args[0] === 'install') {
 } else {
   assert.deepEqual(args, ['nx', 'run', 'desktop:e2e']);
   assert.equal(fs.readFileSync('offline-install', 'utf8'), 'owned dependency setup');
-  fs.writeFileSync('tested', 'committed test');
+  assert.match(process.env.PLAYWRIGHT_PORT, /^[0-9]+$/);
+  fs.writeFileSync('tested', process.env.PLAYWRIGHT_PORT);
 }
 `, { mode: 0o700 });
     const options = { cwd, env: { ...env, PATH: `${bin}:${process.env.PATH}`, CI: '', FIXTURE_SPEC: spec,
       GIT_DIR: '/nonexistent', NX_WORKSPACE_ROOT_PATH: cwd } };
+    delete options.env.PLAYWRIGHT_PORT;
     execFileSync(process.execPath, [launcher, 'run', directory, '--snapshot', 'HEAD', 'run', 'desktop:e2e'], options);
     const expected = { cwd, commit, commandCwd: join(directory, 'source'), mode: 'commit-snapshot' };
     for (const receipt of ['preparing.json', 'started.json', 'result.json']) {
       assert.deepEqual(JSON.parse(readFileSync(join(directory, receipt), 'utf8')).source, expected);
     }
-    assert.equal(readFileSync(join(expected.commandCwd, 'tested'), 'utf8'), 'committed test');
+    const port = readFileSync(join(expected.commandCwd, 'tested'), 'utf8');
+    assert.ok(Number(port) > 0 && Number(port) <= 65535);
+    for (const receipt of ['started.json', 'result.json']) {
+      assert.equal(JSON.parse(readFileSync(join(directory, receipt), 'utf8')).rendererPort, port);
+    }
     assert.equal(readFileSync(spec, 'utf8'), 'live edit during validation');
     assert.equal(git('rev-parse', 'HEAD'), commit);
     assert.equal(git('worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);
+
+    const specified = join(cwd, 'specified port');
+    execFileSync(process.execPath, [launcher, 'run', specified, '--snapshot', commit, 'run', 'desktop:e2e'],
+      { ...options, env: { ...options.env, PLAYWRIGHT_PORT: '44213' } });
+    assert.equal(readFileSync(join(specified, 'source/tested'), 'utf8'), '44213');
+    assert.equal(JSON.parse(readFileSync(join(specified, 'result.json'), 'utf8')).rendererPort, '44213');
 
     const failed = join(cwd, 'failed evidence');
     assert.throws(() => execFileSync(process.execPath, [launcher, 'run', failed, '--snapshot', commit, 'run', 'desktop:e2e'],

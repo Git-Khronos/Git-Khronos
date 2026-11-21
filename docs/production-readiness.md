@@ -2176,6 +2176,13 @@ and report-write failure. Evidence is retained under
 This fixes the validation lifecycle defect for future launches; it does not
 retroactively qualify the incomplete old run or excuse the current UI failure.
 
+Named `desktop:e2e` snapshot runs select a loopback port immediately before
+starting Playwright and record it in their receipts. Previously, overlapping
+snapshot runs could use the same default port and one run lost its HTTP
+server during startup of the other. Set `PLAYWRIGHT_PORT` explicitly only
+when the port is deliberately owned by that run. Port selection samples an
+available port; it does not reserve it against unrelated processes.
+
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
 The corrected browser-side wait keeps the same three-second readiness deadline

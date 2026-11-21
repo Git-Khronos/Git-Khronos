@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, openSync, closeSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
@@ -29,6 +30,22 @@ if (snapshot && !commit) throw new Error('Snapshot ref does not resolve to a loc
 const directory = resolve(runDirectory);
 const commandCwd = commit ? join(directory, 'source') : process.cwd();
 if (commit && directory.includes(delimiter)) throw new Error('Snapshot run path contains Git’s path-list delimiter');
+const rendererSnapshot = Boolean(commit) && (
+  args.some(argument => argument === 'desktop:e2e' || argument.startsWith('desktop:e2e:'))
+  || (args[0] === 'e2e' && args[1] === 'desktop')
+);
+
+async function selectRendererPort() {
+  const server = createServer();
+  await new Promise((ready, failed) => {
+    server.once('error', failed);
+    server.listen({ host: '127.0.0.1', port: 0 }, ready);
+  });
+  const { port } = server.address();
+  await new Promise((ready, failed) => server.close(error => error ? failed(error) : ready()));
+  return String(port);
+}
+
 // Every named invocation owns its artifacts, even if another run shares its checkout.
 const environment = {
   ...(commit ? {
@@ -65,10 +82,11 @@ if (mode === 'start') {
   const onTerminate = () => interrupt('SIGTERM');
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onTerminate);
+  let rendererPort;
   const finish = (exitCode, signal, error) => {
     closeSync(output);
     writeFileSync(join(directory, 'result.json'), JSON.stringify({
-      command, source, started, finished: new Date().toISOString(), exitCode, signal, error,
+      command, source, started, rendererPort, finished: new Date().toISOString(), exitCode, signal, error,
     }, null, 2), { mode: 0o600 });
     process.exitCode = exitCode ?? 1;
   };
@@ -95,11 +113,16 @@ if (mode === 'start') {
       rmSync(archive);
       await prepare('Installing pinned dependencies offline', 'pnpm', ['install', '--offline', '--frozen-lockfile']);
     }
+    if (rendererSnapshot) {
+      rendererPort = environment.PLAYWRIGHT_PORT ?? await selectRendererPort();
+      environment.PLAYWRIGHT_PORT = rendererPort;
+      writeFileSync(output, `==> Renderer test server: 127.0.0.1:${rendererPort}\n`);
+    }
     const result = await runOwnedCommand(command[0], command.slice(1), {
       ...ownedOptions,
       onSpawn(child) {
         writeFileSync(join(directory, 'started.json'), JSON.stringify({
-          runnerPid: process.pid, childPid: child.pid, command, source, started,
+          runnerPid: process.pid, childPid: child.pid, command, source, started, rendererPort,
         }, null, 2), { mode: 0o600 });
       },
     });
