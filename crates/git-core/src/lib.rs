@@ -4698,7 +4698,7 @@ pub fn push_cancellable(path: &Path, cancellation: &CancellationToken) -> Result
 }
 
 pub fn push_to_remote(path: &Path, remote: &str, branch: &str) -> Result<(), AppError> {
-    push_to_remote_with_cancellation(path, remote, branch, None)
+    push_to_remote_with_cancellation(path, remote, branch, None, None)
 }
 
 pub fn push_to_remote_cancellable(
@@ -4707,19 +4707,52 @@ pub fn push_to_remote_cancellable(
     branch: &str,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
-    push_to_remote_with_cancellation(path, remote, branch, Some(cancellation))
+    push_to_remote_with_cancellation(path, remote, branch, None, Some(cancellation))
+}
+
+pub fn push_to_remote_at_head_cancellable(
+    path: &Path,
+    remote: &str,
+    branch: &str,
+    expected_head_oid: &str,
+    cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    push_to_remote_with_cancellation(
+        path,
+        remote,
+        branch,
+        Some(expected_head_oid),
+        Some(cancellation),
+    )
 }
 
 fn push_to_remote_with_cancellation(
     path: &Path,
     remote: &str,
     branch: &str,
+    expected_head_oid: Option<&str>,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
     validate_remote_name(path, remote)?;
     require_remote(path, remote)?;
     validate_branch_name(path, branch)?;
-    let refspec = format!("HEAD:refs/heads/{branch}");
+    let source = if let Some(expected) = expected_head_oid {
+        validate_commit_oid(expected)?;
+        let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
+        ensure_success("check the local commit before pushing", &head)?;
+        if String::from_utf8_lossy(&head.stdout).trim() != expected {
+            return Err(AppError::new(
+                "stalePushHead",
+                "The local commit changed before Push could start. Nothing was sent.",
+                Some("Refresh the repository and review the outgoing commits before pushing again."),
+            ));
+        }
+        // Keep the refspec pinned even if another process moves HEAD after checking it.
+        expected
+    } else {
+        "HEAD"
+    };
+    let refspec = format!("{source}:refs/heads/{branch}");
     run_mutation_with_cancellation(
         path,
         &["push", remote, &refspec],
@@ -13419,6 +13452,8 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert!(!has_branch(&origin), "origin must remain untouched");
         assert!(has_branch(&upstream), "selected remote must receive main");
         repository.git(&["branch", "--set-upstream-to=upstream/main", "main"]);
+        let reviewed = repository.git_output(&["rev-parse", "HEAD"]);
+        let reviewed = reviewed.trim();
         repository.write("next.txt", "next\n");
         stage_all(&repository.path).expect("stage next commit");
         commit(&repository.path, "Advance local branch").expect("commit local change");
@@ -13429,10 +13464,30 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
                 .ahead,
             1
         );
-        push_to_remote_cancellable(
+        let refused = push_to_remote_at_head_cancellable(
             &repository.path,
             "upstream",
             "main",
+            reviewed,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+        assert_eq!(refused.kind, "stalePushHead");
+        let remote_head = Command::new("git")
+            .arg("--git-dir")
+            .arg(&upstream)
+            .args(["rev-parse", "refs/heads/main"])
+            .output()
+            .expect("read actual remote tip");
+        assert!(remote_head.status.success());
+        assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), reviewed);
+
+        let current = repository.git_output(&["rev-parse", "HEAD"]);
+        push_to_remote_at_head_cancellable(
+            &repository.path,
+            "upstream",
+            "main",
+            current.trim(),
             &CancellationToken::default(),
         )
         .expect("push next commit");
@@ -13473,6 +13528,75 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
                     .any(|decoration| decoration == "upstream/main"))
         );
         fs::remove_dir_all(parent).expect("remove selected remote fixture directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reviewed_push_keeps_its_source_when_head_moves_after_preflight() {
+        use std::os::unix::fs::PermissionsExt;
+        const FIXTURE: &str = "KHRONOS_REVIEWED_PUSH_FIXTURE";
+        if let Some(path) = std::env::var_os(FIXTURE) {
+            let path = PathBuf::from(path);
+            let expected = std::env::var("KHRONOS_REVIEWED_PUSH_EXPECTED").unwrap();
+            push_to_remote_at_head_cancellable(
+                &path, "origin", "reviewed", &expected, &CancellationToken::default(),
+            )
+            .unwrap();
+            return;
+        }
+
+        let repository = TestRepository::new();
+        repository.write("review.txt", "reviewed\n");
+        repository.git(&["add", "--", "review.txt"]);
+        repository.git(&["commit", "-m", "Reviewed commit"]);
+        let expected = repository.git_output(&["rev-parse", "HEAD"]);
+        let expected = expected.trim();
+        repository.write("review.txt", "not reviewed\n");
+        repository.git(&["commit", "-am", "Later commit"]);
+        let later = repository.git_output(&["rev-parse", "HEAD"]);
+        let later = later.trim();
+        repository.git(&["reset", "--hard", expected]);
+        let remote = repository.path.join(".git").join("receiver.git");
+        repository.git(&["init", "--bare", remote.to_str().unwrap()]);
+        repository.git(&["remote", "add", "origin", remote.to_str().unwrap()]);
+        let bin = repository.path.join(".git").join("git-shim");
+        fs::create_dir(&bin).unwrap();
+        let git = bin.join("git");
+        fs::write(&git, r#"#!/bin/sh
+if [ "$1" = -C ] && [ "$2" = "$KHRONOS_REVIEWED_PUSH_FIXTURE" ]; then
+    for argument in "$@"; do
+        if [ "$argument" = push ]; then
+            "$KHRONOS_REVIEWED_PUSH_REAL_GIT" -C "$2" update-ref HEAD "$KHRONOS_REVIEWED_PUSH_LATER" "$KHRONOS_REVIEWED_PUSH_EXPECTED" || exit 1
+            break
+        fi
+    done
+fi
+exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
+"#).unwrap();
+        fs::set_permissions(git, fs::Permissions::from_mode(0o700)).unwrap();
+        let real = Command::new("sh").args(["-c", "command -v git"]).output().unwrap();
+        assert!(real.status.success());
+        let search = std::env::join_paths(
+            std::iter::once(bin)
+                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+        )
+        .unwrap();
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "tests::reviewed_push_keeps_its_source_when_head_moves_after_preflight"])
+            .env("PATH", search)
+            .env(FIXTURE, &repository.path)
+            .env("KHRONOS_REVIEWED_PUSH_REAL_GIT", String::from_utf8_lossy(&real.stdout).trim())
+            .env("KHRONOS_REVIEWED_PUSH_EXPECTED", expected)
+            .env("KHRONOS_REVIEWED_PUSH_LATER", later)
+            .output()
+            .unwrap();
+        assert!(child.status.success(), "{}", String::from_utf8_lossy(&child.stdout));
+        let remote_head = repository.git_output(&[
+            "--git-dir", remote.to_str().unwrap(), "rev-parse", "refs/heads/reviewed",
+        ]);
+        assert_eq!(repository.git_output(&["rev-parse", "HEAD"]).trim(), later,
+            "the shim must really move HEAD before running push");
+        assert_eq!(remote_head.trim(), expected);
     }
 
     #[test]

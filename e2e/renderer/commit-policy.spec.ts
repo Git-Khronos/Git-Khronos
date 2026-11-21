@@ -446,7 +446,7 @@ for (const change of ['during staging', 'during commit', 'with a changed push UR
     if (change === 'unchanged') {
       await expect.poll(() => page.evaluate(() => (window as any).__commitPolicy.calls
         .filter((call: any) => call.command === 'push_repository').map((call: any) => call.args)))
-        .toEqual([expect.objectContaining({ remote: 'origin', branch: 'main' })]);
+        .toEqual([expect.objectContaining({ remote: 'origin', branch: 'main', expectedHeadOid: 'e'.repeat(40) })]);
       await expect(summary).toHaveValue('');
     } else {
       await expect(page.getByRole('alert')).toContainText(change === 'during staging'

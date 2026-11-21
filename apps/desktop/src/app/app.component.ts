@@ -966,7 +966,6 @@ export class AppComponent implements OnInit, OnDestroy {
         skipHooks: this.skipGitHooks(),
         sign: this.signCommit(),
         ...this.commitPolicy(),
-        pushAfter: false,
       },
     };
   });
@@ -11830,8 +11829,10 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.captureSecondaryConfirmationOpener();
     this.toolbarOverlays.close('push');
     const plan = this.branchPushPlan();
-    if (!this.currentBranch() || this.git.busy() || !plan) return;
-    if (plan.kind === 'push') void this.git.remote('push_repository', { remote: plan.remote.name, branch: plan.branch });
+    const current = this.currentBranch();
+    if (!current || this.git.busy() || !plan) return;
+    if (plan.kind === 'push') void this.git.remote('push_repository',
+      { remote: plan.remote.name, branch: plan.branch, expectedHeadOid: current.oid });
     else this.openPublishBranchReview(plan.branch, plan.remote?.name ?? '', opener);
   }
 

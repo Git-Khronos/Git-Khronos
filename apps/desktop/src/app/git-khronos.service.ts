@@ -1559,7 +1559,7 @@ export class GitKhronosService implements OnDestroy {
 
   async commit(
     message: string,
-    options: { amend?: boolean; skipHooks?: boolean; pushAfter?: boolean; sign?: boolean } & Partial<CommitPolicy> = {},
+    options: { amend?: boolean; skipHooks?: boolean; sign?: boolean } & Partial<CommitPolicy> = {},
   ): Promise<boolean> {
     if (!message.trim()) return false;
     const repository = this.repository();
@@ -1574,7 +1574,6 @@ export class GitKhronosService implements OnDestroy {
     });
     if (outcome !== 'success') return false;
     this.recordHeadChange(repository?.id, beforeOid, options.amend ? 'Amend Commit' : 'Commit');
-    if (options.pushAfter && repository && this.requireRecoveryRepository(repository.id)) await this.remote('push_repository');
     return true;
   }
 
@@ -2207,7 +2206,7 @@ export class GitKhronosService implements OnDestroy {
 
   async remote(
     operation: 'fetch_repository' | 'pull_repository' | 'push_repository',
-    target: { remote?: string; branch?: string } = {},
+    target: { remote?: string; branch?: string; expectedHeadOid?: string } = {},
   ): Promise<void> {
     const labels = {
       fetch_repository: ['Fetching…', 'Fetch complete'],

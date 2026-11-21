@@ -46,6 +46,7 @@ use git_khronos_git_core::{
     pull_from_remote_with_strategy_cancellable as git_pull_from_remote_cancellable,
     pull_lfs_cancellable as git_pull_lfs_cancellable, push_cancellable as git_push_cancellable,
     push_force_with_lease_to_remote_cancellable as git_push_force_to_remote_cancellable,
+    push_to_remote_at_head_cancellable as git_push_to_remote_at_head_cancellable,
     push_to_remote_cancellable as git_push_to_remote_cancellable,
     reapply_sparse_checkout as git_reapply_sparse_checkout, reflog_entries as git_reflog_entries,
     remove_remote as git_remove_remote, remove_worktree as git_remove_worktree,
@@ -2421,6 +2422,7 @@ async fn push_repository(
     repo_id: String,
     remote: Option<String>,
     branch: Option<String>,
+    expected_head_oid: Option<String>,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -2428,16 +2430,21 @@ async fn push_repository(
         repo_id,
         operation_id,
         app,
-        move |path, cancellation| match (remote.as_deref(), branch.as_deref()) {
-            (Some(remote), Some(branch)) => {
-                git_push_to_remote_cancellable(path, remote, branch, cancellation)
+        move |path, cancellation| {
+            match (remote.as_deref(), branch.as_deref(), expected_head_oid.as_deref()) {
+                (Some(remote), Some(branch), Some(oid)) => {
+                    git_push_to_remote_at_head_cancellable(path, remote, branch, oid, cancellation)
+                }
+                (Some(remote), Some(branch), None) => {
+                    git_push_to_remote_cancellable(path, remote, branch, cancellation)
+                }
+                (None, None, None) => git_push_cancellable(path, cancellation),
+                _ => Err(AppError {
+                    kind: "invalidRemoteTarget".into(),
+                    message: "Push needs both a remote and a branch.".into(),
+                    hint: Some("Select a remote and try again.".into()),
+                }),
             }
-            (None, None) => git_push_cancellable(path, cancellation),
-            _ => Err(AppError {
-                kind: "invalidRemoteTarget".into(),
-                message: "Push needs both a remote and a branch.".into(),
-                hint: Some("Select a remote and try again.".into()),
-            }),
         },
     )
     .await

@@ -227,6 +227,10 @@ After committing, a mismatch keeps the local commit but skips the push.
 The user can review the new destination and push explicitly. This check
 covers the renderer's selected destination and latest accepted repository
 snapshot; it is not a lock against external Git configuration changes.
+`Push` also sends the selected local commit ID to native. A different HEAD
+before launch is a refusal, and the push refspec uses the requested object
+ID rather than a symbolic HEAD so a later move cannot change the commits
+the transport sends. This is a regular, non-force push.
 `commit-policy.spec.ts` covers both phases and the unchanged destination.
 
 ### Manual co-author entry
