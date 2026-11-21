@@ -55,7 +55,9 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
           const candidates = [...document.querySelectorAll(arguments[0])]
             .filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible');
           if (candidates.length !== 1) throw Error('Expected one visible owned media row');
-          candidates[0].scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'auto'});
+          // A partially clipped row counts as near enough for scrollIntoView,
+          // even when the group header covers its click target.
+          candidates[0].scrollIntoView({block: 'center', inline: 'nearest', behavior: 'auto'});
         """, selector)
         driver.click_visible(selector)
 
@@ -119,6 +121,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
             assert driver.script("return document.querySelectorAll('gc-file-media article').length") == 1
             driver.screenshot(Path(report['artifactsDirectory']) / ('media-native-' + name + '.png'))
             driver.click('[aria-label="Close diff"]')
+            driver.wait("return !document.querySelector('[aria-label=\"Diff viewer\"]')")
             report['scenarios'].append('native-ui-media-' + name + '-decode-fit-actual-size-and-single-side')
 
         selector = '[aria-label="View changes in malformed-image"]'

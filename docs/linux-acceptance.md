@@ -293,6 +293,11 @@ holds one read while real Git deletes a packed checkpoint in the owned
 checkout. Git verifies the deletion first; the graph must then remove the
 row without a manual refresh. The fixture does not modify Git on the host.
 
+The `file-media` suite runs the same native image and file-content checks
+as the full toolkit, including actual WebKit decoding. It centers each row
+before its click so a partially clipped row under a sticky heading is not
+treated as an available hit target.
+
 ## Focused linked-worktree navigation acceptance
 
 From the repository root, the `worktrees` suite runs the normal packaged smoke
