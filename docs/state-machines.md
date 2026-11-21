@@ -448,6 +448,12 @@ comparison or disable their individual diffs. The native result marks the
 aggregate line counts partial, and a file without a count is not labeled
 binary solely because its numbers are unavailable.
 
+The commit and working-directory comparison commands, including
+individual file diffs, run on the native blocking worker pool. They
+retain the repository's existing operation lock and read policy.
+Moving them off the UI lane does not change which checkout or inputs a
+request owns, or authorize a write while the comparison completes.
+
 Coverage: `unstaged-summary.spec.ts`, real Git tests for both summaries,
 and the packaged `native_unstaged_summary_scenarios.py` fixture. Packaged
 qualification is a separate gate; source coverage is not evidence that

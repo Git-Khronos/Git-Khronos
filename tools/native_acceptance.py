@@ -1153,7 +1153,7 @@ def main():
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors",
+        "comparison-line-budget", "commit-coauthors", "comparison-responsiveness",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1268,7 +1268,7 @@ def main():
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
-            if args.suite in ("repository-open-scope", "checkout-snapshot"):
+            if args.suite in ("repository-open-scope", "checkout-snapshot", "comparison-responsiveness"):
                 application_env.update(fixtures.history_environment())
             if args.suite in ("gitlab", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
@@ -1381,6 +1381,9 @@ def main():
             elif args.suite == "commit-coauthors":
                 from native_commit_coauthor_scenarios import commit_with_coauthors
                 repository, repo_id = commit_with_coauthors(driver, fixtures, report)
+            elif args.suite == "comparison-responsiveness":
+                from native_comparison_responsiveness_scenarios import comparison_responsiveness
+                repository, repo_id = comparison_responsiveness(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

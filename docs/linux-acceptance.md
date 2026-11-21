@@ -86,6 +86,12 @@ large untracked text file. The installed UI must show partial line totals,
 keep the uncounted file selectable, and still open the small file's diff
 without modifying Git state or any fixture file.
 
+Use `--suite comparison-responsiveness` to hold Git during the packaged
+commit and working-directory comparisons, at both list and file level.
+An unrelated native status query must finish before the held comparison
+is released, and the finished comparison must still return the correct
+file or patch without changing the repository.
+
 Use `--suite commit-coauthors` to add a suggested and a manual co-author
 through the installed composer. The scenario verifies that editing the
 draft makes no Git changes, then reads both exact trailers from the single

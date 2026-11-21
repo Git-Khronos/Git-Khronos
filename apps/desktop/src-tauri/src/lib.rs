@@ -2825,28 +2825,29 @@ fn inspect_stash_file(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn compare_commits(
+async fn compare_commits(
     repo_id: String,
     base_oid: String,
     target_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitComparison, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background(repo_id, app, move |repository| {
         git_compare_commits(repository, &base_oid, &target_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn compare_commit_file(
+async fn compare_commit_file(
     repo_id: String,
     base_oid: String,
     target_oid: String,
     path: String,
     previous_path: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitFileDiff, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background(repo_id, app, move |repository| {
         git_compare_commit_file(
             repository,
             &base_oid,
@@ -2855,30 +2856,32 @@ fn compare_commit_file(
             previous_path.as_deref(),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn compare_commit_with_working_tree(
+async fn compare_commit_with_working_tree(
     repo_id: String,
     base_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitComparison, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background(repo_id, app, move |repository| {
         git_compare_commit_with_working_tree(repository, &base_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn compare_commit_file_with_working_tree(
+async fn compare_commit_file_with_working_tree(
     repo_id: String,
     base_oid: String,
     path: String,
     previous_path: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<CommitFileDiff, AppError> {
-    with_repository(&repo_id, &state, |repository| {
+    with_repository_background(repo_id, app, move |repository| {
         git_compare_commit_file_with_working_tree(
             repository,
             &base_oid,
@@ -2886,6 +2889,7 @@ fn compare_commit_file_with_working_tree(
             previous_path.as_deref(),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
