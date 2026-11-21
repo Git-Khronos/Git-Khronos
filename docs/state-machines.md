@@ -235,6 +235,11 @@ focused button can reopen the command palette without another keystroke.
 Timers for dialog-mode focus retain the originating focus request and
 cannot focus a retired dialog. `workspace.spec.ts` exercises the closing
 gap as well as the ordinary keyboard path from Clone and Initialize.
+The native destination picker belongs to the same dialog request, its current
+mode, and its own invocation. Closing, switching modes, or starting another
+picker retires the old reply; neither a path nor an error from it may replace
+the shared form draft. A path confirmed while its form is still current
+remains a draft across ordinary closes and reopens.
 
 ### Deferred diff workspace
 

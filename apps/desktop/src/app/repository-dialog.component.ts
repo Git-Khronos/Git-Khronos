@@ -1,7 +1,7 @@
 import { RepositoryFormStylesComponent } from './repository-form-styles.component';
 import { HostedRepositoryBrowserComponent } from './hosted-repository-browser.component';
 import { GitLabProjectsComponent } from './gitlab-projects.component';
-import { ChangeDetectionStrategy, Component, type ElementRef, Injectable, ViewEncapsulation, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, type ElementRef, Injectable, ViewEncapsulation, computed, effect, inject, input, model, output, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
@@ -176,8 +176,10 @@ export class RepositoryDialogComponent {
   private readonly hostedBrowser = viewChild(HostedRepositoryBrowserComponent);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly managerRepositoryFilter = viewChild<ElementRef<HTMLInputElement>>('managerRepositoryFilter');
+  private destinationPicker = 0;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.destinationPicker++);
     effect(() => {
       const request = this.focusRequest();
       const mode = untracked(this.mode);
@@ -187,10 +189,12 @@ export class RepositoryDialogComponent {
 
   protected close(): void {
     if (!this.ownsRequest()(this.focusRequest())) return;
+    this.destinationPicker++;
     this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.closed.emit();
   }
   protected toggleHostedMode(): void {
     if (this.git.busy()) return;
+    this.destinationPicker++;
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
     if (this.hostedMode()) this.hostedBrowser()?.dismiss();
     else this.hostedGeneration.update(generation => generation + 1);
@@ -199,16 +203,19 @@ export class RepositoryDialogComponent {
   protected toggleGitlabMode(): void {
     if (this.git.busy()) return;
     if (this.gitlabMode()) { this.closeGitlabMode(); return; }
+    this.destinationPicker++;
     this.hostedBrowser()?.dismiss(); this.hostedMode.set(false);
     this.gitlabMode.set(true);
     this.scheduleModeFocus('clone');
   }
   protected closeGitlabMode(): void {
+    this.destinationPicker++;
     this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false);
     this.scheduleModeFocus('clone');
   }
   protected setMode(mode: RepositoryDialogMode): void {
     if (this.cloneOnly() && mode !== 'clone') return;
+    if (mode !== this.mode()) this.destinationPicker++;
     if (mode !== 'clone') { this.hostedBrowser()?.dismiss(); this.gitlabBrowser()?.dismiss(); this.gitlabMode.set(false); }
     else if (this.mode() !== 'clone' && this.hostedMode()) this.hostedGeneration.update(generation => generation + 1);
     this.mode.set(mode);
@@ -303,18 +310,31 @@ export class RepositoryDialogComponent {
     if (inferred) this.form.cloneFolder.set(inferred);
   }
 
-  protected async chooseCloneParent(): Promise<void> {
-    const path = await this.git.chooseDirectory('Choose where to clone the repository');
-    if (path) this.form.cloneParentPath.set(path);
+  protected chooseCloneParent(): Promise<void> {
+    return this.pickDestination('clone');
   }
 
-  protected async chooseInitParent(): Promise<void> {
-    const path = await this.git.chooseDirectory('Choose where to create the repository');
-    if (path) this.form.initParentPath.set(path);
+  protected chooseInitParent(): Promise<void> {
+    return this.pickDestination('init');
+  }
+
+  private async pickDestination(mode: 'clone' | 'init'): Promise<void> {
+    const owner = this.focusRequest();
+    const ownsForm = () => this.ownsRequest()(owner) && this.focusRequest() === owner
+      && this.mode() === mode && (mode === 'init' || (!this.hostedMode() && !this.gitlabMode()));
+    if (!ownsForm()) return;
+    const picker = ++this.destinationPicker;
+    const current = () => picker === this.destinationPicker && ownsForm();
+    const path = await this.git.chooseDirectory(mode === 'clone'
+      ? 'Choose where to clone the repository' : 'Choose where to create the repository', current);
+    if (path && current()) {
+      (mode === 'clone' ? this.form.cloneParentPath : this.form.initParentPath).set(path);
+    }
   }
 
   protected async submitClone(): Promise<void> {
     if (this.hostedMode() || this.gitlabMode() || !this.cloneReady() || this.git.busy()) return;
+    this.destinationPicker++;
     const form = this.form;
     this.opening.emit();
     const depth = form.shallowClone() ? Math.max(1, Math.floor(Number(form.cloneDepth()) || 1)) : undefined;
@@ -328,6 +348,7 @@ export class RepositoryDialogComponent {
   }
 
   protected async submitInit(): Promise<void> {
+    this.destinationPicker++;
     const form = this.form;
     this.opening.emit();
     const opened = await this.git.initializeRepository(form.initParentPath(), form.initFolder(), form.initBranch(), form.initReadme());

@@ -61,3 +61,71 @@ test('requests a recursive clone and explains a partly cloned superproject', asy
   await expect(submodules).toBeChecked();
   await expect(dialog.getByLabel('Repository URL')).toHaveValue('https://example.test/team/vendor-app.git');
 });
+
+for (const retire of ['close then reopen', 'switch away and back', 'start a newer picker'] as const) {
+  test(`a retired clone folder picker cannot replace the destination after ${retire}`, async ({ page }) => {
+    const dialog = await openCloneForm(page);
+    await page.evaluate(() => {
+      const bridge = (window as any).__TAURI_INTERNALS__;
+      const invoke = bridge.invoke;
+      const replies: Array<(path: string) => void> = [];
+      (window as any).__cloneFolderReplies = replies;
+      bridge.invoke = (command: string, args: any) => command === 'plugin:dialog|open'
+        ? new Promise<string>(resolve => replies.push(resolve)) : invoke(command, args);
+    });
+    const browse = dialog.getByRole('button', { name: 'Browse', exact: true });
+    const parent = dialog.locator('input[name="cloneParent"]');
+    const wait = (count: number) => expect.poll(() => page.evaluate(() => (window as any).__cloneFolderReplies.length)).toBe(count);
+    const reply = (index: number, path: string) => page.evaluate(({ index, path }) => {
+      (window as any).__cloneFolderReplies[index](path);
+    }, { index, path });
+    await browse.click();
+    await wait(1);
+    if (retire === 'close then reopen') {
+      await dialog.getByRole('button', { name: 'Close repository management' }).click();
+      await expect(dialog).toHaveCount(0);
+      await page.locator('.new-tab').click();
+      await dialog.getByRole('tab', { name: 'Clone', exact: true }).click();
+    } else if (retire === 'switch away and back') {
+      await dialog.getByRole('tab', { name: 'Initialize', exact: true }).click();
+      await dialog.getByRole('tab', { name: 'Clone', exact: true }).click();
+    }
+    if (retire !== 'switch away and back') {
+      await browse.click();
+      await wait(2);
+      await reply(1, '/owned/current-destination');
+      await expect(parent).toHaveValue('/owned/current-destination');
+    }
+    await reply(0, '/owned/retired-destination');
+    // Flush the old native promise and Angular rendering before inspecting it.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const expected = retire === 'switch away and back' ? '/work' : '/owned/current-destination';
+    await expect(parent).toHaveValue(expected);
+    await dialog.getByRole('button', { name: 'Clone repository', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).__cloneCalls.map((call: any) => call.parentPath)))
+      .toEqual([expected]);
+  });
+}
+
+test('a picker error from a closed init form does not appear in a replacement clone form', async ({ page }) => {
+  const dialog = await openCloneForm(page);
+  await dialog.getByRole('tab', { name: 'Initialize', exact: true }).click();
+  await page.evaluate(() => {
+    const bridge = (window as any).__TAURI_INTERNALS__;
+    const invoke = bridge.invoke;
+    bridge.invoke = (command: string, args: any) => command === 'plugin:dialog|open'
+      ? new Promise((_resolve, reject) => { (window as any).__rejectInitPicker = reject; }) : invoke(command, args);
+  });
+  await dialog.getByRole('button', { name: 'Browse', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__rejectInitPicker)).toBe('function');
+  await dialog.getByRole('button', { name: 'Close repository management' }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.locator('.new-tab').click();
+  await dialog.getByRole('tab', { name: 'Clone', exact: true }).click();
+  await page.evaluate(() => {
+    (window as any).__rejectInitPicker(new Error('Owned retired destination picker failed'));
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  await expect(dialog.locator('input[name="cloneParent"]')).toHaveValue('/work');
+  await expect(page.getByText('Owned retired destination picker failed')).toHaveCount(0);
+});
