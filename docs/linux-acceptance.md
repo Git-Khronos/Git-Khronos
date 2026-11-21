@@ -1093,7 +1093,10 @@ newline, and binary data. The initial recap must be +4/−3 with one uncounted
 binary file and no checkout/index/config changes from reading it. Explicitly
 staging the mixed tracked file must change the recap to +2/−2 without moving
 HEAD or other references or changing working bytes. This checks index-relative
-counts rather than reusing HEAD/commit totals.
+counts rather than reusing HEAD/commit totals. A separate intent-to-add rename
+with one edited line must show +1/−1 unstaged and +0/−0 staged, without
+changing the index. Core tests also check a pure rename and deliberately
+different repository rename preferences.
 
 The remote-review suite additionally exercises all six tag/remote-reference
 review actions through their actual UI. An owned annotated tag is pushed,

@@ -1822,6 +1822,31 @@ fn unstaged_summary_excludes_staged_only_changes_and_handles_unborn_repositories
 }
 
 #[test]
+fn unstaged_summary_counts_only_edits_in_an_intent_to_add_rename() {
+    let repository = Repository::new();
+    repository.write("before.txt", b"alpha\nbeta\ngamma\ndelta\n");
+    repository.commit("Base");
+    fs::rename(repository.0.join("before.txt"), repository.0.join("after.txt")).unwrap();
+    repository.git(&["add", "-N", "--", "after.txt"]);
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+    let pure = working_tree_summaries(&repository.0).unwrap();
+    let staged = pure.staged.unwrap();
+    let unstaged = pure.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions), (0, 0));
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (0, 0, false));
+
+    repository.write("after.txt", b"alpha\nbeta\ngamma\nchanged\n");
+    // Neither local status nor local diff configuration may split the same
+    // rename differently when the recap matches their records.
+    repository.git(&["config", "status.renames", "false"]);
+    repository.git(&["config", "diff.renames", "false"]);
+    let edited = working_tree_change_summary(&repository.0).unwrap();
+    assert_eq!((edited.additions, edited.deletions, edited.uncounted_files, edited.partial), (1, 1, 0, false));
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+}
+
+#[test]
 fn unstaged_summary_discloses_bounded_untracked_files_without_reading_them() {
     let repository = Repository::new();
     let file = fs::File::create(repository.0.join("large.txt")).unwrap();
@@ -1962,11 +1987,12 @@ fn staged_summary_ignores_unmerged_entries_while_counting_other_index_changes() 
     assert!(!git_in(&repository.0).args(["merge", "--no-edit", "side"]).output().unwrap().status.success());
     repository.write("independent.txt", b"added\n");
     repository.git(&["add", "--", "independent.txt"]);
+    repository.write("independent.txt", b"added\nworking\n");
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
     assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (1, 0, 0, false));
-    assert_eq!((unstaged.additions, unstaged.deletions), (0, 0));
+    assert_eq!((unstaged.additions, unstaged.deletions), (1, 0));
 }
 
 #[test]

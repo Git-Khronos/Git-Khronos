@@ -1,5 +1,5 @@
 use super::{
-    AppError, RepositoryStatus, ensure_success, file_statistics, numstat_entries, parse_numstat, read_status_with_limit,
+    AppError, RepositoryStatus, ensure_success, file_statistics, numstat_entries, parse_numstat, read_status_with_options,
     run_git_with_stdout_limit, without_lazy_fetch,
 };
 use serde::Serialize;
@@ -28,12 +28,23 @@ pub struct WorkingTreeSummaries {
 /// available if the other requires unreadable or missing local objects.
 pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppError> {
     without_lazy_fetch(|| {
-        let status = read_status_with_limit(path, MAX_FILES)?;
+        let status = read_summary_status(path)?;
         Ok(WorkingTreeSummaries {
             staged: read_staged_summary(path, &status).ok(),
             unstaged: read_unstaged_summary(path, &status).ok(),
         })
     })
+}
+
+fn read_summary_status(path: &Path) -> Result<RepositoryStatus, AppError> {
+    // An unstaged rename can be one porcelain record, but two diff records
+    // if rename detection is disabled there. Use matching policy on both reads.
+    read_status_with_options(path, MAX_FILES, "all", Some(MAX_FILES))
+}
+
+fn skipped_renames(stderr: &[u8]) -> bool {
+    let message = b"rename detection was skipped";
+    stderr.windows(message.len()).any(|text| text == message)
 }
 
 fn complete_records(output: &[u8]) -> &[u8] {
@@ -47,10 +58,11 @@ fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<Working
     }
     // No explicit HEAD: an unborn branch compares the index to an empty tree.
     // Conflicts stay in their own section; only resolved index changes count.
+    let rename_limit = format!("-l{MAX_FILES}");
     let (output, truncated) = run_git_with_stdout_limit(
         path,
         &[
-            "diff", "--cached", "--numstat", "-z", "--find-renames", "-l2000",
+            "diff", "--cached", "--numstat", "-z", "--find-renames", &rename_limit,
             "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--diff-filter=ACDMRT", "--",
         ],
         MAX_STATS_BYTES,
@@ -60,8 +72,7 @@ fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<Working
     }
     // If Git falls back after hitting its rename limit, disclose that the
     // resulting add/delete totals do not account for all rename relationships.
-    summary.partial = truncated || output.stderr.windows(b"rename detection was skipped".len())
-        .any(|text| text == b"rename detection was skipped");
+    summary.partial = truncated || skipped_renames(&output.stderr);
     let mut entries = numstat_entries(complete_records(&output.stdout));
     for (_, additions, deletions) in entries.by_ref().take(MAX_FILES) {
         match (additions, deletions) {
@@ -79,7 +90,7 @@ fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<Working
 /// Unstaged changes are relative to the index, not HEAD. Never run external diff
 /// drivers or read through untracked symlinks while calculating this recap.
 pub fn working_tree_change_summary(path: &Path) -> Result<WorkingTreeChangeSummary, AppError> {
-    without_lazy_fetch(|| read_unstaged_summary(path, &read_status_with_limit(path, MAX_FILES)?))
+    without_lazy_fetch(|| read_unstaged_summary(path, &read_summary_status(path)?))
 }
 
 fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<WorkingTreeChangeSummary, AppError> {
@@ -100,13 +111,15 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
     if entries.is_empty() {
         return Ok(summary);
     }
+    let rename_limit = format!("-l{MAX_FILES}");
     let (output, truncated) = run_git_with_stdout_limit(
         path,
         &[
             "diff",
             "--numstat",
             "-z",
-            "--no-renames",
+            "--find-renames",
+            &rename_limit,
             "--no-ext-diff",
             "--no-textconv",
             "--ignore-submodules=none",
@@ -117,7 +130,7 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
     if !truncated {
         ensure_success("count unstaged lines", &output)?;
     }
-    summary.partial |= truncated;
+    summary.partial |= truncated || skipped_renames(&output.stderr);
     let stats = parse_numstat(complete_records(&output.stdout));
     let mut untracked = Vec::new();
     let mut remaining = MAX_UNTRACKED_BYTES;

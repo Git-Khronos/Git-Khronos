@@ -20,12 +20,13 @@ def unstaged_summary_workflow(driver, fixtures, report):
     files = ('fixture.txt', 'new-note.txt', 'binary.dat')
     before = checkout_footprint(fixtures, repository, files)
     open_ui(driver, repository)
-    def recaps(unstaged, staged):
+    def recaps(unstaged, staged, uncounted=1):
         # A live status refresh can temporarily replace either recap with the
         # loading state. Match and capture both elements in the same DOM read.
         expected = [
             ('.unstaged-section gc-working-tree-summary .summary',
-             f'{unstaged[0]} additions and {unstaged[1]} deletions in unstaged files; 1 binary or uncounted files excluded'),
+             f'{unstaged[0]} additions and {unstaged[1]} deletions in unstaged files'
+             + (f'; {uncounted} binary or uncounted files excluded' if uncounted else '')),
             ('.staged-section gc-working-tree-summary .summary',
              f'{staged[0]} additions and {staged[1]} deletions in staged files'),
         ]
@@ -56,3 +57,19 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary'].update({'afterStageRecap': after_stage, 'afterStagedRecap': after_staged, 'after': after})
     report['scenarios'].append('native-unstaged-summary-recounts-after-staging-without-including-staged-lines')
     report['scenarios'].append('native-staged-summary-counts-the-index-against-head-before-and-after-staging')
+
+    renamed = fixtures.repository('unstaged-rename-summary', commits=1)
+    old_name, new_name = renamed / 'before.txt', renamed / 'after.txt'
+    old_name.write_text('alpha\nbeta\ngamma\ndelta\n')
+    fixtures.git(renamed, 'add', '--', old_name.name)
+    fixtures.git(renamed, 'commit', '-m', 'Owned rename summary baseline')
+    old_name.rename(new_name)
+    fixtures.git(renamed, 'add', '-N', '--', new_name.name)
+    new_name.write_text('alpha\nbeta\ngamma\nchanged\n')
+    exact_before = checkout_footprint(fixtures, renamed, (new_name.name,))
+    open_ui(driver, renamed)
+    rename_recap, staged = recaps((1, 1), (0, 0), uncounted=0)
+    assert checkout_footprint(fixtures, renamed, (new_name.name,)) == exact_before
+    report['unstagedLineSummary']['editedRename'] = {'unstagedRecap': rename_recap,
+                                                      'stagedRecap': staged, 'footprint': exact_before}
+    report['scenarios'].append('native-unstaged-rename-does-not-inflate-lines-or-change-the-index')
