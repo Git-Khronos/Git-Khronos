@@ -28,7 +28,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec ng serve desktop --no-hmr --live-reload=false --host 127.0.0.1 --port ${port}`,
+    // Acceptance uses a fixed source snapshot. Watching the workspace is
+    // unnecessary and can keep startup busy before the server starts listening.
+    command: `pnpm exec ng serve desktop --watch=false --no-hmr --live-reload=false --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,

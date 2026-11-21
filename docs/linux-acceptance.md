@@ -326,7 +326,10 @@ CI=true NX_DAEMON=false NX_ISOLATE_PLUGINS=false NODE_OPTIONS=--max-old-space-si
 ```
 
 Use a different `PLAYWRIGHT_PORT` and output/report directory for each
-simultaneous local run. Add `--list` to enumerate a shard without launching a
+simultaneous local run. The Playwright-managed server builds once without
+file watching. Use `CI=true` as above to require a fresh server rather than
+reusing anything already listening on the selected port.
+Add `--list` to enumerate a shard without launching a
 browser. The first hosted run of this layout is needed to measure elapsed time
 and runner-minute costs; no test cases were dropped to reduce wall time.
 
