@@ -344,6 +344,16 @@ footprints and the other layout kept its original paths. The older candidate
 did not offer the bulk action. See `installed-locate.json` under
 `target/local-review/updater/jammy-builder/workspace-locate-latest.ROf8O4Ys/`.
 
+Deferring the blocked-discard file chooser and its styles moved them out of the
+initial renderer. An independent walk of emitted static imports measured
+1,361,018 → 1,357,578 initial bytes against the preceding picker-hint build
+(`a927872`), a 3,440-byte reduction without changing either budget. The
+900 kB initial warning remains. The production content audit and 127 renderer
+scenarios covering discard, recovery, and file-action lifecycles passed.
+The chunk hold confirms the subset chooser cannot request a second preview
+until the blocked review has rendered. Evidence is under
+`target/local-review/lazy-discard-choice.YB9vDTk6/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

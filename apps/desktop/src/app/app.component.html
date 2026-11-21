@@ -2272,53 +2272,21 @@
   }
   @if (pendingFileAction(); as action) {
     <div class="confirmation-backdrop" [class.over-recovery]="recoveryHistoryOpen() && savedDiscardConfirmation()" (click)="dismissFileConfirmation(true)">
-      <section #fileConfirmationDialog class="confirmation-dialog" [class.discard-recovery-confirmation]="action.recovery" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
+      <section #fileConfirmationDialog class="confirmation-dialog" [class.discard-recovery-confirmation]="action.recovery"
+        [class.choosing-discard-paths]="action.kind === 'discard-bulk' && blockedDiscardChoicePaths() !== null" role="alertdialog" aria-modal="true" aria-labelledby="file-confirmation-title" (click)="$event.stopPropagation()" (keydown)="handleFileConfirmationKeydown($event)">
         <div class="confirmation-icon" [class.danger]="action.kind !== 'restore-commit'"><gc-icon [name]="action.kind === 'ignore' ? 'file' : action.kind === 'restore-commit' ? 'archive-restore' : 'trash'" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>{{ action.kind === 'discard-bulk' ? 'Discard unstaged changes' : action.kind === 'recover-discard' ? 'Recover discarded changes' : action.kind === 'forget-discard' ? 'Remove recovery capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore from commit' : 'Ignore and stop tracking' }}</span>
           <h2 id="file-confirmation-title">{{ action.kind === 'restore-commit' && (action.paths?.length ?? 0) > 1 ? (action.paths?.length ?? 0) + ' selected files' : action.path }}</h2>
-          @if (action.kind === 'discard-bulk' && blockedDiscardChoicePaths() !== null) {
-            <section class="blocked-discard-choice" aria-label="Choose root-level files for a fresh discard review">
-              <p>No files have been changed. Select root-level files to review. A fresh preview is required before confirmation.</p>
-              @if (action.preview?.blockedPaths?.length) {
-                <div class="blocked-discard-path-group">
-                  <p>Still blocked; these paths will remain unchanged:</p>
-                  <ul class="discard-preview-paths">@for (path of action.preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
-                </div>
-              }
-              @if (action.preview?.skippedPaths?.length) {
-                <div class="blocked-discard-path-group">
-                  <p>Also excluded from this operation:</p>
-                  <ul class="discard-preview-paths">@for (path of action.preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul>
-                  <p>Conflicts, submodule working trees, and nested repositories are not changed.</p>
-                </div>
-              }
-              <fieldset [disabled]="git.busy() || blockedDiscardChoiceLoading()">
-                <legend>Eligible root-level files</legend>
-                @for (path of blockedDiscardChoicePaths() ?? []; track path) {
-                  <label>
-                    <input type="checkbox" [checked]="blockedDiscardChoiceSelectedPaths().includes(path)"
-                      aria-label="Select {{ path }} for fresh discard review"
-                      (change)="toggleBlockedDiscardChoicePath(path)">
-                    <code>{{ path }}</code>
-                  </label>
-                } @empty {
-                  <p>No root-level files are currently eligible.</p>
-                }
-              </fieldset>
-              @if (blockedDiscardChoiceError()) { <p class="blocked-discard-choice-error" role="alert">{{ blockedDiscardChoiceError() }}</p> }
-              @if (blockedDiscardChoiceLoading()) { <p role="status">Preparing a fresh native preview…</p> }
-            </section>
-          } @else {
-            @defer (on immediate) {
-              <gc-file-confirmation-details [action]="action" (ready)="markFileConfirmationDetailsReady(action)" />
-            } @loading {
-              <p role="status">Loading file action review…</p>
-            } @error {
-              <p role="alert">The file action review could not load. No changes were made. Restart the application to retry.</p>
-            }
-            @if (blockedDiscardChoiceLoading()) { <p role="status">Refreshing the file list for a new preview…</p> }
-            @if (blockedDiscardChoiceError()) { <p class="blocked-discard-choice-error" role="alert">{{ blockedDiscardChoiceError() }}</p> }
+          @defer (on immediate) {
+            <gc-file-confirmation-details [action]="action" [choicePaths]="blockedDiscardChoicePaths()"
+              [selectedPaths]="blockedDiscardChoiceSelectedPaths()" [busy]="git.busy()"
+              [loading]="blockedDiscardChoiceLoading()" [error]="blockedDiscardChoiceError()"
+              (ready)="markFileConfirmationDetailsReady($event)" (togglePath)="toggleBlockedDiscardChoicePath($event)" />
+          } @loading {
+            <p role="status">Loading file action review…</p>
+          } @error {
+            <p role="alert">The file action review could not load. No changes were made. Restart the application to retry.</p>
           }
         </div>
         <footer>
@@ -2330,7 +2298,8 @@
             </button>
           } @else {
             @if (action.kind === 'discard-bulk' && (action.preview?.blockedPaths?.length ?? 0) > 0) {
-              <button type="button" data-choose-root-files (click)="chooseRootFilesFromBlockedDiscard()" [disabled]="git.busy() || blockedDiscardChoiceLoading()">
+              <button type="button" data-choose-root-files (click)="chooseRootFilesFromBlockedDiscard()"
+                [disabled]="git.busy() || blockedDiscardChoiceLoading() || fileConfirmationDetailsReady() !== action">
                 {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : 'Choose root files…' }}
               </button>
             }

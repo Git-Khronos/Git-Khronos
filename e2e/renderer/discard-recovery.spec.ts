@@ -591,18 +591,35 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
     };
   });
 
+  let releaseReview: (() => void) | undefined;
+  await page.route('**/chunk-*.js', async route => {
+    const response = await route.fetch();
+    const text = await response.text();
+    if (text.includes('FileConfirmationDetailsComponent') && text.includes('Discard only the selected hunk')) {
+      await new Promise<void>(resolve => { releaseReview = resolve; });
+    }
+    await route.fulfill({ response, body: text });
+  });
   await page.getByRole('button', { name: 'Working directory options', exact: true }).click();
   await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
   const dialog = page.getByRole('alertdialog');
+  const chooseRoot = dialog.getByRole('button', { name: 'Choose root files…' });
+  await expect(dialog.getByRole('status')).toContainText('Loading file action review');
+  await expect(chooseRoot).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__discardChoiceTest.previews)).toBe(1);
+  await expect.poll(() => typeof releaseReview).toBe('function');
+  releaseReview?.();
   await expect(dialog).toContainText('initial-nested/file.txt');
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Choose root files…' }).click();
+  await chooseRoot.click();
 
   await expect(dialog).toContainText('Still blocked; these paths will remain unchanged');
   await expect(dialog).toContainText('nested/current.txt');
   await expect(dialog).toContainText('conflicted.txt');
   const rootA = dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' });
   const rootB = dialog.getByRole('checkbox', { name: 'Select root-b.txt for fresh discard review' });
+  await expect(rootA).toBeFocused();
   await expect(rootA).not.toBeChecked();
   await expect(rootB).not.toBeChecked();
   await rootB.check();

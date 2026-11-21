@@ -586,19 +586,8 @@
 
 .confirmation-dialog footer .confirm-action { border-color: #4a8f7c; background: var(--accent); color: #10201b; font-weight: 750; }
 .confirmation-dialog footer .confirm-action.danger { border-color: #a84e67; background: #a84e67; color: white; }
-.confirmation-dialog:has(.blocked-discard-choice) { max-height: calc(100dvh - 36px); overflow: auto; }
-.blocked-discard-choice { display: grid; gap: 9px; margin-top: 10px; }
-.blocked-discard-choice p { margin: 0; color: #a09fb1; font-size: 12px; line-height: 1.5; }
-.blocked-discard-path-group { display: grid; gap: 5px; }
-.blocked-discard-choice fieldset { display: grid; gap: 5px; min-width: 0; max-height: min(35dvh, 220px); overflow: auto; margin: 0; padding: 8px; border: 1px solid #49485f; border-radius: 4px; }
-.blocked-discard-choice legend { padding-inline: 4px; color: #c1c0cf; font-size: 12px; font-weight: 700; }
-.blocked-discard-choice label { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 6px; border-radius: 3px; color: #d7d5e0; cursor: pointer; }
-.blocked-discard-choice label:hover { background: #302f46; }
-.blocked-discard-choice input { flex: none; margin: 2px 0 0; accent-color: var(--accent); }
-.blocked-discard-choice input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.blocked-discard-choice code { min-width: 0; overflow-wrap: anywhere; color: inherit; font-size: 12px; }
-.blocked-discard-choice-error { color: #ff9ab2 !important; }
-.confirmation-dialog:has(.blocked-discard-choice) > footer { flex-wrap: wrap; }
+.confirmation-dialog.choosing-discard-paths { max-height: calc(100dvh - 36px); overflow: auto; }
+.confirmation-dialog.choosing-discard-paths > footer { flex-wrap: wrap; }
 .progress-line { position: fixed; z-index: 10; top: 0; left: 0; width: 35%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: progress 1.2s ease-in-out infinite; }
 @keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(390%); } }
 @keyframes menu-in { from { transform: translateY(-3px) scale(.985); } }

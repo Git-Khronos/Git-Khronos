@@ -1,4 +1,4 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { afterRenderEffect, ChangeDetectionStrategy, Component, input, output, untracked } from '@angular/core';
 import type { DiscardPreview, DiscardRecovery } from '@git-khronos/contracts';
 import { displayRecoveryPath } from './discard-recovery-display';
 
@@ -26,10 +26,19 @@ export interface PendingFileAction {
 })
 export class FileConfirmationDetailsComponent {
   readonly action = input.required<PendingFileAction>();
-  readonly ready = output<void>();
+  readonly choicePaths = input.required<readonly string[] | null>();
+  readonly selectedPaths = input.required<readonly string[]>();
+  readonly busy = input.required<boolean>();
+  readonly loading = input.required<boolean>();
+  readonly error = input.required<string | null>();
+  readonly ready = output<PendingFileAction>();
+  readonly togglePath = output<string>();
   protected readonly displayRecoveryPath = displayRecoveryPath;
 
   constructor() {
-    afterNextRender(() => this.ready.emit());
+    afterRenderEffect(() => {
+      const action = this.action();
+      if (action.kind !== 'discard-bulk' || this.choicePaths() === null) untracked(() => this.ready.emit(action));
+    });
   }
 }

@@ -1328,6 +1328,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly publishRemote = signal('');
   protected readonly pendingFileAction = signal<PendingFileAction | null>(null);
   protected readonly fileConfirmationDetailsReady = signal<PendingFileAction | null>(null);
+  private blockedDiscardBackFocus: PendingFileAction | null = null;
   protected readonly blockedDiscardChoicePaths = signal<string[] | null>(null);
   protected readonly blockedDiscardChoiceSelectedPaths = signal<string[]>([]);
   protected readonly blockedDiscardChoiceLoading = signal(false);
@@ -13176,7 +13177,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async chooseRootFilesFromBlockedDiscard(): Promise<void> {
     const action = this.pendingFileAction();
     const repositoryId = action?.repositoryId;
-    if (!action || action.kind !== 'discard-bulk' || !action.preview?.blockedPaths.length || !repositoryId) return;
+    if (!action || action.kind !== 'discard-bulk' || !action.preview?.blockedPaths.length || !repositoryId
+      || this.fileConfirmationDetailsReady() !== action) return;
     if (repositoryId !== this.git.activeRepositoryId()) {
       this.blockedDiscardChoiceError.set('The active repository changed. Close this review and inspect the other repository before continuing.');
       return;
@@ -13209,7 +13211,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.blockedDiscardChoiceSelectedPaths.set([]);
       afterNextRender(() => {
         if (this.pendingFileAction() === refreshedAction && this.blockedDiscardChoicePaths() === preview.paths) {
-          document.querySelector<HTMLInputElement>('.blocked-discard-choice input[type="checkbox"]:not(:disabled)')
+          this.fileConfirmationDialog()?.nativeElement.querySelector<HTMLInputElement>('.blocked-discard-choice input[type="checkbox"]:not(:disabled)')
             ?.focus({ preventScroll: true });
         }
       }, { injector: this.injector });
@@ -13232,20 +13234,17 @@ export class AppComponent implements OnInit, OnDestroy {
     this.blockedDiscardChoiceLoading.set(false);
     const action = this.pendingFileAction();
     if (action?.kind === 'discard-bulk' && action.preview) {
-      this.pendingFileAction.set({
+      const restored: PendingFileAction = {
         ...action,
         path: `${action.preview.paths.length} unstaged files`,
-      });
+      };
+      this.blockedDiscardBackFocus = restored;
+      this.pendingFileAction.set(restored);
       this.fileConfirmationDetailsReady.set(null);
     }
     this.blockedDiscardChoicePaths.set(null);
     this.blockedDiscardChoiceSelectedPaths.set([]);
     this.blockedDiscardChoiceError.set(null);
-    afterNextRender(() => {
-      const target = document.querySelector<HTMLButtonElement>('[data-choose-root-files]')
-        ?? document.querySelector<HTMLButtonElement>('[data-file-dialog-cancel]');
-      target?.focus({ preventScroll: true });
-    }, { injector: this.injector });
   }
 
   protected async previewBlockedDiscardChoice(): Promise<void> {
@@ -13361,7 +13360,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly savedDiscardLabel = savedDiscardLabel;
 
   protected markFileConfirmationDetailsReady(action: PendingFileAction): void {
-    if (this.pendingFileAction() === action) this.fileConfirmationDetailsReady.set(action);
+    if (this.pendingFileAction() !== action) return;
+    this.fileConfirmationDetailsReady.set(action);
+    if (this.blockedDiscardBackFocus !== action) return;
+    this.blockedDiscardBackFocus = null;
+    afterNextRender(() => {
+      if (this.pendingFileAction() !== action || this.blockedDiscardChoicePaths() !== null) return;
+      const dialog = this.fileConfirmationDialog()?.nativeElement;
+      const target = dialog?.querySelector<HTMLButtonElement>('[data-choose-root-files]:not(:disabled)')
+        ?? dialog?.querySelector<HTMLButtonElement>('[data-file-dialog-cancel]');
+      target?.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   protected requestSavedDiscard(recovery: DiscardRecovery, remove = false): void {
@@ -14125,6 +14134,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.blockedDiscardChoiceRequest++;
     this.pendingFileAction.set(null);
     this.fileConfirmationDetailsReady.set(null);
+    this.blockedDiscardBackFocus = null;
     this.blockedDiscardChoicePaths.set(null);
     this.blockedDiscardChoiceSelectedPaths.set([]);
     this.blockedDiscardChoiceLoading.set(false);

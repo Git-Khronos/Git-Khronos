@@ -101,6 +101,17 @@ pane discloses loading, failure with an explicit read-only retry, confirmed
 empty, or no filter matches. Retry returns focus to the Tags heading without
 clearing the filter or closing the pane.
 
+### Blocked discard subset review
+
+The root owns file-action identity, preview requests and confirmation; the
+deferred review body owns rendering. The root-level subset chooser cannot
+start until the matching first review has rendered. Returning from the chooser
+discards the selection and restores focus only after that review is rendered
+again. Choosing a subset still requires a fresh native preview before any
+destructive confirmation. `discard-recovery.spec.ts` holds the review chunk,
+asserts that no second preview starts during loading, and checks focus and
+the exact subset sent after the chunk is released.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a

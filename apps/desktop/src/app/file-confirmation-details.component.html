@@ -1,44 +1,80 @@
 @if (action(); as action) {
-  @if (action.kind === 'discard-bulk' && action.preview; as preview) {
-    @if (preview.blockedPaths.length) {
-      <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. No files will be discarded. To continue, choose root-level files for a fresh preview.</p>
-      <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
-    } @else {
-      <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
-    }
-    @if (preview.paths.length) {
-      @if (preview.blockedPaths.length) { <p>Otherwise eligible root-level files, not changed:</p> }
-      <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
-    }
-    @if (preview.skippedPaths.length) { <p>Also excluded: conflicts, submodule working trees, and nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }
-  } @else if (action.kind === 'recover-discard') {
-    <p>{{ action.recovery?.restored ? 'Discard these recovered edits again only if the captured patch still matches the working files.' : 'Apply the captured changes to the working files. Git checks the patch first and refuses conflicting edits. Staged contents are unchanged.' }}</p>
-  } @else if (action.kind === 'forget-discard') {
-    <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
-  } @else if (action.kind === 'discard') {
-    <p>{{ action.untracked ? 'Delete this untracked file from disk. If the path is supported, a recovery patch is saved first and can be restored with Undo.' : 'Replace the working copy with the staged version. If the path is supported, a recovery patch is saved first and can be restored with Undo.' }}</p>
-  } @else if (action.kind === 'discard-hunk') {
-    <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore it.</p>
-  } @else if (action.kind === 'discard-lines') {
-    <p>Discard {{ action.lineIndices?.length ?? 0 }} selected changed lines from the working copy. Other changes remain intact, and Undo can restore them.</p>
-  } @else if (action.kind === 'restore-commit') {
-    <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ (action.oid || '').slice(0, 8) }} and stage the result for your next commit.</p>
+  @if (action.kind === 'discard-bulk' && choicePaths(); as paths) {
+    <section class="blocked-discard-choice" aria-label="Choose root-level files for a fresh discard review">
+      <p>No files have been changed. Select root-level files to review. A fresh preview is required before confirmation.</p>
+      @if (action.preview?.blockedPaths?.length) {
+        <div class="blocked-discard-path-group">
+          <p>Still blocked; these paths will remain unchanged:</p>
+          <ul class="discard-preview-paths">@for (path of action.preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
+        </div>
+      }
+      @if (action.preview?.skippedPaths?.length) {
+        <div class="blocked-discard-path-group">
+          <p>Also excluded from this operation:</p>
+          <ul class="discard-preview-paths">@for (path of action.preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul>
+          <p>Conflicts, submodule working trees, and nested repositories are not changed.</p>
+        </div>
+      }
+      <fieldset [disabled]="busy() || loading()">
+        <legend>Eligible root-level files</legend>
+        @for (path of paths; track path) {
+          <label>
+            <input type="checkbox" [checked]="selectedPaths().includes(path)"
+              aria-label="Select {{ path }} for fresh discard review"
+              (change)="togglePath.emit(path)">
+            <code>{{ path }}</code>
+          </label>
+        } @empty {
+          <p>No root-level files are currently eligible.</p>
+        }
+      </fieldset>
+      @if (error()) { <p class="blocked-discard-choice-error" role="alert">{{ error() }}</p> }
+      @if (loading()) { <p role="status">Preparing a fresh native preview…</p> }
+    </section>
   } @else {
-    <p>This adds or reuses a rule in the repository’s .gitignore and stages removal of this file from Git’s index. The file stays on disk.</p>
-    @if (action.patternKind === 'extension') {
-      <p>The rule may also ignore other untracked files and directories with this extension throughout the repository. Other tracked files stay tracked.</p>
-    } @else if (action.patternKind === 'directory') {
-      <p>The rule may also ignore other untracked files in this directory and its subdirectories. Other tracked files stay tracked.</p>
+    @if (action.kind === 'discard-bulk' && action.preview; as preview) {
+      @if (preview.blockedPaths.length) {
+        <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. No files will be discarded. To continue, choose root-level files for a fresh preview.</p>
+        <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
+      } @else {
+        <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
+      }
+      @if (preview.paths.length) {
+        @if (preview.blockedPaths.length) { <p>Otherwise eligible root-level files, not changed:</p> }
+        <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
+      }
+      @if (preview.skippedPaths.length) { <p>Also excluded: conflicts, submodule working trees, and nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }
+    } @else if (action.kind === 'recover-discard') {
+      <p>{{ action.recovery?.restored ? 'Discard these recovered edits again only if the captured patch still matches the working files.' : 'Apply the captured changes to the working files. Git checks the patch first and refuses conflicting edits. Staged contents are unchanged.' }}</p>
+    } @else if (action.kind === 'forget-discard') {
+      <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
+    } @else if (action.kind === 'discard') {
+      <p>{{ action.untracked ? 'Delete this untracked file from disk. If the path is supported, a recovery patch is saved first and can be restored with Undo.' : 'Replace the working copy with the staged version. If the path is supported, a recovery patch is saved first and can be restored with Undo.' }}</p>
+    } @else if (action.kind === 'discard-hunk') {
+      <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore it.</p>
+    } @else if (action.kind === 'discard-lines') {
+      <p>Discard {{ action.lineIndices?.length ?? 0 }} selected changed lines from the working copy. Other changes remain intact, and Undo can restore them.</p>
+    } @else if (action.kind === 'restore-commit') {
+      <p>Replace {{ (action.paths?.length ?? 1) > 1 ? 'these files' : 'this file' }} in the working directory with {{ (action.paths?.length ?? 1) > 1 ? 'their' : 'its' }} state at {{ (action.oid || '').slice(0, 8) }} and stage the result for your next commit.</p>
+    } @else {
+      <p>This adds or reuses a rule in the repository’s .gitignore and stages removal of this file from Git’s index. The file stays on disk.</p>
+      @if (action.patternKind === 'extension') {
+        <p>The rule may also ignore other untracked files and directories with this extension throughout the repository. Other tracked files stay tracked.</p>
+      } @else if (action.patternKind === 'directory') {
+        <p>The rule may also ignore other untracked files in this directory and its subdirectories. Other tracked files stay tracked.</p>
+      }
     }
-  }
-  @if ((action.kind === 'discard' || action.kind === 'discard-hunk' || action.kind === 'discard-lines') && action.path.includes('/')) {
-    <p>This action currently supports only files directly in the repository root. Files in subdirectories are refused because their parent directories could move outside the worktree during the operation.</p>
-  }
-  @if (action.recovery; as recovery) {
-    @if (recovery.stateWarning) { <p role="alert">{{ recovery.stateWarning }}</p> }
-    @if (recovery.paths.length) { <p>Files in this capture:</p><ul class="discard-preview-paths">@for (path of recovery.paths; track $index) { <li><code>{{ displayRecoveryPath(path) }}</code></li> }</ul> }
-    @if (recovery.pathsTruncated) { <p>Additional files are not shown. This action affects the entire capture.</p> }
-    @if (recovery.pathsError) { <p role="alert">File list unavailable: {{ recovery.pathsError }} {{ action.kind === 'forget-discard' ? 'This capture may contain files not shown here.' : 'This action may affect files not shown here.' }}</p> }
-    @if (!recovery.contentSha256) { <p role="alert">Changes to this capture after review cannot be detected. Inspect the saved patch before continuing.</p> }
+    @if ((action.kind === 'discard' || action.kind === 'discard-hunk' || action.kind === 'discard-lines') && action.path.includes('/')) {
+      <p>This action currently supports only files directly in the repository root. Files in subdirectories are refused because their parent directories could move outside the worktree during the operation.</p>
+    }
+    @if (action.recovery; as recovery) {
+      @if (recovery.stateWarning) { <p role="alert">{{ recovery.stateWarning }}</p> }
+      @if (recovery.paths.length) { <p>Files in this capture:</p><ul class="discard-preview-paths">@for (path of recovery.paths; track $index) { <li><code>{{ displayRecoveryPath(path) }}</code></li> }</ul> }
+      @if (recovery.pathsTruncated) { <p>Additional files are not shown. This action affects the entire capture.</p> }
+      @if (recovery.pathsError) { <p role="alert">File list unavailable: {{ recovery.pathsError }} {{ action.kind === 'forget-discard' ? 'This capture may contain files not shown here.' : 'This action may affect files not shown here.' }}</p> }
+      @if (!recovery.contentSha256) { <p role="alert">Changes to this capture after review cannot be detected. Inspect the saved patch before continuing.</p> }
+    }
+    @if (loading()) { <p role="status">Refreshing the file list for a new preview…</p> }
+    @if (error()) { <p class="blocked-discard-choice-error" role="alert">{{ error() }}</p> }
   }
 }
