@@ -2745,3 +2745,15 @@ SHA-256:
 The paired reports are under `target/local-review/detached-checkout-installed.*`.
 The 33-check release matrix now requires all three results. This is focused
 evidence with fixture trust, not production signing or complete qualification.
+
+The same exact `419939d` package subsequently passed all 33 checks in
+that checklist on Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13.
+The original Jammy runner completed and recorded its five prerequisite
+suites before its environment run was stopped: its immutable harness
+contained the known stale singular line-recap assertions. The corrected
+Jammy environment run passed 287 scenarios with the inherited Git fixture.
+The strict combined verifier matched every required report to the same
+package and passed fixture-publisher preflight. The final receipt is under
+`target/local-review/updater/jammy-builder/reviewed-detach-release.PUqBYx0k/jammy-recap-recheck.bTyafwSj/verified-release.json`.
+This qualifies the earlier bytes against that checklist, not the later
+checkout-snapshot race fix or production signing.
