@@ -2190,8 +2190,8 @@ def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
         open_ui(driver, repository)
         driver.script("document.querySelector(arguments[0]).focus()", '[aria-label="Local branch main, current"]')
         driver.click_visible('[aria-label="Branch actions for main"]')
-        driver.wait("return [...document.querySelectorAll('.context-menu [role=\"menuitem\"]')].some(element => element.getClientRects().length && element.textContent.trim() === 'Edit entire history, including root…')")
-        driver.click_text('.context-menu [role="menuitem"]', 'Edit entire history, including root…')
+        driver.click_scrolled_text('.context-menu [role="menuitem"]', 'Edit entire history, including root…',
+                                   wait_for_ready=True)
         driver.wait("return document.querySelectorAll('.interactive-rebase [data-rebase-oid]').length === 4")
         selector = f'.interactive-rebase [data-rebase-oid="{original_order[-1]}"]'
         driver.script("document.querySelector(arguments[0]).focus()", selector)
