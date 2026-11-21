@@ -310,8 +310,6 @@ class FixtureTests(unittest.TestCase):
 
     def test_restart_checks_bus_owner_and_release_before_its_single_launch(self):
         executable = Path('/owned/git-khronos')
-        old = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='123'))
-        new = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='456'))
         for release_error in (None, TimeoutError('bus still owned')):
             with self.subTest(release_error=release_error):
                 driver = Driver('http://127.0.0.1:1', session_bus_address='unix:abstract=git-khronos-test-owned')
@@ -321,9 +319,10 @@ class FixtureTests(unittest.TestCase):
                     events.append('released')
                     if release_error:
                         raise release_error
-                with patch.object(Path, 'glob', side_effect=[[old], [new]]), \
+                with patch.object(Path, 'glob', side_effect=AssertionError('restart must not scan executable PIDs')), \
                         patch.object(Path, 'read_text', return_value='123 (owned) Z 0'), \
-                        patch.object(driver, 'single_instance_bus_call', return_value='uint32 123'), \
+                        patch.object(driver, 'owned_session_application_pid', side_effect=[123, 456]), \
+                        patch.object(driver, 'single_instance_bus_call', return_value='boolean true'), \
                         patch.object(driver, 'close', side_effect=lambda: events.append('closed')), \
                         patch.object(driver, 'wait_single_instance_release', side_effect=release), \
                         patch.object(driver, 'start', side_effect=lambda path: events.append(('started', path))) as start:
@@ -339,16 +338,22 @@ class FixtureTests(unittest.TestCase):
 
     def test_restart_refuses_another_single_instance_owner_without_closing_or_launching(self):
         executable = Path('/owned/git-khronos')
-        old = SimpleNamespace(readlink=lambda: executable, parent=SimpleNamespace(name='123'))
         driver = Driver('http://127.0.0.1:1', session_bus_address='unix:abstract=git-khronos-test-owned')
         driver.session = 'owned'; driver.executable = executable
-        with patch.object(Path, 'glob', return_value=[old]), \
-                patch.object(driver, 'single_instance_bus_call', return_value='uint32 999'), \
+        with patch.object(driver, 'owned_session_application_pid', side_effect=RuntimeError('not the reviewed application')), \
                 patch.object(driver, 'close') as close, patch.object(driver, 'start') as start:
-            with self.assertRaisesRegex(RuntimeError, 'does not belong'):
+            with self.assertRaisesRegex(RuntimeError, 'not the reviewed'):
                 driver.restart_application()
             close.assert_not_called()
             start.assert_not_called()
+
+    def test_restart_refuses_a_session_without_a_private_bus(self):
+        driver = Driver('http://127.0.0.1:1')
+        driver.session = 'owned'; driver.executable = Path('/owned/git-khronos')
+        with patch.object(driver, 'close') as close:
+            with self.assertRaisesRegex(RuntimeError, 'private bus'):
+                driver.restart_application()
+            close.assert_not_called()
 
     def test_owned_hosting_cli_is_read_only_and_preserves_the_inherited_path(self):
         with tempfile.TemporaryDirectory() as directory:

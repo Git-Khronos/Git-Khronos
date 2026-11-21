@@ -59,9 +59,9 @@ def _visible_regular_window(attributes):
             and not attributes.override_redirect and attributes.width > 0 and attributes.height > 0)
 
 
-def request_owned_window_close(display_name, executable):
-    """Use the standard window-manager request, after PID/executable binding."""
-    pid = owned_application_pid(executable)
+def request_owned_window_close(display_name, resolve_owner):
+    """Use the standard request only for the fixture's verified application owner."""
+    pid = resolve_owner()
     library = ctypes.util.find_library('X11')
     if not library:
         raise RuntimeError('libX11 is required for the owned window-close acceptance helper')
@@ -136,7 +136,7 @@ def request_owned_window_close(display_name, executable):
         x.XSync(display, 0)
         if errors or len(matches) != 1:
             raise RuntimeError('Could not bind exactly one close-capable X window to the owned process: ' + repr({'ownedPid': pid, 'errors': len(errors), 'matches': matches, 'visited': len(visited), 'deleteAtom': delete_atom, 'observed': observed[:16]}))
-        if owned_application_pid(executable) != pid:
+        if resolve_owner() != pid:
             raise RuntimeError('The owned application process changed before the close request')
         target = matches[0]
         attributes = _WindowAttributes()

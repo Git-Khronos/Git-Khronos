@@ -29,6 +29,22 @@ session, verified against the packaged executable and the target Xvfb window.
 A second process using the same installed executable does not become a click
 target. The owner is checked again before dispatch, and input is never replayed
 after an uncertain reply.
+The packaged restart checks use the same owner instead of counting processes
+with matching executable paths. They wait for the old process and bus owner to
+exit, launch once, and verify that the new bus owner is the reviewed executable.
+
+The `editor-close` suite exercises the real X11 window-close request in
+isolation. It binds the visible, close-capable window to the application PID
+on the fixture's private bus and checks that owner again before sending one
+`WM_DELETE_WINDOW`. A process briefly sharing the executable does not become
+the target. The suite checks keeping, saving and discarding editor drafts
+without staging changes.
+
+For watcher diagnosis, run `watcher-refresh` with
+`GIT_KHRONOS_NATIVE_TRACE_WATCHER=1`. The report records the native events,
+Git status read modes, and when the untracked row disappears. This does not
+force a refresh, change the convergence timeout, or substitute for the Git
+oracle after deletion.
 
 ## Focused setup keyboard check
 

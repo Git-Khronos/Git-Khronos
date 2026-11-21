@@ -4,7 +4,7 @@ import sys
 import time
 from pathlib import Path
 from native_acceptance import open_ui
-from native_window_close import owned_application_pid, process_running, request_owned_window_close
+from native_window_close import process_running, request_owned_window_close
 
 
 def approve_editor_window_close(driver, text, pid, report):
@@ -60,7 +60,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
         driver.script("const input=document.querySelector('#working-editor-text');if(!input || input.readOnly) throw Error('Owned close editor unavailable');input.value=arguments[0];input.dispatchEvent(new Event('input',{bubbles:true}));", value)
 
     def request():
-        delivery = request_owned_window_close(fixtures.env['DISPLAY'], executable)
+        delivery = request_owned_window_close(fixtures.env['DISPLAY'], driver.owned_session_application_pid)
         report.setdefault('editorWindowCloseDeliveries', []).append(delivery)
         driver.wait("return document.querySelector('[aria-label=\"Review unsaved draft\"]')?.textContent.includes('closing the window')")
         assert process_running(delivery['pid']), 'The window closed before the draft decision'
@@ -78,7 +78,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
         driver.close()
         driver.start(executable)
         driver.wait("return !!document.querySelector('.commit-row')", 60)
-        replacement = owned_application_pid(executable)
+        replacement = driver.owned_session_application_pid()
         assert replacement != pid
         report.setdefault('editorWindowCloseRestarts', []).append({'oldPid': pid, 'newPid': replacement})
 
@@ -89,7 +89,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
         assert driver.script("return document.querySelector('#working-editor-text').value") == 'saved before window close\n'
         assert file.read_bytes() == b'working before close\n'
         unchanged_metadata()
-        assert owned_application_pid(executable) == pid
+        assert driver.owned_session_application_pid() == pid
         driver.screenshot(Path(report['artifactsDirectory']) / 'editor-window-close-kept-draft.png')
         report['scenarios'].append('native-ui-editor-icccm-window-close-keeps-dirty-draft-and-original-disk-index')
 

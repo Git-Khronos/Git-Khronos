@@ -210,7 +210,7 @@ class Driver:
     def owned_session_application_pid(self):
         """Resolve the active app on this fixture's bus, not every process sharing its executable."""
         if not self.session or self.executable is None or not self.session_bus_address:
-            raise RuntimeError('Native pointer input requires an owned WebDriver session and executable')
+            raise RuntimeError('Native application ownership requires an owned WebDriver session and executable')
         reply = self.single_instance_bus_call('GetConnectionUnixProcessID').splitlines()
         kind, _, value = (reply[-1].strip() if reply else '').partition(' ')
         if (kind != 'uint32' or not value.isascii() or not value.isdecimal()
@@ -519,29 +519,10 @@ class Driver:
 
     def restart_application(self, args=None):
         """Close and relaunch only this fixture's exact packaged executable."""
-        if not self.session or self.executable is None or not Path('/proc').is_dir():
-            raise RuntimeError("Application restart requires an active owned Linux session")
+        if not self.session or self.executable is None or not self.session_bus_address:
+            raise RuntimeError("Application restart requires an active owned Linux session and private bus")
         executable = self.executable
-
-        def application_pid():
-            found = []
-            for link in Path('/proc').glob('[0-9]*/exe'):
-                try:
-                    if link.readlink() == executable:
-                        found.append(int(link.parent.name))
-                except (FileNotFoundError, ProcessLookupError, PermissionError):
-                    continue
-            if len(found) > 1:
-                raise RuntimeError("Multiple processes match the owned application executable")
-            return found[0] if found else None
-
-        old_pid = application_pid()
-        if old_pid is None:
-            raise RuntimeError("The owned application process could not be identified")
-        if self.session_bus_address:
-            owner = self.single_instance_bus_call('GetConnectionUnixProcessID').splitlines()[-1].strip()
-            if owner != 'uint32 ' + str(old_pid):
-                raise RuntimeError('The single-instance bus name does not belong to the owned application')
+        old_pid = self.owned_session_application_pid()
         self.close()
         deadline = time.monotonic() + 10
         while True:
@@ -554,19 +535,21 @@ class Driver:
             if time.monotonic() >= deadline:
                 raise RuntimeError("Session closure did not stop the owned application process")
             time.sleep(.02)
-        if self.session_bus_address:
-            # Process exit and bus name release are separate observable events.
-            # Never launch a second session while the old owner is still visible.
-            self.wait_single_instance_release()
+        # Process exit and bus name release are separate observable events.
+        self.wait_single_instance_release()
         if args is None:
             self.start(executable)
         else:
             self.start(executable, args=args)
         deadline = time.monotonic() + 10
         while True:
-            new_pid = application_pid()
-            if new_pid is not None:
+            reply = self.single_instance_bus_call('NameHasOwner').splitlines()
+            value = reply[-1].strip() if reply else ''
+            if value == 'boolean true':
+                new_pid = self.owned_session_application_pid()
                 break
+            if value != 'boolean false':
+                raise RuntimeError('Unexpected single-instance bus ownership reply')
             if time.monotonic() >= deadline:
                 raise RuntimeError("The restarted owned application process did not appear")
             time.sleep(.02)
@@ -1073,12 +1056,17 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     # manually refreshing it or replacing renderer state with IPC results.
     driver.click('.wip-nav')
     untracked = repository / "native-untracked.txt"
-    untracked.write_text("discovered by the native status refresh\n")
-    driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-    driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
-    untracked.unlink()
-    driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
-    assert not fixtures.git(repository, "status", "--porcelain")
+    from native_watcher_scenarios import observe_untracked_refresh
+    with observe_untracked_refresh(driver, fixtures, report, os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1") as mark:
+        mark('create')
+        untracked.write_text("discovered by the native status refresh\n")
+        driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+        driver.wait('return !!document.querySelector(\'[aria-label="Stage all changes"]:not(:disabled)\')')
+        mark('unlink')
+        untracked.unlink()
+        assert not fixtures.git(repository, "--no-optional-locks", "status", "--porcelain")
+        driver.wait('return !document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
+        mark('observed-removal')
     report["scenarios"].append("native-untracked-file-discovery-and-removal")
     # Branch changes outside the app must not discard untracked discovery while
     # the renderer reconciles the new HEAD's metadata.
@@ -1136,7 +1124,7 @@ def main():
     parser.add_argument("--suite", choices=(
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
-        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore",
+        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1265,6 +1253,11 @@ def main():
                 from native_workspace_edit_scenarios import saved_workspace_repository_workflow
                 repository = saved_workspace_repository_workflow(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "editor-close":
+                from native_editor_close_scenarios import editor_window_close
+                repository = fixtures.repository()
+                repo_id = open_ui(driver, repository)
+                editor_window_close(driver, fixtures, repository, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

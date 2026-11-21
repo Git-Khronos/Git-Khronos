@@ -2,7 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import native_window_close as close
 
 
@@ -25,17 +25,17 @@ class OwnedWindowCloseTests(unittest.TestCase):
                     close.owned_application_pid(executable)
 
     def test_unbound_process_never_loads_xlib_or_sends_a_window_request(self):
-        with patch.object(close, 'owned_application_pid', side_effect=RuntimeError('owned binding refused')), \
-             patch.object(close.ctypes.util, 'find_library') as lookup, patch.object(close.c, 'CDLL') as library:
+        resolve = Mock(side_effect=RuntimeError('owned binding refused'))
+        with patch.object(close.ctypes.util, 'find_library') as lookup, patch.object(close.c, 'CDLL') as library:
             with self.assertRaisesRegex(RuntimeError, 'owned binding refused'):
-                close.request_owned_window_close(':owned-fixture', '/owned/program')
+                close.request_owned_window_close(':owned-fixture', resolve)
+            resolve.assert_called_once_with()
             lookup.assert_not_called(); library.assert_not_called()
 
     def test_missing_xlib_refuses_before_opening_a_connection(self):
-        with patch.object(close, 'owned_application_pid', return_value=101), \
-             patch.object(close.ctypes.util, 'find_library', return_value=None), patch.object(close.c, 'CDLL') as library:
+        with patch.object(close.ctypes.util, 'find_library', return_value=None), patch.object(close.c, 'CDLL') as library:
             with self.assertRaisesRegex(RuntimeError, 'libX11 is required'):
-                close.request_owned_window_close(':owned-fixture', '/owned/program')
+                close.request_owned_window_close(':owned-fixture', lambda: 101)
             library.assert_not_called()
 
     def test_close_target_refuses_hidden_unviewable_popup_and_input_only_windows(self):
