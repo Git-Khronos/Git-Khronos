@@ -20,7 +20,7 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             @if (state.offeredVersion) { <div><dt>Available version</dt><dd>{{ state.offeredVersion }}</dd></div> }
             @if (state.packageFormat) { <div><dt>Package</dt><dd>{{ state.packageFormat }}</dd></div> }
           </dl>
-          <p class="feedback" role="status">{{ state.message }}</p>
+          <p class="feedback" role="status">@if (updates.statusError()) { <strong>Last known status: </strong> }{{ state.message }}</p>
           @if (state.verified) { <p class="verified">Package signature and signed version verified</p> }
           @if (state.phase === 'downloading') {
             <p role="status">Downloaded {{ megabytes(state.downloadedBytes) }} MB@if (state.totalBytes !== null) { of {{ megabytes(state.totalBytes) }} MB }</p>
@@ -28,25 +28,30 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
           }
           @if (state.notes) { <section class="notes" aria-label="Release notes"><h3>Release notes</h3><p>{{ state.notes }}</p></section> }
           <label class="automatic"><input type="checkbox" [checked]="state.automatic"
-            [disabled]="updates.settingPending() || ((!state.configured || !!state.storageError) && !state.automatic)"
+            [disabled]="updates.settingPending() || ((!state.configured || !!state.storageError || !!updates.statusError()) && !state.automatic)"
             (change)="automatic($event, target)" />Enable automatic updates</label>
           <p class="help">Off by default. Automatic checks and verified downloads use the same publisher trust as manual updates. Installation waits for Git work, terminal sessions and editors to finish; OS authorization may be required. Turning this off does not cancel an installer that has already started.</p>
           @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') { <p class="help">Windows currently supports checks and verified downloads only. Self-installation awaits a safe restart flow.</p> }
           @if (updates.settingPending()) { <p role="status">Saving automatic-update preference…</p> }
           @if (state.storageError) { <p role="alert">{{ state.storageError }} The saved preference or installer receipt may be unconfirmed.</p> }
+        } @else if (!updates.statusError()) { <p role="status">Reading native update status…</p> }
+        @if (updates.native()) {
           <footer>
-            <button type="button" [disabled]="!state.canCheck || updates.actionPending()" (click)="check(target)">Check for updates</button>
-            @if (state.offerId) {
-              <button type="button" [disabled]="!state.canDownload || updates.actionPending()" (click)="download(target, state)">Download and verify</button>
-              <button class="primary" type="button" [disabled]="!state.canInstall || updates.actionPending()" (click)="install(target, state)">Install verified update</button>
+            @if (updates.state(); as state) {
+              <button type="button" [disabled]="!state.canCheck || !!updates.statusError() || updates.actionPending()" (click)="check(target)">Check for updates</button>
+              @if (state.offerId) {
+                <button type="button" [disabled]="!state.canDownload || !!updates.statusError() || updates.actionPending()" (click)="download(target, state)">Download and verify</button>
+                <button class="primary" type="button" [disabled]="!state.canInstall || !!updates.statusError() || updates.actionPending()" (click)="install(target, state)">Install verified update</button>
+              }
+              @if (state.canInspect) { <button type="button" [disabled]="updates.actionPending()" (click)="inspect(target)">Inspect installation</button> }
             }
-            @if (state.canInspect) { <button type="button" [disabled]="updates.actionPending()" (click)="inspect(target)">Inspect installation</button> }
             <button type="button" [disabled]="updates.installing()" [attr.aria-disabled]="openingReleases() ? 'true' : null" (click)="browseReleases(target)">Browse official releases (opens browser)</button>
             <button type="button" [disabled]="updates.actionPending()" (click)="refresh(target)">Refresh status</button>
           </footer>
           @if (releaseError()) { <p class="release-error" role="alert">Could not open the browser. Copy <code>{{ officialReleasesUrl }}</code> into your browser to check manually.</p> }
           <p class="help">Updates never change your repositories. Installation and restart are separate: a confirmed install does not mean this running window has switched versions.</p>
-        } @else { <p role="status">Reading native update status…</p> }
+        }
+        @if (updates.statusError(); as explanation) { <p role="alert">{{ explanation }}</p> }
         @if (updates.error()) { <p role="alert">{{ updates.error() }}</p> }
         @if (updates.liveError()) { <p class="help">{{ updates.liveError() }}</p> }
       </section>

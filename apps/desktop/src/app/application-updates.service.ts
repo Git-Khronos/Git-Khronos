@@ -6,6 +6,7 @@ import { events, ipc, type ApplicationUpdateStatus } from '@git-khronos/contract
 export class ApplicationUpdatesService {
   readonly state = signal<ApplicationUpdateStatus | null>(null);
   readonly error = signal('');
+  readonly statusError = signal('');
   readonly liveError = signal('');
   private readonly pendingAction = signal<'check' | 'download' | 'install' | 'inspect' | null>(null);
   readonly actionPending = computed(() => this.pendingAction() !== null);
@@ -16,6 +17,7 @@ export class ApplicationUpdatesService {
   private disposed = false;
   private unlisten: (() => void) | null = null;
   private refreshing: Promise<void> | null = null;
+  private acceptedStatusGeneration = 0;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => { this.disposed = true; this.unlisten?.(); });
@@ -34,25 +36,34 @@ export class ApplicationUpdatesService {
     await this.refresh();
   }
 
-  private accept(value: ApplicationUpdateStatus): void {
+  private accept(value: ApplicationUpdateStatus, reportInvalid = true): void {
     if (this.disposed) return;
     if (!value || !Number.isSafeInteger(value.revision) || value.revision < 0
       || typeof value.runningVersion !== 'string' || typeof value.configured !== 'boolean'
       || typeof value.automatic !== 'boolean' || typeof value.message !== 'string') {
-      this.error.set('The native updater returned an invalid status. No installation was requested.'); return;
+      if (reportInvalid) this.statusError.set('The native updater returned an invalid status. Refresh before starting a new update.');
+      return;
     }
     const previous = this.state();
     if (previous && previous.revision > value.revision) return;
     if (previous && previous.offerId !== value.offerId) this.error.set('');
+    this.acceptedStatusGeneration++;
+    this.statusError.set('');
     this.state.set(value);
   }
 
   refresh(): Promise<void> {
     if (!this.native() || this.disposed) return Promise.resolve();
     if (this.refreshing) return this.refreshing;
-    this.refreshing = ipc.application_update_status().then(value => this.accept(value), () => {
-      this.error.set('Native update status could not be read. An unknown installation outcome must be inspected, not retried blindly.');
-    }).finally(() => { this.refreshing = null; });
+    const generation = this.acceptedStatusGeneration;
+    this.refreshing = ipc.application_update_status().then(
+      value => this.accept(value, generation === this.acceptedStatusGeneration),
+      () => {
+        if (!this.disposed && generation === this.acceptedStatusGeneration) {
+          this.statusError.set('Native update status could not be read. Refresh status before starting a new update.');
+        }
+      },
+    ).finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
 
@@ -67,15 +78,15 @@ export class ApplicationUpdatesService {
   }
 
   check(): Promise<void> {
-    if (!this.state()?.canCheck) return Promise.resolve();
+    if (this.statusError() || !this.state()?.canCheck) return Promise.resolve();
     return this.action('check', () => ipc.check_application_update());
   }
   download(offerId: string | null): Promise<void> {
-    if (!offerId || this.state()?.offerId !== offerId || !this.state()?.canDownload) return Promise.resolve();
+    if (this.statusError() || !offerId || this.state()?.offerId !== offerId || !this.state()?.canDownload) return Promise.resolve();
     return this.action('download', () => ipc.download_application_update({ offerId }), offerId);
   }
   install(offerId: string | null): Promise<void> {
-    if (!offerId || this.state()?.offerId !== offerId || !this.state()?.canInstall) return Promise.resolve();
+    if (this.statusError() || !offerId || this.state()?.offerId !== offerId || !this.state()?.canInstall) return Promise.resolve();
     return this.action('install', () => ipc.install_application_update({ offerId }), offerId);
   }
   inspect(): Promise<void> {
@@ -83,7 +94,9 @@ export class ApplicationUpdatesService {
     return this.action('inspect', () => ipc.inspect_application_update());
   }
   async setAutomatic(enabled: boolean): Promise<void> {
-    if (!this.native() || this.settingPending()) return;
+    const state = this.state();
+    if (!this.native() || this.settingPending() || !state
+      || (enabled && (this.statusError() || !state.configured || !!state.storageError))) return;
     this.settingPending.set(true); this.error.set('');
     try { this.accept(await ipc.set_automatic_application_updates({ enabled })); }
     catch (error: unknown) { this.error.set(this.message(error)); await this.refresh(); }

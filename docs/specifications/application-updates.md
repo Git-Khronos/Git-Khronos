@@ -96,7 +96,14 @@ not packaged updater, privileged-installer, Windows or macOS acceptance.
 The production builder uses a compile-time
 `GIT_KHRONOS_UPDATER_PUBLIC_KEY` (public verification key, never a private key).
 Without this key the UI clearly reports unconfigured trust and cannot check,
-install or enable automatic updates. The release publisher must separately
+install or enable automatic updates. Native status may also be slow or unavailable:
+the dialog keeps **Refresh status** and the fixed **Browse official releases**
+action available without waiting for that status. Browsing opens the official site;
+it does not install anything or enable automatic updates. If a refresh fails
+after a known status, the dialog labels it as last known and blocks new checks,
+downloads, installations and opt-in until a valid native reply or event arrives.
+The user can still turn off a previously confirmed automatic preference.
+An older read failure cannot override a newer valid native event. The release publisher must separately
 configure this key, sign artifacts with version-bound signatures and publish
 `latest.json` at the approved official release endpoint. An encrypted publisher
 key has been generated locally, but neither the key nor the manifest is

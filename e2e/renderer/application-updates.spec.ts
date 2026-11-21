@@ -28,7 +28,16 @@ test.beforeEach(async ({ page }) => {
         state.calls.push({ command, args });
         if (command === 'plugin:event|listen') { const id = ++state.sequence; state.listeners.set(id, args); return Promise.resolve(id); }
         if (command === 'plugin:event|unlisten') return Promise.resolve();
-        if (command === 'application_update_status') return Promise.resolve(state.status);
+        if (command === 'application_update_status') {
+          if (state.holdStatus) return new Promise((resolve, reject) => {
+            state.finishStatus = (success: boolean) => {
+              state.holdStatus = false;
+              return success ? resolve(state.status) : reject({ message: 'Owned status read failure' });
+            };
+          });
+          if (state.rejectStatus) return Promise.reject({ message: 'Owned status read failure' });
+          return Promise.resolve(state.status);
+        }
         if (command === 'open_external_url') {
           if (state.rejectBrowser) return Promise.reject({ message: 'Owned browser is unavailable' });
           return Promise.resolve();
@@ -62,12 +71,12 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-async function open(page: Page) {
+async function open(page: Page, waitForStatus = true) {
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await page.getByRole('menuitem', { name: /^Updates/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Updates', exact: true });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('0.1.6');
+  if (waitForStatus) await expect(dialog).toContainText('0.1.6');
   return dialog;
 }
 
@@ -218,4 +227,81 @@ test('unknown-length downloads use indeterminate progress until a native total i
   await page.evaluate(() => (window as any).__updates.replace({ totalBytes: 8192 }));
   await expect(progress).toHaveAttribute('value', '4096');
   await expect(progress).toHaveAttribute('max', '8192');
+});
+
+test('failed initial status keeps release browsing and explicit refresh available without update actions', async ({ page }) => {
+  await page.evaluate(() => { (window as any).__updates.rejectStatus = true; });
+  const dialog = await open(page, false);
+  await expect(dialog.getByRole('alert')).toContainText('Native update status could not be read');
+  await expect(dialog).not.toContainText('Reading native update status');
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: /Browse official releases/ }).click();
+  expect(await page.evaluate(() => (window as any).__updates.calls.filter((call: any) => call.command === 'open_external_url')))
+    .toEqual([{ command: 'open_external_url', args: { url: 'https://github.com/Git-Khronos/Git-Khronos/releases' } }]);
+  await page.evaluate(() => { (window as any).__updates.rejectStatus = false; });
+  await dialog.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+});
+
+test('release browsing stays usable during a pending status read without stacking more reads', async ({ page }) => {
+  await page.evaluate(() => { (window as any).__updates.holdStatus = true; });
+  const dialog = await open(page, false);
+  await expect(dialog.getByRole('status')).toContainText('Reading native update status');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__updates.finishStatus)).toBe('function');
+  await dialog.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await dialog.getByRole('button', { name: /Browse official releases/ }).click();
+  expect(await page.evaluate(() => (window as any).__updates.calls.filter((call: any) => call.command === 'application_update_status'))).toHaveLength(1);
+  await page.evaluate(() => (window as any).__updates.finishStatus(true));
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+});
+
+test('stale status disables new update actions but still permits disabling automatic mode', async ({ page }) => {
+  await page.evaluate(() => (window as any).__updates.replace({
+    automatic: true, offerId: 'owned-ready', offeredVersion: '0.2.0', verified: true,
+    phase: 'ready', canDownload: true, canInstall: true, message: 'Owned ready status',
+  }));
+  const dialog = await open(page);
+  const refresh = dialog.getByRole('button', { name: 'Refresh status', exact: true });
+  await page.evaluate(() => { (window as any).__updates.rejectStatus = true; });
+  await refresh.click();
+  const error = dialog.getByRole('alert');
+  await expect(error).toContainText('Native update status could not be read');
+  await expect(dialog.getByText('Last known status:')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Download and verify', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeDisabled();
+  const automatic = dialog.getByRole('checkbox');
+  await expect(automatic).toBeEnabled();
+  await automatic.click();
+  await expect(automatic).not.toBeChecked();
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(check_|install_|download_|set_automatic_)/.test(call.command))))
+    .toEqual([{ command: 'set_automatic_application_updates', args: { enabled: false } }]);
+
+  await refresh.click();
+  await expect(error).toContainText('Native update status could not be read');
+  await expect(automatic).toBeDisabled();
+  await page.evaluate(() => { (window as any).__updates.rejectStatus = false; });
+  await refresh.click();
+  await expect(error).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeEnabled();
+});
+
+test('late failure from an older poll cannot override newer native status', async ({ page }) => {
+  const dialog = await open(page);
+  await page.evaluate(() => { (window as any).__updates.holdStatus = true; });
+  await dialog.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__updates.finishStatus)).toBe('function');
+  await page.evaluate(async () => {
+    const state = (window as any).__updates;
+    state.replace({ message: 'A newer native state arrived' });
+    state.finishStatus(false);
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  await expect(dialog).toContainText('A newer native state arrived');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
 });
