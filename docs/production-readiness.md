@@ -343,6 +343,13 @@ only the chosen saved slot changed; all four checkouts kept their Git
 footprints and the other layout kept its original paths. The older candidate
 did not offer the bulk action. See `installed-locate.json` under
 `target/local-review/updater/jammy-builder/workspace-locate-latest.ROf8O4Ys/`.
+The same bytes passed all 14 release-matrix checks, including 279 installed
+Ubuntu 22.04 environment scenarios. The strict updater preflight accepted
+the raw installed Jammy report, its launcher and executable, and the local
+fixture key for this SHA-256. See `installed-release-matrix.json` and
+`jammy-installed-preflight.sha256` in the same directory. APT simulation
+left the host package database unchanged. This does not qualify later
+changes or imply production signing or publication.
 
 The picker-hint package at `a927872`, SHA-256
 `46ed2e5768ea1ca65f63e96675c88c87e0fb9c61b922ea39e9cf636dc7c4f9da`,
