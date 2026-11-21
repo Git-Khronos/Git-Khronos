@@ -6,6 +6,7 @@ Tests own all repositories/storage under TemporaryDirectory; never install the p
 """
 import argparse
 import base64
+from contextlib import nullcontext
 import hashlib
 import json
 import os
@@ -717,7 +718,7 @@ def checkpoint_refs(fixtures, repository):
     return dict(line.split(" ", 1) for line in output.splitlines())
 
 
-def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
+def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report, *, hold_packed_status=False):
     names, oids = checkpoint["names"], checkpoint["oids"]
     expected = {names[key]: oids[key] for key in
                 ("reviewed", "sibling", "moved", "external-packed", "external-loose")}
@@ -748,14 +749,22 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
 
     report["checkpointExternalDeletes"] = []
     for key in ("external-loose", "external-packed"):
-        fixtures.git(repository, "update-ref", "-d", names[key], oids[key])
-        expected.pop(names[key])
-        assert checkpoint_refs(fixtures, repository) == expected
-        observation = {"storage": key.removeprefix("external-"), "oid": oids[key],
-                       "gitRefDeleted": True, "graphRowRemoved": False}
-        report["checkpointExternalDeletes"].append(observation)
+        packed_race = hold_packed_status and key == "external-packed"
+        context = nullcontext()
+        if packed_race:
+            from native_watcher_scenarios import held_status_for_packed_ref
+            context = held_status_for_packed_ref(driver, fixtures, report)
+        with context:
+            fixtures.git(repository, "update-ref", "-d", names[key], oids[key])
+            expected.pop(names[key])
+            assert checkpoint_refs(fixtures, repository) == expected
+            observation = {"storage": key.removeprefix("external-"), "oid": oids[key],
+                           "gitRefDeleted": True, "graphRowRemoved": False}
+            report["checkpointExternalDeletes"].append(observation)
         driver.wait(f"return !document.querySelector({json.dumps(row(key))})")
         observation["graphRowRemoved"] = True
+        if packed_race:
+            report["scenarios"].append("native-packed-ref-refresh-replays-read-after-held-status")
 
     driver.click(pill("moved"))
     driver.click_visible(".context-menu[role=menu] button.danger-item", "Delete checkpoint reference…")
@@ -1007,7 +1016,7 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     ])
 
 
-def smoke(driver, fixtures, report):
+def smoke(driver, fixtures, report, *, hold_packed_status=False):
     repository = fixtures.repository()
     checkpoints = checkpoint_fixture(fixtures, repository)
     repo_id = open_ui(driver, repository)
@@ -1064,7 +1073,8 @@ def smoke(driver, fixtures, report):
     assert not fixtures.git(repository, "status", "--porcelain")
     report["scenarios"].append("native-external-checkout-and-untracked-discovery")
     repository_file_discard_recovery(driver, fixtures, repository, repo_id, report)
-    checkpoint_lifecycle(driver, fixtures, repository, checkpoints, report)
+    checkpoint_lifecycle(driver, fixtures, repository, checkpoints, report,
+                         hold_packed_status=hold_packed_status)
     return repository, repo_id
 
 
@@ -1104,7 +1114,7 @@ def main():
     parser.add_argument("--suite", choices=(
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
-        "lfs-counts", "lfs-snapshot-timeout",
+        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1199,6 +1209,9 @@ def main():
             if args.suite == "lfs-snapshot-timeout":
                 from native_lfs_snapshot_scenarios import lfs_snapshot_timeout_environment
                 application_env.update(lfs_snapshot_timeout_environment(fixtures))
+            if args.suite == "watcher-refresh":
+                from native_watcher_scenarios import watcher_status_environment
+                application_env.update(watcher_status_environment(fixtures))
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
@@ -1233,7 +1246,7 @@ def main():
                         raise RuntimeError("tauri-driver failed to start; see driver.log")
                     time.sleep(0.1)
             driver.start(executable)
-            repository, repo_id = smoke(driver, fixtures, report)
+            repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
                 view = driver.invoke("refresh_repository", repoId=repo_id)
                 for field in ("name", "email"):

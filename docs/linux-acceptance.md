@@ -272,6 +272,13 @@ Git oracle keeps its original PATH; opening the repository must complete
 without waiting for that helper, leave the counts unknown, and preserve the
 checkout.
 
+For watcher contention, run
+`python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"`
+with the exact package on a disposable runner. The app-only Git wrapper
+holds one read while real Git deletes a packed checkpoint in the owned
+checkout. Git verifies the deletion first; the graph must then remove the
+row without a manual refresh. The fixture does not modify Git on the host.
+
 ## Focused linked-worktree navigation acceptance
 
 From the repository root, the `worktrees` suite runs the normal packaged smoke
