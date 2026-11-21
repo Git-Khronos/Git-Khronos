@@ -1082,10 +1082,14 @@ at 16 MiB. Both use the existing 15-second history deadline and refuse incomplet
 data rather than claiming complete attribution.
 
 On Linux, Tauri's driver creates the WebDriver session and owns the native driver
-process. The harness then sends commands directly to the same native WebKit
-session, avoiding the intermediary HTTP transport for session control. Reports
+process. Before creating the session, the harness checks that the proxy accepts
+a connection and waits for a positive status directly from WebKit. The proxy
+and native driver are assigned distinct ports. Session creation still goes
+through Tauri for capability translation; subsequent commands go directly
+to the same native WebKit session. Reports
 record this route as `webdriverTransport`. Lost mutation replies still fail the
-run: no click, script, or navigation is replayed or sent through a fallback.
+run: no session creation, click, script, or navigation is replayed after an
+ambiguous disconnect.
 
 Commit-preview acceptance configures UTF-16 log output, notes, signature display,
 and colour in an owned repository. The native UI must display the selected

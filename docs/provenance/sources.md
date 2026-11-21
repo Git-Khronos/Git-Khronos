@@ -1322,6 +1322,8 @@ and [Tauri driver request routing](https://github.com/tauri-apps/tauri/blob/dev/
 
 The Linux harness independently routes session creation through Tauri and
 subsequent commands directly to the native WebKit driver owning that session.
+Readiness probes check the native HTTP endpoint and the proxy listener
+separately, without sending a warm-up HTTP request through the proxy.
 This removes an intermediary HTTP hop after repeated lost replies at unrelated
 operations; it does not establish the underlying cause of those lost replies.
 The packaged application and native bridge remain unchanged. Mutation replies

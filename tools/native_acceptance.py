@@ -161,10 +161,30 @@ def probe_git_toolchain(fixtures, report):
     probe["passed"] = True
 
 
-def port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def webdriver_ports():
+    # Reserve both until assigned so the proxy and WebKit cannot be given the
+    # same ephemeral port by two sequential bind/close calls.
+    with socket.socket() as proxy, socket.socket() as native:
+        proxy.bind(("127.0.0.1", 0))
+        native.bind(("127.0.0.1", 0))
+        return proxy.getsockname()[1], native.getsockname()[1]
+
+
+def wait_webdriver_ready(driver, process, listen_port, *, timeout=20):
+    deadline = time.monotonic() + timeout
+    while process.poll() is None and time.monotonic() < deadline:
+        try:
+            # Check that the capability proxy is listening without giving its
+            # native HTTP pool a warm-up request before the one session POST.
+            with socket.create_connection(("127.0.0.1", listen_port), timeout=.5):
+                pass
+            status = driver.request("GET", "/status", timeout=1)
+            if isinstance(status, dict) and status.get("ready") is True:
+                return
+        except (URLError, OSError):
+            pass
+        time.sleep(.1)
+    raise RuntimeError("WebDriver did not become ready; see driver.log")
 
 
 class Driver:
@@ -220,19 +240,20 @@ class Driver:
                 raise TimeoutError('Closed application still owns its single-instance bus name; relaunch refused')
             time.sleep(.02)
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, *, timeout=90):
         # Tauri translates session creation capabilities. Once created, use the
         # same native session directly, without the intermediary's HTTP pool.
         # Never fall back or replay a mutation if either endpoint loses a reply.
-        address = self.native_address if self.native_address and path.startswith("/session/") else self.address
+        native_request = (method == "GET" and path == "/status") or path.startswith("/session/")
+        address = self.native_address if self.native_address and native_request else self.address
         request = Request(address + path, method=method,
                           data=None if payload is None else json.dumps(payload).encode(),
                           headers={"Content-Type": "application/json"})
         # Element lookup is POST in WebDriver, but is read-only. Never retry
         # clicks, navigation, or script execution after an ambiguous reply.
         read_only = method == "GET" or (method == "POST" and path.endswith(("/element", "/elements")))
-        deadline = time.monotonic() + 2
-        request_timeout = 90
+        deadline = time.monotonic() + min(2, timeout)
+        request_timeout = timeout
         while True:
             try:
                 with urlopen(request, timeout=request_timeout) as response:
@@ -1206,8 +1227,7 @@ def main():
                 fixtures.env["DISPLAY"] = ":" + number
                 fixtures.env["GDK_BACKEND"] = "x11"
                 owned_display = (fixtures.env["DISPLAY"], display)
-            listen_port = port()
-            native_port = port()
+            listen_port, native_port = webdriver_ports()
             application_env = fixtures.env.copy()
             if args.suite == "lfs-snapshot-timeout":
                 from native_lfs_snapshot_scenarios import lfs_snapshot_timeout_environment
@@ -1239,15 +1259,7 @@ def main():
                             session_bus_address=fixtures.env.get('DBUS_SESSION_BUS_ADDRESS'),
                             owned_display=owned_display)
             report["webdriverTransport"] = "tauri-session-creation-native-session-control"
-            deadline = time.monotonic() + 20
-            while True:
-                try:
-                    driver.request("GET", "/status")
-                    break
-                except (URLError, OSError):
-                    if process.poll() is not None or time.monotonic() > deadline:
-                        raise RuntimeError("tauri-driver failed to start; see driver.log")
-                    time.sleep(0.1)
+            wait_webdriver_ready(driver, process, listen_port)
             driver.start(executable)
             repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

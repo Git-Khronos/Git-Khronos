@@ -22,6 +22,7 @@ from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, linux_distribution, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
     verified_installed_file, menu_tab_focus, probe_git_toolchain,
+    wait_webdriver_ready, webdriver_ports,
 )
 
 
@@ -816,7 +817,8 @@ class FixtureTests(unittest.TestCase):
                     "native_acceptance.Driver": driver,
                     "native_acceptance.subprocess.Popen": process,
                     "native_acceptance.shutil.which": "/fixture/tool",
-                    "native_acceptance.port": 12345,
+                    "native_acceptance.webdriver_ports": (12345, 12346),
+                    "native_acceptance.wait_webdriver_ready": None,
                     "native_acceptance.platform.platform": "fixture-platform",
                 }.items():
                     mocks.enter_context(patch(target, return_value=value))
@@ -904,6 +906,30 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(request.call_count, 2)
         self.assertEqual(request.call_args_list[0].kwargs["timeout"], 90)
         self.assertLessEqual(request.call_args_list[1].kwargs["timeout"], 2)
+
+    def test_proxy_and_native_driver_are_assigned_different_ports(self):
+        proxy, native = webdriver_ports()
+        self.assertNotEqual(proxy, native)
+
+    def test_discovery_does_not_send_status_requests_through_the_capability_proxy(self):
+        driver = Driver("http://127.0.0.1:12345", "http://127.0.0.1:12346")
+        with patch("native_acceptance.urlopen", return_value=MagicMock()) as request, \
+                patch("native_acceptance.json.load", return_value={"value": {"ready": True}}):
+            driver.request("GET", "/status", timeout=1)
+            driver.request("POST", "/session", {})
+        self.assertEqual([args.args[0].full_url for args in request.call_args_list],
+                         ["http://127.0.0.1:12346/status", "http://127.0.0.1:12345/session"])
+        self.assertEqual(request.call_args_list[0].kwargs["timeout"], 1)
+
+    def test_native_ready_requires_a_listening_proxy_and_an_affirmative_response(self):
+        driver = MagicMock()
+        driver.request.side_effect = [{"ready": False}, {"ready": True}]
+        process = MagicMock()
+        process.poll.return_value = None
+        with patch("native_acceptance.socket.create_connection") as connect, patch("native_acceptance.time.sleep"):
+            wait_webdriver_ready(driver, process, 12345)
+        self.assertEqual(connect.call_count, 2)
+        self.assertEqual(driver.request.call_args_list, [call("GET", "/status", timeout=1)] * 2)
 
     def test_mutating_driver_requests_are_never_retried(self):
         driver = Driver("http://127.0.0.1:1")
