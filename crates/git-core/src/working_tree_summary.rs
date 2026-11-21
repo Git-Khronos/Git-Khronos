@@ -159,27 +159,33 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
     if entries.is_empty() {
         return Ok(summary);
     }
-    let rename_limit = format!("-l{MAX_FILES}");
-    let (output, truncated) = run_git_with_stdout_limit(
-        path,
-        &[
-            "diff",
-            "--numstat",
-            "-z",
-            "--find-renames",
-            &rename_limit,
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--",
-        ],
-        MAX_STATS_BYTES,
-    )?;
-    if !truncated {
-        ensure_success("count unstaged lines", &output)?;
-    }
-    summary.partial |= truncated || skipped_renames(&output.stderr);
-    let stats = parse_numstat(complete_records(&output.stdout));
+    // Git diff has no rows for ordinary untracked names. Do not scan the
+    // tracked index again unless this recap can use at least one such row.
+    let stats = if entries.iter().any(|entry| entry.index_status != "?") {
+        let rename_limit = format!("-l{MAX_FILES}");
+        let (output, truncated) = run_git_with_stdout_limit(
+            path,
+            &[
+                "diff",
+                "--numstat",
+                "-z",
+                "--find-renames",
+                &rename_limit,
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=none",
+                "--",
+            ],
+            MAX_STATS_BYTES,
+        )?;
+        if !truncated {
+            ensure_success("count unstaged lines", &output)?;
+        }
+        summary.partial |= truncated || skipped_renames(&output.stderr);
+        parse_numstat(complete_records(&output.stdout))
+    } else {
+        Default::default()
+    };
     let mut untracked = Vec::new();
     let mut remaining = MAX_UNTRACKED_BYTES;
     for entry in entries {

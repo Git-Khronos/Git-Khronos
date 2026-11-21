@@ -375,6 +375,8 @@ aggregate 16 MiB budget. The recap gives its Git subprocesses a shared
 three-second deadline and checks it between local file probes. A timed-out
 side is unavailable without discarding a count that already finished;
 size-limited numstat totals are labeled partial.
+When the unstaged recap contains only untracked entries, it skips the
+tracked-file diff and counts those paths under the same attribute policy.
 External diff and text conversion are disabled and untracked symlink targets
 are not opened. The same thread-scoped fetch-free policy used for file
 preview and incoming-link reads covers the status and both diffs. It
