@@ -3077,6 +3077,18 @@ checks passed. Packaged UI and background IPC coverage is in the
 `setup-keyboard` suite; new installer evidence remains separate.
 Source receipts are under `target/local-review/non-pruning-fetch.Cp9KGYCx/`.
 
+### Detached-checkout native hit target
+
+The first Ubuntu 24.04 run of the fast-Git package opened the context
+menu for the row above the requested commit during startup. The screenshot
+showed a dirty-working-copy row inserted after the test had measured the
+target position. The scenario now waits for that row and the exact current
+branch before one trusted right-click. On the unchanged `30bb7b4` package,
+all three detached-checkout cases and the remaining focused suites passed.
+The original report and the successful `focused-after-wip.09k5Vvz9/`
+recheck remain in the same package receipt directory. This did not change
+the actual checkout operation or retry a click.
+
 ### Branch workflow qualification timing
 
 The isolated Ubuntu 22.04 branch-workflow suite passed all four cases with
