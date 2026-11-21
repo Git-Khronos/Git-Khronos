@@ -104,7 +104,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -125,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 31);
+  assert.equal(complete.checks.length, 32);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -241,6 +241,20 @@ test('installed startup must show pending files and publish both accurate line r
     const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== firstStatus), incomplete]);
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['first-status']);
+  }
+});
+
+test('installed Browse must reject a retired reply and still open a fresh selection', () => {
+  const fixtures = matrixFixtures();
+  const open = fixtures.find(report => report.suite === 'repository-open-scope');
+  for (const name of [
+    'native-retired-repository-read-preserves-active-tab-draft-and-saved-membership',
+    'native-current-repository-selection-still-opens-the-chosen-checkout',
+  ]) {
+    const partial = { ...open, scenarios: open.scenarios.filter(scenario => scenario !== name) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== open), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['repository-open-scope']);
   }
 });
 

@@ -107,6 +107,7 @@ jobs:
           python3 tools/native_acceptance.py --suite file-review-scope --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite repository-creation-scope --headless --installed --package "$PACKAGE"
           python3 tools/native_acceptance.py --suite first-status --headless --installed --package "$PACKAGE"
+          python3 tools/native_acceptance.py --suite repository-open-scope --headless --installed --package "$PACKAGE"
       - name: Verify installed packed-ref refresh under contention
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
         run: python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"

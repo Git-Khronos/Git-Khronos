@@ -247,6 +247,10 @@ and the current Browse request. A closed, replaced, or superseded request
 does not activate a tab, change saved membership, or announce a late
 failure in the replacement dialog. A live request can still open the
 selected repository normally.
+Installed `repository-open-scope` holds Git's path resolution for a real
+Recent entry while the manager is closed and reopened. It verifies unchanged
+tab, draft, saved membership, and Git data before allowing the replacement
+manager to open a fresh selection.
 Clone (URL or provider review) and Initialize separate navigation ownership
 from the native result. Only the originating form and repository visit may
 activate the new checkout. If that visit retires after dispatch, a confirmed

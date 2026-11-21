@@ -1151,6 +1151,7 @@ def main():
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
+        "repository-open-scope",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1264,6 +1265,8 @@ def main():
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
+            if args.suite == "repository-open-scope":
+                application_env.update(fixtures.history_environment())
             if args.suite in ("gitlab", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
                 application_env.update(start_gitlab_fixture(fixtures, children, log, report))
@@ -1353,6 +1356,9 @@ def main():
             elif args.suite == "repository-creation-scope":
                 from native_repository_creation_scenarios import repository_creation_scope
                 repository, repo_id = repository_creation_scope(driver, fixtures, report)
+            elif args.suite == "repository-open-scope":
+                from native_repository_open_scenarios import repository_open_scope
+                repository, repo_id = repository_open_scope(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

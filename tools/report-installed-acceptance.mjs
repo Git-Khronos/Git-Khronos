@@ -73,6 +73,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-first-file-scan-shows-loading-not-clean-while-history-is-usable',
     'native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes',
   ]],
+  ['repository-open-scope', [
+    'native-retired-repository-read-preserves-active-tab-draft-and-saved-membership',
+    'native-current-repository-selection-still-opens-the-chosen-checkout',
+  ]],
 ];
 
 const RELEASE_MATRIX = [
