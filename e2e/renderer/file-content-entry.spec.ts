@@ -192,10 +192,13 @@ for (const width of [320, 700, 1440]) {
 
 test('a content dialog whose code cannot load keeps a keyboard escape route without reading a file', async ({ page }) => {
   const row = await prepare(page, 'unstaged');
+  await row.click({ button: 'right' });
+  const action = page.getByRole('menuitem', { name: 'Preview file content', exact: true });
+  // Load the context menu before intercepting the separate content dialog.
+  await expect(action).toBeVisible();
   const blocked: string[] = [];
   await page.route('**/*.js', async route => { blocked.push(route.request().url()); await route.abort(); });
-  await row.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Preview file content', exact: true }).click();
+  await action.click();
   const unavailable = page.getByRole('dialog', { name: 'File content unavailable', exact: true });
   await expect(unavailable).toBeVisible();
   expect(blocked.length).toBeGreaterThan(0);
@@ -210,6 +213,9 @@ test('a content dialog whose code cannot load keeps a keyboard escape route with
 
 test('cancelling before deferred content code arrives never starts a late file read', async ({ page }) => {
   const row = await prepare(page, 'unstaged');
+  await row.click({ button: 'right' });
+  const action = page.getByRole('menuitem', { name: 'Preview file content', exact: true });
+  await expect(action).toBeVisible();
   const pending: string[] = [];
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -219,8 +225,7 @@ test('cancelling before deferred content code arrives never starts a late file r
     await route.continue();
   });
   try {
-    await row.click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Preview file content', exact: true }).click();
+    await action.click();
     const loading = page.getByRole('dialog', { name: 'Opening file content', exact: true });
     await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
     expect(pending.length).toBeGreaterThan(0);
