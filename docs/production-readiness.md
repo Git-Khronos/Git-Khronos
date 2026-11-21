@@ -2835,3 +2835,11 @@ Matched production builds lowered initial renderer assets from
 1,334,924 to 1,331,923 bytes. The picker markup moved out of the initial
 asset set. The 900 kB warning remains; this comparison measures bytes,
 not startup time.
+
+The installed `998c238` build also added one suggested and one manual
+co-author through the deferred picker. Editing the draft was read-only;
+the resulting Git commit had both exact trailers and did not include
+the unrelated unstaged edit. SHA-256:
+`6032a4fd06201b494b255baed956dc34b006a877c1316827bd7414f46ae2953f`.
+The report is under
+`target/local-review/installed-coauthors.5q9iKMnN/combined/`.
