@@ -18,13 +18,17 @@ async function setup(page: Page): Promise<void> {
       headOid: 'a'.repeat(40), headRef: 'refs/heads/main\n', indexState: [5, 6] };
     const fixture = { repository, calls: [] as any[], selectedFile: '/owned/input.patch' as string | null,
       destination: '/owned/export.patch' as string | null, request,
-      refused: false, applyRefused: false, deferred: false, finish: null as (() => void) | null };
+      refused: false, applyRefused: false, deferred: false, finish: null as (() => void) | null,
+      deferSave: false, finishSave: null as (() => void) | null };
     (window as any).__patch = fixture;
     app.commitMessage.set('Keep unrelated draft');
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
       if (command === 'plugin:dialog|open') return Promise.resolve(fixture.selectedFile);
-      if (command === 'plugin:dialog|save') return Promise.resolve(fixture.destination);
+      if (command === 'plugin:dialog|save') {
+        if (fixture.deferSave) return new Promise(resolve => { fixture.finishSave = () => resolve(fixture.destination); });
+        return Promise.resolve(fixture.destination);
+      }
       if (command === 'export_diff_patch') return Promise.resolve(1500);
       if (command === 'review_diff_patch') {
         if (fixture.refused) return Promise.reject({ kind: 'patchExchangeRefused',
@@ -99,6 +103,68 @@ test('staged literal export excludes untracked files and passes the complete sel
   expect(fixture.calls.find((call: any) => call.command === 'export_diff_patch').args)
     .toEqual({ repoId: fixture.repository.id, staged: true, paths: ['staged[1]\tline\nfile.bin'], destination: '/owned/export.patch' });
   expect(fixture.calls.some((call: any) => call.command === 'import_diff_patch')).toBe(false);
+});
+
+test('export blocks empty, conflicted, or incomplete tracked scopes before choosing a destination', async ({ page }) => {
+  await setup(page);
+  const panel = page.locator('gc-patch-exchange-panel');
+  const save = panel.getByRole('button', { name: 'Save diff patch…', exact: true });
+  for (const [reason, flags] of [
+    ['There are no tracked changes', { conflicted: 0, entriesTruncated: false }],
+    ['Resolve conflicts', { conflicted: 1, entriesTruncated: false }],
+    ['current file list is truncated', { conflicted: 0, entriesTruncated: true }],
+  ] as const) {
+    await page.evaluate(flags => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const source = git.repository();
+      git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
+        ? { ...source, status: { ...source.status, ...flags, entries: source.status.entries.filter((entry: any) => entry.path === 'untracked') } } : repo));
+    }, flags);
+    await expect(panel).toContainText(reason);
+    await expect(save).toBeDisabled();
+  }
+  expect(await page.evaluate(() => (window as any).__patch.calls
+    .some((call: any) => ['plugin:dialog|save', 'export_diff_patch'].includes(call.command)))).toBe(false);
+});
+
+test('a selected patch path that changes while picking the destination is not silently dropped or exported', async ({ page }) => {
+  await setup(page);
+  const panel = page.locator('gc-patch-exchange-panel');
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const source = git.repository();
+    const entries = [...source.status.entries, { path: 'also-tracked.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false }];
+    git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
+      ? { ...source, status: { ...source.status, entries } } : repo));
+    (window as any).__patch.deferSave = true;
+  });
+  await panel.getByLabel('All tracked changes in this scope', { exact: true }).uncheck();
+  const controls = panel.getByRole('group', { name: 'Patch selection controls', exact: true });
+  await controls.getByRole('button', { name: 'Select listed files', exact: true }).click();
+  await expect(controls).toContainText('2 of 2 listed files selected');
+  const save = panel.getByRole('button', { name: 'Save diff patch…', exact: true });
+  await save.click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__patch.finishSave)).toBe('function');
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const source = git.repository();
+    git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
+      ? { ...source, status: { ...source.status, entries: source.status.entries.filter((entry: any) => entry.path !== 'tracked.txt') } } : repo));
+    (window as any).__patch.finishSave();
+    (window as any).__patch.deferSave = false;
+  });
+  await expect(panel.getByRole('alert')).toContainText('No patch was exported');
+  await expect(panel.getByRole('list', { name: 'Unavailable selected paths' })).toHaveText('tracked.txt');
+  await expect(save).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'))).toEqual([]);
+  await panel.getByRole('button', { name: 'Remove unavailable paths', exact: true }).click();
+  await expect(controls).toContainText('1 of 1 listed files selected');
+  await save.click();
+  await expect(panel.getByRole('status')).toContainText('Saved 1500 bytes');
+  const exports = await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'));
+  expect(exports).toEqual([{ command: 'export_diff_patch', args: {
+    repoId: expect.any(String), staged: false, paths: ['also-tracked.txt'], destination: '/owned/export.patch',
+  } }]);
 });
 
 test('native file chooser cancellations perform no Git calls and target changes invalidate a previously checked review', async ({ page }) => {

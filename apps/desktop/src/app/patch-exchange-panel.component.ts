@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, effect, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ipc } from '@git-khronos/contracts';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -29,16 +29,30 @@ import { MailPatchPanelComponent } from './mail-patch-panel.component';
         </select>
         <label><input type="checkbox" [ngModel]="allFiles()" (ngModelChange)="allFiles.set($event)" />All tracked changes in this scope</label>
         @if (!allFiles()) {
+          <div class="actions" role="group" aria-label="Patch selection controls">
+            <button type="button" [attr.aria-disabled]="!canSelectListed()"
+              (click)="selectListedPaths()">Select listed files</button>
+            <button type="button" [attr.aria-disabled]="!selected().length" (click)="clearSelection()">Clear selection</button>
+            <small aria-live="polite">{{ selected().length - stalePaths().length }} of {{ exportFiles().length }} listed files selected</small>
+          </div>
           <div class="paths" aria-label="Patch export file selection">
             @for (file of exportFiles(); track file.path) {
               <label><input type="checkbox" [checked]="selected().includes(file.path)" (change)="toggle(file.path)" />{{ file.path }}</label>
             }
-            @if (!exportFiles().length) { <p>No selectable tracked changes. Staged renames require all tracked changes.</p> }
+            @if (!exportFiles().length) { <p>No selectable tracked changes. Renames and copies require all tracked changes.</p> }
           </div>
+          @if (stalePaths().length) {
+            <div class="unavailable-paths">
+              <p>These paths no longer match the selected diff scope:</p>
+              <ul aria-label="Unavailable selected paths">@for (path of stalePaths(); track path) { <li>{{ path }}</li> }</ul>
+              <button type="button" (click)="removeUnavailablePaths()">Remove unavailable paths</button>
+            </div>
+          }
         }
         <p>Untracked files are excluded; stage new files first. Renames are exported as deletion/addition.
           Choose a new filename outside the repository; existing files are never overwritten.</p>
-        <button type="button" [disabled]="!allFiles() && !selected().length" (click)="exportPatch()">Save diff patch…</button>
+        @if (exportIssue(); as issue) { <p class="export-scope-notice">{{ issue }}</p> }
+        <button type="button" [disabled]="!!exportIssue()" (click)="exportPatch()">Save diff patch…</button>
       </fieldset>
       <fieldset [disabled]="disabled() || pending()">
         <legend>Import a diff patch</legend>
@@ -91,6 +105,9 @@ import { MailPatchPanelComponent } from './mail-patch-panel.component';
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
     button { min-height: 28px; padding: 6px 8px; color: var(--text); background: var(--inspector-row); cursor: pointer; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions small { align-self: center; color: var(--muted); }
+    .export-scope-notice, .unavailable-paths { color: var(--muted); }
+    button[aria-disabled='true'] { opacity: .5; cursor: default; }
     button:disabled, fieldset:disabled { opacity: .5; cursor: default; }
     button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, section:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px;
@@ -106,6 +123,12 @@ export class PatchExchangePanelComponent {
   readonly staged = signal(false);
   readonly allFiles = signal(true);
   readonly selected = signal<string[]>([]);
+  readonly exportFiles = computed(() => this.filesInScope(this.staged()).filter(file => this.isSelectable(file)));
+  private readonly exportPaths = computed(() => new Set(this.exportFiles().map(file => file.path)));
+  readonly stalePaths = computed(() => this.selected().filter(path => !this.exportPaths().has(path)));
+  readonly canSelectListed = computed(() => !!this.exportPaths().size
+    && (!!this.stalePaths().length || this.selected().length !== this.exportPaths().size));
+  readonly exportIssue = computed(() => this.scopeIssue(this.staged(), this.allFiles(), this.selected()));
   readonly target = signal<PatchTarget>('worktree');
   readonly review = signal<PatchReview | null>(null);
   readonly error = signal('');
@@ -127,17 +150,43 @@ export class PatchExchangePanelComponent {
     });
   }
 
-  exportFiles() {
+  private filesInScope(staged: boolean) {
     if (this.repositoryId() !== this.git.activeRepositoryId()) return [];
     return (this.git.repository()?.status.entries ?? []).filter(file =>
-      !file.conflicted && file.indexStatus !== '?' && !['R', 'C'].includes(file.indexStatus)
-      && (this.staged() ? file.indexStatus !== ' ' : file.worktreeStatus !== ' '));
+      !file.conflicted && !['?', '!'].includes(file.indexStatus)
+      && (staged ? file.indexStatus !== ' ' : file.worktreeStatus !== ' '));
+  }
+
+  private isSelectable(file: { indexStatus: string; worktreeStatus: string }): boolean {
+    return !['R', 'C'].includes(file.indexStatus) && !['R', 'C'].includes(file.worktreeStatus);
+  }
+
+  private scopeIssue(staged: boolean, allFiles: boolean, paths: readonly string[]): string {
+    const status = this.repositoryId() === this.git.activeRepositoryId() ? this.git.repository()?.status : null;
+    if (!status) return 'Select a repository to export tracked changes.';
+    if (status.conflicted) return 'Resolve conflicts before exporting a diff patch.';
+    if (status.entriesTruncated) return 'Export needs a complete status. The current file list is truncated.';
+    const files = this.filesInScope(staged);
+    if (allFiles) return files.length ? '' : 'There are no tracked changes in this diff scope.';
+    if (!paths.length) return 'Select at least one tracked path to export.';
+    const selectable = new Set(files.filter(file => this.isSelectable(file)).map(file => file.path));
+    return paths.some(path => !selectable.has(path)) ? 'Review the unavailable selected paths before exporting.' : '';
   }
 
   setExportScope(staged: boolean): void { this.staged.set(staged); this.selected.set([]); }
   setTarget(target: PatchTarget): void { this.target.set(target); this.review.set(null); }
   toggle(path: string): void {
+    if (this.disabled() || this.pending() || !this.exportPaths().has(path)) return;
     this.selected.update(paths => paths.includes(path) ? paths.filter(file => file !== path) : [...paths, path]);
+  }
+  selectListedPaths(): void {
+    if (!this.disabled() && !this.pending() && this.canSelectListed()) this.selected.set([...this.exportPaths()]);
+  }
+  clearSelection(): void {
+    if (!this.disabled() && !this.pending() && this.selected().length) this.selected.set([]);
+  }
+  removeUnavailablePaths(): void {
+    if (!this.disabled() && !this.pending()) this.selected.update(paths => paths.filter(path => this.exportPaths().has(path)));
   }
   targetLabel(target: PatchTarget): string {
     return target === 'worktree' ? 'working files only' : target === 'index' ? 'index only' : 'index and working files';
@@ -170,13 +219,19 @@ export class PatchExchangePanelComponent {
 
   async exportPatch(): Promise<void> {
     const staged = this.staged();
-    const paths = this.allFiles() ? [] : [...this.selected()];
-    if (!this.allFiles() && !paths.length) return;
+    const allFiles = this.allFiles();
+    const paths = allFiles ? [] : [...this.selected()];
+    if (this.scopeIssue(staged, allFiles, paths)) return;
+    const scope = this.git.activeRepositoryReadScope();
     await this.run('Exporting complete diff patch…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new diff patch outside the repository',
         filters: [{ name: 'Diff patch', extensions: ['patch', 'diff'] }] });
-      if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing the patch destination. No export started.');
+      if (!this.current(repositoryId, generation) || this.git.activeRepositoryReadScope() !== scope) {
+        throw new Error('Repository changed while choosing the patch destination. No export started.');
+      }
       if (!destination) { this.notice.set('Export cancelled. No file was written.'); report('Patch export cancelled'); return; }
+      const issue = this.scopeIssue(staged, allFiles, paths);
+      if (issue) throw new Error(`${issue} No patch was exported.`);
       const bytes = await ipc.export_diff_patch({ repoId: repositoryId, staged, paths, destination });
       report('Complete diff patch exported');
       if (this.current(repositoryId, generation)) this.notice.set(`Saved ${bytes} bytes to ${destination}. Repository files and references unchanged.`);

@@ -49,6 +49,18 @@ identity and the outside fixture's config, index, HEAD and working bytes.
 
 ## Implemented transition ownership
 
+### Diff patch export
+
+The patch panel owns the reviewed diff scope and explicit path selection.
+Do not open the destination picker for an empty, conflicted or incomplete
+scope. After the picker, recheck both the originating checkout visit and
+the reviewed selection. A stale path blocks the whole selected export
+until the user explicitly removes it or changes the selection. A valid
+selection expresses intent about paths, not a frozen copy of their bytes.
+Native Git reads the current diff and refuses partial selected exports; the
+destination must be a new file outside the repository and its metadata.
+`patch-exchange.spec.ts` covers the renderer gate before and after the picker.
+
 ### Deferred saved-tab restoration
 
 Saved workspace tab paths are the intent; loaded repository snapshots and the
