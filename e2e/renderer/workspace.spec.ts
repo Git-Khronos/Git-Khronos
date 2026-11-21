@@ -1088,8 +1088,9 @@ test('explains commit readiness and updates it with the draft', async ({ page })
   await expect(commitButton).toBeEnabled();
 
   await composer.getByLabel('Push after committing').check();
-  await expect(readiness).toHaveText('Ready to commit 1 staged file and push it.');
-  await expect(commitButton).toHaveAttribute('title', 'Ready to commit 1 staged file and push it.');
+  const pushReadiness = 'Ready to commit 1 staged file, then push to origin/main.';
+  await expect(readiness).toHaveText(pushReadiness);
+  await expect(commitButton).toHaveAttribute('title', pushReadiness);
 });
 
 test('keeps manual co-author entry labeled and usable in the commit composer', async ({ page }) => {
