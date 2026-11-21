@@ -9823,6 +9823,7 @@ fn capture_cancellable_command(
     let mut parent_status = None;
     let mut limit_terminated = false;
     let mut readers_finished = false;
+    let mut first_exit_probe = true;
     let status = loop {
         if truncated.load(Ordering::Acquire) && !limit_terminated {
             stop_readers.store(true, Ordering::Release);
@@ -9863,7 +9864,14 @@ fn capture_cancellable_command(
             }
             // Git may close both streams long before it exits; a disconnected
             // channel must not turn that case into a busy loop.
-            thread::sleep(cancellation_poll);
+            // A normal exit often closes both streams just before the kernel
+            // reports the child's status. Probe once quickly, then back off.
+            let delay = if std::mem::take(&mut first_exit_probe) {
+                Duration::from_millis(1)
+            } else {
+                cancellation_poll
+            };
+            thread::sleep(delay);
         } else {
             readers_finished = matches!(
                 readers.recv_timeout(cancellation_poll),

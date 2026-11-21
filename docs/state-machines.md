@@ -52,6 +52,10 @@ output readers. Those readers wake the coordinator on completion; the
 bounded poll still checks cancellation when Git has closed its output but
 is running, or a descendant keeps a pipe open after Git exits. EOF alone
 never completes the operation or substitutes for Git's exit code.
+Unix output readers use [bounded pipe readiness](https://man7.org/linux/man-pages/man2/poll.2.html)
+instead of sleeping before every nonblocking read. The stop check still
+runs when a writer is silent, and the reader drains bytes before returning
+EOF on normal completion.
 
 Repository watchers observe Git's metadata directories, not its object
 database. In a reftable repository this includes the shared stack and any
