@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import select
@@ -17,11 +18,34 @@ from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
-    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable, menu_tab_focus,
+    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
+    verified_installed_file, menu_tab_focus,
 )
 
 
 class PackageIdentityTests(unittest.TestCase):
+    def test_installed_desktop_entry_must_be_the_packaged_regular_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packaged, installed = (Path(directory) / name for name in ("packaged.desktop", "installed.desktop"))
+            contents = b"[Desktop Entry]\nExec=git-khronos %U\nStartupWMClass=git-khronos\n"
+            packaged.write_bytes(contents)
+            installed.write_bytes(contents)
+            self.assertEqual(verified_installed_file(packaged, installed, "desktop entry"),
+                             hashlib.sha256(contents).hexdigest())
+            installed.write_bytes(contents.replace(b" %U", b""))
+            with self.assertRaisesRegex(RuntimeError, "installed desktop entry differs"):
+                verified_installed_file(packaged, installed, "desktop entry")
+            installed.unlink()
+            with self.assertRaises(FileNotFoundError):
+                verified_installed_file(packaged, installed, "desktop entry")
+            installed.symlink_to(packaged)
+            with self.assertRaises(OSError):
+                verified_installed_file(packaged, installed, "desktop entry")
+            installed.unlink()
+            os.mkfifo(installed)
+            with self.assertRaisesRegex(RuntimeError, "desktop entry must be a regular file"):
+                verified_installed_file(packaged, installed, "desktop entry")
+
     def test_installed_acceptance_requires_the_exact_packaged_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             packaged, installed = (Path(directory) / name for name in ("packaged", "installed"))

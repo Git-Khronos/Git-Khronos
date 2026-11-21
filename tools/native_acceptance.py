@@ -17,6 +17,7 @@ import signal
 import shlex
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -40,13 +41,21 @@ def expected_debian_package():
     return version, f"Git-Khronos_{version}_amd64.deb"
 
 
+def verified_installed_file(packaged, installed, label):
+    def digest(path):
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise RuntimeError(f"The {label} must be a regular file: {path}")
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+
+    expected = digest(packaged)
+    if expected != digest(installed):
+        raise RuntimeError(f"The installed {label} differs from the reviewed Debian package")
+    return expected
+
+
 def verified_installed_executable(packaged, installed):
-    with packaged.open("rb") as stream:
-        expected = hashlib.file_digest(stream, "sha256").digest()
-    with installed.open("rb") as stream:
-        actual = hashlib.file_digest(stream, "sha256").digest()
-    if expected != actual:
-        raise RuntimeError("The installed executable differs from the reviewed Debian package")
+    verified_installed_file(packaged, installed, "executable")
     return installed
 
 
@@ -1029,7 +1038,7 @@ def main():
     parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools", "worktrees", "setup-keyboard", "remote-reviews"), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
-                        help="Run /usr/bin/git-khronos after byte verification against the package (CI only)")
+                        help="Verify the installed executable and desktop entry before running the app (CI only)")
     parser.add_argument("--inherited-git-environment", action="store_true",
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
@@ -1076,6 +1085,12 @@ def main():
             report["executableSha256"] = hashlib.file_digest(executable_data, "sha256").hexdigest()
         if args.installed:
             executable = verified_installed_executable(executable, Path("/usr/bin/git-khronos"))
+            desktop_entry = "usr/share/applications/git-khronos.desktop"
+            installed_launcher = Path("/") / desktop_entry
+            report["installedDesktopEntry"] = {
+                "path": str(installed_launcher),
+                "sha256": verified_installed_file(extracted / desktop_entry, installed_launcher, "desktop entry"),
+            }
         report["executable"] = str(executable)
         report["installedExecutable"] = args.installed
         if args.suite == "gitlab":

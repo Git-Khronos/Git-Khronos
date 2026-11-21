@@ -221,10 +221,16 @@ this qualification did not exercise a live download or privileged install.
 A publisher-key-enabled `v0.1.6` amd64 Debian candidate built on Ubuntu 22.04
 from source commit `7ce41a0` passed the release ABI check and 271 extracted-package
 native environment scenarios. The package declared the glibc 2.35 baseline and
-its highest required version was GLIBC_2.34. The same bytes also installed
-unchanged in a disposable Ubuntu 24.04 container: the package database reported
-it configured, the installed executable and desktop entry matched the archive,
-and the executable's shared libraries resolved.
+its highest required version was GLIBC_2.34. The same bytes passed 45 separate
+packaged GitLab scenarios, including the catalogue.
+
+The installer passed APT and package database checks in disposable Ubuntu
+22.04, 24.04 and 26.04 and Debian 12 and 13 containers. The installed executable
+and desktop entry matched the archive and the executable's shared libraries
+resolved in every case. Stock Ubuntu 22.04 correctly refused the package with
+Git 2.34; its successful test used the newer Git from the upstream-documented
+Git PPA, configured only inside the disposable container. These are local
+installation checks, not per-distribution installed WebDriver results.
 
 The strict preflight matched the build receipt, ABI, native report and publisher
 key before signing Debian SHA-256

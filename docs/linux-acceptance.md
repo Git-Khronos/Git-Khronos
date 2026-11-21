@@ -5,6 +5,12 @@ application extracted from the Debian package. It does not install the package, 
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
 
+The CI-only `--installed` mode checks both the installed executable and the
+`git-khronos.desktop` launcher against the reviewed package before starting
+WebDriver. It records the installed launcher's SHA-256. This catches a missing
+or stale launcher (including altered link arguments or window identity);
+it does not test host-specific pinned shortcuts.
+
 The main-menu smoke journey waits for the actual deferred menu content and its
 focused Manage Repositories action before Tab dismissal. A loading/error escape
 does not qualify the finished menu. The report records header/scroll-area layout
