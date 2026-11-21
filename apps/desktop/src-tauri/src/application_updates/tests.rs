@@ -194,6 +194,52 @@ fn runtime_with_model(store: PathBuf, model: UpdateModel) -> Runtime {
     }
 }
 
+#[test]
+fn application_update_blockers_require_verified_bytes_and_preserve_installer_feedback() {
+    let mut runtime = ready_runtime(PathBuf::new());
+    assert_eq!(
+        install_readiness(&runtime, None, Some(TERMINAL_BLOCKER)),
+        InstallReadiness::NotReady
+    );
+    runtime.bytes = Some(("owned".into(), Arc::new(vec![1])));
+    for message in [
+        EDITOR_BLOCKER,
+        FILE_TOOL_BLOCKER,
+        TERMINAL_BLOCKER,
+        GIT_BLOCKER,
+    ] {
+        assert_eq!(
+            install_readiness(&runtime, None, Some(message)),
+            InstallReadiness::Blocked(message)
+        );
+    }
+    assert_eq!(
+        install_readiness(&runtime, Some("Unsupported bundle"), Some(EDITOR_BLOCKER)),
+        InstallReadiness::Blocked("Unsupported bundle")
+    );
+    runtime.model.phase = UpdatePhase::Refused;
+    runtime.message = "The installer was not started.".into();
+    assert_eq!(
+        install_readiness(&runtime, None, Some(TERMINAL_BLOCKER)),
+        InstallReadiness::Blocked(TERMINAL_BLOCKER)
+    );
+    assert_eq!(
+        install_readiness(&runtime, None, None),
+        InstallReadiness::Ready
+    );
+    assert_eq!(runtime.message, "The installer was not started.");
+    runtime.storage_error = Some("Fixture storage failed".into());
+    assert!(matches!(
+        install_readiness(&runtime, None, None),
+        InstallReadiness::Blocked(_)
+    ));
+    runtime.model.phase = UpdatePhase::Uncertain;
+    assert_eq!(
+        install_readiness(&runtime, None, None),
+        InstallReadiness::NotReady
+    );
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")

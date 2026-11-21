@@ -329,6 +329,28 @@ test('a held poll cannot re-enable installation after a native activity update a
   await expect(install).toBeEnabled();
 });
 
+test('Updates explains what blocks a verified package without hiding the earlier installer outcome', async ({ page }) => {
+  await page.evaluate(() => (window as any).__updates.replace({
+    offerId: 'owned-refused', offeredVersion: '0.2.0', phase: 'refused', verified: true,
+    canDownload: false, canInstall: false, message: 'The installer was not started.',
+    installBlocker: 'Close open Git Khronos terminal sessions before installing the update.',
+  }));
+  const dialog = await open(page);
+  const install = dialog.getByRole('button', { name: 'Install verified update', exact: true });
+  const reason = dialog.getByText('Close open Git Khronos terminal sessions before installing the update.', { exact: true });
+  await expect(dialog).toContainText('The installer was not started.');
+  await expect(install).toBeDisabled();
+  await expect(reason).toBeVisible();
+  await expect(install).toHaveAccessibleDescription(await reason.innerText());
+
+  await page.evaluate(() => (window as any).__updates.replace({ installBlocker: null, canInstall: true }));
+  await expect(reason).toHaveCount(0);
+  await expect(install).toBeEnabled();
+  await expect(dialog).toContainText('The installer was not started.');
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .some((call: any) => call.command === 'install_application_update'))).toBe(false);
+});
+
 test('late failure from an older poll cannot override newer native status', async ({ page }) => {
   const dialog = await open(page);
   await page.evaluate(() => { (window as any).__updates.holdStatus = true; });

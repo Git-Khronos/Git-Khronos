@@ -40,6 +40,8 @@ pub struct ApplicationUpdateStatus {
     pub total_bytes: Option<usize>,
     pub message: String,
     pub storage_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_blocker: Option<String>,
     pub can_check: bool,
     pub can_download: bool,
     pub can_install: bool,
@@ -146,40 +148,87 @@ fn with_runtime<T>(
     action(slot.as_mut().unwrap())
 }
 
-fn native_idle(app: &AppHandle) -> bool {
+const EDITOR_BLOCKER: &str = "Finish and close open file editors before installing the update.";
+const FILE_TOOL_BLOCKER: &str = "Finish open diff or merge tools before installing the update.";
+const TERMINAL_BLOCKER: &str =
+    "Close open Git Khronos terminal sessions before installing the update.";
+const GIT_BLOCKER: &str = "Wait for active Git operations to finish before installing the update.";
+
+fn native_activity_blocker(app: &AppHandle) -> Option<&'static str> {
     let state = app.state::<AppState>();
     if app
         .state::<crate::working_file_commands::EditorState>()
         .has_open_contexts()
-        || app
-            .state::<crate::file_tool_commands::FileToolState>()
-            .has_open_contexts()
     {
-        return false;
+        return Some(EDITOR_BLOCKER);
+    }
+    if app
+        .state::<crate::file_tool_commands::FileToolState>()
+        .has_open_contexts()
+    {
+        return Some(FILE_TOOL_BLOCKER);
     }
     if !state
+        .terminals
+        .lock()
+        .is_ok_and(|terminals| terminals.is_empty())
+    {
+        return Some(TERMINAL_BLOCKER);
+    }
+    let git_idle = state
         .active_operations
         .lock()
         .is_ok_and(|operations| operations.is_empty())
-        || !state
-            .terminals
-            .lock()
-            .is_ok_and(|terminals| terminals.is_empty())
-    {
-        return false;
-    }
-    state.repositories.lock().is_ok_and(|repositories| {
-        repositories
-            .values()
-            .all(|repository| repository.operation.try_lock().is_ok())
-    })
+        && state.repositories.lock().is_ok_and(|repositories| {
+            repositories
+                .values()
+                .all(|repository| repository.operation.try_lock().is_ok())
+        });
+    (!git_idle).then_some(GIT_BLOCKER)
 }
+
+fn native_idle(app: &AppHandle) -> bool {
+    native_activity_blocker(app).is_none()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallReadiness {
+    NotReady,
+    Blocked(&'static str),
+    Ready,
+}
+
+fn install_readiness(
+    runtime: &Runtime,
+    format_blocker: Option<&'static str>,
+    activity_blocker: Option<&'static str>,
+) -> InstallReadiness {
+    let model = &runtime.model;
+    if !model.configured
+        || !model.verified
+        || runtime.bytes.is_none()
+        || !matches!(model.phase, UpdatePhase::Ready | UpdatePhase::Refused)
+    {
+        return InstallReadiness::NotReady;
+    }
+    if runtime.storage_error.is_some() {
+        return InstallReadiness::Blocked("Resolve the updater storage error before installing.");
+    }
+    if model.preferences.attempt.is_some() {
+        return InstallReadiness::Blocked("Inspect the earlier installation before retrying.");
+    }
+    format_blocker
+        .or(activity_blocker)
+        .map_or(InstallReadiness::Ready, InstallReadiness::Blocked)
+}
+
 fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
-    let idle = native_idle(app);
+    let activity_blocker = native_activity_blocker(app);
     let format = installer::format();
-    let install_blocker = installer::install_blocker(format);
+    let format_blocker = installer::install_blocker(format);
     with_runtime(app, |runtime| {
         let model = &runtime.model;
+        let readiness = install_readiness(runtime, format_blocker, activity_blocker);
         Ok(ApplicationUpdateStatus {
             revision: runtime.revision,
             phase: model.phase,
@@ -194,12 +243,12 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             verified: model.verified,
             downloaded_bytes: runtime.downloaded,
             total_bytes: runtime.total,
-            message: if model.phase == UpdatePhase::Ready && model.verified {
-                install_blocker.map_or_else(|| runtime.message.clone(), str::to_owned)
-            } else {
-                runtime.message.clone()
-            },
+            message: runtime.message.clone(),
             storage_error: runtime.storage_error.clone(),
+            install_blocker: match readiness {
+                InstallReadiness::Blocked(reason) => Some(reason.to_owned()),
+                _ => None,
+            },
             can_check: model.configured
                 && !model.busy()
                 && model.preferences.attempt.is_none()
@@ -207,14 +256,7 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             can_download: model.configured
                 && matches!(model.phase, UpdatePhase::Available | UpdatePhase::Failed)
                 && model.offer.is_some(),
-            can_install: model.configured
-                && idle
-                && install_blocker.is_none()
-                && model.verified
-                && runtime.bytes.is_some()
-                && runtime.storage_error.is_none()
-                && matches!(model.phase, UpdatePhase::Ready | UpdatePhase::Refused)
-                && model.preferences.attempt.is_none(),
+            can_install: readiness == InstallReadiness::Ready,
             can_inspect: !model.busy() && model.preferences.attempt.is_some(),
         })
     })

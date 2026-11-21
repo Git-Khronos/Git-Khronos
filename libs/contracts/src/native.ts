@@ -35,7 +35,7 @@ terminalOutput: "terminal-output"
 
 export type AppError = { kind: string; message: string; hint: string | null }
 export type ApplicationUpdateChanged = { state: ApplicationUpdateStatus }
-export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
+export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; installBlocker?: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; tracking: string | null }

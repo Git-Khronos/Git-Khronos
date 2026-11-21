@@ -22,6 +22,9 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
           </dl>
           <p class="feedback" role="status">@if (updates.statusError()) { <strong>Last known status: </strong> }{{ state.message }}</p>
           @if (state.verified) { <p class="verified">Package signature and signed version verified</p> }
+          @if (state.installBlocker && !updates.statusError()) {
+            <p id="application-update-install-blocker" class="help" role="status">{{ state.installBlocker }}</p>
+          }
           @if (state.phase === 'downloading') {
             <p role="status">Downloaded {{ megabytes(state.downloadedBytes) }} MB@if (state.totalBytes !== null) { of {{ megabytes(state.totalBytes) }} MB }</p>
             <progress aria-label="Update download" [attr.value]="state.totalBytes === null ? null : state.downloadedBytes" [attr.max]="state.totalBytes ?? null"></progress>
@@ -41,7 +44,9 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
               <button type="button" [disabled]="!state.canCheck || !!updates.statusError() || updates.actionPending()" (click)="check(target)">Check for updates</button>
               @if (state.offerId) {
                 <button type="button" [disabled]="!state.canDownload || !!updates.statusError() || updates.actionPending()" (click)="download(target, state)">Download and verify</button>
-                <button class="primary" type="button" [disabled]="!state.canInstall || !!updates.statusError() || updates.actionPending()" (click)="install(target, state)">Install verified update</button>
+                <button class="primary" type="button" [disabled]="!state.canInstall || !!updates.statusError() || updates.actionPending()"
+                  [attr.aria-describedby]="state.installBlocker && !updates.statusError() ? 'application-update-install-blocker' : null"
+                  (click)="install(target, state)">Install verified update</button>
               }
               @if (state.canInspect) { <button type="button" [disabled]="updates.actionPending()" (click)="inspect(target)">Inspect installation</button> }
             }

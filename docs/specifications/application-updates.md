@@ -103,6 +103,10 @@ it does not install anything or enable automatic updates. If a refresh fails
 after a known status, the dialog labels it as last known and blocks new checks,
 downloads, installations and opt-in until a valid native reply or event arrives.
 The user can still turn off a previously confirmed automatic preference.
+For a verified package that cannot be installed yet, native status explains
+the current blocker separately from the earlier outcome: open editors, diff
+or merge tools, terminal sessions, Git work, or unavailable system package
+authorization. The button stays disabled until native readiness changes.
 An older read or action reply cannot override a newer valid native event at the
 same revision. Native activity can change whether installation is available
 without incrementing the update model's revision, so a newly started poll can
