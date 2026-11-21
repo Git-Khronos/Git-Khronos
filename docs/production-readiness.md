@@ -7,6 +7,15 @@ artifacts, not checked-in or published reports.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
+The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
+installed keyboard/setup checks on both Ubuntu 24.04 (Git 2.43) and Debian 12
+(Git 2.39.5). The renamed-file fixture now reports +1/−1 instead of the
+previous package's +4/−0. Debian 12 also passed the worktree (23) and updater
+(21) checks on the same bytes. Package SHA-256:
+`8bbab05106e6195e2ec43e4ff9d0062d5bfe64ab5752a3747690d322947248aa`.
+The next candidate includes the same-status refresh fix and an installed
+external-edit test; these earlier package results do not qualify that fix.
+
 The next candidate, `d2b57e7`, includes the saved-tab restoration fix.
 Its Jammy-built package SHA-256 is
 `13611be47d0e628ea24b3d83b5de144c669a80bbac549adc821ef8e42a6f3bcc`.
@@ -37,6 +46,17 @@ The stricter release preflight accepted the report, matching the installed
 executable and desktop entry hashes and running version to the ABI-checked
 package. That check is not an asset signature, a live updater installation, or
 hosted CI approval. This candidate predates the saved-tab restoration fix.
+
+### Production bundle checkpoint
+
+At `a6838ee`, the production renderer build and the production-content check
+passed. Initial assets total **1,393,278 bytes**: 56,722 bytes below the error
+limit, but 493,278 above the 900 kB warning limit. This build did not emit a
+component stylesheet budget warning. No limits were raised. The build's
+esbuild metadata identifies the root application component as the largest
+initial contributor; the next size-reduction work should defer more of its
+non-startup UI rather than tune the budget. The sizing evidence is local at
+`target/local-review/live-recap-bundle/`.
 
 ## Hosted form-binding mock contract correction — 2026-11-20
 
