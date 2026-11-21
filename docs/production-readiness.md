@@ -2875,3 +2875,18 @@ The verification receipt is under
 The digest-checked handoff and no-install APT preview are under
 `target/local-review/qualified-0.1.6-998c238/`. Neither this matrix nor
 the preview qualifies a production-signed build or later source changes.
+
+## Installed stash preview responsiveness — 2026-11-21
+
+The old installed package could not answer updater status while Git
+held a stash read. The `5205efb` package answered updater status while
+both stash detail and per-file preview were still held. After release,
+both returned the saved text without restoring files or changing the
+checkout. The same package repeated all four comparison responsiveness
+checks successfully.
+
+Positive installer SHA-256:
+`0b111eb890b2ed57470ad9a24b357788f957640ec9261a1cd67ebe933c88e376`.
+Reports: `target/local-review/stash-native-background.ZBmUqIg7/red/`
+and `target/local-review/updater/jammy-builder/stash-responsive-release.GyP3TSHc/focused/`.
+These are focused installed checks, not a release matrix.
