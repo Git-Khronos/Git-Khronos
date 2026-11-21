@@ -543,54 +543,25 @@
         <div class="toolbar-overflow-control" (click)="$event.stopPropagation()">
           <button class="tool-button" type="button" title="More repository actions" aria-label="More repository actions" aria-haspopup="menu" [attr.aria-controls]="moreActionsMenuOpen() ? 'compact-repository-actions-menu' : null" [attr.aria-expanded]="moreActionsMenuOpen()" (click)="toggleMoreActionsMenu($event)"><span><gc-icon name="more" /></span><small>More</small></button>
           @if (moreActionsMenuOpen()) {
-            <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon name="branch" [size]="14" />
-                <span>
-                  <small>{{ repo.name }}</small>
-                  <strong [title]="'Current branch: ' + (checkoutDisplayName())">{{ checkoutDisplayName() }}</strong>
-                </span>
-                <b [title]="currentRemote() && currentRemoteBranch() ? 'Pull and push: ' + currentRemote()!.name + '/' + currentRemoteBranch() : 'No pull and push remote selected'">{{ currentRemote() && currentRemoteBranch() ? currentRemote()!.name + '/' + currentRemoteBranch() : 'No remote' }}</b>
-              </header>
-              <div class="menu-caption compact-menu-caption toolbar-branch-overflow" role="separator" aria-label="Branch navigation">Branch navigation</div>
-              <button class="toolbar-branch-overflow" type="button" role="menuitem" (click)="openCompactBranchSwitcher($event)"><gc-icon name="branch" [size]="13" /><span><strong>Switch branch…</strong><small>Current: {{ checkoutDisplayName() }}</small></span></button>
-              @if (toolbarRemotes().length) {
-                <div class="menu-caption toolbar-remote-overflow">Pull and push remote</div>
-                @for (remote of toolbarRemotes(); track remote.name) {
-                  <button class="toolbar-remote-overflow" type="button" role="menuitemradio" [attr.aria-checked]="remote.name === currentRemote()?.name" (click)="toolbarOverlays.close('moreActions'); selectToolbarRemote(remote.name)">
-                    <gc-icon [name]="remoteIcon(remote.name)" [size]="13" />
-                    <span>
-                      <strong>{{ remote.name }}</strong>
-                      <small>{{ remote.name === currentRemote()?.name ? 'Current pull and push remote' : 'Use for pull and push' }}</small>
-                    </span>
-                    @if (remote.name === currentRemote()?.name) { <gc-icon class="menu-item-check" name="check" [size]="11" /> }
-                  </button>
-                }
-                <div class="menu-separator toolbar-remote-overflow"></div>
+            @let model = compactRepositoryActionsView();
+            @if (model) {
+              @defer (on immediate) {
+                <div gcCompactRepositoryActions id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu"
+                     role="menu" aria-label="More repository actions" [view]="model"
+                     (activate)="runCompactRepositoryAction($event, model)" (ready)="compactRepositoryActionsReady($event)"
+                     (keydown)="handleToolbarActionMenuKeydown($event)"></div>
+              } @loading {
+                <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
+                  <p class="toolbar-menu-note" role="status">Loading repository actions…</p>
+                  <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Cancel</button>
+                </div>
+              } @error {
+                <div id="compact-repository-actions-menu" class="toolbar-menu compact-action-menu" role="menu" aria-label="More repository actions" (keydown)="handleToolbarActionMenuKeydown($event)">
+                  <p class="toolbar-menu-note" role="alert">Repository actions could not load. Restart Git Khronos before retrying.</p>
+                  <button #compactRepositoryActionsFallback type="button" role="menuitem" (click)="dismissCompactRepositoryActions()">Close</button>
+                </div>
               }
-              <div class="menu-caption compact-menu-caption toolbar-repository-overflow" role="separator" aria-label="Repository tools">Repository tools</div>
-              <button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Update remote branches without changing local work</small></span></button>
-              <button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()" [disabled]="git.busy()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
-              <button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="terminalOpen() && terminalRepositoryId() === repo.id" (click)="toolbarOverlays.close('moreActions'); toggleTerminal()"><gc-icon name="terminal" [size]="13" /><span><strong>{{ terminalOpen() && terminalRepositoryId() === repo.id ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ alternateShortcutKey }} T / {{ primaryShortcutKey }} `</small></span></button>
-              <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Operation history">Operation history</div>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.undoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.undo()"><gc-icon name="undo" [size]="13" /><span><strong>{{ git.undoLabel() ?? 'Undo' }}</strong><small>Reverse the last supported action</small></span><kbd>{{ undoShortcut }}</kbd></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!git.redoLabel() || git.busy()" (click)="toolbarOverlays.close('moreActions'); git.redo()"><gc-icon name="redo" [size]="13" /><span><strong>{{ git.redoLabel() ?? 'Redo' }}</strong><small>Repeat the action just undone</small></span><kbd>{{ redoShortcut }}</kbd></button>
-              <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Working directory">Working directory</div>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
-              <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
-              @if (repo.lfs.enabled) {
-                <div class="menu-separator toolbar-secondary-overflow"></div>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
-                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage…</strong><small>Review unreferenced local objects</small></span></button>
-              }
-              @if (repo.sparseCheckout.enabled) {
-                <div class="menu-separator toolbar-secondary-overflow"></div>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); openSparseCheckoutPreferences()" [disabled]="git.busy()"><gc-icon name="edit" [size]="13" /><span><strong>Edit sparse checkout</strong><small>Choose working-tree directories</small></span></button>
-                <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); reapplySparseCheckout()" [disabled]="git.busy()"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured selection</small></span></button>
-                <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="toolbarOverlays.close('moreActions'); requestSparseCheckoutDisable()" [disabled]="git.busy()"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout…</strong><small>Restore every tracked file</small></span></button>
-              }
-            </div>
+            }
           }
         </div>
         <div class="toolbar-divider action-group-divider" aria-hidden="true"></div>

@@ -1,0 +1,14 @@
+@media (max-width: 1180px) {
+  :host > button.toolbar-secondary-overflow { display: grid; }
+  :host > .menu-caption.toolbar-secondary-overflow, :host > .menu-separator.toolbar-secondary-overflow { display: block; }
+}
+@media (max-width: 900px) {
+  :host > .menu-caption.toolbar-repository-overflow { display: block; }
+  :host > button.toolbar-fetch-options-overflow,
+  :host > button.toolbar-terminal-overflow { display: grid; }
+}
+@media (max-width: 650px) {
+  :host > button.toolbar-remote-overflow, :host > button.toolbar-branch-overflow { display: grid; }
+  :host > .menu-caption.toolbar-branch-overflow, :host > .menu-caption.toolbar-remote-overflow,
+  :host > .menu-separator.toolbar-remote-overflow { display: block; }
+}

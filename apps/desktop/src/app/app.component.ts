@@ -5,6 +5,7 @@ import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-e
 import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
+import { CompactRepositoryActionsComponent, type CompactRepositoryAction, type CompactRepositoryActionsView } from './compact-repository-actions.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
 import { StashActionMenuComponent, type StashMenuAction } from './stash-action-menu.component';
 import { RepositoryTabMenuContentComponent, type RepositoryTabMenuAction, type RepositoryTabMenuView } from './repository-tab-menu-content.component';
@@ -681,7 +682,7 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -1541,6 +1542,29 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly lfsMenuOpen = this.toolbarOverlays.isOpen('lfs');
   protected readonly sparseCheckoutMenuOpen = this.toolbarOverlays.isOpen('sparseCheckout');
   protected readonly moreActionsMenuOpen = this.toolbarOverlays.isOpen('moreActions');
+  protected readonly compactRepositoryActionsView = computed<CompactRepositoryActionsView | null>(() => {
+    const repo = this.git.repository();
+    if (!repo) return null;
+    const remote = this.currentRemote();
+    const branch = this.currentRemoteBranch();
+    const remotes = this.toolbarRemotes();
+    const busy = this.git.busy();
+    return {
+      repositoryId: repo.id, repositoryPath: repo.path, repositoryName: repo.name,
+      branchName: this.checkoutDisplayName(),
+      selectedRemote: remote?.name ?? null,
+      remoteTarget: remote && branch ? remote.name + '/' + branch : null,
+      remotes: remotes.map(({ name }) => ({ name, icon: this.remoteIcon(name) })),
+      busy, fetchDisabled: busy || this.git.backgroundFetchBusy() || !remotes.length,
+      terminalShown: this.terminalOpen() && this.terminalRepositoryId() === repo.id,
+      undoLabel: this.git.undoLabel(), redoLabel: this.git.redoLabel(),
+      undoShortcut: this.undoShortcut, redoShortcut: this.redoShortcut,
+      primaryShortcut: this.primaryShortcutKey, alternateShortcut: this.alternateShortcutKey,
+      hasChanges: !!repo.status.entryCount, hasStashes: !!repo.stashes.length,
+      lfsEnabled: repo.lfs.enabled, lfsAvailable: repo.lfs.available,
+      sparseEnabled: repo.sparseCheckout.enabled,
+    };
+  });
   protected readonly workingTreeOptionsOpen = signal(false);
   protected readonly pullStrategy = signal<PullStrategy>(this.readPullStrategy());
   protected readonly pullStrategyChoices = PULL_STRATEGY_CHOICES;
@@ -11342,14 +11366,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.commandPaletteOpen.set(true);
   }
 
-  protected openCompactBranchSwitcher(event: MouseEvent): void {
-    const opener = (event.currentTarget as HTMLElement)
-      .closest('.toolbar-overflow-control')
-      ?.querySelector<HTMLElement>(':scope > .tool-button') ?? null;
-    this.toolbarOverlays.close('moreActions');
-    this.openCommandPalette('', 'branches', opener);
-  }
-
   protected closeCommandPalette(): void {
     const opener = this.commandPaletteOpener;
     this.commandPaletteOpen.set(false);
@@ -11708,8 +11724,55 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleMoreActionsMenu(event: MouseEvent): void {
     event.stopPropagation();
-    const open = this.toolbarOverlays.toggle({ kind: 'moreActions' }, event.currentTarget as HTMLElement);
-    this.prepareToolbarMenu(event, '.compact-action-menu', open);
+    this.toolbarOverlays.toggle({ kind: 'moreActions' }, event.currentTarget as HTMLElement);
+  }
+
+  private readonly compactRepositoryActionsFallback = viewChild<ElementRef<HTMLButtonElement>>('compactRepositoryActionsFallback');
+  private readonly compactRepositoryActionsFallbackFocus = afterRenderEffect(() => {
+    const fallback = this.compactRepositoryActionsFallback()?.nativeElement;
+    const overlay = this.toolbarOverlays.activeOverlay();
+    if (fallback && overlay?.kind === 'moreActions'
+      && (document.activeElement === document.body || document.activeElement === overlay.returnFocus)) {
+      fallback.focus({ preventScroll: true });
+    }
+  });
+
+  protected compactRepositoryActionsReady(menu: HTMLElement): void {
+    const overlay = this.toolbarOverlays.activeOverlay();
+    if (overlay?.kind !== 'moreActions' || !menu.isConnected) return;
+    const active = document.activeElement;
+    if (active === document.body || active === overlay.returnFocus || menu.contains(active)) {
+      this.visibleToolbarMenuItems(menu)[0]?.focus();
+    }
+  }
+
+  protected dismissCompactRepositoryActions(): void {
+    this.toolbarOverlays.close('moreActions', true);
+  }
+
+  protected runCompactRepositoryAction(action: CompactRepositoryAction, view: CompactRepositoryActionsView): void {
+    const overlay = this.toolbarOverlays.activeOverlay();
+    const repo = this.git.repository();
+    if (overlay?.kind !== 'moreActions' || repo?.id !== view.repositoryId || repo.path !== view.repositoryPath) return;
+    // These reviews own the current opener and close the menu themselves.
+    if (action === 'fetchOptions') { this.openFetchOptionsFromToolbar(); return; }
+    if (action === 'stashOptions') { this.openStashOptionsFromToolbar(); return; }
+    this.toolbarOverlays.close('moreActions');
+    if (typeof action !== 'string') { this.selectToolbarRemote(action.remote); return; }
+    switch (action) {
+      case 'switchBranch': this.openCommandPalette('', 'branches', overlay.returnFocus); break;
+      case 'fetchAll': void this.runAutoFetchNow(); break;
+      case 'terminal': this.toggleTerminal(); break;
+      case 'undo': void this.git.undo(); break;
+      case 'redo': void this.git.redo(); break;
+      case 'stashAll': void this.stashCurrentChanges(); break;
+      case 'popStash': void this.git.popStash(repo.stashes[0], repo.id); break;
+      case 'pullLfs': void this.pullLfsObjects(); break;
+      case 'pruneLfs': this.requestLfsPrune(); break;
+      case 'editSparse': this.openSparseCheckoutPreferences(); break;
+      case 'reapplySparse': void this.reapplySparseCheckout(); break;
+      case 'disableSparse': this.requestSparseCheckoutDisable(); break;
+    }
   }
 
   protected handleToolbarActionMenuKeydown(event: KeyboardEvent): void {

@@ -679,17 +679,12 @@
 @media (max-width: 1180px) {
   .toolbar-secondary-direct { display: none; }
   .toolbar-overflow-control { display: block; }
-  .compact-action-menu > button.toolbar-secondary-overflow { display: grid; }
-  .compact-action-menu > .menu-caption.toolbar-secondary-overflow, .compact-action-menu > .menu-separator.toolbar-secondary-overflow { display: block; }
   .history-actions, .history-divider { display: none; }
 }
 @media (max-width: 900px) {
   .toolbar-primary-fetch .split-toggle { display: none; }
   .toolbar-primary-fetch .split-main { width: 49px; border-radius: 4px; }
   .toolbar-terminal-direct { display: none; }
-  .compact-action-menu > .menu-caption.toolbar-repository-overflow { display: block; }
-  .compact-action-menu > button.toolbar-fetch-options-overflow,
-  .compact-action-menu > button.toolbar-terminal-overflow { display: grid; }
 }
 @media (max-width: 700px) {
   .toolbar-actions .tool-button { width: 49px; }
@@ -700,9 +695,6 @@
   .toolbar-actions { grid-column: 1; }
   .toolbar-utilities { grid-column: 2; }
   .graph-search { width: min(180px, 42vw); }
-  .compact-action-menu > button.toolbar-remote-overflow, .compact-action-menu > button.toolbar-branch-overflow { display: grid; }
-  .compact-action-menu > .menu-caption.toolbar-branch-overflow, .compact-action-menu > .menu-caption.toolbar-remote-overflow,
-  .compact-action-menu > .menu-separator.toolbar-remote-overflow { display: block; }
 }
 @media (max-width: 520px) {
   .toolbar .tool-button small { display: none; }
