@@ -279,6 +279,8 @@ the unsubmitted text. Closing the checkout abandons both drafts.
 `commit-policy.spec.ts` covers delayed commit completion, tab switches,
 and reuse of a closed tab's repository ID.
 
+### Selected commit references
+
 The selected commit's reference strip is loaded on demand. The inspector
 keeps rendering commit text and files while that module is pending or
 unavailable. The parent retains ownership of actions, selection, and the

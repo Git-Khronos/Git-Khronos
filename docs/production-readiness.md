@@ -2924,3 +2924,16 @@ Installer SHA-256:
 `8f3f66df77f58620a563f5ccec94d280a41a133a94503f04d7ec60f066beb6fc`.
 Reports: `target/local-review/ignore-native-background.OVR8hj36/red/`
 and `target/local-review/updater/jammy-builder/ignore-responsive-release.6LNEj7Br/harness-recheck.ssXwPF6Q/`.
+
+## Defer selected commit references — 2026-11-21
+
+Production Nx builds of `5b3856a` and `a87b747` used the same compiler
+settings and independent archived sources. Raw initial renderer size fell
+from 1,340,309 to 1,326,106 bytes (14,203 bytes saved). The selected commit
+reference strip appears only in an 18,032-byte deferred chunk, not in the
+initial asset list. The warning threshold stays 900,000 bytes and is still
+exceeded by 426,106 bytes. The hard budget, dependencies and native binary
+were not changed by this UI refactor.
+
+Build receipts, `initial-renderer.json` and emitted asset attribution are
+under `target/local-review/startup-profile.jfFlmEyE/`.
