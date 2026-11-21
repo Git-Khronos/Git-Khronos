@@ -3064,6 +3064,24 @@ gzip bytes and 102 fewer Brotli bytes. The 900 kB initial warning remains.
 All 21 focused browser cases passed. See `pull-menu-*` under the startup
 profile receipts directory.
 
+### Deferred compact repository actions
+
+Moving the compact More menu's presentation and responsive item styles
+out of the initial renderer reduced raw startup bytes from 1,309,852 to
+1,303,726 (−6,126 JavaScript bytes, initial CSS unchanged). Initial gzip
+and Brotli encodings fell by 701 and 418 bytes. The first use loads an
+optional 9,481-byte JS chunk and 633-byte stylesheet. Five alternating
+fresh Chromium pages at 780 px against local production builds measured
+a median of 19 ms → 48 ms from the click to the first ready action; the
+slowest candidate sample was 105 ms. These local samples describe the
+first-open trade-off, not installed WebKit or machine-wide latency.
+The overlay remains dismissible if the chunk is delayed or fails.
+
+All 29 focused Chromium cases passed, including held and failed chunk
+delivery and narrow toolbar actions. Exact build, timing samples, and
+browser receipts are under `compact-toolbar-*` in the startup profile.
+The 900 kB bundle warning remains.
+
 ### Cancellable Git process latency
 
 The process coordinator now wakes when both output readers finish instead

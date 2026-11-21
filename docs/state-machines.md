@@ -254,6 +254,12 @@ anchors focus on the opener before the browser performs native sequential
 navigation. Closing a menu must not send keyboard focus to the page start
 or through detached menu items.
 
+The compact More menu defers its presentation and responsive item styles.
+The root retains the opener, loading and failure dismissal, and dispatch.
+The deferred presenter receives a read-only view and emits an action; the
+root checks the current repository scope before executing it. A late chunk
+does not reopen the menu or take focus away from another control.
+
 ### Upstream status actions versus toolbar sync
 
 The ahead/behind status badges compare the checkout with its configured
