@@ -210,6 +210,17 @@ untracked selection adds the rule without requesting an index change;
 confirming a tracked selection can untrack only the selected file.
 `diff-action-lifecycle.spec.ts` covers both scopes and dispatch arguments.
 
+### Commit followed by push
+
+The composer retains the selected remote, its displayed push URL, and
+the target branch when it starts a commit (or stage-and-commit).
+After staging, a mismatch leaves the staged changes for explicit review.
+After committing, a mismatch keeps the local commit but skips the push.
+The user can review the new destination and push explicitly. This check
+covers the renderer's selected destination and latest accepted repository
+snapshot; it is not a lock against external Git configuration changes.
+`commit-policy.spec.ts` covers both phases and the unchanged destination.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a

@@ -26,12 +26,19 @@ async function setup(page: Page, staged: number): Promise<void> {
         if (fixture.diagnostic) return Promise.reject(fixture.diagnostic);
         if (fixture.invalidIdentity) return Promise.reject({ kind: 'invalidCommitIdentity', message: 'Enter a nonempty name and an explicit email for each enabled commit identity override. Repository configuration is not changed.' });
         if (fixture.fail) return Promise.reject({ kind: 'gitFailure', message: 'Commit hook refused the message. Correct it and retry; staged contents are preserved.' });
-        const snapshot = { ...git.repository(), headOid: 'e'.repeat(40),
-          status: { ...git.repository().status, staged: 0 } };
-        if (fixture.hold) return new Promise(resolve => { fixture.finish = () => resolve(snapshot); });
+        const headOid = 'e'.repeat(40);
+        const repository = git.repository();
+        const snapshot = { ...repository, headOid,
+          branches: repository.branches.map((branch: any) => branch.current ? { ...branch, oid: headOid } : branch),
+          status: { ...repository.status, staged: 0 } };
+        if (fixture.hold) return new Promise(resolve => {
+          fixture.finish = (pushUrl?: string) => resolve(pushUrl ? { ...snapshot,
+            remotes: snapshot.remotes.map((remote: any) => remote.name === 'origin' ? { ...remote, pushUrl } : remote),
+          } : snapshot);
+        });
         return Promise.resolve(snapshot);
       }
-      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
+      if (['push_repository', 'refresh_repository', 'refresh_repository_metadata'].includes(command)) return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
       return Promise.reject(new Error(`Unexpected ${command}`));
     } };
@@ -408,6 +415,50 @@ test('late commit completion never clears another repository draft or pushes its
   await page.locator('[data-repository-tab-id]').first().click();
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
 });
+
+for (const change of ['during staging', 'during commit', 'with a changed push URL', 'unchanged'] as const) {
+  test(`commit and push respects the selected destination ${change}`, async ({ page }) => {
+    await setup(page, 1);
+    const summary = page.getByLabel('Commit summary', { exact: true });
+    await summary.fill('Originally selected push destination');
+    await page.getByLabel('Push after committing', { exact: true }).check();
+    await page.evaluate(change => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const fixture = (window as any).__commitPolicy;
+      git.repositories.update((items: any[]) => items.map(item => ({ ...item, remotes: [
+        ...item.remotes, { name: 'alternate', fetchUrl: '/owned/alternate', pushUrl: '/owned/alternate' },
+      ] })));
+      if (change === 'during staging') fixture.holdStage = true;
+      else fixture.hold = true;
+    }, change);
+    if (change === 'during staging') await page.keyboard.press('Control+Shift+Enter');
+    else await page.locator('.commit-form button[type=submit]').click();
+    const finish = change === 'during staging' ? 'finishStage' : 'finish';
+    await expect.poll(() => page.evaluate(finish => typeof (window as any).__commitPolicy[finish], finish)).toBe('function');
+    if (change === 'during staging' || change === 'during commit') {
+      await page.getByRole('button', { name: /^Select remote, current origin/ }).click();
+      await page.getByRole('menuitemradio', { name: /alternate/ }).click();
+      await expect(page.getByRole('button', { name: /^Select remote, current alternate/ })).toBeVisible();
+    }
+    await page.evaluate(({ finish, change }) => (window as any).__commitPolicy[finish](
+      change === 'with a changed push URL' ? '/owned/changed-origin' : undefined,
+    ), { finish, change });
+    if (change === 'unchanged') {
+      await expect.poll(() => page.evaluate(() => (window as any).__commitPolicy.calls
+        .filter((call: any) => call.command === 'push_repository').map((call: any) => call.args)))
+        .toEqual([expect.objectContaining({ remote: 'origin', branch: 'main' })]);
+      await expect(summary).toHaveValue('');
+    } else {
+      await expect(page.getByRole('alert')).toContainText(change === 'during staging'
+        ? 'Changes were staged, but the commit context changed' : 'Push was not started because the selected push destination changed');
+      await expect(summary).toHaveValue(change === 'during staging' ? 'Originally selected push destination' : '');
+      expect((await compoundCommands(page)).map((call: any) => call.command))
+        .toEqual([change === 'during staging' ? 'stage_all' : 'commit_changes']);
+      expect(await page.evaluate(() => (window as any).__commitPolicy.calls
+        .filter((call: any) => call.command === 'push_repository'))).toEqual([]);
+    }
+  });
+}
 
 for (const navigation of ['stay', 'switch tabs', 'return to the submitted text'] as const) {
   test(`late commit completion retains a newer draft when users ${navigation}`, async ({ page }) => {

@@ -7371,6 +7371,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const coAuthorDraftName = this.coAuthorName();
     const coAuthorDraftEmail = this.coAuthorEmail();
     const { message, pushAfter, options } = submission;
+    const pushTarget = pushAfter ? this.commitPushTarget() : null;
     const committed = await this.git.commit(message, {
       ...options,
       amend: !this.repositoryOperation().rebaseSplit && options.amend,
@@ -7391,9 +7392,23 @@ export class AppComponent implements OnInit, OnDestroy {
       this.applyCommitTemplate();
     }
     if (pushAfter) {
-      if (ownsTab && current.status.branch === repository.status.branch) this.pushCurrentBranch();
-      else this.git.error.set('The commit completed in the original checkout. Push was not started because the active checkout or branch changed. Review the original branch and push explicitly.');
+      if (!ownsTab || current.status.branch !== repository.status.branch) {
+        this.git.error.set('The commit completed in the original checkout. Push was not started because the active checkout or branch changed. Review the original branch and push explicitly.');
+      } else if (pushTarget !== this.commitPushTarget()) {
+        this.git.error.set('The commit completed. Push was not started because the selected push destination changed. Review the destination and push explicitly.');
+      } else {
+        this.pushCurrentBranch();
+      }
     }
+  }
+
+  private commitPushTarget(): string {
+    const remote = this.currentRemote();
+    const branch = this.git.repository()?.status.branch;
+    // An unborn branch can acquire its first ref during the commit. Use its
+    // local name as the fallback target when there is no tracking ref yet.
+    return JSON.stringify([remote?.name, remote?.pushUrl || remote?.fetchUrl,
+      remote ? this.currentRemoteBranch() ?? branch : null, this.currentBranch()?.upstream]);
   }
 
   protected updateStashMessage(message: string, repositoryId: string, repositoryPath: string): void {
@@ -7499,12 +7514,14 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const tab = this.commitTabLease();
     const submission = this.commitSubmission();
+    const pushTarget = submission.pushAfter ? this.commitPushTarget() : null;
     const staged = await this.git.stageAll();
     const current = this.git.repository();
     if (current?.id !== repository.id || current.path !== repository.path || this.commitTabLease() !== tab) return;
     if (!staged?.staged || current.status !== staged || current.status.conflicted) return;
     if (current.headOid !== repository.headOid || current.status.branch !== repository.status.branch
-      || !this.changesOpen() || this.commitSubmission() !== submission) {
+      || !this.changesOpen() || this.commitSubmission() !== submission
+      || (submission.pushAfter && pushTarget !== this.commitPushTarget())) {
       this.git.error.set('Changes were staged, but the commit context changed. Review the index and commit explicitly.');
       return;
     }
