@@ -190,6 +190,9 @@ using `--installed`. Before launching `/usr/bin/git-khronos`, the harness
 requires its SHA-256 to equal the package's extracted executable. Repositories,
 profile, Xvfb display and session bus remain private fixtures. Reports retain
 the package/executable hashes, actual executable path and runtime platform.
+On Debian 12, the incoming-link suite includes smoke and also verifies cold
+saved-tab restoration with the distribution's Git 2.39 and an inherited Git
+context. Acceptance is not limited to the newer Git used by the Jammy builder.
 The ordinary harness default still extracts the package without installing it.
 Python 3.11+ is required by the harness. Ubuntu jobs select Python 3.12 instead
 of assuming Jammy's system Python has `hashlib.file_digest`; Debian jobs install

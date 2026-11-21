@@ -1828,3 +1828,12 @@ recovery scenarios passed on the same artifact, including a different
 replacement PID and explicit recovery/save. Evidence is under
 `target/local-review/updater/jammy-builder/guarded-reads.e2R48c1/`.
 These focused reports do not establish the full hosted release gate.
+
+The same SHA-256 also passed the installed incoming-link (26) and GitLab
+catalogue (45) suites in an offline Debian 12 container using its stock
+Git 2.39.5 and glibc 2.36. The installed launcher and executable matched
+the package. This is separate from running the Git 2.39 binary on Ubuntu.
+Reports are in `bookworm-native/` under the same qualification directory.
+The Debian 12 workflow now runs the incoming-link suite in place of plain
+smoke (which it includes), so the cold-start regression is covered at the
+supported Git floor. Hosted execution of that workflow is still pending.

@@ -194,8 +194,17 @@ jobs:
           printf 'PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
       - name: Exercise the installed executable with isolated repositories and profile
         shell: bash
+        env:
+          DEBIAN_RELEASE: ${{ matrix.debian }}
         run: |
-          python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
+          if [[ "$DEBIAN_RELEASE" == 12 ]]; then
+            # Includes the normal smoke checks. Exercise cold saved-tab restore
+            # on the oldest supported Git family, not only on upgraded Jammy Git.
+            python3 tools/native_acceptance.py --suite incoming-links --inherited-git-environment \
+              --headless --installed --package "$PACKAGE"
+          else
+            python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
+          fi
           python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
       - uses: actions/upload-artifact@v4
         if: always()
