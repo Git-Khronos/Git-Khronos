@@ -23,7 +23,6 @@ import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import type { FileMediaSelection } from './file-media.component';
 import { DiffWorkspaceComponent } from './diff-workspace.component';
 import { CommitReferenceStripComponent } from './commit-reference-strip.component';
-import { GraphSettingsOptionsComponent } from './graph-settings-options.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
@@ -683,7 +682,7 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, GraphSettingsOptionsComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -775,15 +774,6 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   private readonly graphSettingsToggle = viewChild<ElementRef<HTMLButtonElement>>('graphSettingsToggle');
   private readonly graphSettingsPanel = viewChild<ElementRef<HTMLElement>>('graphSettingsPanel');
-  private readonly graphSettingsOptions = viewChild<GraphSettingsOptionsComponent>('graphSettingsOptions');
-  private readonly fitGraphSettingsOptions = afterRenderEffect(() => {
-    const panel = this.graphSettingsPanel()?.nativeElement;
-    const position = this.graphSettingsPosition();
-    if (!panel || !position || !this.graphSettingsOptions()) return;
-    // A contextual dialog can gain height after its deferred controls mount.
-    const fitted = this.fittedMenuPosition(panel, position);
-    if (fitted.x !== position.x || fitted.y !== position.y) this.graphSettingsPosition.set(fitted);
-  });
   private readonly graphColumns = viewChild<ElementRef<HTMLElement>>('graphColumns');
   private readonly actionMenuElement = viewChild<ElementRef<HTMLElement>>('actionMenuElement');
   private readonly stashMenuLoader = viewChild<ElementRef<HTMLElement>>('stashMenuLoader');
@@ -1858,6 +1848,7 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   protected readonly compactAuthorColumn = computed(() => isCompactAuthorColumn(this.renderedGraphColumnWidth('author')));
   protected readonly graphColumnIcons = GRAPH_COLUMN_ICONS;
+  protected readonly graphColumnLabels = GRAPH_COLUMN_LABELS;
   private readonly graphHeadingTitleWidths = signal<Partial<Record<GraphColumn, number>>>({});
   private readonly graphCellFontFamily = signal<string | null>(null);
   // Date / Time may never be narrower than its widest visible date or time line (plus 7px side padding).
@@ -9957,31 +9948,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.activeDiffHunk.set(index);
     this.afterDiffRender(() => this.scrollToDiffHunk(index));
   }
-
-  /** Graph settings controls do not own workspace layout or the popover. */
-  readonly graphSettingsView = {
-    compactGraphColumn: () => this.compactGraphColumn(),
-    fitGraphColumnToBranches: this.fitGraphColumnToBranches.bind(this),
-    graphColumnOrder: () => this.graphColumnOrder(),
-    graphColumnOrderIndex: this.graphColumnOrderIndex.bind(this),
-    graphColumnVisible: this.graphColumnVisible.bind(this),
-    graphHorizontalScroll: () => this.graphHorizontalScroll(),
-    graphMaximumWidth: () => this.graphMaximumWidth(),
-    graphRequiredLaneCount: () => this.graphRequiredLaneCount(),
-    moveGraphColumn: this.moveGraphColumn.bind(this),
-    restoreGraphDefaults: this.restoreGraphDefaults.bind(this),
-    setCheckpointVisibility: this.setCheckpointVisibility.bind(this),
-    setCompactGraphColumn: this.setCompactGraphColumn.bind(this),
-    setGraphColumn: this.setGraphColumn.bind(this),
-    setGraphHorizontalScroll: this.setGraphHorizontalScroll.bind(this),
-    setGraphScrollMarkers: this.setGraphScrollMarkers.bind(this),
-    setSmartBranchVisibility: this.setSmartBranchVisibility.bind(this),
-    showGraphScrollMarkers: () => this.showGraphScrollMarkers(),
-    smartBranchVisibility: () => this.smartBranchVisibility(),
-    checkpointsVisible: () => !!this.git.repository()?.showCheckpoints,
-    checkpointsBusy: () => this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating(),
-    graphColumnLabels: GRAPH_COLUMN_LABELS,
-  };
 
   /** Commit reference actions remain owned by the active workspace. */
   readonly commitReferenceStripView = {
