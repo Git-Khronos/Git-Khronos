@@ -64,6 +64,17 @@ workspace. Closing a tab revokes that pending path so an earlier read cannot
 reopen it. `repository-restoration.spec.ts` exercises durable tab intent,
 partial cache hits, deferred reordering, failures and late native replies.
 
+### Working-tree line recap freshness
+
+Porcelain status describes file states, not file contents. A successful
+standalone status refresh of the active dirty checkout advances a separate
+content revision even when the renderer can retain its existing status object.
+The recap binds that revision, repository ID, path and status to its one
+in-flight native read. It discards outdated results and coalesces new requests.
+Full snapshots already provide a fresh status input. Clean or hidden recaps
+do not start reads just because a refresh ran. `unstaged-summary.spec.ts`
+exercises unchanged-status updates and superseded counts.
+
 ### Source-bound branch, sparse-checkout and worktree-removal reviews
 
 Branch deletion/rebase and worktree removal requests capture the repository ID,

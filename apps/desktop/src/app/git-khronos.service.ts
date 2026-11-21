@@ -250,6 +250,8 @@ export class GitKhronosService {
   readonly browserPreview = computed(() => this.systemInfo()?.appVersion === 'browser preview');
   readonly repositories = signal<RepositorySnapshot[]>([]);
   readonly activeRepositoryId = signal<string | null>(null);
+  private readonly contentRevision = signal(0);
+  readonly workingTreeContentRevision = this.contentRevision.asReadonly();
   readonly workspaces = signal<RepositoryWorkspace[]>(this.readWorkspaces());
   readonly activeWorkspaceId = signal(this.readActiveWorkspaceId(this.workspaces()));
   readonly activeWorkspace = computed(() => this.workspaces().find(
@@ -824,7 +826,7 @@ export class GitKhronosService {
     try {
       const status = await ipc.refresh_repository_status({ repoId: repository.id });
       const currentRepository = this.repositories().find((candidate) => candidate.id === repository.id);
-      if (!currentRepository) return false;
+      if (!currentRepository || currentRepository.path !== repository.path) return false;
       // Preserve pending predictions and results from newer mutations.
       if (generation !== this.statusGeneration(repository.id)
         || this.pendingWorkingTreeMutations.has(repository.id)) return true;
@@ -848,6 +850,13 @@ export class GitKhronosService {
         }
       } else {
         this.storeStatus(repository.id, status);
+        // An external edit can change line counts without changing porcelain.
+        // Standalone focus/periodic reads invalidate the recap independently;
+        // a follow-up to a full snapshot already has a new status input.
+        if (refreshChangedBranch && this.activeRepositoryId() === repository.id
+            && (status.staged || status.unstaged || status.untracked)) {
+          this.contentRevision.update(revision => revision + 1);
+        }
       }
       return true;
     } catch {

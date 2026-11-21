@@ -5,7 +5,12 @@ import { GitKhronosService } from './git-khronos.service';
 type SummaryState = { phase: 'loading' | 'unavailable' | 'preview' } | { phase: 'ready'; value: WorkingTreeChangeSummary };
 const EMPTY: SummaryState = { phase: 'ready', value: { additions: 0, deletions: 0, uncountedFiles: 0, partial: false } };
 
-interface Request { repositoryId: string; repositoryPath: string; status: RepositoryStatus }
+interface Request {
+  repositoryId: string;
+  repositoryPath: string;
+  status: RepositoryStatus;
+  contentRevision: number;
+}
 
 @Component({
   selector: 'gc-working-tree-summary',
@@ -71,7 +76,10 @@ export class WorkingTreeSummariesDirective {
   constructor() {
     inject(DestroyRef).onDestroy(() => { this.destroyed = true; this.desired = null; });
     effect(() => {
-      const request = { repositoryId: this.repositoryId(), repositoryPath: this.repositoryPath(), status: this.status() };
+      const request = {
+        repositoryId: this.repositoryId(), repositoryPath: this.repositoryPath(),
+        status: this.status(), contentRevision: this.git.workingTreeContentRevision(),
+      };
       const busy = this.git.busy();
       const preview = this.git.browserPreview();
       const visible = this.visible();
@@ -93,7 +101,8 @@ export class WorkingTreeSummariesDirective {
     const repository = this.git.repository();
     return !this.destroyed && this.desired === request && !this.git.busy() && this.visible()
       && repository?.id === request.repositoryId && repository.path === request.repositoryPath
-      && repository.status === request.status && this.status() === request.status;
+      && repository.status === request.status && this.status() === request.status
+      && this.git.workingTreeContentRevision() === request.contentRevision;
   }
 
   private apply(request: Request, result?: WorkingTreeSummaries): void {

@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
     (window as any).__unstagedSummary = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       if (command === 'working_tree_change_summary') return new Promise((resolve, reject) => state.requests.push({ args, resolve, reject }));
-      if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
+      if (command === 'refresh_repository_status') return Promise.resolve(structuredClone(git.repository().status));
       return Promise.resolve(git.repository());
     } };
     state.refresh = () => git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
@@ -44,6 +44,46 @@ test('status bursts coalesce and an old result cannot replace current totals', a
   await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({ staged: null, unstaged: { additions: 5, deletions: 3, uncountedFiles: 0, partial: false } }));
   await expect(page.locator('.unstaged-section gc-working-tree-summary')).toContainText('+5');
   await expect(page.locator('.unstaged-section gc-working-tree-summary')).toContainText('−3');
+});
+
+test('a successful status poll refreshes line counts even when porcelain status is unchanged', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gc-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 2, deletions: 1, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap).toContainText('+2');
+
+  const statusIdentityPreserved = await page.evaluate(async () => {
+    const { git } = (window as any).__unstagedSummary;
+    const previous = git.repository().status;
+    await git.refreshStatusInBackground();
+    return git.repository().status === previous;
+  });
+  expect(statusIdentityPreserved).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: null, unstaged: { additions: 6, deletions: 2, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap).toContainText('+6');
+  await expect(recap).toContainText('−2');
+});
+
+test('unchanged status polls supersede an in-flight line count without starting concurrent reads', async ({ page }) => {
+  await page.evaluate(async () => {
+    const { git } = (window as any).__unstagedSummary;
+    await git.refreshStatusInBackground();
+    await git.refreshStatusInBackground();
+  });
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 999, deletions: 999, uncountedFiles: 0, partial: false },
+  }));
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await expect(page.locator('.unstaged-section gc-working-tree-summary')).not.toContainText('999');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: null, unstaged: { additions: 9, deletions: 3, uncountedFiles: 0, partial: false },
+  }));
+  await expect(page.locator('.unstaged-section gc-working-tree-summary')).toContainText('+9');
 });
 
 for (const change of ['repository', 'path']) {
