@@ -291,6 +291,10 @@ Pull integrates the parent commit and its recorded submodule revisions.
 It does not fetch into or check out nested repositories, even when Git's
 recursion settings are enabled. Users can review and update the submodule
 separately after Pull.
+Both configured and explicit Pull disable pruning for that invocation.
+Integration does not delete local tags or stale tracking refs as a side
+effect, even when pruning is configured. This does not disable normal tag
+following or change the configured fetch mappings.
 
 ### Remote branch rename and deletion
 
@@ -669,6 +673,24 @@ Installed `detached-checkout` covers cancellation, a stale branch at the
 same commit, and an explicit checkout with non-overlapping staged and
 working changes. Branch and tag refs must remain unchanged, including
 when they share a name.
+
+### Local branch merge and ignored files
+
+Local merge, squash and fast-forward request that Git preserve ignored files,
+and do not recurse into submodule working trees. Ordinary merge and squash
+also compare Git's prospective tree with the ignored checkout paths before
+starting: on some Git versions a divergent merge can overwrite ignored files
+despite the merge flag. The check includes rename destinations and paths that
+would replace a file with a directory or the reverse. It never updates the
+index or worktree but may write immutable objects to the local object store.
+If custom merge behavior, a promisor remote, or incomplete output prevents
+verification, the app refuses the operation when ignored files are present.
+
+The native command runs on a background worker using the existing repository
+mutation lock. It rechecks the reviewed receiver after the preflight and still
+integrates the exact reviewed source commit. These checks do not lock external
+Git clients or file edits between the preflight and Git startup. The
+ignored-file preflight does not apply to rebase or Pull integrations.
 
 ### Commit rewrite review ownership
 

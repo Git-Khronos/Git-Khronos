@@ -2019,6 +2019,266 @@ fn pull_strategy_overlapping_dirty_changes_are_preserved_without_automatic_stash
 }
 
 #[test]
+fn reviewed_merge_modes_refuse_an_ignored_local_file_collision() {
+    let mut overwritten = Vec::new();
+    for strategy in ["merge", "ff-only", "squash"] {
+        let repository = Repository::new();
+        let path = &repository.0;
+        run_mutation(path, &["switch", "-c", "source"], "create fixture source").unwrap();
+        fs::write(
+            path.join("settings.local"),
+            b"settings recorded on the source branch\n",
+        )
+        .unwrap();
+        stage_path(path, "settings.local").unwrap();
+        commit(path, "Record source settings").unwrap();
+        let source = repository.oid();
+        run_mutation(
+            path,
+            &["switch", "main"],
+            "return to receiving fixture branch",
+        )
+        .unwrap();
+        if strategy != "ff-only" {
+            run_mutation(
+                path,
+                &["commit", "--allow-empty", "-m", "Diverge the receiver"],
+                "diverge",
+            )
+            .unwrap();
+        }
+        let receiver = repository.oid();
+        let settings = path.join("settings.local");
+        fs::write(
+            path.join(".git/info/exclude"),
+            b"/settings.local\n/unrelated.local\n",
+        )
+        .unwrap();
+        fs::write(&settings, b"ignored settings to preserve\n").unwrap();
+        fs::write(path.join("unrelated.local"), b"unrelated ignored file\n").unwrap();
+        let before = run_git(path, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout;
+        let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+        let review = BranchIntegrationReview {
+            receiving_branch: "main".into(),
+            receiving_oid: receiver.clone(),
+            source_branch: "source".into(),
+            source_oid: source,
+        };
+        if integrate_branch_with_review(path, "source", strategy, Some(&review)).is_ok() {
+            overwritten.push(strategy);
+            continue;
+        }
+        assert_eq!(
+            fs::read(&settings).unwrap(),
+            b"ignored settings to preserve\n",
+            "{strategy}"
+        );
+        assert_eq!(repository.oid(), receiver);
+        assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+        assert_eq!(
+            run_git(path, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            before
+        );
+        assert!(!repository_operation_state(path).unwrap().merge);
+
+        // The same reviewed action works once the collision is removed.
+        fs::rename(&settings, path.join(".git/fixture-local-settings.saved")).unwrap();
+        integrate_branch_with_review(path, "source", strategy, Some(&review)).unwrap();
+        assert_eq!(
+            fs::read(&settings).unwrap(),
+            b"settings recorded on the source branch\n"
+        );
+        assert_eq!(
+            fs::read(path.join("unrelated.local")).unwrap(),
+            b"unrelated ignored file\n"
+        );
+    }
+    assert!(
+        overwritten.is_empty(),
+        "Ignored contents overwritten by {overwritten:?}"
+    );
+}
+
+#[test]
+fn reviewed_merge_guards_the_destination_of_a_directory_rename() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    fs::create_dir(path.join("old")).unwrap();
+    fs::write(path.join("old/base"), b"content present in both branches\n").unwrap();
+    stage_path(path, "old/base").unwrap();
+    commit(path, "Create shared directory").unwrap();
+    run_mutation(path, &["switch", "-c", "source"], "create fixture source").unwrap();
+    fs::write(
+        path.join("old/settings.local"),
+        b"incoming local settings\n",
+    )
+    .unwrap();
+    stage_path(path, "old/settings.local").unwrap();
+    commit(path, "Add file in old directory").unwrap();
+    let source = repository.oid();
+    run_mutation(path, &["switch", "main"], "switch receiver").unwrap();
+    run_mutation(path, &["mv", "old", "new"], "rename receiving directory").unwrap();
+    commit(path, "Rename directory independently").unwrap();
+    run_mutation(
+        path,
+        &["config", "merge.directoryRenames", "true"],
+        "enable directory rename",
+    )
+    .unwrap();
+    let receiver = repository.oid();
+    fs::write(path.join(".git/info/exclude"), b"/new/settings.local\n").unwrap();
+    fs::write(
+        path.join("new/settings.local"),
+        b"ignored rename destination\n",
+    )
+    .unwrap();
+    let review = BranchIntegrationReview {
+        receiving_branch: "main".into(),
+        receiving_oid: receiver.clone(),
+        source_branch: "source".into(),
+        source_oid: source,
+    };
+
+    run_mutation(
+        path,
+        &["config", "merge.custom.driver", "false"],
+        "configure a custom merge driver",
+    )
+    .unwrap();
+    let error = integrate_branch_with_review(path, "source", "merge", Some(&review)).unwrap_err();
+    assert_eq!(error.kind, "mergeIgnoredPathsUnverified");
+    assert_eq!(repository.oid(), receiver);
+    run_mutation(
+        path,
+        &["config", "--unset", "merge.custom.driver"],
+        "remove fixture-only custom driver",
+    )
+    .unwrap();
+
+    let error = integrate_branch_with_review(path, "source", "merge", Some(&review)).unwrap_err();
+
+    assert_eq!(error.kind, "mergeLocalPathObstruction");
+    assert!(error.message.contains("new/settings.local"));
+    assert_eq!(repository.oid(), receiver);
+    assert_eq!(
+        fs::read(path.join("new/settings.local")).unwrap(),
+        b"ignored rename destination\n"
+    );
+}
+
+#[test]
+fn pull_updates_the_branch_without_pruning_local_tags_or_stale_tracking_refs() {
+    let mut pruned = Vec::new();
+    for explicit in [false, true] {
+        let repository = Repository::new();
+        let path = &repository.0;
+        let base = repository.oid();
+        let remote = path.join(".git/receiver.git");
+        let url = remote.to_str().unwrap();
+        run_mutation(path, &["init", "--bare", url], "create owned remote").unwrap();
+        run_mutation(
+            path,
+            &["remote", "add", "origin", url],
+            "register owned remote",
+        )
+        .unwrap();
+        run_mutation(
+            path,
+            &["push", "--set-upstream", "origin", "main"],
+            "seed the upstream branch",
+        )
+        .unwrap();
+        run_mutation(
+            path,
+            &["update-ref", "refs/remotes/origin/removed", &base],
+            "seed retained tracking branch",
+        )
+        .unwrap();
+        run_mutation(
+            path,
+            &["tag", "-a", "local-only", "-m", "Unpublished local tag"],
+            "seed retained tag",
+        )
+        .unwrap();
+        run_mutation(
+            path,
+            &["switch", "-c", "publisher"],
+            "create fixture publisher",
+        )
+        .unwrap();
+        fs::write(path.join("incoming"), b"new upstream content\n").unwrap();
+        stage_path(path, "incoming").unwrap();
+        commit(path, "Advance upstream").unwrap();
+        let incoming = repository.oid();
+        run_mutation(
+            path,
+            &["push", url, "HEAD:refs/heads/main"],
+            "advance only the owned remote",
+        )
+        .unwrap();
+        run_mutation(path, &["switch", "main"], "return to the receiving branch").unwrap();
+        for key in [
+            "fetch.prune",
+            "remote.origin.prune",
+            "remote.origin.pruneTags",
+        ] {
+            run_mutation(
+                path,
+                &["config", key, "true"],
+                "enable pruning policy in fixture",
+            )
+            .unwrap();
+        }
+        let config = fs::read(path.join(".git/config")).unwrap();
+        let kept = |reference| {
+            run_git(path, &["rev-parse", "--verify", "--quiet", reference])
+                .unwrap()
+                .status
+                .success()
+        };
+        let checkout = PullCheckout {
+            head_oid: Some(base),
+            branch: Some("main".into()),
+        };
+        let (named_remote, branch) = if explicit {
+            (Some("origin"), Some("main"))
+        } else {
+            (None, None)
+        };
+        pull_for_checkout_cancellable(
+            path,
+            "ff-only",
+            named_remote,
+            branch,
+            &checkout,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        assert_eq!(repository.oid(), incoming);
+        assert_eq!(
+            fs::read(path.join("incoming")).unwrap(),
+            b"new upstream content\n"
+        );
+        if !kept("refs/remotes/origin/removed") || !kept("refs/tags/local-only") {
+            pruned.push(if explicit {
+                "explicit remote"
+            } else {
+                "configured upstream"
+            });
+        }
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+    }
+    assert!(
+        pruned.is_empty(),
+        "Pull pruned retained local refs with {pruned:?}"
+    );
+}
+
+#[test]
 fn local_checkout_never_recreates_a_deleted_branch_from_a_remote_tracking_ref() {
     let repository = Repository::new();
     let path = &repository.0;

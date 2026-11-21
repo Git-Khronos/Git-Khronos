@@ -1680,16 +1680,17 @@ fn delete_branch(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn integrate_branch(
+async fn integrate_branch(
     repo_id: String,
     name: String,
     strategy: String,
     review: Option<BranchIntegrationReview>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_integrate_branch(path, &name, &strategy, review.as_ref())
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]

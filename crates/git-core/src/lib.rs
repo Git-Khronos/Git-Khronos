@@ -190,6 +190,7 @@ pub use hosting_writes::{
     HostedMergeMethod, HostedReviewEvent, HostedWritePlan, HostedWriteReceipt, HostedWriteRequest,
     execute_hosted_write, prepare_hosted_write,
 };
+mod merge_checkout_guard;
 mod merge_preview;
 pub use merge_preview::{MergePreview, MergePreviewRequest, preview_merge};
 mod merge_rebase;
@@ -3629,6 +3630,21 @@ pub fn integrate_branch(path: &Path, name: &str, strategy: &str) -> Result<(), A
     integrate_branch_with_review(path, name, strategy, None)
 }
 
+fn ensure_review_receiving_checkout(
+    path: &Path,
+    receiving_ref: &str,
+    receiving_oid: &str,
+) -> Result<(), AppError> {
+    let head = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
+    if !head.status.success()
+        || String::from_utf8_lossy(&head.stdout).trim() != receiving_ref
+        || !reference_tip(path, "HEAD").is_some_and(|oid| oid.eq_ignore_ascii_case(receiving_oid))
+    {
+        return Err(integration_review_changed());
+    }
+    Ok(())
+}
+
 pub fn integrate_branch_with_review(
     path: &Path,
     name: &str,
@@ -3643,38 +3659,54 @@ pub fn integrate_branch_with_review(
             Some("Choose merge, fast-forward, squash, or rebase."),
         ));
     }
-    let operand = if let Some(review) = review {
+    let (operand, receiving) = if let Some(review) = review {
         if review.source_branch != name {
             return Err(integration_review_changed());
         }
         let (receiving_ref, source_tip) = validate_integration_review(path, review)?;
-        let head = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
-        if !head.status.success()
-            || String::from_utf8_lossy(&head.stdout).trim() != receiving_ref
-            || !reference_tip(path, "HEAD")
-                .is_some_and(|oid| oid.eq_ignore_ascii_case(&review.receiving_oid))
-        {
-            return Err(integration_review_changed());
-        }
+        ensure_review_receiving_checkout(path, &receiving_ref, &review.receiving_oid)?;
         // Git consumes the actual reviewed object, never a source ref that
         // could resolve differently between the check and process startup.
-        source_tip
+        (source_tip, Some((receiving_ref, review.receiving_oid.as_str())))
     } else {
-        local_branch_ref_and_tip(path, name)?.0
+        (local_branch_ref_and_tip(path, name)?.0, None)
     };
-    let message = format!("Merge branch '{name}'");
-    let args: &[&str] = match strategy {
-        "merge" if review.is_some() => &["merge", "--no-edit", "-m", &message, "--", &operand],
-        "merge" => &["merge", "--no-edit", "--", &operand],
-        "ff-only" => &["merge", "--ff-only", "--", &operand],
-        "squash" => &["merge", "--squash", "--", &operand],
+    if strategy == "rebase" {
         // A reviewed integration authorizes rewriting the receiving branch,
         // not any sibling refs that happen to point into the replayed range.
-        "rebase" if review.is_some() => &["-c", "rebase.updateRefs=false", "rebase", "--", &operand],
-        "rebase" => &["rebase", "--", &operand],
+        let args: &[&str] = if review.is_some() {
+            &["-c", "rebase.updateRefs=false", "rebase", "--", &operand]
+        } else {
+            &["rebase", "--", &operand]
+        };
+        return run_mutation(path, args, "integrate that branch");
+    }
+    if strategy != "ff-only" {
+        merge_checkout_guard::ensure_ignored_files_preserved(path, &operand)?;
+        if let Some((receiving_ref, receiving_oid)) = receiving {
+            ensure_review_receiving_checkout(path, &receiving_ref, receiving_oid)?;
+        }
+    }
+    let message = format!("Merge branch '{name}'");
+    let mut args = vec![
+        "-c",
+        "submodule.recurse=false",
+        "merge",
+        "--no-overwrite-ignore",
+    ];
+    match strategy {
+        "merge" => {
+            args.push("--no-edit");
+            if review.is_some() {
+                args.extend(["-m", &message]);
+            }
+        }
+        "ff-only" => args.push("--ff-only"),
+        "squash" => args.push("--squash"),
         _ => unreachable!(),
-    };
-    run_mutation(path, args, "integrate that branch")
+    }
+    args.extend(["--", &operand]);
+    run_mutation(path, &args, "integrate that branch")
 }
 
 pub fn continue_merge(path: &Path) -> Result<(), AppError> {
@@ -4884,7 +4916,9 @@ fn pull_from_remote_with_strategy_and_cancellation(
     let branch_ref;
     // Pull advances the superproject, including its recorded gitlinks, but
     // nested fetch/checkout is a separate, explicitly reviewed operation.
-    let mut args = vec!["pull", "--no-recurse-submodules"];
+    // Pull requests integration, not deletion of stale refs or local tags.
+    // Git forwards --no-prune to fetch, even over per-remote pruning settings.
+    let mut args = vec!["pull", "--no-recurse-submodules", "--no-prune"];
     args.extend(strategy_arguments);
     match (remote, branch) {
         (Some(remote), Some(branch)) => {

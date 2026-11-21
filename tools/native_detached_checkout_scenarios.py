@@ -19,6 +19,8 @@ def guarded_checkout_targets(driver, fixtures, report):
     fixtures.git(repository, 'commit', '-qm', 'Track settings on the target branch')
     target = fixtures.git(repository, 'rev-parse', 'HEAD')
     fixtures.git(repository, 'switch', 'main')
+    fixtures.git(repository, 'commit', '--allow-empty', '-qm', 'Diverge the receiving branch')
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
     (repository / '.git/info/exclude').write_text('/settings.local\n')
     settings.write_text('Ignored local settings must survive checkout.\n')
     assert fixtures.git(repository, 'check-ignore', 'settings.local') == 'settings.local'
@@ -42,6 +44,11 @@ def guarded_checkout_targets(driver, fixtures, report):
     refused('checkout_branch', 'gitFailure', name='tracks-settings', review=None)
     refused('checkout_commit', 'gitFailure', oid=target, expectedHeadOid=head, expectedBranch='main')
     report['scenarios'].append('native-branch-and-detached-checkout-preserve-an-ignored-local-file')
+    refused('integrate_branch', 'mergeLocalPathObstruction', name='tracks-settings', strategy='merge', review={
+        'receivingBranch': 'main', 'receivingOid': head,
+        'sourceBranch': 'tracks-settings', 'sourceOid': target,
+    })
+    report['scenarios'].append('native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file')
 
 
 def reviewed_detached_checkout(driver, fixtures, report):

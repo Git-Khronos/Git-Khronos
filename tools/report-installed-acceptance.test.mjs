@@ -320,6 +320,8 @@ test('installed Pull requires both repository-scope and explicit single-branch e
   for (const { suite, scenario } of [
     { suite: 'workspace-pull-upstreams',
       scenario: 'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch' },
+    { suite: 'workspace-pull-upstreams',
+      scenario: 'native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config' },
     { suite: 'pull-submodule-scope',
       scenario: 'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule' },
   ]) {
@@ -352,6 +354,7 @@ test('installed detached checkout requires cancel, stale-branch refusal, and a s
   for (const name of [
     'native-stale-local-checkout-does-not-recreate-remote-tracking-branch',
     'native-branch-and-detached-checkout-preserve-an-ignored-local-file',
+    'native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',

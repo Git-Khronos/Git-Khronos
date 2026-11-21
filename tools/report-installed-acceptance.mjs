@@ -29,6 +29,7 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['workspace-pull-upstreams', [
     'native-workspace-pull-skips-multiple-upstreams-before-fetch-and-continues-the-batch',
     'native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch',
+    'native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config',
   ]],
   ['pull-submodule-scope', [
     'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule',
@@ -99,6 +100,7 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['detached-checkout', [
     'native-stale-local-checkout-does-not-recreate-remote-tracking-branch',
     'native-branch-and-detached-checkout-preserve-an-ignored-local-file',
+    'native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',

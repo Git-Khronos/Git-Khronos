@@ -439,6 +439,8 @@ Sources:
 
 Used for explicit `--no-rebase`, `--rebase`, `--ff` and `--ff-only`, per-command
 overrides, upstreams, occupied branches and partial fetch/integration effects.
+The Git pull and fetch manuals also informed the per-invocation `--no-prune`
+override; an owned bare-remote fixture verified tag and tracking-ref retention.
 Independent disposable local bare-remote observations establish merge-parent,
 replayed-commit, conflict-abort and stale/gone-upstream contracts. Real rebase
 progress may delimit an error with a carriage return, not only a newline.
@@ -1530,6 +1532,15 @@ exit-status interpretation, rename handling, unrelated-history refusal, and the
 fact that merge-tree writes merge objects while leaving index/working files alone.
 The implementation uses an isolated bare object database and reads the selected
 repository through Git alternates. No upstream implementation was copied.
+
+The local-merge ignored-file safeguard also used the
+[Git merge](https://git-scm.com/docs/git-merge),
+[merge-tree](https://git-scm.com/docs/git-merge-tree),
+[ls-files](https://git-scm.com/docs/git-ls-files), and
+[diff-tree](https://git-scm.com/docs/git-diff-tree) manuals for option semantics.
+Independent real-Git fixtures established the difference between the
+fast-forward and divergent checkout paths and exercised directory renames.
+No upstream code was copied.
 
 The preceding feature comparison consulted public GitKraken documentation for
 [conflict prevention](https://help.gitkraken.com/gitkraken-desktop/conflict-prevention/).

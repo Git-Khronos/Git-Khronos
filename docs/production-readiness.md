@@ -3114,6 +3114,30 @@ The fixture-key installer, checksum, verification JSON and successful
 APT preview are in `target/local-review/qualified-0.1.6-ef28d9d/`. This
 does not qualify the later checkout change or the production publisher.
 
+### Local checkout, Pull, and merge safety
+
+The unchanged Linux installer from `65d9e7d` passed 37/37 required
+gates and 52 reports across five Ubuntu/Debian versions. Installed
+checkout acceptance rejected a stale local branch without creating it
+from the same-named remote and preserved an ignored local file when a
+branch would have replaced it. The checksum-verified APT preview and
+the exact fixture-key installer are in
+`target/local-review/qualified-0.1.6-65d9e7d/` (SHA-256
+`c18fff1e5a36ed2dd9eb00fb7ae5d1d5930215b037d82427f7e95f5eabebdff4`).
+
+The matching installed Pull regression is red on the earlier `ef28d9d`
+package: configured-upstream Pull pruned refs. In source tests, the
+per-command override preserves both the local-only tag and stale tracking
+branch while explicit and configured Pull still advance the checkout.
+Direct merge and squash also refused to overwrite ignored settings in
+the divergent fixture, including a directory-rename destination. Once
+the obstruction was moved, the integration succeeded and preserved an
+unrelated ignored file. The fast-forward fixture exercises Git's own
+overwrite guard. The retests ran on Git 2.39.5 and 2.53.0; no protection
+against concurrent external file edits, nor ignored-path protection for
+Pull or rebase, is claimed. The two new scenarios are required by the
+existing installed Pull and checkout suites for future candidates.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

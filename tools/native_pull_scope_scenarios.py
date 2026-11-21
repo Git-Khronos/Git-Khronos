@@ -88,6 +88,16 @@ def workspace_pull_upstreams(driver, fixtures, report):
     base = fixtures.git(publisher, 'rev-parse', 'HEAD')
     ambiguous = _local_clone(fixtures, publisher, 'pull-upstreams-ambiguous')
     ordinary = _local_clone(fixtures, publisher, 'pull-upstreams-ordinary')
+    for checkout in (ambiguous, ordinary):
+        fixtures.git(checkout, 'tag', '-a', 'owned-local', '-m', 'Local-only Pull tag')
+        fixtures.git(checkout, 'update-ref', 'refs/remotes/origin/removed', base)
+        fixtures.git(checkout, 'config', 'fetch.prune', 'true')
+        fixtures.git(checkout, 'config', 'remote.origin.pruneTags', 'true')
+    def retained_refs(checkout):
+        return fixtures.git(checkout, 'for-each-ref', '--format=%(refname) %(objectname)',
+                            'refs/tags/owned-local', 'refs/remotes/origin/removed').splitlines()
+    retained = {checkout: retained_refs(checkout) for checkout in (ambiguous, ordinary)}
+    assert all(len(refs) == 2 for refs in retained.values())
     fixtures.git(ambiguous, 'config', '--add', 'branch.main.merge', 'refs/heads/extra')
     main = _write_commit(fixtures, publisher, 'main.txt', 'Selected incoming branch\n')
     fixtures.git(publisher, 'switch', '-qc', 'extra', base)
@@ -130,6 +140,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
     }
     assert after == first_before and not has_fetch, 'Ambiguous batch Pull fetched or integrated before refusing'
     assert ordinary_head == main and (ordinary / 'main.txt').is_file()
+    assert retained_refs(ordinary) == retained[ordinary], 'Configured-upstream Pull pruned local refs'
     assert not (ambiguous / 'main.txt').exists() and not (ambiguous / 'extra.txt').exists()
     assert not (ordinary / 'extra.txt').exists()
     assert any(line.startswith(ambiguous.name + ' — error: More than one upstream branch is configured.')
@@ -143,6 +154,11 @@ def workspace_pull_upstreams(driver, fixtures, report):
     assert selected['head'] == main and not (ambiguous / 'extra.txt').exists()
     assert selected['configSha256'] == first_before['configSha256']
     assert fixtures.git(publisher, 'show-ref') == upstream_refs
+    assert retained_refs(ambiguous) == retained[ambiguous], 'Explicit Pull pruned local refs'
+    report['workspacePullUpstreams']['retainedLocalRefs'] = {
+        'configuredUpstream': retained_refs(ordinary), 'explicit': retained_refs(ambiguous),
+    }
     report['workspacePullUpstreams']['explicitSelection'] = selected
     report['scenarios'].append('native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch')
+    report['scenarios'].append('native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config')
     return ambiguous, driver.invoke('open_repository', path=str(ambiguous))['id']
