@@ -44,6 +44,15 @@ The unchanged artifacts and reports are under
 `target/local-review/updater/jammy-builder/paired-index-rename.inkJbl3s/`.
 This does not qualify the subsequent rename diff or Tags restoration changes.
 
+The rename-diff candidate at `1db7a28` passed **51 installed setup and keyboard
+checks** on Ubuntu 24.04 with Git 2.43. The exact artifact showed the original
+path and +2/−1 in both staged and unstaged previews, with zero partial action
+controls and unchanged checkout contents. The package SHA-256 is
+`04740fa2b99b4958ca87a21a0f0eb62b7945cc830383190a3cf42a3aad3c4a91`;
+the receipt, independently checked package and report are under
+`target/local-review/updater/jammy-builder/rename-diff.4TrqrXpZ/`. This
+checkpoint does not qualify the later Tags changes or replace the full matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
