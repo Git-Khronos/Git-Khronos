@@ -4753,7 +4753,9 @@ fn pull_from_remote_with_strategy_and_cancellation(
     };
 
     let branch_ref;
-    let mut args = vec!["pull"];
+    // Pull advances the superproject, including its recorded gitlinks, but
+    // nested fetch/checkout is a separate, explicitly reviewed operation.
+    let mut args = vec!["pull", "--no-recurse-submodules"];
     args.extend(strategy_arguments);
     match (remote, branch) {
         (Some(remote), Some(branch)) => {

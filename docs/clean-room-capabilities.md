@@ -49,9 +49,9 @@ coding-agent functionality is outside the product scope.
 6. Qualify final packaged artifacts and each supported operating system after
    source and renderer gates. Previous package qualification does not transfer
    to a package containing these additions.
-7. Keep submodule updates explicit; do not trigger nested checkouts after pull
-   until an explicit-scope preference can guarantee visible outcomes and
-   refuse dirty submodules.
+7. Keep submodule updates explicit. Pull updates the parent repository's
+   recorded submodule revisions without recursively fetching or checking out
+   its submodules; those actions keep their own review.
 
 ## Behavioral rules
 

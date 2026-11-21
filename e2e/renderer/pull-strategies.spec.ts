@@ -156,6 +156,30 @@ for (const [strategy, label] of [
   });
 }
 
+test('Pull options describe submodule checkout scope without starting Git', async ({ page }) => {
+  const configureSubmodules = async (hasSubmodules: boolean) => page.evaluate(hasSubmodules => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const snapshot = git.repository();
+    const submodules = hasSubmodules ? [{
+      name: 'lib', path: 'lib', absolutePath: snapshot.path + '/lib', url: 'fixture://lib',
+      oid: snapshot.headOid, headOid: snapshot.headOid, initialized: true, outOfSync: false,
+    }] : [];
+    git.repositories.update((items: any[]) => items.map(item => item.id === snapshot.id
+      ? { ...item, submodules } : item));
+  }, hasSubmodules);
+  const scope = 'Pull does not update submodule checkouts. Use Submodules to update them separately.';
+  await configureSubmodules(true);
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  const menu = page.getByRole('menu', { name: 'Pull options' });
+  await expect(menu.getByText(scope)).toBeVisible();
+  await expect(menu).toHaveAccessibleDescription(scope);
+  await configureSubmodules(false);
+  await expect(menu.getByText(scope)).toHaveCount(0);
+  await expect(menu).not.toHaveAttribute('aria-describedby');
+  expect(await page.evaluate(() => (window as any).__pullCalls.filter(({ command }: any) =>
+    command === 'pull_repository' || command.includes('submodule')))).toEqual([]);
+});
+
 test('fast-forward refusal refreshes divergent counts without automatic merge or rebase', async ({ page }) => {
   await page.evaluate(() => {
     const snapshot = (window as any).__pullSnapshot;

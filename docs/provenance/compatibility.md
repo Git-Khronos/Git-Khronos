@@ -1054,6 +1054,11 @@ behavior: merge uses `--no-rebase --ff`, fast-forward-only uses
 configured `pull.rebase`, `branch.<name>.rebase`, `pull.ff` or `merge.ff` from
 contradicting the chosen menu mode. No persistent Git configuration changes.
 Other Git policies, including hooks/signing and configured autostash, remain.
+Pull uses [Git's non-recursive mode](https://git-scm.com/docs/git-pull) to
+update the parent gitlink without also fetching into or checking out
+submodules. Real fixtures enable recursive Git settings and verify that
+all three strategies leave nested refs, working files, and object availability
+unchanged while advancing the parent repository.
 
 Original real-Git fixtures use owned local bare remotes and publishers.
 They check exact divergent merge parents without local replay, fast-forward-only

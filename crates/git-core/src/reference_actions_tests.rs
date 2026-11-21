@@ -1469,6 +1469,112 @@ fn pull_fixture(divergent: bool, conflicting: bool) -> (Repository, PathBuf, Str
 }
 
 #[test]
+fn pull_strategies_integrate_the_parent_gitlink_without_fetching_or_updating_submodules() {
+    let publisher = Repository::new();
+    let module = Repository::new();
+    let original_module = module.oid();
+    add_fixture_submodule(&publisher.0, &module.0, "lib");
+    commit(&publisher.0, "Add submodule at original revision").unwrap();
+
+    let mut clones = Vec::new();
+    for (strategy, explicit) in [("merge", false), ("ff-only", true), ("rebase", true)] {
+        let parent = publisher.0.join(".git").join(strategy);
+        run_mutation(
+            &publisher.0,
+            &[
+                "clone",
+                publisher.0.to_str().unwrap(),
+                parent.to_str().unwrap(),
+            ],
+            "clone owned parent fixture",
+        )
+        .unwrap();
+        for args in [
+            vec![
+                "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--", "lib",
+            ],
+            vec!["config", "user.name", "Test"],
+            vec!["config", "user.email", "test@example.test"],
+            vec!["config", "commit.gpgsign", "false"],
+            vec!["config", "submodule.recurse", "true"],
+            vec!["config", "fetch.recurseSubmodules", "on-demand"],
+            vec!["config", "submodule.lib.fetchRecurseSubmodules", "true"],
+        ] {
+            run_mutation(&parent, &args, "configure owned parent fixture").unwrap();
+        }
+        let lib = parent.join("lib");
+        run_mutation(
+            &lib,
+            &["config", "protocol.file.allow", "always"],
+            "allow local transport in owned submodule",
+        )
+        .unwrap();
+        assert_eq!(rev(&lib, "HEAD"), original_module);
+        if strategy == "rebase" {
+            fs::write(parent.join("local.txt"), "local work\n").unwrap();
+            stage_all(&parent).unwrap();
+            commit(&parent, "Local parent commit").unwrap();
+        }
+        clones.push((strategy, explicit, parent, lib));
+    }
+
+    fs::write(module.0.join("file"), "new child bytes\n").unwrap();
+    stage_all(&module.0).unwrap();
+    commit(&module.0, "New child commit").unwrap();
+    let new_module = module.oid();
+    run_mutation(
+        &publisher.0.join("lib"),
+        &["pull", "--ff-only", "origin", "main"],
+        "advance the owned publisher's submodule",
+    )
+    .unwrap();
+    run_mutation(&publisher.0, &["add", "--", "lib"], "stage new gitlink").unwrap();
+    commit(&publisher.0, "Update recorded child revision").unwrap();
+    let upstream = publisher.oid();
+
+    for (strategy, explicit, parent, lib) in clones {
+        let checkout = PullCheckout {
+            head_oid: Some(rev(&parent, "HEAD")),
+            branch: Some("main".into()),
+        };
+        let object_exists = || {
+            run_git(&lib, &["cat-file", "-e", &format!("{new_module}^{{commit}}")])
+                .unwrap()
+                .status
+                .success()
+        };
+        assert!(!object_exists());
+        let child_refs = run_git(&lib, &["show-ref"]).unwrap().stdout;
+        pull_for_checkout_cancellable(
+            &parent,
+            strategy,
+            explicit.then_some("origin"),
+            explicit.then_some("main"),
+            &checkout,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        assert_eq!(rev(&parent, "HEAD:lib"), new_module, "{strategy}");
+        assert_eq!(rev(&parent, ":lib"), new_module, "{strategy}");
+        assert_eq!(rev(&parent, "refs/remotes/origin/main"), upstream);
+        if strategy == "rebase" {
+            assert_eq!(rev(&parent, "HEAD^"), upstream);
+            assert_eq!(fs::read(parent.join("local.txt")).unwrap(), b"local work\n");
+        } else {
+            assert_eq!(rev(&parent, "HEAD"), upstream);
+        }
+        assert_eq!(
+            rev(&lib, "HEAD"),
+            original_module,
+            "{strategy} updated the child"
+        );
+        assert_eq!(fs::read(lib.join("file")).unwrap(), b"base\n");
+        assert_eq!(run_git(&lib, &["show-ref"]).unwrap().stdout, child_refs);
+        assert!(!object_exists(), "{strategy} fetched into the child");
+    }
+}
+
+#[test]
 fn pull_strategy_merge_overrides_configured_rebase_and_ff_only_without_rewriting_local_commits() {
     let (repository, publisher, local, remote) = pull_fixture(true, false);
     let path = &repository.0;

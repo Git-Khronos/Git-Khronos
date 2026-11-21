@@ -259,6 +259,11 @@ repository mutation lock, native refuses a changed checkout before starting
 Git, even when the new branch shares its old commit. This preflight isn't a lock against Git
 clients outside the app after the check.
 
+Pull integrates the parent commit and its recorded submodule revisions.
+It does not fetch into or check out nested repositories, even when Git's
+recursion settings are enabled. Users can review and update the submodule
+separately after Pull.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured
