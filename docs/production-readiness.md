@@ -138,7 +138,9 @@ the counts unknown, verified the helper had exited, and left the checkout
 unchanged. The report matches package SHA-256
 `348ed4a403e57fcee2ecd1adad6f2ba0b108aaf24c74ce1522d2ee12e5be49ad`
 under `target/local-review/updater/jammy-builder/lfs-time-budget.zDVt6ssI/`.
-This focused pass does not replace the full installed release gate.
+The same package subsequently completed all 278 installed environment
+scenarios on Ubuntu 24.04 with Git 2.53 and passed the strict
+release-evidence preflight. It does not include the later watcher fix.
 
 On Ubuntu 22.04 the same package passed the installed timeout probe in
 2.046 seconds. One ordinary run left the packed checkpoint row stale before
@@ -148,7 +150,19 @@ for 1.5 seconds after Git deleted the packed ref. The independent Git oracle
 confirmed the deletion, but the graph kept the row. The report is under
 `jammy-held-status-negative.eK0yjWU5/` in the candidate directory. This
 separates the watcher race from GitLab and from the LFS timeout change;
-the replacement app still needs the controlled installed pass.
+the replacement app was built and checked separately.
+
+The replacement at `892519a` passed the controlled installed watcher suite on
+Ubuntu 22.04 and 24.04. In both runs the Git oracle confirmed packed-ref
+deletion while the wrapper held status; the graph removed the row after
+status settled. The same package passed Jammy smoke, GitLab and both LFS
+suites, plus smoke, GitLab and application updates on Ubuntu 26.04 and
+Debian 13. Its SHA-256 is
+`9359c11ddea63ca90aab6a4917ac3b8e74bfc1e6f206d7fb40a7c9cd16cf8406`.
+Package-matched reports are retained in
+`target/local-review/updater/jammy-builder/watcher-refresh.1o25EHZw/`.
+Debian 12's first run failed a direct singleton delivery process check and
+is being investigated separately. These local checks are not hosted approval.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 

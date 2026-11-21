@@ -39,14 +39,14 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
                 pass
         return sorted(found)
 
-    def desktop_activation_processes():
+    def desktop_activation_processes(known_pids=None):
         """Record liveness and ownership without retaining argv or environment."""
         owner = None
         with suppress(RuntimeError, OSError):
             owner = driver.owned_session_application_pid()
         bus_entry = ('DBUS_SESSION_BUS_ADDRESS=' + fixtures.env['DBUS_SESSION_BUS_ADDRESS']).encode()
         observed = []
-        for pid in pids():
+        for pid in pids() if known_pids is None else known_pids:
             root = Path('/proc') / str(pid)
             try:
                 fields = (root / 'stat').read_text().rsplit(')', 1)[1].split()
@@ -59,7 +59,9 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
 
     def deliver(*arguments):
         original = pids()
-        assert len(original) == 1, original
+        observation = dict(before=desktop_activation_processes(original))
+        report.setdefault('incomingDirectActivation', []).append(observation)
+        assert len(original) == 1, observation
         child = subprocess.Popen([str(driver.executable), *arguments], env=fixtures.env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  start_new_session=True)
@@ -70,7 +72,9 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
             child.communicate()
             raise AssertionError('Secondary link delivery did not terminate')
         assert child.returncode == 0, (child.returncode, stderr.decode(errors='replace')[-2000:])
-        assert pids() == original, 'Singleton delivery replaced or duplicated the primary process'
+        settled = pids()
+        observation.update(secondaryPid=child.pid, after=desktop_activation_processes(settled))
+        assert settled == original, observation
         report.setdefault('incomingLinkDeliveries', []).append(dict(primaryPid=original[0], secondaryPid=child.pid,
                                                                    exitCode=child.returncode, arguments=len(arguments)))
 
