@@ -411,6 +411,16 @@ losing the unavailable path or changing Git data. Both nearby and bulk
 relocation also passed. See `installed-workspace-tabs.json` under
 `target/local-review/updater/jammy-builder/workspace-tab-reopen.mO7cGsux/`.
 
+The stash-selection package at `eb8a4c8`, SHA-256
+`46c0e45fb0484ec3e3bd4268e91d853a978e7d040c78ba768102d0a18340c747`,
+passed two installed stash-scope cases. The predecessor partially applied a
+mixed staged-only request and created a stash. This package refused it
+without changing files, staged entries or stash history. In the UI, switching
+to staged-only left one eligible checked file. Git verified that only that
+file entered the stash and both neighbours were unchanged. See
+`installed-stash-selection.json` under
+`target/local-review/updater/jammy-builder/stash-selection-scope.RzMp7V7N/`.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

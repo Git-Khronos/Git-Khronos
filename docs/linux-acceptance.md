@@ -190,6 +190,7 @@ creating a stash or changing staged entries or files. The UI then selects all
 eligible files, switches to staged-only, and confirms. Independent Git reads
 check that only the staged file was saved and that the unstaged and untracked
 neighbours stayed unchanged.
+The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 
 ## Focused feature rebase review
 
