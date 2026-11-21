@@ -1,7 +1,8 @@
 # Application updates
 
-Status: requested capability; implementation and package qualification pending.
-This document does not assert that the application can currently self-update.
+Status: the manual and opt-in controls are implemented. Local publisher-key
+builds and signed test assets exist; the public update feed and end-to-end
+privileged installation are not yet qualified.
 
 ## User-facing requirements
 
@@ -64,8 +65,7 @@ upgrading or removing existing locked packages; their canonical repositories and
 MIT/Apache-2.0-compatible license expressions were verified from Cargo metadata
 and retained at `target/local-review/updater/new-dependency-provenance.json`.
 The native runtime, typed commands/events and deferred Updates dialog are now wired.
-Full dependency/notice and packaged runtime qualification are still pending.
-No release trust key is configured yet.
+Later checkpoints below cover packaged runtime qualification.
 See [sources](../provenance/sources.md) for primary references. Implementation
 must remain independently designed; upstream code is not an implementation
 transcription specification.
@@ -98,8 +98,9 @@ The production builder uses a compile-time
 Without this key the UI clearly reports unconfigured trust and cannot check,
 install or enable automatic updates. The release publisher must separately
 configure this key, sign artifacts with version-bound signatures and publish
-`latest.json` at the approved official release endpoint. No production signing
-key or manifest is configured/published by this work yet. Debian Task build
+`latest.json` at the approved official release endpoint. An encrypted publisher
+key has been generated locally, but neither the key nor the manifest is
+provisioned in the public release workflow. Debian Task build
 receipts now bind the public-key fingerprint as well as source/output hashes,
 so enabling, rotating or removing trust cannot reuse an older compiled binary.
 
@@ -184,8 +185,9 @@ With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
 
 ```sh
+printf '%s  %s\n' "$QUALIFIED_PACKAGE_SHA256" "$PACKAGE" | sha256sum --check --strict || exit 1
 pnpm exec tauri signer sign --private-key-path "$PRIVATE_KEY_FILE" \
-  --app-version "$VERSION" "$PACKAGE"
+  --app-version "$VERSION" "$PACKAGE" || exit 1
 cargo run --locked -p git-khronos-desktop --example stage-debian-update -- \
   "$PACKAGE" "$PACKAGE.sig" "$PUBLIC_KEY_FILE" "$STAGING_PARENT" \
   "$QUALIFIED_PACKAGE_SHA256"
@@ -198,6 +200,10 @@ package metadata, architecture, and signed version. No signing secret is needed
 for staging. Publication is a separate operation: the matching release tag and
 asset name must agree with the staged URL. The current release workflow does not
 publish these assets automatically.
+
+Installations built without the public key need a one-time manual upgrade to a
+trusted build. They cannot use a release manifest to establish trust in its own
+signer. Automatic updates remain off until the user opts in.
 
 A local publisher-key-enabled Debian candidate passed 271 native environment
 scenarios and was signed and staged unchanged. Debian SHA-256:
