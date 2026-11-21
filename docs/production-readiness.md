@@ -3047,3 +3047,16 @@ raw initial bytes (−1,671 JavaScript bytes; CSS unchanged), with 244 fewer
 gzip bytes and 102 fewer Brotli bytes. The 900 kB initial warning remains.
 All 21 focused browser cases passed. See `pull-menu-*` under the startup
 profile receipts directory.
+
+### Cancellable Git process latency
+
+The process coordinator now wakes when both output readers finish instead
+of always waiting for its next 30 ms poll. It still keeps the normal
+cancellation polling bound and the real child exit status. Three alternating
+local runs of 60 short Git processes measured a median of 1,979 ms before
+and 707 ms after the change. The existing real-Git release-finish test ran
+in about 23 seconds before and 9 seconds after on the same host. These are
+debug-test timings, not installed-app latency estimates.
+
+Logs and the opt-in timing probe are in
+`target/local-review/short-git-capture.Tlyy8Yfi/`.
