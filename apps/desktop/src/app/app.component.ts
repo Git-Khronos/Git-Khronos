@@ -3853,22 +3853,6 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly displayedCommitFiles = computed(() => this.workingTreeViewMode() === 'path'
     ? this.sortedCommitFiles()
     : this.commitFileTreeRows().flatMap((row) => row.file ? [row.file] : []));
-  protected readonly virtualCommitFiles = computed(() => calculateVirtualWindow(
-    this.sortedCommitFiles(),
-    this.commitFilesScrollTop(),
-    COMMIT_FILE_VIEWPORT_HEIGHT,
-    COMMIT_FILE_ROW_HEIGHT,
-    0,
-    COMMIT_FILE_OVERSCAN_ROWS,
-  ));
-  protected readonly virtualCommitFileTreeRows = computed(() => calculateVirtualWindow(
-    this.commitFileTreeRows(),
-    this.commitFilesScrollTop(),
-    COMMIT_FILE_VIEWPORT_HEIGHT,
-    COMMIT_FILE_ROW_HEIGHT,
-    0,
-    COMMIT_FILE_OVERSCAN_ROWS,
-  ));
   protected readonly selectedCommitFileStats = computed(() => {
     const details = this.git.commitDetails();
     return summarizeFileChanges(details?.files ?? [], details?.filesTruncated);
@@ -3918,22 +3902,27 @@ export class AppComponent implements OnInit, OnDestroy {
     if (additions === null && deletions === null) return null;
     return { additions: additions ?? 0, deletions: deletions ?? 0 };
   });
-  protected readonly virtualComparisonFiles = computed(() => calculateVirtualWindow(
-    this.sortedComparisonFiles(),
-    this.commitFilesScrollTop(),
-    COMMIT_FILE_VIEWPORT_HEIGHT,
-    COMMIT_FILE_ROW_HEIGHT,
-    0,
-    COMMIT_FILE_OVERSCAN_ROWS,
-  ));
-  protected readonly virtualComparisonFileTreeRows = computed(() => calculateVirtualWindow(
-    this.comparisonFileTreeRows(),
-    this.commitFilesScrollTop(),
-    COMMIT_FILE_VIEWPORT_HEIGHT,
-    COMMIT_FILE_ROW_HEIGHT,
-    0,
-    COMMIT_FILE_OVERSCAN_ROWS,
-  ));
+  protected readonly revisionFileWindows = {
+    commit: computed(() => this.virtualRevisionFileRows(this.sortedCommitFiles, this.commitFileTreeRows)),
+    comparison: computed(() => this.virtualRevisionFileRows(this.sortedComparisonFiles, this.comparisonFileTreeRows)),
+  };
+
+  private virtualRevisionFileRows(
+    sortedFiles: () => CommitFile[],
+    treeRows: () => CommitFileDisplayRow[],
+  ): VirtualWindow<CommitFileDisplayRow> {
+    const windowFor = <T>(rows: T[]) => calculateVirtualWindow(
+      rows, this.commitFilesScrollTop(), COMMIT_FILE_VIEWPORT_HEIGHT,
+      COMMIT_FILE_ROW_HEIGHT, 0, COMMIT_FILE_OVERSCAN_ROWS,
+    );
+    if (this.workingTreeViewMode() === 'tree') return windowFor(treeRows());
+    const window = windowFor(sortedFiles());
+    // Only adapt the visible path rows; retain the native file object and order.
+    return { ...window, items: window.items.map(file => ({
+      kind: 'file', key: `file:${file.path}`, label: '', path: file.path, depth: 0, file,
+    })) };
+  }
+
   protected readonly comparisonFileStats = computed(() => {
     const comparison = this.git.commitComparison();
     return summarizeFileChanges(comparison?.files ?? [], comparison?.lineTotalsPartial);

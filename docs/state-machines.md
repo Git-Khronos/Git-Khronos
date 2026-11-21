@@ -289,6 +289,16 @@ Directory does not mount a late reference strip. The loader and menu
 behavior are covered by `commit-reference-loading.spec.ts` and the
 reference-stack interaction tests.
 
+### Changed files for a revision or comparison
+
+The commit/stash and comparison inspectors share one changed-file list
+and one virtualized row renderer. The row's source and target revision
+still belong to the active inspector. Path mode adapts only the visible
+rows, while tree mode keeps its directory and collapse state. A capped
+commit file list and a comparison with partial line counts retain distinct
+notices; the shared renderer does not treat uncounted comparison files as
+binary or hide their diff actions.
+
 ### Repository change notifications
 
 Filesystem notifications and explicit file-tool change notices request a

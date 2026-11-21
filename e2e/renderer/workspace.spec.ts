@@ -7835,6 +7835,48 @@ test('keeps uncounted comparison files selectable and marks the totals partial',
   await expect(page.getByRole('region', { name: 'Diff viewer' })).toBeVisible();
 });
 
+test('keeps revision file list labels and tree controls scoped to the active source', async ({ page }) => {
+  const row = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
+  const panel = page.locator('.commit-panel');
+  const file = panel.getByRole('button', { name: 'Open diff for docs/interface-notes.md' });
+  const layout = panel.getByRole('group', { name: 'Changed files layout', exact: true });
+  await row.click();
+  await expect(file).toBeVisible();
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.commitDetails.update((details: any) => ({ ...details, filesTruncated: true,
+      files: details.files.map((item: any) => item.path === 'docs/interface-notes.md'
+        ? { ...item, additions: null, deletions: null } : item),
+    }));
+  });
+  await expect(file).toContainText('binary');
+  await expect(panel.getByRole('button', { name: /Changed Files \(\d+\+\)/ })).toBeVisible();
+  await expect(panel.locator('.commit-files-limit')).toContainText('Showing the first');
+
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Compare with working directory' }).click();
+  await expect(panel.locator('.comparison-files')).toBeVisible();
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.commitComparison.update((comparison: any) => ({ ...comparison, lineTotalsPartial: true,
+      files: comparison.files.map((item: any) => item.path === 'docs/interface-notes.md'
+        ? { ...item, additions: null, deletions: null } : item),
+    }));
+  });
+  await expect(panel.locator('.commit-files-limit')).toContainText('Some files could not be counted');
+  await expect(file).toContainText('not counted');
+  await layout.getByRole('button', { name: 'Tree', exact: true }).click();
+  await expect(file).toHaveClass(/tree-commit-file/);
+  const directory = panel.getByRole('button', { name: 'docs', exact: true });
+  await expect(directory).toHaveAttribute('aria-expanded', 'true');
+  await directory.click();
+  await expect(file).toHaveCount(0);
+  await directory.click();
+  await expect(file).toBeVisible();
+  await file.click();
+  await expect(page.getByRole('region', { name: 'Diff viewer' })).toContainText('WIP');
+});
+
 test('selects WIP and a commit for comparison with Ctrl-click', async ({ page }) => {
   const wip = page.locator('.wip-row').first();
   const wipNode = wip.locator('.wip-node');
