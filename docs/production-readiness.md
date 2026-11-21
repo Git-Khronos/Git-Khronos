@@ -60,6 +60,12 @@ recovery, and incoming links. All six reports were matched to the installed
 executable and launcher. This checkpoint does not qualify the later Tags
 changes or replace the full matrix.
 
+The same rename-diff package subsequently passed all **277 installed
+environment scenarios** on Ubuntu 24.04 with Git 2.53. The strict release
+evidence preflight accepted its exact digest and the APT dry run passed.
+The final report, verified digest, and dry-run transcript are retained with
+that same artifact.
+
 The Tags restoration candidate at `b80a99e` passed all **32 installed
 remote-review checks** on Ubuntu 24.04 with Git 2.43. These include pushing,
 renaming and deleting a tag through the actual sidebar after opening the
