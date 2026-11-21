@@ -746,11 +746,16 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report):
         assert not driver.script("return !!document.querySelector(arguments[0])",
                                  f'[aria-label="Copilot checkpoint {names[key]}"]')
 
+    report["checkpointExternalDeletes"] = []
     for key in ("external-loose", "external-packed"):
         fixtures.git(repository, "update-ref", "-d", names[key], oids[key])
         expected.pop(names[key])
-        driver.wait(f"return !document.querySelector({json.dumps(row(key))})")
         assert checkpoint_refs(fixtures, repository) == expected
+        observation = {"storage": key.removeprefix("external-"), "oid": oids[key],
+                       "gitRefDeleted": True, "graphRowRemoved": False}
+        report["checkpointExternalDeletes"].append(observation)
+        driver.wait(f"return !document.querySelector({json.dumps(row(key))})")
+        observation["graphRowRemoved"] = True
 
     driver.click(pill("moved"))
     driver.click_visible(".context-menu[role=menu] button.danger-item", "Delete checkpoint reference…")
