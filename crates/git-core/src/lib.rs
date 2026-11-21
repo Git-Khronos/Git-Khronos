@@ -6252,8 +6252,8 @@ pub fn compare_commit_with_working_tree(
         .filter(|entry| entry.index_status == "?" && !known.contains(entry.path.as_str()))
         .collect();
     let paths: Vec<_> = entries.iter().map(|entry| entry.path.as_str()).collect();
-    let counts = file_statistics::untracked_additions(path, &paths)?;
-    for (entry, additions) in entries.into_iter().zip(counts) {
+    let counts = file_statistics::untracked_additions(path, &paths, None)?;
+    for (entry, additions) in entries.into_iter().zip(counts.counts) {
         files.push(CommitFile {
             status: "A".to_owned(),
             path: entry.path,

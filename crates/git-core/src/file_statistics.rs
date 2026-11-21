@@ -145,13 +145,51 @@ impl Policy {
     }
 }
 
+pub(super) struct UntrackedAdditions {
+    pub counts: Vec<Option<usize>>,
+    pub partial: bool,
+}
+
+struct ReadBudget {
+    remaining: Option<u64>,
+    partial: bool,
+}
+
+impl ReadBudget {
+    fn reserve(&mut self, size: u64) -> bool {
+        let Some(remaining) = &mut self.remaining else {
+            return true;
+        };
+        if let Some(next) = remaining.checked_sub(size) {
+            *remaining = next;
+            true
+        } else {
+            self.partial = true;
+            false
+        }
+    }
+
+    fn unavailable<T>(&mut self) -> Option<T> {
+        self.partial = true;
+        None
+    }
+}
+
 pub(super) fn untracked_additions(
     repository: &Path,
     paths: &[&str],
-) -> Result<Vec<Option<usize>>, AppError> {
+    byte_limit: Option<u64>,
+) -> Result<UntrackedAdditions, AppError> {
     if paths.is_empty() {
-        return Ok(Vec::new());
+        return Ok(UntrackedAdditions {
+            counts: Vec::new(),
+            partial: false,
+        });
     }
+    let mut budget = ReadBudget {
+        remaining: byte_limit,
+        partial: false,
+    };
     let mut policy = Policy::load(repository)?;
     let mut repo = gix::open(repository).map_err(|_| invalid_statistics())?;
     // Opening an explicit repository can still apply GIT_WORK_TREE. Attribute
@@ -167,6 +205,7 @@ pub(super) fn untracked_additions(
         .map_err(|_| invalid_statistics())?;
     let mut matches = attributes.selected_attribute_matches(["diff"]);
     let mut counts = Vec::with_capacity(paths.len());
+    let direct_reads = DirectReads::new(repository);
     for file in paths {
         git_cancellation::inspection_checkpoint()?;
         attributes
@@ -179,10 +218,20 @@ pub(super) fn untracked_additions(
             .map(|matched| matched.assignment.state)
             .unwrap_or(gix::attrs::StateRef::Unspecified);
         let mode = policy.attribute(repository, state)?;
-        counts.push(file_additions(repository, file, mode, policy.threshold));
+        counts.push(file_additions(
+            repository,
+            file,
+            mode,
+            policy.threshold,
+            &direct_reads,
+            &mut budget,
+        ));
     }
     git_cancellation::inspection_checkpoint()?;
-    Ok(counts)
+    Ok(UntrackedAdditions {
+        counts,
+        partial: budget.partial,
+    })
 }
 
 fn attribute_index(
@@ -241,13 +290,24 @@ fn attribute_index(
     Ok(index)
 }
 
-fn file_additions(repository: &Path, file: &str, mode: Mode, threshold: u64) -> Option<usize> {
+fn file_additions(
+    repository: &Path,
+    file: &str,
+    mode: Mode,
+    threshold: u64,
+    direct_reads: &DirectReads,
+    budget: &mut ReadBudget,
+) -> Option<usize> {
     let path = repository.join(file);
-    let metadata = fs::symlink_metadata(&path).ok()?;
+    let Ok(metadata) = fs::symlink_metadata(&path) else {
+        return budget.unavailable();
+    };
     if metadata.is_symlink() {
         // Git stores the link's target path as its blob. Never open that target:
         // it may be missing, external, a directory, or a blocking special file.
-        let target = fs::read_link(&path).ok()?;
+        let Ok(target) = fs::read_link(&path) else {
+            return budget.unavailable();
+        };
         if target.as_os_str().as_encoded_bytes().len() as u64 > threshold {
             return None;
         }
@@ -257,12 +317,15 @@ fn file_additions(repository: &Path, file: &str, mode: Mode, threshold: u64) -> 
         return text_lines(target.as_os_str().as_encoded_bytes(), false);
     }
     if !metadata.is_file() {
-        return None;
+        return budget.unavailable();
     }
-    if mode == Mode::Binary || (mode == Mode::Auto && metadata.len() > threshold) {
+    if mode == Mode::Binary {
         return None;
     }
     if mode == Mode::Git {
+        if !budget.reserve(metadata.len()) {
+            return None;
+        }
         let (output, truncated) = run_git_with_stdout_limit(
             repository,
             &[
@@ -285,11 +348,91 @@ fn file_additions(repository: &Path, file: &str, mode: Mode, threshold: u64) -> 
         let value = output.stdout.split(|byte| *byte == b'\t').next()?;
         return std::str::from_utf8(value).ok()?.parse().ok();
     }
-    // Bound memory and the observed extent, even if a log grows during the read.
-    text_lines(
-        fs::File::open(path).ok()?.take(metadata.len()),
-        mode == Mode::Auto,
-    )
+    let Some(input) = direct_reads.open(Path::new(file)) else {
+        return budget.unavailable();
+    };
+    let Ok(observed) = input.metadata() else {
+        return budget.unavailable();
+    };
+    if !observed.is_file() || !budget.reserve(observed.len()) {
+        return budget.unavailable();
+    }
+    if mode == Mode::Auto && observed.len() > threshold {
+        return None;
+    }
+    // Charge and read the same opened file extent. A file that grew while
+    // Git was collecting attributes must not bypass the recap's byte budget.
+    let mut input = input.take(observed.len());
+    let count = text_lines(&mut input, mode == Mode::Auto);
+    if count.is_some()
+        && (input.limit() != 0
+            || !input
+                .get_ref()
+                .metadata()
+                .is_ok_and(|after| after.len() == observed.len()))
+    {
+        return budget.unavailable();
+    }
+    count
+}
+
+struct DirectReads {
+    #[cfg(unix)]
+    root: Option<std::os::fd::OwnedFd>,
+    #[cfg(windows)]
+    root: Option<std::path::PathBuf>,
+}
+
+impl DirectReads {
+    fn new(repository: &Path) -> Self {
+        #[cfg(not(any(unix, windows)))]
+        let _ = repository;
+        Self {
+            #[cfg(unix)]
+            root: repository
+                .canonicalize()
+                .ok()
+                .and_then(|root| super::file_content::worktree::absolute(&root).ok()),
+            #[cfg(windows)]
+            root: repository.canonicalize().ok(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn open(&self, file: &Path) -> Option<fs::File> {
+        use rustix::fs::{Mode, OFlags, openat};
+        let parent =
+            super::file_content::worktree::descend_worktree(self.root.as_ref()?, file.parent()?)
+                .ok()?;
+        let descriptor = openat(
+            &parent,
+            file.file_name()?,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .ok()?;
+        Some(fs::File::from(descriptor))
+    }
+
+    #[cfg(windows)]
+    fn open(&self, file: &Path) -> Option<fs::File> {
+        use super::repository_files::{is_link_or_reparse_point, locked_windows_parent_if_present};
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        let (parent, _guards) = locked_windows_parent_if_present(self.root.as_ref()?, file).ok()?;
+        let path = parent?.join(file.file_name()?);
+        let input = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+            .ok()?;
+        (!is_link_or_reparse_point(&input.metadata().ok()?)).then_some(input)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    fn open(&self, _: &Path) -> Option<fs::File> {
+        None
+    }
 }
 
 fn text_lines(mut input: impl Read, probe_binary: bool) -> Option<usize> {
@@ -322,6 +465,42 @@ fn text_lines(mut input: impl Read, probe_binary: bool) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_line_reads_refuse_symlink_substitutions() {
+        use std::os::unix::fs::symlink;
+        use std::path::PathBuf;
+
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let mut id = [0; 8];
+        getrandom::fill(&mut id).unwrap();
+        let fixture = std::env::temp_dir().join(format!(
+            "git-khronos-direct-reads-{}",
+            u64::from_ne_bytes(id)
+        ));
+        fs::create_dir(&fixture).unwrap();
+        let _cleanup = Cleanup(fixture.clone());
+        let worktree = fixture.join("worktree");
+        let outside = fixture.join("outside");
+        fs::create_dir(&worktree).unwrap();
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("outside.txt"), "unrelated text\n").unwrap();
+        fs::write(worktree.join("changed.txt"), "working text\n").unwrap();
+        let reader = DirectReads::new(&worktree);
+        assert!(reader.open(Path::new("changed.txt")).is_some());
+
+        fs::remove_file(worktree.join("changed.txt")).unwrap();
+        symlink(outside.join("outside.txt"), worktree.join("changed.txt")).unwrap();
+        symlink(&outside, worktree.join("redirected")).unwrap();
+        assert!(reader.open(Path::new("changed.txt")).is_none());
+        assert!(reader.open(Path::new("redirected/outside.txt")).is_none());
+    }
 
     #[test]
     fn line_statistics_use_small_reads_across_many_chunks() {

@@ -2151,10 +2151,13 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
         let marker = PathBuf::from(std::env::var_os(MARKER).unwrap());
         let repository = Repository::new();
         repository.write("tracked.txt", b"baseline\n");
+        if mode == "untracked_grew" {
+            repository.write(".gitattributes", b"new.txt diff\n");
+        }
         repository.commit("Base");
         repository.write("tracked.txt", b"staged\n");
         repository.git(&["add", "tracked.txt"]);
-        if mode == "untracked" {
+        if matches!(mode.as_str(), "untracked" | "untracked_grew") {
             repository.write("new.txt", b"one\ntwo");
         } else {
             repository.write("tracked.txt", b"unstaged\n");
@@ -2178,6 +2181,16 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
                 let unstaged = recaps.unstaged.unwrap();
                 assert_eq!((staged.additions, staged.deletions), (1, 1));
                 assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (2, 0, false));
+                return;
+            }
+            "untracked_grew" => {
+                assert!(marker.exists(), "fixture must grow after Git status");
+                let recaps = result.unwrap();
+                let unstaged = recaps.unstaged.unwrap();
+                assert_eq!(
+                    (unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial),
+                    (0, 0, 1, true),
+                );
                 return;
             }
             _ => panic!("unexpected fixture mode"),
@@ -2204,6 +2217,9 @@ case "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$5" in
     exec dd if=/dev/zero bs=1048576 count=5 ;;
 esac
 case "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$4" in
+  untracked_grew:config:--type=int)
+    dd if=/dev/null of="$2/new.txt" bs=1048576 seek=17 count=0 2>/dev/null || exit
+    printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER" ;;
   untracked:diff:--numstat)
     printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER"
     exit 1 ;;
@@ -2223,7 +2239,7 @@ exec "$GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT" "$@"
     let path = std::env::join_paths(
         std::iter::once(fixture.0.clone()).chain(std::env::split_paths(&original_path)),
     ).unwrap();
-    for mode in ["untracked", "status", "unstaged", "limit"] {
+    for mode in ["untracked_grew", "untracked", "status", "unstaged", "limit"] {
         let result = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "literal_file_tests::working_tree_recaps_reap_stalled_git_without_misreporting_counts", "--nocapture"])
             .env("PATH", &path)

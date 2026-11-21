@@ -370,9 +370,12 @@ silently interpreted as no changes.
 
 Both sides share a status scan capped at 4 MiB of stdout. If that scan is incomplete,
 neither side reports a total. Each summary counts at most 2,000 entries
-with 4 MiB of numstat output per side; untracked regular-file reads have an
-aggregate 16 MiB budget. The recap gives its Git subprocesses a shared
-three-second deadline and checks it between local file probes. A timed-out
+with 4 MiB of numstat output per side. The 16 MiB direct-read budget is
+charged against the opened untracked files, not their earlier status snapshot;
+files too large to count are disclosed as partial. Direct readers refuse
+symlink substitutions rather than opening their targets. The recap gives
+its Git subprocesses a shared three-second deadline and checks it between
+local file probes. A timed-out
 side is unavailable without discarding a count that already finished;
 size-limited numstat totals are labeled partial.
 When the unstaged recap contains only untracked entries, it skips the

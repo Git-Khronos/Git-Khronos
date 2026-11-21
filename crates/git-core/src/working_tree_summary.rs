@@ -4,7 +4,7 @@ use super::{
     run_git_with_stdout_limit, without_lazy_fetch,
 };
 use serde::Serialize;
-use std::{fs, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 const MAX_FILES: usize = 2_000;
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
@@ -187,23 +187,10 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
         Default::default()
     };
     let mut untracked = Vec::new();
-    let mut remaining = MAX_UNTRACKED_BYTES;
     for entry in entries {
         git_cancellation::inspection_checkpoint()?;
         if entry.index_status == "?" {
-            // The existing attribute-aware counter handles symlink blobs without
-            // opening their targets. Bound aggregate regular-file reads as well.
-            match fs::symlink_metadata(path.join(&entry.path)) {
-                Ok(metadata) if metadata.is_symlink() => untracked.push(entry.path.as_str()),
-                Ok(metadata) if metadata.is_file() && metadata.len() <= remaining => {
-                    remaining -= metadata.len();
-                    untracked.push(entry.path.as_str());
-                }
-                _ => {
-                    summary.uncounted_files += 1;
-                    summary.partial = true;
-                }
-            }
+            untracked.push(entry.path.as_str());
         } else {
             match stats.get(&entry.path) {
                 Some((Some(additions), Some(deletions))) => {
@@ -218,7 +205,9 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
             }
         }
     }
-    for additions in file_statistics::untracked_additions(path, &untracked)? {
+    let counts = file_statistics::untracked_additions(path, &untracked, Some(MAX_UNTRACKED_BYTES))?;
+    summary.partial |= counts.partial;
+    for additions in counts.counts {
         if let Some(additions) = additions {
             summary.additions += additions;
         } else {
