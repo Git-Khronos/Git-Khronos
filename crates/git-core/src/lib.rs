@@ -1141,6 +1141,15 @@ pub fn repository_watch_paths(path: &Path) -> Result<RepositoryWatchPaths, AppEr
             }
         }
     }
+    // Git atomically replaces tables.list within each stack rather than
+    // changing its parent metadata root. Linked checkouts can have a
+    // private reftable stack in addition to the common one.
+    let reftables: Vec<_> = metadata_roots
+        .iter()
+        .map(|root| root.join("reftable"))
+        .filter(|path| fs::symlink_metadata(path).is_ok_and(|entry| entry.is_dir()))
+        .collect();
+    metadata_roots.extend(reftables);
     Ok(RepositoryWatchPaths {
         non_recursive: metadata_roots,
         recursive,
@@ -10268,6 +10277,65 @@ esac
         assert!(version_at_least("2.53.0", MINIMUM_GIT_VERSION));
         assert!(version_at_least("2.39.0.windows.1", MINIMUM_GIT_VERSION));
         assert!(!version_at_least("2.38.9", MINIMUM_GIT_VERSION));
+    }
+
+    #[test]
+    fn locates_reftable_stacks_for_main_and_linked_checkouts() {
+        let fixture = TestRepository::new();
+        let root = fixture.path.join("reftable");
+        let linked = fixture.path.join("linked");
+        let output = Command::new("git")
+            .args(["init", "-q", "-b", "main", "--ref-format=reftable"])
+            .arg(&root)
+            .output()
+            .unwrap();
+        if !output.status.success()
+            && String::from_utf8_lossy(&output.stderr).contains("unknown option")
+        {
+            return; // Git 2.39 still supports file-backed repositories.
+        }
+        ensure_success("initialize reftable fixture", &output).unwrap();
+        for args in [
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "Initial",
+            ][..],
+            &["worktree", "add", "-qb", "topic", linked.to_str().unwrap()][..],
+        ] {
+            ensure_success("prepare reftable fixture", &run_git(&root, args).unwrap()).unwrap();
+        }
+        let common = root.join(".git/reftable").canonicalize().unwrap();
+        let private = root
+            .join(".git/worktrees/linked/reftable")
+            .canonicalize()
+            .unwrap();
+        let main_paths = repository_watch_paths(&root).unwrap();
+        let linked_paths = repository_watch_paths(&linked).unwrap();
+        assert!(main_paths.non_recursive.contains(&common));
+        assert!(linked_paths.non_recursive.contains(&common));
+        assert!(linked_paths.non_recursive.contains(&private));
+        assert_eq!(
+            linked_paths
+                .non_recursive
+                .iter()
+                .collect::<HashSet<_>>()
+                .len(),
+            linked_paths.non_recursive.len()
+        );
+        assert!(
+            linked_paths
+                .recursive
+                .iter()
+                .all(|path| !path.ends_with("objects"))
+        );
     }
 
     #[test]

@@ -18,6 +18,15 @@ Used to identify what Tauri initializes during packaging and to distinguish
 the possible sources of watcher exhaustion. The preflight uses Node's
 existing filesystem API; no upstream implementation was copied.
 
+## Reftable repository watchers
+
+- [Git reftable layout and transactions](https://git-scm.com/docs/reftable#_layout)
+- [Git initialization reference format](https://git-scm.com/docs/git-init)
+
+Used to identify the directory boundary that contains atomic ref updates.
+The watcher uses existing filesystem notifications and lets Git read refs;
+it does not parse reftable contents or reuse Git's implementation.
+
 ## Reviewed force-push destination configuration
 
 - [Git remote URL inspection](https://git-scm.com/docs/git-remote)

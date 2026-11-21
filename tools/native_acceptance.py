@@ -653,10 +653,11 @@ class Fixtures:
     def git(self, repository, *args, input=None):
         return run("git", "-C", str(repository), *args, env=self.env, input=input)
 
-    def repository(self, name="repository", commits=12):
+    def repository(self, name="repository", commits=12, *, ref_format=None):
         repository = self.root / name
         repository.mkdir()
-        self.git(repository, "init", "-q", "-b", "main")
+        options = [f"--ref-format={ref_format}"] if ref_format else []
+        self.git(repository, "init", "-q", "-b", "main", *options)
         # Fast-import makes even 100k histories deterministic and inexpensive.
         data = []
         for index in range(commits):
@@ -1138,7 +1139,8 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection", "watcher-checkout",
+        "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
+        "watcher-checkout", "watcher-reftable",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1328,6 +1330,9 @@ def main():
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)
+            elif args.suite == "watcher-reftable":
+                from native_watcher_scenarios import watcher_reftable
+                repository, repo_id = watcher_reftable(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:

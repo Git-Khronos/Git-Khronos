@@ -537,6 +537,15 @@ readiness polling passed all 47 cases. Clicks and mutation scripts remain
 one-shot. The original report is retained separately from
 `target/local-review/native-watcher-and-poll.mHQRT8hw/bookworm/`.
 
+An additional reftable-only fixture with Git 2.53.0 removed a branch
+externally on the same installed diff candidate. Git no longer listed the
+branch, but the Ubuntu 26.04 renderer still showed it. See
+`target/local-review/native-reftable-watch.gxkK0eEn/resolute/results/`.
+A local native test separately confirmed that a ref-only transaction
+replaced `reftable/tables.list` without modifying HEAD and that the old
+watch list missed that notification. This is distinct from the earlier
+file-backed checkout timeout.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

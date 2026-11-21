@@ -4659,6 +4659,77 @@ mod tests {
     }
 
     #[test]
+    fn metadata_watcher_observes_a_reftable_only_branch_update() {
+        let fixture = tempfile::tempdir().expect("create owned watcher fixture");
+        let root = fixture.path();
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        let init = git(&["init", "-q", "-b", "main", "--ref-format=reftable"]);
+        if !init.status.success()
+            && String::from_utf8_lossy(&init.stderr).contains("unknown option")
+        {
+            return; // This Git only supports traditional reference storage.
+        }
+        assert!(init.status.success(), "{:?}", init.stderr);
+        let commit = git(&[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Initial",
+        ]);
+        assert!(commit.status.success(), "{:?}", commit.stderr);
+        let root = root.canonicalize().unwrap();
+        let head_file = fs::read(root.join(".git/HEAD")).unwrap();
+        let list_path = root.join(".git/reftable/tables.list");
+        let list = fs::read(&list_path).unwrap();
+        let paths = repository_watch_paths(&root).expect("locate watched metadata");
+        let (sender, receiver) = mpsc::channel();
+        let mut watcher = notify::recommended_watcher(sender).expect("create metadata watcher");
+        for path in &paths.non_recursive {
+            watcher.watch(path, RecursiveMode::NonRecursive).unwrap();
+        }
+        for path in &paths.recursive {
+            watcher.watch(path, RecursiveMode::Recursive).unwrap();
+        }
+        assert!(
+            git(&["update-ref", "refs/heads/reftable-probe", "HEAD"])
+                .status
+                .success()
+        );
+        assert_eq!(fs::read(root.join(".git/HEAD")).unwrap(), head_file);
+        assert_ne!(fs::read(&list_path).unwrap(), list);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let observed = loop {
+            match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(Ok(event))
+                    if !matches!(event.kind, EventKind::Access(_))
+                        && event.paths.contains(&list_path) =>
+                {
+                    break true;
+                }
+                Ok(_) if Instant::now() < deadline => continue,
+                _ => break false,
+            }
+        };
+        assert!(
+            observed,
+            "a branch update did not notify on the replaced reftable stack"
+        );
+    }
+
+    #[test]
     fn metadata_watcher_observes_git_updates() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)

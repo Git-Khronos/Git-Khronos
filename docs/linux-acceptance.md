@@ -49,6 +49,12 @@ report captures Git, rendered and native read-only status after the timeout;
 the check still fails. The success path never forces a refresh and the
 timeout is unchanged.
 
+On a Git version with reftable support, use `watcher-reftable` to create and
+delete a branch externally without changing the checkout's HEAD or index.
+The renderer must update the branch list in response to real watcher
+notifications. Run this focused suite on Git versions that can initialize
+a reftable repository; it is not part of the Git 2.39 compatibility gate.
+
 Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
 operations are not retried after an uncertain reply.

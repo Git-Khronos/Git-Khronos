@@ -124,6 +124,37 @@ def watcher_checkout(driver, fixtures, report):
     return repository, repo_id
 
 
+def watcher_reftable(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository(ref_format='reftable')
+    repo_id = open_ui(driver, repository)
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    head_file = (repository / '.git/HEAD').read_bytes()
+    index = (repository / '.git/index').read_bytes()
+    branch = 'owned-reftable-probe'
+    row = f'.branch-item[aria-label="Local branch {branch}"]'
+    ref = f'refs/heads/{branch}'
+    with observe_repository_changes(driver, fixtures, report, 'reftableObservation',
+                                    repository_id=repo_id, selector=row) as mark:
+        mark('create-ref')
+        fixtures.git(repository, 'update-ref', ref, head)
+        assert fixtures.git(repository, 'rev-parse', ref) == head
+        driver.wait(f'return !!document.querySelector({json.dumps(row)})', 5)
+        mark('created-ref-rendered')
+        fixtures.git(repository, 'update-ref', '-d', ref)
+        assert branch not in fixtures.git(repository, 'for-each-ref', '--format=%(refname)')
+        driver.wait(f'return !document.querySelector({json.dumps(row)})', 5)
+        mark('removed-ref-rendered')
+    assert (repository / '.git/HEAD').read_bytes() == head_file
+    assert (repository / '.git/index').read_bytes() == index
+    assert fixtures.git(repository, 'symbolic-ref', '--short', 'HEAD') == 'main'
+    assert not fixtures.git(repository, '--no-optional-locks', 'status', '--porcelain')
+    assert any(event['type'] == 'repository-changed' for event in report['reftableObservation']['sample'])
+    report['scenarios'].append('native-reftable-ref-only-create-and-delete-update-the-visible-branch-list')
+    return repository, repo_id
+
+
 def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, report, row, delete_ref):
     """Prove a same-branch graph update while native events are still arriving."""
     marker = repository / '.git' / 'owned-watcher-burst-marker'

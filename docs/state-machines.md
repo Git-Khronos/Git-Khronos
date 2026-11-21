@@ -47,6 +47,11 @@ push-review evidence while preserving unrelated config bytes and valid policy.
 Packaged inherited-environment acceptance independently checks the selected
 identity and the outside fixture's config, index, HEAD and working bytes.
 
+Repository watchers observe Git's metadata directories, not its object
+database. In a reftable repository this includes the shared stack and any
+private stack of the selected linked checkout. Watch the directories rather
+than individual files so Git's atomic stack replacement is visible.
+
 ## Implemented transition ownership
 
 ### Command palette
