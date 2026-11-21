@@ -1543,6 +1543,9 @@ fast-forward and divergent checkout paths and exercised directory renames.
 The `ls-files --directory` fallback uses Git's documented trailing-slash
 summary; a mixed-directory fixture checks that individual ignored paths
 are still covered when an unrelated generated directory is summarized.
+The Git merge manual's `branch.<name>.mergeOptions` and fast-forward
+documentation informed the receiving-branch check; a real merge verified
+that `--no-ff` still creates the configured two-parent commit.
 No upstream code was copied.
 
 The preceding feature comparison consulted public GitKraken documentation for

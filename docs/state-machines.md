@@ -688,6 +688,9 @@ can establish that an incoming change is outside the ignored paths. A
 possible overlap in a summarized checkout is still refused.
 If custom merge behavior, a promisor remote, or incomplete output prevents
 verification, the app refuses the operation when ignored files are present.
+Only the receiving branch's default merge flags apply. Standard fast-forward,
+commit, and statistics toggles remain usable because they do not widen the
+paths the merge may write; unknown options on the receiver are still refused.
 
 The native command runs on a background worker using the existing repository
 mutation lock. It rechecks the reviewed receiver after the preflight and still

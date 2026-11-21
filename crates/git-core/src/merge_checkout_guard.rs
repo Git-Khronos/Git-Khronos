@@ -51,6 +51,60 @@ fn obstructions<'a>(ignored: &'a BTreeSet<Vec<u8>>, target: &[u8]) -> Option<&'a
         .map(Vec::as_slice)
 }
 
+fn receiving_head(path: &Path) -> Result<Option<String>, AppError> {
+    let result = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
+    match result.status.code() {
+        Some(0) => std::str::from_utf8(&result.stdout)
+            .ok()
+            .and_then(|reference| reference.strip_suffix('\n'))
+            .and_then(|reference| reference.strip_prefix("refs/heads/"))
+            .filter(|branch| !branch.is_empty())
+            .map(|branch| Some(branch.to_owned()))
+            .ok_or_else(unavailable),
+        Some(1) if result.stdout.is_empty() => Ok(None),
+        _ => Err(unavailable()),
+    }
+}
+
+fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
+    let config = bounded(
+        path,
+        &[
+            "config",
+            "--null",
+            "--get-all",
+            &format!("branch.{branch}.mergeOptions"),
+        ],
+    )?;
+    if config.status.code() == Some(1) && config.stdout.is_empty() {
+        return Ok(());
+    }
+    if !config.status.success() {
+        return Err(unavailable());
+    }
+    for option in paths(&config.stdout)?.flat_map(|entry| {
+        entry
+            .split(|byte| byte.is_ascii_whitespace())
+            .filter(|word| !word.is_empty())
+    }) {
+        // These toggles affect history shape, committing or reporting, not
+        // the paths that a standard merge may write. Do not guess any value.
+        if !matches!(
+            option,
+            b"--ff"
+                | b"--no-ff"
+                | b"--ff-only"
+                | b"--stat"
+                | b"--no-stat"
+                | b"--commit"
+                | b"--no-commit"
+        ) {
+            return Err(unavailable());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Result<(), AppError> {
     ensure_ignored_files_preserved_with_limit(path, source, PATH_LIMIT)
 }
@@ -106,11 +160,15 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
         &[
             "config",
             "--get-regexp",
-            r"^(extensions\.partialclone|remote\..*\.promisor|merge\..*\.(driver|recursive)|merge\.default|branch\..*\.mergeoptions|pull\.twohead)$",
+            r"^(extensions\.partialclone|remote\..*\.promisor|merge\..*\.(driver|recursive)|merge\.(default|renormalize)|pull\.twohead)$",
         ],
     )?;
     if custom.status.code() != Some(1) || !custom.stdout.is_empty() {
         return Err(unavailable());
+    }
+    let receiver = receiving_head(path)?;
+    if let Some(branch) = receiver.as_deref() {
+        check_branch_options(path, branch)?;
     }
     let casing = run_git(path, &["config", "--type=bool", "--get", "core.ignorecase"])?;
     let ignore_case = match (casing.status.code(), casing.stdout.trim_ascii()) {
@@ -195,6 +253,7 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
         }
         if reference_tip(path, "HEAD").as_deref() != Some(head.as_str())
             || reference_tip(path, source).as_deref() != Some(tip.as_str())
+            || receiving_head(path)? != receiver
         {
             return Err(unavailable());
         }

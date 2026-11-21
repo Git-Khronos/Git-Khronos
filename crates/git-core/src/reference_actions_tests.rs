@@ -2171,6 +2171,74 @@ fn reviewed_merge_guards_the_destination_of_a_directory_rename() {
 }
 
 #[test]
+fn merge_guard_keeps_common_options_on_the_receiving_branch() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let receiver = repository.oid();
+    run_mutation(path, &["switch", "-c", "source"], "create fixture source").unwrap();
+    fs::write(path.join("incoming.txt"), b"new tracked data\n").unwrap();
+    stage_path(path, "incoming.txt").unwrap();
+    commit(path, "Add incoming file").unwrap();
+    let source = repository.oid();
+    run_mutation(path, &["switch", "main"], "switch receiver").unwrap();
+    fs::write(
+        path.join(".git/info/exclude"),
+        b"/settings.local\n/incoming.txt\n",
+    )
+    .unwrap();
+    fs::write(path.join("settings.local"), b"existing settings\n").unwrap();
+    let cfg = |key, value| {
+        run_mutation(path, &["config", key, value], "configure branch options").unwrap();
+    };
+    cfg("branch.source.mergeOptions", "--strategy=ours");
+    cfg("branch.main.mergeOptions", "--strategy=ours");
+    let review = BranchIntegrationReview {
+        receiving_branch: "main".into(),
+        receiving_oid: receiver.clone(),
+        source_branch: "source".into(),
+        source_oid: source.clone(),
+    };
+    assert_eq!(
+        integrate_branch_with_review(path, "source", "merge", Some(&review))
+            .unwrap_err()
+            .kind,
+        "mergeIgnoredPathsUnverified"
+    );
+    assert_eq!(repository.oid(), receiver);
+    cfg("branch.main.mergeOptions", "--no-ff --no-stat");
+    fs::write(path.join("incoming.txt"), b"ignored local contents\n").unwrap();
+    assert_eq!(
+        integrate_branch_with_review(path, "source", "merge", Some(&review))
+            .unwrap_err()
+            .kind,
+        "mergeLocalPathObstruction"
+    );
+    assert_eq!(
+        fs::read(path.join("incoming.txt")).unwrap(),
+        b"ignored local contents\n"
+    );
+    fs::rename(
+        path.join("incoming.txt"),
+        path.join(".git/fixture-incoming.saved"),
+    )
+    .unwrap();
+    integrate_branch_with_review(path, "source", "merge", Some(&review)).unwrap();
+    let parents = run_git(path, &["show", "-s", "--format=%P", "HEAD"]).unwrap();
+    assert_eq!(
+        String::from_utf8(parents.stdout).unwrap().trim_end(),
+        format!("{receiver} {source}")
+    );
+    assert_eq!(
+        fs::read(path.join("incoming.txt")).unwrap(),
+        b"new tracked data\n"
+    );
+    assert_eq!(
+        fs::read(path.join("settings.local")).unwrap(),
+        b"existing settings\n"
+    );
+}
+
+#[test]
 fn large_ignored_tree_only_blocks_merges_with_a_possible_collision() {
     let repository = Repository::new();
     let path = &repository.0;
