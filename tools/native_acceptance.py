@@ -723,7 +723,7 @@ def checkpoint_refs(fixtures, repository):
     return dict(line.split(" ", 1) for line in output.splitlines())
 
 
-def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report, *, hold_packed_status=False):
+def checkpoint_lifecycle(driver, fixtures, repository, repo_id, checkpoint, report, *, hold_packed_status=False):
     names, oids = checkpoint["names"], checkpoint["oids"]
     expected = {names[key]: oids[key] for key in
                 ("reviewed", "sibling", "moved", "external-packed", "external-loose")}
@@ -755,17 +755,28 @@ def checkpoint_lifecycle(driver, fixtures, repository, checkpoint, report, *, ho
     report["checkpointExternalDeletes"] = []
     for key in ("external-loose", "external-packed"):
         packed_race = hold_packed_status and key == "external-packed"
+        burst_race = hold_packed_status and key == "external-loose"
         context = nullcontext()
         if packed_race:
             from native_watcher_scenarios import held_status_for_packed_ref
             context = held_status_for_packed_ref(driver, fixtures, report)
-        with context:
+        observation = {"storage": key.removeprefix("external-"), "oid": oids[key],
+                       "gitRefDeleted": False, "graphRowRemoved": False}
+        report["checkpointExternalDeletes"].append(observation)
+
+        def delete_ref():
             fixtures.git(repository, "update-ref", "-d", names[key], oids[key])
             expected.pop(names[key])
             assert checkpoint_refs(fixtures, repository) == expected
-            observation = {"storage": key.removeprefix("external-"), "oid": oids[key],
-                           "gitRefDeleted": True, "graphRowRemoved": False}
-            report["checkpointExternalDeletes"].append(observation)
+            observation["gitRefDeleted"] = True
+
+        if burst_race:
+            from native_watcher_scenarios import remove_ref_during_change_burst
+            remove_ref_during_change_burst(driver, fixtures, repository, repo_id, report, row(key), delete_ref)
+            report["scenarios"].append("native-loose-ref-refresh-converges-during-continuous-watcher-events")
+        else:
+            with context:
+                delete_ref()
         driver.wait(f"return !document.querySelector({json.dumps(row(key))})")
         observation["graphRowRemoved"] = True
         if packed_race:
@@ -1057,7 +1068,8 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     driver.click('.wip-nav')
     untracked = repository / "native-untracked.txt"
     from native_watcher_scenarios import observe_untracked_refresh
-    with observe_untracked_refresh(driver, fixtures, report, os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1") as mark:
+    with observe_untracked_refresh(driver, fixtures, report, repo_id,
+                                   os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1") as mark:
         mark('create')
         untracked.write_text("discovered by the native status refresh\n")
         driver.wait('return !!document.querySelector(\'[aria-label="Stage native-untracked.txt"]\')')
@@ -1083,7 +1095,7 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     assert not fixtures.git(repository, "status", "--porcelain")
     report["scenarios"].append("native-external-checkout-and-untracked-discovery")
     repository_file_discard_recovery(driver, fixtures, repository, repo_id, report)
-    checkpoint_lifecycle(driver, fixtures, repository, checkpoints, report,
+    checkpoint_lifecycle(driver, fixtures, repository, repo_id, checkpoints, report,
                          hold_packed_status=hold_packed_status)
     return repository, repo_id
 

@@ -16,10 +16,16 @@ const GITLAB_SCENARIO = 'native-gitlab-catalogue-preserves-independent-git-refs-
 const RELEASE_MATRIX = [
   ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIO],
-  ['ubuntu', '22.04', 'watcher-refresh', 'native-packed-ref-refresh-replays-read-after-held-status'],
+  ['ubuntu', '22.04', 'watcher-refresh', [
+    'native-packed-ref-refresh-replays-read-after-held-status',
+    'native-loose-ref-refresh-converges-during-continuous-watcher-events',
+  ]],
   ['ubuntu', '22.04', 'lfs-counts', 'native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters'],
   ['ubuntu', '22.04', 'lfs-snapshot-timeout', 'native-lfs-stalled-listing-does-not-block-opening-or-invent-counts'],
-  ['ubuntu', '22.04', 'environment', 'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer', true],
+  ['ubuntu', '22.04', 'environment', [
+    'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
+    'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
+  ], true],
   ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIO],
   ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
@@ -84,16 +90,17 @@ export function summarizeInstalledReport(candidate, report) {
 
 // Input reports must already have been matched to the installed payload.
 export function summarizeReleaseMatrix(validatedReports) {
-  const checks = RELEASE_MATRIX.map(([id, versionId, suite, requiredScenario, inheritedGitEnvironment = false]) => {
+  const checks = RELEASE_MATRIX.map(([id, versionId, suite, scenario, inheritedGitEnvironment = false]) => {
+    const requiredScenarios = Array.isArray(scenario) ? scenario : [scenario];
     const observed = validatedReports.find(report => report.passed === true &&
       report.linuxDistribution?.id === id && report.linuxDistribution.versionId === versionId &&
       report.suite === suite && (!inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
-      (!requiredScenario || report.scenarios.includes(requiredScenario)));
+      requiredScenarios.every(required => report.scenarios.includes(required)));
     return {
       distribution: { id, versionId },
       suite,
       ...(inheritedGitEnvironment && { inheritedGitEnvironment }),
-      ...(requiredScenario && { requiredScenario }),
+      requiredScenarios: [...requiredScenarios],
       report: observed?.path ?? null,
     };
   });

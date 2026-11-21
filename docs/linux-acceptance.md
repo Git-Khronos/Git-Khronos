@@ -316,7 +316,12 @@ with the exact package on a disposable runner. Jammy signed-release
 qualification runs this check with the stock runtime prerequisites. The app-only Git wrapper
 holds one read while real Git deletes a packed checkpoint in the owned
 checkout. Git verifies the deletion first; the graph must then remove the
-row without a manual refresh. The fixture does not modify Git on the host.
+row without a manual refresh. A separate loose-checkpoint deletion must
+converge while the native watcher is still delivering a continuous event
+stream. The report measures the largest gap between observed notifications
+to ensure the test did not silently get a quiet debounce interval. The
+local release matrix requires both checks in one passing Jammy watcher
+report. The fixture does not modify Git on the host.
 
 The `file-media` suite runs the same native image and file-content checks
 as the full toolkit, including actual WebKit decoding. It centers each row

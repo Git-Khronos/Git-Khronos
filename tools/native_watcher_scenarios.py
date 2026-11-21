@@ -1,20 +1,28 @@
 """Observe watcher convergence and hold an owned status read across a ref change."""
 from contextlib import contextmanager
+import json
 import os
 from pathlib import Path
 import shlex
 import shutil
+from threading import Event, Thread
 import time
 
 
+def observe_untracked_refresh(driver, fixtures, report, repository_id, enabled=False):
+    return observe_repository_changes(driver, fixtures, report, 'untrackedRefreshObservation', enabled=enabled,
+                                      repository_id=repository_id,
+                                      selector='[aria-label="Stage native-untracked.txt"]')
+
+
 @contextmanager
-def observe_untracked_refresh(driver, fixtures, report, enabled=False):
+def observe_repository_changes(driver, fixtures, report, field, *, repository_id, enabled=True, selector=None):
     """Record event and Git-read timing without emitting events or refreshing the app."""
     if not enabled:
         yield lambda _phase: None
         return
     attached = driver.request('POST', driver.path('execute/async'), {'script': """
-      const done = arguments[arguments.length - 1];
+      const repositoryId = arguments[0], selector = arguments[1], done = arguments[arguments.length - 1];
       const bridge = window.__TAURI_INTERNALS__;
       const sample = [];
       const add = type => {
@@ -22,23 +30,25 @@ def observe_untracked_refresh(driver, fixtures, report, enabled=False):
       };
       const event = 'repository-changed';
       bridge.invoke('plugin:event|listen', {
-        event, target: {kind: 'Any'}, handler: bridge.transformCallback(() => add('repository-changed')),
+        event, target: {kind: 'Any'}, handler: bridge.transformCallback(({payload}) => {
+          if (payload?.repositoryId === repositoryId) add('repository-changed');
+        }),
       }).then(eventId => {
         window.__ownedWatcherObservation = { mark: phase => add(phase), stop: async () => {
           window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
           await bridge.invoke('plugin:event|unlisten', {event, eventId});
           return {sample, visible: !document.hidden,
-            stillShown: !!document.querySelector('[aria-label="Stage native-untracked.txt"]')};
+            stillShown: selector !== null && !!document.querySelector(selector)};
         }};
         done({attached: true});
       }, error => done({error: String(error)}));
-    """, 'args': []})
+    """, 'args': [repository_id, selector]})
     assert attached.get('attached'), f'Could not attach read-only watcher observations: {attached}'
     try:
         yield lambda phase: driver.script('window.__ownedWatcherObservation.mark(arguments[0]);', phase)
     finally:
         observation = {}
-        report['untrackedRefreshObservation'] = observation
+        report[field] = observation
         try:
             observation.update(driver.request('POST', driver.path('execute/async'), {'script': """
               const done = arguments[arguments.length - 1];
@@ -49,6 +59,61 @@ def observe_untracked_refresh(driver, fixtures, report, enabled=False):
         trace = fixtures.root / 'owned-watcher-status/status-trace'
         if trace.is_file():
             observation['statusReads'] = trace.read_text().splitlines()[-300:]
+
+
+def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, report, row, delete_ref):
+    """Prove a same-branch graph update while native events are still arriving."""
+    marker = repository / '.git' / 'owned-watcher-burst-marker'
+    field = 'watcherBurstObservation'
+    stopped = Event()
+    errors = []
+
+    def produce_events():
+        try:
+            update = 0
+            while not stopped.is_set():
+                marker.write_text(str(update))
+                update += 1
+                stopped.wait(.10)
+        except OSError as error:
+            errors.append(str(error))
+
+    removed = 'return !document.querySelector(' + json.dumps(row) + ')'
+    with observe_repository_changes(driver, fixtures, report, field, repository_id=repository_id, selector=row) as mark:
+        worker = Thread(target=produce_events, daemon=True)
+        worker.start()
+        try:
+            # Get past one ordinary debounce interval before changing the ref.
+            time.sleep(.70)
+            mark('delete-ref')
+            delete_ref()
+            try:
+                driver.wait(removed, 4)
+                during_burst = True
+            except TimeoutError:
+                during_burst = False
+            mark('end-of-burst-observation')
+        finally:
+            stopped.set()
+            worker.join(3)
+            if not worker.is_alive():
+                marker.unlink(missing_ok=True)
+
+    observation = report[field]
+    observation['graphRowRemovedDuringBurst'] = during_burst
+    assert not errors and not worker.is_alive(), (errors, observation)
+    times = observation.get('sample', [])
+    marks = {event['type']: event['ms'] for event in times if event['type'] != 'repository-changed'}
+    assert 'delete-ref' in marks and 'end-of-burst-observation' in marks, observation
+    start, end = marks['delete-ref'], marks['end-of-burst-observation']
+    event_times = [event['ms'] for event in times if event['type'] == 'repository-changed' and event['ms'] <= end]
+    assert event_times and event_times[0] < start - 450, observation
+    maximum_gap = max(later - earlier for earlier, later in zip(event_times, event_times[1:] + [end]))
+    observation.update(maxEventGapMs=maximum_gap, deletionToObservationMs=end - start)
+    assert maximum_gap < 450, f'Native event burst contained a quiet debounce interval: {observation}'
+    driver.wait(removed)
+    observation['graphRowRemovedAfterQuiet'] = True
+    assert during_burst, 'Git deleted the ref, but the graph did not update until watcher events stopped'
 
 
 def watcher_status_environment(fixtures):

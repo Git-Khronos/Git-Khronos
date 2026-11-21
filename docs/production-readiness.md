@@ -222,6 +222,19 @@ checks in the matrix used for that candidate and strict updater preflight.
 See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`.
 It predates bounded watcher debounce and its new installed burst gate.
 
+The watcher-burst build at `fc44942` has SHA-256
+`af5f72acb7922cb4356835c2b06f3ff93ac7406887761738a17609017a1da40c`.
+Its installed Ubuntu 24.04 watcher suite passed all 22 scenarios. In the
+same repository-scoped test, the previous package kept the externally
+deleted checkpoint visible for the full four-second observation and
+removed it only after the event burst stopped. The replacement removed it
+after 990 ms while notifications were still arriving (maximum gap 159 ms,
+below the 450 ms quiet debounce). Git independently confirmed the deletion
+in both runs. These reports are retained in
+`target/local-review/updater/jammy-builder/watcher-burst.UjxQi7BT/burst-proof/`.
+This qualifies the specific watcher behavior, not the still-running
+full matrix under the stronger evidence requirements.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

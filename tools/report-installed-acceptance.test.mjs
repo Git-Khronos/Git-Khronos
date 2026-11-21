@@ -73,7 +73,7 @@ function matrixFixtures() {
     suite: check.suite,
     passed: true,
     inheritedGitEnvironment: check.inheritedGitEnvironment === true,
-    scenarios: [check.requiredScenario ?? 'completed-suite'],
+    scenarios: check.requiredScenarios,
   }));
 }
 
@@ -105,4 +105,25 @@ test('the release matrix refuses incomplete watcher, trust, and incoming-link re
   assert.equal(partial.complete, false);
   assert.deepEqual(partial.checks.filter(check => check.report === null).map(check => check.suite),
     ['watcher-refresh', 'environment', 'incoming-links']);
+});
+
+test('split passing reports cannot combine to satisfy a required suite', () => {
+  const fixtures = matrixFixtures();
+  for (const [suite, milestones] of [
+    ['watcher-refresh', [
+      'native-packed-ref-refresh-replays-read-after-held-status',
+      'native-loose-ref-refresh-converges-during-continuous-watcher-events',
+    ]],
+    ['environment', [
+      'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
+      'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
+    ]],
+  ]) {
+    const full = fixtures.find(report => report.suite === suite);
+    assert.deepEqual(full.scenarios, milestones);
+    const split = milestones.map((scenario, index) => ({ ...full, path: `${index}/report.json`, scenarios: [scenario] }));
+    const outcome = summarizeReleaseMatrix([...fixtures.filter(report => report !== full), ...split]);
+    assert.equal(outcome.complete, false);
+    assert.deepEqual(outcome.checks.filter(check => check.report === null).map(check => check.suite), [suite]);
+  }
 });
