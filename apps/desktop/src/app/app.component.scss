@@ -534,25 +534,6 @@
 .graph-action-menu.branch-context-menu { width: min(312px, calc(100vw - 16px)); }
 .graph-action-menu:not(.positioned) { visibility: hidden; animation: none; }
 .graph-action-menu > .context-heading { position: sticky; z-index: 1; top: -5px; margin: -5px -5px 4px; padding: 11px 14px 8px; border-bottom: 1px solid var(--overlay-divider); background: var(--overlay-surface); }
-.branch-drop-menu { position: fixed; z-index: 34; width: 310px; overflow: hidden; border: 1px solid #514f6a; border-radius: 6px; background: #242335; box-shadow: 0 18px 52px #000c, 0 1px 0 #ffffff0d inset; animation: menu-in var(--motion-feedback) var(--ease-out); }
-.branch-drop-menu > header { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border-bottom: 1px solid #3b3a50; background: #29283b; }
-.branch-drop-menu > header > span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #423e69; color: #b5aaff; }
-.branch-drop-menu > header div { display: grid; gap: 2px; min-width: 0; }
-.branch-drop-menu > header small { color: #8f8da0; font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
-.branch-drop-menu > header strong { overflow: hidden; color: white; font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }
-.branch-drop-menu > button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 4px; padding: 8px 10px; background: transparent; color: var(--accent); text-align: left; }
-.branch-drop-menu > button:hover,
-.branch-drop-menu > button:focus-visible { background: #39384f; outline: none; }
-.branch-drop-menu > button span { display: grid; gap: 2px; min-width: 0; }
-.branch-drop-menu > button strong { color: #d8d7e3; font-size: var(--font-size-body); font-weight: 650; }
-.branch-drop-menu > button small { overflow: hidden; color: #8d8c9e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.branch-drop-advice { margin: 0; padding: 7px 11px; border-bottom: 1px solid #3b3a50; color: #c9c7da; font-size: 12px; }
-.branch-drop-menu .drop-badge { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #2f5a45; color: #aef0c8; font-size: 11px; font-style: normal; font-weight: 700; }
-.branch-drop-menu > footer { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px; border-top: 1px solid #3b3a50; }
-.branch-drop-menu > footer .drop-compare { margin-right: auto; color: #b5aaff; }
-.branch-drop-menu > footer button { padding: 4px 8px; border-radius: 3px; background: transparent; color: #918fa4; font-size: 12px; }
-.branch-drop-menu > footer button:hover,
-.branch-drop-menu > footer button:focus-visible { background: #3a394f; color: white; outline: none; }
 .context-heading { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding: 7px 9px 8px; }
 .context-heading span { color: #8d8c9e; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .context-heading strong { overflow: hidden; color: #deddea; font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }
@@ -815,3 +796,5 @@
 
 .unstaged-section > .file-section-title { height: auto; min-height: 33px; gap: 8px; }
 .file-section-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+
+.branch-drop-load-error { position: fixed; z-index: 34; right: 12px; bottom: calc(var(--statusbar-height) + 8px); max-width: min(360px, calc(100vw - 24px)); padding: 8px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--overlay-surface); color: var(--overlay-text); }

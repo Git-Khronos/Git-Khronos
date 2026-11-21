@@ -809,7 +809,16 @@ arrives. Repository Management also keeps an eager loading/error shell. While
 the request owns the modal, Tab stays in the dialog and background Git
 shortcuts are ignored, including in the gap before the module renders. Escape
 retains drafts and returns focus only to the current request's opener.
-`deferred-overlay-styles.spec.ts` covers these boundaries.
+The branch-drop menu also loads on demand, with a root-styled failure notice.
+The drop owns the repository path and ID and the source and target branch
+tips. A changed snapshot retires it, and comparison results must match both the
+active drop request and its tips; a native comparison detecting newer tips
+retires the review even before the snapshot changes. A checkout required by a direct drop
+strategy must succeed; if its refreshed snapshot shows moved refs, the follow-up
+integration is not sent. The rendered menu is refitted after late comparison
+text without retaking focus. `deferred-overlay-styles.spec.ts` covers deferred
+layout and failure; `integration-dialog.spec.ts` covers drop scope and checkout
+handoff. These renderer guards do not replace native Git validation.
 
 ### Application update intent, consent and installation receipts
 

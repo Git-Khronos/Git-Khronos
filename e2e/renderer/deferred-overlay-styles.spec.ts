@@ -125,3 +125,37 @@ for (const outcome of ['loaded', 'failed'] as const) {
     } finally { layout.release(); }
   });
 }
+
+for (const outcome of ['opened', 'unavailable'] as const) {
+  test(`branch drop keeps its layout off the startup path and can be ${outcome}`, async ({ page }) => {
+    const layout = await interceptLayout(page, /class\s+_?BranchDropMenuComponent\b/, '.branch-drop-advice', outcome === 'unavailable');
+    try {
+      await page.goto('/');
+      const source = page.getByRole('button', { name: 'Local branch release', exact: true });
+      const target = page.getByRole('button', { name: /Local branch main, current/ });
+      await expect(source).toBeVisible();
+      expect(layout.requests()).toBe(0);
+      expect(await layout.installed()).toBe(false);
+      await source.dragTo(target);
+      await expect.poll(layout.requests).toBe(1);
+      const menu = page.getByRole('menu', { name: 'Branch drop actions' });
+      await expect(menu).toHaveCount(0);
+      expect(await layout.installed()).toBe(false);
+      layout.release();
+      if (outcome === 'opened') {
+        await expect(menu.getByRole('menuitem', { name: /Fast-forward main/ })).toBeFocused();
+        await expect(menu).toHaveCSS('position', 'fixed');
+        expect(await layout.installed()).toBe(true);
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+      } else {
+        const error = page.getByRole('status').filter({ hasText: 'Branch actions could not be loaded' });
+        await expect(error.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+        expect(await layout.installed()).toBe(false);
+        await error.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(error).toHaveCount(0);
+      }
+      await expect(target).toBeFocused();
+    } finally { layout.release(); }
+  });
+}

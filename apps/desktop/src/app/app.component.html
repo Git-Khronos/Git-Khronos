@@ -2371,25 +2371,31 @@
     </div>
   }
   @if (branchDropMenu(); as operation) {
-    <section
-      #branchDropMenuElement
-      class="branch-drop-menu"
-      role="menu"
-      aria-label="Branch drop actions"
-      [style.left.px]="operation.x"
-      [style.top.px]="operation.y"
-      (click)="$event.stopPropagation()"
-      (keydown)="handleBranchDropMenuKeydown($event)"
-    >
-      <header><span><gc-icon name="branch" [size]="15" /></span><div><small>Bring {{ operation.source }} into {{ operation.target }}</small><strong>{{ operation.source }} → {{ operation.target }}</strong></div></header>
-      @if (branchDropAdvice(); as advice) { <p class="branch-drop-advice" role="status">{{ advice.text }}</p> }
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('ff-only')"><gc-icon name="merge" [size]="14" /><span><strong>Fast-forward {{ operation.target }} @if (branchDropAdvice()?.recommended === 'ff-only') { <em class="drop-badge">Recommended</em> }</strong><small>{{ branchDropAdvice()?.fastForwardBlocked ? 'Not possible: ' + operation.target + ' has its own commits' : 'Move ' + operation.target + ' forward to ' + operation.source + ' without a new commit' }}</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('merge')"><gc-icon name="merge" [size]="14" /><span><strong>Merge {{ operation.source }} into {{ operation.target }} @if (branchDropAdvice()?.recommended === 'merge') { <em class="drop-badge">Recommended</em> }</strong><small>Add a merge commit; keeps both histories as they are</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('squash')"><gc-icon name="git-commit" [size]="14" /><span><strong>Squash {{ operation.source }} into {{ operation.target }}</strong><small>Stage all changes as one new commit you write</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="runBranchDrop('rebase')"><gc-icon name="refresh" [size]="14" /><span><strong>Rebase {{ operation.source }} onto {{ operation.target }}</strong><small>Replay {{ operation.source }}'s commits on top; they get new IDs</small></span></button>
-      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openInteractiveRebaseFromDrop()"><gc-icon name="edit" [size]="14" /><span><strong>Interactive Rebase</strong><small>Reorder, reword, combine, or drop source commits</small></span></button>
-      <footer><button type="button" class="drop-compare" (click)="openIntegrationFromDrop()">Compare and choose…</button><button type="button" (click)="dismissBranchDropMenu(true)">Cancel</button></footer>
-    </section>
+    @defer (on immediate) {
+      <gc-branch-drop-menu
+        #branchDropMenuElement
+        class="branch-drop-menu"
+        role="menu"
+        aria-label="Branch drop actions"
+        [style.left.px]="operation.x"
+        [style.top.px]="operation.y"
+        [source]="operation.review.source"
+        [target]="operation.review.target"
+        [advice]="branchDropAdvice()"
+        [busy]="git.busy()"
+        (click)="$event.stopPropagation()"
+        (keydown)="handleBranchDropMenuKeydown($event)"
+        (strategy)="runBranchDrop($event)"
+        (interactive)="openInteractiveRebaseFromDrop()"
+        (compare)="openIntegrationFromDrop()"
+        (cancel)="dismissBranchDropMenu(true)"
+      />
+    } @error {
+      <div #branchDropMenuElement class="branch-drop-load-error" role="status" (click)="$event.stopPropagation()">
+        Branch actions could not be loaded. Try dropping the branch again.
+        <button #branchDropLoadErrorClose type="button" (click)="dismissBranchDropMenu(true)">Close</button>
+      </div>
+    }
   }
   @if (contextMenu(); as menu) {
     <div

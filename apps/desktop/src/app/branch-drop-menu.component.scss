@@ -1,0 +1,21 @@
+:host { position: fixed; z-index: 34; width: min(310px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; overscroll-behavior: contain; border: 1px solid #514f6a; border-radius: 6px; background: #242335; box-shadow: 0 18px 52px #000c, 0 1px 0 #ffffff0d inset; animation: menu-in var(--motion-feedback) var(--ease-out); }
+:host > header { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border-bottom: 1px solid #3b3a50; background: #29283b; }
+:host > header > span { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: 50%; background: #423e69; color: #b5aaff; }
+:host > header div { display: grid; gap: 2px; min-width: 0; }
+:host > header small { color: #8f8da0; font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+:host > header strong { overflow: hidden; color: white; font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }
+:host > button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 4px; padding: 8px 10px; background: transparent; color: var(--accent); text-align: left; }
+:host > button:hover,
+:host > button:focus-visible { background: #39384f; outline: none; }
+:host button:disabled { opacity: .4; }
+:host > button span { display: grid; gap: 2px; min-width: 0; }
+:host > button strong { color: #d8d7e3; font-size: var(--font-size-body); font-weight: 650; overflow-wrap: anywhere; }
+:host > button small { overflow: hidden; color: #8d8c9e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.branch-drop-advice { margin: 0; padding: 7px 11px; border-bottom: 1px solid #3b3a50; color: #c9c7da; font-size: 12px; overflow-wrap: anywhere; }
+:host .drop-badge { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #2f5a45; color: #aef0c8; font-size: 11px; font-style: normal; font-weight: 700; }
+:host > footer { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px; border-top: 1px solid #3b3a50; }
+:host > footer .drop-compare { margin-right: auto; color: #b5aaff; }
+:host > footer button { padding: 4px 8px; border-radius: 3px; background: transparent; color: #918fa4; font-size: 12px; }
+:host > footer button:hover,
+:host > footer button:focus-visible { background: #3a394f; color: white; outline: none; }
+@keyframes menu-in { from { transform: translateY(-3px) scale(.985); } }

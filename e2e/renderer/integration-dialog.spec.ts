@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
-type Comparison = { incomingCount: number; outgoingCount: number; outgoingPublished: number; mergeBase?: string | null };
+type Comparison = { incomingCount: number; outgoingCount: number; outgoingPublished: number; mergeBase?: string | null; sourceOid?: string };
 
-async function installBackend(page: Page, comparison: Comparison | 'error'): Promise<void> {
+async function installBackend(page: Page, comparison: Comparison | 'error' | 'deferred'): Promise<void> {
   await page.evaluate((comparison) => {
     const host = window as any;
     const app = host.ng.getComponent(document.querySelector('gc-root'));
     let snapshot = structuredClone(app.git.repository());
     host.__integrationCalls = [];
+    host.__integrationPending = [];
     host.__TAURI_INTERNALS__ = {
       invoke: async (command: string, args: any) => {
         if (command === 'refresh_repository_status') return snapshot.status;
@@ -15,14 +16,19 @@ async function installBackend(page: Page, comparison: Comparison | 'error'): Pro
         host.__integrationCalls.push({ command, args });
         if (command === 'compare_branches') {
           if (comparison === 'error') throw new Error('Comparison unavailable.');
+          const current = app.git.repository();
+          const targetOid = current.branches.find((branch: any) => !branch.remote && branch.name === args.target)?.oid;
+          const sourceOid = current.branches.find((branch: any) => !branch.remote && branch.name === args.source)?.oid;
+          const answer: Comparison = comparison === 'deferred'
+            ? await new Promise(resolve => host.__integrationPending.push(resolve)) : comparison;
           const make = (count: number, label: string) => Array.from({ length: count }, (_, index) => ({
             oid: `${index + 1}`.padStart(40, label === 'in' ? 'a' : 'b'), subject: `${label} change ${index + 1}`, author: 'Ada', timestamp: 1_700_000_000,
           }));
           return {
-            target: args.target, source: args.source, targetOid: 'c'.repeat(40), sourceOid: 'd'.repeat(40),
-            mergeBase: comparison.mergeBase === undefined ? 'e'.repeat(40) : comparison.mergeBase,
-            incomingCount: comparison.incomingCount, outgoingCount: comparison.outgoingCount, outgoingPublished: comparison.outgoingPublished,
-            incoming: make(comparison.incomingCount, 'in'), outgoing: make(comparison.outgoingCount, 'out'),
+            target: args.target, source: args.source, targetOid, sourceOid: answer.sourceOid ?? sourceOid,
+            mergeBase: answer.mergeBase === undefined ? 'e'.repeat(40) : answer.mergeBase,
+            incomingCount: answer.incomingCount, outgoingCount: answer.outgoingCount, outgoingPublished: answer.outgoingPublished,
+            incoming: make(answer.incomingCount, 'in'), outgoing: make(answer.outgoingCount, 'out'),
           };
         }
         if (command === 'preview_merge') {
@@ -32,7 +38,10 @@ async function installBackend(page: Page, comparison: Comparison | 'error'): Pro
           if (host.__failCheckout) throw new Error('Checkout would overwrite local changes.');
           snapshot = {
             ...snapshot,
-            branches: snapshot.branches.map((branch: any) => ({ ...branch, current: !branch.remote && branch.name === args.name })),
+            branches: snapshot.branches.map((branch: any) => ({
+              ...branch, current: !branch.remote && branch.name === args.name,
+              ...(host.__advanceMainOnCheckout && !branch.remote && branch.name === 'main' ? { oid: '9'.repeat(40) } : {}),
+            })),
             status: { ...snapshot.status, branch: args.name },
           };
           return snapshot;
@@ -172,4 +181,86 @@ test('opens from the toolbar, the command palette and the branch drop menu', asy
   await menu.getByRole('button', { name: 'Compare and choose…' }).click();
   dialog = page.getByRole('dialog', { name: 'Bring changes into main' });
   await expect(dialog.locator('#integrate-source')).toHaveValue('release');
+});
+
+test('retired branch-drop comparisons cannot decorate a new drop of the same branches', async ({ page }) => {
+  await installBackend(page, 'deferred');
+  const source = page.getByRole('button', { name: 'Local branch release', exact: true });
+  const target = page.getByRole('button', { name: /Local branch main, current/ });
+  const menu = page.getByRole('menu', { name: 'Branch drop actions' });
+
+  await source.dragTo(target);
+  await expect(menu).toBeVisible();
+  await expect.poll(() => calls(page, 'compare_branches')).toHaveLength(1);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
+  await source.dragTo(target);
+  await expect(menu).toBeVisible();
+  await expect.poll(() => calls(page, 'compare_branches')).toHaveLength(2);
+  await page.evaluate(() => (window as any).__integrationPending[1]({
+    incomingCount: 2, outgoingCount: 0, outgoingPublished: 0,
+  }));
+  await expect(menu.getByRole('status')).toContainText('2 commits behind');
+  await page.evaluate(async () => {
+    (window as any).__integrationPending[0]({ incomingCount: 0, outgoingCount: 1, outgoingPublished: 0 });
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  await expect(menu.getByRole('status')).toContainText('2 commits behind');
+});
+
+test('a moved reference retires a branch drop before it can integrate', async ({ page }) => {
+  await installBackend(page, 'deferred');
+  const source = page.getByRole('button', { name: 'Local branch release', exact: true });
+  const target = page.getByRole('button', { name: /Local branch main, current/ });
+  const menu = page.getByRole('menu', { name: 'Branch drop actions' });
+
+  await source.dragTo(target);
+  await expect(menu.getByRole('menuitem', { name: /Fast-forward main/ })).toBeFocused();
+  await expect.poll(() => calls(page, 'compare_branches')).toHaveLength(1);
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const repo = app.git.repository();
+    app.git.repositories.update((repos: any[]) => repos.map(candidate => candidate.id !== repo.id ? candidate : ({
+      ...candidate, branches: candidate.branches.map((branch: any) => branch.name !== 'release' || branch.remote
+        ? branch : { ...branch, oid: '9'.repeat(40) }),
+    })));
+    (window as any).__integrationPending[0]({ incomingCount: 2, outgoingCount: 0, outgoingPublished: 0 });
+  });
+  await expect(menu).toHaveCount(0);
+  await expect(target).toBeFocused();
+  expect(await calls(page, 'integrate_branch')).toEqual([]);
+});
+
+for (const advance of [false, true]) {
+  test(`branch drop ${advance ? 'stops' : 'integrates'} after checkout when the source ${advance ? 'changed' : 'is unchanged'}`, async ({ page }) => {
+    await installBackend(page, { incomingCount: 1, outgoingCount: 0, outgoingPublished: 0 });
+    await page.evaluate(advance => { (window as any).__advanceMainOnCheckout = advance; }, advance);
+    const source = page.getByRole('button', { name: /Local branch main, current/ });
+    const target = page.getByRole('button', { name: 'Local branch release', exact: true });
+    await source.dragTo(target);
+    await page.getByRole('menu', { name: 'Branch drop actions' })
+      .getByRole('menuitem', { name: /Fast-forward release/ }).click();
+
+    await expect.poll(() => calls(page, 'checkout_branch')).toEqual([
+      expect.objectContaining({ args: expect.objectContaining({ name: 'release' }) }),
+    ]);
+    if (advance) {
+      await expect(page.getByText(/Checked out release, but a branch changed/)).toBeVisible();
+      expect(await calls(page, 'integrate_branch')).toEqual([]);
+    } else {
+      await expect.poll(() => calls(page, 'integrate_branch')).toEqual([
+        expect.objectContaining({ args: expect.objectContaining({ name: 'main', strategy: 'ff-only' }) }),
+      ]);
+    }
+  });
+}
+
+test('a native comparison of different branch tips retires the drop even before the snapshot refreshes', async ({ page }) => {
+  await installBackend(page, { incomingCount: 1, outgoingCount: 0, outgoingPublished: 0, sourceOid: '9'.repeat(40) });
+  await page.getByRole('button', { name: 'Local branch release', exact: true })
+    .dragTo(page.getByRole('button', { name: /Local branch main, current/ }));
+  await expect(page.getByText(/A branch changed after you dropped it/)).toBeVisible();
+  await expect(page.getByRole('menu', { name: 'Branch drop actions' })).toHaveCount(0);
+  expect(await calls(page, 'integrate_branch')).toEqual([]);
 });

@@ -1756,7 +1756,6 @@ gc-root .panel-resizer:focus-visible { outline: none; }
 gc-root .panel-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
 gc-root :is(.branch-creation-error, .context-branch-error) { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 gc-root .context-branch-error { margin-top: 5px; }
-gc-root .branch-drop-menu > button:disabled { opacity: .4; }
 gc-root .graph-columns .column-resizer:focus-visible { background: var(--splitter-hover); outline: none; }
 gc-root .graph-columns .column-resizer:focus-visible::after { width: 3px; background: var(--focus-ring); }
 gc-root .reference-section-resizer:focus-visible { outline: none; }

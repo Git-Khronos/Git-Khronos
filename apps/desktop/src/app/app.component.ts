@@ -1,3 +1,4 @@
+import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
 import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
 import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
@@ -517,9 +518,18 @@ interface GhostBranchState {
   commitOid: string;
 }
 
-interface BranchDropState {
+interface BranchDropReview {
+  repositoryId: string;
+  repositoryPath: string;
   source: string;
   target: string;
+  sourceOid: string;
+  targetOid: string;
+}
+
+interface BranchDropState {
+  review: BranchDropReview;
+  preferred: { x: number; y: number };
   x: number;
   y: number;
 }
@@ -689,7 +699,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -756,7 +766,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly fileActionMenuElement = viewChild<ElementRef<HTMLElement>>('fileActionMenuElement');
   private readonly sidebarActionMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarActionMenuElement');
   private readonly sidebarContextMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarContextMenuElement');
-  private readonly branchDropMenuElement = viewChild<ElementRef<HTMLElement>>('branchDropMenuElement');
+  private readonly branchDropMenuElement = viewChild<unknown, ElementRef<HTMLElement>>('branchDropMenuElement', { read: ElementRef });
+  private readonly branchDropLoadErrorClose = viewChild<ElementRef<HTMLButtonElement>>('branchDropLoadErrorClose');
   private readonly repositoryTabMenuElement = viewChild<ElementRef<HTMLElement>>('repositoryTabMenuElement');
   private readonly repositoryAliasInput = viewChild<ElementRef<HTMLInputElement>>('repositoryAliasInput');
   private readonly newRepositoryTab = viewChild<ElementRef<HTMLButtonElement>>('newRepositoryTab');
@@ -858,6 +869,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarContextMenuReturnFocus: HTMLElement | null = null;
   private branchDropMenuReturnFocus: HTMLElement | null = null;
+  private focusedBranchDrop: BranchDropReview | null = null;
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
@@ -947,7 +959,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly integrationRequest = signal<IntegrateBranchDialogRequest | null>(null);
   /** Relationship between the dragged and target branches, shown in the drop menu. */
-  protected readonly branchDropComparison = signal<BranchComparison | null>(null);
+  private readonly branchDropComparison = signal<BranchComparison | null>(null);
   protected readonly actionOverlays = new OverlayController<ActionOverlay>();
   protected readonly contextMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -2023,6 +2035,31 @@ export class AppComponent implements OnInit, OnDestroy {
   private zoomApplication = 0;
 
   constructor() {
+    afterRenderEffect(() => {
+      const operation = this.branchDropMenu();
+      const element = this.branchDropMenuElement()?.nativeElement;
+      const busy = this.git.busy();
+      this.branchDropAdvice(); // Refit after delayed comparison text is rendered.
+      if (!operation || !element) return;
+      untracked(() => {
+        if (!this.branchDropReviewMatches(operation.review)) return;
+        const errorClose = this.branchDropLoadErrorClose()?.nativeElement;
+        if (!errorClose) {
+          const { x, y } = this.fittedMenuPosition(element, operation.preferred);
+          if (operation.x !== x || operation.y !== y) this.branchDropMenu.set({ ...operation, x, y });
+        }
+        if (!busy && this.focusedBranchDrop !== operation.review) {
+          this.focusedBranchDrop = operation.review;
+          (errorClose ?? element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])'))?.focus();
+        }
+      });
+    });
+    effect(() => {
+      const review = this.branchDropMenu()?.review;
+      if (review && !this.branchDropReviewMatches(review)) {
+        untracked(() => this.dismissBranchDropMenu(true));
+      }
+    });
     afterRenderEffect(() => this.fileToolsLoaderClose()?.nativeElement.focus());
     effect(() => {
       const request = this.fileContentDialog();
@@ -4232,12 +4269,11 @@ export class AppComponent implements OnInit, OnDestroy {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('branch-drop')) {
       const branches = this.git.repository()?.branches.filter((candidate) => !candidate.remote) ?? [];
       if (branches.length > 1) {
-        this.branchDropMenu.set({
-          source: branches.find((branch) => !branch.current)?.name ?? branches[0].name,
-          target: branches.find((branch) => branch.current)?.name ?? branches[1].name,
-          x: 255,
-          y: 255,
-        });
+        const review = this.captureBranchDrop(
+          branches.find((branch) => !branch.current)?.name ?? branches[0].name,
+          branches.find((branch) => branch.current)?.name ?? branches[1].name,
+        );
+        if (review) this.branchDropMenu.set({ review, preferred: { x: 255, y: 255 }, x: 255, y: 255 });
       }
     }
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('pin-branch')) {
@@ -4530,21 +4566,30 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openIntegrationFromDrop(): void {
-    const operation = this.branchDropMenu();
-    if (!operation) return;
+    const review = this.branchDropMenu()?.review;
+    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
     const returnFocus = this.branchDropMenuReturnFocus;
     this.dismissBranchDropMenu();
-    this.openIntegrationDialog(operation.source, returnFocus, operation.target);
+    this.openIntegrationDialog(review.source, returnFocus, review.target);
   }
 
   /** Switches to `checkout` when needed, then integrates `integrate` into it. */
-  private async checkoutThenIntegrate(checkout: string, integrate: string, strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
+  private async checkoutThenIntegrate(
+    checkout: string, integrate: string, strategy: BranchDropStrategy, review?: BranchDropReview,
+  ): Promise<void> {
+    if (review && !this.branchDropReviewMatches(review)) return;
     const repositoryId = this.git.activeRepositoryId();
     if (this.git.repository()?.status.branch !== checkout) {
       const result = await this.git.checkout(checkout);
       if (result?.status !== 'success'
         || this.git.activeRepositoryId() !== repositoryId
         || this.git.repository()?.status.branch !== checkout) return;
+    }
+    if (review && !this.branchDropReviewMatches(review)) {
+      if (this.git.repository()?.path === review.repositoryPath && this.git.activeRepositoryId() === review.repositoryId) {
+        this.git.error.set(`Checked out ${checkout}, but a branch changed. No integration was started. Review the branches and try again.`);
+      }
+      return;
     }
     await this.git.integrateBranch(integrate, strategy);
   }
@@ -8786,43 +8831,62 @@ export class AppComponent implements OnInit, OnDestroy {
       }, returnFocus);
       return;
     }
-    if (!source || source === target) return;
+    const review = source ? this.captureBranchDrop(source, target) : null;
+    if (!review) return;
     event.preventDefault();
     event.stopPropagation();
     this.branchDropMenuReturnFocus = event.currentTarget instanceof HTMLElement
       ? event.currentTarget
       : null;
     const preferredPosition = { x: event.clientX, y: event.clientY };
+    this.branchDropComparison.set(null);
     this.branchDropMenu.set({
-      source,
-      target,
+      review, preferred: preferredPosition,
       x: Math.max(VIEWPORT_MENU_GUTTER, preferredPosition.x),
       y: Math.max(VIEWPORT_MENU_GUTTER, preferredPosition.y),
     });
-    this.settleBranchDropMenuPosition(source, target, preferredPosition);
-    void this.loadBranchDropComparison(source, target);
+    void this.loadBranchDropComparison(review);
   }
 
-  private async loadBranchDropComparison(source: string, target: string): Promise<void> {
-    const repoId = this.git.activeRepositoryId();
-    this.branchDropComparison.set(null);
-    if (!repoId) return;
+  private captureBranchDrop(source: string, target: string): BranchDropReview | null {
+    const repository = this.git.repository();
+    if (!repository || source === target) return null;
+    const sourceBranch = repository.branches.find(branch => !branch.remote && branch.name === source);
+    const targetBranch = repository.branches.find(branch => !branch.remote && branch.name === target);
+    if (!sourceBranch?.oid || !targetBranch?.oid) return null;
+    return {
+      repositoryId: repository.id, repositoryPath: repository.path, source, target,
+      sourceOid: sourceBranch.oid, targetOid: targetBranch.oid,
+    };
+  }
+
+  private branchDropReviewMatches(review: BranchDropReview): boolean {
+    const current = this.captureBranchDrop(review.source, review.target);
+    return current?.repositoryId === review.repositoryId && current.repositoryPath === review.repositoryPath
+      && current.sourceOid === review.sourceOid && current.targetOid === review.targetOid;
+  }
+
+  private async loadBranchDropComparison(review: BranchDropReview): Promise<void> {
     try {
-      const comparison = await this.git.compareBranches(repoId, target, source);
-      const menu = this.branchDropMenu();
-      if (menu?.source === source && menu.target === target && this.git.activeRepositoryId() === repoId) {
-        this.branchDropComparison.set(comparison);
+      const comparison = await this.git.compareBranches(review.repositoryId, review.target, review.source);
+      if (this.branchDropMenu()?.review !== review || !this.branchDropReviewMatches(review)) return;
+      if (comparison.source !== review.source || comparison.target !== review.target) return;
+      if (comparison.sourceOid !== review.sourceOid || comparison.targetOid !== review.targetOid) {
+        this.dismissBranchDropMenu(true);
+        this.git.error.set('A branch changed after you dropped it. Refresh the repository and try again.');
+        return;
       }
+      this.branchDropComparison.set(comparison);
     } catch {
       // The menu still offers every action; Git validates each one when it runs.
     }
   }
 
   /** Plain-language relationship and the suggested drop action, when known. */
-  protected readonly branchDropAdvice = computed(() => {
-    const operation = this.branchDropMenu();
+  protected readonly branchDropAdvice = computed<BranchDropAdvice | null>(() => {
+    const operation = this.branchDropMenu()?.review;
     const comparison = this.branchDropComparison();
-    if (!operation || !comparison || comparison.source !== operation.source || comparison.target !== operation.target) return null;
+    if (!operation || !comparison) return null;
     const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
     if (!comparison.incomingCount) return { text: `${operation.target} already has every commit from ${operation.source}.`, recommended: null, fastForwardBlocked: false };
     if (!comparison.outgoingCount) return { text: `${operation.target} is ${commits(comparison.incomingCount)} behind and can move forward.`, recommended: 'ff-only' as const, fastForwardBlocked: false };
@@ -8853,20 +8917,20 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected async runBranchDrop(strategy: 'merge' | 'ff-only' | 'squash' | 'rebase'): Promise<void> {
-    const operation = this.branchDropMenu();
-    if (!operation || this.git.busy()) return;
+  protected async runBranchDrop(strategy: BranchDropStrategy): Promise<void> {
+    const review = this.branchDropMenu()?.review;
+    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
     this.dismissBranchDropMenu();
-    const checkout = strategy === 'rebase' ? operation.source : operation.target;
-    const integrate = strategy === 'rebase' ? operation.target : operation.source;
-    await this.checkoutThenIntegrate(checkout, integrate, strategy);
+    const checkout = strategy === 'rebase' ? review.source : review.target;
+    const integrate = strategy === 'rebase' ? review.target : review.source;
+    await this.checkoutThenIntegrate(checkout, integrate, strategy, review);
   }
 
   protected async openInteractiveRebaseFromDrop(): Promise<void> {
-    const operation = this.branchDropMenu();
-    if (!operation) return;
+    const review = this.branchDropMenu()?.review;
+    if (!review || this.git.busy() || !this.branchDropReviewMatches(review)) return;
     this.dismissBranchDropMenu();
-    await this.openInteractiveRebase(operation.source, operation.target);
+    await this.openInteractiveRebase(review.source, review.target);
   }
 
   protected async openInteractiveRebaseFromContext(): Promise<void> {
@@ -14229,39 +14293,6 @@ export class AppComponent implements OnInit, OnDestroy {
     }));
   }
 
-  private settleBranchDropMenuPosition(
-    source: string,
-    target: string,
-    preferred: { x: number; y: number },
-  ): void {
-    const isCurrent = () => {
-      const operation = this.branchDropMenu();
-      return operation?.source === source && operation.target === target;
-    };
-    queueMicrotask(() => requestAnimationFrame(() => this.runWhenElementRendered(
-      () => isCurrent() ? this.branchDropMenuElement()?.nativeElement : undefined,
-      (element) => {
-        const operation = this.branchDropMenu();
-        if (!isCurrent() || !operation) return;
-
-        const x = Math.max(
-          VIEWPORT_MENU_GUTTER,
-          Math.min(preferred.x, window.innerWidth - element.offsetWidth - VIEWPORT_MENU_GUTTER),
-        );
-        const y = Math.max(
-          VIEWPORT_MENU_GUTTER,
-          Math.min(preferred.y, window.innerHeight - element.offsetHeight - VIEWPORT_MENU_GUTTER),
-        );
-        if (operation.x !== x || operation.y !== y) {
-          this.branchDropMenu.set({ ...operation, x, y });
-        }
-        element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
-      },
-      30,
-      isCurrent,
-    )));
-  }
-
   protected dismissGraphActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.contextMenuReturnFocus : null;
     const menu = this.actionMenuElement()?.nativeElement ?? null;
@@ -14302,10 +14333,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected dismissBranchDropMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.branchDropMenuReturnFocus : null;
+    const menu = this.branchDropMenuElement()?.nativeElement ?? null;
     this.branchDropMenu.set(null);
+    this.branchDropComparison.set(null);
     this.branchDropTarget.set(null);
     this.branchDropMenuReturnFocus = null;
-    if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
+    this.focusedBranchDrop = null;
+    if (target) queueMicrotask(() => {
+      if (!this.branchDropMenu() && target.isConnected && this.canRestoreFocusFrom(menu)) {
+        target.focus({ preventScroll: true });
+      }
+    });
   }
 
   protected openTagMenu(event: MouseEvent, name: string, oid: string): void {
