@@ -161,6 +161,7 @@ class PackageIdentityTests(unittest.TestCase):
             report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
             self.assertFalse(report["passed"])
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
+            self.assertEqual(report["failurePhase"], "package-preflight")
 
 
 class ReadOnlyWebDriverPollTests(unittest.TestCase):

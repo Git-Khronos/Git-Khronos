@@ -59,6 +59,13 @@ Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
 operations are not retried after an uncertain reply.
 
+For a long run, read the evidence directory's `progress.json`. It identifies
+the acceptance worker PID in its process namespace, current phase, phase start (seconds into the
+run), and last completed scenario. Phase transitions are not completed
+tests. A failure retains its first failing phase through cleanup, also
+recorded as `failurePhase` in `report.json`. Only the final report qualifies
+the package; a stale progress file alone is not proof the worker is alive.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do

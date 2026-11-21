@@ -1232,6 +1232,7 @@ def main():
                       for line in dynamic.splitlines() if "Shared library: [" in line]
             assert {"libssl.so.3", "libcrypto.so.3"} <= set(needed), needed
             report["nativeTlsPackage"] = {"depends": dependencies, "neededLibraries": needed}
+        progress.enter_phase("native-session-start")
         fixtures.env["TAURI_WEBVIEW_AUTOMATION"] = "true"
         with (output / "driver.log").open("w") as log:
             report["sessionBus"] = start_private_dbus(fixtures, children, log)
@@ -1292,6 +1293,7 @@ def main():
             report["webdriverTransport"] = "tauri-session-creation-native-session-control"
             wait_webdriver_ready(driver, process, listen_port)
             driver.start(executable)
+            progress.enter_phase("primary-scenarios")
             if args.suite == "workspace-restore":
                 from native_workspace_edit_scenarios import saved_workspace_repository_workflow
                 repository = saved_workspace_repository_workflow(driver, fixtures, report)
@@ -1375,6 +1377,7 @@ def main():
                     assert view["identity"][field] == expected, (field, view["identity"], expected)
                 report["scenarios"].append("native-inherited-config-file-cannot-shadow-selected-identity")
             if args.suite == "gitlab":
+                progress.enter_phase("gitlab-catalogue")
                 from native_gitlab_scenarios import gitlab_catalogue
                 gitlab_catalogue(driver, fixtures, repository, report)
             if args.suite == "file-tools":
@@ -1394,27 +1397,35 @@ def main():
                 editor_draft_recovery(driver, fixtures, repository, report)
             if args.suite in ("full", "environment"):
                 from native_scenarios import full_toolkit
+                progress.enter_phase("full-toolkit")
                 print("Native acceptance: smoke passed; exercising the full toolkit.", file=sys.stderr, flush=True)
                 full_toolkit(driver, fixtures, repository, repo_id, report)
                 print("Native acceptance: toolkit passed; exercising review and setup workflows.", file=sys.stderr, flush=True)
             if args.suite == "incoming-links":
+                progress.enter_phase("incoming-links")
                 from native_incoming_link_scenarios import incoming_repository_links
                 incoming_repository_links(driver, fixtures, repository, report)
             if args.suite == "application-updates":
+                progress.enter_phase("application-updates")
                 from native_application_updates_scenarios import application_updates_workflow
                 application_updates_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "worktrees"):
+                progress.enter_phase("occupied-worktree-navigation")
                 from native_worktree_scenarios import occupied_branch_navigation
                 occupied_branch_navigation(driver, fixtures, report)
             if args.suite in ("full", "environment", "setup-keyboard"):
+                progress.enter_phase("setup-keyboard")
                 from native_setup_keyboard_scenarios import setup_keyboard_isolation
                 setup_keyboard_isolation(driver, fixtures, report)
             if args.suite in ("full", "environment", "setup-keyboard"):
+                progress.enter_phase("saved-workspace-recovery")
                 from native_workspace_edit_scenarios import saved_workspace_repository_workflow
                 saved_workspace_repository_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "remote-reviews"):
+                progress.enter_phase("remote-reviews")
                 from native_remote_review_scenarios import remote_review_workflows
                 remote_review_workflows(driver, fixtures, report)
+            progress.enter_phase("final-evidence")
             if outside is not None:
                 assert (outside / ".git/index").read_bytes() == outside_index
                 assert fixtures.git(outside, "rev-parse", "HEAD") == outside_head
@@ -1422,10 +1433,13 @@ def main():
                 assert (outside / ".git/config").read_bytes() == outside_config
                 report["scenarios"].append("native-inherited-git-environment-cannot-redirect-repositories-or-paths")
             if args.suite == "performance":
+                progress.enter_phase("performance")
                 performance(driver, fixtures, report)
+                progress.enter_phase("final-evidence")
             driver.screenshot(output / "desktop.png")
             report["passed"] = True
     except Exception:
+        progress.note_failure()
         report["failure"] = traceback.format_exc()
         if driver and driver.session:
             try:
@@ -1433,6 +1447,7 @@ def main():
             except Exception:
                 pass
     finally:
+        progress.enter_phase("cleanup")
         if driver:
             if driver.native_pointer_deliveries:
                 report['nativePointerDeliveries'] = driver.native_pointer_deliveries
@@ -1461,6 +1476,9 @@ def main():
             except Exception:
                 report["passed"] = False
                 report["cleanupFailure"] = traceback.format_exc()
+        if not report["passed"]:
+            progress.note_failure()
+            report["failurePhase"] = progress.failure_phase
         (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         progress.finish(report["passed"])
     print(json.dumps(report, indent=2), flush=True)

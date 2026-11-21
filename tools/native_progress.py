@@ -1,5 +1,6 @@
 """Record completed native scenarios while an installed run is still active."""
 import json
+import os
 import sys
 import time
 
@@ -15,6 +16,9 @@ class ScenarioProgress(list):
         self.stream = sys.stderr if stream is None else stream
         self.interval = interval
         self.started = self.clock()
+        self.phase = 'package-preflight'
+        self.phase_started = self.started
+        self.failure_phase = None
         self.printed = self.started
         self.can_record = True
         self._publish('running')
@@ -27,6 +31,16 @@ class ScenarioProgress(list):
         super().extend(names)
         self._publish('running')
 
+    def enter_phase(self, name):
+        self.phase = name
+        self.phase_started = self.clock()
+        self._publish('running')
+
+    def note_failure(self):
+        if self.failure_phase is None:
+            self.failure_phase = self.phase
+            self._publish('running')
+
     def finish(self, passed):
         self._publish('passed' if passed else 'failed')
 
@@ -35,6 +49,10 @@ class ScenarioProgress(list):
         progress = {
             'suite': self.suite,
             'state': state,
+            'processId': os.getpid(),
+            'phase': self.phase,
+            'phaseStartedAtSeconds': round(self.phase_started - self.started, 1),
+            'failurePhase': self.failure_phase,
             'completedScenarios': len(self),
             'lastCompletedScenario': self[-1] if self else None,
             'elapsedSeconds': round(now - self.started, 1),
@@ -50,4 +68,4 @@ class ScenarioProgress(list):
         if state == 'running' and self and now - self.printed >= self.interval:
             self.printed = now
             print(f'Native acceptance: {self.suite}: {len(self)} completed in {progress["elapsedSeconds"]}s; '
-                  f'last: {self[-1]}', file=self.stream, flush=True)
+                  f'phase: {self.phase}; last: {self[-1]}', file=self.stream, flush=True)
