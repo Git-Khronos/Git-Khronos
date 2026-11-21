@@ -100,3 +100,43 @@ test('CLI cross-checks file sizes against metadata in the selected output direct
     rmSync(root, { force: true, recursive: true });
   }
 });
+
+test('compares two emitted builds without counting lazy files or rewriting reports', () => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-renderer-compare-'));
+  try {
+    const baseline = join(root, 'baseline');
+    const candidate = join(root, 'candidate');
+    for (const [directory, js, css] of [[baseline, 16, 9], [candidate, 11, 10]]) {
+      const browser = join(directory, 'browser');
+      mkdirSync(browser, { recursive: true });
+      writeFileSync(join(browser, 'index.html'), '<script src="main.js"></script><link rel="stylesheet" href="styles.css">');
+      writeFileSync(join(browser, 'main.js'), 'x'.repeat(js));
+      writeFileSync(join(browser, 'styles.css'), 'x'.repeat(css));
+      writeFileSync(join(browser, 'optional.js'), 'x'.repeat(80));
+      writeFileSync(join(directory, 'browser-stats.json'), JSON.stringify({ outputs: {
+        'main.js': { bytes: js, imports: [{ kind: 'dynamic-import', path: 'optional.js' }] },
+        'styles.css': { bytes: css, imports: [] },
+        'optional.js': { bytes: 80, imports: [] },
+      } }));
+    }
+    const cli = fileURLToPath(new URL('./report-initial-renderer.mjs', import.meta.url));
+    const args = [cli, '--compare', baseline, candidate];
+    const result = JSON.parse(execFileSync(process.execPath, args, { encoding: 'utf8' }));
+    assert.equal(result.baseline.initialBytes, 25);
+    assert.equal(result.candidate.initialBytes, 21);
+    assert.equal(result.delta.initialBytes, -4);
+    assert.equal(result.delta.javascriptBytes, -5);
+    assert.equal(result.delta.stylesheetBytes, 1);
+    assert.equal(result.delta.gzipBytes, result.candidate.gzipBytes - result.baseline.gzipBytes);
+    assert.equal(result.delta.brotliBytes, result.candidate.brotliBytes - result.baseline.brotliBytes);
+    assert.equal(result.warningBytes, 900_000);
+    assert.equal(existsSync(join(candidate, 'initial-renderer.json')), false);
+    writeFileSync(join(candidate, 'browser', 'main.js'), 'changed');
+    const mismatch = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    assert.equal(mismatch.status, 1);
+    assert.match(mismatch.stderr, /asset size differ: main.js/);
+    assert.equal(spawnSync(process.execPath, [cli, '--compare', baseline]).status, 1);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});

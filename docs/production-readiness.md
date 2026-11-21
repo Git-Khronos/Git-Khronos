@@ -2937,3 +2937,17 @@ were not changed by this UI refactor.
 
 Build receipts, `initial-renderer.json` and emitted asset attribution are
 under `target/local-review/startup-profile.jfFlmEyE/`.
+
+The graph settings experiment (`e0bc902`) passed 14 targeted Chromium tests
+but removed only 133 initial bytes and added an 8.3 kB first-open JS/CSS
+load, so it was reverted. The bigger reference-strip saving is retained.
+To compare two build directories using the same production settings:
+
+```sh
+node tools/report-initial-renderer.mjs --compare "$BASELINE_DIST" "$CANDIDATE_DIST"
+```
+
+This measures the actual initial files in both builds and prints candidate
+minus baseline for raw, JavaScript, stylesheet, gzip and Brotli bytes. The
+compressed sizes describe encoding the emitted assets independently, not
+network transfer timing. It does not change budgets or write receipts.
