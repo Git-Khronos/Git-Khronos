@@ -42,6 +42,10 @@ hashes. Package SHA-256:
 `d72c3bdbcfda9c563d05b50d257af2e19780f3a1c2f49fa12fe3833716c77c11`.
 The unchanged artifacts and reports are under
 `target/local-review/updater/jammy-builder/paired-index-rename.inkJbl3s/`.
+The same bytes passed all **276 installed environment scenarios** with Git
+2.53 on Ubuntu 24.04, the strict release evidence preflight, and an APT dry
+run. The package-matching suite summary, receipt and checked digest are
+retained in that directory.
 This does not qualify the subsequent rename diff or Tags restoration changes.
 
 The rename-diff candidate at `1db7a28` passed **51 installed setup and keyboard
