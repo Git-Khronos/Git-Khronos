@@ -143,6 +143,15 @@ Coverage: `unstaged-summary.spec.ts`, six native core `unstaged_summary` cases,
 and the packaged `native_unstaged_summary_scenarios.py` fixture. Native fixture
 execution remains a separate package gate, not implied by source test presence.
 
+### Stage All and Commit
+
+The shortcut treats staging and committing as separate steps. A failed or
+uncertain staging response must not commit changes that were already staged.
+The commit step requires the successful staging status to be applied to the
+same checkout, with the same workspace, HEAD, draft, and commit options still
+current. A changed context keeps the draft and requires a fresh explicit
+commit. These checks do not lock out an independent Git process.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and

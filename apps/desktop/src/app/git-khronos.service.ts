@@ -115,6 +115,8 @@ interface WorkingTreeMutationResult {
   failureKind: string | null;
   // Recheck after awaiting: later navigation must keep its own inspection.
   inspectionRequest: number;
+  // Only present when this mutation's status was applied to its original checkout.
+  confirmedStatus?: RepositoryStatus;
 }
 
 interface MutationInspection {
@@ -1073,8 +1075,9 @@ export class GitKhronosService {
     }
   }
 
-  async stageAll(): Promise<void> {
-    await this.mutateWorkingTree('stage_all', 'Staging all changes…', 'All changes staged', {}, predictStageAll);
+  async stageAll(): Promise<RepositoryStatus | null> {
+    const result = await this.mutateWorkingTree('stage_all', 'Staging all changes…', 'All changes staged', {}, predictStageAll);
+    return result.confirmedStatus ?? null;
   }
 
   async unstageAll(): Promise<void> {
@@ -3259,8 +3262,15 @@ export class GitKhronosService {
       return result;
     }
     this.pendingWorkingTreeMutations.delete(repoId);
-    if (status && statusIsCurrent) {
+    const current = this.repositories().find(repository => repository.id === repoId);
+    const sameCheckout = current?.path === repo.path && current.headOid === repo.headOid
+      && current.status.branch === repo.status.branch;
+    if (status && statusIsCurrent && sameCheckout) {
       this.storeStatus(repoId, status);
+      const applied = this.repositories().find(repository => repository.id === repoId)?.status;
+      if (result.succeeded && applied?.branch === repo.status.branch) {
+        return { ...result, confirmedStatus: applied };
+      }
     } else {
       // Reconcile failures and changed contexts without overwriting newer work.
       await this.refreshStatusInBackground(repoId, true);

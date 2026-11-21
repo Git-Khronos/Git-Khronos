@@ -9,12 +9,19 @@ async function setup(page: Page, staged: number): Promise<void> {
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map(item => ({ ...item,
       status: { ...item.status, staged } })));
-    const fixture = { calls: [] as any[], fail: false, invalidIdentity: false, diagnostic: null as any, hold: false, finish: null as any };
+    const fixture = { calls: [] as any[], fail: false, invalidIdentity: false, diagnostic: null as any, hold: false, finish: null as any,
+      stageFailure: false, holdStage: false, finishStage: null as any };
     (window as any).__commitPolicy = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
       if (command === 'working_tree_change_summary') return Promise.resolve({ additions: 0, deletions: 0,
         uncountedFiles: git.repository().status.unstaged + git.repository().status.untracked, partial: true });
+      if (command === 'stage_all') {
+        if (fixture.stageFailure) return Promise.reject({ kind: 'sparsePathsNotStaged', message: 'Git left some paths outside the sparse selection.' });
+        const status = { ...git.repository().status, staged: 3, unstaged: 0, untracked: 0 };
+        if (fixture.holdStage) return new Promise(resolve => { fixture.finishStage = () => resolve(status); });
+        return Promise.resolve(status);
+      }
       if (command === 'commit_changes') {
         if (fixture.diagnostic) return Promise.reject(fixture.diagnostic);
         if (fixture.invalidIdentity) return Promise.reject({ kind: 'invalidCommitIdentity', message: 'Enter a nonempty name and an explicit email for each enabled commit identity override. Repository configuration is not changed.' });
@@ -30,6 +37,81 @@ async function setup(page: Page, staged: number): Promise<void> {
     } };
   }, staged);
 }
+
+const compoundCommands = (page: Page) => page.evaluate(() =>
+  (window as any).__commitPolicy.calls.filter((call: { command: string }) => ['stage_all', 'commit_changes'].includes(call.command)));
+
+test('stage-and-commit refuses to commit previously staged files after staging fails', async ({ page }) => {
+  await setup(page, 1);
+  const summary = page.getByLabel('Commit summary', { exact: true });
+  await summary.fill('Keep draft after sparse refusal');
+  await page.evaluate(async () => {
+    (window as any).__commitPolicy.stageFailure = true;
+    await (window as any).ng.getComponent(document.querySelector('gc-root')).stageAllAndCommit();
+  });
+  await expect(page.locator('.error-toast')).toContainText('outside the sparse selection');
+  await expect(summary).toHaveValue('Keep draft after sparse refusal');
+  expect((await compoundCommands(page)).map((call: any) => call.command)).toEqual(['stage_all']);
+});
+
+for (const changed of ['target path', 'branch', 'draft', 'policy', 'repository tab away and back']) {
+  test(`stage-and-commit retires the pending commit when the ${changed} changes`, async ({ page }) => {
+    await setup(page, 1);
+    await page.getByLabel('Commit summary', { exact: true }).fill('Original intent');
+    await page.evaluate(async changed => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const fixture = (window as any).__commitPolicy;
+      fixture.holdStage = true;
+      const action = app.stageAllAndCommit();
+      if (changed === 'draft') app.commitMessage.set('New message, no consent');
+      else if (changed === 'policy') app.skipGitHooks.set(true);
+      else if (changed === 'repository tab away and back') {
+        const id = app.git.activeRepositoryId();
+        app.git.activeRepositoryId.set(null);
+        app.git.activeRepositoryId.set(id);
+      }
+      else app.git.repositories.update((items: any[]) => items.map(item => item.id !== app.git.activeRepositoryId() ? item
+        : changed === 'target path' ? { ...item, path: '/owned/replacement-checkout' }
+          : { ...item, status: { ...item.status, branch: 'another-branch' } }));
+      fixture.finishStage();
+      await action;
+    }, changed);
+    expect((await compoundCommands(page)).map((call: any) => call.command)).toEqual(['stage_all']);
+    await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue(
+      changed === 'draft' ? 'New message, no consent' : 'Original intent');
+    if (changed === 'branch') {
+      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+        .toBe('another-branch');
+    }
+    if (changed === 'draft' || changed === 'policy') {
+      await expect(page.locator('.error-toast')).toContainText('Changes were staged, but the commit context changed');
+    }
+  });
+}
+
+test('stage-and-commit leaves unresolved merge entries to the merge tool', async ({ page }) => {
+  await setup(page, 1);
+  await page.getByLabel('Commit summary', { exact: true }).fill('Commit after resolution');
+  await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.repositories.update((items: any[]) => items.map(item => ({ ...item, status: { ...item.status, conflicted: 1 } })));
+    await app.stageAllAndCommit();
+  });
+  await expect(page.locator('.error-toast')).toContainText('Resolve conflicted files individually');
+  expect(await compoundCommands(page)).toEqual([]);
+});
+
+test('stage-and-commit shortcut still commits after a matching successful staging receipt', async ({ page }) => {
+  await setup(page, 0);
+  const summary = page.getByLabel('Commit summary', { exact: true });
+  await summary.fill('Stage then commit');
+  await page.keyboard.press('Control+Shift+Enter');
+  await expect(summary).toHaveValue('');
+  expect(await compoundCommands(page)).toMatchObject([
+    { command: 'stage_all', args: { repoId: 'browser-preview' } },
+    { command: 'commit_changes', args: { repoId: 'browser-preview', message: 'Stage then commit', skipHooks: false } },
+  ]);
+});
 
 test('unchanged-tree commit needs explicit opt-in and signoff remains distinct from signing', async ({ page }) => {
   await setup(page, 0);

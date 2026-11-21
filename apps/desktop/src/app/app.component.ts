@@ -916,6 +916,26 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commitPolicyOpen = signal(false);
   protected readonly signCommit = signal(false);
   protected readonly pushAfterCommit = signal(false);
+  private readonly commitTabLease = computed(() => ({
+    workspaceId: this.git.activeWorkspaceId(),
+    repositoryId: this.git.activeRepositoryId(),
+  }));
+  private readonly commitSubmission = computed(() => {
+    const trailers = this.coAuthors()
+      .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
+      .join('\n');
+    return {
+      message: [this.commitMessage().trim(), this.commitDescription().trim(), trailers].filter(Boolean).join('\n\n'),
+      pushAfter: this.pushAfterCommit(),
+      options: {
+        amend: this.amendPrevious(),
+        skipHooks: this.skipGitHooks(),
+        sign: this.signCommit(),
+        ...this.commitPolicy(),
+        pushAfter: false,
+      },
+    };
+  });
   protected readonly commitMessageEditing = signal(false);
   protected readonly editedCommitOid = signal<string | null>(null);
   protected readonly editedCommitAuthorName = signal('');
@@ -7514,19 +7534,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async commit(): Promise<void> {
     const repository = this.git.repository();
     if (!repository || !this.commitActionReadiness(repository).ready) return;
-    const trailers = this.coAuthors()
-      .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
-      .join('\n');
-    const message = [this.commitMessage().trim(), this.commitDescription().trim(), trailers]
-      .filter(Boolean)
-      .join('\n\n');
-    const pushAfter = this.pushAfterCommit();
+    const { message, pushAfter, options } = this.commitSubmission();
     const committed = await this.git.commit(message, {
-      amend: !this.repositoryOperation().rebaseSplit && this.amendPrevious(),
-      skipHooks: this.skipGitHooks(),
-      sign: this.signCommit(),
-      ...this.commitPolicy(),
-      pushAfter: false,
+      ...options,
+      amend: !this.repositoryOperation().rebaseSplit && options.amend,
     });
     if (committed) {
       this.commitDrafts.delete(repository.id);
@@ -7629,9 +7640,28 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private async stageAllAndCommit(): Promise<void> {
-    if (this.git.busy()) return;
-    await this.git.stageAll();
-    if (this.git.repository()?.status.staged) await this.commit();
+    const repository = this.git.repository();
+    if (!repository || this.git.busy()) return;
+    if (repository.status.conflicted) {
+      this.git.error.set('Resolve conflicted files individually before staging and committing all changes.');
+      return;
+    }
+    if (!this.commitMessage().trim()) {
+      this.git.error.set('Write a commit summary before staging and committing all changes.');
+      return;
+    }
+    const tab = this.commitTabLease();
+    const submission = this.commitSubmission();
+    const staged = await this.git.stageAll();
+    const current = this.git.repository();
+    if (current?.id !== repository.id || current.path !== repository.path || this.commitTabLease() !== tab) return;
+    if (!staged?.staged || current.status !== staged || current.status.conflicted) return;
+    if (current.headOid !== repository.headOid || current.status.branch !== repository.status.branch
+      || !this.changesOpen() || this.commitSubmission() !== submission) {
+      this.git.error.set('Changes were staged, but the commit context changed. Review the index and commit explicitly.');
+      return;
+    }
+    await this.commit();
   }
 
   protected saveCommitDraft(): void {
