@@ -20,13 +20,6 @@
 .worktree-card-menu button.danger gc-icon { color: #ec8298; }
 .worktree-card-menu > i { height: 1px; margin: 4px 2px; background: #3d3c51; }
 .worktree-card-menu > p { margin: 4px 7px 3px; color: #8f8d9f; font-size: 12px; line-height: 1.35; }
-.worktree-dialog { width: min(590px, calc(100vw - 32px)); }
-.worktree-dialog-mark, .submodule-dialog-mark { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 7px; background: #304c47; color: var(--accent); }
-.worktree-dialog-fields { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr); gap: 10px; }
-.worktree-dialog select { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #414058; border-radius: 3px; outline: none; background: #181824; color: #dddce8; font-size: 12px; }
-.worktree-dialog select:focus { border-color: var(--purple); }
-.worktree-dialog option:disabled { color: #676679; }
-.worktree-field-note { color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; line-height: 1.45; }
 .branch-search-control { height: 32px; display: grid; grid-template-columns: 15px minmax(0, 1fr) 24px; align-items: center; gap: 3px; margin: 0 10px 9px; padding: 0 4px 0 8px; border: 1px solid var(--nav-control-border); border-radius: 3px; background: var(--nav-control); color: var(--nav-icon-muted); }
 .branch-search-control:focus-within { border-color: color-mix(in srgb, var(--purple) 58%, var(--nav-control-border)); }
 .branch-search-control input { min-width: 0; height: 24px; border: 0; outline: 0; background: none; color: var(--text); font-size: var(--font-size-body); }
@@ -58,7 +51,6 @@
 .submodule-glyph { color: var(--accent); }
 .submodule-item.not-initialized .submodule-glyph { color: #8f8d9f; }
 .submodule-item.out-of-sync .submodule-glyph, .submodule-item.out-of-sync .submodule-main small { color: var(--orange); }
-.submodule-dialog { width: min(560px, calc(100vw - 32px)); }
 .wip-nav { width: calc(100% - 12px); display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 5px; margin: 0 6px 8px; padding: 7px 6px; border-radius: 3px; background: transparent; color: #cbcadd; text-align: left; }
 .wip-nav:hover, .wip-nav.selected { background: var(--nav-item-tip-selected); }
 .wip-nav.bare-repository-badge { grid-template-columns: auto minmax(0, 1fr); }

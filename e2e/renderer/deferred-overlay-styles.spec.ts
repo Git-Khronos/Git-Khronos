@@ -4,6 +4,7 @@ async function interceptLayout(page: Page, component: RegExp, selector: string, 
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   let requests = 0;
+  let delivered = 0;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const source = await response.text();
@@ -15,12 +16,65 @@ async function interceptLayout(page: Page, component: RegExp, selector: string, 
     await held;
     if (fail) await route.abort();
     else await route.fulfill({ response, body: source });
+    delivered++;
   });
   const installed = () => page.evaluate(selector => Array.from(document.styleSheets).some(sheet => {
     try { return Array.from(sheet.cssRules).some(rule => rule.cssText.includes(selector)); }
     catch { return false; }
   }), selector);
-  return { release, requests: () => requests, installed };
+  return { release, requests: () => requests, delivered: () => delivered, installed };
+}
+
+for (const outcome of ['loaded', 'failed', 'closed'] as const) {
+  test(`repository setup's lazy module is keyboard-safe when ${outcome}`, async ({ page }) => {
+    const layout = await interceptLayout(page, /class\s+_?RepositorySetupDialogComponent\b/, '.worktree-dialog-fields', outcome === 'failed');
+    try {
+      await page.goto('/');
+      const opener = page.getByRole('button', { name: 'Create worktree', exact: true });
+      await expect(opener).toBeVisible();
+      expect(layout.requests()).toBe(0);
+      expect(await layout.installed()).toBe(false);
+      await page.evaluate(() => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const actions: string[] = (window as any).__setupActions = [];
+        app.git.stageAll = async () => { actions.push('stage'); return null; };
+        app.git.commit = async () => { actions.push('commit'); return false; };
+        app.submitWorktree = () => actions.push('create');
+      });
+      await opener.click();
+      await expect.poll(layout.requests).toBe(1);
+      const loading = page.getByRole('dialog', { name: 'Loading repository setup' });
+      const cancel = loading.getByRole('button', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Control+Shift+Enter');
+      await expect(loading).toBeVisible();
+      if (outcome === 'closed') await page.keyboard.press('Escape');
+      layout.release();
+      await expect.poll(layout.delivered).toBe(1);
+      if (outcome === 'loaded') {
+        const dialog = page.getByRole('dialog', { name: 'Create Worktree', exact: true });
+        await expect(dialog.getByLabel('Branch name')).toBeFocused();
+        await expect(dialog.locator('.worktree-dialog-fields')).toHaveCSS('display', 'grid');
+        expect(await layout.installed()).toBe(true);
+        const viewport = page.viewportSize()!;
+        await page.setViewportSize({ width: 450, height: 720 });
+        await expect.poll(() => dialog.locator('.worktree-dialog-fields').evaluate(el =>
+          getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
+        await page.setViewportSize(viewport);
+        await page.keyboard.press('Escape');
+      } else if (outcome === 'failed') {
+        const error = page.getByRole('dialog', { name: 'Repository setup unavailable' });
+        await expect(error.getByRole('alert')).toContainText('No changes were made');
+        await expect(error.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+        await page.keyboard.press('Escape');
+      }
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      expect(await page.evaluate(() => (window as any).__setupActions)).toEqual([]);
+    } finally { layout.release(); }
+  });
 }
 
 for (const outcome of ['ready', 'failed'] as const) {

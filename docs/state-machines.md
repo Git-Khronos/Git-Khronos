@@ -398,11 +398,13 @@ object identities. Submission checks that owner synchronously before dispatch;
 a scope effect alone cannot protect the interval before Angular runs it.
 Changing the repository or changing its path retires only the mismatched review.
 
-Each form captures its rendered owner with `@let` and passes that lease to
-submission, browse and dismissal handlers. Input/change callbacks also compare
-the rendered lease with the current request. Replacing a request before a render
-therefore cannot let an old control submit into, overwrite or dismiss the new
-review. The lease is transient UI intent, not a native Git capability or journal.
+The worktree, submodule and remote editors share an on-demand presentation
+component. The root retains the drafts, operations and return focus. Each view is
+keyed by its rendered request and passes it to submit, browse, edit and dismissal
+handlers. Replacing a request before Angular renders cannot let an old control
+act on the new review. Loading and import failure keep a focused Cancel/Close
+control without submitting or modifying Git state. The request is transient UI
+intent, not a native capability or journal.
 
 Creation completion checks the original request and source before opening a
 worktree, and terminal handoff additionally requires the destination path to be
@@ -431,7 +433,9 @@ replacement drafts, late write receipts, independent focus, and directory
 choices. Existing reference, worktree, workspace and accessibility journeys
 remain part of the local targeted gate.
 `setup-dialog-keyboard.spec.ts` additionally covers real control key presses,
-pre-render focus gaps and events from outgoing controls after dismissal. The
+pre-render focus gaps and events from outgoing controls after dismissal.
+`deferred-overlay-styles.spec.ts` holds, fails and cancels the setup import,
+and checks its narrow layout after the deferred CSS loads. The
 packaged `setup-keyboard` suite checks actual staged/untracked fixture data,
 HEAD, refs, per-worktree index/config bytes and a commit-hook attempt marker;
 it does not replace Git operations with renderer mocks.

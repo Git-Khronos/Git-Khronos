@@ -1,3 +1,4 @@
+import { RepositorySetupDialogComponent, type RepositoryEditorOwner, type RepositorySetupRequest, type RepositorySetupView, type RemoteDialogMode, type RemoteLocationIcon } from './repository-setup-dialog.component';
 import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
 import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
 import type { ConflictDetails } from '@git-khronos/contracts';
@@ -289,14 +290,6 @@ type DiffViewMode = 'hunk' | 'inline' | 'split';
 type DiffInsightMode = 'diff' | 'history' | 'blame' | 'content';
 export type CommandPaletteScope = 'all' | 'files' | 'branches';
 type GraphDateFormat = 'compact' | 'relative' | 'iso';
-type RemoteLocationIcon = 'remote' | 'server' | 'globe' | 'link';
-type RemoteDialogMode = 'add' | 'edit';
-
-interface RepositoryEditorOwner {
-  readonly repositoryId: string;
-  readonly repositoryPath: string;
-}
-
 interface RepositoryReviewScope extends RepositoryEditorOwner {
   readonly returnFocus: HTMLElement | null;
 }
@@ -699,7 +692,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -716,9 +709,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly diffFileMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('diffFileMenuToggle');
   private readonly detailReferenceStackElement = viewChild<ElementRef<HTMLElement>>('detailReferenceStackElement');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
-  private readonly worktreeDialogElement = viewChild<ElementRef<HTMLElement>>('worktreeDialogElement');
-  private readonly submoduleDialogElement = viewChild<ElementRef<HTMLElement>>('submoduleDialogElement');
-  private readonly remoteDialogElement = viewChild<ElementRef<HTMLElement>>('remoteDialogElement');
   private readonly workspaceDeleteDialog = viewChild<ElementRef<HTMLElement>>('workspaceDeleteDialog');
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
@@ -1565,6 +1555,65 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remoteLocationIcons = signal<Record<string, RemoteLocationIcon>>({});
   protected readonly collapsedRemoteLocations = signal<string[]>([]);
   protected readonly remoteIconOptions = REMOTE_LOCATION_ICONS;
+  protected readonly repositorySetupRequest = computed<RepositorySetupRequest | null>(() => {
+    const worktree = this.worktreeEditorOwner();
+    if (this.worktreeDialogOpen() && worktree) return { kind: 'worktree', owner: worktree };
+    const submodule = this.submoduleEditorOwner();
+    if (this.submoduleDialogOpen() && submodule) return { kind: 'submodule', owner: submodule };
+    const remote = this.remoteEditorOwner();
+    const mode = this.remoteDialog();
+    return remote && mode ? { kind: 'remote', owner: remote, mode } : null;
+  });
+  private readonly repositorySetupLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositorySetupLoaderClose');
+  private readonly repositorySetupLoaderFocus = afterRenderEffect(() => {
+    const button = this.repositorySetupLoaderClose()?.nativeElement;
+    const request = this.repositorySetupRequest();
+    if (button && request && untracked(() => this.ownsRepositorySetup(request))) button.focus();
+  });
+  private ownsRepositorySetup(request: RepositorySetupRequest): boolean {
+    return this.repositorySetupRequest() === request && this.ownsRepositoryScope(request.owner);
+  }
+  protected closeRepositorySetup(request: RepositorySetupRequest): void {
+    if (!this.ownsRepositorySetup(request)) return;
+    if (request.kind === 'worktree') this.closeWorktreeDialog(true, request.owner);
+    else if (request.kind === 'submodule') this.closeSubmoduleDialog(true, request.owner);
+    else this.closeRemoteDialog(true, request.owner);
+  }
+  protected handleRepositorySetupLoaderKey(event: KeyboardEvent, request: RepositorySetupRequest): void {
+    if (!this.ownsRepositorySetup(request)) return;
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closeRepositorySetup(request);
+    } else if (event.key === 'Tab') {
+      event.preventDefault();
+      this.repositorySetupLoaderClose()?.nativeElement.focus();
+    }
+  }
+  protected readonly repositorySetupView: RepositorySetupView = {
+    worktreeBranch: this.worktreeBranch, worktreeBase: this.worktreeBase, worktreeFolder: this.worktreeFolder,
+    worktreeHandoff: this.worktreeHandoff, worktreeParent: this.worktreeParent, worktreeCreationSource: this.worktreeCreationSource,
+    submoduleUrl: this.submoduleUrl, submodulePath: this.submodulePath, remoteName: this.remoteName,
+    remoteNameTaken: this.remoteNameTaken, remoteDialogOriginalName: this.remoteDialogOriginalName,
+    remoteDialogIcon: this.remoteDialogIcon, remoteUrl: this.remoteUrl, remotePushUrl: this.remotePushUrl,
+    remoteIconOptions: this.remoteIconOptions, editedRemotePushUrl: () => this.editedRemotePushUrl(),
+    owns: request => this.ownsRepositorySetup(request),
+    close: request => this.closeRepositorySetup(request),
+    submit: request => {
+      if (!this.ownsRepositorySetup(request)) return;
+      if (request.kind === 'worktree') void this.submitWorktree(request.owner);
+      else if (request.kind === 'submodule') void this.submitSubmodule(request.owner);
+      else void this.submitRemote(request.owner);
+    },
+    browseWorktree: request => {
+      if (request.kind === 'worktree' && this.ownsRepositorySetup(request)) void this.chooseWorktreeParent(request.owner);
+    },
+    removeRemote: request => {
+      if (request.kind === 'remote' && this.ownsRepositorySetup(request)) this.requestRemoteRemoval(request.owner);
+    },
+    trapTab: event => this.handleModalFocusKey(event),
+  };
+
   protected readonly maximizedReferenceSection = signal<ReferenceSection | null>(null);
   protected readonly referenceSectionHeights = signal<Record<ReferenceSection, number | null>>({
     worktrees: this.readReferenceSectionHeight('worktrees'),
@@ -6782,9 +6831,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${branch.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => {
-      if (this.worktreeEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.worktreeDialogElement());
-    });
   }
 
   protected canCreateContextWorktree(): boolean {
@@ -6813,9 +6859,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeFolder.set(`${repository.name}-${menu.label.replace(/[^a-zA-Z0-9._-]+/g, '-')}`);
     this.worktreeHandoff.set('none');
     this.worktreeDialogOpen.set(true);
-    setTimeout(() => {
-      if (this.worktreeEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.worktreeDialogElement());
-    });
   }
 
   protected closeWorktreeDialog(restoreFocus = true, expectedOwner = this.worktreeEditorOwner()): void {
@@ -6997,9 +7040,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.submoduleUrl.set('');
     this.submodulePath.set('');
     this.submoduleDialogOpen.set(true);
-    setTimeout(() => {
-      if (this.submoduleEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.submoduleDialogElement());
-    });
   }
 
   protected closeSubmoduleDialog(restoreFocus = true, expectedOwner = this.submoduleEditorOwner()): void {
@@ -7024,9 +7064,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.initialRemotePushUrl = '';
     this.remoteDialogIcon.set('remote');
     this.remoteDialog.set('add');
-    setTimeout(() => {
-      if (this.remoteEditorOwner() === owner && this.ownsRepositoryScope(owner)) this.focusFirstEditableControl(this.remoteDialogElement());
-    });
   }
 
   protected openEditRemoteDialog(remote: Remote, returnFocus?: HTMLElement | null): void {
@@ -7041,13 +7078,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.initialRemotePushUrl = this.remotePushUrl();
     this.remoteDialogIcon.set(this.remoteIcon(remote.name));
     this.remoteDialog.set('edit');
-    setTimeout(() => {
-      if (this.remoteEditorOwner() === owner && this.ownsRepositoryScope(owner)) {
-        const element = this.remoteDialogElement()?.nativeElement;
-        (element?.querySelector<HTMLElement>('input[name="remoteUrl"]:not(:disabled)')
-          ?? element?.querySelector<HTMLElement>('footer button:not(:disabled)'))?.focus();
-      }
-    });
   }
 
   protected closeRemoteDialog(restoreFocus = true, expectedOwner = this.remoteEditorOwner()): void {
@@ -7220,13 +7250,6 @@ export class AppComponent implements OnInit, OnDestroy {
       opener = this.preferencesOpener ?? this.preferencesToggle()?.nativeElement ?? opener;
     }
     return opener;
-  }
-
-  private focusFirstEditableControl(dialog?: ElementRef<HTMLElement>): void {
-    const element = dialog?.nativeElement;
-    (element?.querySelector<HTMLElement>('input:not([readonly]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
-      ?? element?.querySelector<HTMLElement>('footer button:not(:disabled)')
-      ?? element?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
   }
 
   private focusConfirmationCancel(dialog?: ElementRef<HTMLElement>): void {

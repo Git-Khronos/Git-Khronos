@@ -1853,3 +1853,20 @@ An independent local repository passed `fsck` with the modern binary and
 helpers mounted at their normal paths in the container; a full recheck uses
 that coherent toolchain. The harness now retains initial and final Git
 integrity diagnostics without reducing either check to an exit code.
+
+## Deferred repository setup dialogs — 2026-11-21
+
+Worktree, submodule and remote setup now load a shared presentation only
+when opened. The root still owns draft and native operation scope. Closing
+while loading releases focus; a failed load keeps a keyboard-accessible
+Close action and does not submit a Git command.
+
+Matched production builds measured **1,405,123 → 1,391,825 initial bytes**
+(13,298 fewer). The 16,794-byte JavaScript module and 1,514-byte stylesheet
+are outside startup. The 1.45 MB hard limit and 900 kB warning were not
+changed; the warning remains. This is a byte measurement, not a startup
+latency benchmark.
+
+All 93 selected renderer cases passed, including held/failed/retired imports,
+compact layout, keyboard routing, stale control refusal and valid setup writes.
+The build and renderer evidence is under `target/local-review/setup-deferral/`.

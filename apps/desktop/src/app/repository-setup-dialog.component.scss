@@ -1,0 +1,18 @@
+.worktree-dialog { width: min(590px, calc(100vw - 32px)); }
+.worktree-dialog-mark, .submodule-dialog-mark { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 7px; background: #304c47; color: var(--accent); }
+.worktree-dialog-fields { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr); gap: 10px; }
+.worktree-dialog select { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #414058; border-radius: 3px; outline: none; background: #181824; color: #dddce8; font-size: 12px; }
+.worktree-dialog select:focus { border-color: var(--purple); }
+.worktree-dialog option:disabled { color: #676679; }
+.worktree-field-note { color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; line-height: 1.45; }
+.submodule-dialog { width: min(560px, calc(100vw - 32px)); }
+.remote-dialog { width: min(560px, calc(100vw - 32px)); }
+.remote-dialog-mark { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 7px; background: #35304c; color: #a89cff; }
+.remote-dialog input[readonly] { color: #8c8b9e; cursor: default; }
+.remote-dialog select { width: 100%; padding: 8px 30px 8px 9px; border: 1px solid #46455d; border-radius: 4px; outline: 0; background: #1a1a27; color: #d0cfdb; font-size: 12px; }
+.remote-dialog select:focus { border-color: var(--purple); }
+.repository-form footer .remote-remove { border: 1px solid #754154; background: #3c2831 !important; color: #e99bb0 !important; }
+.worktree-dialog-fields label { min-width: 0; display: grid; gap: 6px; color: var(--text); font-size: var(--font-size-body); font-weight: 600; }
+@media (max-width: 540px) {
+  .repository-form-body .worktree-dialog-fields { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
