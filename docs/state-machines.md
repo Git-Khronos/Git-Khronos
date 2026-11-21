@@ -67,6 +67,13 @@ canonical path already in the same workspace leaves membership alone.
 Other layouts are unchanged. `workspace-center.spec.ts` covers these replies,
 late picker cancellation and draft handoff.
 
+Selection for removing unopened entries is independent of the open-tab
+selection. Confirmation revalidates the entire reviewed set against the
+owning workspace and the currently open tabs before changing any
+membership. One stale or reopened path refuses the whole removal.
+Successful removal revokes every matching pending restore before updating
+the saved layout. This does not close tabs or invoke Git.
+
 One restore instance owns an active workspace visit. Both its timer and replies
 check instance identity, including when the user leaves and returns to the same
 workspace. Closing a tab revokes that pending path so an earlier read cannot

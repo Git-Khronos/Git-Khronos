@@ -11,7 +11,8 @@ import { BackgroundOperationWarningsComponent } from './background-operation-war
 
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
-interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
+interface SavedPathsRemoval { workspaceId: string; scope: string; paths: readonly string[] }
+interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
   selector: 'gc-workspace-center',
@@ -43,7 +44,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           }
           @if (bulkRunning() && bulkStopRequested()) { <p role="status">The current operation can finish. No further repositories will be started.</p> }
           <ul>@for (result of bulkResults(); track result.id + result.action) {
-            <li><strong>{{ git.pathLabel(result.path) }}</strong> — {{ result.status }}{{ result.detail ? ': ' + result.detail : '' }}</li>
+            <li>@if (result.action === 'remove') { <code>{{ result.path }}</code> } @else { <strong>{{ git.pathLabel(result.path) }}</strong> } — {{ result.status }}{{ result.detail ? ': ' + result.detail : '' }}</li>
           }</ul></aside>
         }
         <div class="repositories" aria-label="Workspace repositories">
@@ -67,8 +68,13 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
             @if (unopenedPaths().length) {
               <h3>Saved repositories not open</h3>
               <p>These paths are still in this workspace. Locate a moved repository to replace its saved path, or remove the entry without changing files on disk.</p>
+              <div class="tools">
+                <button type="button" [disabled]="overviewBusy() || selectedUnopenedPaths().length === unopenedPaths().length" (click)="selectedSavedPaths.set(unopenedPaths())">Select all saved paths</button>
+                <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="selectedSavedPaths.set([])">Clear saved path selection</button>
+                <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="reviewSavedRemoval($event)">Remove selected saved paths ({{ selectedUnopenedPaths().length }})…</button>
+              </div>
               <ul>@for (path of unopenedPaths(); track path) {
-                <li><code>{{ path }}</code>
+                <li><label class="saved-path"><input type="checkbox" [attr.aria-label]="'Select saved path ' + path" [checked]="selectedSavedPaths().includes(path)" [disabled]="overviewBusy()" (change)="toggleSavedPath(path, $any($event.target).checked)" /><code>{{ path }}</code></label>
                   <div class="tools">
                     <button type="button" [attr.aria-label]="'Retry opening ' + path" [disabled]="overviewBusy() || git.browserPreview()" (click)="retrySavedPath(path)">Retry opening</button>
                     <button type="button" [attr.aria-label]="'Locate and open ' + path" [disabled]="overviewBusy() || git.browserPreview()" (click)="locateSavedPath(path, $event)">Locate and open…</button>
@@ -152,7 +158,14 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <h3 id="tabs-close-title">Close selected repository tabs?</h3>
           <p id="tabs-close-description">These tabs will be removed from this workspace. Their commit drafts will be discarded and their terminals closed. Repository folders, Git data and working files stay on disk.</p>
           <ul class="close-paths">@for (tab of review.tabs; track tab.id) { <li><code>{{ tab.path }}</code></li> }</ul>
-          <div class="tools"><button #reviewCancel type="button" (click)="cancelTabClose()">Cancel</button><button type="button" class="danger" [disabled]="overviewBusy()" (click)="closeReviewedTabs()">Close {{ review.tabs.length }} {{ review.tabs.length === 1 ? 'tab' : 'tabs' }}</button></div>
+          <div class="tools"><button #reviewCancel type="button" (click)="cancelWorkspaceReview()">Cancel</button><button type="button" class="danger" [disabled]="overviewBusy()" (click)="closeReviewedTabs()">Close {{ review.tabs.length }} {{ review.tabs.length === 1 ? 'tab' : 'tabs' }}</button></div>
+        </aside>
+      } @else if (pendingSavedRemoval(); as review) {
+        <aside #reviewDialog role="alertdialog" aria-modal="true" aria-labelledby="saved-paths-remove-title" aria-describedby="saved-paths-remove-description" tabindex="-1">
+          <h3 id="saved-paths-remove-title">Remove selected saved paths?</h3>
+          <p id="saved-paths-remove-description">Only the entries below will be removed from this workspace. Open tabs, other workspaces, and files on disk are not changed.</p>
+          <ul class="close-paths">@for (path of review.paths; track path) { <li><code>{{ path }}</code></li> }</ul>
+          <div class="tools"><button #reviewCancel type="button" (click)="cancelWorkspaceReview()">Cancel</button><button type="button" class="danger" [disabled]="overviewBusy()" (click)="removeReviewedSavedPaths()">Remove {{ review.paths.length }} saved {{ review.paths.length === 1 ? 'path' : 'paths' }}</button></div>
         </aside>
       }
     </section></div>
@@ -172,6 +185,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
     .repositories article > header { align-items: start; } .repositories article > header > label { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; } .repositories article > header > div { min-width: 0; flex: 1; }
     .saved-repositories { margin-block-start: 20px; } .saved-repositories li + li { margin-block-start: 12px; }
     .saved-repositories code { white-space: break-spaces; } .saved-repositories .tools { margin-block-start: 4px; }
+    .saved-path { display: flex; align-items: baseline; gap: 8px; }
     .close-paths code { white-space: break-spaces; }
     .file-tools { align-items: end; } .file-tools > label, .file-tools form { flex: 1 1 220px; min-width: 180px; } .file-tools form { display: flex; align-items: end; gap: 8px; } .file-tools form label { flex: 1; }
     .file-list { max-height: 45vh; overflow: auto; } .file-entry { display: grid; grid-template-columns: minmax(0,1fr) max-content max-content; align-items: center; gap: 10px; } .file-entry code { white-space: break-spaces; overflow-wrap: anywhere; } .danger { color: var(--danger); }
@@ -218,6 +232,11 @@ export class WorkspaceCenterComponent implements OnDestroy {
     const opened = new Set(this.git.repositories().map(repository => repository.path));
     return (this.git.activeWorkspace()?.repositoryPaths ?? []).filter(path => !opened.has(path));
   });
+  readonly selectedSavedPaths = signal<readonly string[]>([]);
+  readonly selectedUnopenedPaths = computed(() => {
+    const selected = new Set(this.selectedSavedPaths());
+    return this.unopenedPaths().filter(path => selected.has(path));
+  });
   readonly profiles = signal<IdentityProfile[]>([]);
   readonly editingId = signal<string | null>(null);
   readonly label = signal(''); readonly name = signal(''); readonly email = signal('');
@@ -233,7 +252,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly filePage = signal(0);
   readonly pendingFileDelete = signal<{ file: RepositoryFiles['files'][number]; repositoryId: string; path: string } | null>(null);
   readonly pendingTabsClose = signal<WorkspaceTabsCloseRequest | null>(null);
-  readonly reviewPending = computed(() => !!this.pendingFileDelete() || !!this.pendingTabsClose());
+  readonly pendingSavedRemoval = signal<SavedPathsRemoval | null>(null);
+  readonly reviewPending = computed(() => !!this.pendingFileDelete() || !!this.pendingTabsClose() || !!this.pendingSavedRemoval());
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly reviewDialog = viewChild<ElementRef<HTMLElement>>('reviewDialog');
   private readonly reviewCancel = viewChild<ElementRef<HTMLButtonElement>>('reviewCancel');
@@ -241,7 +261,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   private readonly bulkResultsTitle = viewChild<ElementRef<HTMLElement>>('bulkResultsTitle');
   private readonly injector = inject(Injector);
   private deleteOpener: HTMLElement | null = null;
-  private tabCloseOpener: HTMLButtonElement | null = null;
+  private workspaceReviewOpener: HTMLButtonElement | null = null;
   private fileRequest = 0;
   private fileCursors: (string | null)[] = [null];
   private fileQueryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -285,8 +305,13 @@ export class WorkspaceCenterComponent implements OnDestroy {
       if (this.request().workspaceId !== this.git.activeWorkspaceId()) {
         this.pendingFileDelete.set(null);
         this.pendingTabsClose.set(null);
+        this.pendingSavedRemoval.set(null);
         this.close(false);
       }
+    });
+    effect(() => {
+      const unopened = new Set(this.unopenedPaths());
+      this.selectedSavedPaths.update(paths => paths.every(path => unopened.has(path)) ? paths : paths.filter(path => unopened.has(path)));
     });
     effect(() => { const pending = this.pending(); if (pending && (pending.repositoryId !== this.git.activeRepositoryId() || pending.path !== this.git.repository()?.path)) this.pending.set(null); });
     afterNextRender(() => this.focusFirst());
@@ -531,10 +556,38 @@ export class WorkspaceCenterComponent implements OnDestroy {
     }
   }
   removeSavedPath(path: string): void {
-    if (this.destroyed || this.overviewBusy() || !this.git.removeUnopenedWorkspaceRepository(this.request().workspaceId, path)) return;
+    if (this.destroyed || this.overviewBusy() || !this.git.removeUnopenedWorkspaceRepositories(this.request().workspaceId, [path])) return;
     this.savedPathError.set('');
     this.savedPathNotice.set(`Removed ${path} from this workspace. No files were changed.`);
     afterNextRender(() => { if (!this.destroyed) this.focusFirst(); }, { injector: this.injector });
+  }
+  toggleSavedPath(path: string, selected: boolean): void {
+    if (this.overviewBusy() || !this.unopenedPaths().includes(path)) return;
+    this.selectedSavedPaths.update(paths => selected
+      ? paths.includes(path) ? paths : [...paths, path]
+      : paths.filter(item => item !== path));
+  }
+  reviewSavedRemoval(event: MouseEvent): void {
+    const workspaceId = this.request().workspaceId;
+    const paths = this.selectedUnopenedPaths();
+    if (this.destroyed || this.suspended() || this.overviewBusy() || this.reviewPending() || !paths.length
+      || workspaceId !== this.git.activeWorkspaceId()) return;
+    this.workspaceReviewOpener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+    this.savedPathNotice.set('');
+    this.savedPathError.set('');
+    this.pendingSavedRemoval.set({ workspaceId, paths, scope: this.git.activeRepositoryReadScope() });
+  }
+  removeReviewedSavedPaths(): void {
+    const review = this.pendingSavedRemoval();
+    if (!review || this.destroyed || this.suspended() || this.overviewBusy()) return;
+    this.cancelWorkspaceReview();
+    if (review.scope !== this.git.activeRepositoryReadScope()
+      || !this.git.removeUnopenedWorkspaceRepositories(review.workspaceId, review.paths)) {
+      this.savedPathError.set('Saved paths changed. Review your selection again. No paths were removed.');
+      return;
+    }
+    this.savedPathNotice.set(`Removed ${review.paths.length} saved ${review.paths.length === 1 ? 'path' : 'paths'} from this workspace. No files were changed.`);
+    this.bulkResults.set(review.paths.map(path => ({ id: path, path, action: 'remove', status: 'success', detail: 'Saved path removed' })));
   }
   toggleSelected(repositoryId: string, selected: boolean): void {
     this.selectedRepositoryIds.update(ids => selected
@@ -547,14 +600,15 @@ export class WorkspaceCenterComponent implements OnDestroy {
       || this.request().workspaceId !== this.git.activeWorkspaceId()) return;
     const tabs = this.selectedOpenTabs().map(({ id, path }) => ({ id, path }));
     if (!tabs.length) return;
-    this.tabCloseOpener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+    this.workspaceReviewOpener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
     this.bulkError.set('');
     this.pendingTabsClose.set({ workspaceId: this.request().workspaceId, scope: this.git.activeRepositoryReadScope(), tabs });
   }
-  cancelTabClose(): void {
-    const opener = this.tabCloseOpener;
-    this.tabCloseOpener = null;
+  cancelWorkspaceReview(): void {
+    const opener = this.workspaceReviewOpener;
+    this.workspaceReviewOpener = null;
     this.pendingTabsClose.set(null);
+    this.pendingSavedRemoval.set(null);
     afterNextRender(() => {
       if (this.destroyed || this.reviewPending() || this.suspended()) return;
       if (opener?.isConnected && !opener.disabled) opener.focus();
@@ -564,7 +618,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   closeReviewedTabs(): void {
     const review = this.pendingTabsClose();
     if (!review || this.destroyed || this.suspended() || this.overviewBusy()) return;
-    this.cancelTabClose();
+    this.cancelWorkspaceReview();
     if (!this.closeRepositories()(review)) {
       this.bulkError.set('Repository tabs changed. Review your selection again. No tabs were closed.');
       return;
@@ -693,7 +747,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   close(restoreFocus = true): void {
     if (this.destroyed) return;
     if (this.pendingFileDelete()) { this.cancelDelete(); return; }
-    if (this.pendingTabsClose()) { this.cancelTabClose(); return; }
+    if (this.pendingTabsClose() || this.pendingSavedRemoval()) { this.cancelWorkspaceReview(); return; }
     this.locatingPath.set(null);
     const opener = this.request().returnFocus; this.closed.emit();
     if (restoreFocus) setTimeout(() => {

@@ -206,6 +206,101 @@ test('removing a saved path revokes its pending restore only in this workspace',
 });
 
 const movedPath = '/saved/moved checkout';
+const removablePaths = ['/saved/remove first', '/saved/remove second'];
+const retainedPath = '/saved/retain';
+
+async function prepareSavedRemoval(page: Page, holdRestore = false) {
+  await page.evaluate(({ paths, retained, hold }) => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const workspace = git.activeWorkspace();
+    git.workspaces.update((items: any[]) => [
+      ...items.map(item => item.id === workspace.id ? {
+        ...item, repositoryPaths: [fixture.first.path, paths[0], retained, paths[1], fixture.second.path],
+      } : item),
+      { id: 'other-saved', name: 'Other saved', repositoryPaths: paths, activeRepositoryPath: paths[0] },
+    ]);
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      fixture.calls.push({ command, args });
+      const path = args?.path;
+      if (command === 'open_repository' && path === paths[0] && hold) {
+        return new Promise(resolve => { fixture.releaseSavedRestore = () => resolve({ ...fixture.first, id: 'restored-stale', path }); });
+      }
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+    if (hold) {
+      const restoration = { workspaceId: workspace.id, pending: new Set(paths), failed: new Set() };
+      git.repositoryRestoration = restoration;
+      fixture.savedRestore = git.restoreRepositoryTabs(restoration);
+    }
+  }, { paths: removablePaths, retained: retainedPath, hold: holdRestore });
+}
+
+test('reviews and removes selected unopened paths in one workspace without dispatching stale restores', async ({ page }) => {
+  await prepareSavedRemoval(page, true);
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseSavedRestore)).toBe('function');
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('button', { name: 'Select all saved paths' }).click();
+  await saved.getByRole('checkbox', { name: 'Select saved path ' + retainedPath }).uncheck();
+  const remove = saved.getByRole('button', { name: 'Remove selected saved paths (2)…' });
+  await remove.click();
+  const review = page.getByRole('alertdialog', { name: 'Remove selected saved paths?' });
+  await expect(review.getByRole('listitem')).toHaveText(removablePaths);
+  await expect(review.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(review).toHaveCount(0);
+  await expect(remove).toBeFocused();
+  await expect(saved.getByRole('checkbox', { name: 'Select saved path ' + removablePaths[0] })).toBeChecked();
+
+  await remove.click();
+  await review.getByRole('button', { name: 'Remove 2 saved paths', exact: true }).click();
+  await expect(saved.getByRole('status')).toHaveText('Removed 2 saved paths from this workspace. No files were changed.');
+  await expect(saved.getByRole('checkbox')).toHaveCount(1);
+  await expect(dialog.getByRole('searchbox', { name: 'Filter repositories' })).toBeFocused();
+  await expect(dialog.getByRole('complementary', { name: 'Repository action results' }).getByRole('listitem')).toHaveText([
+    '/saved/remove first — success: Saved path removed', '/saved/remove second — success: Saved path removed',
+  ]);
+  const current = await page.evaluate(async () => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    fixture.releaseSavedRestore();
+    await fixture.savedRestore;
+    const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
+    return {
+      open: git.repositories().map((repository: any) => repository.path),
+      active: git.repository().path,
+      currentPaths: workspaces.find((workspace: any) => workspace.id === git.activeWorkspaceId()).repositoryPaths,
+      otherPaths: workspaces.find((workspace: any) => workspace.id === 'other-saved').repositoryPaths,
+      opened: fixture.calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.args.path),
+    };
+  });
+  expect(current).toEqual({
+    open: ['/owned/alpha', '/owned/beta'], active: '/owned/alpha',
+    currentPaths: ['/owned/alpha', retainedPath, '/owned/beta'], otherPaths: removablePaths,
+    opened: [removablePaths[0]],
+  });
+});
+
+test('refuses the entire saved-path removal when one reviewed checkout becomes open', async ({ page }) => {
+  await prepareSavedRemoval(page);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  for (const path of removablePaths) await saved.getByRole('checkbox', { name: 'Select saved path ' + path }).check();
+  await saved.getByRole('button', { name: 'Remove selected saved paths (2)…' }).click();
+  await page.evaluate(path => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((repos: any[]) => [...repos, { ...fixture.first, id: 'newly-restored', path, name: 'Newly restored' }]);
+  }, removablePaths[0]);
+  const review = page.getByRole('alertdialog', { name: 'Remove selected saved paths?' });
+  await review.getByRole('button', { name: 'Remove 2 saved paths', exact: true }).click();
+  await expect(saved.getByRole('alert')).toContainText('No paths were removed.');
+  await expect(saved.getByRole('button', { name: 'Remove selected saved paths (1)…' })).toBeFocused();
+  await expect(dialog.getByRole('article', { name: 'Newly restored' })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeWorkspace().repositoryPaths))
+    .toEqual(['/owned/alpha', removablePaths[0], retainedPath, removablePaths[1], '/owned/beta']);
+});
 
 async function installSavedPathPicker(page: Page) {
   await page.evaluate(path => {

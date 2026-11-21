@@ -3143,17 +3143,21 @@ export class GitKhronosService implements OnDestroy {
     }
     this.error.set(null);
     this.activity.set('Ready');
-    this.persistOpenTabs({ removedPath: closingRepository.path });
+    this.persistOpenTabs({ removedPaths: new Set([closingRepository.path]) });
   }
 
-  removeUnopenedWorkspaceRepository(workspaceId: string, path: string): boolean {
-    if (this.busy() || workspaceId !== this.activeWorkspaceId()
-      || !this.activeWorkspace()?.repositoryPaths.includes(path)
-      || this.repositories().some(repository => repository.path === path)) return false;
+  removeUnopenedWorkspaceRepositories(workspaceId: string, paths: readonly string[]): boolean {
+    if (this.busy() || workspaceId !== this.activeWorkspaceId() || !paths.length) return false;
+    const saved = new Set(this.activeWorkspace()?.repositoryPaths);
+    const open = new Set(this.repositories().map(repository => repository.path));
+    if (paths.some(path => !saved.has(path) || open.has(path))) return false;
     // A queued or in-flight restore must not reinsert a removed membership.
-    this.repositoryRestoration?.pending.delete(path);
-    this.repositoryRestoration?.failed.delete(path);
-    this.persistOpenTabs({ removedPath: path });
+    const removedPaths = new Set(paths);
+    for (const path of removedPaths) {
+      this.repositoryRestoration?.pending.delete(path);
+      this.repositoryRestoration?.failed.delete(path);
+    }
+    this.persistOpenTabs({ removedPaths });
     return true;
   }
 
@@ -4013,14 +4017,14 @@ export class GitKhronosService implements OnDestroy {
     );
   }
 
-  private persistOpenTabs({ removedPath, canonical, preserveSavedOrder = false }: {
-    removedPath?: string;
+  private persistOpenTabs({ removedPaths, canonical, preserveSavedOrder = false }: {
+    removedPaths?: ReadonlySet<string>;
     canonical?: { requested: string; resolved: string };
     preserveSavedOrder?: boolean;
   } = {}): void {
     const loadedPaths = this.repositories().map((repository) => repository.path);
     const savedPaths = [...new Set((this.activeWorkspace()?.repositoryPaths ?? [])
-      .filter(path => path !== removedPath)
+      .filter(path => !removedPaths?.has(path))
       .map(path => canonical && path === canonical.requested ? canonical.resolved : path))];
     let repositoryPaths: string[];
     if (preserveSavedOrder) {
