@@ -2890,3 +2890,18 @@ Positive installer SHA-256:
 Reports: `target/local-review/stash-native-background.ZBmUqIg7/red/`
 and `target/local-review/updater/jammy-builder/stash-responsive-release.GyP3TSHc/focused/`.
 These are focused installed checks, not a release matrix.
+
+## Installed commit and amend responsiveness — 2026-11-21
+
+With Git held in `commit_changes`, the `998c238` installer answered
+the unrelated updater status request only after the test watchdog released
+Git. On the `3746422` installer, the updater answered with both the ordinary
+commit and amend still pending. After release, the returned snapshot matched
+Git's HEAD, the parent and committed content were correct, and the unrelated
+unstaged and untracked files remained unchanged. Comparison and stash
+responsiveness also passed on that exact installed package.
+
+Positive installer SHA-256:
+`34e3e6938e3952433b36237d1c6927d63ff288298fd077e22bb9df1b33a59de2`.
+Reports: `target/local-review/commit-native-background.J5fzAc5z/red/`
+and `target/local-review/updater/jammy-builder/composer-responsive-release.3EACgEaV/focused/positive/`.
