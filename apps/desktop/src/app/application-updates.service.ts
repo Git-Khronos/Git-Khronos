@@ -36,16 +36,21 @@ export class ApplicationUpdatesService {
     await this.refresh();
   }
 
-  private accept(value: ApplicationUpdateStatus, reportInvalid = true): void {
+  private accept(value: ApplicationUpdateStatus, issuedAt = this.acceptedStatusGeneration): void {
     if (this.disposed) return;
+    const superseded = issuedAt !== this.acceptedStatusGeneration;
     if (!value || !Number.isSafeInteger(value.revision) || value.revision < 0
       || typeof value.runningVersion !== 'string' || typeof value.configured !== 'boolean'
       || typeof value.automatic !== 'boolean' || typeof value.message !== 'string') {
-      if (reportInvalid) this.statusError.set('The native updater returned an invalid status. Refresh before starting a new update.');
+      if (!superseded) this.statusError.set('The native updater returned an invalid status. Refresh before starting a new update.');
       return;
     }
     const previous = this.state();
-    if (previous && previous.revision > value.revision) return;
+    // Native activity can change canInstall without incrementing the updater
+    // model's revision. An older reply at the same revision must not replace
+    // an observed event; the next fresh poll can still report idle again.
+    if (previous && (previous.revision > value.revision
+      || (superseded && previous.revision === value.revision))) return;
     if (previous && previous.offerId !== value.offerId) this.error.set('');
     this.acceptedStatusGeneration++;
     this.statusError.set('');
@@ -57,7 +62,7 @@ export class ApplicationUpdatesService {
     if (this.refreshing) return this.refreshing;
     const generation = this.acceptedStatusGeneration;
     this.refreshing = ipc.application_update_status().then(
-      value => this.accept(value, generation === this.acceptedStatusGeneration),
+      value => this.accept(value, generation),
       () => {
         if (!this.disposed && generation === this.acceptedStatusGeneration) {
           this.statusError.set('Native update status could not be read. Refresh status before starting a new update.');
@@ -70,7 +75,8 @@ export class ApplicationUpdatesService {
   private async action(kind: 'check' | 'download' | 'install' | 'inspect', work: () => Promise<ApplicationUpdateStatus>, offerId?: string): Promise<void> {
     if (!this.native() || this.actionPending()) return;
     this.pendingAction.set(kind); this.error.set('');
-    try { this.accept(await work()); }
+    const generation = this.acceptedStatusGeneration;
+    try { this.accept(await work(), generation); }
     catch (error: unknown) {
       if (offerId === undefined || this.state()?.offerId === offerId) this.error.set(this.message(error));
       await this.refresh();
@@ -98,7 +104,8 @@ export class ApplicationUpdatesService {
     if (!this.native() || this.settingPending() || !state
       || (enabled && (this.statusError() || !state.configured || !!state.storageError))) return;
     this.settingPending.set(true); this.error.set('');
-    try { this.accept(await ipc.set_automatic_application_updates({ enabled })); }
+    const generation = this.acceptedStatusGeneration;
+    try { this.accept(await ipc.set_automatic_application_updates({ enabled }), generation); }
     catch (error: unknown) { this.error.set(this.message(error)); await this.refresh(); }
     finally { this.settingPending.set(false); }
   }

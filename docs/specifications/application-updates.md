@@ -103,7 +103,10 @@ it does not install anything or enable automatic updates. If a refresh fails
 after a known status, the dialog labels it as last known and blocks new checks,
 downloads, installations and opt-in until a valid native reply or event arrives.
 The user can still turn off a previously confirmed automatic preference.
-An older read failure cannot override a newer valid native event. The release publisher must separately
+An older read or action reply cannot override a newer valid native event at the
+same revision. Native activity can change whether installation is available
+without incrementing the update model's revision, so a newly started poll can
+still report that the app is idle again. The release publisher must separately
 configure this key, sign artifacts with version-bound signatures and publish
 `latest.json` at the approved official release endpoint. An encrypted publisher
 key has been generated locally, but neither the key nor the manifest is

@@ -71,6 +71,35 @@ describe('native-owned application updates service', () => {
     expect(service.actionPending()).toBe(false);
   });
 
+  it('keeps newer native eligibility when a held poll returns an equal revision', async () => {
+    const ready = state({ revision: 3, phase: 'ready', offerId: 'owned', verified: true, canInstall: true });
+    bridge.status.mockResolvedValue(ready);
+    const service = create(); await service.refresh();
+    const older = deferred<ApplicationUpdateStatus>(); bridge.status.mockReturnValue(older.promise);
+    const pending = service.refresh();
+    // Native activity can change install eligibility without changing the
+    // updater model revision. This event was observed after the poll started.
+    emit({ ...ready, canInstall: false });
+    older.resolve(ready); await pending;
+    expect(service.state()?.canInstall).toBe(false);
+    await service.install('owned'); expect(bridge.install).not.toHaveBeenCalled();
+
+    // A newly issued poll at the same revision may observe idle again.
+    bridge.status.mockResolvedValue(ready);
+    await service.refresh();
+    expect(service.state()?.canInstall).toBe(true);
+  });
+
+  it('cannot mark newer event state invalid using an older action reply', async () => {
+    const service = create(); await service.refresh();
+    const check = deferred<ApplicationUpdateStatus>(); bridge.check.mockReturnValue(check.promise);
+    const pending = service.check();
+    emit(state({ revision: 5, phase: 'available', offerId: 'owned', canDownload: true }));
+    check.resolve(null as unknown as ApplicationUpdateStatus); await pending;
+    expect(service.statusError()).toBe('');
+    expect(service.state()?.canDownload).toBe(true);
+  });
+
   it('does not attach a retired offer failure to a replacement offer', async () => {
     bridge.status.mockResolvedValue(state({ phase: 'available', offerId: 'old', canDownload: true }));
     const service = create(); await service.refresh();

@@ -30,9 +30,9 @@ test.beforeEach(async ({ page }) => {
         if (command === 'plugin:event|unlisten') return Promise.resolve();
         if (command === 'application_update_status') {
           if (state.holdStatus) return new Promise((resolve, reject) => {
-            state.finishStatus = (success: boolean) => {
+            state.finishStatus = (success: boolean, response = state.status) => {
               state.holdStatus = false;
-              return success ? resolve(state.status) : reject({ message: 'Owned status read failure' });
+              return success ? resolve(response) : reject({ message: 'Owned status read failure' });
             };
           });
           if (state.rejectStatus) return Promise.reject({ message: 'Owned status read failure' });
@@ -288,6 +288,45 @@ test('stale status disables new update actions but still permits disabling autom
   await refresh.click();
   await expect(error).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeEnabled();
+});
+
+test('a held poll cannot re-enable installation after a native activity update at the same revision', async ({ page }) => {
+  await page.evaluate(() => (window as any).__updates.replace({
+    offerId: 'owned-ready', offeredVersion: '0.2.0', verified: true, phase: 'ready',
+    canCheck: false, canDownload: false, canInstall: true, message: 'Owned verified package ready',
+  }));
+  const dialog = await open(page);
+  const install = dialog.getByRole('button', { name: 'Install verified update', exact: true });
+  const refresh = dialog.getByRole('button', { name: 'Refresh status', exact: true });
+  await expect(install).toBeEnabled();
+  await page.evaluate(() => { (window as any).__updates.holdStatus = true; });
+  await refresh.click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__updates.finishStatus)).toBe('function');
+  const observed = await page.evaluate(async () => {
+    const state = (window as any).__updates;
+    const service = (window as any).ng.getComponent(document.querySelector('gc-application-updates-dialog')).updates;
+    const earlier = state.status;
+    state.status = { ...earlier, canInstall: false, message: 'Owned native Git work started' };
+    state.emit();
+    state.finishStatus(true, earlier);
+    await service.refresh();
+    return service.state()?.canInstall;
+  });
+  expect(observed).toBe(false);
+  await expect(dialog).toContainText('Owned native Git work started');
+  await expect(install).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .some((call: any) => call.command === 'install_application_update'))).toBe(false);
+
+  // Once a new poll starts, it can accept the result of native work finishing
+  // even if the updater's model revision has not changed.
+  await page.evaluate(() => {
+    const state = (window as any).__updates;
+    state.status = { ...state.status, canInstall: true, message: 'Owned native Git work finished' };
+  });
+  await refresh.click();
+  await expect(dialog).toContainText('Owned native Git work finished');
+  await expect(install).toBeEnabled();
 });
 
 test('late failure from an older poll cannot override newer native status', async ({ page }) => {
