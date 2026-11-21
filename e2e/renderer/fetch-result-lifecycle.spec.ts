@@ -14,9 +14,11 @@ for (const scenario of ['tab-switch', 'unrelated-error', 'dismissed-failure', 'c
       let resolve!: (value: unknown) => void;
       let reject!: (reason: unknown) => void;
       let requestedRepo: string | undefined;
+      let requestedCommand: string | undefined;
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
         if (['fetch_repository', 'pull_repository', 'push_repository'].includes(command)) {
           requestedRepo = args.repoId;
+          requestedCommand = command;
           return new Promise((yes, no) => { resolve = yes; reject = no; });
         }
         if (command === 'inspect_commit') return Promise.reject({ message: 'Unrelated inspection error' });
@@ -29,18 +31,20 @@ for (const scenario of ['tab-switch', 'unrelated-error', 'dismissed-failure', 'c
         if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
         return Promise.resolve(null);
       } };
-      const command = scenario === 'pull' ? 'pull_repository' : scenario === 'push' ? 'push_repository' : 'fetch_repository';
-      const pending = git.remote(command);
+      const pending = scenario === 'pull' ? git.pull() :
+        git.remote(scenario === 'push' ? 'push_repository' : 'fetch_repository');
       if (scenario === 'tab-switch' || scenario === 'unrelated-error') git.activateRepository(other.id);
       if (scenario === 'unrelated-error') await git.inspectCommit(other.headOid);
       if (scenario === 'dismissed-failure') reject({ message: 'Fetch authentication failed' });
       else if (scenario === 'cancelled') reject({ kind: 'operationCancelled', message: 'Cancelled', hint: null });
       else resolve(repository);
       await pending;
-      return { requestedRepo, expectedRepo: repository.id, errors: git.backgroundFetchErrors(),
+      return { requestedRepo, requestedCommand, expectedRepo: repository.id, errors: git.backgroundFetchErrors(),
         active: git.activeRepositoryId(), error: git.error() };
     }, scenario);
     expect(result.requestedRepo).toBe(result.expectedRepo);
+    expect(result.requestedCommand).toBe(scenario === 'pull' ? 'pull_repository' :
+      scenario === 'push' ? 'push_repository' : 'fetch_repository');
     const succeeded = ['tab-switch', 'unrelated-error', 'success'].includes(scenario);
     expect(result.errors[result.expectedRepo]).toBe(succeeded ? undefined : 'Original authentication failure');
     expect(result.errors['other-fetch']).toBe('Other failure');
