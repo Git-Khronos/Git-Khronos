@@ -20,7 +20,7 @@ def unstaged_summary_workflow(driver, fixtures, report):
     files = ('fixture.txt', 'new-note.txt', 'binary.dat')
     before = checkout_footprint(fixtures, repository, files)
     open_ui(driver, repository)
-    def recaps(unstaged, staged, uncounted=1):
+    def recaps(unstaged, staged, uncounted=1, timeout=30):
         # A live status refresh can temporarily replace either recap with the
         # loading state. Match and capture both elements in the same DOM read.
         expected = [
@@ -39,7 +39,7 @@ def unstaged_summary_workflow(driver, fixtures, report):
                 texts.push(row.textContent);
             }
             return texts;
-        ''')
+        ''', timeout)
         for text, (additions, deletions) in zip(texts, (unstaged, staged), strict=True):
             assert f'+{additions}' in text and f'−{deletions}' in text and 'partial' not in text, text
         return texts
@@ -73,3 +73,16 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary']['editedRename'] = {'unstagedRecap': rename_recap,
                                                       'stagedRecap': staged, 'footprint': exact_before}
     report['scenarios'].append('native-unstaged-rename-does-not-inflate-lines-or-change-the-index')
+
+    # A real external edit leaves the same porcelain rename record and index
+    # bytes. The application must refresh the recap without another UI action.
+    new_name.write_text('alpha\nbeta\ngamma\nchanged\nplus\n')
+    expected_after_edit = checkout_footprint(fixtures, renamed, (new_name.name,))
+    assert expected_after_edit['files'] != exact_before['files']
+    for key in ('head', 'branch', 'references', 'status', 'indexSha256', 'configSha256'):
+        assert expected_after_edit[key] == exact_before[key], 'Unexpected fixture change: ' + key
+    live_recap, staged = recaps((2, 1), (0, 0), uncounted=0, timeout=35)
+    assert checkout_footprint(fixtures, renamed, (new_name.name,)) == expected_after_edit
+    report['unstagedLineSummary']['externalEdit'] = {'unstagedRecap': live_recap,
+                                                   'stagedRecap': staged, 'footprint': expected_after_edit}
+    report['scenarios'].append('native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain')
