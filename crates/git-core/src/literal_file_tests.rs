@@ -1846,6 +1846,13 @@ fn unstaged_summary_counts_symlink_blob_without_opening_its_target() {
 #[test]
 fn unstaged_summary_never_fetches_a_promised_missing_index_blob() {
     use std::os::unix::fs::PermissionsExt;
+    const CHILD: &str = "GIT_KHRONOS_SUMMARY_PROTOCOL_FIXTURE";
+    if let Some(path) = std::env::var_os(CHILD) {
+        let path = PathBuf::from(path);
+        assert!(working_tree_change_summary(&path).is_err());
+        assert!(!path.join(".git/unexpected-fetch").exists());
+        return;
+    }
     let repository = Repository::new();
     repository.write("tracked.txt", b"old\n");
     repository.commit("Base");
@@ -1871,34 +1878,35 @@ fn unstaged_summary_never_fetches_a_promised_missing_index_blob() {
     assert!(!object.exists());
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
-    // Simulate Git versions that ignore the environment guard. The temporary
-    // protocol policy must still defeat the repository's explicit file=always.
-    working_tree_summary::with_local_reads(&repository.0, || {
-        let fallback = git_in(&repository.0).args(["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--"])
-            .env_remove("GIT_NO_LAZY_FETCH").output().unwrap();
-        assert!(!fallback.status.success());
-        assert!(!marker.exists());
-        Ok(())
-    }).unwrap();
+    // The normal recap stays read-only even with inherited file transport.
+    let inherited = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "literal_file_tests::unstaged_summary_never_fetches_a_promised_missing_index_blob", "--nocapture"])
+        .env(CHILD, &repository.0)
+        .env("GIT_ALLOW_PROTOCOL", "file")
+        .output()
+        .unwrap();
+    assert!(
+        inherited.status.success(),
+        "Inherited protocol permission escaped the recap read scope:\n{}\n{}",
+        String::from_utf8_lossy(&inherited.stdout),
+        String::from_utf8_lossy(&inherited.stderr)
+    );
+    assert!(!marker.exists());
+    assert!(!object.exists());
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
     let control = git_in(&repository.0).args(["cat-file", "-t", &oid]).env_remove("GIT_NO_LAZY_FETCH").output().unwrap();
     assert!(!control.status.success());
     assert_eq!(fs::read(marker).unwrap(), b"attempted");
 }
 
 #[test]
-fn unstaged_summary_transport_policy_is_scoped_and_restores_custom_protocols_after_unwind() {
+fn unstaged_summary_does_not_rewrite_custom_protocol_configuration() {
     let repository = Repository::new();
     repository.git(&["config", "protocol.owned.allow", "always"]);
     repository.git(&["config", "protocol.file.allow", "always"]);
-    let result = std::panic::catch_unwind(|| {
-        working_tree_summary::with_local_reads(&repository.0, || -> Result<(), AppError> {
-            for key in ["protocol.owned.allow", "protocol.file.allow", "protocol.allow"] {
-                assert_eq!(repository.git(&["config", "--get", key]), b"never\n");
-            }
-            panic!("Owned inspection unwind");
-        }).unwrap();
-    });
-    assert!(result.is_err());
+    repository.write("new.txt", b"local\n");
+    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 1);
     for key in ["protocol.owned.allow", "protocol.file.allow"] {
         assert_eq!(repository.git(&["config", "--get", key]), b"always\n");
     }

@@ -130,10 +130,12 @@ Both sides share a status scan. Each summary counts at most 2,000 entries
 with 4 MiB of numstat output per side; untracked regular-file reads have an
 aggregate 16 MiB budget. Truncated or incomplete totals are labeled partial.
 External diff and text conversion are disabled and untracked symlink targets
-are not opened. The thread-scoped no-lazy-fetch guard and protocol refusal
-cover both diffs without changing ordinary Git operations or persistent
-configuration. If local blobs are unavailable for one diff, that side is
-unavailable without hiding a valid count from the other.
+are not opened. The same thread-scoped fetch-free policy used for file
+preview and incoming-link reads covers the status and both diffs. It
+overrides inherited transport permissions for these reads without a
+configuration preflight or any persistent Git change. If local blobs are
+unavailable for one diff, that side is unavailable without hiding a valid
+count from the other.
 
 Status bursts coalesce to one in-flight read and one latest desired checkout.
 Only the same repository ID/path and status object may accept a response,

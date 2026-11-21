@@ -9047,16 +9047,15 @@ pub(crate) fn git_in(path: &Path) -> Command {
 fn git_command_for(path: &Path, explicit_transport: bool) -> Command {
     let mut command = Command::new("git");
     if no_lazy_fetch::enabled() {
-        // Older supported Git rejects the command-line flag. The environment
-        // setting is ignored there, so deny all transports for local readers.
-        // Explicit fetch/push keep the caller's own protocol policy.
+        // Older supported Git understands the environment guard even when it
+        // rejects the newer switch. Also deny transport for local readers;
+        // explicit fetch/push keep the caller's own protocol policy.
         command.env("GIT_NO_LAZY_FETCH", "1");
         if !explicit_transport {
             command.env("GIT_ALLOW_PROTOCOL", "");
         }
     }
     command.arg("-C").arg(path);
-    working_tree_summary::configure_read_command(&mut command);
     // UI commands choose their repository and exact paths explicitly. Shell
     // overrides must not redirect its index/worktree/config file or reinterpret path magic.
     // System/global/count configuration remains the user's Git policy.

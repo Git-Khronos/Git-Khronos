@@ -1,85 +1,9 @@
 use super::{
     AppError, RepositoryStatus, ensure_success, file_statistics, numstat_entries, parse_numstat, read_status_with_limit,
-    run_git_with_stdout_limit,
+    run_git_with_stdout_limit, without_lazy_fetch,
 };
 use serde::Serialize;
-use std::{cell::RefCell, fs, path::Path, process::Command};
-
-thread_local! {
-    static READ_PROTOCOLS: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
-}
-
-/// Apply only within this optional local inspection. Modern Git understands the
-/// environment guard; command-level transport refusal also protects Git 2.39.
-/// User/system/global configuration is never rewritten.
-pub(super) fn configure_read_command(command: &mut Command) {
-    READ_PROTOCOLS.with(|slot| {
-        if let Some(keys) = slot.borrow().as_ref() {
-            command.env("GIT_NO_LAZY_FETCH", "1");
-            command.args(["-c", "protocol.allow=never"]);
-            for key in keys {
-                command.arg("-c").arg(format!("{key}=never"));
-            }
-        }
-    });
-}
-
-pub(super) fn with_local_reads<T>(
-    path: &Path,
-    action: impl FnOnce() -> Result<T, AppError>,
-) -> Result<T, AppError> {
-    let (output, truncated) = run_git_with_stdout_limit(
-        path,
-        &[
-            "config",
-            "--null",
-            "--name-only",
-            "--get-regexp",
-            r"^protocol\..*\.allow$",
-        ],
-        64 * 1024,
-    )?;
-    if output.status.code() != Some(1) {
-        ensure_success("inspect local line-count transport policy", &output)?;
-    }
-    if truncated {
-        return Err(AppError::new(
-            "lineSummaryUnavailable",
-            "Transport settings exceed the safe line-count inspection limit.",
-            None,
-        ));
-    }
-    let mut keys: Vec<String> = [
-        "file", "http", "https", "git", "ssh", "ext", "ftp", "ftps", "rsync",
-    ]
-    .into_iter()
-    .map(|protocol| format!("protocol.{protocol}.allow"))
-    .collect();
-    for key in output
-        .stdout
-        .split(|byte| *byte == 0)
-        .filter(|key| !key.is_empty())
-    {
-        let key = std::str::from_utf8(key).map_err(|_| {
-            AppError::new(
-                "lineSummaryUnavailable",
-                "Transport settings cannot be safely inspected for line counts.",
-                None,
-            )
-        })?;
-        keys.push(key.to_owned());
-    }
-    keys.sort();
-    keys.dedup();
-    struct Restore(Option<Vec<String>>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            READ_PROTOCOLS.with(|slot| *slot.borrow_mut() = self.0.take());
-        }
-    }
-    let _restore = Restore(READ_PROTOCOLS.with(|slot| slot.replace(Some(keys))));
-    action()
-}
+use std::{fs, path::Path};
 
 const MAX_FILES: usize = 2_000;
 const MAX_STATS_BYTES: usize = 4 * 1024 * 1024;
@@ -103,7 +27,7 @@ pub struct WorkingTreeSummaries {
 /// Both recaps share one bounded status scan, and one side may still be
 /// available if the other requires unreadable or missing local objects.
 pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppError> {
-    with_local_reads(path, || {
+    without_lazy_fetch(|| {
         let status = read_status_with_limit(path, MAX_FILES)?;
         Ok(WorkingTreeSummaries {
             staged: read_staged_summary(path, &status).ok(),
@@ -155,7 +79,7 @@ fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<Working
 /// Unstaged changes are relative to the index, not HEAD. Never run external diff
 /// drivers or read through untracked symlinks while calculating this recap.
 pub fn working_tree_change_summary(path: &Path) -> Result<WorkingTreeChangeSummary, AppError> {
-    with_local_reads(path, || read_unstaged_summary(path, &read_status_with_limit(path, MAX_FILES)?))
+    without_lazy_fetch(|| read_unstaged_summary(path, &read_status_with_limit(path, MAX_FILES)?))
 }
 
 fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<WorkingTreeChangeSummary, AppError> {

@@ -138,10 +138,11 @@ URL delivery. G28 remains open.
 ## Composed fetch-free read checkpoint
 
 The scoped core policy sets `GIT_NO_LAZY_FETCH=1` and an empty
-`GIT_ALLOW_PROTOCOL` for composed local Git commands. Git 2.43 rejects the
-newer `--no-lazy-fetch` switch; the protocol allowlist also keeps older Git
-from contacting a promisor, including when repository configuration allows
-that protocol. Explicit authenticated transport keeps the user's existing
+`GIT_ALLOW_PROTOCOL` for composed local Git commands. Git 2.39 and 2.43
+honor the environment guard even though they reject the newer switch. The
+empty allowlist adds transport protection; it is not a replacement for
+preventing a lazy-fetch subprocess from updating Git metadata. Explicit
+authenticated transport keeps the user's existing
 protocol policy, not the local reader's empty list. The process environment is
 unchanged. Nested scopes and unwinding
 restore the preceding policy. Snapshot reads stay on that worker in this mode,
