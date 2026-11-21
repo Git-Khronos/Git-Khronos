@@ -461,6 +461,28 @@ different public key produced no verification receipt. This is exact
 local fixture qualification, not production signing or publication; the
 later repository form stylesheet change is not in this installer.
 
+## Updater downgrade guard and tracked-file release evidence — 2026-11-21
+
+The Jammy-built downgrade-guard candidate at `913a05d`, SHA-256
+`d63aa1f4af6b1c2c39ff554b1ee71a53d64091f68b9032d528e1be635945aec6`,
+passed the then-required 26 installed checks across five distributions.
+The strict offline verifier selected passing exact-package evidence from 30
+reports and matched the build receipt to the fixture publisher key. See
+`verified-release-directories.json` under
+`target/local-review/updater/jammy-builder/updater-downgrade-guard.m9V06cJZ/`.
+This did not authorize production signing or publication.
+
+The focused tracked-file suite deliberately failed on those older installed
+bytes: three unmerged index stages appeared as duplicate paths and displaced
+another matching file. The Jammy-built candidate at `86d106d`, SHA-256
+`620196803944957eb2e3861ed111ea165215ce44427e844b754f46e5375cb9bd`,
+passed both the native result-limit check and the installed Ubuntu 24.04
+palette check, preserving merge state. See the separate `baseline/results`
+and `focused/results` under
+`target/local-review/updater/jammy-builder/tracked-file-search.7Ct4GAYe/`.
+The new requirement brings the installed matrix to 27 checks; neither
+receipt alone qualifies that expanded matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

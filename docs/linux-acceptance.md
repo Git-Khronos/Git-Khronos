@@ -204,6 +204,17 @@ GTK save picker, then verifies the native export independently with
 `git apply --numstat`.
 The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 
+## Focused tracked-file search
+
+Use `--suite tracked-file-search --headless` to inspect an owned repository
+in a real merge conflict. The index has three stages for one path and an
+ordinary tracked neighbour. A two-path search must return both exactly
+once without reporting truncation. The installed palette must show one
+history and one blame action for each tracked path, exclude the untracked
+file, and leave the merge, index entries, references and files unchanged.
+The exact-artifact Ubuntu 24.04 CI job and local release checklist require
+both scenarios.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a
@@ -410,8 +421,8 @@ To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
 path. The JSON lists the matching report or `null` for each required
 distribution and suite; any missing or failed check causes a nonzero exit.
-The current checklist covers 26 distribution/suite pairs. It includes all
-12 focused Ubuntu 24.04 workspace and Git workflow reviews in the hosted
+The current checklist covers 27 distribution/suite pairs. It includes all
+13 focused Ubuntu 24.04 workspace and Git workflow reviews in the hosted
 acceptance job, not just initial package startup and GitLab catalogue checks.
 Use the original `report.json` from each passing job. The command does not
 check the publisher key or authorize publication.

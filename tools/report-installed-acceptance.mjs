@@ -49,6 +49,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-patch-export-missing-reviewed-path-blocks-ui-and-native-partial-write',
     'native-patch-export-recovered-selection-opens-real-picker-and-native-export-writes-only-selected-diff',
   ]],
+  ['tracked-file-search', [
+    'native-tracked-file-search-uses-distinct-unmerged-paths-before-the-result-limit',
+    'native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state',
+  ]],
   ['feature-rebase', 'native-feature-rebase-uses-configured-development-without-moving-sibling-refs'],
 ];
 

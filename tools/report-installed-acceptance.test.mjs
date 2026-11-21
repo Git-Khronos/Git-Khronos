@@ -103,7 +103,8 @@ const requiredMatrix = {
   'ubuntu:22.04': ['smoke', 'gitlab', 'watcher-refresh', 'lfs-counts', 'lfs-snapshot-timeout', 'environment'],
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
-    'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export', 'feature-rebase'],
+    'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
+    'tracked-file-search', 'feature-rebase'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -124,7 +125,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 26);
+  assert.equal(complete.checks.length, 27);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -157,6 +158,18 @@ test('passing patch reports on other platforms or without cancellation evidence 
   const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== patch), partial, differentPlatform]);
   assert.equal(matrix.complete, false);
   assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['patch-export']);
+});
+
+test('the installed tracked-file review must prove distinct native paths and correct palette actions', () => {
+  const fixtures = matrixFixtures();
+  const search = fixtures.find(report => report.suite === 'tracked-file-search');
+  for (const scenario of search.scenarios) {
+    const partial = { ...search, scenarios: [scenario] };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== search), partial]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite),
+      ['tracked-file-search']);
+  }
 });
 
 test('the release matrix refuses incomplete watcher, trust, and incoming-link reports', () => {
