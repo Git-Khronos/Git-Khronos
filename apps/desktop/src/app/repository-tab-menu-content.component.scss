@@ -1,0 +1,24 @@
+:host { display: contents; }
+.tab-context-heading { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; padding: 4px 5px 8px; }
+.tab-context-heading > span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 4px; background: var(--overlay-icon); color: var(--accent); }
+.tab-context-heading > div { min-width: 0; display: grid; gap: 2px; }
+.tab-context-heading strong, .tab-context-heading small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-context-heading strong { color: var(--overlay-strong); font-size: var(--font-size-body); }
+.tab-context-heading small { color: var(--overlay-muted-low); font-size: 12px; }
+.tab-menu-action { width: 100%; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 5px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--toolbar-control-text); font-size: var(--font-size-body); text-align: left; }
+.tab-menu-action:hover:not(:disabled) { background: var(--overlay-hover); color: white; }
+.tab-menu-action:disabled { opacity: .35; }
+.tab-menu-action > gc-icon { color: var(--accent); }
+.tab-menu-action > small { color: var(--overlay-muted-low); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tab-menu-action.danger { color: #e199aa; }
+.tab-menu-action.danger > gc-icon { color: #e57f96; }
+.tab-menu-action.danger:hover { background: var(--overlay-danger-hover); color: #ffafc1; }
+.tab-alias-editor { display: grid; gap: 7px; padding: 5px; }
+.tab-alias-editor label { color: var(--overlay-list-text); font-size: 12px; font-weight: 700; }
+.tab-alias-editor input { min-width: 0; flex: 1; padding: 6px 7px; border: 1px solid var(--overlay-control-border); border-radius: 3px; background: var(--overlay-control); color: var(--text); font-size: 12px; }
+.tab-alias-editor input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent); }
+.tab-alias-editor small { color: var(--overlay-muted-low); font-size: 12px; line-height: 1.35; }
+.tab-alias-editor footer { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+.tab-alias-editor button { min-width: 58px; padding: 6px 9px; border: 1px solid transparent; border-radius: 3px; background: var(--accent); color: #14231f; font-size: 12px; font-weight: 800; }
+.tab-alias-editor button.secondary { border-color: var(--overlay-control-border); background: var(--overlay-control); color: var(--overlay-list-text); }
+.tab-alias-editor button:hover { filter: brightness(1.08); }

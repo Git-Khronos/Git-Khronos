@@ -63,6 +63,67 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
+for (const result of ['held', 'failed'] as const) {
+  test(`repository tab menu owns keyboard dismissal when the action module is ${result}`, async ({ page }) => {
+    let release!: () => void;
+    let requests = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (!source.includes('RepositoryTabMenuContentComponent') || !source.includes('Edit display name')) {
+        await route.fulfill({ response, body: source });
+        return;
+      }
+      requests++;
+      await gate;
+      if (result === 'failed') await route.abort();
+      else await route.fulfill({ response, body: source });
+    });
+    const tab = page.locator('.repo-tab.active .repo-tab-main');
+    const menu = page.getByRole('menu', { name: /^Repository actions for / });
+    try {
+      expect(requests).toBe(0);
+      await tab.press('Shift+F10');
+      await expect.poll(() => requests).toBe(1);
+      const cancel = menu.getByRole('menuitem', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(cancel).toBeFocused();
+      await expect(menu.getByRole('menuitem', { name: 'Close repository', exact: true })).toHaveCount(0);
+      if (result === 'failed') {
+        release();
+        await expect(menu.getByRole('alert')).toContainText('No action was run');
+        await expect(menu.getByRole('menuitem', { name: 'Close', exact: true })).toBeFocused();
+      }
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(tab).toBeFocused();
+      release();
+      if (result === 'held') {
+        await tab.press('Shift+F10');
+        await expect(menu.getByRole('menuitem', { name: 'Close repository', exact: true })).toBeVisible();
+        await expect.poll(() => requests).toBe(1);
+      }
+    } finally { release(); }
+  });
+}
+
+test('a retired tab menu cannot close the active repository when reopened in the same turn', async ({ page }) => {
+  const tab = page.locator('.repo-tab.active .repo-tab-main');
+  await tab.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: /^Repository actions for / });
+  const close = menu.getByRole('menuitem', { name: 'Close repository', exact: true });
+  await expect(close).toBeVisible();
+  await close.evaluate(element => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.openRepositoryTabMenu(new MouseEvent('contextmenu', { clientX: 450, clientY: 100 }), app.git.activeRepositoryId());
+    (element as HTMLButtonElement).click();
+  });
+  await expect(tab).toBeVisible();
+  await expect(menu).toBeVisible();
+});
+
 for (const surface of surfaces) {
   test(`dismisses right-click ${surface.name} on outside pointer press, including disabled controls`, async ({ page }) => {
     await surface.prepare?.(page);

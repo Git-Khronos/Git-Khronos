@@ -241,6 +241,13 @@ picker retires the old reply; neither a path nor an error from it may replace
 the shared form draft. A path confirmed while its form is still current
 remains a draft across ordinary closes and reopens.
 
+The repository tab menu keeps positioning and keyboard ownership in the
+shell, but loads action content and styles on demand. Escape closes a
+pending or failed load without running an action. Once the content is
+painted, only the current menu request can fit the menu, take focus, or
+dispatch a tab action. A newly opened menu for the same repository is a
+different request.
+
 ### Deferred diff workspace
 
 The diff viewer's on-demand component turns the shell's current patch into

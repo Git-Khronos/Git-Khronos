@@ -2195,28 +2195,15 @@
   @if (repositoryTabMenu(); as menu) {
     @if (repositoryTabMenuRepository(); as tabRepository) {
       <div #repositoryTabMenuElement class="tab-context-menu" [attr.role]="repositoryAliasEditing() ? 'dialog' : 'menu'" [attr.aria-label]="(repositoryAliasEditing() ? 'Edit display name for ' : 'Repository actions for ') + git.repositoryLabel(tabRepository)" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleRepositoryTabMenuKeydown($event)">
-        <header class="tab-context-heading"><span><gc-icon name="repo" [size]="15" /></span><div><strong>{{ git.repositoryLabel(tabRepository) }}</strong><small>{{ tabRepository.path }}</small></div></header>
-        @if (repositoryAliasEditing()) {
-          <form novalidate class="tab-alias-editor" (submit)="$event.preventDefault(); saveRepositoryAlias()">
-            <label for="repository-alias">Repository display name</label>
-            <input #repositoryAliasInput id="repository-alias" name="repositoryAlias" aria-describedby="repository-alias-help" placeholder="Use folder name" autocomplete="off" [gcTextValue]="repositoryAlias()" (gcTextValueChange)="repositoryAlias.set($event)" />
-            <small id="repository-alias-help">Leave blank to restore the folder name.</small>
-            <footer><button class="secondary" type="button" (click)="cancelRepositoryAliasEdit()">Cancel</button><button type="submit">Save</button></footer>
-          </form>
-        } @else {
-          <button class="tab-menu-action" type="button" role="menuitem" [disabled]="git.busy() || git.browserPreview()" (click)="shareRepositoryFromTab()"><gc-icon name="copy" [size]="13" /><span>Share repository context…</span></button>
-          <button class="tab-menu-action" type="button" role="menuitem" (click)="openRepositoryTerminalFromMenu()"><gc-icon name="terminal" [size]="13" /><span>Open terminal</span></button>
-          <button class="tab-menu-action" type="button" role="menuitem" (click)="openRepositoryFolderFromMenu()"><gc-icon name="folder-git" [size]="13" /><span>Open in file manager</span></button>
-          <button class="tab-menu-action" type="button" role="menuitemcheckbox" [attr.aria-checked]="git.isFavoritePath(tabRepository.path)" (click)="toggleRepositoryFavoriteFromMenu()"><gc-icon name="star" [size]="13" /><span>{{ git.isFavoritePath(tabRepository.path) ? 'Remove from favorites' : 'Add to favorites' }}</span></button>
-          <div class="menu-separator"></div>
-          <button class="tab-menu-action" type="button" role="menuitem" aria-keyshortcuts="Control+Shift+PageUp Meta+Shift+PageUp" [disabled]="!canMoveRepositoryTab(menu.repoId, -1)" (click)="moveRepositoryTabFromMenu(-1)"><gc-icon name="chevron-left" [size]="13" /><span>Move tab left</span><small>{{ primaryShortcutKey }} Shift Page Up</small></button>
-          <button class="tab-menu-action" type="button" role="menuitem" aria-keyshortcuts="Control+Shift+PageDown Meta+Shift+PageDown" [disabled]="!canMoveRepositoryTab(menu.repoId, 1)" (click)="moveRepositoryTabFromMenu(1)"><gc-icon name="chevron-right" [size]="13" /><span>Move tab right</span><small>{{ primaryShortcutKey }} Shift Page Down</small></button>
-          <div class="menu-separator"></div>
-          <button class="tab-menu-action" data-repository-alias-action type="button" role="menuitem" (click)="beginRepositoryAliasEdit()"><gc-icon name="edit" [size]="13" /><span>Edit display name…</span></button>
-          <div class="menu-separator"></div>
-          <button class="tab-menu-action" type="button" role="menuitem" [disabled]="!repositoryTabsToRightCount()" (click)="closeRepositoriesToRightFromMenu()"><gc-icon name="x" [size]="12" /><span>Close repositories to the right</span><small>{{ repositoryTabsToRightCount() || '' }}</small></button>
-          <button class="tab-menu-action" type="button" role="menuitem" [disabled]="git.repositories().length < 2" (click)="closeOtherRepositoriesFromMenu()"><gc-icon name="x" [size]="12" /><span>Close other repositories</span><small>{{ git.repositories().length > 1 ? git.repositories().length - 1 : '' }}</small></button>
-          <button class="tab-menu-action danger" type="button" role="menuitem" (click)="closeRepositoryFromMenu()"><gc-icon name="x" [size]="12" /><span>Close repository</span></button>
+        @defer (on immediate) {
+          <gc-repository-tab-menu-content #repositoryTabMenuContent [view]="repositoryTabMenuView(menu, tabRepository)"
+            (action)="handleRepositoryTabMenuAction($event)" />
+        } @placeholder {
+          <p role="status">Loading repository actions…</p>
+          <button #repositoryTabMenuLoaderClose type="button" role="menuitem" (click)="closeRepositoryTabMenuRequest(menu.requestId)">Cancel</button>
+        } @error {
+          <p role="alert">Repository actions could not load. Close and restart to retry. No action was run.</p>
+          <button #repositoryTabMenuLoaderClose type="button" role="menuitem" (click)="closeRepositoryTabMenuRequest(menu.requestId)">Close</button>
         }
       </div>
     }

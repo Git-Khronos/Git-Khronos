@@ -1,0 +1,24 @@
+@let menu = view();
+<header class="tab-context-heading"><span><gc-icon name="repo" [size]="15" /></span><div><strong>{{ menu.label }}</strong><small>{{ menu.path }}</small></div></header>
+@if (menu.editing) {
+  <form novalidate class="tab-alias-editor" (submit)="$event.preventDefault(); send(menu, { kind: 'save-alias' })">
+    <label for="repository-alias">Repository display name</label>
+    <input id="repository-alias" name="repositoryAlias" aria-describedby="repository-alias-help" placeholder="Use folder name" autocomplete="off" [gcTextValue]="menu.alias" (gcTextValueChange)="send(menu, { kind: 'alias', value: $event })" />
+    <small id="repository-alias-help">Leave blank to restore the folder name.</small>
+    <footer><button class="secondary" type="button" (click)="send(menu, { kind: 'cancel-alias' })">Cancel</button><button type="submit">Save</button></footer>
+  </form>
+} @else {
+  <button class="tab-menu-action" type="button" role="menuitem" [disabled]="!menu.canShare" (click)="send(menu, { kind: 'share' })"><gc-icon name="copy" [size]="13" /><span>Share repository context…</span></button>
+  <button class="tab-menu-action" type="button" role="menuitem" (click)="send(menu, { kind: 'terminal' })"><gc-icon name="terminal" [size]="13" /><span>Open terminal</span></button>
+  <button class="tab-menu-action" type="button" role="menuitem" (click)="send(menu, { kind: 'folder' })"><gc-icon name="folder-git" [size]="13" /><span>Open in file manager</span></button>
+  <button class="tab-menu-action" type="button" role="menuitemcheckbox" [attr.aria-checked]="menu.favorite" (click)="send(menu, { kind: 'favorite' })"><gc-icon name="star" [size]="13" /><span>{{ menu.favorite ? 'Remove from favorites' : 'Add to favorites' }}</span></button>
+  <div class="menu-separator"></div>
+  <button class="tab-menu-action" type="button" role="menuitem" aria-keyshortcuts="Control+Shift+PageUp Meta+Shift+PageUp" [disabled]="!menu.canMoveLeft" (click)="send(menu, { kind: 'move', direction: -1 })"><gc-icon name="chevron-left" [size]="13" /><span>Move tab left</span><small>{{ menu.shortcutKey }} Shift Page Up</small></button>
+  <button class="tab-menu-action" type="button" role="menuitem" aria-keyshortcuts="Control+Shift+PageDown Meta+Shift+PageDown" [disabled]="!menu.canMoveRight" (click)="send(menu, { kind: 'move', direction: 1 })"><gc-icon name="chevron-right" [size]="13" /><span>Move tab right</span><small>{{ menu.shortcutKey }} Shift Page Down</small></button>
+  <div class="menu-separator"></div>
+  <button class="tab-menu-action" data-repository-alias-action type="button" role="menuitem" (click)="send(menu, { kind: 'begin-alias' })"><gc-icon name="edit" [size]="13" /><span>Edit display name…</span></button>
+  <div class="menu-separator"></div>
+  <button class="tab-menu-action" type="button" role="menuitem" [disabled]="!menu.rightCount" (click)="send(menu, { kind: 'close-right' })"><gc-icon name="x" [size]="12" /><span>Close repositories to the right</span><small>{{ menu.rightCount || '' }}</small></button>
+  <button class="tab-menu-action" type="button" role="menuitem" [disabled]="!menu.otherCount" (click)="send(menu, { kind: 'close-others' })"><gc-icon name="x" [size]="12" /><span>Close other repositories</span><small>{{ menu.otherCount || '' }}</small></button>
+  <button class="tab-menu-action danger" type="button" role="menuitem" (click)="send(menu, { kind: 'close' })"><gc-icon name="x" [size]="12" /><span>Close repository</span></button>
+}

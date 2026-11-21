@@ -2667,3 +2667,15 @@ rerun on the same installer waited for that row before locating the pointer
 target; all 22 worktree scenarios passed. Original and rerun reports are
 retained under `target/local-review/updater/jammy-builder/first-status-release.p3vVbWOx/`.
 These are focused results, not complete release qualification.
+
+## Deferred repository tab actions — 2026-11-21
+
+The repository tab context menu now loads its actions and styles on first
+use. The shell still owns position, focus and the target repository. Tests
+hold or fail the chunk load, verify Escape restores the tab's focus, and
+exercise alias editing, reorder and batch-close after loading.
+
+Matched production builds reduced initial assets from **1,336,204** to
+**1,332,226** bytes (3,978 bytes). The 900 kB warning and 1.45 MB hard limit
+are unchanged. The tab menu styles and action markup are absent from the
+initial asset list; this measures bytes, not startup latency.

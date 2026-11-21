@@ -6,6 +6,7 @@ import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
+import { RepositoryTabMenuContentComponent, type RepositoryTabMenuAction, type RepositoryTabMenuView } from './repository-tab-menu-content.component';
 import { FileActionMenuComponent, type FileMenuAction } from './file-action-menu.component';
 import { FileToolsDialogComponent } from './file-tools-dialog.component';
 import { SavedDiscardListComponent } from './saved-discard-list.component';
@@ -395,6 +396,9 @@ interface RepositoryTabMenuState {
   x: number;
   y: number;
   repoId: string;
+  requestId: number;
+  anchor: { x: number; y: number };
+  focus: boolean;
 }
 
 interface RemoteGroupMenuState {
@@ -669,7 +673,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -765,7 +769,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly branchDropMenuElement = viewChild<unknown, ElementRef<HTMLElement>>('branchDropMenuElement', { read: ElementRef });
   private readonly branchDropLoadErrorClose = viewChild<ElementRef<HTMLButtonElement>>('branchDropLoadErrorClose');
   private readonly repositoryTabMenuElement = viewChild<ElementRef<HTMLElement>>('repositoryTabMenuElement');
-  private readonly repositoryAliasInput = viewChild<ElementRef<HTMLInputElement>>('repositoryAliasInput');
+  private readonly repositoryTabMenuContent = viewChild<unknown, ElementRef<HTMLElement>>('repositoryTabMenuContent', { read: ElementRef });
+  private readonly repositoryTabMenuLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositoryTabMenuLoaderClose');
+  private repositoryTabMenuSequence = 0;
+  private settledRepositoryTabMenu: { requestId: number; layout: HTMLElement; editing: boolean } | null = null;
   private readonly newRepositoryTab = viewChild<ElementRef<HTMLButtonElement>>('newRepositoryTab');
   private readonly repositoryTabsMenu = viewChild<ElementRef<HTMLElement>>('repositoryTabsMenu');
   private readonly repositoryTabsToggle = viewChild<ElementRef<HTMLButtonElement>>('repositoryTabsToggle');
@@ -7103,14 +7110,6 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   /** Focuses an element from a deferred view, waiting a few frames for its chunk to render. */
-  private focusWhenRendered(
-    resolve: () => HTMLElement | undefined,
-    frames = 30,
-    shouldContinue: () => boolean = () => true,
-  ): void {
-    this.runWhenElementRendered(resolve, (element) => element.focus(), frames, shouldContinue);
-  }
-
   private runWhenElementRendered<T extends HTMLElement>(
     resolve: () => T | undefined,
     onRendered: (element: T) => void,
@@ -10947,25 +10946,76 @@ export class AppComponent implements OnInit, OnDestroy {
     this.repositoryTabsOpen.set(false);
     this.repositoryAlias.set(this.git.repositoryAliases()[repository.path] ?? '');
     this.repositoryAliasEditing.set(false);
+    const anchor = { x: event.clientX, y: event.clientY };
     this.actionOverlays.open({ kind: 'repositoryTab', value: {
-      repoId,
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 280)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 390)),
+      repoId, requestId: ++this.repositoryTabMenuSequence, anchor, focus: focusMenu,
+      x: Math.max(8, Math.min(anchor.x, window.innerWidth - 280)),
+      y: Math.max(8, Math.min(anchor.y, window.innerHeight - 390)),
     } }, this.repositoryTabMenuReturnFocus);
-    queueMicrotask(() => requestAnimationFrame(() => {
-      const element = this.repositoryTabMenuElement()?.nativeElement;
-      const menu = this.repositoryTabMenu();
-      if (!element || menu?.repoId !== repoId) return;
-      this.actionOverlays.open({ kind: 'repositoryTab', value: { ...menu, ...this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }) } }, this.repositoryTabMenuReturnFocus);
-    }));
-    if (focusMenu) {
-      this.focusWhenRendered(
-        () => this.repositoryTabMenuElement()?.nativeElement.querySelector<HTMLElement>(
-          '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
-        ) ?? undefined,
-        30,
-        () => this.repositoryTabMenu()?.repoId === repoId,
-      );
+  }
+
+  private readonly settleRepositoryTabMenu = afterRenderEffect(() => {
+    const menu = this.repositoryTabMenu();
+    const element = this.repositoryTabMenuElement()?.nativeElement;
+    const content = this.repositoryTabMenuContent()?.nativeElement;
+    const fallback = this.repositoryTabMenuLoaderClose()?.nativeElement;
+    const layout = content ?? fallback;
+    const editing = this.repositoryAliasEditing();
+    if (!menu || !element || !layout) { this.settledRepositoryTabMenu = null; return; }
+    const previous = this.settledRepositoryTabMenu;
+    if (previous?.requestId === menu.requestId && previous.layout === layout && previous.editing === editing) return;
+    this.settledRepositoryTabMenu = { requestId: menu.requestId, layout, editing };
+    untracked(() => {
+      const position = this.fittedMenuPosition(element, menu.anchor);
+      if (position.x !== menu.x || position.y !== menu.y) {
+        this.actionOverlays.open({ kind: 'repositoryTab', value: { ...menu, ...position } }, this.repositoryTabMenuReturnFocus);
+      }
+      const active = document.activeElement;
+      if (!menu.focus || (previous?.requestId === menu.requestId && active && active !== document.body
+        && active !== this.repositoryTabMenuReturnFocus && !element.contains(active))) return;
+      if (editing) {
+        const input = content?.querySelector<HTMLInputElement>('#repository-alias');
+        input?.focus({ preventScroll: true });
+        input?.select();
+      } else {
+        const target = fallback ?? (previous?.editing ? content?.querySelector<HTMLElement>('[data-repository-alias-action]') : null)
+          ?? content?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])');
+        target?.focus({ preventScroll: true });
+      }
+    });
+  });
+
+  protected repositoryTabMenuView(menu: RepositoryTabMenuState, repository: RepositorySnapshot): RepositoryTabMenuView {
+    return {
+      requestId: menu.requestId, label: this.git.repositoryLabel(repository), path: repository.path,
+      editing: this.repositoryAliasEditing(), alias: this.repositoryAlias(), canShare: !this.git.busy() && !this.git.browserPreview(),
+      favorite: this.git.isFavoritePath(repository.path), canMoveLeft: this.canMoveRepositoryTab(menu.repoId, -1),
+      canMoveRight: this.canMoveRepositoryTab(menu.repoId, 1), shortcutKey: this.primaryShortcutKey,
+      rightCount: this.repositoryTabsToRightCount(), otherCount: this.git.repositories().length - 1,
+    };
+  }
+
+  protected closeRepositoryTabMenuRequest(requestId: number): void {
+    if (this.repositoryTabMenu()?.requestId === requestId) this.dismissRepositoryTabMenu(true);
+  }
+
+  protected handleRepositoryTabMenuAction(action: RepositoryTabMenuAction): void {
+    if (this.repositoryTabMenu()?.requestId !== action.requestId || !this.repositoryTabMenuRepository()) return;
+    const editing = this.repositoryAliasEditing();
+    if (editing !== (action.kind === 'alias' || action.kind === 'save-alias' || action.kind === 'cancel-alias')) return;
+    switch (action.kind) {
+      case 'alias': this.repositoryAlias.set(action.value); break;
+      case 'begin-alias': this.beginRepositoryAliasEdit(); break;
+      case 'save-alias': this.saveRepositoryAlias(); break;
+      case 'cancel-alias': this.cancelRepositoryAliasEdit(); break;
+      case 'share': void this.shareRepositoryFromTab(); break;
+      case 'terminal': this.openRepositoryTerminalFromMenu(); break;
+      case 'folder': void this.openRepositoryFolderFromMenu(); break;
+      case 'favorite': this.toggleRepositoryFavoriteFromMenu(); break;
+      case 'move': this.moveRepositoryTabFromMenu(action.direction); break;
+      case 'close-right': this.closeRepositoriesToRightFromMenu(); break;
+      case 'close-others': this.closeOtherRepositoriesFromMenu(); break;
+      case 'close': this.closeRepositoryFromMenu(); break;
     }
   }
 
@@ -11001,6 +11051,13 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (event.key === 'Tab') {
+      const fallback = this.repositoryTabMenuLoaderClose()?.nativeElement;
+      if (fallback) {
+        event.preventDefault();
+        event.stopPropagation();
+        fallback.focus();
+        return;
+      }
       this.dismissRepositoryTabMenu();
       return;
     }
@@ -11029,20 +11086,12 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected beginRepositoryAliasEdit(): void {
     this.repositoryAliasEditing.set(true);
-    queueMicrotask(() => requestAnimationFrame(() => {
-      const input = this.repositoryAliasInput()?.nativeElement;
-      input?.focus({ preventScroll: true });
-      input?.select();
-    }));
   }
 
   protected cancelRepositoryAliasEdit(): void {
     const repository = this.repositoryTabMenuRepository();
     if (repository) this.repositoryAlias.set(this.git.repositoryAliases()[repository.path] ?? '');
     this.repositoryAliasEditing.set(false);
-    queueMicrotask(() => requestAnimationFrame(() => this.repositoryTabMenuElement()?.nativeElement
-      .querySelector<HTMLElement>('[data-repository-alias-action]')
-      ?.focus({ preventScroll: true })));
   }
 
   protected saveRepositoryAlias(): void {
