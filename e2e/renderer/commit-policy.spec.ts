@@ -403,6 +403,62 @@ test('late commit completion never clears another repository draft or pushes its
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
 });
 
+for (const navigation of ['stay', 'switch tabs', 'return to the submitted text'] as const) {
+  test(`late commit completion retains a newer draft when users ${navigation}`, async ({ page }) => {
+    await setup(page, 1);
+    const summary = page.getByLabel('Commit summary', { exact: true });
+    const description = page.getByLabel('Commit description', { exact: true });
+    await summary.fill('Submitted message');
+    await description.fill('Submitted body');
+    await page.evaluate(() => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-draft', path: '/other-draft', name: 'other-draft' }]);
+      (window as any).__commitPolicy.hold = true;
+    });
+    await page.locator('.commit-form button[type=submit]').click();
+    await expect(page.locator('.commit-form button[type=submit]')).toBeDisabled();
+    await summary.fill('Write the next draft');
+    await description.fill('New body');
+    if (navigation === 'switch tabs') {
+      await page.locator('[data-repository-tab-id="other-draft"]').click();
+      await summary.fill('Other checkout draft');
+    } else if (navigation === 'return to the submitted text') {
+      await summary.fill('Submitted message');
+      await description.fill('Submitted body');
+    }
+    await page.evaluate(() => { (window as any).__commitPolicy.finish(); });
+    await expect.poll(() => page.evaluate(() => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      return [git.busy(), git.repositories().find((entry: any) => entry.id === 'browser-preview')?.headOid];
+    })).toEqual([false, 'e'.repeat(40)]);
+    if (navigation === 'switch tabs') {
+      await expect(summary).toHaveValue('Other checkout draft');
+      await page.locator('[data-repository-tab-id="browser-preview"]').click();
+    }
+    await expect(summary).toHaveValue(navigation === 'return to the submitted text' ? 'Submitted message' : 'Write the next draft');
+    await expect(description).toHaveValue(navigation === 'return to the submitted text' ? 'Submitted body' : 'New body');
+    expect(await page.evaluate(() => (window as any).__commitPolicy.calls
+      .filter((call: any) => call.command === 'commit_changes').map((call: any) => call.args.message)))
+      .toEqual(['Submitted message\n\nSubmitted body']);
+  });
+}
+
+test('late commit success does not clear an in-progress co-author entry', async ({ page }) => {
+  await setup(page, 1);
+  await page.getByLabel('Commit summary', { exact: true }).fill('One commit');
+  await page.evaluate(() => { (window as any).__commitPolicy.hold = true; });
+  const submit = page.locator('.commit-form button[type=submit]');
+  await submit.click();
+  await expect(submit).toBeDisabled();
+  await page.getByRole('button', { name: 'Add co-author', exact: true }).click();
+  const name = page.locator('input[name=coAuthorName]');
+  await name.fill('Next collaborator');
+  await page.evaluate(() => { (window as any).__commitPolicy.finish(); });
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().headOid)).toBe('e'.repeat(40));
+  await expect(name).toHaveValue('Next collaborator');
+});
+
 test('compact policy disclosure supports keyboard access and contextual help without horizontal clipping', async ({ page }) => {
   await setup(page, 0);
   await page.setViewportSize({ width: 820, height: 720 });

@@ -227,6 +227,7 @@ interface CoAuthor {
 }
 
 interface CommitDraft {
+  readonly submission: object;
   summary: string;
   description: string;
   coAuthors: CoAuthor[];
@@ -7534,20 +7535,34 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async commit(): Promise<void> {
     const repository = this.git.repository();
     if (!repository || !this.commitActionReadiness(repository).ready) return;
-    const { message, pushAfter, options } = this.commitSubmission();
+    const submission = this.commitSubmission();
+    const tab = this.commitTabLease();
+    const savedAtSubmit = this.commitDrafts.get(repository.id);
+    const coAuthorDraftName = this.coAuthorName();
+    const coAuthorDraftEmail = this.coAuthorEmail();
+    const { message, pushAfter, options } = submission;
     const committed = await this.git.commit(message, {
       ...options,
       amend: !this.repositoryOperation().rebaseSplit && options.amend,
     });
-    if (committed) {
+    if (!committed) return;
+
+    // A successful commit only consumes its own draft, even if the user
+    // already saved a new draft by switching to another checkout.
+    const saved = this.commitDrafts.get(repository.id);
+    if (saved === savedAtSubmit || saved?.submission === submission) {
       this.commitDrafts.delete(repository.id);
-      if (this.git.activeRepositoryId() !== repository.id) {
-        if (pushAfter) this.git.error.set('The commit completed in the original repository. Push was not started because the active repository changed. Return to that repository to review and push.');
-        return;
-      }
+    }
+    const current = this.git.repository();
+    const ownsTab = current?.id === repository.id && current.path === repository.path && this.commitTabLease() === tab;
+    if (ownsTab && this.commitSubmission() === submission
+      && this.coAuthorName() === coAuthorDraftName && this.coAuthorEmail() === coAuthorDraftEmail) {
       this.resetCommitForm();
       this.applyCommitTemplate();
-      if (pushAfter) this.pushCurrentBranch();
+    }
+    if (pushAfter) {
+      if (ownsTab && current.status.branch === repository.status.branch) this.pushCurrentBranch();
+      else this.git.error.set('The commit completed in the original checkout. Push was not started because the active checkout or branch changed. Review the original branch and push explicitly.');
     }
   }
 
@@ -7668,6 +7683,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.draftRepositoryId ?? this.git.activeRepositoryId();
     if (!repositoryId) return;
     this.commitDrafts.set(repositoryId, {
+      submission: this.commitSubmission(),
       summary: this.commitMessage(),
       description: this.commitDescription(),
       coAuthors: this.coAuthors().map((author) => ({ ...author })),

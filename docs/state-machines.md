@@ -159,6 +159,15 @@ files or erase their conflict stages. Individual file actions and the reviewed
 merge editor remain separate. The native check is a preflight, not an index
 transaction across independent Git processes.
 
+### Commit draft ownership
+
+Commit completion consumes only the submitted draft. Both the live form and
+saved per-tab drafts retain edits made after submission, even when the user
+types the same text again. A tab switch can save a new draft for the original
+checkout without letting the old completion erase it. An optional push uses
+the original consent only while the same tab, checkout, and branch remain
+active; otherwise the user must review and push explicitly.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and
