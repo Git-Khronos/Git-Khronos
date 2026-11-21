@@ -129,6 +129,15 @@ suite's negative control against these pre-timeout bytes reproduced a
 20.12-second repository opening; that is baseline evidence, not a pass for
 the new timeout.
 
+The timeout candidate at `e3713ee` passed all 21 installed timeout/smoke
+scenarios on Ubuntu 24.04 with stock Git 2.43. The same stalled helper no
+longer blocked repository opening: it returned in **2.135 seconds**, kept
+the counts unknown, verified the helper had exited, and left the checkout
+unchanged. The report matches package SHA-256
+`348ed4a403e57fcee2ecd1adad6f2ba0b108aaf24c74ce1522d2ee12e5be49ad`
+under `target/local-review/updater/jammy-builder/lfs-time-budget.zDVt6ssI/`.
+This focused pass does not replace the full installed release gate.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
