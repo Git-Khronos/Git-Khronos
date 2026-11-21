@@ -9,6 +9,19 @@ import time
 from native_acceptance import open_ui
 
 
+def singleton_owner_pid(observation):
+    """Only a confirmed disappearance or executable replacement ends an observation."""
+    live = [process for process in observation['processes']
+            if not (process.get('exitedWhileInspected') or process.get('changedExecutableWhileInspected'))]
+    if len(live) != 1:
+        return None
+    process = live[0]
+    if (process['pid'] == observation['ownerPid'] and process.get('onPrivateBus')
+            and process.get('ownsBusName') and process.get('state') not in (None, 'Z', 'X')):
+        return process['pid']
+    return None
+
+
 def incoming_repository_links(driver, fixtures, original_repository, report):
     git_config = Path(fixtures.env['GIT_CONFIG_GLOBAL'])
     original_git_config = git_config.read_bytes()
@@ -39,29 +52,34 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
                 pass
         return sorted(found)
 
-    def desktop_activation_processes(known_pids=None):
+    def desktop_activation_processes():
         """Record liveness and ownership without retaining argv or environment."""
         owner = None
         with suppress(RuntimeError, OSError):
             owner = driver.owned_session_application_pid()
         bus_entry = ('DBUS_SESSION_BUS_ADDRESS=' + fixtures.env['DBUS_SESSION_BUS_ADDRESS']).encode()
         observed = []
-        for pid in pids() if known_pids is None else known_pids:
+        for pid in pids():
             root = Path('/proc') / str(pid)
             try:
                 fields = (root / 'stat').read_text().rsplit(')', 1)[1].split()
                 on_private_bus = bus_entry in (root / 'environ').read_bytes().split(b'\0')
-                observed.append(dict(pid=pid, state=fields[0], parentPid=int(fields[1]),
-                                     onPrivateBus=on_private_bus, ownsBusName=pid == owner))
-            except (FileNotFoundError, ProcessLookupError, PermissionError):
+                if (root / 'exe').readlink() != driver.executable:
+                    observed.append(dict(pid=pid, changedExecutableWhileInspected=True))
+                else:
+                    observed.append(dict(pid=pid, state=fields[0], parentPid=int(fields[1]),
+                                         onPrivateBus=on_private_bus, ownsBusName=pid == owner))
+            except (FileNotFoundError, ProcessLookupError):
                 observed.append(dict(pid=pid, exitedWhileInspected=True))
+            except PermissionError:
+                observed.append(dict(pid=pid, inspectionDenied=True))
         return dict(ownerPid=owner, processes=observed)
 
     def deliver(*arguments):
-        original = pids()
-        observation = dict(before=desktop_activation_processes(original))
+        observation = dict(before=desktop_activation_processes())
         report.setdefault('incomingDirectActivation', []).append(observation)
-        assert len(original) == 1, observation
+        original = singleton_owner_pid(observation['before'])
+        assert original is not None, observation
         child = subprocess.Popen([str(driver.executable), *arguments], env=fixtures.env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  start_new_session=True)
@@ -72,10 +90,9 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
             child.communicate()
             raise AssertionError('Secondary link delivery did not terminate')
         assert child.returncode == 0, (child.returncode, stderr.decode(errors='replace')[-2000:])
-        settled = pids()
-        observation.update(secondaryPid=child.pid, after=desktop_activation_processes(settled))
-        assert settled == original, observation
-        report.setdefault('incomingLinkDeliveries', []).append(dict(primaryPid=original[0], secondaryPid=child.pid,
+        observation.update(secondaryPid=child.pid, after=desktop_activation_processes())
+        assert singleton_owner_pid(observation['after']) == original, observation
+        report.setdefault('incomingLinkDeliveries', []).append(dict(primaryPid=original, secondaryPid=child.pid,
                                                                    exitCode=child.returncode, arguments=len(arguments)))
 
     def wait_count(count):
@@ -145,9 +162,10 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         association_env = dict(fixtures.env, XDG_DATA_DIRS=str(applications.parent),
                                XDG_CONFIG_DIRS=fixtures.env['XDG_CONFIG_HOME'],
                                GIO_USE_VFS='local', GIO_USE_VOLUME_MONITOR='unix')
-        original_pids = pids()
         report['incomingDesktopActivation'] = dict(before=desktop_activation_processes())
+        original = singleton_owner_pid(report['incomingDesktopActivation']['before'])
         try:
+            assert original is not None, report['incomingDesktopActivation']
             subprocess.run(['desktop-file-validate', str(handler)], env=association_env,
                            capture_output=True, check=True, timeout=10)
             subprocess.run(['update-desktop-database', str(applications)], env=association_env,
@@ -159,11 +177,12 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
                            capture_output=True, check=True, timeout=15)
             wait_count(1)
             deadline = time.monotonic() + 5
-            while pids() != original_pids and time.monotonic() < deadline:
+            settled = desktop_activation_processes()
+            while singleton_owner_pid(settled) != original and time.monotonic() < deadline:
                 time.sleep(.02)
-            settled_pids = pids()
-            report['incomingDesktopActivation']['after'] = desktop_activation_processes()
-            assert settled_pids == original_pids, report['incomingDesktopActivation']
+                settled = desktop_activation_processes()
+            report['incomingDesktopActivation']['after'] = settled
+            assert singleton_owner_pid(settled) == original, report['incomingDesktopActivation']
             queued = snapshot()['requests']
             assert len(queued) == 1 and queued[0]['payload']['uri'] == uri
             driver.invoke('acknowledge_incoming_repository_link', requestId=queued[0]['id'])
