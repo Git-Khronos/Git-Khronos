@@ -2032,36 +2032,31 @@
       </section></div>
     }
   }
-  @if (workspaceDialogMode(); as mode) {
-    <div class="repository-backdrop" (click)="closeWorkspaceDialog()">
-      <section class="repository-dialog workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
-        <header class="repository-dialog-header">
-          <span class="workspace-dialog-mark"><gc-icon name="repo" [size]="17" /></span>
-          <div><strong id="workspace-dialog-title">{{ mode === 'create' ? 'New Workspace' : 'Rename Workspace' }}</strong><small>{{ mode === 'create' ? 'Start with a separate set of repository tabs' : 'Give this repository set a clear name' }}</small></div>
-          <button type="button" aria-label="Close workspace dialog" (click)="closeWorkspaceDialog()"><gc-icon name="x" [size]="14" /></button>
-        </header>
-        <form novalidate class="repository-form workspace-form" (submit)="$event.preventDefault(); submitWorkspace()">
-          <div class="repository-form-body">
-            <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="workspaceNameConflict()" aria-describedby="workspace-name-help" [gcTextValue]="workspaceName()" (gcTextValueChange)="workspaceName.set($event)" />@if (workspaceNameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
-            <p id="workspace-name-help" class="form-help">Saves open tabs and the active repository for this workspace.</p>
-          </div>
-          <footer><button type="button" (click)="closeWorkspaceDialog()">Cancel</button><button class="primary" type="submit" [disabled]="!workspaceName().trim() || workspaceNameConflict() || git.busy()">{{ mode === 'create' ? 'Create Workspace' : 'Save Name' }}</button></footer>
-        </form>
+  <ng-template #workspaceEditorFallback let-failed="failed">
+    <div class="confirmation-backdrop">
+      <section class="confirmation-dialog" role="dialog" aria-modal="true"
+        [attr.aria-label]="failed ? 'Workspace editor unavailable' : 'Loading workspace editor'"
+        (keydown)="handleModalFocusKey($event)">
+        @if (failed) {
+          <p role="alert">Could not load the workspace editor. No changes were made. Restart Git Khronos to retry.</p>
+        } @else {
+          <p role="status">Loading workspace editor…</p>
+        }
+        <footer><button #workspaceEditorLoaderClose type="button" (click)="closeWorkspaceEditorLoader()">{{ failed ? 'Close' : 'Cancel' }}</button></footer>
       </section>
     </div>
-  }
-  @if (pendingWorkspaceDelete(); as workspace) {
-    <div class="confirmation-backdrop" (click)="closeWorkspaceDelete()">
-      <section #workspaceDeleteDialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-workspace-title" (click)="$event.stopPropagation()" (keydown)="handleModalFocusKey($event)">
-        <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
-        <div class="confirmation-copy">
-          <span>Delete workspace</span>
-          <h2 id="delete-workspace-title">{{ workspace.name }}</h2>
-          <p>This removes the saved workspace and its tab layout. Repositories and files on disk are not changed.</p>
-        </div>
-        <footer><button type="button" (click)="closeWorkspaceDelete()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="confirmWorkspaceDelete()">Delete Workspace</button></footer>
-      </section>
-    </div>
+  </ng-template>
+  @if (workspaceDialogMode() || pendingWorkspaceDelete()) {
+    @defer (on immediate) {
+      <gc-workspace-edit-dialogs [mode]="workspaceDialogMode()" [deletingWorkspace]="pendingWorkspaceDelete()"
+        [name]="workspaceName()" [nameConflict]="workspaceNameConflict()" [busy]="git.busy()"
+        (nameChanged)="workspaceName.set($event)" (editClosed)="closeWorkspaceDialog()" (editSubmitted)="submitWorkspace()"
+        (deleteClosed)="closeWorkspaceDelete()" (deleteConfirmed)="confirmWorkspaceDelete()" (keyPressed)="handleModalFocusKey($event)" />
+    } @loading {
+      <ng-container [ngTemplateOutlet]="workspaceEditorFallback" [ngTemplateOutletContext]="{ failed: false }" />
+    } @error {
+      <ng-container [ngTemplateOutlet]="workspaceEditorFallback" [ngTemplateOutletContext]="{ failed: true }" />
+    }
   }
   <ng-template #repositorySetupFallback let-request let-failed="failed">
     <div class="confirmation-backdrop">

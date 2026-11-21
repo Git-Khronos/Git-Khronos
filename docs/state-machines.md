@@ -64,6 +64,14 @@ workspace. Closing a tab revokes that pending path so an earlier read cannot
 reopen it. `repository-restoration.spec.ts` exercises durable tab intent,
 partial cache hits, deferred reordering, failures and late native replies.
 
+Workspace create, rename and delete forms share a deferred view without
+moving mutation authority out of the renderer shell. Cancel and Escape work
+while its module is pending, returning focus to the opener. A completed
+load cannot reopen a cancelled request. The loaded view focuses the name
+field or deletion's Cancel button after render; the loader exposes only a
+non-mutating close action. `workspace-edit-dialogs.spec.ts` covers cancellation
+and load failure with saved state unchanged.
+
 ### Working-tree line recap freshness
 
 Porcelain status describes file states, not file contents. A successful

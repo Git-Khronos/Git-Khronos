@@ -1,0 +1,4 @@
+.workspace-dialog { width: min(460px, calc(100vw - 32px)); }
+.workspace-dialog-mark { width: 31px; height: 31px; display: grid; flex: none; place-items: center; border-radius: 6px; background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--accent); }
+.workspace-form .field-error { color: var(--danger); font-size: 11px; font-weight: 600; }
+.workspace-form input[aria-invalid='true'] { border-color: color-mix(in srgb, var(--danger) 75%, var(--border)); }

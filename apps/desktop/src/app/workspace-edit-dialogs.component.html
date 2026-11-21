@@ -1,0 +1,31 @@
+@if (mode(); as formMode) {
+  <div class="repository-backdrop" (click)="editClosed.emit()">
+    <section class="repository-dialog workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title" (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
+      <header class="repository-dialog-header">
+        <span class="workspace-dialog-mark"><gc-icon name="repo" [size]="17" /></span>
+        <div><strong id="workspace-dialog-title">{{ formMode === 'create' ? 'New Workspace' : 'Rename Workspace' }}</strong><small>{{ formMode === 'create' ? 'Start with a separate set of repository tabs' : 'Give this repository set a clear name' }}</small></div>
+        <button type="button" aria-label="Close workspace dialog" (click)="editClosed.emit()"><gc-icon name="x" [size]="14" /></button>
+      </header>
+      <form novalidate class="repository-form workspace-form" (submit)="$event.preventDefault(); editSubmitted.emit()">
+        <div class="repository-form-body">
+          <label>Workspace name<input #workspaceNameInput name="workspaceName" autocomplete="off" maxlength="80" placeholder="Client project" [attr.aria-invalid]="nameConflict()" aria-describedby="workspace-name-help" [gcTextValue]="name()" (gcTextValueChange)="nameChanged.emit($event)" />@if (nameConflict()) { <small class="field-error">A workspace with this name already exists.</small> }</label>
+          <p id="workspace-name-help" class="form-help">Saves open tabs and the active repository for this workspace.</p>
+        </div>
+        <footer><button type="button" (click)="editClosed.emit()">Cancel</button><button class="primary" type="submit" [disabled]="!name().trim() || nameConflict() || busy()">{{ formMode === 'create' ? 'Create Workspace' : 'Save Name' }}</button></footer>
+      </form>
+    </section>
+  </div>
+}
+@if (deletingWorkspace(); as workspace) {
+  <div class="confirmation-backdrop" (click)="deleteClosed.emit()">
+    <section class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-workspace-title" (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
+      <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+      <div class="confirmation-copy">
+        <span>Delete workspace</span>
+        <h2 id="delete-workspace-title">{{ workspace.name }}</h2>
+        <p>This removes the saved workspace and its tab layout. Repositories and files on disk are not changed.</p>
+      </div>
+      <footer><button #deleteCancel type="button" (click)="deleteClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="busy()" (click)="deleteConfirmed.emit()">Delete Workspace</button></footer>
+    </section>
+  </div>
+}

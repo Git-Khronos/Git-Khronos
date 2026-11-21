@@ -1,4 +1,5 @@
 import { RepositorySetupDialogComponent, type RepositoryEditorOwner, type RepositorySetupRequest, type RepositorySetupView, type RemoteDialogMode, type RemoteLocationIcon } from './repository-setup-dialog.component';
+import { WorkspaceEditDialogsComponent } from './workspace-edit-dialogs.component';
 import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
 import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
 import type { ConflictDetails } from '@git-khronos/contracts';
@@ -692,7 +693,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -702,14 +703,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly authenticationLoadErrorDismissed = signal(false);
   private readonly appMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('appMenuToggle');
   private readonly workspaceToggle = viewChild<ElementRef<HTMLButtonElement>>('workspaceToggle');
-  private readonly workspaceNameInput = viewChild<ElementRef<HTMLInputElement>>('workspaceNameInput');
+  private readonly workspaceEditorLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceEditorLoaderClose');
+  private readonly workspaceEditorLoaderFocus = afterRenderEffect(() => this.workspaceEditorLoaderClose()?.nativeElement.focus());
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly historySearchToggle = viewChild<ElementRef<HTMLButtonElement>>('historySearchToggle');
   private readonly diffFileMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('diffFileMenuToggle');
   private readonly detailReferenceStackElement = viewChild<ElementRef<HTMLElement>>('detailReferenceStackElement');
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
-  private readonly workspaceDeleteDialog = viewChild<ElementRef<HTMLElement>>('workspaceDeleteDialog');
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
   private readonly worktreeReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeReviewLoaderClose');
@@ -7252,10 +7253,6 @@ export class AppComponent implements OnInit, OnDestroy {
     return opener;
   }
 
-  private focusConfirmationCancel(dialog?: ElementRef<HTMLElement>): void {
-    dialog?.nativeElement.querySelector<HTMLElement>('footer button:not(:disabled)')?.focus();
-  }
-
   private finishSecondaryConfirmation(restoreFocus = true): void {
     const opener = this.secondaryConfirmationOpener;
     this.secondaryConfirmationOpener = null;
@@ -10887,11 +10884,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workspaceMenuOpen.set(false);
     this.workspaceName.set(mode === 'rename' ? this.git.activeWorkspace()?.name ?? '' : '');
     this.workspaceDialogMode.set(mode);
-    setTimeout(() => {
-      const input = this.workspaceNameInput()?.nativeElement;
-      input?.focus();
-      input?.select();
-    });
+  }
+
+  protected closeWorkspaceEditorLoader(): void {
+    if (this.workspaceDialogMode()) this.closeWorkspaceDialog();
+    else if (this.pendingWorkspaceDelete()) this.closeWorkspaceDelete();
   }
 
   protected closeWorkspaceDialog(): void {
@@ -10927,7 +10924,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.secondaryConfirmationOpener = this.captureSecondaryConfirmationOpener(returnFocus);
     this.workspaceMenuOpen.set(false);
     this.pendingWorkspaceDelete.set(workspace);
-    setTimeout(() => this.focusConfirmationCancel(this.workspaceDeleteDialog()));
   }
 
   protected closeWorkspaceDelete(): void {
