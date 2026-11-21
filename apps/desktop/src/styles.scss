@@ -1197,10 +1197,6 @@ button.grouped-reference-location:hover, button.grouped-reference-location:focus
 .coauthor-card em { margin-left: 4px; color: var(--accent); font-size: 12px; font-style: normal; font-weight: 700; }
 .coauthor-card .coauthor-remove { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border-radius: 3px; color: var(--muted); }
 .coauthor-card .coauthor-remove:hover, .coauthor-card .coauthor-remove:focus-visible { background: var(--inspector-control-hover); color: var(--inspector-text-strong); }
-.commit-author-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; }
-.edit-coauthors { display: grid; gap: 5px; color: var(--inspector-text); font-size: 12px; }
-.edit-coauthors-label { font-weight: 700; }
-.edit-coauthors-empty { color: var(--inspector-muted); }
 .avatar { display: grid; place-items: center; width: 18px; height: 18px; overflow: hidden; border-radius: 50%; background: var(--author-color, #4b4968); color: #fff; font-size: 9px; font-weight: 800; line-height: 1; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; }
 .large-avatar { width: 34px; height: 34px; font-size: 12px; background: var(--author-color, #3e7766); color: #fff; text-shadow: 0 1px 2px #0008; box-shadow: inset 0 0 0 1px #ffffff2e; }
 .commit-panel dl { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; margin: 13px 14px 16px; font-size: 12px; }

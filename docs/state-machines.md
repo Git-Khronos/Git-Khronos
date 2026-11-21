@@ -448,6 +448,12 @@ The installed `commit-rewrite` suite verifies both native stale-branch
 refusals and an editor rewrite against independent ref, tree, index and
 worktree checks.
 
+Only the editor's presentation loads on demand. The shell still owns the
+draft and the native rewrite review. Each form is keyed to that review so
+outputs from a retired form cannot target its replacement. A cancel control
+remains available during loading or on error; a late form only takes focus
+if the user has not moved it elsewhere.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and

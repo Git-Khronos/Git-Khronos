@@ -582,6 +582,17 @@ The same exact bytes passed all **27** strict Linux release checks; see
 `verified-release.json` at the root of that run. The matrix used a fixture
 publisher key and does not qualify later commits or production publication.
 
+The commit-edit candidate at `48239ab` passed both installed rewrite
+scenarios on Ubuntu 24.04 with Git 2.43.0. Both native edit commands refused
+a stale branch at the same tip, and the inspector edited only the reviewed
+branch while preserving the other ref, trees, index, config and working
+bytes. Package SHA-256:
+`5aa6569c64e694a3209e3cba68383ca7480daad8b97009d097f43e46c4369275`.
+The package and harness source IDs are recorded under
+`target/local-review/updater/jammy-builder/reviewed-commit-edit-release.J9co8Ig3/focused/`;
+the runtime report is in its `results/commit-rewrite/` directory.
+This check is now required by the local and CI release matrix.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
@@ -684,6 +695,14 @@ parser chunk zero times before opening a file and once on first open.
 The unchanged 900 kB warning remains. See
 `target/local-review/lazy-diff-projection.*` for the production build
 reports and Chromium request probe. Startup latency was not measured.
+
+Deferring the commit editor and its private styles reduced the initial
+renderer from **1,333,972 to 1,331,513 bytes**. A production Chromium probe
+requested the form chunk only when the editor opened and confirmed focus
+on the summary field, then back on the edit control after cancellation.
+The unchanged initial warning remains; these are asset and behavior
+measurements, not a startup timing benchmark. Evidence is under
+`target/local-review/deferred-commit-editor.*`.
 
 The shared repository-form styles now load with whichever of the repository
 manager, repository setup or workspace editor opens first. Common form

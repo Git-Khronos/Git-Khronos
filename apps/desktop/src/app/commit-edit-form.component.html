@@ -1,0 +1,33 @@
+@let view = model();
+<form novalidate class="commit-message-editor" aria-label="Edit commit" (submit)="$event.preventDefault(); saved.emit()">
+  <div class="commit-author-fields">
+    <label>Author name<input name="editedCommitAuthorName" autocomplete="off" [gcTextValue]="view.authorName()" (gcTextValueChange)="changed.emit({ field: 'authorName', value: $event })" /></label>
+    <label>Author email<input name="editedCommitAuthorEmail" type="email" autocomplete="off" [gcTextValue]="view.authorEmail()" (gcTextValueChange)="changed.emit({ field: 'authorEmail', value: $event })" /></label>
+  </div>
+  <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [gcTextValue]="view.summary()" (gcTextValueChange)="changed.emit({ field: 'summary', value: $event })" /></label>
+  <label>Description<textarea name="editedCommitDescription" rows="5" [gcTextValue]="view.description()" (gcTextValueChange)="changed.emit({ field: 'description', value: $event })"></textarea></label>
+  <div class="edit-coauthors">
+    <span class="edit-coauthors-label">Co-authors</span>
+    @if (view.coAuthors().length) {
+      <div class="coauthor-chips edit-coauthor-chips" aria-label="Commit co-authors">
+        @for (author of view.coAuthors(); track author.email) {
+          <span title="{{ author.name }} &lt;{{ author.email }}&gt;"><i [style.--author-color]="view.authorColor(author.name, author.email)">{{ view.initials(author.name) }}</i>{{ author.name }}<button type="button" aria-label="Remove co-author {{ author.name }}" (click)="removed.emit(author.email)"><gc-icon name="x" [size]="9" /></button></span>
+        }
+      </div>
+    } @else {
+      <small class="edit-coauthors-empty">None</small>
+    }
+  </div>
+  @if (!view.authorValid()) {
+    <p class="rewrite-warning" role="alert">Enter an author name and email without angle brackets or line breaks.</p>
+  }
+  @if (view.published()) {
+    <p class="rewrite-warning"><strong>Already pushed.</strong> Saving rewrites history, so you'll need to force-push and collaborators will need to update.</p>
+  }
+  @if (view.rewriteCount() > 0) {
+    <p class="edit-commit-impact">Saving also recreates {{ view.rewriteCount() }} later {{ view.rewriteCount() === 1 ? 'commit' : 'commits' }} with the same changes, so their IDs change too. Files and staged changes aren't touched. Undo restores the previous history.</p>
+  } @else {
+    <p class="edit-commit-impact">Saving changes this commit's ID. Staged files stay staged and aren't added.</p>
+  }
+  <footer><button type="button" (click)="dismissed.emit()">Cancel</button><button class="primary" type="submit" [disabled]="!view.summary().trim() || !view.authorValid() || view.busy()">Save Commit</button></footer>
+</form>

@@ -108,6 +108,7 @@ import { GitDocumentationService } from './git-documentation.service';
 import { CommitPolicyFieldsComponent } from './commit-policy-fields.component';
 import { CommitTemplateBannerComponent } from './commit-template-banner.component';
 import { CommitSignatureComponent } from './commit-signature.component';
+import { CommitEditFormComponent, type CommitEditFieldChange, type CommitEditFormView } from './commit-edit-form.component';
 import { InteractiveRebaseEditorComponent, type InteractiveRebaseState, type RebaseAction, type RebaseStepView } from './interactive-rebase-editor.component';
 import { HistoryReviewDialogComponent, type PendingHistoryAction } from './history-review-dialog.component';
 import { calculateVirtualWindow, type VirtualWindow } from './virtual-list';
@@ -664,7 +665,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -714,7 +715,21 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('commitPanelClose');
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
-  private readonly editedCommitSummaryInput = viewChild<ElementRef<HTMLInputElement>>('editedCommitSummaryInput');
+  private readonly commitEditForm = viewChild<CommitEditFormComponent>('commitEditForm');
+  private readonly commitEditFallback = viewChild<ElementRef<HTMLButtonElement>>('commitEditFallback');
+  private readonly commitEditTrigger = viewChild<ElementRef<HTMLButtonElement>>('commitEditTrigger');
+  private commitEditFocusOrigin: HTMLElement | null = null;
+  private commitEditGeneration = 0;
+  private readonly commitEditRenderFocus = afterRenderEffect(() => {
+    const review = this.commitEditReview();
+    const form = this.commitEditForm();
+    const fallback = this.commitEditFallback()?.nativeElement;
+    const active = document.activeElement;
+    if (!review || !untracked(() => this.ownsCommitEdit(review, true))
+      || (active !== document.body && active !== this.commitEditFocusOrigin)) return;
+    if (form) form.focusSummary();
+    else fallback?.focus({ preventScroll: true });
+  });
   private readonly diffWorkspace = viewChild<unknown, ElementRef<HTMLElement>>('diffWorkspace', { read: ElementRef });
   private readonly diffWorkspacePanel = viewChild<DiffWorkspaceComponent>('diffWorkspace');
   private readonly diffWorkspaceLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('diffWorkspaceLoaderClose');
@@ -927,7 +942,7 @@ export class AppComponent implements OnInit, OnDestroy {
       },
     };
   });
-  private readonly commitEditReview = signal<CommitEditReview | null>(null);
+  protected readonly commitEditReview = signal<CommitEditReview | null>(null);
   private readonly commitEditSubmitting = signal<CommitEditReview | null>(null);
   protected readonly commitMessageEditing = computed(() => this.commitEditReview() !== null);
   protected readonly editedCommitOid = computed(() => this.commitEditReview()?.targetOid ?? null);
@@ -936,6 +951,19 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly editedCommitSummary = signal('');
   protected readonly editedCommitDescription = signal('');
   protected readonly editedCommitCoAuthors = signal<CoAuthor[]>([]);
+  protected readonly commitEditFormView: CommitEditFormView = {
+    authorName: this.editedCommitAuthorName,
+    authorEmail: this.editedCommitAuthorEmail,
+    summary: this.editedCommitSummary,
+    description: this.editedCommitDescription,
+    coAuthors: this.editedCommitCoAuthors,
+    authorValid: () => this.editedCommitAuthorValid(),
+    published: () => this.editedCommitIsPublished(),
+    rewriteCount: () => this.editedCommitRewriteCount(),
+    busy: () => this.git.busy(),
+    authorColor: (name, email) => this.authorColor(name, email),
+    initials: (name) => this.initials(name),
+  };
   protected readonly mergePreviewRequest = signal<MergePreviewDialogRequest | null>(null);
   protected readonly integrationRequest = signal<IntegrateBranchDialogRequest | null>(null);
   /** Relationship between the dragged and target branches, shown in the drop menu. */
@@ -4523,9 +4551,10 @@ export class AppComponent implements OnInit, OnDestroy {
       this.coAuthorPickerOpen.set(false);
       return;
     }
-    if (event.key === 'Escape' && this.commitMessageEditing()) {
+    const commitEdit = this.commitEditReview();
+    if (event.key === 'Escape' && commitEdit) {
       event.preventDefault();
-      this.cancelCommitMessageEdit();
+      this.cancelReviewedCommitEdit(commitEdit);
       return;
     }
     if (event.key === 'Escape' && this.activityLogOpen()) {
@@ -10106,12 +10135,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.editedCommitSummary.set(commit.subject);
     this.editedCommitDescription.set(parsed.body);
     this.editedCommitCoAuthors.set(parsed.authors);
+    this.commitEditGeneration++;
+    this.commitEditFocusOrigin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.commitEditReview.set(review);
-    setTimeout(() => {
-      if (!this.ownsCommitEdit(review, true)) return;
-      this.editedCommitSummaryInput()?.nativeElement.focus();
-      this.editedCommitSummaryInput()?.nativeElement.select();
-    });
   }
 
   /** Opens the editor with one co-author already removed, so the change is reviewed before it is saved. */
@@ -10129,12 +10155,42 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected cancelCommitMessageEdit(): void {
+    this.commitEditGeneration++;
+    this.commitEditFocusOrigin = null;
     this.commitEditReview.set(null);
     this.editedCommitAuthorName.set('');
     this.editedCommitAuthorEmail.set('');
     this.editedCommitSummary.set('');
     this.editedCommitDescription.set('');
     this.editedCommitCoAuthors.set([]);
+  }
+
+  protected cancelReviewedCommitEdit(review: CommitEditReview): void {
+    if (this.commitEditReview() !== review) return;
+    const active = document.activeElement;
+    const restore = active === document.body || active === this.commitEditFallback()?.nativeElement
+      || Boolean(active?.closest('.commit-message-editor'));
+    const opener = this.commitEditFocusOrigin;
+    this.cancelCommitMessageEdit();
+    const generation = this.commitEditGeneration;
+    if (restore) afterNextRender(() => {
+      if (this.commitEditGeneration !== generation || this.git.activeRepositoryReadScope() !== review.checkoutScope
+        || document.activeElement !== document.body) return;
+      (opener?.isConnected ? opener : this.commitEditTrigger()?.nativeElement)?.focus({ preventScroll: true });
+    }, { injector: this.injector });
+  }
+
+  protected updateCommitEditField(review: CommitEditReview, update: CommitEditFieldChange): void {
+    if (!this.ownsCommitEdit(review, true)) return;
+    const { field, value } = update;
+    if (field === 'authorName') this.editedCommitAuthorName.set(value);
+    if (field === 'authorEmail') this.editedCommitAuthorEmail.set(value);
+    if (field === 'summary') this.editedCommitSummary.set(value);
+    if (field === 'description') this.editedCommitDescription.set(value);
+  }
+
+  protected removeReviewedCommitCoAuthor(review: CommitEditReview, email: string): void {
+    if (this.ownsCommitEdit(review, true)) this.removeEditedCommitCoAuthor(email);
   }
 
   protected removeEditedCommitCoAuthor(email: string): void {
@@ -10154,9 +10210,8 @@ export class AppComponent implements OnInit, OnDestroy {
       && (!requireReviewedHead || repository.headOid === review.headOid);
   }
 
-  protected async submitCommitMessageEdit(): Promise<void> {
-    const review = this.commitEditReview();
-    if (!review || this.commitEditSubmitting()) return;
+  protected async submitCommitMessageEdit(review: CommitEditReview): Promise<void> {
+    if (this.commitEditReview() !== review || this.commitEditSubmitting()) return;
     if (!this.ownsCommitEdit(review, true) || !this.canEditCommit(review.targetOid)) {
       this.cancelCommitMessageEdit();
       return;

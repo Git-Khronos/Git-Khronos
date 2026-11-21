@@ -1633,41 +1633,26 @@
             </div>
           }
           <section class="commit-overview" aria-label="Commit summary">
-          @if (commitMessageEditing()) {
-            <form novalidate class="commit-message-editor" aria-label="Edit commit" (submit)="$event.preventDefault(); submitCommitMessageEdit()">
-              <div class="commit-author-fields">
-                <label>Author name<input name="editedCommitAuthorName" autocomplete="off" [gcTextValue]="editedCommitAuthorName()" (gcTextValueChange)="editedCommitAuthorName.set($event)" /></label>
-                <label>Author email<input name="editedCommitAuthorEmail" type="email" autocomplete="off" [gcTextValue]="editedCommitAuthorEmail()" (gcTextValueChange)="editedCommitAuthorEmail.set($event)" /></label>
-              </div>
-              <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [gcTextValue]="editedCommitSummary()" (gcTextValueChange)="editedCommitSummary.set($event)" /></label>
-              <label>Description<textarea name="editedCommitDescription" rows="5" [gcTextValue]="editedCommitDescription()" (gcTextValueChange)="editedCommitDescription.set($event)"></textarea></label>
-              <div class="edit-coauthors">
-                <span class="edit-coauthors-label">Co-authors</span>
-                @if (editedCommitCoAuthors().length) {
-                  <div class="coauthor-chips edit-coauthor-chips" aria-label="Commit co-authors">
-                    @for (author of editedCommitCoAuthors(); track author.email) {
-                      <span title="{{ author.name }} &lt;{{ author.email }}&gt;"><i [style.--author-color]="authorColor(author.name, author.email)">{{ initials(author.name) }}</i>{{ author.name }}<button type="button" aria-label="Remove co-author {{ author.name }}" (click)="removeEditedCommitCoAuthor(author.email)"><gc-icon name="x" [size]="9" /></button></span>
-                    }
-                  </div>
-                } @else {
-                  <small class="edit-coauthors-empty">None</small>
-                }
-              </div>
-              @if (!editedCommitAuthorValid()) {
-                <p class="rewrite-warning" role="alert">Enter an author name and email without angle brackets or line breaks.</p>
+          @if (commitEditReview(); as editReview) {
+            @for (request of [editReview]; track request) {
+              @defer (on immediate) {
+                <gc-commit-edit-form #commitEditForm [model]="commitEditFormView"
+                  (changed)="updateCommitEditField(request, $event)" (removed)="removeReviewedCommitCoAuthor(request, $event)"
+                  (saved)="submitCommitMessageEdit(request)" (dismissed)="cancelReviewedCommitEdit(request)" />
+              } @placeholder {
+                <div class="commit-edit-fallback">
+                  <p role="status">Opening commit editor…</p>
+                  <button #commitEditFallback type="button" (click)="cancelReviewedCommitEdit(request)">Cancel</button>
+                </div>
+              } @error {
+                <div class="commit-edit-fallback">
+                  <p role="alert">The commit editor couldn’t load. Cancel now and restart the app to try again.</p>
+                  <button #commitEditFallback type="button" (click)="cancelReviewedCommitEdit(request)">Cancel</button>
+                </div>
               }
-              @if (editedCommitIsPublished()) {
-                <p class="rewrite-warning"><strong>Already pushed.</strong> Saving rewrites history, so you'll need to force-push and collaborators will need to update.</p>
-              }
-              @if (editedCommitRewriteCount() > 0) {
-                <p class="edit-commit-impact">Saving also recreates {{ editedCommitRewriteCount() }} later {{ editedCommitRewriteCount() === 1 ? 'commit' : 'commits' }} with the same changes, so their IDs change too. Files and staged changes aren't touched. Undo restores the previous history.</p>
-              } @else {
-                <p class="edit-commit-impact">Saving changes this commit's ID. Staged files stay staged and aren't added.</p>
-              }
-              <footer><button type="button" (click)="cancelCommitMessageEdit()">Cancel</button><button class="primary" type="submit" [disabled]="!editedCommitSummary().trim() || !editedCommitAuthorValid() || git.busy()">Save Commit</button></footer>
-            </form>
+            }
           } @else if (canEditSelectedCommitMessage()) {
-            <button class="editable-commit-message" type="button" title="Edit the author, message and co-authors of this commit" (click)="beginCommitMessageEdit()">
+            <button #commitEditTrigger class="editable-commit-message" type="button" title="Edit the author, message and co-authors of this commit" (click)="beginCommitMessageEdit()">
               <span><gc-icon name="edit" [size]="12" /> Edit commit</span>
               <h2>{{ commit.subject || '(no commit message)' }}</h2>
               @if (selectedCommitBody()) { <p class="commit-body">{{ selectedCommitBody() }}</p> }

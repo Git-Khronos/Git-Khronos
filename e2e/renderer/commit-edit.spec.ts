@@ -171,3 +171,19 @@ test('selects the replacement of an older commit when its review stays active', 
     (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit(),
   )).toBe('c'.repeat(40));
 });
+
+test('an obsolete rendered form cannot submit a newer review in the same checkout', async ({ page }) => {
+  await page.locator(`.commit-row[data-commit-oid="${head}"]`).click();
+  await page.getByRole('button', { name: /Edit commit/ }).click();
+  const editor = page.getByRole('form', { name: 'Edit commit' });
+  await expect(editor.getByLabel('Summary')).toBeFocused();
+  await page.evaluate(older => {
+    const retired = document.querySelector<HTMLFormElement>('.commit-message-editor')!;
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.selectCommit(older);
+    app.beginCommitMessageEdit();
+    retired.requestSubmit();
+  }, older);
+  await expect(editor.getByLabel('Summary')).toHaveValue('Add hunk-level staging actions');
+  expect(await calls(page)).toEqual([]);
+});
