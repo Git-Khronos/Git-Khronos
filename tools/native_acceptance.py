@@ -1099,7 +1099,7 @@ def main():
     parser.add_argument("--suite", choices=(
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
-        "lfs-counts",
+        "lfs-counts", "lfs-snapshot-timeout",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1191,6 +1191,9 @@ def main():
             listen_port = port()
             native_port = port()
             application_env = fixtures.env.copy()
+            if args.suite == "lfs-snapshot-timeout":
+                from native_lfs_snapshot_scenarios import lfs_snapshot_timeout_environment
+                application_env.update(lfs_snapshot_timeout_environment(fixtures))
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
@@ -1242,6 +1245,9 @@ def main():
             if args.suite == "lfs-counts":
                 from native_scenarios import lfs_checkout_counts
                 lfs_checkout_counts(driver, fixtures, report)
+            if args.suite == "lfs-snapshot-timeout":
+                from native_lfs_snapshot_scenarios import lfs_snapshot_timeout
+                lfs_snapshot_timeout(driver, fixtures, report)
             if args.suite == "recovery":
                 from native_editor_recovery_scenarios import editor_draft_recovery
                 editor_draft_recovery(driver, fixtures, repository, report)

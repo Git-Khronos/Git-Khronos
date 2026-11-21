@@ -258,6 +258,11 @@ the exact package is installed there. The owned checkout uses a literal
 newline in one LFS path, keeps another file as a pointer, and sets a
 nonmatching LFS transfer filter. All counts must still match the checkout
 and the read must leave its index and working files unchanged.
+For the time-budget regression, use `--suite lfs-snapshot-timeout` instead.
+An app-only helper stalls the listing for one owned checkout. The real
+Git oracle keeps its original PATH; opening the repository must complete
+without waiting for that helper, leave the counts unknown, and preserve the
+checkout.
 
 ## Focused linked-worktree navigation acceptance
 
