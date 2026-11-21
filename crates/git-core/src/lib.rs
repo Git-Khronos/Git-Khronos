@@ -497,6 +497,9 @@ pub struct RepositoryStatus {
     /// @deprecated Read operations instead.
     pub mail_patch_in_progress: bool,
     pub bisect_in_progress: bool,
+    /// This read intentionally omitted file discovery; zero is not a clean result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_unscanned: Option<bool>,
     pub entry_count: usize,
     pub entries_truncated: bool,
     pub entries: Vec<WorkingTreeEntry>,
@@ -1436,7 +1439,8 @@ pub fn snapshot_with_limits_startup_and_checkpoint_visibility(
     _status_limit: usize,
     show_checkpoints: bool,
 ) -> Result<RepositoryData, AppError> {
-    let status = read_head_status(path)?;
+    let mut status = read_head_status(path)?;
+    status.files_unscanned = Some(true);
     snapshot_with_status(
         path,
         commit_limit,
@@ -1476,9 +1480,12 @@ fn snapshot_with_status(
     include_all_branch_tracking: bool,
     include_tags: bool,
     show_checkpoints: bool,
-    status: RepositoryStatus,
+    mut status: RepositoryStatus,
 ) -> Result<RepositoryData, AppError> {
     let bare = is_explicit_bare_repository(path);
+    if bare {
+        status.files_unscanned = None;
+    }
     // Three read-only lanes overlap Git process startup without creating one
     // thread per query. Fall back to serial reads if a worker cannot be started.
     let read_references = || {
@@ -7799,13 +7806,15 @@ fn read_status_with_limit_mode(
     }
     let (output, output_truncated, overflow) =
         run_status_with_limit(path, entry_limit, untracked_files)?;
-    Ok(parse_porcelain_status(
+    let mut status = parse_porcelain_status(
         &output.stdout,
         repository_operation_state(path)?.into_status()?,
         entry_limit,
         output_truncated,
         overflow,
-    ))
+    );
+    status.files_unscanned = (untracked_files == "no").then_some(true);
+    Ok(status)
 }
 
 fn parse_porcelain_status(
@@ -14042,6 +14051,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         let startup = snapshot_with_limits_startup(&repository.path, 200, 1_000)
             .expect("read first-frame snapshot");
         assert_eq!(startup.status.branch.as_deref(), Some("main"));
+        assert_eq!(startup.status.files_unscanned, Some(true));
         assert_eq!(startup.status.entry_count, 0);
         assert!(startup.status.entries.is_empty());
         assert!(startup.tags.is_empty());
@@ -14050,10 +14060,12 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             status_with_entry_limit_fast(&repository.path, 1_000).expect("refresh deferred status");
         assert_eq!(refreshed_status.unstaged, 1);
         assert_eq!(refreshed_status.untracked, 1);
+        assert_eq!(refreshed_status.files_unscanned, None);
 
         let refreshed = snapshot_with_limits_fast(&repository.path, 200, 1_000)
             .expect("hydrate deferred repository metadata");
         assert_eq!(refreshed.status.unstaged, 1);
+        assert_eq!(refreshed.status.files_unscanned, Some(true));
         assert_eq!(refreshed.tags.len(), 1);
     }
 

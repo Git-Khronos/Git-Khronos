@@ -612,8 +612,10 @@
         } @else {
           <button class="wip-nav" type="button" [class.selected]="changesOpen()" (click)="openWorkingDirectory()">
             <span class="wip-icon">WIP</span>
-            <span><strong>Working Directory</strong><small>{{ repo.status.entryCount }} changed files</small></span>
-            <b>{{ repo.status.entryCount }}</b>
+            <span><strong>Working Directory</strong><small>@if (repo.status.filesUnscanned) {
+              {{ git.repositoryMetadataState() === 'failed' ? 'Changes unavailable' : 'Loading changes…' }}
+            } @else { {{ repo.status.entryCount }} changed files }</small></span>
+            @if (!repo.status.filesUnscanned) { <b>{{ repo.status.entryCount }}</b> }
           </button>
         }
 
@@ -1194,6 +1196,16 @@
             <div><small>READ-ONLY</small><strong>{{ repo.status.branch ?? 'Detached HEAD' }}</strong><code>{{ repo.path }}</code></div>
             <p>This repository has no working tree, so there are no files to stage or commit. Select a commit to inspect it, or browse branches and tags. Fetching and pushing stay available.</p>
             <p>To make changes, clone it or add a worktree, then open that folder.</p>
+          </section>
+        } @else if (changesOpen() && repo.status.filesUnscanned) {
+          <div class="panel-title"><strong>Working directory</strong><ng-container [ngTemplateOutlet]="commitPanelCloseControl" /></div>
+          <section class="selected-worktree-card" aria-label="Working directory status">
+            @if (git.repositoryMetadataState() === 'failed') {
+              <p role="alert">Could not load working directory changes.</p>
+              <button class="primary" type="button" (click)="git.retryRepositoryMetadata()">Retry</button>
+            } @else {
+              <p role="status">Loading working directory changes…</p>
+            }
           </section>
         } @else if (changesOpen()) {
           <div class="panel-title wip-panel-title" (click)="$event.stopPropagation()">

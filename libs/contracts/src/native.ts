@@ -458,7 +458,11 @@ rebaseSplit: RebaseSplitStatus | null;
 /**
  * @deprecated Read operations instead.
  */
-mailPatchInProgress: boolean; bisectInProgress: boolean; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
+mailPatchInProgress: boolean; bisectInProgress: boolean;
+/**
+ * This read intentionally omitted file discovery; zero is not a clean result.
+ */
+filesUnscanned?: boolean | null; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
 export type RetireForkRequest = { recordId: string; expectedRevision: string; acknowledgeUnconfirmed: boolean; operationId: string }
 export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
 export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }

@@ -145,6 +145,7 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && left.unstaged === right.unstaged
     && left.untracked === right.untracked
     && left.conflicted === right.conflicted
+    && !!left.filesUnscanned === !!right.filesUnscanned
     && leftOperation.mergeInProgress === rightOperation.mergeInProgress
     && leftOperation.historyOperation === rightOperation.historyOperation
     && leftOperation.historyNoCommit === rightOperation.historyNoCommit

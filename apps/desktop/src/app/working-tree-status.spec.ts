@@ -151,6 +151,16 @@ describe('preserveUntrackedEntries', () => {
     expect(preserveUntrackedEntries(previous, tracked)).toBe(tracked);
   });
 
+  it('does not confuse a tracked-only metadata read with the first complete file scan', () => {
+    const head = { ...status([]), filesUnscanned: true };
+    const tracked = { ...status([entry('modified.ts', ' M')]), filesUnscanned: true };
+    const loaded = status([entry('new.ts', '??')]);
+    expect(preserveUntrackedEntries(head, tracked)).toBe(tracked);
+    const combined = preserveUntrackedEntries(loaded, tracked);
+    expect(combined.filesUnscanned).toBeUndefined();
+    expect(codes(combined)).toEqual([' M modified.ts', '?? new.ts']);
+  });
+
   it('does not count a newly tracked file again among the carried untracked files', () => {
     const previous = status([entry('existing.ts', ' M'), entry('new-a.ts', '??'), entry('new-b.ts', '??')]);
     const next = status([entry('existing.ts', ' M'), entry('new-a.ts', 'A ')]);

@@ -133,6 +133,9 @@ export function preserveUntrackedEntries(
   previous: RepositoryStatus,
   next: RepositoryStatus,
 ): RepositoryStatus {
+  // A fast metadata read doesn't undo an already loaded working-tree view.
+  // For a newly opened checkout, only the full status read ends the placeholder.
+  if (next.filesUnscanned && !previous.filesUnscanned) next = { ...next, filesUnscanned: undefined };
   if (next.untracked > 0 || previous.untracked === 0) return next;
   const known = new Set(next.entries.map((entry) => entry.path));
   const previousUntracked = previous.entries.filter(isUntracked);

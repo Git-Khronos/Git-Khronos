@@ -819,6 +819,11 @@ add it back, and the same path saved in another workspace is unaffected.
 After an explicit open, the shell restores the new checkout's draft and
 view only when the successful reply still identifies the active checkout.
 Unrelated background errors do not decide whether to switch the draft.
+The native first-frame snapshot deliberately reads HEAD without scanning files.
+The working-directory inspector reports its status as unknown until the first
+working-tree scan succeeds, and offers retry on failure. A tracked-only
+metadata read cannot settle that first scan, nor replace an already known
+working directory with a loading screen.
 Bulk open uses the same shell action for each new checkout, in selection
 order, keeping individual outcomes in the overview. Closing the overview
 stops undispatched paths without undoing a native open already in flight.
