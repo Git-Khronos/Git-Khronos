@@ -571,6 +571,15 @@ a 65,536-descriptor limit; the exact source of the transient exhaustion
 was not measured. Its log is under
 `target/local-review/updater/jammy-builder/reftable-watch-release.AZP8RIjR/`.
 
+The later watcher candidate at `1984996` built successfully. Its installed
+Ubuntu 26.04 replay, using Git 2.53.0, now updates the visible branch list
+after external ref-only creation and deletion in a reftable repository.
+Package SHA-256:
+`d72be40e3fb2ffd726a001b8859599346560d8d8711050eddd78d0ff3861dc5e`.
+The installed report is under
+`target/local-review/updater/jammy-builder/partial-watcher-release.LuJrILXb/compatibility/resolute/results/watcher-reftable/`.
+This focused result does not certify the ongoing full matrix or later commits.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
