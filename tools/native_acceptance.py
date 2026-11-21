@@ -846,7 +846,7 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.wait('return !!document.querySelector(\'[aria-label="Stage native-recovery-file.bin"]\')')
 
     driver.click(".workspace-toggle")
-    driver.click_text(".workspace-menu-actions [role=menuitem]", "Repository files")
+    driver.click_scrolled_text(".workspace-menu-actions [role=menuitem]", "Repository files", wait_for_ready=True)
     driver.wait("""return [...document.querySelectorAll('gc-workspace-center .file-entry')]
       .some(row => row.querySelector('code')?.textContent === 'native-recovery-file.bin')""")
     driver.click_text("gc-workspace-center .file-entry button", "Delete with recovery")
