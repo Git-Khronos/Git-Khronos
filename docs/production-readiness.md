@@ -87,13 +87,19 @@ installer SHA-256
 under `target/local-review/updater/jammy-builder/workspace-tags.JSKN2MQa/`.
 The isolated late-reply cases are renderer regressions; these installed
 suites confirm the neighboring real Git and package workflows.
+The same bytes passed all **277 installed environment scenarios** on Ubuntu
+24.04 with Git 2.53 and passed the strict release-evidence preflight. The
+candidate directory contains the exact-package digest and a summary of the
+matched reports.
 
 The same workspace-Tags bytes also passed Ubuntu 26.04 smoke (20), GitLab
 (47), and application update (21) checks; Debian 12 incoming links (26)
-with Git 2.39.5; and Debian 13 smoke (20) and GitLab (47) with Git 2.47.3. Ubuntu 26.04
-used Git 2.53. The Debian 12 run used the harness-only dismissal/order
+with Git 2.39.5; and Debian 13 smoke (20), GitLab (47), and application
+updates (21) with Git 2.47.3. Ubuntu 26.04 used Git 2.53. The Debian 12
+incoming-links run used the harness-only dismissal/order
 fix and confirmed the same single private-bus process before and after
-desktop link delivery. The fresh Debian 13 image's first WebDriver
+desktop link delivery. Debian 12 also passed setup/keyboard (51), GitLab
+(47), and application updates (21). The fresh Debian 13 image's first WebDriver
 session disconnected; a new run with the standard X11 socket directory
 provisioned passed. Exact-package reports are under
 `target/local-review/runtime-matrix-workspace-tags.qDy7Af33/` and the
@@ -108,6 +114,16 @@ The passing installer SHA-256 is
 `e6baff195cbda587a83516b5be900e8f6b2bf28cfcbf30990a8ef20371d00824`
 in `target/local-review/updater/jammy-builder/lfs-counts.huiFc5to/`.
 It does not include the subsequent LFS inspection timeout.
+
+That same installer also passed the focused counts suite on Ubuntu 22.04
+with Git 2.56.1 and the checksum-verified Git LFS 3.7.1 release archive.
+The same suite with stock Jammy Git LFS 3.0.2 demonstrated the compatibility
+boundary: the helper is available, but the counts are unknown because
+`git lfs ls-files --json` is unsupported. The pinned binary is only a
+release-qualification fixture, not an install requirement. The timeout
+suite's negative control against these pre-timeout bytes reproduced a
+20.12-second repository opening; that is baseline evidence, not a pass for
+the new timeout.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
