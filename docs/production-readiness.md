@@ -1794,3 +1794,19 @@ Reports and the package are under
 `target/local-review/updater/jammy-builder/qualification.YKPSJUk/`, in
 `installed-noble/` and `work/artifacts/` respectively. This is not a signed
 or published release and does not substitute for the hosted runtime matrix.
+
+The broad installed environment run of that package stopped at cold
+incoming-link startup before reaching the updater check. On Ubuntu 24.04,
+Git 2.43 rejected the newer `--no-lazy-fetch` switch during saved repository
+reads. Commit `4cb30fb` replaces that switch with the shared fetch-free scope;
+real Git 2.39.5, 2.43.0 and 2.53.0 passed the repository-link and file-content
+regressions. Explicit fetch still reached the independent owned control.
+The SHA-256 stash test on Noble failed during fixture creation; the same
+`git stash push --include-untracked` failed outside the app on that Git
+version. It is not counted as a passing stash test.
+
+The same unchanged `080167d2` package separately passed all 19 installed
+`application-updates` scenarios, including the pinned public key, automatic
+updates off, and no installable offer while offline. The focused report is
+under `installed-noble-updates/` in the qualification directory above.
+This is not full environment acceptance or a live signed update installation.

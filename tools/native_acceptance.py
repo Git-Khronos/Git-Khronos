@@ -1035,7 +1035,10 @@ def main():
     version, expected_package_name = expected_debian_package()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
-    parser.add_argument("--suite", choices=("smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools", "worktrees", "setup-keyboard", "remote-reviews", "incoming-links"), default="smoke")
+    parser.add_argument("--suite", choices=(
+        "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
+        "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
+    ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
                         help="Verify the installed executable and desktop entry before running the app (CI only)")
@@ -1179,6 +1182,9 @@ def main():
             if args.suite == "incoming-links":
                 from native_incoming_link_scenarios import incoming_repository_links
                 incoming_repository_links(driver, fixtures, repository, report)
+            if args.suite == "application-updates":
+                from native_application_updates_scenarios import application_updates_workflow
+                application_updates_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "worktrees"):
                 from native_worktree_scenarios import occupied_branch_navigation
                 occupied_branch_navigation(driver, fixtures, report)

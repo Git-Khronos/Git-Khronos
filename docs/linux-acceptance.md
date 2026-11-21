@@ -250,6 +250,16 @@ patch inspection must not call it. A timeout retains the failing view before
 fixture cleanup reopens the original repository. On a disposable installed
 runner, add `--installed` to check the same package bytes used by the full suite.
 
+## Focused publisher trust acceptance
+
+For an offline updater UI and native-policy check, use
+`--suite application-updates --headless --package "$package"`. Set
+`GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1` when the package was built with the
+publisher public key; without it, the suite expects the unconfigured-trust
+refusal. This checks the running version, default-off preference, and absence
+of an installable offer, not a live download or an update installation. The
+broad signed-release evidence gate still requires its complete environment suite.
+
 ## Prerequisites
 
 - the pinned Node, pnpm, and Rust toolchains;
