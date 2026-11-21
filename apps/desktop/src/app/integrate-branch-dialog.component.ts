@@ -12,6 +12,7 @@ export interface IntegrateBranchDialogRequest {
   target: string;
   /** Branch whose changes are brought in; chosen in the dialog when absent. */
   source?: string;
+  workflowRebase?: { sourceOid: string; targetOid: string; scope: string };
   returnFocus: HTMLElement | null;
 }
 
@@ -41,8 +42,11 @@ interface StrategyOption {
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         <header>
           <span class="eyebrow">Merge, rebase or fast-forward</span>
-          <h2 id="integrate-title">Bring changes into {{ target() }}</h2>
+          <h2 id="integrate-title">{{ request().workflowRebase ? 'Review feature rebase' : 'Bring changes into ' + target() }}</h2>
         </header>
+        @if (request().workflowRebase) {
+          <p class="summary"><strong>{{ target() }}</strong> onto <strong>{{ source() }}</strong>. Only the feature branch can change. Reopen Branch workflows to review Finish afterward.</p>
+        } @else {
         <div class="pair">
           <label for="integrate-source">Bring changes from</label>
           <select id="integrate-source" (change)="chooseSource($any($event.target).value)">
@@ -58,6 +62,7 @@ interface StrategyOption {
             <gc-icon name="refresh" [size]="12" />Swap direction
           </button>
         </div>
+        }
 
         <p id="integrate-summary" class="summary" [class.muted]="relationship() === 'unknown'" role="status">{{ summary() }}</p>
 
@@ -82,7 +87,13 @@ interface StrategyOption {
           }
         }
 
-        @if (relationship() !== 'up-to-date') {
+        @if (request().workflowRebase) {
+          @if (workflowRebaseProblem(); as problem) { <p class="note warning" role="alert">{{ problem }}</p> }
+          @else if (workflowOption(); as option) {
+            <p class="note">{{ option.detail }}</p>
+            @if (option.strategy === 'rebase') { <p class="note">Use the separate merge-preserving rebase if you need to retain topic merges.</p> }
+          }
+        } @else if (relationship() !== 'up-to-date') {
           <fieldset [disabled]="!source() || loading()">
             <legend>How should {{ target() }} get these changes?</legend>
             @for (option of options(); track option.strategy) {
@@ -98,7 +109,7 @@ interface StrategyOption {
           </fieldset>
         }
 
-        @if (comparisonError(); as message) { <p class="note warning">Could not compare the branches: {{ message }} You can still choose an option; Git checks again when it runs.</p> }
+        @if (!request().workflowRebase && comparisonError(); as message) { <p class="note warning">Could not compare the branches: {{ message }} You can still choose an option; Git checks again when it runs.</p> }
         @if (rebaseWarning(); as warning) { <p class="note warning" role="note"><gc-icon name="warning" [size]="13" />{{ warning }}</p> }
         @if (workingTreeNote(); as note) { <p class="note">{{ note }}</p> }
         @if (canCheckConflicts()) {
@@ -121,7 +132,7 @@ interface StrategyOption {
         @if (recoveryNote(); as note) { <p class="note recovery">{{ note }}</p> }
 
         <footer>
-          @if (relationship() === 'diverged' && strategy() === 'rebase') {
+          @if (!request().workflowRebase && relationship() === 'diverged' && strategy() === 'rebase') {
             <button type="button" class="link" (click)="choose('interactive')">Pick, reorder or squash commits first…</button>
           } @else { <span></span> }
           <div>
@@ -250,7 +261,7 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
     const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
     if (!comparison.incomingCount) {
       return comparison.outgoingCount
-        ? `${target} already has every commit from ${source}. Nothing to bring in. Use Swap direction to update ${source} instead.`
+        ? `${target} already has every commit from ${source}. Nothing to bring in.${this.request().workflowRebase ? '' : ` Use Swap direction to update ${source} instead.`}`
         : `${target} and ${source} point to the same commit. Nothing to do.`;
     }
     if (!comparison.mergeBase) return `${target} and ${source} share no history. Git refuses to combine unrelated histories by default.`;
@@ -260,7 +271,7 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
   readonly rebaseWarning = computed(() => {
     const published = this.comparison()?.outgoingPublished ?? 0;
     if (this.strategy() !== 'rebase' || !published) return null;
-    return `${published} of the commits being replayed ${published === 1 ? 'is' : 'are'} already pushed. Rebasing changes ${published === 1 ? 'its ID' : 'their IDs'}, so you would need to force-push and collaborators would need to update. Merge avoids this.`;
+    return `${published} of the commits being replayed ${published === 1 ? 'is' : 'are'} already pushed. Rebasing changes ${published === 1 ? 'its ID' : 'their IDs'}, so you would need to force-push and collaborators would need to update.${this.request().workflowRebase ? ' This action does not push.' : ' Merge avoids this.'}`;
   });
   readonly workingTreeNote = computed(() => {
     const repo = this.git.repository();
@@ -280,10 +291,29 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
       default: return null;
     }
   });
-  readonly canCheckConflicts = computed(() => this.relationship() === 'diverged' && !!this.comparison()?.mergeBase && this.strategy() !== 'ff-only');
+  readonly canCheckConflicts = computed(() => !this.request().workflowRebase && this.relationship() === 'diverged' && !!this.comparison()?.mergeBase && this.strategy() !== 'ff-only');
+  readonly workflowOption = computed(() => this.options().find(option => option.strategy === this.strategy()) ?? null);
+  readonly workflowRebaseProblem = computed(() => {
+    const request = this.request();
+    const expected = request.workflowRebase;
+    if (!expected) return '';
+    const repository = this.git.repository();
+    const comparison = this.comparison();
+    if (expected.scope !== this.git.activeRepositoryReadScope()
+      || repository?.status.branch !== request.target || repository?.headOid !== expected.targetOid
+      || this.tips() !== `${expected.targetOid}:${expected.sourceOid}`
+      || (comparison && (comparison.source !== request.source || comparison.target !== request.target
+        || comparison.sourceOid !== expected.sourceOid || comparison.targetOid !== expected.targetOid))) {
+      return 'The checkout or workflow branch tips changed. Reload Branch workflows and review again.';
+    }
+    if (this.comparisonError()) return `Could not compare the reviewed branches: ${this.comparisonError()} No rebase can start.`;
+    if (comparison && !comparison.mergeBase) return 'The feature and development branch do not share a common history. No rebase can start.';
+    return '';
+  });
   readonly canConfirm = computed(() => {
     const strategy = this.strategy();
-    if (!strategy || !this.source() || this.loading() || this.git.busy()) return false;
+    if (!strategy || !this.source() || this.loading() || this.git.busy()
+      || (this.request().workflowRebase && (!this.comparison() || this.workflowRebaseProblem()))) return false;
     return !this.options().find(option => option.strategy === strategy)?.unavailable;
   });
   readonly confirmLabel = computed(() => {
@@ -340,7 +370,10 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
     } finally {
       if (!this.destroyed && token === this.comparisonToken) {
         this.loading.set(false);
-        this.strategy.set(this.recommended() ?? (this.relationship() === 'up-to-date' ? null : 'merge'));
+        const relationship = this.relationship();
+        this.strategy.set(this.request().workflowRebase
+          ? relationship === 'diverged' ? 'rebase' : relationship === 'behind' ? 'ff-only' : null
+          : this.recommended() ?? (relationship === 'up-to-date' ? null : 'merge'));
       }
     }
   }
@@ -378,6 +411,7 @@ export class IntegrateBranchDialogComponent implements OnDestroy {
   }
 
   choose(strategy: IntegrationChoice['strategy']): void {
+    if (this.request().workflowRebase && (strategy !== this.strategy() || !this.canConfirm())) return;
     const source = this.source();
     if (!source) return;
     const target = this.target();

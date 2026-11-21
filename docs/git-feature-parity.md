@@ -37,11 +37,11 @@ behavioral cases during the audit; grouping does not remove any listed action.
 ## Current priorities
 
 1. **Gitflow finishing:** feature, release and hotfix setup/start/finish exist.
-   Feature rebase is available as a separate branch action before a fresh
-   finish review; it is not an implicit finishing step. Setup retains existing
-   branch tips, and successful feature cleanup permits reusing the topic name.
-   Integrated rebase convenience and remaining failure/platform cases still
-   need qualification. See the
+   Branch workflows offers a separate rebase review for the checked-out
+   feature before a fresh finish review; it is not an implicit finishing step.
+   Setup retains existing branch tips, and successful feature cleanup permits
+   reusing the topic name. Remaining failure/platform cases still need
+   qualification. See the
    [Gitflow guide](https://help.gitkraken.com/gitkraken-desktop/git-flow/).
 2. **Optional submodule automation:** clone can include submodules and explicit
    management exists, but automatic update preferences are intentionally not
@@ -196,7 +196,7 @@ is outside the current work.
 | G21 | Add/init/update/sync/remove nested submodules and inspect their changes/history | Partial: explicit management and optional recursive clone exist. Automatic updates remain opt-in functionality deferred to avoid background nested-checkout mutations. Audit nested, dirty, missing, detached and conflicted submodules |
 | G22 | Initialize/use Git LFS, track/untrack, transfer/prune objects, and manage locks | Audit provider availability, actual object integrity and lock ownership |
 | G23 | Create/open/lock/move/repair/remove worktrees and branches safely | Audit occupancy, shared configuration, ignored/untracked collisions and recovery |
-| G24 | Configure and run feature/release/hotfix workflows, including finishing into the appropriate branches and tagging releases | Partial desktop: reviewed setup/start/finish and saved conflict recovery have source, renderer and Linux-package evidence; the specification records full-run failures and successful serial rechecks. Existing branch tips are retained during setup, and a successfully finished feature topic can be recreated with the same name. Feature rebase remains a separate reviewed branch action before a fresh finish plan; integrated rebase convenience and further signing/platform/failure cases remain open. The [independent specification](specifications/branch-workflows.md) records transitions, recovery and remaining gates |
+| G24 | Configure and run feature/release/hotfix workflows, including finishing into the appropriate branches and tagging releases | Partial desktop: reviewed setup/start/finish and saved conflict recovery have source, renderer and Linux-package evidence. Existing branch tips are retained during setup, and a successfully finished feature topic can be recreated with the same name. Branch workflows offers a fixed-pair rebase review for the checked-out feature before a fresh Finish plan; the new entry point still needs packaged qualification. More signing/platform/failure cases remain open. The [independent specification](specifications/branch-workflows.md) records transitions, recovery and remaining gates |
 | G25 | Respect Git hooks, expose hook errors/output and explicit hook-control options | Audit actual hook processes and refusal/recovery behavior |
 | G26 | Import/export patches, mail series and bundles; inspect and recover failed imports | Audit existing exchange implementations and format compatibility |
 | G27 | Maintain repository integrity and offer actionable diagnostics without silently losing data | Audit fsck/maintenance, cancellation and missing/corrupt repositories |
@@ -297,7 +297,7 @@ run must wait until this one finishes.
 | G21 | Recursive clone, explicit submodule inspection, sync, removal and dirty/conflicted refusals | Automatic updates are deliberately deferred; nested edge cases remain |
 | G22 | Real LFS tracking, selective fetch/checkout, prune and lock scenarios | Additional providers, installed-client versions and other platforms |
 | G23 | Worktree move, repair, registration, locks and occupied/dirty refusals | Complete shared-configuration, collision and platform matrix |
-| G24 | Feature/release/hotfix setup and finish, conflicts, recovery and stale reviews | Integrated feature rebase remains separate; more signing and platform cases |
+| G24 | Feature/release/hotfix setup and finish, conflicts, recovery and stale reviews | Verify the new feature rebase entry point on the installed package; more signing and platform cases |
 | G25 | Commit and replay hook execution, refusal, cancellation and explicit hook policy | All supported hook types and packaged output presentation |
 | G26 | Patch, mail-series and bundle round trips, limits, conflicts and recovery | Broader external format interoperability and other platforms |
 | G27 | Integrity checks, corruption reporting, cancellation and non-pruning maintenance | Complete filesystem/error and packaged diagnostic cases |

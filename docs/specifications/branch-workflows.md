@@ -77,8 +77,15 @@ Preparation is read-only. Execution revalidates every captured local binding.
 Each target must contain the reviewed topic commit when its integration stage
 succeeds. The plan states whether a stage permits fast-forward or requires a
 merge commit. Never silently substitute squash, rebase or unrelated-history
-integration. An optional feature rebase is a separate history-rewrite preview
-with existing backup/recovery behavior, followed by a fresh finish preview.
+integration. For a checked-out feature, the workflow dialog offers a separate
+rebase review against the configured development branch. The pair is fixed:
+Git Khronos compares both reviewed tips, offers rebase for divergence or an
+explicit fast-forward when the untouched feature only trails development, and
+offers no mutation when the feature is already current or the comparison
+cannot establish the reviewed relationship. The previous Finish preview is
+discarded. A new Finish review is required afterward. Reviewed integration
+passes both exact tips to Git and disables automatic sibling-ref updates for
+rebase without changing Git configuration.
 
 Tags identify the resulting production commit. Existing tags are never moved or
 replaced by finish. Annotation and signing choices must be visible, honor the

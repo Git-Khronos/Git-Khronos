@@ -3467,6 +3467,9 @@ pub fn integrate_branch_with_review(
         "merge" => &["merge", "--no-edit", "--", &operand],
         "ff-only" => &["merge", "--ff-only", "--", &operand],
         "squash" => &["merge", "--squash", "--", &operand],
+        // A reviewed integration authorizes rewriting the receiving branch,
+        // not any sibling refs that happen to point into the replayed range.
+        "rebase" if review.is_some() => &["-c", "rebase.updateRefs=false", "rebase", "--", &operand],
         "rebase" => &["rebase", "--", &operand],
         _ => unreachable!(),
     };

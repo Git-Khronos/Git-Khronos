@@ -3,6 +3,7 @@ import { ipc, type BranchWorkflowControl, type BranchWorkflowFinishStatus, type 
 import { GitKhronosService } from './git-khronos.service';
 
 export interface BranchWorkflowDialogRequest { repositoryId: string; path: string; returnFocus: HTMLElement | null }
+export interface FeatureRebaseSelection { feature: string; development: string; featureOid: string; developmentOid: string }
 const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', development: 'develop', featurePrefix: 'feature/', releasePrefix: 'release/', hotfixPrefix: 'hotfix/', tagPrefix: '' };
 
 @Component({
@@ -64,7 +65,11 @@ const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', devel
               @if (topic.kind !== 'feature') {
                 @if (topic.kind === 'hotfix') { <label class="check"><input type="checkbox" [checked]="tagEnabled()" (change)="tagEnabled.set($any($event.target).checked); invalidate()" />Create an annotated version tag</label> }
                 @if (topic.kind === 'release' || tagEnabled()) { <p>Version tag: <code>{{ configured.tagPrefix + topic.suffix }}</code></p><label for="workflow-tag-message">Tag annotation<textarea id="workflow-tag-message" [value]="tagMessage()" maxlength="16000" (input)="tagMessage.set($any($event.target).value); invalidate()"></textarea></label><label for="workflow-signing">Tag signing<select id="workflow-signing" [value]="tagSigning()" (change)="tagSigning.set($any($event.target).value); invalidate()"><option value="default">Repository default</option><option value="signed">Sign tag</option><option value="unsigned">Unsigned tag</option></select></label> }
-              } @else { <p>For a feature rebase, use its branch actions first, then return to review a fresh finish plan.</p> }
+              } @else {
+                <p>Optional: bring the configured development branch into this feature before finishing. Rebase is reviewed separately and never runs as part of Finish.</p>
+                @if (featureRebase()) { <button type="button" (click)="reviewFeatureRebase()">Review feature rebase onto {{ configured.development }}…</button> }
+                @else { <p>Check out the feature in this worktree and reload workflow state if either branch has changed or is missing.</p> }
+              }
               <button type="submit" [disabled]="(topic.kind === 'release' || tagEnabled()) && topic.kind !== 'feature' && !tagMessage().trim()">Review finish</button></fieldset></form>
             }
           } @else { <p>This repository has no branch workflow configuration.</p><button type="button" [disabled]="unavailable()" (click)="setPanel('settings')">Configure workflows</button> }
@@ -91,6 +96,7 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<BranchWorkflowDialogRequest>();
   readonly closed = output<void>();
+  readonly featureRebaseRequested = output<FeatureRebaseSelection>();
   readonly view = signal<BranchWorkflowView | null>(null);
   readonly panel = signal<'topics' | 'settings'>('topics');
   readonly settings = signal<BranchWorkflowSettings>({ ...DEFAULTS });
@@ -129,6 +135,18 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   readonly contextValid = computed(() => this.git.repository()?.id === this.request().repositoryId && this.git.repository()?.path === this.request().path);
   readonly unavailable = computed(() => this.busy() || this.applying() || this.git.busy() || !this.contextValid());
   readonly selectedTopic = computed(() => this.view()?.state.topics.find(topic => topic.branch === this.selectedBranch()) ?? null);
+  readonly featureRebase = computed<FeatureRebaseSelection | null>(() => {
+    const state = this.view()?.state;
+    const topic = this.selectedTopic();
+    const repository = this.git.repository();
+    const development = state?.settings?.development;
+    const developmentOid = state?.developmentOid;
+    if (!this.contextValid() || state?.finishPending || !topic || topic.kind !== 'feature' || !repository
+      || repository.status.branch !== topic.branch || repository.headOid !== topic.oid
+      || !development || development === topic.branch || !developmentOid
+      || !repository.branches.some(branch => !branch.remote && branch.name === development && branch.oid === developmentOid)) return null;
+    return { feature: topic.branch, featureOid: topic.oid, development, developmentOid };
+  });
   readonly settingsValid = computed(() => {
     const s = this.settings(); const prefixes = [s.featurePrefix, s.releasePrefix, s.hotfixPrefix];
     return !!s.production.trim() && !!s.development.trim() && s.production !== s.development && prefixes.every((p, i) => !!p.trim() && prefixes.every((q, j) => i === j || !p.startsWith(q) && !q.startsWith(p)));
@@ -185,6 +203,13 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
     const topic = this.selectedTopic(); if (!topic) return;
     await this.prepare({ action: 'finish', branch: topic.branch, options: { mergePolicy: this.mergePolicy(), mergeMessage: this.mergeMessage().trim() ? this.mergeMessage() : null,
       deleteTopic: topic.kind === 'feature' || this.deleteTopic(), tag: topic.kind === 'release' || topic.kind === 'hotfix' && this.tagEnabled() ? { message: this.tagMessage(), sign: this.tagSigning() === 'default' ? null : this.tagSigning() === 'signed' } : null } });
+  }
+  reviewFeatureRebase(): void {
+    const selection = this.featureRebase();
+    if (!selection || this.unavailable()) return;
+    // A finish token reviewed against the old topic must not survive handoff.
+    this.invalidate();
+    this.featureRebaseRequested.emit(selection);
   }
   private async prepare(request: BranchWorkflowRequest): Promise<void> {
     if (this.unavailable()) return; this.invalidate(); this.notice.set('');

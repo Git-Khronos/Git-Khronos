@@ -55,7 +55,18 @@ test.beforeEach(async ({ page }) => {
         if (args.id !== fixture.view.finish.id || args.revision !== fixture.view.finish.revision) throw { message: 'Stale saved workflow revision' };
         if (args.control.action === 'acknowledge') { fixture.view.finish = null; fixture.view.state.finishPending = false; result = null; }
         else { fixture.view.finish = { ...fixture.view.finish, revision: fixture.view.finish.revision + 1, phase: args.control.action === 'abort' ? 'aborted' : 'complete', notice: 'Previously completed integrations are retained.' }; result = fixture.view.finish; }
-      } else if (command === 'cancel_git_operation') result = true;
+      } else if (command === 'compare_branches') {
+        const selected = (fixture as any).featureComparison;
+        if (!selected) throw { message: 'Could not compare owned branches' };
+        result = {
+          source: args.source, target: args.target,
+          sourceOid: fixture.repo.branches.find(b => b.name === args.source)?.oid,
+          targetOid: fixture.repo.branches.find(b => b.name === args.target)?.oid,
+          incomingCount: 2, outgoingCount: 1, outgoingPublished: 1,
+          incoming: [], outgoing: [], mergeBase: 'a'.repeat(40), ...selected,
+        };
+      } else if (command === 'integrate_branch') result = fixture.repo;
+      else if (command === 'cancel_git_operation') result = true;
       else if (command === 'refresh_repository' || command === 'refresh_repository_metadata') result = fixture.repo;
       else if (command === 'refresh_repository_status') result = fixture.repo.status;
       else throw Error(`Unexpected ${command}`);
@@ -64,6 +75,74 @@ test.beforeEach(async ({ page }) => {
     } };
   });
 });
+
+async function featureCheckout(page: Page, comparison: Record<string, unknown> | null = {}) {
+  await page.evaluate(comparison => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const fixture = (window as any).__workflow;
+    const feature = fixture.topics[0];
+    fixture.featureComparison = comparison;
+    fixture.repo = { ...fixture.repo, headOid: feature.oid,
+      branches: fixture.repo.branches.map((branch: any) => ({ ...branch, current: branch.name === feature.branch })),
+      status: { ...fixture.repo.status, branch: feature.branch } };
+    app.git.repositories.set([fixture.repo]);
+  }, comparison);
+}
+
+test('feature rebase reviews the fixed pair and discards the previous finish token before any rewrite', async ({ page }) => {
+  await featureCheckout(page);
+  const workflow = await open(page);
+  await workflow.getByRole('button', { name: 'Finish feature/owned', exact: true }).click();
+  await workflow.getByRole('button', { name: 'Review finish', exact: true }).click();
+  await expect(workflow.getByRole('region', { name: 'Review branch workflow' })).toBeVisible();
+  await workflow.getByRole('button', { name: 'Review feature rebase onto develop…', exact: true }).click();
+  const rebase = page.getByRole('dialog', { name: 'Review feature rebase' });
+  const confirm = rebase.getByRole('button', { name: 'Rebase feature/owned onto develop', exact: true });
+  await expect(rebase.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await expect(rebase).toContainText('Reopen Branch workflows to review Finish afterward.');
+  await expect(rebase.getByRole('button', { name: 'Swap direction' })).toHaveCount(0);
+  await expect(confirm).toBeEnabled();
+  const calls = () => page.evaluate(() => (window as any).__workflow.calls.filter((c: any) =>
+    ['compare_branches', 'discard_branch_workflow_plan', 'execute_branch_workflow', 'checkout_branch', 'integrate_branch'].includes(c.command)));
+  const repoId = await page.evaluate(() => (window as any).__workflow.repo.id);
+  expect(await calls()).toEqual([
+    { command: 'discard_branch_workflow_plan', args: { repoId, token: 'owned-preview-1' } },
+    { command: 'compare_branches', args: { repoId, source: 'develop', target: 'feature/owned' } },
+  ]);
+  await confirm.click();
+  await expect.poll(calls).toHaveLength(3);
+  expect((await calls()).at(-1)).toEqual({
+    command: 'integrate_branch',
+    args: expect.objectContaining({ repoId, name: 'develop', strategy: 'rebase',
+      review: { receivingBranch: 'feature/owned', receivingOid: '3'.repeat(40), sourceBranch: 'develop', sourceOid: '2'.repeat(40) } }),
+  });
+  await expect(workflow).toHaveCount(0);
+});
+
+for (const condition of ['unavailable', 'moved-tip', 'unrelated', 'behind'] as const) {
+  test(`feature rebase handles a ${condition} comparison without substituting a merge`, async ({ page }) => {
+    await featureCheckout(page, condition === 'unavailable' ? null : condition === 'moved-tip' ? { sourceOid: '9'.repeat(40) }
+      : condition === 'unrelated' ? { mergeBase: null } : { outgoingCount: 0, outgoingPublished: 0 });
+    const workflow = await open(page);
+    await workflow.getByRole('button', { name: 'Finish feature/owned', exact: true }).click();
+    await workflow.getByRole('button', { name: 'Review feature rebase onto develop…', exact: true }).click();
+    const review = page.getByRole('dialog', { name: 'Review feature rebase' });
+    if (condition === 'behind') {
+      const fastForward = review.getByRole('button', { name: 'Fast-forward feature/owned', exact: true });
+      await expect(fastForward).toBeEnabled();
+      await fastForward.click();
+      await expect.poll(() => page.evaluate(() => (window as any).__workflow.calls.find((c: any) => c.command === 'integrate_branch')?.args.strategy)).toBe('ff-only');
+    } else {
+      await expect(review.getByRole('alert')).toContainText({
+        unavailable: 'No rebase can start.', 'moved-tip': 'workflow branch tips changed', unrelated: 'do not share a common history',
+      }[condition]);
+      await expect(review.getByRole('button', { name: condition === 'unavailable' ? 'Choose an option' : 'Rebase feature/owned onto develop', exact: true })).toBeDisabled();
+      await review.getByRole('button', { name: 'Cancel', exact: true }).click();
+    }
+    expect(await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) =>
+      ['checkout_branch', 'execute_branch_workflow'].includes(c.command)))).toEqual([]);
+  });
+}
 
 test('configuration is reviewed before application and retains the commit draft', async ({ page }) => {
   await page.evaluate(() => { (window as any).__workflow.view.state.settings = null; });

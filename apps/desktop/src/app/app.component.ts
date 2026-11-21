@@ -20,7 +20,7 @@ import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } fro
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import { FileMediaComponent, type FileMediaSelection } from './file-media.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
-import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest } from './branch-workflow-dialog.component';
+import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
 import {
   ChangeDetectionStrategy,
@@ -4660,7 +4660,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.integrationRequest.set(null);
     const review = this.captureBranchPair(choice.source, choice.target);
     if (!review || review.repositoryId !== request.repositoryId || review.repositoryPath !== request.repositoryPath
-      || (choice.comparedTips && (choice.comparedTips.sourceOid !== review.sourceOid || choice.comparedTips.targetOid !== review.targetOid))) {
+      || (choice.comparedTips && (choice.comparedTips.sourceOid !== review.sourceOid || choice.comparedTips.targetOid !== review.targetOid))
+      || (request.workflowRebase && (
+        this.git.activeRepositoryReadScope() !== request.workflowRebase.scope || this.git.repository()?.status.branch !== request.target
+        || choice.source !== request.source || choice.target !== request.target
+        || !choice.comparedTips || !['rebase', 'ff-only'].includes(choice.strategy)
+        || review.sourceOid !== request.workflowRebase.sourceOid || review.targetOid !== request.workflowRebase.targetOid))) {
       this.git.error.set('The repository or reviewed branches changed. Refresh and open the integration review again.');
       return;
     }
@@ -10880,6 +10885,22 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.close('context');
     this.branchWorkflowRequest.set({ repositoryId: repository.id, path: repository.path,
       returnFocus: opener?.getAttribute('role') === 'menuitem' ? this.workspaceToggle()?.nativeElement ?? null : opener });
+  }
+
+  protected openWorkflowFeatureRebase(request: BranchWorkflowDialogRequest, selection: FeatureRebaseSelection): void {
+    if (this.branchWorkflowRequest() !== request || this.git.busy()) return;
+    const review = this.captureBranchPair(selection.development, selection.feature);
+    if (!review || review.repositoryId !== request.repositoryId || review.repositoryPath !== request.path
+      || this.git.repository()?.status.branch !== selection.feature
+      || review.sourceOid !== selection.developmentOid || review.targetOid !== selection.featureOid) {
+      return;
+    }
+    this.branchWorkflowRequest.set(null);
+    this.integrationRequest.set({
+      repositoryId: review.repositoryId, repositoryPath: review.repositoryPath,
+      source: review.source, target: review.target, returnFocus: request.returnFocus,
+      workflowRebase: { sourceOid: review.sourceOid, targetOid: review.targetOid, scope: this.git.activeRepositoryReadScope() },
+    });
   }
 
   protected closeBranchWorkflowLoader(): void {

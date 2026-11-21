@@ -295,3 +295,27 @@ fn reviewed_checkout_then_merge_uses_the_reviewed_object_and_branch_subject() {
     assert_eq!(fixture.git(&["rev-parse", "HEAD^2"]), review.source_oid);
     assert_eq!(fixture.git(&["log", "-1", "--format=%s"]), "Merge branch 'feature'");
 }
+
+#[test]
+fn reviewed_rebase_keeps_sibling_tips_even_when_git_is_configured_to_update_refs() {
+    let fixture = Fixture::new();
+    fixture.diverge(1, 2);
+    fixture.git(&["config", "rebase.updateRefs", "true"]);
+    fixture.git(&["branch", "sibling", "feature^"]);
+    fixture.git(&["switch", "feature"]);
+    let sibling = fixture.git(&["rev-parse", "refs/heads/sibling"]);
+    let review = BranchIntegrationReview {
+        receiving_branch: "feature".into(),
+        receiving_oid: fixture.git(&["rev-parse", "refs/heads/feature"]),
+        source_branch: "main".into(),
+        source_oid: fixture.git(&["rev-parse", "refs/heads/main"]),
+    };
+    integrate_branch_with_review(fixture.path(), "main", "rebase", Some(&review)).unwrap();
+    assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/feature");
+    assert_ne!(fixture.git(&["rev-parse", "HEAD"]), review.receiving_oid);
+    assert_eq!(fixture.git(&["rev-parse", "HEAD^^"]), review.source_oid);
+    assert_eq!(fixture.git(&["rev-parse", "refs/heads/main"]), review.source_oid);
+    assert_eq!(fixture.git(&["rev-parse", "refs/heads/sibling"]), sibling);
+    assert_eq!(fixture.git(&["config", "rebase.updateRefs"]), "true");
+    assert_eq!(fixture.git(&["status", "--porcelain"]), "");
+}
