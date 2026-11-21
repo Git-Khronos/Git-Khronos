@@ -190,6 +190,15 @@ pub fn preview_merge(
     request: &MergePreviewRequest,
     cancellation: &CancellationToken,
 ) -> Result<MergePreview, AppError> {
+    preview_merge_before_publish(path, request, cancellation, || {})
+}
+
+fn preview_merge_before_publish(
+    path: &Path,
+    request: &MergePreviewRequest,
+    cancellation: &CancellationToken,
+    before_publish: impl FnOnce(),
+) -> Result<MergePreview, AppError> {
     let version = inspect(path, &["--version"], cancellation)?;
     ensure_success("inspect Git preview support", &version)?;
     if !parse_git_version(&version.stdout)
@@ -314,6 +323,7 @@ pub fn preview_merge(
         }
         let clean = output.status.success();
         let conflicted_paths = parse(&output.stdout, clean)?;
+        before_publish();
         current(path, request, cancellation)?;
         if cancellation.is_cancelled() {
             return Err(operation_cancelled());
@@ -611,22 +621,13 @@ mod tests {
     }
 
     #[test]
-    fn merge_preview_cancels_after_start_without_changing_repository() {
+    fn merge_preview_cancels_before_publishing_without_changing_repository() {
         let f = Fixture::new();
         let token = CancellationToken::default();
         let before = f.state();
-        thread::scope(|scope| {
-            let request = f.request();
-            let path = f.path();
-            let cancellation = &token;
-            let handle = scope.spawn(move || preview_merge(path, &request, cancellation));
-            thread::sleep(Duration::from_millis(50));
-            token.cancel();
-            assert_eq!(
-                handle.join().unwrap().unwrap_err().kind,
-                "operationCancelled"
-            );
-        });
+        let result =
+            preview_merge_before_publish(f.path(), &f.request(), &token, || token.cancel());
+        assert_eq!(result.unwrap_err().kind, "operationCancelled");
         assert_eq!(before, f.state());
     }
 
