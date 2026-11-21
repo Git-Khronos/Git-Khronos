@@ -1153,6 +1153,7 @@ def main():
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
+        "comparison-line-budget",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1374,6 +1375,9 @@ def main():
             elif args.suite == "worktree-reservation":
                 from native_worktree_scenarios import reserved_branch_guidance
                 repository, repo_id = reserved_branch_guidance(driver, fixtures, report)
+            elif args.suite == "comparison-line-budget":
+                from native_comparison_budget_scenarios import working_directory_comparison_budget
+                repository, repo_id = working_directory_comparison_budget(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

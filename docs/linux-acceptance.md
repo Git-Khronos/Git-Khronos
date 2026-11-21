@@ -80,6 +80,12 @@ branch in the packaged UI, checks that the error names the owning path
 and explains what to do, then verifies that both checkouts and the pending
 conflict are unchanged.
 
+Use `--suite comparison-line-budget` to open a real working-directory
+comparison containing tracked edits, a small untracked text file and a
+large untracked text file. The installed UI must show partial line totals,
+keep the uncounted file selectable, and still open the small file's diff
+without modifying Git state or any fixture file.
+
 Use `--suite working-tree-recaps` to check staged and unstaged line totals
 without running all setup workflows. It checks the displayed counts and
 their accessible labels together, including singular counts and exclusions.
