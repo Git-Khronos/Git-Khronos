@@ -107,8 +107,18 @@ jobs:
           tar -xOzf "$bin/$archive" "git-lfs-${version}/git-lfs" > "$bin/git-lfs"
           chmod 0755 "$bin/git-lfs"
           rm "$bin/$archive"
-          PATH="$bin:$PATH" git lfs version
+          installed_version="$(PATH="$bin:$PATH" git lfs version)"
+          printf '%s\n' "$installed_version"
+          [[ "$installed_version" == "git-lfs/$version "* ]]
           printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - name: Exercise Git LFS snapshots on the exact installed Jammy candidate
+        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suite in lfs-counts lfs-snapshot-timeout; do
+            python3 tools/native_acceptance.py --suite "$suite" --headless --installed --package "$PACKAGE"
+          done
       - name: Qualify publisher trust on the exact installed Jammy candidate
         if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
         env:

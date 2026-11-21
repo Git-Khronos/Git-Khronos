@@ -230,6 +230,13 @@ Installed runners provision the standard sticky `/tmp/.X11-unix` directory
 before starting Xvfb as an unprivileged fixture user. Minimal containers may
 not have it even after installing Xvfb.
 
+Jammy's standard smoke and GitLab checks keep the distro's Git LFS. The full
+signed-release qualification uses a checksum-pinned upstream Git LFS fixture
+on PATH because Jammy's stock 3.0.2 doesn't support `ls-files --json`.
+The same installed candidate must also pass the focused LFS count and
+timeout regressions. The fixture is not bundled in the package and does not
+change the app's behavior on installations where counts are unavailable.
+
 The release publish job depends on the reusable workflow completing every
 Ubuntu and Debian runtime matrix entry successfully. A failed or unavailable
 runner, unsatisfied dependency, absent WebDriver, loader failure or scenario
@@ -253,7 +260,8 @@ the required runtime matrix.
 
 For the bounded Git LFS counts regression, run
 `python3 tools/native_acceptance.py --suite lfs-counts --headless --package "$PACKAGE"`.
-Use a disposable runner with Git LFS on PATH, and add `--installed` when
+Use a disposable runner with a Git LFS that supports `ls-files --json` on PATH,
+and add `--installed` when
 the exact package is installed there. The owned checkout uses a literal
 newline in one LFS path, keeps another file as a pointer, and sets a
 nonmatching LFS transfer filter. All counts must still match the checkout
