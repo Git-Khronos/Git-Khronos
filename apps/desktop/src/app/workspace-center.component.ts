@@ -5,7 +5,8 @@ import { ipc, type RepositoryFiles, type RepositorySnapshot } from '@git-khronos
 import { open } from '@tauri-apps/plugin-dialog';
 import { GitKhronosService, type OpenRepositoryResult, type SavedRepositoryReplacement } from './git-khronos.service';
 import { IDENTITY_PROFILES_KEY, parseIdentityProfiles, validIdentityProfile, type IdentityProfile } from './identity-profiles';
-import { runWorkspaceRemote } from './workspace-actions';
+import { runWorkspaceRemote, type WorkspaceRemoteOperation } from './workspace-actions';
+import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { runRepositoryFileAction } from './repository-file-actions';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 
@@ -33,8 +34,9 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || !rows().length" (click)="selectShown()">Select shown</button>
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || !selectedRepositoryIds().length" (click)="selectedRepositoryIds.set([])">Clear selection</button>
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('fetch')">Fetch selected ({{ selectedRepositoryIds().length }})</button>
-          <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button>
+          <button type="button" aria-describedby="workspace-pull-strategy" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button>
           <button type="button" [disabled]="overviewBusy() || !selectedOpenTabs().length" (click)="reviewTabClose($event)">Close selected ({{ selectedOpenTabs().length }})…</button></div>
+        <p id="workspace-pull-strategy">Pull uses each repository’s configured upstream. Default strategy: {{ pullStrategyLabel() }}.</p>
         <p role="status">{{ rows().length }} of {{ git.repositories().length }} open repositories shown{{ refreshing() ? ' · reading local repositories' : '' }}</p>
         @if (bulkError()) { <p role="alert">{{ bulkError() }}</p> }
         @if (bulkResults().length) {
@@ -203,6 +205,8 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
 export class WorkspaceCenterComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<WorkspaceCenterRequest>();
+  readonly pullStrategy = input.required<PullStrategy>();
+  readonly pullStrategyLabel = computed(() => PULL_STRATEGY_LABEL[this.pullStrategy()]);
   readonly openRepository = input.required<(path: string, replacement?: SavedRepositoryReplacement) => Promise<OpenRepositoryResult>>();
   readonly closeRepositories = input.required<(request: WorkspaceTabsCloseRequest) => boolean>();
   readonly suspended = input(false);
@@ -681,6 +685,9 @@ export class WorkspaceCenterComponent implements OnDestroy {
     this.bulkStopRequested.set(false);
     this.bulkRunning.set(true);
     const workspaceId = this.git.activeWorkspaceId();
+    const operation: WorkspaceRemoteOperation = action === 'pull'
+      ? { kind: 'pull', strategy: this.pullStrategy() }
+      : { kind: 'fetch' };
     const selected = this.selectedRepositoryIds().map(id => this.git.repositories().find(repo => repo.id === id)).filter((repo): repo is RepositorySnapshot => !!repo);
     this.bulkResults.set(selected.map(repo => ({ id: repo.id, path: repo.path, action, status: 'pending', detail: null })));
     try {
@@ -696,7 +703,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
           continue;
         }
         this.setBulkResult(repository.id, action, 'running', null);
-        const result = await runWorkspaceRemote(this.git, repository, action);
+        const result = await runWorkspaceRemote(this.git, repository, operation);
         if (this.destroyed) return;
         this.setBulkResult(repository.id, action, result.status, result.error);
         if (result.status === 'cancelled') {

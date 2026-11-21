@@ -170,6 +170,7 @@ import {
 import { orderBranchesCurrentFirst } from './branch-order';
 import { describeWorkingTreeStatus } from './working-tree-status';
 import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
+import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { ResizePointer } from './resize-pointer';
 
 interface ActiveGraphLane {
@@ -546,7 +547,6 @@ interface BranchDropState {
 }
 
 type GraphColumn = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
-type PullStrategy = 'merge' | 'ff-only' | 'rebase';
 type PreferencesSection = 'general' | 'graph' | 'git' | 'editor' | 'terminal';
 type AuthorMarkerStyle = 'initials' | 'color';
 type ReferenceSection = 'worktrees' | 'local' | 'remote' | 'tags' | 'stashes' | 'submodules';
@@ -11817,11 +11817,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected pullStrategyLabel(): string {
-    return {
-      merge: 'Fast-forward if possible',
-      'ff-only': 'Fast-forward only',
-      rebase: 'Rebase',
-    }[this.pullStrategy()];
+    return PULL_STRATEGY_LABEL[this.pullStrategy()];
   }
 
   protected pullToolbarLabel(): string {

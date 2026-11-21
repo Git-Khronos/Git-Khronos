@@ -4,6 +4,7 @@ import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
 import type { IncomingLinksController } from './incoming-links-controller';
 import type { RepositoryFileActionLifecycle } from './repository-file-actions';
+import type { PullStrategy } from './pull-strategy';
 import { Injectable, computed, signal, type OnDestroy } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
 import { ipc, type BranchComparison } from '@git-khronos/contracts';
@@ -2449,7 +2450,7 @@ export class GitKhronosService implements OnDestroy {
   }
 
   async pull(
-    strategy: 'merge' | 'ff-only' | 'rebase' = 'merge',
+    strategy: PullStrategy = 'merge',
     remote?: string,
     branch?: string,
   ): Promise<void> {

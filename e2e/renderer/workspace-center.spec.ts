@@ -711,6 +711,56 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
+test('workspace Pull honors the saved strategy and keeps it for the whole batch', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pull options', exact: true }).click();
+  await page.locator('.pull-menu').getByRole('menuitemradio', { name: 'Make Fast-forward only the default pull strategy' }).click();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = app;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      const repository = args.repoId === fixture.second.id ? fixture.second : fixture.first;
+      if (command === 'pull_repository') {
+        fixture.calls.push(args);
+        if (fixture.calls.length === 1) {
+          await new Promise<void>(resolve => {
+            fixture.releasePull = () => {
+              app.pullStrategy.set('rebase');
+              resolve();
+            };
+          });
+        }
+        return repository;
+      }
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return repository;
+      if (command === 'refresh_repository_status') return repository.status;
+      throw Error(`Unexpected command: ${command}`);
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  const pull = dialog.getByRole('button', { name: 'Pull selected (2)', exact: true });
+  await expect(pull).toHaveAccessibleDescription('Pull uses each repository’s configured upstream. Default strategy: Fast-forward only.');
+  await pull.click();
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — running');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releasePull)).toBe('function');
+  await page.evaluate(() => (window as any).__center.releasePull());
+  await expect(results).toContainText('beta — success');
+  const strategies = () => page.evaluate(() => (window as any).__center.calls.map((args: any) => args.strategy));
+  expect(await strategies()).toEqual(['ff-only', 'ff-only']);
+  await expect(pull).toHaveAccessibleDescription('Pull uses each repository’s configured upstream. Default strategy: Rebase.');
+  await dialog.getByLabel('Select alpha').uncheck();
+  await dialog.getByRole('button', { name: 'Pull selected (1)', exact: true }).click();
+  await expect(results).toContainText('beta — success');
+  expect(await strategies()).toEqual(['ff-only', 'ff-only', 'rebase']);
+  expect(await page.evaluate(() => (window as any).__center.calls.every((args: any) =>
+    args.remote === undefined && args.branch === undefined))).toBe(true);
+});
+
 test('a queued workspace pull keeps the original checkout rather than adopting a later branch', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
