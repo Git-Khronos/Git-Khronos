@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { ConflictDetails } from '../../libs/contracts/src/index';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -37,10 +38,18 @@ test.beforeEach(async ({ page }) => {
           } };
           return Promise.resolve(fixture.snapshot);
         }
-        if (command === 'stage_all') {
+        if (command === 'inspect_conflict' && args.path === 'file.txt') {
+          const details: ConflictDetails = {
+            path: 'file.txt', ancestor: 'base\n', current: 'current\n', incoming: 'incoming\n',
+            output: 'working conflict\n', binary: false, truncated: false, editable: true,
+            state: 'no-commit-reviewed-state', currentExists: true, incomingExists: true, submodule: false,
+          };
+          return Promise.resolve(details);
+        }
+        if (command === 'resolve_conflict' && args.path === 'file.txt' && args.expectedState === 'no-commit-reviewed-state') {
           fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status, conflicted: 0, staged: 1,
             entries: fixture.snapshot.status.entries.map((entry: any) => ({ ...entry, conflicted: false, indexStatus: 'M', worktreeStatus: '.' })) } };
-          return Promise.resolve(fixture.snapshot.status);
+          return Promise.resolve(fixture.snapshot);
         }
         if (command === 'refresh_repository_status') return Promise.resolve(fixture.snapshot.status);
         if (command === 'refresh_repository') return Promise.resolve(fixture.snapshot);
@@ -137,7 +146,12 @@ for (const action of ['continue', 'abort', 'quit'] as const) {
     });
     await expect(page.getByRole('button', { name: /Commit changes to/ })).toBeDisabled();
     if (action === 'continue') {
-      await page.evaluate(async () => { await (window as any).ng.getComponent(document.querySelector('gc-root')).git.stageAll(); });
+      await expect(page.getByRole('button', { name: 'Stage all changes', exact: true })).toBeDisabled();
+      await page.getByTitle('Open Merge Tool for file.txt').click();
+      const editor = page.getByRole('dialog', { name: 'Merge conflict editor' });
+      await editor.getByRole('textbox', { name: 'Resolved output for file.txt' }).fill('resolved\n');
+      await editor.getByRole('button', { name: 'Save Output & Mark Resolved' }).click();
+      await expect(editor).toHaveCount(0);
       await expect(progress.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
     }
     await progress.getByRole('button', { name: action === 'quit' ? 'Finish manually' : action === 'abort' ? 'Abort' : 'Continue', exact: true }).click();
@@ -151,7 +165,11 @@ for (const action of ['continue', 'abort', 'quit'] as const) {
     expect(result.draft).toBe('Draft retained across conflict recovery');
     expect(result.fixture.calls.find((call: any) => call.command === 'control_history_operation').args)
       .toEqual({ repoId: result.fixture.original.id, operation: 'cherry-pick', action });
-    expect(result.fixture.calls.some((call: any) => call.command === 'commit_changes')).toBe(false);
+    expect(result.fixture.calls.some((call: any) => ['commit_changes', 'stage_all'].includes(call.command))).toBe(false);
+    expect(result.fixture.calls.filter((call: any) => call.command === 'resolve_conflict')).toEqual(action === 'continue' ? [{
+      command: 'resolve_conflict', args: { repoId: result.fixture.original.id, path: 'file.txt',
+        resolution: 'output', output: 'resolved\n', expectedState: 'no-commit-reviewed-state' },
+    }] : []);
     if (action === 'quit') {
       expect(result.status.conflicted).toBe(1);
       expect(result.status.entries[0].conflicted).toBe(true);
