@@ -5,6 +5,24 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Installed workspace editing and live recaps — 2026-11-21
+
+The Jammy-built candidate at `c6a1edf` completed **189 installed checks** on
+Ubuntu 24.04 with stock Git 2.43: setup and keyboard (49), worktrees (23),
+application updates (21), GitLab (47), recovery (23), and incoming links (26).
+The setup suite exercised the installed workspace create/rename/cancel flow and
+verified that an external edit updates the line recap even when Git's status
+record is unchanged. All six reports matched the package, installed executable,
+and desktop-entry hashes. The exact package also passed an APT dry run.
+
+Package SHA-256:
+`4b9ab546d9f6d0b8c64109191766bb502f31ed3b28558e51c0e2ea99d5800a25`.
+The installer, receipt, and reports are retained under
+`target/local-review/updater/jammy-builder/workspace-editing.s9lPFhe9/`.
+Only the acceptance driver used the follow-up menu-readiness change at
+`980e5b9`; the installer bytes did not change. This checkpoint does not qualify
+paired rename staging, which was added after this installer was built.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
