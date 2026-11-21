@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import select
+import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -19,8 +21,46 @@ from urllib.error import HTTPError, URLError
 from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
-    verified_installed_file, menu_tab_focus,
+    verified_installed_file, menu_tab_focus, probe_git_toolchain,
 )
+
+
+class GitToolchainPreflightTests(unittest.TestCase):
+    def test_preflight_uses_a_healthy_owned_git_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            report = {"scenarios": []}
+            probe_git_toolchain(fixtures, report)
+            probe = report["gitToolchainPreflight"]
+            self.assertTrue(probe["passed"])
+            self.assertTrue(Path(probe["executable"]).is_file())
+            self.assertTrue(probe["version"].startswith("git version"))
+            self.assertTrue(Path(probe["execPath"]).is_absolute())
+            self.assertEqual(report["scenarios"], [])
+
+    def test_preflight_keeps_failed_helper_diagnostics_without_using_inherited_git_overrides(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bindir = Path(directory) / "git-wrapper"
+            bindir.mkdir()
+            wrapper = bindir / "git"
+            real_git = shutil.which("git")
+            wrapper.write_text("#!/bin/sh\n"
+                               "if [ \"$1\" = '-C' ] && [ \"$5\" = 'fsck' ]; then "
+                               "echo 'fixture Git helper is incompatible' >&2; exit 8; fi\n"
+                               f"exec {shlex.quote(real_git)} \"$@\"\n")
+            wrapper.chmod(0o700)
+            with patch.dict(os.environ, {"PATH": str(bindir) + os.pathsep + os.environ["PATH"],
+                                         "GIT_EXEC_PATH": str(bindir / "wrong-helpers")}):
+                fixtures = Fixtures(directory)
+                report = {}
+                with self.assertRaisesRegex(RuntimeError, "Git and its helpers"):
+                    probe_git_toolchain(fixtures, report)
+            probe = report["gitToolchainPreflight"]
+            self.assertFalse(probe["passed"])
+            self.assertEqual(Path(probe["executable"]), wrapper)
+            self.assertNotIn("GIT_EXEC_PATH", fixtures.env)
+            self.assertNotIn("wrong-helpers", probe["execPath"])
+            self.assertIn("fixture Git helper is incompatible", probe["diagnostic"])
 
 
 class PackageIdentityTests(unittest.TestCase):

@@ -128,6 +128,27 @@ def run(*args, env=None, input=None):
     return result.stdout.decode().strip()
 
 
+def probe_git_toolchain(fixtures, report):
+    """Fail before WebDriver if the fixture's Git and its helpers cannot run fsck together."""
+    env = fixtures.env | {"LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_LAZY_FETCH": "1"}
+    probe = {
+        "passed": False,
+        "executable": shutil.which("git", path=env.get("PATH", os.defpath)),
+    }
+    report["gitToolchainPreflight"] = probe
+    try:
+        probe["version"] = run("git", "--version", env=env)
+        probe["execPath"] = run("git", "--exec-path", env=env)
+        repository = fixtures.repository("git-toolchain-preflight", commits=1)
+        run("git", "-C", str(repository), "-c", "core.commitGraph=false", "fsck", "--full",
+            "--no-progress", env=env)
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+        probe["diagnostic"] = str(error)
+        raise RuntimeError("The fixture Git toolchain failed before WebDriver. Check that Git and its helpers "
+                           "come from the same installation; see gitToolchainPreflight.") from error
+    probe["passed"] = True
+
+
 def port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -1051,6 +1072,7 @@ def main():
     report = {"suite": args.suite, "scenarios": [], "passed": False,
               "inheritedGitEnvironment": args.suite == "environment" or args.inherited_git_environment,
               "platform": platform.platform(), "git": run("git", "--version"), "artifactsDirectory": str(output)}
+    print(f"Native acceptance: starting {args.suite}. Evidence: {output}", file=sys.stderr, flush=True)
     children = []
     driver = None
     temporary_directory = None
@@ -1096,6 +1118,8 @@ def main():
             }
         report["executable"] = str(executable)
         report["installedExecutable"] = args.installed
+        if args.suite in ("full", "environment"):
+            probe_git_toolchain(fixtures, report)
         if args.suite == "gitlab":
             dependencies = run("dpkg-deb", "-f", str(package), "Depends")
             names = {alternative.strip().split()[0] for clause in dependencies.split(",")
@@ -1178,7 +1202,9 @@ def main():
                 editor_draft_recovery(driver, fixtures, repository, report)
             if args.suite in ("full", "environment"):
                 from native_scenarios import full_toolkit
+                print("Native acceptance: smoke passed; exercising the full toolkit.", file=sys.stderr, flush=True)
                 full_toolkit(driver, fixtures, repository, repo_id, report)
+                print("Native acceptance: toolkit passed; exercising review and setup workflows.", file=sys.stderr, flush=True)
             if args.suite == "incoming-links":
                 from native_incoming_link_scenarios import incoming_repository_links
                 incoming_repository_links(driver, fixtures, repository, report)

@@ -17,6 +17,13 @@ does not qualify the finished menu. The report records header/scroll-area layout
 and checks that the menu remains inside the native viewport. Renderer checks
 separately hold/fail its module request and exercise compact-height scrolling.
 
+The full and inherited-environment suites check the fixture Git toolchain
+before launching WebDriver. The report records the executable, Git's helper
+directory and the outcome of `git fsck` on a fresh fixture. If using a custom
+Git in `PATH`, provision its matching helpers where that executable looks for
+them; the fixture intentionally discards inherited `GIT_*` overrides. This
+preflight does not replace the application's initial and final integrity checks.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do
