@@ -100,6 +100,15 @@ provisioned passed. Exact-package reports are under
 candidate directory above. These are disposable local runtime checks, not
 the hosted release matrix or publication approval.
 
+The LFS count candidate at `0d84104` passed the 21 installed LFS/smoke
+scenarios on Ubuntu 24.04 with stock Git 2.43. The literal-newline fixture
+reported two tracked files and one unmaterialized file without changing the
+checkout. The older installer reported three and two on the same fixture.
+The passing installer SHA-256 is
+`e6baff195cbda587a83516b5be900e8f6b2bf28cfcbf30990a8ef20371d00824`
+in `target/local-review/updater/jammy-builder/lfs-counts.huiFc5to/`.
+It does not include the subsequent LFS inspection timeout.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
