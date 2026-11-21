@@ -3170,6 +3170,14 @@ checkout errors when Git receives the option before the subcommand.
 The installed regression is required by the Pull scope gate for future
 candidates.
 
+The installed branch-delete baseline accepted a stale tip even for a safe
+delete after the selected branch advanced to a merged commit. Local delete
+reviews now display the selected tip, pass it through the native contract,
+and refuse either safe or forced deletion if the ref no longer matches.
+Git retains its existing merged-branch and linked-worktree safeguards.
+The new installed check is required by the checkout scope gate for future
+candidates; this is a preflight, not a lock against independent Git clients.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

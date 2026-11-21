@@ -2351,6 +2351,9 @@
           <span>{{ action.kind === 'delete' ? 'Delete branch' : 'Rebase ' + action.integration.review.target + ' onto' }}</span>
           <h2 id="branch-confirmation-title">{{ action.branch }}</h2>
           <p class="form-help repository-editor-source">Checkout: <code>{{ action.repositoryPath }}</code></p>
+          @if (action.kind === 'delete') {
+            <p class="form-help">Reviewed tip: <code [title]="action.expectedOid">{{ shortOid(action.expectedOid) }}</code></p>
+          }
           @if (action.kind === 'rebase') {
             <p>This rewrites commits by rebasing {{ action.integration.review.target }} onto {{ action.branch }}.</p>
             <p>Your commits are replayed on top of {{ action.branch }} and get new IDs. If they were already pushed, collaborators will need to update. If a conflict stops the rebase, resolve it and continue, or abort to go back.</p>

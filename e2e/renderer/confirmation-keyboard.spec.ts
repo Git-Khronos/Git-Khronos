@@ -32,7 +32,7 @@ async function openReview(page: Page, review: Review, gap = false) {
       'lfs-prune': ['lfsPruneReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null }],
       file: ['pendingFileAction', { kind: 'ignore', path: 'owned.txt', untracked: true, patternKind: 'extension', repositoryId: repository.id }],
       branch: ['pendingBranchAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
-        kind: 'delete', branch: 'owned-review' }],
+        kind: 'delete', branch: 'owned-review', expectedOid: oid }],
       'stored-reference': ['pendingStoredReferenceDelete', { kind: 'original', repoId: repository.id, reference: 'refs/original/owned-review', oid }],
       bisect: ['pendingBisectStart', { goodOid: repository.commits[1].oid, goodLabel: 'Known good', badOid: oid, badLabel: 'Known bad' }],
       history: ['pendingHistoryAction', { kind: 'cherry-pick', oid, oids: [oid], label: 'Owned commit' }],

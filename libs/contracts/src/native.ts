@@ -732,7 +732,7 @@ export function update_all_submodules(args: { repoId: string; operationId: strin
 export function checkout_commit(args: { repoId: string; oid: string; expectedHeadOid?: string | null; expectedBranch?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_commit", args); }
 export function rename_branch(args: { repoId: string; oldName: string; newName: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_branch", args); }
 export function set_branch_upstream(args: { repoId: string; branch: string; upstream?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_branch_upstream", args); }
-export function delete_branch(args: { repoId: string; name: string; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
+export function delete_branch(args: { repoId: string; name: string; force: boolean; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
 export function delete_checkpoint_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_checkpoint_reference", args); }
 export function delete_original_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_original_reference", args); }
 export function integrate_branch(args: { repoId: string; name: string; strategy: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }

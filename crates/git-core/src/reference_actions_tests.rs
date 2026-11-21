@@ -2663,10 +2663,8 @@ fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktre
     assert_eq!(blocked.kind, "branchInAnotherWorktree");
     assert!(!blocked.message.is_empty());
     for force in [false, true] {
-        assert_eq!(
-            delete_branch(path, "occupied", force).unwrap_err().kind,
-            "gitFailure"
-        );
+        let error = delete_branch_with_review(path, "occupied", force, &head).unwrap_err();
+        assert_eq!(error.kind, "gitFailure");
     }
     assert_eq!(repository.oid(), head);
     assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
@@ -11564,6 +11562,41 @@ fn lfs_prune_refuses_stale_reviews_shared_storage_incomplete_history_and_cancell
             .is_empty()
     );
     let _ = fs::remove_dir_all(shared);
+}
+
+#[test]
+fn reviewed_branch_deletion_refuses_a_moved_tip_even_with_force() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    let original = repository.oid();
+    checkout_branch(path, "main").unwrap();
+    run_mutation(path, &["branch", "topic"], "create reviewed branch").unwrap();
+    run_mutation(path, &["switch", "topic"], "switch owned fixture").unwrap();
+    fs::write(path.join("file"), b"new topic work\n").unwrap();
+    stage_all(path).unwrap();
+    commit(path, "Advance selected branch externally").unwrap();
+    let moved = repository.oid();
+    checkout_branch(path, "main").unwrap();
+    let config = fs::read(path.join(".git/config")).unwrap();
+    let before = run_git(path, &["show-ref"]).unwrap().stdout;
+
+    for force in [false, true] {
+        let error = delete_branch_with_review(path, "topic", force, &original).unwrap_err();
+        assert_eq!(error.kind, "branchDeleteReviewChanged");
+    }
+    assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, before);
+    assert_eq!(repository.oid(), original);
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+    assert!(operation_recoveries(path).unwrap().is_empty());
+
+    let unmerged = delete_branch_with_review(path, "topic", false, &moved).unwrap_err();
+    assert_eq!(unmerged.kind, "branchNotMerged");
+    assert!(operation_recoveries(path).unwrap().is_empty());
+    delete_branch_with_review(path, "topic", true, &moved).unwrap();
+    assert!(reference_tip(path, "refs/heads/topic").is_none());
+    let records = operation_recoveries(path).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].head_oid, moved);
 }
 
 #[test]

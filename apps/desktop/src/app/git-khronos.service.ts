@@ -1924,8 +1924,8 @@ export class GitKhronosService implements OnDestroy {
   }
 
   /** Returns 'notMerged' when Git refuses a safe delete, leaving the decision to force it to the caller. */
-  async deleteBranch(name: string, force = false): Promise<'deleted' | 'notMerged' | 'failed'> {
-    await this.mutate('delete_branch', `Deleting ${name}…`, `Deleted ${name}`, { name, force });
+  async deleteBranch(name: string, force: boolean, expectedOid: string): Promise<'deleted' | 'notMerged' | 'failed'> {
+    await this.mutate('delete_branch', `Deleting ${name}…`, `Deleted ${name}`, { name, force, expectedOid });
     if (!this.error()) return 'deleted';
     if (!force && this.lastFailureKind === 'branchNotMerged') {
       this.error.set(null);

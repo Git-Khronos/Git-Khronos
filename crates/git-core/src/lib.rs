@@ -3417,7 +3417,7 @@ pub fn remove_worktree(
     arguments.push(target);
     run_mutation(path, &arguments, "remove that worktree")?;
     if let Some(branch) = branch_to_delete {
-        let (tip, record) = protect_branch_tip(path, &branch)?;
+        let (tip, record) = protect_branch_tip(path, &branch, None)?;
         let reference = format!("refs/heads/{branch}");
         operation_recovery::with_commit_recovery(
             path,
@@ -3509,9 +3509,27 @@ fn reference_tip(path: &Path, reference: &str) -> Option<String> {
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-fn protect_branch_tip(path: &Path, name: &str) -> Result<(String, OperationRecovery), AppError> {
+fn branch_delete_review_changed() -> AppError {
+    AppError::new(
+        "branchDeleteReviewChanged",
+        "The selected branch moved or no longer exists. No branch was deleted.",
+        Some("Refresh the repository and open the branch menu again."),
+    )
+}
+
+fn protect_branch_tip(
+    path: &Path,
+    name: &str,
+    expected_oid: Option<&str>,
+) -> Result<(String, OperationRecovery), AppError> {
     let reference = format!("refs/heads/{name}");
-    let tip = reference_tip(path, &reference).ok_or_else(|| {
+    let tip = reference_tip(path, &reference);
+    if let Some(expected) = expected_oid
+        && !tip.as_deref().is_some_and(|oid| oid.eq_ignore_ascii_case(expected))
+    {
+        return Err(branch_delete_review_changed());
+    }
+    let tip = tip.ok_or_else(|| {
         AppError::new(
             "branchNotFound",
             format!("{name} no longer exists."),
@@ -3524,13 +3542,39 @@ fn protect_branch_tip(path: &Path, name: &str) -> Result<(String, OperationRecov
 }
 
 pub fn delete_branch(path: &Path, name: &str, force: bool) -> Result<(), AppError> {
+    delete_branch_inner(path, name, force, None)
+}
+
+pub fn delete_branch_with_review(
+    path: &Path,
+    name: &str,
+    force: bool,
+    expected_oid: &str,
+) -> Result<(), AppError> {
+    validate_commit_oid(expected_oid)?;
+    delete_branch_inner(path, name, force, Some(expected_oid))
+}
+
+fn delete_branch_inner(
+    path: &Path,
+    name: &str,
+    force: bool,
+    expected_oid: Option<&str>,
+) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    let (tip, record) = protect_branch_tip(path, name)?;
     let reference = format!("refs/heads/{name}");
+    let (tip, record) = protect_branch_tip(path, name, expected_oid)?;
     operation_recovery::with_commit_recovery(
         path,
         record,
         || {
+            // Preserve Git's checked-out worktree and merged-branch checks.
+            // Review again after capturing recovery, immediately before Git.
+            if expected_oid.is_some()
+                && reference_tip(path, &reference).as_deref() != Some(tip.as_str())
+            {
+                return Err(branch_delete_review_changed());
+            }
             let output = run_git(path, &["branch", if force { "-D" } else { "-d" }, name])?;
             if !force && !output.status.success() && is_unmerged_branch_refusal(&output.stderr) {
                 // Report the safety refusal distinctly so the interface can offer an explicit force delete.

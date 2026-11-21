@@ -23,7 +23,7 @@ use git_khronos_git_core::{
     create_branch_reference as git_create_branch_reference, create_tag as git_create_tag,
     create_worktree as git_create_worktree,
     create_worktree_for_branch as git_create_worktree_for_branch,
-    delete_branch as git_delete_branch,
+    delete_branch_with_review as git_delete_branch,
     delete_checkpoint_reference as git_delete_checkpoint_reference,
     delete_original_reference as git_delete_original_reference, detect_git,
     disable_sparse_checkout as git_disable_sparse_checkout, drop_stash_checked as git_drop_stash,
@@ -1671,10 +1671,11 @@ fn delete_branch(
     repo_id: String,
     name: String,
     force: bool,
+    expected_oid: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_delete_branch(path, &name, force)
+        git_delete_branch(path, &name, force, &expected_oid)
     })
 }
 

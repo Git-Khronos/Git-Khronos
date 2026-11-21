@@ -357,6 +357,7 @@ test('installed detached checkout requires cancel, stale-branch refusal, and a s
     'native-stale-local-checkout-does-not-recreate-remote-tracking-branch',
     'native-branch-and-detached-checkout-preserve-an-ignored-local-file',
     'native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file',
+    'native-local-branch-delete-refuses-a-moved-tip',
     'native-context-rebase-preserves-unreviewed-sibling-branches',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',

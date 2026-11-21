@@ -299,6 +299,15 @@ Pull with Rebase replays only the selected receiving branch. It suppresses
 `rebase.updateRefs` for the operation without changing repository settings.
 A conflict and later Continue Rebase do not add sibling branches to the replay.
 
+### Local branch deletion
+
+The context menu and palette confirm one local branch tip, displayed in the
+dialog. Safe delete and its optional force follow-up send the same tip.
+The renderer rejects a moved or now-current branch, and native verifies
+the named ref before and after capturing the reviewed commit for recovery.
+Git still checks branch merge status and linked worktree occupancy. The
+preflight does not lock out independent Git writers before Git starts.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured

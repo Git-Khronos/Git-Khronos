@@ -6652,7 +6652,8 @@ test('offers an explicit force delete when Git protects an unmerged branch', asy
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     const snapshot = git.repository();
-    const state = { calls: [] as Array<{ command: string; args: Record<string, unknown> }> };
+    const state = { calls: [] as Array<{ command: string; args: Record<string, unknown> }>,
+      expectedOid: snapshot.branches.find((branch: { name: string }) => branch.name === 'feature/partial-staging').oid };
     (window as any).__unmergedDeleteTest = state;
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: Record<string, unknown> = {}) => {
@@ -6692,9 +6693,17 @@ test('offers an explicit force delete when Git protects an unmerged branch', asy
   await expect(confirmation).toHaveCount(0);
   await expect(page.getByText('Git needs attention')).toHaveCount(0);
   await expect(localBranch).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).__unmergedDeleteTest.calls
-    .filter((call: { command: string }) => call.command === 'delete_branch')
-    .map((call: { args: Record<string, unknown> }) => call.args['force']))).toEqual([false, true]);
+  const result = await page.evaluate(() => {
+    const state = (window as any).__unmergedDeleteTest;
+    return {
+      expectedOid: state.expectedOid,
+      requests: state.calls.filter((call: { command: string }) => call.command === 'delete_branch')
+        .map((call: { args: Record<string, unknown> }) => call.args),
+    };
+  });
+  expect(result.requests).toMatchObject([
+    { force: false, expectedOid: result.expectedOid }, { force: true, expectedOid: result.expectedOid },
+  ]);
 });
 
 test('navigates branch-drop actions as a fitted desktop menu', async ({ page }) => {

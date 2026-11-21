@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
       const repository = git.repository();
       if (review === 'branch') {
         const branch = repository.branches.find((item: any) => !item.current && !item.remote);
-        app.openBranchConfirmation({ kind: 'delete', branch: branch.name + (replacement ? '-replacement' : '') });
+        app.openBranchConfirmation({ kind: 'delete', branch: branch.name + (replacement ? '-replacement' : ''), expectedOid: branch.oid });
       } else if (review.startsWith('sparse')) {
         app.sparseCheckoutPaths.set(replacement ? 'replacement-only' : 'src\nvendor');
         app.sparseCheckoutIndex.set(!replacement);
@@ -64,6 +64,28 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const force of [false, true]) {
+  test(`branch delete refuses a moved tip with force=${force}`, async ({ page }) => {
+    const branch = page.getByRole('button', { name: 'Local branch feature/partial-staging', exact: true }).first();
+    await branch.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Delete branch…', exact: true }).click();
+    const modal = page.getByRole('alertdialog', { name: 'feature/partial-staging' });
+    await expect(modal).toBeVisible();
+    if (force) await modal.getByRole('checkbox', { name: /Force delete/ }).check();
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const selected = app.git.repository();
+      app.git.repositories.update((items: any[]) => items.map(item => item.id !== selected.id ? item : {
+        ...item, branches: item.branches.map((branch: any) =>
+          branch.name === 'feature/partial-staging' ? { ...branch, oid: 'd'.repeat(40) } : branch),
+      }));
+    });
+    await modal.getByRole('button', { name: 'Delete branch', exact: true }).click();
+    expect(await calls(page)).toEqual([]);
+    await expect(page.locator('.error-toast')).toContainText('Open the branch menu again');
+  });
+}
+
 for (const review of reviews) {
   for (const change of ['repository', 'path']) {
     test(`${review} rejects a pre-effect ${change} change`, async ({ page }) => {
@@ -85,6 +107,7 @@ for (const review of reviews) {
     expect(actual).toHaveLength(1);
     const source = await page.evaluate(() => (window as any).__scopeSource);
     expect(actual[0].args.repoId).toBe(source.id);
+    if (review === 'branch') expect(actual[0].args.expectedOid).toMatch(/^[0-9a-f]{40}$/);
     if (review === 'sparse-set') expect(actual[0].args).toMatchObject({ paths: ['src', 'vendor'], sparseIndex: true });
     if (review === 'worktree') expect(actual[0].args).toMatchObject({ path: '/owned/reviewed', deleteBranch: false, force: false });
   });

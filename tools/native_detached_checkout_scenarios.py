@@ -49,6 +49,15 @@ def guarded_checkout_targets(driver, fixtures, report):
         'sourceBranch': 'tracks-settings', 'sourceOid': target,
     })
     report['scenarios'].append('native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file')
+    # External movement to a merged tip does not authorize even a safe delete.
+    fixtures.git(repository, 'branch', 'delete-review', 'HEAD^')
+    previous_tip = fixtures.git(repository, 'rev-parse', 'refs/heads/delete-review')
+    fixtures.git(repository, 'branch', '-f', 'delete-review', 'HEAD')
+    before = checkout_footprint(fixtures, repository, files)
+    for force in (False, True):
+        refused('delete_branch', 'branchDeleteReviewChanged', name='delete-review',
+                force=force, expectedOid=previous_tip)
+    report['scenarios'].append('native-local-branch-delete-refuses-a-moved-tip')
 
 
 def context_rebase_preserves_sibling(driver, fixtures, report):

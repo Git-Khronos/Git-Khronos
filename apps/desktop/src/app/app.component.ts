@@ -445,6 +445,7 @@ interface PendingBisectStart {
 type BranchAction = { kind: 'rebase'; branch: string; integration: ContextBranchIntegration } | {
   kind: 'delete';
   branch: string;
+  expectedOid: string;
   /** Set after Git refused a safe delete; confirming then force-deletes the branch. */
   unmerged?: boolean;
 };
@@ -13776,9 +13777,9 @@ export class AppComponent implements OnInit, OnDestroy {
     const candidate = this.git.repository()?.branches.find(
       (item) => !item.remote && item.name === branch,
     );
-    if (!candidate || candidate.current) return;
+    if (!candidate?.oid || candidate.current) return;
     this.forceBranchDelete.set(false);
-    this.openBranchConfirmation({ kind: 'delete', branch }, returnFocus);
+    this.openBranchConfirmation({ kind: 'delete', branch, expectedOid: candidate.oid }, returnFocus);
   }
 
   protected contextBranchUpstream(name: string): string | null {
@@ -13857,14 +13858,25 @@ export class AppComponent implements OnInit, OnDestroy {
     this.openBranchConfirmation({ kind: 'rebase', branch: integration.review.source, integration }, returnFocus);
   }
 
-  protected requestContextBranchDelete(): void {
+  protected requestContextBranchDelete(expected: ContextMenuState): void {
     const menu = this.contextMenu();
     const repository = this.git.repository();
-    if (!menu || menu.kind !== 'branch' || !repository || menu.repositoryId !== repository.id || menu.label === repository.status.branch) return;
+    if (!menu || menu !== expected || menu.kind !== 'branch' || !repository || this.git.busy()
+      || menu.repositoryId !== repository.id || menu.repositoryPath !== repository.path
+      || menu.label === repository.status.branch) return;
     const returnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
     this.forceBranchDelete.set(false);
-    this.openBranchConfirmation({ kind: 'delete', branch: menu.label }, returnFocus);
+    if (!this.contextBranchDeleteMatches(menu.label, menu.oid)) return;
+    this.openBranchConfirmation({ kind: 'delete', branch: menu.label, expectedOid: menu.oid }, returnFocus);
+  }
+
+  private contextBranchDeleteMatches(branch: string, expectedOid: string): boolean {
+    const repository = this.git.repository();
+    if (repository && branch !== repository.status.branch
+      && repository.branches.some(candidate => !candidate.remote && candidate.name === branch && candidate.oid === expectedOid)) return true;
+    this.git.error.set('The selected branch moved, was checked out, or no longer exists. Open the branch menu again.');
+    return false;
   }
 
   protected requestStoredReferenceDelete(): void {
@@ -13949,11 +13961,15 @@ export class AppComponent implements OnInit, OnDestroy {
       if (this.pendingBranchAction() === action && this.ownsRepositoryScope(action)) this.dismissBranchConfirmation(false, action);
       return;
     }
+    if (!this.contextBranchDeleteMatches(action.branch, action.expectedOid)) {
+      this.dismissBranchConfirmation(true, action);
+      return;
+    }
     const wasPinned = this.pinnedBranch() === action.branch;
-    const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete());
+    const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete(), action.expectedOid);
     if (this.pendingBranchAction() !== action || !this.ownsRepositoryScope(action)) return;
     if (outcome === 'notMerged') {
-      this.openBranchConfirmation({ kind: 'delete', branch: action.branch, unmerged: true }, action.returnFocus);
+      this.openBranchConfirmation({ kind: 'delete', branch: action.branch, expectedOid: action.expectedOid, unmerged: true }, action.returnFocus);
       return;
     }
     this.dismissBranchConfirmation(false, action);

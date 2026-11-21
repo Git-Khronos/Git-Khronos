@@ -99,7 +99,7 @@
           <label for="context-rename-name">Rename branch</label>
           <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gcTextValue]="view.contextRenameName()" (gcTextValueChange)="view.contextRenameName.set($event)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
         </form>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === view.git.repository()?.status?.branch" (click)="view.requestContextBranchDelete()"><span><gc-icon name="trash" [size]="13" /></span>Delete branch…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === view.git.repository()?.status?.branch || view.git.busy()" (click)="view.requestContextBranchDelete(menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete branch…</button>
       }
       <div class="context-divider"></div>
       @if (menu.kind === 'commit') {
