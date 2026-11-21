@@ -1154,7 +1154,7 @@ def main():
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors", "comparison-responsiveness", "stash-responsiveness",
+        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "comparison-responsiveness", "stash-responsiveness",
         "commit-responsiveness", "ignore-responsiveness",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
@@ -1333,6 +1333,11 @@ def main():
                 from native_pull_scope_scenarios import pull_submodule_scope, workspace_pull_upstreams
                 scenario = pull_submodule_scope if args.suite == "pull-submodule-scope" else workspace_pull_upstreams
                 repository, repo_id = scenario(driver, fixtures, report)
+            elif args.suite == "branch-workflow-ui":
+                from native_scenarios import branch_workflow_desktop
+                repository = fixtures.repository()
+                repo_id = open_ui(driver, repository)
+                branch_workflow_desktop(driver, fixtures, repository, report)
             elif args.suite == "feature-rebase":
                 from native_feature_rebase_scenarios import feature_rebase_on_configured_development
                 repository, repo_id = feature_rebase_on_configured_development(driver, fixtures, report)

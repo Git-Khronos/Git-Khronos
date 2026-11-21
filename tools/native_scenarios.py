@@ -2324,13 +2324,13 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
     initial_bytes = (repository / "fixture.txt").read_bytes()
     selector = 'gc-branch-workflow-dialog'
 
-    def ready():
+    def ready(timeout=30):
         driver.wait("""return (() => {
           const dialog = document.querySelector('gc-branch-workflow-dialog');
           return dialog && !dialog.querySelector('.progress') &&
             [...dialog.querySelectorAll('button')].some(button =>
               button.textContent.trim() === 'Reload workflow state' && !button.disabled);
-        })()""")
+        })()""", timeout)
 
     def enter():
         driver.click('.workspace-toggle')
@@ -2352,10 +2352,19 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
 
     def apply():
         driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .review')")
+        started = time.monotonic()
         button('Apply reviewed workflow')
-        ready()
+        # A finish can merge multiple protected targets, write the reviewed
+        # tag, reconcile native state, and then refresh the renderer. Allow a
+        # bounded mutation window without replaying the one-use review click.
+        try:
+            ready(60)
+        except TimeoutError:
+            report['branchWorkflowApplyTimeoutMs'] = round((time.monotonic() - started) * 1000)
+            raise
         error = driver.script("return document.querySelector('gc-branch-workflow-dialog [role=alert]')?.textContent")
         assert not error, error
+        report.setdefault('branchWorkflowApplyMs', []).append(round((time.monotonic() - started) * 1000))
 
     def acknowledge():
         button('Review acknowledgement')

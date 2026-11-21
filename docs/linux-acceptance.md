@@ -629,6 +629,12 @@ Git recursion in a fixture and verifies that Pull records the new gitlink
 without fetching or checking out the nested revision. Both use independent
 Git reads in disposable repositories.
 
+Use `--suite branch-workflow-ui` to isolate packaged workflow setup,
+feature, release, and hotfix operations. The same scenarios run in
+`environment`. The harness gives each reviewed Apply a bounded 60-second
+window, records its elapsed time, and requires the real Git refs, parents,
+tags, and recovery artifacts before declaring success.
+
 The `file-media` suite runs the same native image and file-content checks
 as the full toolkit, including actual WebKit decoding. It centers each row
 before its click so a partially clipped row under a sticky heading is not
