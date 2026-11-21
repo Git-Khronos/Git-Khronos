@@ -11,6 +11,8 @@ import { checkPackage } from './check-linux-abi.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const TRUST_SCENARIO = 'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer';
+const EXECUTABLE = '/usr/bin/git-khronos';
+const DESKTOP_ENTRY = '/usr/share/applications/git-khronos.desktop';
 
 async function readBounded(path, max) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -54,10 +56,8 @@ export function qualifiedPackageDigest(receipt, report, publicKey) {
 
 export async function checkEvidence(receiptPath, reportPath, keyPath, releasePackage) {
   const receipt = JSON.parse(await readBounded(receiptPath, 65536));
-  const digest = qualifiedPackageDigest(
-    receipt,
-    JSON.parse(await readBounded(reportPath, 4 * 1024 * 1024)),
-    await readBounded(keyPath, 4096));
+  const report = JSON.parse(await readBounded(reportPath, 4 * 1024 * 1024));
+  const digest = qualifiedPackageDigest(receipt, report, await readBounded(keyPath, 4096));
   if (releasePackage !== undefined) {
     if (typeof receipt.checksum !== 'string' || !/^ubuntu-jammy:[A-Za-z0-9_:+/=.-]+$/.test(receipt.checksum)) {
       throw new Error('Publication requires a completed Ubuntu 22.04 build receipt');
@@ -76,8 +76,20 @@ export async function checkEvidence(receiptPath, reportPath, keyPath, releasePac
       bytes.on('data', chunk => hash.update(chunk));
       await pipeline(bytes, createWriteStream(snapshot, { flags: 'wx', mode: 0o600 }));
       if (hash.digest('hex') !== digest) throw new Error('The release package differs from the qualified artifact');
-      if (checkPackage(snapshot).packageSha256 !== digest) {
+      if (report.installedExecutable !== true || report.executable !== EXECUTABLE ||
+          report.installedDesktopEntry?.path !== DESKTOP_ENTRY || report.inheritedGitEnvironment !== true ||
+          ![report.initialRepositoryIntegrity, report.repositoryIntegrity].every(check =>
+            check?.passed === true && check.exitCode === 0)) {
+        throw new Error('Expected an installed environment report with the packaged launcher and passing initial and final Git integrity checks');
+      }
+      const checked = checkPackage(snapshot);
+      if (checked.packageSha256 !== digest) {
         throw new Error('The ABI-checked release package differs from the qualified artifact');
+      }
+      if (report.executableSha256 !== checked.installedPayload.executableSha256 ||
+          report.installedDesktopEntry.sha256 !== checked.installedPayload.desktopEntrySha256 ||
+          report.applicationUpdates.nativeStatus.runningVersion !== checked.version) {
+        throw new Error('Installed runtime evidence differs from the qualified artifact');
       }
     } finally {
       await source.close();

@@ -178,8 +178,11 @@ alongside the exact package. For a publisher-key-enabled Debian build, the
 report must include the configured-trust scenario
 (`GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1` selects its expected outcome).
 Before preparing assets for publication, run the strict preflight. It also
-requires the Jammy build profile and repeats the release ABI check on a private
-snapshot of the exact package:
+requires the Jammy build profile, an **installed** environment report with
+passing initial and final Git integrity checks, and matching hashes for the
+installed executable and desktop entry. It repeats the release ABI check on a
+private snapshot of the exact package and matches its version to the running
+version in the report:
 
 ```sh
 QUALIFIED_PACKAGE_SHA256=$(node tools/check-debian-update-evidence.mjs \
@@ -188,7 +191,8 @@ QUALIFIED_PACKAGE_SHA256=$(node tools/check-debian-update-evidence.mjs \
 
 These are operator-owned local records, not signed provenance attestations.
 For a local test build only, omit `--release-package` to check the matching
-build and runtime evidence without asserting the Ubuntu ABI. The release stager
+build and runtime evidence without asserting installation or the Ubuntu ABI.
+An extracted-package report cannot qualify a release. The release stager
 separately verifies the actual package bytes.
 
 With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { closeSync, constants, fstatSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -39,6 +39,19 @@ export function verifyGlibcBaseline(depends, versionInfo) {
   return { baseline, declared, required: [...new Set(versions)].sort(compare) };
 }
 
+function payloadDigest(path, limit) {
+  const file = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = fstatSync(file);
+    if (!info.isFile() || info.size < 1 || info.size > limit) {
+      throw new Error('Expected a bounded, regular Debian payload file.');
+    }
+    return createHash('sha256').update(readFileSync(file)).digest('hex');
+  } finally {
+    closeSync(file);
+  }
+}
+
 export function checkPackage(packagePath) {
   const run = (command, args) => execFileSync(command, args, {
     encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, maxBuffer: 8 * 1024 * 1024,
@@ -49,10 +62,15 @@ export function checkPackage(packagePath) {
     throw new Error('The Ubuntu release gate requires the git-khronos amd64 Debian package.');
   }
   const depends = field('Depends');
+  const version = field('Version');
   const directory = mkdtempSync(join(tmpdir(), 'git-khronos-abi-'));
   try {
     run('dpkg-deb', ['--extract', packagePath, directory]);
     const executable = join(directory, 'usr/bin/git-khronos');
+    const installedPayload = {
+      executableSha256: payloadDigest(executable, 512 * 1024 * 1024),
+      desktopEntrySha256: payloadDigest(join(directory, 'usr/share/applications/git-khronos.desktop'), 64 * 1024),
+    };
     const header = run('readelf', ['--file-header', '--wide', executable]);
     if (!/Class:\s+ELF64\b/.test(header) || !/Machine:\s+Advanced Micro Devices X86-64\b/.test(header)) {
       throw new Error('The packaged executable is not an amd64 ELF64 binary.');
@@ -62,7 +80,7 @@ export function checkPackage(packagePath) {
     return {
       package: resolve(packagePath),
       packageSha256: createHash('sha256').update(readFileSync(packagePath)).digest('hex'),
-      depends, glibc,
+      version, depends, glibc, installedPayload,
       neededLibraries: [...dynamic.matchAll(/\(NEEDED\).*Shared library: \[([^\]]+)\]/g)].map(match => match[1]),
     };
   } finally {

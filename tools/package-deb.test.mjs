@@ -650,16 +650,38 @@ test('Ubuntu ABI gate inspects the actual packaged ELF without running it', asyn
   };
   const report = {
     suite: 'environment', passed: true, packageSha256: result.packageSha256,
+    installedExecutable: true, executable: '/usr/bin/git-khronos',
+    executableSha256: createHash('sha256').update(await readFile(executable)).digest('hex'),
+    installedDesktopEntry: {
+      path: '/usr/share/applications/git-khronos.desktop',
+      sha256: createHash('sha256').update(await readFile(join(f.payload, 'usr/share/applications/git-khronos.desktop'))).digest('hex'),
+    },
+    inheritedGitEnvironment: true,
+    initialRepositoryIntegrity: { passed: true, exitCode: 0 },
+    repositoryIntegrity: { passed: true, exitCode: 0 },
     scenarios: ['native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer'],
-    applicationUpdates: { nativeStatus: { packageFormat: 'deb', configured: true, automatic: false, offerId: null, canInstall: false } },
+    applicationUpdates: { nativeStatus: { runningVersion: '0.1.0', packageFormat: 'deb',
+      configured: true, automatic: false, offerId: null, canInstall: false } },
   };
   const evidence = ['receipt.json', 'report.json', 'public.key'].map(name => join(f.root, name));
-  const saveEvidence = async () => {
-    await Promise.all([JSON.stringify(receipt), JSON.stringify(report), key]
+  const saveEvidence = async (nativeReport = report) => {
+    await Promise.all([JSON.stringify(receipt), JSON.stringify(nativeReport), key]
       .map((value, index) => writeFile(evidence[index], value)));
   };
   await saveEvidence();
   assert.equal(await checkEvidence(...evidence, f.artifact), result.packageSha256);
+  for (const change of [{ installedExecutable: false }, { executable: '/tmp/extracted/usr/bin/git-khronos' },
+    { installedDesktopEntry: null }, { inheritedGitEnvironment: false }, { initialRepositoryIntegrity: null },
+    { repositoryIntegrity: { passed: false, exitCode: 1 } }]) {
+    await saveEvidence({ ...report, ...change });
+    await assert.rejects(checkEvidence(...evidence, f.artifact), /Expected an installed environment report/);
+  }
+  for (const change of [{ executableSha256: '8'.repeat(64) },
+    { installedDesktopEntry: { ...report.installedDesktopEntry, sha256: '9'.repeat(64) } },
+    { applicationUpdates: { nativeStatus: { ...report.applicationUpdates.nativeStatus, runningVersion: '0.0.1' } } }]) {
+    await saveEvidence({ ...report, ...change });
+    await assert.rejects(checkEvidence(...evidence, f.artifact), /Installed runtime evidence differs from the qualified artifact/);
+  }
   const control = await readFile(join(f.payload, 'DEBIAN/control'), 'utf8');
   await f.put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6 (>= 2.39)'));
   f.build();
