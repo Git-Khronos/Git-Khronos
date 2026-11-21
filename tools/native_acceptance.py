@@ -1140,7 +1140,7 @@ def main():
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
-        "watcher-checkout", "watcher-reftable",
+        "watcher-checkout", "watcher-reftable", "commit-rewrite",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1327,6 +1327,9 @@ def main():
             elif args.suite == "diff-line-selection":
                 from native_diff_line_selection_scenarios import diff_line_selection
                 repository, repo_id = diff_line_selection(driver, fixtures, report)
+            elif args.suite == "commit-rewrite":
+                from native_commit_rewrite_scenarios import reviewed_commit_rewrite
+                repository, repo_id = reviewed_commit_rewrite(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

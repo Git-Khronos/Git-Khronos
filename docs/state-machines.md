@@ -437,6 +437,9 @@ undo or discard an already-dispatched mutation.
 
 Renderer coverage: `commit-edit.spec.ts` exercises stale tips, same-tip
 branch changes, away-and-back visits, and selection during an in-flight save.
+The installed `commit-rewrite` suite verifies both native stale-branch
+refusals and an editor rewrite against independent ref, tree, index and
+worktree checks.
 
 ### Shared deferred fetch and worktree review ownership
 
