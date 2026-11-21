@@ -3093,6 +3093,17 @@ checks passed. Packaged UI and background IPC coverage is in the
 `setup-keyboard` suite; new installer evidence remains separate.
 Source receipts are under `target/local-review/non-pruning-fetch.Cp9KGYCx/`.
 
+The installed `ef28d9d` Ubuntu 22.04 `setup-keyboard` run passed all
+53 cases. Ordinary Fetch retained the local tag and stale tracking branch;
+background Fetch advanced tracking while keeping the manual `FETCH_HEAD`
+byte-for-byte. An initial run passed those cases but failed later because
+the isolated runner expected no publisher key for a fixture-key package.
+The corrected run used the same SHA-256
+`a5084158b475bbafc9fc73664c191ec75a8bd143c77afeaf333ff1c0d966b4f9`
+and verified automatic updates were off with publisher trust configured.
+Both reports remain under `non-pruning-fetch-release.V8T90CRs/`; this
+focused run does not substitute for the full Linux matrix.
+
 ### Detached-checkout native hit target
 
 The first Ubuntu 24.04 run of the fast-Git package opened the context
