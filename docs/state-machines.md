@@ -683,6 +683,9 @@ starting: on some Git versions a divergent merge can overwrite ignored files
 despite the merge flag. The check includes rename destinations and paths that
 would replace a file with a directory or the reverse. It never updates the
 index or worktree but may write immutable objects to the local object store.
+If the detailed ignored-file list exceeds its limit, summarized directories
+can establish that an incoming change is outside the ignored paths. A
+possible overlap in a summarized checkout is still refused.
 If custom merge behavior, a promisor remote, or incomplete output prevents
 verification, the app refuses the operation when ignored files are present.
 

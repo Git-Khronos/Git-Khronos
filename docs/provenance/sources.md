@@ -1540,6 +1540,9 @@ The local-merge ignored-file safeguard also used the
 [diff-tree](https://git-scm.com/docs/git-diff-tree) manuals for option semantics.
 Independent real-Git fixtures established the difference between the
 fast-forward and divergent checkout paths and exercised directory renames.
+The `ls-files --directory` fallback uses Git's documented trailing-slash
+summary; a mixed-directory fixture checks that individual ignored paths
+are still covered when an unrelated generated directory is summarized.
 No upstream code was copied.
 
 The preceding feature comparison consulted public GitKraken documentation for

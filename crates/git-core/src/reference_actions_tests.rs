@@ -2171,6 +2171,47 @@ fn reviewed_merge_guards_the_destination_of_a_directory_rename() {
 }
 
 #[test]
+fn large_ignored_tree_only_blocks_merges_with_a_possible_collision() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    run_mutation(path, &["branch", "safe"], "save a non-overlapping source").unwrap();
+    run_mutation(path, &["switch", "-c", "incoming"], "create fixture source").unwrap();
+    fs::create_dir(path.join("mixed")).unwrap();
+    fs::write(path.join("mixed/settings.local"), b"incoming settings\n").unwrap();
+    stage_path(path, "mixed/settings.local").unwrap();
+    commit(path, "Add incoming settings").unwrap();
+    run_mutation(path, &["switch", "safe"], "switch safe source").unwrap();
+    fs::write(path.join("safe.txt"), b"unrelated new data\n").unwrap();
+    stage_path(path, "safe.txt").unwrap();
+    commit(path, "Add unrelated path").unwrap();
+    run_mutation(path, &["switch", "main"], "switch receiver").unwrap();
+    let receiver = repository.oid();
+
+    fs::write(path.join(".git/info/exclude"), b"/build/\n*.local\n").unwrap();
+    fs::create_dir(path.join("build")).unwrap();
+    for i in 0..16 {
+        fs::write(path.join(format!("build/generated-{i}.cache")), b"cache\n").unwrap();
+    }
+    // The ignored settings share an otherwise unignored directory. Git must
+    // still report the ignored entry when it summarizes the build directory.
+    fs::create_dir(path.join("mixed")).unwrap();
+    fs::write(path.join("mixed/untracked.txt"), b"ordinary untracked data\n").unwrap();
+    fs::write(path.join("mixed/settings.local"), b"existing settings\n").unwrap();
+    let limit = 64;
+    let check = merge_checkout_guard::ensure_ignored_files_preserved_with_limit;
+    assert_eq!(
+        check(path, "refs/heads/incoming", limit).unwrap_err().kind,
+        "mergeIgnoredPathsUnverified"
+    );
+    check(path, "refs/heads/safe", limit).unwrap();
+    assert_eq!(repository.oid(), receiver);
+    assert_eq!(
+        fs::read(path.join("mixed/settings.local")).unwrap(),
+        b"existing settings\n"
+    );
+}
+
+#[test]
 fn pull_updates_the_branch_without_pruning_local_tags_or_stale_tracking_refs() {
     let mut pruned = Vec::new();
     for explicit in [false, true] {

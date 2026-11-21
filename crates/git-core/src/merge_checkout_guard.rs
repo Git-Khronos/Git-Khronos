@@ -52,7 +52,15 @@ fn obstructions<'a>(ignored: &'a BTreeSet<Vec<u8>>, target: &[u8]) -> Option<&'a
 }
 
 pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Result<(), AppError> {
-    let ignored = bounded(
+    ensure_ignored_files_preserved_with_limit(path, source, PATH_LIMIT)
+}
+
+pub(super) fn ensure_ignored_files_preserved_with_limit(
+    path: &Path,
+    source: &str,
+    ignored_limit: usize,
+) -> Result<(), AppError> {
+    let (ignored, large_checkout) = run_git_with_stdout_limit(
         path,
         &[
             "ls-files",
@@ -61,10 +69,32 @@ pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Resul
             "--exclude-standard",
             "-z",
         ],
+        ignored_limit,
     )?;
     if !ignored.status.success() {
         return Err(unavailable());
     }
+    // If a dependency or build directory exceeds the detailed listing limit,
+    // a broader listing can still prove that no incoming path is nearby.
+    let ignored = if large_checkout {
+        let summary = bounded(
+            path,
+            &[
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "-z",
+            ],
+        )?;
+        if !summary.status.success() || summary.stdout.is_empty() {
+            return Err(unavailable());
+        }
+        summary
+    } else {
+        ignored
+    };
     if ignored.stdout.is_empty() {
         return Ok(());
     }
@@ -146,6 +176,11 @@ pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Resul
         }
         for target in paths(&result.stdout)? {
             if let Some(blocked) = obstructions(&ignored, &normalize(target)) {
+                if large_checkout {
+                    // A summarized directory can contain unrelated data;
+                    // do not claim that an exact collision was proved.
+                    return Err(unavailable());
+                }
                 return Err(AppError::new(
                     "mergeLocalPathObstruction",
                     format!(
