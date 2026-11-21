@@ -58,6 +58,17 @@ initial contributor; the next size-reduction work should defer more of its
 non-startup UI rather than tune the budget. The sizing evidence is local at
 `target/local-review/live-recap-bundle/`.
 
+To reproduce a before/after report without touching the package build output:
+
+```sh
+pnpm nx run desktop:build --stats-json --output-path=target/local-review/bundle-size
+node tools/report-initial-renderer.mjs target/local-review/bundle-size
+```
+
+The report follows the generated index and its static imports, cross-checks
+the emitted file sizes and prints the configured budget headroom. Lazy-only
+chunks are excluded, and the report doesn't change the Angular build gate.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native
