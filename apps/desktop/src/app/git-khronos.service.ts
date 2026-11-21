@@ -242,6 +242,11 @@ export type OpenRepositoryResult =
   | { status: 'success'; repositoryId: string; path: string }
   | { status: 'error' | 'cancelled'; error: string | null };
 
+export interface SavedRepositoryReplacement {
+  path: string;
+  current: () => boolean;
+}
+
 interface ClosedRepository {
   path: string;
   preview: RepositorySnapshot | null;
@@ -673,30 +678,49 @@ export class GitKhronosService implements OnDestroy {
     }
   }
 
-  async openRepository(path: string): Promise<OpenRepositoryResult> {
+  async openRepository(path: string, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
     const workspaceId = this.activeWorkspaceId();
-    const opened: { snapshot?: RepositorySnapshot; failure?: string } = {};
+    const visit = this.workspaceVisit;
+    const savedPath = replacement?.path ?? path;
+    const canReplace = () => !replacement || (replacement.current() && this.workspaceVisit === visit
+      && this.activeWorkspace()?.repositoryPaths.includes(savedPath)
+      && !this.repositories().some(repository => repository.path === savedPath));
+    const opened: { snapshot?: RepositorySnapshot; failure?: string; retired?: boolean } = {};
     const status = await this.run('Opening repository…', async report => {
+      const retired = () => {
+        if (canReplace()) return false;
+        opened.retired = true;
+        report('Saved path replacement was not applied');
+        return true;
+      };
+      if (retired()) return;
       let snapshot: RepositorySnapshot;
       try {
         snapshot = await ipc.open_repository({ path });
+        if (retired()) return;
         if (this.activeWorkspaceId() !== workspaceId) throw new Error('The workspace changed before the repository was opened.');
+        if (replacement && (this.repositories().some(repository => repository.id === snapshot.id || repository.path === snapshot.path)
+          || (snapshot.path !== savedPath && this.activeWorkspace()?.repositoryPaths.includes(snapshot.path)))) {
+          throw new Error('That repository is already in this workspace. The saved path was not replaced.');
+        }
       } catch (error: unknown) {
+        if (replacement && retired()) return;
         opened.failure = this.formatError(error);
         throw error;
       }
       opened.snapshot = snapshot;
-      this.repositoryRestoration?.pending.delete(path);
-      this.repositoryRestoration?.failed.delete(path);
+      this.repositoryRestoration?.pending.delete(savedPath);
+      this.repositoryRestoration?.failed.delete(savedPath);
       this.storeSnapshot(snapshot, true);
-      this.orderRestoredRepositoryTabs(path, snapshot.path);
+      this.orderRestoredRepositoryTabs(savedPath, snapshot.path);
       this.setActiveRepository(snapshot.id);
       this.clearInspection();
       this.remember(snapshot.path);
-      this.persistOpenTabs({ canonical: { requested: path, resolved: snapshot.path } });
+      this.persistOpenTabs({ canonical: { requested: savedPath, resolved: snapshot.path } });
       this.forgetClosedRepository(snapshot.path);
       report(`Opened ${snapshot.name}`);
     });
+    if (opened.retired) return { status: 'cancelled', error: null };
     if (status !== 'success') return { status, error: opened.failure ?? this.error() };
     if (!opened.snapshot) return { status: 'error', error: 'The repository did not return a result.' };
     this.deferMetadataRefresh(opened.snapshot.id);
@@ -3985,7 +4009,7 @@ export class GitKhronosService implements OnDestroy {
   private reportRestoreFailures(paths: readonly string[]): void {
     const labels = paths.map((path) => this.pathLabel(path));
     this.error.set(
-      `Could not restore ${paths.length} saved ${paths.length === 1 ? 'repository' : 'repositories'}: ${labels.join(', ')}. Open Repository overview to retry or remove saved paths.`,
+      `Could not restore ${paths.length} saved ${paths.length === 1 ? 'repository' : 'repositories'}: ${labels.join(', ')}. Open Repository overview to retry, locate or remove saved paths.`,
     );
   }
 

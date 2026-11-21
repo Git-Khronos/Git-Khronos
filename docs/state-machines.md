@@ -58,6 +58,15 @@ partially cached workspace resumes its missing tabs, without changing a visible
 selection. An unreadable saved path remains saved during restoration and is
 reported rather than treated as an explicit close.
 
+Repository overview can locate an unopened saved checkout at its new path.
+The folder picker and native open reply belong to the originating overview
+and workspace visit. Only a successful current reply can replace the old
+membership in its original slot, using the canonical path returned by Git
+and revoking any pending restore of the old path. An invalid folder or a
+canonical path already in the same workspace leaves membership alone.
+Other layouts are unchanged. `workspace-center.spec.ts` covers these replies,
+late picker cancellation and draft handoff.
+
 One restore instance owns an active workspace visit. Both its timer and replies
 check instance identity, including when the user leaves and returns to the same
 workspace. Closing a tab revokes that pending path so an earlier read cannot

@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector,
 import { DatePipe } from '@angular/common';
 import { ipc, type RepositoryFiles, type RepositorySnapshot } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
-import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
+import { GitKhronosService, type OpenRepositoryResult, type SavedRepositoryReplacement } from './git-khronos.service';
 import { IDENTITY_PROFILES_KEY, parseIdentityProfiles, validIdentityProfile, type IdentityProfile } from './identity-profiles';
 import { runWorkspaceRemote } from './workspace-actions';
 import { runRepositoryFileAction } from './repository-file-actions';
@@ -22,7 +22,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
       <div [inert]="reviewPending()">
       <header><div><h2 id="workspace-center-title">Workspace center</h2><p>{{ git.activeWorkspace().name }}</p></div><button type="button" (click)="close()">Close</button></header>
       @if (!suspended() && git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
-      <nav aria-label="Workspace center sections"><button type="button" [attr.aria-pressed]="panel() === 'overview'" (click)="panel.set('overview')">Repository overview</button><button type="button" [attr.aria-pressed]="panel() === 'files'" (click)="panel.set('files')">Repository files</button><button type="button" [attr.aria-pressed]="panel() === 'identities'" (click)="panel.set('identities')">Identity profiles</button><button type="button" [attr.aria-pressed]="panel() === 'hosting'" (click)="panel.set('hosting')">Reviews and checks</button></nav>
+      <nav aria-label="Workspace center sections"><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'overview'" (click)="panel.set('overview')">Repository overview</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'files'" (click)="panel.set('files')">Repository files</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'identities'" (click)="panel.set('identities')">Identity profiles</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'hosting'" (click)="panel.set('hosting')">Reviews and checks</button></nav>
       @if (panel() === 'overview') {
         <p>Local repository state. Ahead and behind counts use tracking references already fetched.</p>
         <div class="tools"><label>Filter repositories<input #filter type="search" [value]="query()" (input)="query.set($any($event.target).value)" /></label>
@@ -60,18 +60,21 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
             </article>
           } @empty { <p>{{ git.repositories().length ? 'No repositories match these filters.' : 'Open a repository in this workspace to see its status.' }}</p> }
         </div>
-        @if (unopenedPaths().length || savedPathNotice()) {
+        @if (unopenedPaths().length || savedPathNotice() || savedPathError()) {
           <section class="saved-repositories" aria-label="Saved repositories not open">
             @if (savedPathNotice()) { <p role="status">{{ savedPathNotice() }}</p> }
+            @if (savedPathError()) { <p role="alert">{{ savedPathError() }}</p> }
             @if (unopenedPaths().length) {
               <h3>Saved repositories not open</h3>
-              <p>These paths are still in this workspace. Removing one does not change files on disk.</p>
+              <p>These paths are still in this workspace. Locate a moved repository to replace its saved path, or remove the entry without changing files on disk.</p>
               <ul>@for (path of unopenedPaths(); track path) {
                 <li><code>{{ path }}</code>
                   <div class="tools">
                     <button type="button" [attr.aria-label]="'Retry opening ' + path" [disabled]="overviewBusy() || git.browserPreview()" (click)="retrySavedPath(path)">Retry opening</button>
+                    <button type="button" [attr.aria-label]="'Locate and open ' + path" [disabled]="overviewBusy() || git.browserPreview()" (click)="locateSavedPath(path, $event)">Locate and open…</button>
                     <button type="button" [attr.aria-label]="'Remove ' + path + ' from workspace'" [disabled]="overviewBusy()" (click)="removeSavedPath(path)">Remove from workspace</button>
                   </div>
+                  @if (locatingPath() === path) { <p role="status">Locating repository…</p> }
                 </li>
               }</ul>
             }
@@ -183,7 +186,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
 export class WorkspaceCenterComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<WorkspaceCenterRequest>();
-  readonly openRepository = input.required<(path: string) => Promise<OpenRepositoryResult>>();
+  readonly openRepository = input.required<(path: string, replacement?: SavedRepositoryReplacement) => Promise<OpenRepositoryResult>>();
   readonly closeRepositories = input.required<(request: WorkspaceTabsCloseRequest) => boolean>();
   readonly suspended = input(false);
   readonly closed = output<void>();
@@ -208,6 +211,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
     result.status === 'pending' && (result.action === 'fetch' || result.action === 'pull')));
   readonly bulkError = signal('');
   readonly savedPathNotice = signal('');
+  readonly savedPathError = signal('');
+  readonly locatingPath = signal<string | null>(null);
   readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning());
   readonly unopenedPaths = computed(() => {
     const opened = new Set(this.git.repositories().map(repository => repository.path));
@@ -483,8 +488,51 @@ export class WorkspaceCenterComponent implements OnDestroy {
     this.close();
     this.savedRepositoryRequested.emit(path);
   }
+  async locateSavedPath(path: string, event: MouseEvent): Promise<void> {
+    if (this.destroyed || this.suspended() || this.reviewPending() || this.overviewBusy() || this.git.browserPreview()
+      || this.request().workspaceId !== this.git.activeWorkspaceId() || !this.unopenedPaths().includes(path)) return;
+    const request = this.request();
+    const scope = this.git.activeRepositoryReadScope();
+    const opener = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+    this.savedPathNotice.set('');
+    this.savedPathError.set('');
+    this.locatingPath.set(path);
+    this.openingRepositories.set(true);
+    const owns = () => !this.destroyed && this.locatingPath() === path && this.request() === request
+      && !this.suspended() && this.panel() === 'overview';
+    const current = () => owns() && this.git.activeRepositoryReadScope() === scope;
+    let replaced = false;
+    try {
+      const choice = await open({ directory: true, multiple: false, title: `Locate the new folder for ${this.git.pathLabel(path)}` });
+      if (!current() || typeof choice !== 'string' || !choice || this.git.busy()) return;
+      const result = await this.openRepository()(choice, { path, current });
+      if (!owns()) return;
+      if (result.status === 'success') {
+        replaced = true;
+        this.savedPathNotice.set(result.path === path
+          ? `Opened ${path}.` : `Replaced the saved path with ${result.path} in this workspace.`);
+      } else if (result.status === 'error') {
+        this.savedPathError.set(result.error ?? 'The repository could not be opened. The saved path was not replaced.');
+      }
+    } catch (error: unknown) {
+      if (current()) this.savedPathError.set(this.git.formatError(error));
+    } finally {
+      if (!this.destroyed) {
+        const restoreFocus = owns();
+        this.locatingPath.set(null);
+        this.openingRepositories.set(false);
+        if (restoreFocus) afterNextRender(() => {
+          if (this.destroyed || this.suspended() || this.request() !== request || this.panel() !== 'overview'
+            || (document.activeElement !== document.body && document.activeElement !== opener)) return;
+          if (!replaced && opener?.isConnected && !opener.disabled) opener.focus();
+          else this.focusFirst();
+        }, { injector: this.injector });
+      }
+    }
+  }
   removeSavedPath(path: string): void {
     if (this.destroyed || this.overviewBusy() || !this.git.removeUnopenedWorkspaceRepository(this.request().workspaceId, path)) return;
+    this.savedPathError.set('');
     this.savedPathNotice.set(`Removed ${path} from this workspace. No files were changed.`);
     afterNextRender(() => { if (!this.destroyed) this.focusFirst(); }, { injector: this.injector });
   }
@@ -646,6 +694,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     if (this.destroyed) return;
     if (this.pendingFileDelete()) { this.cancelDelete(); return; }
     if (this.pendingTabsClose()) { this.cancelTabClose(); return; }
+    this.locatingPath.set(null);
     const opener = this.request().returnFocus; this.closed.emit();
     if (restoreFocus) setTimeout(() => {
       if (opener?.isConnected && opener.getClientRects().length) opener.focus();

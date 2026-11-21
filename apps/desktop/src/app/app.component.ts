@@ -71,7 +71,7 @@ import type {
   Worktree,
   WorkingTreeEntry,
 } from '@git-khronos/contracts';
-import { GitKhronosService, type OpenRepositoryResult, type RepositoryWorkspace } from './git-khronos.service';
+import { GitKhronosService, type OpenRepositoryResult, type RepositoryWorkspace, type SavedRepositoryReplacement } from './git-khronos.service';
 import { OverlayController } from './overlay-controller';
 import { repositoryOperationState } from './repository-operation';
 import { branchCheckoutOwner, repositoryLocationLabel } from './repository-location';
@@ -6748,7 +6748,8 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.openRepositoryPath(path);
   }
 
-  protected readonly openWorkspaceRepository = (path: string) => this.openRepositoryPath(path);
+  protected readonly openWorkspaceRepository = (path: string, replacement?: SavedRepositoryReplacement) =>
+    this.openRepositoryPath(path, false, replacement);
   protected readonly closeWorkspaceRepositories = (request: WorkspaceTabsCloseRequest): boolean => {
     if (this.git.busy() || !request.tabs.length || request.workspaceId !== this.git.activeWorkspaceId()
       || request.scope !== this.git.activeRepositoryReadScope()) return false;
@@ -6762,15 +6763,15 @@ export class AppComponent implements OnInit, OnDestroy {
     return true;
   };
 
-  protected async openRepositoryPath(path: string, closeManager = false): Promise<OpenRepositoryResult> {
+  protected async openRepositoryPath(path: string, closeManager = false, replacement?: SavedRepositoryReplacement): Promise<OpenRepositoryResult> {
     const current = this.git.repository();
-    if (path === current?.path) {
+    if (!replacement && path === current?.path) {
       if (closeManager) this.repositoryDialog.set(null);
       return { status: 'success', repositoryId: current.id, path };
     }
     const workspaceId = this.git.activeWorkspaceId();
     this.saveCommitDraft();
-    const opened = await this.git.openRepository(path);
+    const opened = await this.git.openRepository(path, replacement);
     const active = this.git.repository();
     // A background read can report its own error while this open succeeds.
     if (opened.status === 'success' && workspaceId === this.git.activeWorkspaceId()

@@ -205,6 +205,170 @@ test('removing a saved path revokes its pending restore only in this workspace',
   });
 });
 
+const movedPath = '/saved/moved checkout';
+
+async function installSavedPathPicker(page: Page) {
+  await page.evaluate(path => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const workspace = git.activeWorkspace();
+    git.workspaces.update((items: any[]) => [
+      ...items.map(item => item.id === workspace.id ? {
+        ...item, repositoryPaths: [fixture.first.path, path, '/saved/offline', fixture.second.path],
+      } : item),
+      { id: 'other-layout', name: 'Other layout', repositoryPaths: [path], activeRepositoryPath: path },
+    ]);
+    fixture.replacement = { ...fixture.first, id: 'moved-checkout', path: '/owned/new location', name: 'Moved checkout' };
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      if (command === 'plugin:dialog|open') {
+        fixture.calls.push({ command, options: args.options });
+        return new Promise(resolve => { fixture.choose = resolve; });
+      }
+      if (command === 'open_repository') {
+        fixture.calls.push({ command, path: args.path });
+        if (args.path === path) return new Promise(resolve => {
+          fixture.restoreOld = () => resolve({ ...fixture.first, id: 'stale-restored-checkout', path });
+        });
+        if (fixture.failOpen) return Promise.reject({ message: 'Not a Git repository' });
+        if (fixture.holdOpen) return new Promise(resolve => { fixture.finishOpen = () => resolve(fixture.replacement); });
+        return Promise.resolve(fixture.replacement);
+      }
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+  }, movedPath);
+}
+
+async function chooseRelocationFolder(page: Page, path: string | null) {
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.choose)).toBe('function');
+  await page.evaluate(choice => {
+    const fixture = (window as any).__center;
+    const resolve = fixture.choose;
+    fixture.choose = null;
+    resolve(choice);
+  }, path);
+}
+
+test('locates a moved checkout in its saved slot and revokes a late restore of the old path', async ({ page }) => {
+  await installSavedPathPicker(page);
+  await page.evaluate(path => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const restoration = { workspaceId: git.activeWorkspaceId(), pending: new Set([path]), failed: new Set() };
+    git.repositoryRestoration = restoration;
+    fixture.restore = git.restoreRepositoryTabs(restoration);
+  }, movedPath);
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.restoreOld)).toBe('function');
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Locate and open ' + movedPath, exact: true }).click();
+  await chooseRelocationFolder(page, '/alias/selected folder');
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await expect(saved.getByRole('status')).toContainText('Replaced the saved path with /owned/new location');
+  await expect(dialog.getByRole('searchbox', { name: 'Filter repositories' })).toBeFocused();
+  const state = await page.evaluate(async () => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    fixture.restoreOld();
+    await fixture.restore;
+    const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
+    return {
+      current: workspaces.find((ws: any) => ws.id === git.activeWorkspaceId()).repositoryPaths,
+      other: workspaces.find((ws: any) => ws.id === 'other-layout').repositoryPaths,
+      active: git.repository().path,
+      tabs: git.repositories().map((repo: any) => repo.path),
+      calls: fixture.calls,
+    };
+  });
+  expect(state).toEqual({
+    current: ['/owned/alpha', '/owned/new location', '/saved/offline', '/owned/beta'],
+    other: [movedPath],
+    active: '/owned/new location',
+    tabs: ['/owned/alpha', '/owned/new location', '/owned/beta'],
+    calls: [
+      { command: 'open_repository', path: movedPath },
+      { command: 'plugin:dialog|open', options: { directory: true, multiple: false, title: 'Locate the new folder for moved checkout' } },
+      { command: 'open_repository', path: '/alias/selected folder' },
+    ],
+  });
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('');
+  await page.getByRole('tab', { name: /^Alpha(?:,|$)/i }).click();
+  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('Workspace draft');
+});
+
+test('keeps saved paths when relocation is cancelled, invalid, or resolves to another member', async ({ page }) => {
+  await installSavedPathPicker(page);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  const locate = saved.getByRole('button', { name: 'Locate and open ' + movedPath, exact: true });
+  await locate.click();
+  await chooseRelocationFolder(page, null);
+  await expect(locate).toBeFocused();
+  await page.evaluate(() => { (window as any).__center.failOpen = true; });
+  await locate.click();
+  await chooseRelocationFolder(page, '/not-a-repo');
+  await expect(saved.getByRole('alert')).toContainText('Not a Git repository');
+  await expect(locate).toBeFocused();
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    fixture.failOpen = false;
+    fixture.replacement = fixture.second;
+  });
+  await locate.click();
+  await chooseRelocationFolder(page, '/alias/duplicate');
+  await expect(saved.getByRole('alert')).toContainText('already in this workspace');
+  await expect(locate).toBeFocused();
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    fixture.replacement = { ...fixture.replacement, id: 'another-saved', path: '/saved/offline' };
+  });
+  await locate.click();
+  await chooseRelocationFolder(page, '/alias/another-saved');
+  await expect(saved.getByRole('alert')).toContainText('already in this workspace');
+  await expect(locate).toBeFocused();
+  const state = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return {
+      paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
+      opened: (window as any).__center.calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.path),
+    };
+  });
+  expect(state).toEqual({
+    paths: ['/owned/alpha', movedPath, '/saved/offline', '/owned/beta'], active: '/owned/alpha',
+    opened: ['/not-a-repo', '/alias/duplicate', '/alias/another-saved'],
+  });
+});
+
+test('closing the overview retires both the folder picker and a pending relocation result', async ({ page }) => {
+  await installSavedPathPicker(page);
+  const dialog = await open(page);
+  const locate = dialog.getByRole('button', { name: 'Locate and open ' + movedPath, exact: true });
+  await locate.click();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await chooseRelocationFolder(page, '/never-open');
+  await open(page);
+  await page.evaluate(() => { (window as any).__center.holdOpen = true; });
+  await locate.click();
+  await chooseRelocationFolder(page, '/opened-but-retired');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishOpen)).toBe('function');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => (window as any).__center.finishOpen());
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  const state = await page.evaluate(() => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    return {
+      paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
+      opened: (window as any).__center.calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.path),
+    };
+  });
+  expect(state).toEqual({
+    paths: ['/owned/alpha', movedPath, '/saved/offline', '/owned/beta'], active: '/owned/alpha',
+    opened: ['/opened-but-retired'],
+  });
+});
+
 test('refreshes every local repository, retains failed cached rows and performs no transport', async ({ page }) => {
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;

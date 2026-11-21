@@ -52,8 +52,9 @@ behavioral cases during the audit; grouping does not remove any listed action.
    of local groups to shared groups, and status aggregation for unopened
    repositories remain unimplemented. Bulk fetch, pull and open report
    per-repository outcomes. Bulk close removes reviewed open tabs from this
-   workspace without touching Git data or files. Saved but unopened paths remain in Repository
-   overview with individual retry and remove actions.
+   workspace without touching Git data or files. Saved but unopened paths
+   remain in Repository overview with individual retry, locate and remove
+   actions. Locate replaces one entry in place; bulk locate remains open.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to
