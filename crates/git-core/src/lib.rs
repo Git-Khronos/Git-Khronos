@@ -17588,7 +17588,11 @@ mod tests {
         stage_all(&repository.path).unwrap();
         commit(&repository.path, "Base worktree").unwrap();
 
-        let linked_path = repository.path.join("Linéa \tfirst\nsecond");
+        let linked_path = repository
+            .path
+            .canonicalize()
+            .unwrap()
+            .join("Linéa \tfirst\nsecond");
         let linked_text = linked_path.to_str().unwrap();
         run_mutation(
             &repository.path,
