@@ -9981,7 +9981,9 @@ struct GitDaemon(std::process::Child);
 
 impl Drop for GitDaemon {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        // Git dispatches the external git-daemon, which can outlive its
+        // launcher. Stop only the dedicated tree started by this fixture.
+        terminate_process_tree(&mut self.0);
         let _ = self.0.wait();
     }
 }
@@ -9993,7 +9995,9 @@ fn serve_git_daemon(base: &Path) -> (GitDaemon, String) {
         .local_addr()
         .unwrap()
         .port();
-    let child = std::process::Command::new("git")
+    let mut command = Command::new("git");
+    configure_process_tree(&mut command);
+    let child = command
         .args([
             "daemon",
             "--export-all",
@@ -10111,6 +10115,15 @@ fn recursive_clone_initializes_nested_submodules() {
     .unwrap_err();
     assert_eq!(retry.kind, "destinationExists");
     drop(_daemon);
+    let address = url.strip_prefix("git://").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::net::TcpStream::connect(address).is_ok() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the owned Git daemon is still listening after fixture cleanup"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
     fs::remove_dir_all(base).unwrap();
 }
 
