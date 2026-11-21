@@ -1,4 +1,4 @@
-"""Drive workspace batch controls through real Git fetches from an owned repository."""
+"""Drive workspace batch controls through real Git operations on owned repositories."""
 import json
 from pathlib import Path
 import shlex
@@ -10,10 +10,12 @@ from native_worktree_scenarios import checkout_footprint
 
 FIRST = 'workspace-batch-first'
 SECOND = 'workspace-batch-second'
+PULL_FIRST = 'workspace-pull-first'
+PULL_SECOND = 'workspace-pull-second'
 
 
 def workspace_fetch_environment(fixtures):
-    """Gate only the app's first fixture fetch; Git oracles retain their own PATH."""
+    """Hold only the first fixture operation; Git oracles retain their own PATH."""
     real_git = shutil.which('git', path=fixtures.env['PATH'])
     if real_git is None:
         raise RuntimeError('Workspace batch acceptance requires Git')
@@ -27,21 +29,25 @@ set -eu
 gate={shlex.quote(str(gate))}
 if [ "${{1:-}}" = -C ]; then
   target=
+  operation=fetch
+  prefix=
   case "${{2:-}}" in
     {shlex.quote(str(fixtures.root / FIRST))}) target=first ;;
     {shlex.quote(str(fixtures.root / SECOND))}) target=second ;;
+    {shlex.quote(str(fixtures.root / PULL_FIRST))}) target=first; operation=pull; prefix=pull- ;;
+    {shlex.quote(str(fixtures.root / PULL_SECOND))}) target=second; operation=pull; prefix=pull- ;;
   esac
   if [ -n "$target" ]; then
     for arg do
-      if [ "$arg" = fetch ]; then
-        printf '%s\\n' "$target" >> "$gate/dispatches"
+      if [ "$arg" = "$operation" ]; then
+        printf '%s\\n' "$target" >> "$gate/${{prefix}}dispatches"
         if [ "$target" = first ]; then
           tries=0
-          while [ ! -f "$gate/release" ] && [ "$tries" -lt 300 ]; do
+          while [ ! -f "$gate/${{prefix}}release" ] && [ "$tries" -lt 600 ]; do
             sleep .05
             tries=$((tries + 1))
           done
-          [ -f "$gate/release" ] || {{ echo 'Owned fetch gate was not released' >&2; exit 1; }}
+          [ -f "$gate/${{prefix}}release" ] || {{ echo 'Owned batch gate was not released' >&2; exit 1; }}
         fi
         break
       fi
@@ -147,4 +153,83 @@ def workspace_batch_stop(driver, fixtures, report):
     assert_git_state({first, second})
     evidence['onlyRemoteTrackingRefsChanged'] = True
     report['scenarios'].append('native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch')
+    workspace_batch_pull_checkout(driver, fixtures, report)
     return first
+
+
+def workspace_batch_pull_checkout(driver, fixtures, report):
+    upstream = fixtures.repository('workspace-pull-upstream', commits=2)
+    first, second = (fixtures.root / name for name in (PULL_FIRST, PULL_SECOND))
+    for checkout in (first, second):
+        fixtures.git(fixtures.root, 'clone', '-q', '--no-local', str(upstream), str(checkout))
+    original = fixtures.git(second, 'rev-parse', 'HEAD')
+    fixtures.git(upstream, '-c', 'user.name=Native Fixture', '-c', 'user.email=native@example.test',
+                 'commit', '--allow-empty', '-qm', 'Incoming workspace change')
+    incoming = fixtures.git(upstream, 'rev-parse', 'HEAD')
+    upstream_refs = fixtures.git(upstream, 'show-ref')
+    gate = fixtures.root / 'workspace-fetch-gate'
+    dispatch_log = gate / 'pull-dispatches'
+
+    def dispatches():
+        return dispatch_log.read_text().splitlines() if dispatch_log.is_file() else []
+
+    driver.script("""
+      localStorage.clear();
+      localStorage.setItem('git-khronos.open-repositories.v1', JSON.stringify(arguments[0]));
+      localStorage.setItem('git-khronos.active-repository.v1', arguments[0][0]);
+      localStorage.setItem('git-khronos.remote.auto-fetch-minutes', '0');
+    """, [str(first), str(second)])
+    driver.reload()
+    driver.wait('return document.querySelectorAll(".repo-tab-main[role=tab]").length === 2', 60)
+    driver.click_visible('.workspace-toggle')
+    driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    result = overview + ' [aria-label="Repository action results"]'
+
+    def checkbox(repository):
+        return overview + ' article[aria-label=' + json.dumps(repository.name) + '] input[type=checkbox]'
+
+    def outcome(text):
+        driver.wait('return document.querySelector(' + json.dumps(result) + ')?.textContent.includes('
+                    + json.dumps(text) + ')')
+
+    for checkout in (first, second):
+        driver.click_visible(checkbox(checkout))
+    driver.click_scrolled_text(overview + ' button', 'Pull selected (2)', wait_for_ready=True)
+    try:
+        deadline = time.monotonic() + 10
+        while not dispatches() and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert dispatches() == ['first'], dispatches()
+        outcome(f'{PULL_SECOND} — pending')
+        fixtures.git(second, 'switch', '-c', 'external-checkout', '--track', 'origin/main')
+        assert fixtures.git(second, 'rev-parse', 'HEAD') == original
+        before = checkout_footprint(fixtures, second, ('fixture.txt',))
+        assert not (second / '.git/FETCH_HEAD').exists()
+    finally:
+        (gate / 'pull-release').touch()
+
+    outcome(f'{PULL_FIRST} — success')
+    driver.wait(
+        'const text = document.querySelector(' + json.dumps(result) + ')?.textContent ?? ""; '
+        'return text.includes(' + json.dumps(f'{PULL_SECOND} — error:') + ') || '
+        'text.includes(' + json.dumps(f'{PULL_SECOND} — success') + ');')
+    assert dispatches() == ['first'], f'Unexpected pull dispatched to the replacement checkout: {dispatches()}'
+    outcome(f'{PULL_SECOND} — error: The checked-out branch or commit changed before Pull could start.')
+    assert fixtures.git(first, 'rev-parse', 'HEAD') == incoming
+    assert checkout_footprint(fixtures, second, ('fixture.txt',)) == before
+    assert not (second / '.git/FETCH_HEAD').exists()
+
+    driver.click_visible(checkbox(first))
+    driver.click_scrolled_text(overview + ' button', 'Pull selected (1)', wait_for_ready=True)
+    outcome(f'{PULL_SECOND} — success')
+    assert dispatches() == ['first', 'second']
+    assert fixtures.git(second, 'symbolic-ref', 'HEAD') == 'refs/heads/external-checkout'
+    assert fixtures.git(second, 'rev-parse', 'HEAD') == incoming
+    assert fixtures.git(second, 'rev-parse', 'refs/heads/main') == original
+    assert fixtures.git(upstream, 'show-ref') == upstream_refs
+    report['workspaceBatchPullCheckout'] = {
+        'originalOid': original, 'upstreamOid': incoming, 'dispatches': dispatches(),
+        'fetchedBeforeExplicitRetry': False,
+    }
+    report['scenarios'].append('native-workspace-pull-refuses-same-tip-external-checkout-before-fetch')

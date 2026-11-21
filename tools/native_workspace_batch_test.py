@@ -5,11 +5,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 
-from native_workspace_batch_scenarios import FIRST, SECOND, workspace_fetch_environment
+from native_workspace_batch_scenarios import FIRST, PULL_FIRST, PULL_SECOND, SECOND, workspace_fetch_environment
 
 
 class WorkspaceBatchFixtureTest(unittest.TestCase):
-    def test_gate_records_only_fetches_for_the_two_owned_checkouts(self):
+    def test_gate_records_only_the_expected_git_command_for_each_owned_checkout(self):
         with TemporaryDirectory(prefix='owned workspace batch ') as directory:
             root = Path(directory)
             git = root / 'git'
@@ -19,9 +19,15 @@ class WorkspaceBatchFixtureTest(unittest.TestCase):
             environment = fixtures.env | workspace_fetch_environment(fixtures)
             gate = root / 'workspace-fetch-gate'
             (gate / 'release').touch()
-            for checkout, command in [(FIRST, 'status'), ('another-checkout', 'fetch'), (FIRST, 'fetch'), (SECOND, 'fetch')]:
+            (gate / 'pull-release').touch()
+            for checkout, command in [
+                (FIRST, 'status'), ('another-checkout', 'fetch'), (FIRST, 'pull'),
+                (FIRST, 'fetch'), (SECOND, 'fetch'), (PULL_FIRST, 'fetch'),
+                (PULL_FIRST, 'pull'), (PULL_SECOND, 'pull'), ('another-checkout', 'pull'),
+            ]:
                 args = ['-C', str(root / checkout), '-c', 'fetch.parallel=1', command]
                 output = subprocess.check_output(['git', *args], env=environment, text=True, timeout=2)
                 self.assertEqual(output.splitlines(), args)
             self.assertEqual((gate / 'dispatches').read_text().splitlines(), ['first', 'second'])
+            self.assertEqual((gate / 'pull-dispatches').read_text().splitlines(), ['first', 'second'])
             self.assertFalse(fixtures.env['PATH'].startswith(str(gate)))

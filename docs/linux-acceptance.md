@@ -159,7 +159,7 @@ the default deadline. Ambiguous matches still fail before clicking; a lost
 scroll or click response is not replayed. Runner unit tests cover readiness,
 ambiguity, permanent absence and single delivery after an uncertain reply.
 
-## Focused workspace batch stop
+## Focused workspace batch stop and Pull checkout
 
 Use `--suite workspace-batch` to exercise **Stop after current repository**
 in the installed UI with two owned checkouts and a local Git remote. The
@@ -168,7 +168,10 @@ running and prevent the second fetch from starting. The first then settles
 normally, and a new explicit action proves the skipped checkout can still
 fetch. The app-only Git wrapper records dispatch order; independent Git
 reads check remote-tracking refs and preservation of HEAD, local refs,
-index, config and working files. No external transport is used. The
+index, config and working files. A second journey holds the first Pull,
+switches the queued checkout to another branch at the same commit, and
+checks that Pull refuses it before fetching. An explicit retry then
+advances only the newly selected local branch. No external transport is used. The
 exact-artifact Ubuntu 24.04 CI job runs this suite on the installed package.
 
 ## Focused removal of unopened saved paths

@@ -21,7 +21,10 @@ const GITLAB_SCENARIOS = [
 // Keep the local checklist aligned with linux-package-acceptance.yml. It
 // checks retained runtime evidence, not the hosted job or publisher key.
 const UBUNTU_NOBLE_REVIEWS = [
-  ['workspace-batch', 'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch'],
+  ['workspace-batch', [
+    'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch',
+    'native-workspace-pull-refuses-same-tip-external-checkout-before-fetch',
+  ]],
   ['workspace-saved-removal', 'native-workspace-review-removes-only-selected-saved-paths-and-persists-across-reload'],
   ['workspace-locate', 'native-workspace-locate-replaces-one-path-using-owned-native-folder-picker'],
   ['workspace-bulk-locate', 'native-workspace-bulk-locate-stops-on-native-picker-cancel-and-preserves-saved-slots'],

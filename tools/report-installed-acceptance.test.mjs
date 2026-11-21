@@ -263,6 +263,17 @@ test('installed startup must show pending files and publish both accurate line r
   }
 });
 
+test('installed workspace batch must refuse a replacement checkout before Pull', () => {
+  const fixtures = matrixFixtures();
+  const batch = fixtures.find(report => report.suite === 'workspace-batch');
+  const olderEvidence = { ...batch, scenarios: [
+    'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch',
+  ] };
+  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== batch), olderEvidence]);
+  assert.equal(matrix.complete, false);
+  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['workspace-batch']);
+});
+
 test('installed Browse must reject a retired reply and still open a fresh selection', () => {
   const fixtures = matrixFixtures();
   const open = fixtures.find(report => report.suite === 'repository-open-scope');
