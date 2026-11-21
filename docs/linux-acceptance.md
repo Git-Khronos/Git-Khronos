@@ -602,8 +602,9 @@ holds one read while real Git deletes a packed checkpoint in the owned
 checkout. Git verifies the deletion first; the graph must then remove the
 row without a manual refresh. A separate loose-checkpoint deletion must
 converge while the native watcher is still delivering a continuous event
-stream. The report measures the largest gap between observed notifications
-to ensure the test did not silently get a quiet debounce interval. The
+stream. The fixture arms deletion only after the WebView observes at least
+700 ms of continuous notifications; the report still rejects any gap of
+450 ms or more from that window through graph convergence. The
 local release matrix requires both checks in one passing Jammy watcher
 report. The fixture does not modify Git on the host.
 

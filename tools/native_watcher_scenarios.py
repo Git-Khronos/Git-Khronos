@@ -9,6 +9,10 @@ from threading import Event, Thread
 import time
 
 
+WATCHER_QUIET_MS = 450
+WATCHER_BURST_WARMUP_MS = 700
+
+
 def observe_untracked_refresh(driver, fixtures, report, repository_id, enabled=False):
     return observe_repository_changes(driver, fixtures, report, 'untrackedRefreshObservation', enabled=enabled,
                                       repository_id=repository_id,
@@ -34,7 +38,19 @@ def observe_repository_changes(driver, fixtures, report, field, *, repository_id
           if (payload?.repositoryId === repositoryId) add('repository-changed');
         }),
       }).then(eventId => {
-        window.__ownedWatcherObservation = { mark: phase => add(phase), stop: async () => {
+        window.__ownedWatcherObservation = { mark: phase => add(phase), markDuringBurst: (phase, warmup, quiet) => {
+          const now = Date.now();
+          let first = now;
+          for (let index = sample.length - 1; index >= 0; index--) {
+            const event = sample[index];
+            if (event.type !== 'repository-changed') continue;
+            if (first - event.ms >= quiet) break;
+            first = event.ms;
+          }
+          if (now - first < warmup || sample.length >= 300) return null;
+          sample.push({type: phase, ms: now});
+          return { firstEventMs: first, markMs: now };
+        }, stop: async () => {
           window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
           await bridge.invoke('plugin:event|unlisten', {event, eventId});
           return {sample, visible: !document.hidden,
@@ -177,9 +193,12 @@ def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, 
         worker = Thread(target=produce_events, daemon=True)
         worker.start()
         try:
-            # Get past one ordinary debounce interval before changing the ref.
-            time.sleep(.70)
-            mark('delete-ref')
+            # Arm only after a full continuous run observed by the WebView;
+            # workstation/runner stalls before arming are not a test attempt.
+            armed = driver.wait(f'''
+                return window.__ownedWatcherObservation.markDuringBurst(
+                    'delete-ref', {WATCHER_BURST_WARMUP_MS}, {WATCHER_QUIET_MS});
+            ''', 8)
             delete_ref()
             try:
                 driver.wait(removed, 4)
@@ -200,11 +219,13 @@ def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, 
     marks = {event['type']: event['ms'] for event in times if event['type'] != 'repository-changed'}
     assert 'delete-ref' in marks and 'end-of-burst-observation' in marks, observation
     start, end = marks['delete-ref'], marks['end-of-burst-observation']
-    event_times = [event['ms'] for event in times if event['type'] == 'repository-changed' and event['ms'] <= end]
-    assert event_times and event_times[0] < start - 450, observation
+    first = armed['firstEventMs']
+    assert start == armed['markMs'] and start - first >= WATCHER_BURST_WARMUP_MS, observation
+    event_times = [event['ms'] for event in times if event['type'] == 'repository-changed' and first <= event['ms'] <= end]
+    assert event_times and event_times[0] == first, observation
     maximum_gap = max(later - earlier for earlier, later in zip(event_times, event_times[1:] + [end]))
-    observation.update(maxEventGapMs=maximum_gap, deletionToObservationMs=end - start)
-    assert maximum_gap < 450, f'Native event burst contained a quiet debounce interval: {observation}'
+    observation.update(burstStartMs=first, maxEventGapMs=maximum_gap, deletionToObservationMs=end - start)
+    assert maximum_gap < WATCHER_QUIET_MS, f'Native event burst contained a quiet debounce interval: {observation}'
     driver.wait(removed)
     observation['graphRowRemovedAfterQuiet'] = True
     assert during_burst, 'Git deleted the ref, but the graph did not update until watcher events stopped'
