@@ -4,6 +4,61 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toBeVisible();
 });
+
+for (const outcome of ['cancel', 'failure'] as const) {
+  test(`the lazy command catalogue is keyboard-contained on ${outcome}`, async ({ page }) => {
+    const commands = /Fetch and prune remote references/;
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let requests = 0;
+    let settled = 0;
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (!commands.test(body)) return route.fulfill({ response, body });
+      requests++;
+      await held;
+      if (outcome === 'failure') await route.abort();
+      else await route.fulfill({ response, body });
+      settled++;
+    });
+    try {
+      await page.reload();
+      await expect(page.locator('.commit-row').first()).toBeVisible();
+      expect(requests).toBe(0);
+      await page.evaluate(() => {
+        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const calls: string[] = (window as any).__paletteCalls = [];
+        app.git.stageAll = async () => { calls.push('stage'); return null; };
+        app.git.commit = async () => { calls.push('commit'); return false; };
+      });
+      const opener = page.getByRole('button', { name: 'Command palette', exact: true });
+      await opener.click();
+      const loading = page.getByRole('dialog', { name: 'Loading commands', exact: true });
+      const cancel = loading.getByRole('button', { name: 'Cancel', exact: true });
+      await expect(cancel).toBeFocused();
+      await expect.poll(() => requests).toBe(1);
+      await page.keyboard.press('Shift+Tab');
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Control+Shift+Enter');
+      await expect(loading).toBeVisible();
+      if (outcome === 'cancel') await page.keyboard.press('Escape');
+      release();
+      await expect.poll(() => settled).toBe(1);
+      if (outcome === 'failure') {
+        const failure = page.getByRole('dialog', { name: 'Commands unavailable', exact: true });
+        await expect(failure.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+        await page.keyboard.press('Escape');
+      }
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      expect(await page.evaluate(() => (window as any).__paletteCalls)).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+}
+
 test('keeps the global command launcher discoverable without crowding compact chrome', async ({ page }) => {
   const launcher = page.getByRole('button', { name: 'Command palette', exact: true });
   await expect(launcher).toContainText('Commands');

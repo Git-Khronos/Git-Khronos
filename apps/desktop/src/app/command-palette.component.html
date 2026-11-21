@@ -28,7 +28,7 @@
         <button type="button" role="option" tabindex="-1" id="command-palette-option-{{ index }}"
           title="{{ action.label }} — {{ action.detail }}"
           [attr.aria-selected]="selection() === index" [class.selected]="selection() === index"
-          [disabled]="!action.enabled" (mousemove)="previewed.emit({ index, enabled: action.enabled })"
+          [disabled]="!action.enabled" (mousemove)="previewSelection(index, action.enabled)"
           (click)="executed.emit(action)">
           <span class="palette-action-icon"><gc-icon [name]="action.icon" [size]="14" /></span>
           <span class="palette-action-copy"><strong>{{ action.label }}</strong><em>@if (query().trim()) { <span class="palette-inline-group">{{ action.group }}</span><span aria-hidden="true"> · </span> }{{ action.detail }}</em></span>

@@ -49,6 +49,16 @@ identity and the outside fixture's config, index, HEAD and working bytes.
 
 ## Implemented transition ownership
 
+### Command palette
+
+The deferred palette builds and ranks command options from live root state.
+The palette owns cursor and combobox focus; a new open visit resets both.
+The root still owns the tracked-file search lease, command dispatch, and
+repository-specific review authorities. A captured action must pass the same
+dispatch guards after the palette closes or the repository changes. While the
+chunk loads, Cancel and Escape can close its view without running any Git
+command. A failed chunk remains dismissible and a late load cannot reopen it.
+
 ### Diff patch export
 
 The patch panel owns the reviewed diff scope and explicit path selection.

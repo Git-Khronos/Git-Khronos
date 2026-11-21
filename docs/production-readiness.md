@@ -579,6 +579,15 @@ warm-build result, not a clean-run or CI timing guarantee. See
 for the hash, build log, and `focused-publisher-trust/installed-focused.json`.
 This is not a full release-matrix or live self-update test.
 
+The deferred command palette now loads its command catalogue and search
+ranking, not just its layout, on first use. The initial renderer fell from
+**1,355,213 to 1,337,102 bytes** without changing either budget. The
+warning remains 437,102 bytes over 900 kB. Chromium against the emitted
+production files observed no catalogue request at startup and exactly
+one after opening; loading retained keyboard focus and the fetch result
+was searchable after release. Measurements are under
+`target/local-review/lazy-command-catalogue.cWluk5ZZ/`.
+
 ## Hosted form-binding mock contract correction — 2026-11-20
 
 Hosted run `44687310298` at `a1c9aac` completed with two failures: the same native

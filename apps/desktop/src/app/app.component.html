@@ -1996,11 +1996,20 @@
   }
   @if (commandPaletteOpen()) {
     @defer (on immediate) {
-      <gc-command-palette [commands]="filteredCommands()" [scope]="commandPaletteScope()"
-        [selection]="commandSelection()" [query]="commandQuery()" [shortcutKey]="primaryShortcutKey"
-        (closed)="closeCommandPalette()" (queryChanged)="updateCommandQuery($event)"
-        (navigated)="moveCommandSelection($event)" (previewed)="previewCommandSelection($event.index, $event.enabled)"
+      <gc-command-palette [source]="commandPaletteActionSources" [scope]="commandPaletteScope()"
+        [visit]="commandPaletteVisit()" [query]="commandQuery()" [recent]="recentCommandIds()" [shortcutKey]="primaryShortcutKey"
+        (closed)="closeCommandPalette()" (queryChanged)="commandQuery.set($event)"
         (executed)="runCommand($event)" />
+    } @loading {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading commands" (keydown)="handleCommandPaletteLoaderKey($event)">
+        <p role="status">Loading commands…</p>
+        <button #commandPaletteLoaderClose type="button" (click)="closeCommandPalette()">Cancel</button>
+      </section></div>
+    } @error {
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Commands unavailable" (keydown)="handleCommandPaletteLoaderKey($event)">
+        <p role="alert">Commands could not load. Close the palette and restart Git Khronos to try again.</p>
+        <button #commandPaletteLoaderClose type="button" (click)="closeCommandPalette()">Close</button>
+      </section></div>
     }
   }
   @if (keyboardShortcutsOpen()) {

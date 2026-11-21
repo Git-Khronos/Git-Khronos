@@ -63,10 +63,13 @@ test('a stash menu owned by another repository cannot start a mutation', async (
 for (const change of ['shifted-stack', 'other-repository']) {
   test(`captured palette stash actions reject a ${change}`, async ({ page }) => {
     await prepare(page);
+    await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('stash');
+    await expect(page.getByRole('option', { name: /^Apply stash@/ })).toBeVisible();
     await page.evaluate(async (change) => {
       const state = (window as any).__stashAction;
-      state.root.commandQuery.set('stash');
-      const actions = state.root.commandActions().filter((action: any) =>
+      const palette = (window as any).ng.getComponent(document.querySelector('gc-command-palette'));
+      const actions = palette.commandActions().filter((action: any) =>
         ['apply-stash', 'pop'].includes(action.id) || action.id.startsWith('stash-apply:') || action.id.startsWith('stash-pop:'));
       if (change === 'shifted-stack') {
         state.git.repositories.set([{ ...state.repository, stashes: [

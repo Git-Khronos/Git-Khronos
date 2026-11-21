@@ -7,8 +7,6 @@ interface CharacterizationApp {
     repository: Signal<RepositorySnapshot>;
     repositories: WritableSignal<RepositorySnapshot[]>;
   };
-  commandQuery: WritableSignal<string>;
-  commandActions: Signal<Array<{ id: string; enabled: boolean }>>;
 }
 
 async function setStatus(page: Page, status: Partial<RepositoryStatus>): Promise<void> {
@@ -29,15 +27,20 @@ async function setStatus(page: Page, status: Partial<RepositoryStatus>): Promise
 }
 
 async function operationCommands(page: Page): Promise<Record<string, boolean>> {
-  return page.evaluate(() => {
-    const app = (window as unknown as {
-      ng: { getComponent(element: Element | null): CharacterizationApp };
-    }).ng.getComponent(document.querySelector('gc-root'));
-    app.commandQuery.set('');
-    return Object.fromEntries(app.commandActions()
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Command palette', exact: true });
+  await expect(dialog).toBeVisible();
+  const commands = await page.evaluate(() => {
+    const palette = (window as unknown as {
+      ng: { getComponent(element: Element | null): { commandActions: Signal<Array<{ id: string; enabled: boolean }>> } };
+    }).ng.getComponent(document.querySelector('gc-command-palette'));
+    return Object.fromEntries(palette.commandActions()
       .filter(action => /^(merge-|history-operation-|bisect-)/.test(action.id))
       .map(action => [action.id, action.enabled]));
   });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  return commands;
 }
 
 test.beforeEach(async ({ page }) => {

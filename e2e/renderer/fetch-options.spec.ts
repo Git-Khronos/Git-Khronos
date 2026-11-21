@@ -151,12 +151,13 @@ test('pending fetch disables scope changes and exposes cancellation by operation
 
 test('Fetch All command palette action really fetches all rather than the current remote', async ({ page }) => {
   await setup(page);
-  await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    await app.runCommand(app.commandActions().find((action: { id: string }) => action.id === 'fetch'));
-  });
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('Fetch All');
+  await page.getByRole('option', { name: /^Fetch All/ }).click();
 
-  const call = await page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_repository'));
+  const observedFetch = () => page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_repository'));
+  await expect.poll(observedFetch).toBeDefined();
+  const call = await observedFetch();
   expect(call.args.remote).toBeUndefined();
 });
 

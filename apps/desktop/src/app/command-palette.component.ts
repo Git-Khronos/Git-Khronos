@@ -1,19 +1,24 @@
 import {
-  afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
+  effect,
   inject,
   input,
   output,
+  signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { CommandAction, CommandPaletteScope } from './app.component';
+import type { CommandAction, CommandPaletteActionSources, CommandPaletteScope } from './app.component';
+import { buildCommandActions, rankCommandActions } from './command-palette-actions';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
-export type CommandPaletteNavigation = number | 'first' | 'last';
+type CommandPaletteNavigation = number | 'first' | 'last';
 
 @Component({
   selector: 'gc-command-palette',
@@ -24,22 +29,33 @@ export type CommandPaletteNavigation = number | 'first' | 'last';
 })
 export class CommandPaletteComponent {
   protected readonly git = inject(GitKhronosService);
-  private readonly searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
+  private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
-  readonly commands = input.required<readonly CommandAction[]>();
+  readonly source = input.required<CommandPaletteActionSources>();
   readonly scope = input.required<CommandPaletteScope>();
-  readonly selection = input.required<number>();
+  readonly visit = input.required<number>();
   readonly query = input.required<string>();
   readonly shortcutKey = input.required<string>();
+  readonly recent = input.required<readonly string[]>();
+  readonly commandActions = computed(() => buildCommandActions(this.source(), this.query(), this.scope()));
+  protected readonly commands = computed(() => rankCommandActions(this.commandActions(), this.query(), this.recent()));
+  protected readonly selection = signal(0);
 
   readonly closed = output<void>();
   readonly queryChanged = output<string>();
-  readonly navigated = output<CommandPaletteNavigation>();
-  readonly previewed = output<{ index: number; enabled: boolean }>();
   readonly executed = output<CommandAction>();
 
   constructor() {
-    afterNextRender(() => this.searchInput().nativeElement.focus());
+    effect(() => {
+      this.visit();
+      this.scope();
+      this.query();
+      untracked(() => this.moveSelection('first'));
+    });
+    afterRenderEffect(() => {
+      this.visit();
+      this.searchInput()?.nativeElement.focus();
+    });
   }
 
   protected handleSearchKey(event: KeyboardEvent): void {
@@ -54,7 +70,7 @@ export class CommandPaletteComponent {
     const direction = navigation[event.key];
     if (direction !== undefined) {
       event.preventDefault();
-      this.navigated.emit(direction);
+      this.moveSelection(direction);
       return;
     }
     if (event.key === 'Enter') {
@@ -66,7 +82,29 @@ export class CommandPaletteComponent {
 
   protected clearSearch(): void {
     this.queryChanged.emit('');
-    queueMicrotask(() => this.searchInput().nativeElement.focus());
+    queueMicrotask(() => this.searchInput()?.nativeElement.focus());
+  }
+
+  protected previewSelection(index: number, enabled: boolean): void {
+    if (enabled) this.selection.set(index);
+  }
+
+  private moveSelection(direction: CommandPaletteNavigation): void {
+    const commands = this.commands();
+    if (!commands.length) {
+      this.selection.set(0);
+      return;
+    }
+    const step = direction === 'first' ? 1 : direction === 'last' ? -1 : Math.sign(direction);
+    let index = direction === 'first'
+      ? 0
+      : direction === 'last'
+        ? commands.length - 1
+        : Math.max(0, Math.min(commands.length - 1, this.selection() + direction));
+    while (!commands[index]?.enabled && index + step >= 0 && index + step < commands.length) index += step;
+    this.selection.set(index);
+    queueMicrotask(() => this.searchInput()?.nativeElement.closest('.command-palette')
+      ?.querySelector<HTMLElement>(`#command-palette-option-${index}`)?.scrollIntoView({ block: 'nearest' }));
   }
 
   protected handleDialogKey(event: KeyboardEvent): void {
