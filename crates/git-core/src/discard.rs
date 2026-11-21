@@ -1028,7 +1028,13 @@ fn reverse_text_selection(before: &GuardedFile, patch: &str) -> Result<GuardedFi
     let mut output: Vec<Vec<u8>> = Vec::new();
     let mut previous = 0u8;
     for line in lines {
-        let Some((&prefix, contents)) = line.as_bytes().split_first() else {
+        let (prefix, contents) = if line == "\n" {
+            // diff.suppressBlankEmpty omits the usual space from an empty
+            // context row. It still consumes one unchanged line on both sides.
+            (b' ', line.as_bytes())
+        } else if let Some((&prefix, contents)) = line.as_bytes().split_first() {
+            (prefix, contents)
+        } else {
             return Err(unsafe_discard("The selected text hunk is incomplete."));
         };
         match prefix {
@@ -4858,6 +4864,55 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
         recover_discarded_changes(&repository.0, &id, false).unwrap();
         assert_eq!(fs::read(repository.0.join("end")).unwrap(), b"new final line");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn partial_discard_preserves_blank_context_when_git_suppresses_its_prefix() {
+        for selected_lines in [None, Some([0usize, 1])] {
+            let repository = Repository::new();
+            let original = "keep before\n\nold first\n\nkeep between\nold second\n\nkeep after\n";
+            let changed = original.replace("old", "new");
+            repository.write("blank-context.txt", original.as_bytes());
+            stage_all(&repository.0).unwrap();
+            commit(&repository.0, "Before edits around blank context").unwrap();
+            ensure_success(
+                "configure compact blank context",
+                &run_git(&repository.0, &["config", "diff.suppressBlankEmpty", "true"]).unwrap(),
+            )
+            .unwrap();
+            repository.write("blank-context.txt", changed.as_bytes());
+            let index = fs::read(repository.0.join(".git/index")).unwrap();
+            let diff = working_tree_file_diff(&repository.0, "blank-context.txt", false).unwrap();
+            assert!(diff.patch.contains(" keep before\n\n-old first\n+new first\n\n"));
+            assert_eq!(diff.patch.matches("@@ -").count(), 1);
+
+            let plan = prepare_partial_discard_with_preview(
+                &repository.0,
+                "blank-context.txt",
+                0,
+                selected_lines.as_ref().map(|lines| lines.as_slice()),
+                Some(&diff.patch),
+            )
+            .expect("Git may emit blank context without a space prefix");
+            let id = execute_discard(&repository.0, &plan).unwrap();
+            let expected = if selected_lines.is_some() {
+                original.replace("old second", "new second")
+            } else {
+                original.to_owned()
+            };
+            assert_eq!(
+                fs::read(repository.0.join("blank-context.txt")).unwrap(),
+                expected.as_bytes()
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+            recover_discarded_changes(&repository.0, &id, false).unwrap();
+            assert_eq!(
+                fs::read(repository.0.join("blank-context.txt")).unwrap(),
+                changed.as_bytes()
+            );
+            assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        }
     }
 
     #[test]

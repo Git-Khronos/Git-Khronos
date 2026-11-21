@@ -102,6 +102,9 @@ selectable. End-of-file notices are shown without consuming a source line or
 a change index, and do not separate the removed and added sides of a
 replacement. Native selection retains the notice on the appropriate patch
 side and refuses a partial change that would concatenate final lines.
+Git can omit the prefix on blank context rows. Safe discard interprets an
+exact bare newline as unchanged context but still matches the complete
+displayed patch and the working-file bytes before writing.
 
 ### Deferred saved-tab restoration
 

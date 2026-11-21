@@ -513,6 +513,14 @@ working-file changes when a selection would concatenate final lines.
 See `target/local-review/native-diff-line-selection.wjaLP22d/new/summary.json`.
 The focused result does not replace the full release matrix.
 
+An additional case on those same installed bytes reproduced refusal when
+`diff.suppressBlankEmpty=true`: the preview contained an exact blank context
+row without a space prefix, which guarded discard rejected before changing
+files. See the deliberate baseline under
+`target/local-review/native-blank-context-baseline.l20eVlR1/old/results/`.
+The subsequent fix preserves the configuration and the exact preview check;
+this baseline does not qualify the new behavior.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47

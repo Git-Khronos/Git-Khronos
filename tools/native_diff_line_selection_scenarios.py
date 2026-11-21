@@ -98,6 +98,37 @@ def unterminated_final_line_actions(driver, fixtures, report):
     return repository, repo_id
 
 
+def discard_with_compact_blank_context(driver, fixtures, report):
+    repository = fixtures.repository("discard-compact-blank-context", 2)
+    file = repository / "fixture.txt"
+    original = b"keep before\n\nold first\n\nkeep between\nold second\n\nkeep after\n"
+    changed = original.replace(b"old", b"new")
+    file.write_bytes(original)
+    fixtures.git(repository, "add", "--", file.name)
+    fixtures.git(repository, "commit", "-qm", "Before edits around blank context")
+    fixtures.git(repository, "config", "diff.suppressBlankEmpty", "true")
+    file.write_bytes(changed)
+    repo_id = open_ui(driver, repository)
+    head = fixtures.git(repository, "rev-parse", "HEAD")
+    preview = driver.invoke("inspect_working_tree_file", repoId=repo_id, path=file.name, staged=False)
+    assert not preview["truncated"] and " keep before\n\n-old first\n+new first\n\n" in preview["patch"]
+    index = fixtures.git(repository, "ls-files", "--stage", "-z")
+    config = (repository / ".git/config").read_bytes()
+    driver.invoke("apply_working_tree_lines", repoId=repo_id, path=file.name, staged=False,
+                  hunkIndex=0, lineIndices=[0, 1], action="discard", expectedPatch=preview["patch"])
+    assert file.read_bytes() == original.replace(b"old second", b"new second")
+    captures = driver.invoke("load_discard_recoveries", repoId=repo_id)
+    assert len(captures) == 1, captures
+    driver.invoke("apply_saved_discard", repoId=repo_id, id=captures[0]["id"], reverse=False)
+    assert file.read_bytes() == changed
+    assert fixtures.git(repository, "ls-files", "--stage", "-z") == index
+    assert fixtures.git(repository, "rev-parse", "HEAD") == head
+    assert (repository / ".git/config").read_bytes() == config
+    report["scenarios"].append("native-compact-blank-diff-context-preserves-partial-discard-and-recovery")
+    return repository, repo_id
+
+
 def diff_line_selection(driver, fixtures, report):
     stage_after_patch_like_source_text(driver, fixtures, report)
-    return unterminated_final_line_actions(driver, fixtures, report)
+    unterminated_final_line_actions(driver, fixtures, report)
+    return discard_with_compact_blank_context(driver, fixtures, report)

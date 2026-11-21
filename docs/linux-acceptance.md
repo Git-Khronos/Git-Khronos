@@ -224,7 +224,9 @@ staging text that resembles a patch header. It must also keep both sides
 of a replacement selected when neither line has a trailing newline.
 The suite checks exact index blob IDs and working bytes through native
 unstage, discard, recovery, and refusal of a selection that would join
-final lines. Full and inherited-environment acceptance run the same checks.
+final lines. It also checks discard and recovery when Git omits the space
+prefix on blank context lines. Full and inherited-environment acceptance
+run the same checks.
 The focused reproduction does not replace the release matrix.
 
 ## Focused feature rebase review
