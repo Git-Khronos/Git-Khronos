@@ -81,9 +81,10 @@ clearing the filter or closing the pane.
 
 Filesystem notifications and explicit file-tool change notices request a
 debounced metadata read for an open repository. At most one queued request
-per repository owns the timer. A status read, foreground Git action, or
-background fetch can defer it without consuming the notification. A newer
-notification supersedes an older pending timer. Closing the tab or switching
+per repository owns the timer. Quiet bursts debounce for 450 ms, but continuous
+notifications cannot schedule the first attempt more than 1.5 seconds out. A
+status read, foreground Git action, or background fetch may still defer the
+read without consuming the notification. Closing the tab or switching
 workspace retires queued work for that visit. A native read error is not
 automatically replayed. Both the filesystem event and periodic status remain
 read-only; status alone does not invalidate a same-branch ref change.
@@ -91,6 +92,7 @@ read-only; status alone does not invalidate a same-branch ref change.
 In `background-status.spec.ts`, a held status reply crosses the first
 metadata deadline. After the reply settles, the delayed refresh reads and
 applies the changed ref metadata without requiring another notification.
+Another case keeps producing events and observes a refresh before the burst ends.
 
 ### Deferred workspace editing
 

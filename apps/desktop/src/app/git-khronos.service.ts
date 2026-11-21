@@ -86,6 +86,7 @@ const WORKSPACES_KEY = 'git-khronos.workspaces.v1';
 const ACTIVE_WORKSPACE_KEY = 'git-khronos.active-workspace.v1';
 const DEFAULT_WORKSPACE_ID = 'default';
 const REPOSITORY_CHANGE_DEBOUNCE_MS = 450;
+const REPOSITORY_CHANGE_MAX_WAIT_MS = 1_500;
 const SAFE_DISCARD_FAILURES = new Set([
   'repositoryFileRefused', 'staleWorkingTreeFile', 'staleDiscard', 'emptyDiscard', 'missingRecoveryPatch',
   'untrackedPartialDiscardUnsupported', 'invalidLineSelection', 'invalidLineAction', 'invalidRecoveryPath',
@@ -377,7 +378,7 @@ export class GitKhronosService implements OnDestroy {
   private reflogRequest = 0;
   private nextActivityId = 1;
   private readonly liveRefreshes = new Map<string, number>();
-  private readonly repositoryChangeRefreshes = new Map<string, { timer: number | null }>();
+  private readonly repositoryChangeRefreshes = new Map<string, { timer: number | null; deadline: number; capped: boolean }>();
   private readonly statusGenerations = new Map<string, number>();
   private readonly historyGenerations = new Map<string, number>();
   // Full snapshots reset the native cursor, so page reads wait for those operations.
@@ -801,10 +802,18 @@ export class GitKhronosService implements OnDestroy {
 
   queueRepositoryChangeRefresh(repositoryId: string): void {
     if (!this.repositories().some(repository => repository.id === repositoryId)) return;
+    const previous = this.repositoryChangeRefreshes.get(repositoryId);
+    const pending = previous?.timer != null;
+    // Once a burst reaches its maximum wait, don't let subsequent events
+    // replace that timer, even if the WebView runs it late.
+    if (pending && previous.capped) return;
+    const now = performance.now();
+    const deadline = pending ? previous.deadline : now + REPOSITORY_CHANGE_MAX_WAIT_MS;
+    const remaining = deadline - now;
     this.cancelRepositoryChangeRefresh(repositoryId);
-    const request: { timer: number | null } = { timer: null };
+    const request = { timer: null as number | null, deadline, capped: remaining <= REPOSITORY_CHANGE_DEBOUNCE_MS };
     this.repositoryChangeRefreshes.set(repositoryId, request);
-    const schedule = () => {
+    const schedule = (delay = REPOSITORY_CHANGE_DEBOUNCE_MS) => {
       if (this.repositoryChangeRefreshes.get(repositoryId) !== request) return;
       request.timer = window.setTimeout(async () => {
         request.timer = null;
@@ -813,9 +822,9 @@ export class GitKhronosService implements OnDestroy {
         if (request.timer === null && this.repositoryChangeRefreshes.get(repositoryId) === request) {
           this.repositoryChangeRefreshes.delete(repositoryId);
         }
-      }, REPOSITORY_CHANGE_DEBOUNCE_MS);
+      }, delay);
     };
-    schedule();
+    schedule(Math.max(0, Math.min(REPOSITORY_CHANGE_DEBOUNCE_MS, remaining)));
   }
 
   private cancelRepositoryChangeRefresh(repositoryId: string): void {

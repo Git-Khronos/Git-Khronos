@@ -47,6 +47,41 @@ test('a repository file event is not lost while a periodic status read is active
   expect(state).toEqual({ metadataReads: 1, names: ['external-ref-update'] });
 });
 
+test('continuous repository watcher events cannot postpone a visible refresh indefinitely', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const repository = git.repository();
+    const fixture = { app, repository, reads: 0 };
+    (window as any).__watcherBurst = fixture;
+    const tags = [{ name: 'external-burst-tag', fullName: 'refs/tags/external-burst-tag', oid: repository.headOid }];
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string) => {
+      if (command === 'refresh_repository') {
+        fixture.reads++;
+        return { ...repository, tags };
+      }
+      if (command === 'refresh_repository_status') return repository.status;
+      return null;
+    } };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+  });
+  for (let index = 0; index < 9; index++) {
+    await page.evaluate(() => {
+      const { app, repository } = (window as any).__watcherBurst;
+      app.scheduleRepositoryRefresh(repository.id);
+    });
+    await page.clock.runFor(200);
+  }
+  const state = await page.evaluate(() => {
+    const { app, reads } = (window as any).__watcherBurst;
+    return { reads, tag: app.git.repository().tags.some((tag: { name: string }) => tag.name === 'external-burst-tag') };
+  });
+  expect(state).toEqual({ reads: 1, tag: true });
+});
+
 test('repository change timers retire on close and coalesce for the reopened tab', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
