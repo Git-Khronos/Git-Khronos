@@ -194,8 +194,12 @@ export class MailPatchPanelComponent {
     await this.run('Saving mail-patch series…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new mail-patch series outside the repository',
         filters: [{ name: 'Mailbox patch series', extensions: ['mbox', 'patch'] }] });
+      if (!destination) {
+        if (this.current(repositoryId, generation)) this.notice.set('Export cancelled. No file written.');
+        report('Mail-patch export cancelled');
+        return;
+      }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a destination. Nothing was written.');
-      if (!destination) { this.notice.set('Export cancelled. No file written.'); report('Mail-patch export cancelled'); return; }
       const bytes = await ipc.export_mail_patch({ repoId: repositoryId, request: review.request, destination });
       report('Mail-patch series exported');
       if (this.current(repositoryId, generation)) {
@@ -213,8 +217,12 @@ export class MailPatchPanelComponent {
     await this.run('Reviewing mail-patch series…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a mail-patch series to apply', directory: false, multiple: false,
         filters: [{ name: 'Mailbox patch series', extensions: ['mbox', 'patch', 'eml', 'txt'] }] });
+      if (!file) {
+        if (this.current(repositoryId, generation)) this.notice.set('Selection cancelled. Nothing was applied.');
+        report('Mail-patch selection cancelled');
+        return;
+      }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a series. Nothing was applied.');
-      if (!file) { this.notice.set('Selection cancelled. Nothing was applied.'); report('Mail-patch selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('Select one series file. Nothing was applied.');
       const review = await ipc.review_mail_patch_import({ repoId: repositoryId, file });
       report('Mail-patch series reviewed; nothing applied');

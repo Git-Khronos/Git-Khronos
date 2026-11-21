@@ -207,6 +207,24 @@ test('returning to the same checkout does not authorize a destination from its f
   expect(await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'))).toEqual([]);
 });
 
+test('dismissing Preferences while a native save is cancelled records cancellation instead of a Git error', async ({ page }) => {
+  await setup(page);
+  const panel = page.locator('gc-patch-exchange-panel');
+  await page.evaluate(() => {
+    const fixture = (window as any).__patch;
+    fixture.deferSave = true;
+    fixture.destination = null;
+  });
+  await panel.getByRole('button', { name: 'Save diff patch…', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__patch.finishSave)).toBe('function');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await page.evaluate(() => (window as any).__patch.finishSave());
+  await expect(page.locator('[data-git-operation-status]')).toContainText('Patch export cancelled');
+  await expect(page.locator('.error-toast')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'))).toEqual([]);
+});
+
 test('preflight and stale-apply failures are focused, explicit and require a fresh check rather than replaying twice', async ({ page }) => {
   await setup(page);
   const panel = page.locator('gc-patch-exchange-panel');

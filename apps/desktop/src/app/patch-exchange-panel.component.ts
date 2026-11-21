@@ -226,10 +226,16 @@ export class PatchExchangePanelComponent {
     await this.run('Exporting complete diff patch…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new diff patch outside the repository',
         filters: [{ name: 'Diff patch', extensions: ['patch', 'diff'] }] });
-      if (!this.current(repositoryId, generation) || this.git.activeRepositoryReadScope() !== scope) {
+      const stillOwnsDestination = this.current(repositoryId, generation) && this.git.activeRepositoryReadScope() === scope;
+      // A null result authorizes nothing, even if Escape also closed Preferences.
+      if (!destination) {
+        if (stillOwnsDestination) this.notice.set('Export cancelled. No file was written.');
+        report('Patch export cancelled');
+        return;
+      }
+      if (!stillOwnsDestination) {
         throw new Error('Repository changed while choosing the patch destination. No export started.');
       }
-      if (!destination) { this.notice.set('Export cancelled. No file was written.'); report('Patch export cancelled'); return; }
       const issue = this.scopeIssue(staged, allFiles, paths);
       if (issue) throw new Error(`${issue} No patch was exported.`);
       const bytes = await ipc.export_diff_patch({ repoId: repositoryId, staged, paths, destination });
@@ -244,8 +250,12 @@ export class PatchExchangePanelComponent {
     await this.run('Checking complete diff patch…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a diff patch to check', directory: false, multiple: false,
         filters: [{ name: 'Diff patch', extensions: ['patch', 'diff'] }] });
+      if (!file) {
+        if (this.current(repositoryId, generation)) this.notice.set('Import selection cancelled. No changes made.');
+        report('Patch selection cancelled');
+        return;
+      }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing the patch file. No review started.');
-      if (!file) { this.notice.set('Import selection cancelled. No changes made.'); report('Patch selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('The file chooser returned multiple paths. Choose one patch; no review started.');
       const review = await ipc.review_diff_patch({ repoId: repositoryId, file, target });
       report('Patch checked; no changes applied');

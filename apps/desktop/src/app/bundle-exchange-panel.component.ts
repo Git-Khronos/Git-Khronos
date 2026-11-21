@@ -141,8 +141,12 @@ export class BundleExchangePanelComponent {
     await this.run('Exporting offline branch bundle…', async (repositoryId, generation, report) => {
       const destination = await save({ title: 'Save a new branch bundle outside the repository',
         filters: [{ name: 'Git bundle', extensions: ['bundle'] }] });
+      if (!destination) {
+        if (this.current(repositoryId, generation)) this.notice.set('Bundle export cancelled. No file written.');
+        report('Bundle export cancelled');
+        return;
+      }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a bundle destination. No export started.');
-      if (!destination) { this.notice.set('Bundle export cancelled. No file written.'); report('Bundle export cancelled'); return; }
       const bytes = await ipc.export_git_bundle({ repoId: repositoryId, branch: branch.name, expectedOid: branch.oid, destination });
       report('Self-contained branch bundle exported');
       if (this.current(repositoryId, generation)) this.notice.set(`Saved ${bytes} bytes to ${destination}. Existing repository state is unchanged.`);
@@ -153,8 +157,12 @@ export class BundleExchangePanelComponent {
     await this.run('Verifying complete offline bundle…', async (repositoryId, generation, report) => {
       const file = await open({ title: 'Choose a Git bundle to verify', directory: false, multiple: false,
         filters: [{ name: 'Git bundle', extensions: ['bundle'] }] });
+      if (!file) {
+        if (this.current(repositoryId, generation)) this.notice.set('Bundle selection cancelled. No objects imported.');
+        report('Bundle selection cancelled');
+        return;
+      }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a bundle. No verification started.');
-      if (!file) { this.notice.set('Bundle selection cancelled. No objects imported.'); report('Bundle selection cancelled'); return; }
       if (typeof file !== 'string') throw new Error('Select one bundle file. No verification started.');
       const review = await ipc.review_git_bundle({ repoId: repositoryId, file });
       report('Bundle verified; no objects imported');
