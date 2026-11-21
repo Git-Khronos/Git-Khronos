@@ -620,6 +620,9 @@ add it back, and the same path saved in another workspace is unaffected.
 After an explicit open, the shell restores the new checkout's draft and
 view only when the successful reply still identifies the active checkout.
 Unrelated background errors do not decide whether to switch the draft.
+Bulk open uses the same shell action for each new checkout, in selection
+order, keeping individual outcomes in the overview. Closing the overview
+stops undispatched paths without undoing a native open already in flight.
 
 Coverage: `startup-failures.spec.ts`, `workspace-center.spec.ts`, and the
 packaged `workspace-restore` suite.

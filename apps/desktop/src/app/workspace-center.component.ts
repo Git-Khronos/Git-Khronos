@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector,
 import { DatePipe } from '@angular/common';
 import { ipc, type RepositoryFiles, type RepositorySnapshot } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
-import { GitKhronosService } from './git-khronos.service';
+import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
 import { IDENTITY_PROFILES_KEY, parseIdentityProfiles, validIdentityProfile, type IdentityProfile } from './identity-profiles';
 import { runWorkspaceRemote } from './workspace-actions';
 import { runRepositoryFileAction } from './repository-file-actions';
@@ -168,6 +168,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
 export class WorkspaceCenterComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<WorkspaceCenterRequest>();
+  readonly openRepository = input.required<(path: string) => Promise<OpenRepositoryResult>>();
   readonly suspended = input(false);
   readonly closed = output<void>();
   readonly repositorySelected = output<string>();
@@ -507,14 +508,15 @@ export class WorkspaceCenterComponent implements OnDestroy {
           this.setBulkResult(path, 'open', 'success', 'Already open in this workspace.');
           continue;
         }
-        const result = await this.git.openRepository(path);
+        const result = await this.openRepository()(path);
+        if (this.destroyed) return;
         this.setBulkResult(path, 'open', result.status,
           result.status === 'success' ? (result.path === path ? null : `Opened repository at ${result.path}.`) : result.error);
       }
     } catch (error: unknown) {
-      this.bulkError.set(this.git.formatError(error));
+      if (!this.destroyed) this.bulkError.set(this.git.formatError(error));
     } finally {
-      this.openingRepositories.set(false);
+      if (!this.destroyed) this.openingRepositories.set(false);
     }
   }
   private setBulkResult(id: string, action: WorkspaceActionResult['action'], status: WorkspaceActionResult['status'], detail: string | null): void {

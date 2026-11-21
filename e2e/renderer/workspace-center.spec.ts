@@ -268,7 +268,7 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
-test('opens multiple selected directories and continues after an individual failure', async ({ page }) => {
+test('opens multiple selected directories, keeps individual outcomes and switches commit drafts', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -294,6 +294,39 @@ test('opens multiple selected directories and continues after an individual fail
   await expect(dialog.getByLabel('Repository action results')).toContainText('delta — error: Not a repository.');
   const calls = await page.evaluate(() => (window as any).__center.calls);
   expect(calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.args.path)).toEqual(['/owned/gamma/subdir', '/owned/delta']);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/gamma');
+  const summary = page.getByRole('textbox', { name: 'Commit summary', exact: true });
+  await expect(summary).toHaveValue('');
+  await page.getByRole('tab', { name: /^Alpha(?:,|$)/i }).click();
+  await expect(summary).toHaveValue('Workspace draft');
+});
+
+test('closing the overview stops queued opens but still finishes the dispatched checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      if (command === 'plugin:dialog|open') return Promise.resolve(['/owned/first-open', '/owned/not-dispatched']);
+      if (command === 'open_repository') {
+        fixture.calls.push(args.path);
+        if (args.path === '/owned/first-open') return new Promise(resolve => {
+          fixture.finishFirstOpen = () => resolve({ ...fixture.first, id: 'first-open', path: args.path, name: 'First open' });
+        });
+      }
+      return Promise.reject(Error(`Unexpected command: ${command}`));
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Open multiple repositories…', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.finishFirstOpen)).toBe('function');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => (window as any).__center.finishFirstOpen());
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/first-open');
+  await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => (window as any).__center.calls)).toEqual(['/owned/first-open']);
 });
 
 test('a bulk pull invalidates its old diff without clearing a newer inspection', async ({ page }) => {

@@ -238,7 +238,7 @@ interface MutationResult {
   refreshError?: string | null;
 }
 
-type OpenRepositoryResult =
+export type OpenRepositoryResult =
   | { status: 'success'; repositoryId: string; path: string }
   | { status: 'error' | 'cancelled'; error: string | null };
 

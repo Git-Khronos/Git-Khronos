@@ -71,7 +71,7 @@ import type {
   Worktree,
   WorkingTreeEntry,
 } from '@git-khronos/contracts';
-import { GitKhronosService, type RepositoryWorkspace } from './git-khronos.service';
+import { GitKhronosService, type OpenRepositoryResult, type RepositoryWorkspace } from './git-khronos.service';
 import { OverlayController } from './overlay-controller';
 import { repositoryOperationState } from './repository-operation';
 import { branchCheckoutOwner, repositoryLocationLabel } from './repository-location';
@@ -6748,23 +6748,28 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.openRepositoryPath(path);
   }
 
-  protected async openRepositoryPath(path: string, closeManager = false): Promise<void> {
-    if (path === this.git.repository()?.path) {
+  protected readonly openWorkspaceRepository = (path: string) => this.openRepositoryPath(path);
+
+  protected async openRepositoryPath(path: string, closeManager = false): Promise<OpenRepositoryResult> {
+    const current = this.git.repository();
+    if (path === current?.path) {
       if (closeManager) this.repositoryDialog.set(null);
-      return;
+      return { status: 'success', repositoryId: current.id, path };
     }
     const workspaceId = this.git.activeWorkspaceId();
     this.saveCommitDraft();
     const opened = await this.git.openRepository(path);
     const active = this.git.repository();
     // A background read can report its own error while this open succeeds.
-    if (opened.status !== 'success' || workspaceId !== this.git.activeWorkspaceId()
-      || active?.id !== opened.repositoryId || active.path !== opened.path) return;
-    this.syncOpenTerminalToActiveRepository();
-    this.restoreCommitDraft();
-    if (closeManager) this.repositoryDialog.set(null);
-    this.selectWip();
-    this.loadGraphPreferences();
+    if (opened.status === 'success' && workspaceId === this.git.activeWorkspaceId()
+      && active?.id === opened.repositoryId && active.path === opened.path) {
+      this.syncOpenTerminalToActiveRepository();
+      this.restoreCommitDraft();
+      if (closeManager) this.repositoryDialog.set(null);
+      this.selectWip();
+      this.loadGraphPreferences();
+    }
+    return opened;
   }
 
   protected async selectWorktreeWip(worktree: Worktree): Promise<void> {
