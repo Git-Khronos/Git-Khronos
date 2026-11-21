@@ -295,16 +295,17 @@ pub(super) fn refuse_downgrade(package_format: &str, offered: &str) -> Result<()
 
 #[cfg(target_os = "linux")]
 fn privileged_command(package_format: &str, path: &std::path::Path) -> Command {
-    let (program, option) = if package_format == "deb" {
-        ("/usr/bin/dpkg", "-i")
-    } else {
-        ("/usr/bin/rpm", "-U")
-    };
     let mut command = Command::new(PKEXEC);
+    command.arg("--disable-internal-agent");
+    if package_format == "deb" {
+        // Dpkg permits downgrades by default. Keep the guard inside the
+        // package transaction, including time spent waiting for authorization.
+        command.args(["/usr/bin/dpkg", "--refuse-downgrade", "-i"]);
+    } else {
+        // RPM upgrade refuses older packages unless explicitly overridden.
+        command.args(["/usr/bin/rpm", "-U"]);
+    }
     command
-        .arg("--disable-internal-agent")
-        .arg(program)
-        .arg(option)
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -352,6 +353,9 @@ pub(super) fn install(
     if matches!(package_format, "deb" | "rpm") {
         if observed_version(package_format).as_deref() == Some(update.version.as_str()) {
             return InstallOutcome::Confirmed;
+        }
+        if refuse_downgrade(package_format, &update.version).is_err() {
+            return InstallOutcome::RefusedBeforeExecution;
         }
         let path = prepared
             .directory
@@ -403,6 +407,7 @@ mod tests {
             [
                 "--disable-internal-agent",
                 "/usr/bin/dpkg",
+                "--refuse-downgrade",
                 "-i",
                 path.to_str().unwrap()
             ]

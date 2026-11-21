@@ -923,6 +923,43 @@ test('renamed package replaces the legacy payload in a private dpkg database', a
   await assert.rejects(stat(join(privateRoot, 'usr/bin/git-khronos-desktop')), { code: 'ENOENT' });
 });
 
+test('Debian install-time downgrade refusal preserves a newly installed version and payload', async (t) => {
+  await requireHookFreeDpkg();
+  const root = await mkdtemp(join(tmpdir(), 'khronos-update-version-guard-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const privateRoot = join(root, 'private-dpkg-root');
+  const admin = join(privateRoot, 'var/lib/dpkg');
+  const payload = 'usr/share/khronos-updater-fixture/version';
+  const packageName = 'khronos-updater-fixture';
+  const options = { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, timeout: 30_000 };
+  await mkdir(join(admin, 'updates'), { recursive: true });
+  await writeFile(join(admin, 'status'), '');
+  for (const version of ['1.0.0', '2.0.0', '3.0.0']) {
+    const source = join(root, version);
+    await mkdir(join(source, 'DEBIAN'), { recursive: true });
+    await mkdir(dirname(join(source, payload)), { recursive: true });
+    await writeFile(join(source, 'DEBIAN/control'), [
+      `Package: ${packageName}`, `Version: ${version}`, 'Architecture: all',
+      'Maintainer: Fixture <fixture@example.test>', 'Description: Local updater guard fixture', '',
+    ].join('\n'));
+    await writeFile(join(source, payload), version);
+    const packed = spawnSync('dpkg-deb', ['--root-owner-group', '--build', source, join(root, `${version}.deb`)], options);
+    assert.equal(packed.status, 0, packed.stderr);
+  }
+
+  // The harmless fixtures have no maintainer scripts. The root and admin
+  // database are private even when the suite runs under an administrator.
+  for (const [offered, expected] of [['2.0.0', '2.0.0'], ['1.0.0', '2.0.0'], ['3.0.0', '3.0.0']]) {
+    const install = spawnSync('fakeroot', ['dpkg', `--root=${privateRoot}`, `--admindir=${admin}`,
+      `--log=${join(admin, 'fixture.log')}`, '--refuse-downgrade', '-i', join(root, `${offered}.deb`)], options);
+    assert.equal(install.status, 0, install.stderr);
+    const query = spawnSync('dpkg-query', [`--admindir=${admin}`, '-W', '-f=${Version}', packageName], options);
+    assert.equal(query.status, 0, query.stderr);
+    assert.equal(query.stdout, expected);
+    assert.equal(await readFile(join(privateRoot, payload), 'utf8'), expected);
+  }
+});
+
 for (const unexpectedRemoval of [false, true]) {
   test(`real isolated APT ${unexpectedRemoval ? 'refuses an unrelated transitive removal before dpkg' : 'replaces only the legacy package'}`, async (t) => {
     const f = await legacyPackageFixture(t);

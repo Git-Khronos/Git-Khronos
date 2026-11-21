@@ -2107,12 +2107,14 @@ persistently rewrite user configuration. No external source code copied.
 
 - https://www.freedesktop.org/software/polkit/docs/latest/pkexec.1.html
 - https://manpages.debian.org/trixie/dpkg/dpkg.1.en.html
+- https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html
 
 Used for the documented authorization-refusal statuses, program-status
 passthrough, disabling the textual authentication-agent fallback, and dpkg's
 restricted exit-status range. Only the fixed Debian installer maps 126/127 to a
-pre-execution refusal; other ambiguous outcomes remain unconfirmed. Independently
-implemented behavior; no upstream source code or documentation text copied.
+pre-execution refusal; other ambiguous outcomes remain unconfirmed. Dpkg's
+documented downgrade policy defines the transaction-level refusal option.
+Independently implemented behavior; no upstream source code or documentation text copied.
 
 
 ## Signed Debian release publication

@@ -322,3 +322,9 @@ dispatch; checking and signature verification still work. The dialog explains
 that users can install the official release package with their system package
 manager instead. This check does not imply that a functioning polkit session
 exists, and there is no password-collection or `sudo` fallback.
+
+The updater rechecks the installed version before starting authorization.
+For Debian it also passes `--refuse-downgrade` to the actual dpkg
+transaction, so another update completing while authorization is pending
+cannot turn the older reviewed offer into a downgrade. Installer exit status
+alone never confirms the offered version.

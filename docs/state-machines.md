@@ -1122,8 +1122,10 @@ Read-only package inspection has output/time limits and owns its decompressor
 process group. Linux authorization uses fixed OS programs and the registered
 system authentication agent, without a textual-password fallback. Debian auth
 refusal is distinct from potentially partial installer failure; ambiguous
-outcomes remain uncertain. Windows self-installation is still disabled pending
-a safe restart boundary. Missing publisher trust is fail-closed, not permission
+outcomes remain uncertain. The installed version is rechecked before launch;
+the Debian transaction itself refuses a downgrade even if another installer
+has since updated the application. Windows self-installation is still disabled
+pending a safe restart boundary. Missing publisher trust is fail-closed, not permission
 to trust a key supplied in a manifest.
 
 The deferred Updates review captures a request identity and restores only its
