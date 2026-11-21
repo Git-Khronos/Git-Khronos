@@ -2651,3 +2651,19 @@ Its SHA-256 is
 `b79721d9c7f87437479f92be6cd35d80f6f1c7b866058e98cddd113abc4bea51`.
 This uses a fixture publisher key and does not qualify subsequent app
 changes or publish anything.
+
+## Installed first file scan — 2026-11-21
+
+The exact Jammy installer from `4a8645c`, SHA-256
+`12c7949ccd4da6b1deaee9e7b6dfc1405147ac805cb240ec03942f134c97e63b`, passed
+both Ubuntu 24.04 `first-status` scenarios. History remained usable while
+the full Git scan was held. The sidebar and inspector showed loading without
+claiming a file count. After releasing the scan, the unstaged recap was
+**+3/−1**, the staged recap **+1/−0**, and the Git footprint was unchanged.
+
+The original installed worktree run timed out after double-clicking the
+graph before the dirty working-tree row was known to be painted. The separate
+rerun on the same installer waited for that row before locating the pointer
+target; all 22 worktree scenarios passed. Original and rerun reports are
+retained under `target/local-review/updater/jammy-builder/first-status-release.p3vVbWOx/`.
+These are focused results, not complete release qualification.

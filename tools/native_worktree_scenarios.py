@@ -69,6 +69,11 @@ def occupied_branch_navigation(driver, fixtures, report):
         if from_graph:
             graph_branch = '.commit-row .branch-column button[aria-label="Graph reference ' + branch + ', local branch"]'
             element = driver.wait(f"""const button = document.querySelector({json.dumps(graph_branch)});
+              // The first complete file scan inserts a WIP row above history.
+              // Take the mouse target only after that row has actually painted.
+              const wip = document.querySelector('gc-worktree-graph-row .wip-row:not(.linked-worktree)');
+              if (document.querySelector('.wip-nav small')?.textContent.trim() !== '2 changed files'
+                || !wip?.getClientRects().length) return null;
               if (!button || !button.getClientRects().length) return null;
               const r = button.getBoundingClientRect();
               return button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
