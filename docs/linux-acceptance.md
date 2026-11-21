@@ -640,6 +640,11 @@ as the full toolkit, including actual WebKit decoding. It centers each row
 before its click so a partially clipped row under a sticky heading is not
 treated as an available hit target.
 
+Native editor, file-tool, and media scenarios wait for the deferred file
+action menu to paint before selecting Preview file content. The harness
+captures the enabled control in that wait, verifies its hit target, and
+clicks it once; menu loading is not mistaken for a missing action.
+
 ## Focused linked-worktree navigation acceptance
 
 From the repository root, the `worktrees` suite runs the normal packaged smoke

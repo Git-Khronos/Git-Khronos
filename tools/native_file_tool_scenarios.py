@@ -80,7 +80,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
         driver.context_click(selector)
-        driver.click_text('[role=menuitem]', 'Preview file content')
+        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gc-file-content-dialog')")
 
     def capture_review(label, selector):

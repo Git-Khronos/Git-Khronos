@@ -110,7 +110,7 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     driver.click('.wip-nav')
     selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
     driver.context_click(selector)
-    driver.click_text('[role=menuitem]', 'Preview file content')
+    driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
     button('gc-file-content-dialog button', 'Edit working copy')
     driver.wait("return !!document.querySelector('#working-editor-text')&&!document.querySelector('#working-editor-text').readOnly")
     driver.script("const input=document.querySelector('#working-editor-text');input.value=arguments[0];input.dispatchEvent(new Event('input',{bubbles:true}));", draft)

@@ -182,7 +182,7 @@ def direct_file_content(driver, fixtures, source, report):
 
     def preview(selector):
         driver.context_click(selector)
-        driver.click_text('[role="menuitem"]', 'Preview file content')
+        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
 
     def decoded():

@@ -154,11 +154,8 @@ def working_file_editor(driver, fixtures, original_repository, report):
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + ui_path) + ']'
         driver.context_click(selector)
-        driver.wait("""return [...document.querySelectorAll('.file-context-menu [role=menuitem]')]
-          .some(button => button.textContent.trim() === 'Preview file content' && button.getClientRects().length)""", 5)
-        driver.click_text('[role="menuitem"]', 'Preview file content')
-        driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
-        driver.click_text('gc-file-content-dialog button', 'Edit working copy')
+        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.click_scrolled_text('gc-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
         driver.wait("return document.querySelector('#working-editor-text')?.value === 'working\\n'")
         actual_title = driver.invoke('plugin:window|title', label='main')
         assert repository.name in actual_title, actual_title

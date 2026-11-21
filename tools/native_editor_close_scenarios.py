@@ -42,18 +42,15 @@ def editor_window_close(driver, fixtures, original_repository, report):
     executable = driver.executable
 
     def button(text):
-        driver.wait('return [...document.querySelectorAll("gc-working-file-editor button")].some(button => button.textContent.trim() === '
-                    + json.dumps(text) + ' && !button.disabled)')
-        driver.click_text('gc-working-file-editor button', text)
+        driver.click_scrolled_text('gc-working-file-editor button', text, wait_for_ready=True)
 
     def edit():
         open_ui(driver, repository)
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
         driver.context_click(selector)
-        driver.click_text('[role="menuitem"]', 'Preview file content')
-        driver.wait("return [...document.querySelectorAll('gc-file-content-dialog button')].some(button=>button.textContent.trim()==='Edit working copy' && !button.disabled)")
-        driver.click_text('gc-file-content-dialog button', 'Edit working copy')
+        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.click_scrolled_text('gc-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
         driver.wait("return !!document.querySelector('#working-editor-text') && !document.querySelector('#working-editor-text').readOnly")
 
     def text(value):
