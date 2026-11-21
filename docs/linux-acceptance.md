@@ -608,6 +608,10 @@ stream. The fixture arms deletion only after the WebView observes at least
 local release matrix requires both checks in one passing Jammy watcher
 report. The fixture does not modify Git on the host.
 
+The GitLab suite's initial Connect action is clicked once. A refusal records
+the rendered error category and the owned HTTPS fixture's request counters,
+without recording credentials or retrying the connection.
+
 For Pull scope, Ubuntu 24.04 qualification runs two independent suites
 against the installed package:
 

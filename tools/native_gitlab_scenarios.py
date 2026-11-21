@@ -94,8 +94,28 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert requests() == []
     fill("#gitlab-origin", origin)
     fill("#gitlab-token", token)
-    button("Connect to GitLab")
-    driver.wait("return !!document.querySelector('#gitlab-account')?.value")
+    driver.click_scrolled_text("gc-gitlab-projects button", "Connect to GitLab", wait_for_ready=True)
+    # Do not turn a completed refusal into a generic wait timeout or replay
+    # the connection. Report only the category and credential-safe counters.
+    connect_result = driver.wait("""
+        const catalogue = document.querySelector('gc-gitlab-projects');
+        if (!catalogue || catalogue.querySelector('section')?.getAttribute('aria-busy') === 'true') return null;
+        if (catalogue.querySelector('#gitlab-account')?.value) return 'connected';
+        const alert = catalogue.querySelector('[role=alert]')?.textContent.trim();
+        if (!alert) return null;
+        if (alert.includes('verified HTTPS read')) return 'https-connection-refused';
+        if (alert.includes('timed out')) return 'timeout';
+        if (alert.includes('did not accept the selected credential')) return 'credential-refused';
+        return 'other-app-refusal';
+    """)
+    observed = requests()
+    report["gitlabInitialConnect"] = {
+        "outcome": connect_result,
+        "fixtureApiRequests": len(observed),
+        "matchingFixtureCredentials": sum(request["credentialMatched"] for request in observed),
+    }
+    assert connect_result == "connected", (
+        "Installed app refused the initial owned GitLab connection", report["gitlabInitialConnect"])
     connections = driver.invoke("gitlab_connections")
     assert len(connections) == 1, connections
     connection = connections[0]
@@ -104,7 +124,7 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert token not in json.dumps(connections)
     assert driver.script("return document.querySelector('#gitlab-token').value") == ""
     assert token not in driver.script("return document.body.textContent")
-    assert len(requests()) == 1 and requests()[0]["credentialMatched"]
+    assert len(observed) == 1 and observed[0]["credentialMatched"]
     report["scenarios"].append("native-gitlab-explicit-connect-verified-private-tls-native-account-and-cleared-token")
 
     button("Load GitLab projects")
