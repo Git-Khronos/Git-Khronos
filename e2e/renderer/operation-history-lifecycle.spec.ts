@@ -62,7 +62,8 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
     expect(result.active).toBe('other-history');
     expect(result.otherEntry).toBeNull();
     expect(result.error).toBe(unrelatedError ? 'Other repository inspection failed' : null);
-    if (['commit', 'updateHeadMessage', 'editCommit'].includes(operation)) expect(result.outcome).toBe(true);
+    if (operation === 'commit') expect(result.outcome).toEqual({ headOid: result.expectedAfter });
+    if (['updateHeadMessage', 'editCommit'].includes(operation)) expect(result.outcome).toBe(true);
     if (operation === 'renameBranch') {
       expect(result.entry).toMatchObject({ kind: 'rename-branch', beforeName: 'main', afterName: 'renamed-main' });
       expect(result.calls.filter((call: any) => call.command === 'rename_branch').at(-1).args)

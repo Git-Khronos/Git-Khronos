@@ -68,7 +68,7 @@ for (const outcome of ['error', 'cancelled']) {
         } };
         const pending = git.remote('fetch_repository');
         await recoveryStarted;
-        if (change === 'newer-mutation') await git.remote('pull_repository');
+        if (change === 'newer-mutation') await git.pull();
         if (change === 'reopened') {
           git.closeRepository(repository.id);
           await git.openRepository(repository.path);
