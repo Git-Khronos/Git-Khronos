@@ -241,6 +241,25 @@ release evidence, not a published release or a verified live self-update.
 Publication must preserve the exact package bytes behind the manifest URL and
 must not substitute a rebuild or skip the release runtime matrix.
 
+Before publication, verify the final staging directory again. Once the build
+dependencies are cached, this needs neither the private key nor network access.
+Pass the independently qualified digest
+from the preflight above, **not** a digest read from the eventual upload's
+`SHA256SUMS`:
+
+```sh
+cargo run --offline --locked -p git-khronos-desktop --example stage-debian-update -- \
+  --verify-release "$RELEASE_DIRECTORY" "$PUBLIC_KEY_FILE" "$RELEASE_TAG" \
+  "$QUALIFIED_PACKAGE_SHA256"
+```
+
+This requires the amd64 installer, canonical `latest.json`, both CycloneDX
+inventories, and one exact checksum entry for each. It verifies the manifest's
+version-bound signature and version-specific official URL against the same
+package. The inventory checks are local integrity and format checks, not
+signed provenance. The verifier does not create a tag or upload anything, and
+the signed publication workflow still needs to consume the verified assets.
+
 On Linux, a verified package can be downloaded even if the desktop cannot
 authorize an in-app installation. For Debian and RPM, a missing or unusable
 `/usr/bin/pkexec` disables the install action and suppresses automatic installer

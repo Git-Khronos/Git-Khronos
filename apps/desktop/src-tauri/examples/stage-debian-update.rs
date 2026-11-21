@@ -9,9 +9,21 @@ fn main() -> std::process::ExitCode {
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if let [mode, directory, key, tag, expected_hash] = args.as_slice()
+        && mode == "--verify-release"
+    {
+        linux::verify_release(
+            directory.as_ref(),
+            key.as_ref(),
+            tag.to_str().ok_or("expected a UTF-8 release tag")?,
+            expected_hash.to_str().ok_or("expected a UTF-8 SHA-256")?,
+        )?;
+        println!("Verified the prepared signed release assets without publishing them.");
+        return Ok(());
+    }
     let [package, signature, key, output_parent, expected_hash] = args.as_slice() else {
         return Err(
-            "usage: stage-debian-update PACKAGE SIGNATURE PUBLIC_KEY OUTPUT_PARENT PACKAGE_SHA256"
+            "usage: stage-debian-update PACKAGE SIGNATURE PUBLIC_KEY OUTPUT_PARENT PACKAGE_SHA256\n       stage-debian-update --verify-release DIRECTORY PUBLIC_KEY RELEASE_TAG PACKAGE_SHA256"
                 .into(),
         );
     };
@@ -32,6 +44,7 @@ mod linux {
     use minisign_verify::{PublicKey, Signature};
     use sha2::{Digest, Sha256};
     use std::{
+        collections::BTreeMap,
         error::Error,
         fs::{self, File},
         io::{Read, Write},
@@ -41,6 +54,8 @@ mod linux {
 
     type Result<T> = std::result::Result<T, Box<dyn Error>>;
     const MAX_PACKAGE: u64 = 512 * 1024 * 1024;
+    const MAX_MANIFEST: u64 = 256 * 1024;
+    const MAX_INVENTORY: u64 = 64 * 1024 * 1024;
 
     fn bounded_input(path: &Path, limit: u64) -> Result<File> {
         use std::os::unix::fs::OpenOptionsExt;
@@ -56,15 +71,28 @@ mod linux {
         Ok(file)
     }
 
-    fn encoded(path: &Path) -> Result<String> {
-        let mut value = String::new();
-        bounded_input(path, 4096)?
-            .take(4097)
-            .read_to_string(&mut value)?;
-        if value.len() > 4096 {
-            return Err("oversized signing input".into());
+    fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        bounded_input(path, limit)?
+            .take(limit + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > limit {
+            return Err("oversized release input".into());
         }
-        Ok(value.trim().to_owned())
+        Ok(bytes)
+    }
+
+    fn encoded(path: &Path) -> Result<String> {
+        Ok(String::from_utf8(read_bounded(path, 4096)?)?
+            .trim()
+            .to_owned())
+    }
+
+    fn is_sha256(hash: &str) -> bool {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
     }
 
     pub(super) fn stage(
@@ -74,19 +102,33 @@ mod linux {
         output_parent: &Path,
         expected_hash: &str,
     ) -> Result<PathBuf> {
-        if expected_hash.len() != 64
-            || !expected_hash
-                .bytes()
-                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-        {
+        stage_with_signature(
+            package,
+            &encoded(signature)?,
+            key,
+            output_parent,
+            expected_hash,
+        )
+    }
+
+    fn stage_with_signature(
+        package: &Path,
+        signature_text: &str,
+        key: &Path,
+        output_parent: &Path,
+        expected_hash: &str,
+    ) -> Result<PathBuf> {
+        if !is_sha256(expected_hash) {
             return Err("expected the lowercase SHA-256 of the qualified package".into());
         }
         let asset = package
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or("invalid asset name")?;
-        let signature_text = encoded(signature)?;
-        let signature = Signature::decode(&String::from_utf8(STANDARD.decode(&signature_text)?)?)?;
+        if signature_text.len() > 4096 {
+            return Err("oversized package signature".into());
+        }
+        let signature = Signature::decode(&String::from_utf8(STANDARD.decode(signature_text)?)?)?;
         let key = PublicKey::decode(&String::from_utf8(STANDARD.decode(encoded(key)?)?)?)?;
         let mut verifier = key.verify_stream(&signature)?;
 
@@ -169,11 +211,89 @@ mod linux {
         )?;
         Ok(staging.keep())
     }
+
+    /// Recheck the files intended for upload against a separately qualified digest.
+    /// Use owned temporary storage; the release directory is strictly read-only.
+    pub(super) fn verify_release(
+        directory: &Path,
+        key: &Path,
+        tag: &str,
+        expected_hash: &str,
+    ) -> Result<()> {
+        let version = tag
+            .strip_prefix('v')
+            .ok_or("expected a stable v-prefixed release tag")?;
+        let parsed = semver::Version::parse(version)?;
+        if !parsed.pre.is_empty() || !parsed.build.is_empty() || parsed.to_string() != version {
+            return Err("expected a stable v-prefixed release tag".into());
+        }
+        let asset = format!("Git-Khronos_{version}_amd64.deb");
+        let package_inventory = format!("Git-Khronos_{version}_amd64.cdx.json");
+        let source_inventory = format!("Git-Khronos_{version}_source.cdx.json");
+        let manifest_bytes = read_bounded(&directory.join("latest.json"), MAX_MANIFEST)?;
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
+        let signature = manifest["platforms"]["linux-x86_64-deb"]["signature"]
+            .as_str()
+            .ok_or("manifest is missing the amd64 Debian signature")?;
+
+        let area = tempfile::tempdir()?;
+        let verified = stage_with_signature(
+            &directory.join(&asset),
+            signature,
+            key,
+            area.path(),
+            expected_hash,
+        )?;
+        if read_bounded(&verified.join("latest.json"), MAX_MANIFEST)? != manifest_bytes {
+            return Err(
+                "manifest differs from the canonical signed asset for the release tag".into(),
+            );
+        }
+
+        let mut expected = BTreeMap::from([
+            (asset.as_str(), expected_hash.to_owned()),
+            (
+                "latest.json",
+                format!("{:x}", Sha256::digest(manifest_bytes)),
+            ),
+        ]);
+        for (name, is_source) in [
+            (package_inventory.as_str(), false),
+            (source_inventory.as_str(), true),
+        ] {
+            let bytes = read_bounded(&directory.join(name), MAX_INVENTORY)?;
+            let inventory: serde_json::Value = serde_json::from_slice(&bytes)?;
+            if inventory["bomFormat"] != "CycloneDX"
+                || !inventory["components"]
+                    .as_array()
+                    .is_some_and(|components| !is_source || !components.is_empty())
+            {
+                return Err(format!("invalid CycloneDX inventory: {name}").into());
+            }
+            expected.insert(name, format!("{:x}", Sha256::digest(bytes)));
+        }
+        let checksums = String::from_utf8(read_bounded(&directory.join("SHA256SUMS"), 4096)?)?;
+        for entry in checksums.lines() {
+            let (hash, filename) = entry
+                .split_once("  ")
+                .ok_or("invalid release checksum line")?;
+            if expected.remove(filename).as_deref() != Some(hash) {
+                return Err(format!(
+                    "unexpected, repeated, or mismatched release checksum: {filename}"
+                )
+                .into());
+            }
+        }
+        if !expected.is_empty() {
+            return Err("SHA256SUMS is missing required release assets".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::linux::stage;
+    use super::linux::{stage, verify_release};
     use sha2::{Digest, Sha256};
     use std::{fs, path::PathBuf};
     use tauri_plugin_updater::{Updater, UpdaterExt};
@@ -324,5 +444,91 @@ mod tests {
             "{error}"
         );
         assert_eq!(area.path().read_dir().unwrap().count(), 2);
+    }
+
+    #[test]
+    fn prepublication_verification_rechecks_final_assets_and_independent_qualification() {
+        let area = tempfile::tempdir().unwrap();
+        let package_name = "Git-Khronos_0.2.0_amd64.deb";
+        let package = area.path().join(package_name);
+        let payload = fs::read(fixture("matching-amd64.deb")).unwrap();
+        fs::write(&package, &payload).unwrap();
+        let digest = format!("{:x}", Sha256::digest(&payload));
+        let key = fixture("public.key");
+        let staged = stage(
+            &package,
+            &fixture("matching-amd64.deb.sig"),
+            &key,
+            area.path(),
+            &digest,
+        )
+        .unwrap();
+        let package_inventory = "Git-Khronos_0.2.0_amd64.cdx.json";
+        let source_inventory = "Git-Khronos_0.2.0_source.cdx.json";
+        let inventory = br#"{"bomFormat":"CycloneDX","components":[{"name":"owned-fixture"}]}"#;
+        for name in [package_inventory, source_inventory] {
+            fs::write(staged.join(name), inventory).unwrap();
+        }
+        let write_sums = || {
+            let sums = [
+                package_name,
+                "latest.json",
+                package_inventory,
+                source_inventory,
+            ]
+            .iter()
+            .map(|name| {
+                let bytes = fs::read(staged.join(name)).unwrap();
+                format!("{:x}  {name}\n", Sha256::digest(bytes))
+            })
+            .collect::<String>();
+            fs::write(staged.join("SHA256SUMS"), &sums).unwrap();
+            sums
+        };
+        let original_sums = write_sums();
+        verify_release(&staged, &key, "v0.2.0", &digest).unwrap();
+        assert_eq!(
+            staged.read_dir().unwrap().count(),
+            6,
+            "verification must not publish or add files"
+        );
+        assert!(verify_release(&staged, &key, "v0.2.1", &digest).is_err());
+        assert!(verify_release(&staged, &fixture("other-public.key"), "v0.2.0", &digest).is_err());
+
+        let manifest_path = staged.join("latest.json");
+        let original = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            &manifest_path,
+            original.replace("/releases/download/", "/releases/latest/download/"),
+        )
+        .unwrap();
+        write_sums();
+        let error = verify_release(&staged, &key, "v0.2.0", &digest).unwrap_err();
+        assert!(error.to_string().contains("manifest differs"));
+        fs::write(&manifest_path, original).unwrap();
+
+        let repeated = format!("{original_sums}{original_sums}");
+        fs::write(staged.join("SHA256SUMS"), repeated).unwrap();
+        let error = verify_release(&staged, &key, "v0.2.0", &digest).unwrap_err();
+        assert!(error.to_string().contains("repeated"));
+
+        fs::write(
+            staged.join(source_inventory),
+            br#"{"bomFormat":"CycloneDX","components":[]}"#,
+        )
+        .unwrap();
+        write_sums();
+        let error = verify_release(&staged, &key, "v0.2.0", &digest).unwrap_err();
+        assert!(error.to_string().contains("invalid CycloneDX inventory"));
+        fs::write(staged.join(source_inventory), inventory).unwrap();
+
+        fs::write(staged.join(package_name), b"different package").unwrap();
+        write_sums();
+        let error = verify_release(&staged, &key, "v0.2.0", &digest).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("differs from the qualified artifact")
+        );
     }
 }

@@ -145,7 +145,8 @@
       "options": {
         "commands": [
           "pnpm exec vitest run apps/desktop/src/app/*.spec.ts",
-          "cargo test --workspace"
+          "cargo test --workspace",
+          "cargo test --locked -p git-khronos-desktop --example stage-debian-update"
         ],
         "parallel": false
       }
