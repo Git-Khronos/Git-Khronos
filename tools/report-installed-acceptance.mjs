@@ -14,6 +14,41 @@ const GITLAB_SCENARIO = 'native-gitlab-catalogue-preserves-independent-git-refs-
 
 // Keep the local checklist aligned with linux-package-acceptance.yml. It
 // checks retained runtime evidence, not the hosted job or publisher key.
+const UBUNTU_NOBLE_REVIEWS = [
+  ['workspace-batch', 'native-workspace-batch-stop-completes-active-fetch-and-never-dispatches-queued-fetch'],
+  ['workspace-saved-removal', 'native-workspace-review-removes-only-selected-saved-paths-and-persists-across-reload'],
+  ['workspace-locate', 'native-workspace-locate-replaces-one-path-using-owned-native-folder-picker'],
+  ['workspace-bulk-locate', 'native-workspace-bulk-locate-stops-on-native-picker-cancel-and-preserves-saved-slots'],
+  ['workspace-locate-nearby', 'native-workspace-locate-starts-in-the-previous-parent-and-selects-renamed-checkout'],
+  ['workspace-reopen', [
+    'native-ui-reopen-closed-tab-does-not-leak-across-workspaces',
+    'native-ui-reopen-closed-tab-restores-saved-slot-without-changing-git',
+  ]],
+  ['discard-subset', [
+    'native-ui-blocked-discard-returns-to-read-only-review-and-clears-selection',
+    'native-ui-blocked-discard-confirms-only-reviewed-root-and-undo-restores-exact-state',
+  ]],
+  ['submodule-initialize', [
+    'native-submodule-initialize-opener-and-cancel-do-not-touch-repository',
+    'native-submodule-confirm-initializes-only-selected-path-including-nested',
+  ]],
+  ['submodule-update', [
+    'native-submodule-remote-update-open-and-cancel-do-not-fetch',
+    'native-submodule-remote-update-refuses-late-dirty-edit-before-fetch',
+    'native-submodule-remote-update-moves-only-selected-checkout-and-preserves-parent-index',
+  ]],
+  ['stash-selection', [
+    'native-stash-refuses-mixed-mode-selection-without-changing-index-stash-or-files',
+    'native-stash-mode-change-saves-only-currently-eligible-selected-paths',
+  ]],
+  ['patch-export', [
+    'native-patch-export-clean-scope-disables-destination-picker',
+    'native-patch-export-missing-reviewed-path-blocks-ui-and-native-partial-write',
+    'native-patch-export-recovered-selection-opens-real-picker-and-native-export-writes-only-selected-diff',
+  ]],
+  ['feature-rebase', 'native-feature-rebase-uses-configured-development-without-moving-sibling-refs'],
+];
+
 const RELEASE_MATRIX = [
   ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIO],
@@ -29,6 +64,7 @@ const RELEASE_MATRIX = [
   ], true],
   ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIO],
+  ...UBUNTU_NOBLE_REVIEWS.map(([suite, scenarios]) => ['ubuntu', '24.04', suite, scenarios]),
   ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '26.04', 'gitlab', GITLAB_SCENARIO],
   ['debian', '12', 'incoming-links', 'native-incoming-cold-saved-promisor-restoration-and-patch-read-never-fetch-with-independent-positive-control', true],

@@ -439,6 +439,13 @@ previous packaged build. An independent native export produced the exact
 remaining one-file diff according to `git apply --numstat`. See
 `installed-patch-export.json` under
 `target/local-review/updater/jammy-builder/patch-picker-cancel.v8mHsyRm/`.
+The same three cases also passed on installed Ubuntu 22.04 (Git 2.56.1)
+and Debian 12 (Git 2.39.5), with the same artifact hash; see
+`patch-export-compat/installed-patch-export-compat.json` there.
+All 12 hosted Ubuntu 24.04 workspace and Git review suites also passed on
+that exact installer; `installed-noble-workflow-reviews.json` records each
+suite separately. The local release checklist now requires those focused
+reviews alongside the original 14 distribution and suite checks.
 This focused evidence does not substitute for the full release matrix.
 
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21

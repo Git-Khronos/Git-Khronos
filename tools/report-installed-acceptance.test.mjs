@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
 
@@ -60,7 +61,9 @@ test('distinguishes an incomplete run from a passing run and refuses malformed s
 
 const requiredMatrix = {
   'ubuntu:22.04': ['smoke', 'gitlab', 'watcher-refresh', 'lfs-counts', 'lfs-snapshot-timeout', 'environment'],
-  'ubuntu:24.04': ['smoke', 'gitlab'],
+  'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
+    'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
+    'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export', 'feature-rebase'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -81,7 +84,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 14);
+  assert.equal(complete.checks.length, 26);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -92,6 +95,28 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   assert.equal(partial.complete, false);
   assert.deepEqual(partial.checks.filter(check => check.report === null).map(({ distribution, suite }) => [distribution.versionId, suite]),
     [['24.04', 'smoke']]);
+});
+
+test('local release checks include every installed Ubuntu 24.04 workflow review required by CI', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/linux-package-acceptance.yml', import.meta.url), 'utf8');
+  const step = workflow.match(/- name: Verify installed workspace and Git workflow reviews\r?\n([\s\S]*?)(?=      - name:)/)?.[1];
+  assert.ok(step, 'Missing CI workflow review step');
+  assert.match(step, /if: matrix\.ubuntu == '24\.04'/);
+  const ciSuites = [...step.matchAll(/--suite ([a-z-]+) --headless --installed --package "\$PACKAGE"/g)].map(match => match[1]);
+  const localSuites = summarizeReleaseMatrix([]).checks.filter(check =>
+    check.distribution.id === 'ubuntu' && check.distribution.versionId === '24.04' &&
+    !['smoke', 'gitlab'].includes(check.suite)).map(check => check.suite);
+  assert.deepEqual(localSuites, ciSuites);
+});
+
+test('passing patch reports on other platforms or without cancellation evidence do not qualify Noble', () => {
+  const fixtures = matrixFixtures();
+  const patch = fixtures.find(report => report.suite === 'patch-export');
+  const partial = { ...patch, path: 'partial-patch/report.json', scenarios: patch.scenarios.slice(0, 2) };
+  const differentPlatform = { ...patch, path: 'jammy-patch/report.json', linuxDistribution: { id: 'ubuntu', versionId: '22.04' } };
+  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== patch), partial, differentPlatform]);
+  assert.equal(matrix.complete, false);
+  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['patch-export']);
 });
 
 test('the release matrix refuses incomplete watcher, trust, and incoming-link reports', () => {
