@@ -427,6 +427,15 @@ test('system installation uses the same incremental packaging path', async (t) =
   assert.deepEqual(await f.calls(), ['build', 'verify', 'install', 'verify', 'install']);
 });
 
+test('the local install preview builds and verifies the package without invoking install', async (t) => {
+  const f = await fixture(t);
+  f.ok(['install:linux:dry-run']);
+  f.ok(['install:system:dry-run']);
+  assert.deepEqual(await f.calls(), ['build', 'verify', 'simulate-install', 'verify', 'simulate-install']);
+  assert.notEqual(f.run(['install:linux:dry-run'], { FAIL_VERIFY: '1' }).status, 0);
+  assert.equal((await f.calls()).at(-1), 'verify');
+});
+
 test('names the real Debian artifact without spaces and keeps naming idempotent', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-deb-name-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -548,6 +557,40 @@ async function packagePayloadFixture(t) {
   });
   return { root, script, payload, artifact, put, build, verify, print };
 }
+
+test('local install preview uses unprivileged APT simulation for normal and legacy installs', async (t) => {
+  const f = await packagePayloadFixture(t);
+  f.build();
+  const bin = join(f.root, 'bin');
+  const aptLog = join(f.root, 'apt-preview');
+  const deniedLog = join(f.root, 'privileged-command');
+  await mkdir(bin);
+  const refuse = '#!/bin/sh\n: > "$DENIED_LOG"\nexit 99\n';
+  await writeFile(join(bin, 'sudo'), refuse, { mode: 0o755 });
+  await writeFile(join(f.root, 'tools/guard-linux-package-transition.sh'), refuse, { mode: 0o755 });
+  await writeFile(join(bin, 'dpkg-query'), '#!/bin/sh\nprintf "%s" "$LEGACY_STATUS"\n', { mode: 0o755 });
+  await writeFile(join(bin, 'apt-get'), '#!/bin/sh\n[ "$1" = install ] && [ "$2" = --simulate ] || exit 99\nprintf "%s\\n" "$@" > "$APT_LOG"\n', { mode: 0o755 });
+  const run = (legacy) => spawnSync('bash', [f.script, 'simulate-install'], { encoding: 'utf8',
+    env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: f.root, PATH: `${bin}:${process.env.PATH}`,
+      APT_LOG: aptLog, DENIED_LOG: deniedLog, LEGACY_STATUS: legacy },
+  });
+  for (const [status, flags] of [['not-installed', ['--no-remove']], ['installed', ['-o', 'APT::Get::Assume-Yes=false']]]) {
+    const preview = run(status);
+    assert.equal(preview.status, 0, preview.stderr);
+    assert.match(preview.stdout, /APT dry run only/);
+    assert.doesNotMatch(preview.stdout, /Git Khronos is installed/);
+    assert.deepEqual((await readFile(aptLog, 'utf8')).trim().split('\n'), [
+      'install', '--simulate', '--reinstall', ...flags, f.artifact,
+    ]);
+    await assert.rejects(stat(deniedLog), { code: 'ENOENT' });
+  }
+  await rm(aptLog);
+  await writeFile(join(f.root, 'target/release/git-khronos'), 'not the verified binary');
+  const refused = run('not-installed');
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /packaged executable differs/);
+  await assert.rejects(stat(aptLog), { code: 'ENOENT' });
+});
 
 test('failed package extraction cleans its owned temporary directory without masking the error', async (t) => {
   const { root, build, verify } = await packagePayloadFixture(t);

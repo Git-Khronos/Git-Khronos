@@ -235,16 +235,25 @@ print_package() {
 }
 
 install_package() {
-  local package_file legacy_status transition_directory guard
+  local mode="$1" package_file legacy_status transition_directory guard
   package_file="$(latest_package)"
   verify_package "$package_file"
   require_apt
-  printf 'Installing %s system-wide from:\n  %s\n' "$package_name" "$package_file"
+  if [[ "$mode" == simulate ]]; then
+    printf 'APT dry run only; no system packages will change.\n'
+  else
+    printf 'Installing %s system-wide from:\n  %s\n' "$package_name" "$package_file"
+  fi
   legacy_status="$(dpkg-query --show --showformat='${db:Status-Status}' git-khronos-desktop 2>/dev/null || true)"
   case "$legacy_status" in
     installed|unpacked|half-installed|half-configured|triggers-awaited|triggers-pending)
       [[ -x "${script_dir}/guard-linux-package-transition.sh" ]] \
         || fail "the legacy replacement guard is missing or is not executable."
+      if [[ "$mode" == simulate ]]; then
+        printf 'Previewing legacy replacement. The actual install separately guards package removals.\n'
+        apt-get install --simulate --reinstall -o 'APT::Get::Assume-Yes=false' "$package_file"
+        return
+      fi
       # A unique command path prevents protocol options from changing any of
       # the machine's existing APT hooks. /tmp gives this command a space-free
       # path even when the checkout or TMPDIR contains spaces. The symlink's
@@ -264,7 +273,13 @@ install_package() {
       trap - EXIT
       cleanup_temporary_directory
       ;;
-    *) run_as_root apt-get install --reinstall --no-remove "$package_file" ;;
+    *)
+      if [[ "$mode" == simulate ]]; then
+        apt-get install --simulate --reinstall --no-remove "$package_file"
+        return
+      fi
+      run_as_root apt-get install --reinstall --no-remove "$package_file"
+      ;;
   esac
   printf '\nGit Khronos is installed. Launch it from the application menu or run git-khronos.\n'
 }
@@ -290,8 +305,9 @@ require_package_tools
 case "${1:-}" in
   name) name_package ;;
   verify) verify_package ;;
-  install) install_package ;;
+  install) install_package apply ;;
+  simulate-install) install_package simulate ;;
   uninstall) uninstall_package ;;
   print-package) print_package ;;
-  *) fail "usage: $0 {name|verify|install|uninstall|print-package}" ;;
+  *) fail "usage: $0 {name|verify|install|simulate-install|uninstall|print-package}" ;;
 esac

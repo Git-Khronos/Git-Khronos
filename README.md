@@ -146,8 +146,10 @@ task package:deb
 task package:deb:path
 ```
 
-`task install:system` installs the verified package system-wide and requests
-administrator access; `task uninstall:system` removes the package while keeping
+`task install:linux:dry-run` builds or reuses the verified local package and
+shows APT's plan without installing anything or asking for administrator access.
+`task install:linux` (also `task install:system`) installs the package
+system-wide; `task uninstall:system` removes the package while keeping
 repositories and preferences. Ordinary local builds retain their glibc 2.39
 floor and are not portable release packages. The release package target,
 `pnpm nx run desktop:package-ubuntu`, is limited to Ubuntu 22.04 amd64 and checks

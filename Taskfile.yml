@@ -161,6 +161,14 @@ tasks:
     cmds:
       - tools/manage-linux-package.sh install
 
+  install:system:dry-run:
+    aliases: [install:linux:dry-run]
+    desc: Build the local Debian package and preview the APT installation without installing
+    platforms: [linux]
+    deps: [package:deb]
+    cmds:
+      - tools/manage-linux-package.sh simulate-install
+
   uninstall:system:
     aliases: [uninstall:linux]
     desc: Remove the system-wide Debian/Ubuntu installation
