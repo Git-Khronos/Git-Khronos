@@ -482,6 +482,11 @@ type DiffFileNavigationTarget =
   | { source: 'working'; path: string; staged: boolean }
   | { source: 'commit' | 'comparison'; file: CommitFile };
 
+interface HistoryNavigationIntent {
+  generation: number;
+  scope: string;
+}
+
 interface CommitFileContextMenuState {
   content: FileMediaSelection | null;
   repositoryId: string | null;
@@ -822,6 +827,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly repositoryOperation = computed(() => repositoryOperationState(this.git.repository()?.status));
   protected readonly historySearch = inject(HistorySearchService);
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
+  private historyNavigationGeneration = 0;
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
   protected readonly historySearchRequested = signal(false);
   private historySearchLoaderOpener: HTMLElement | null = null;
@@ -9640,6 +9646,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected selectCommit(oid: string): void {
+    const intent = this.beginHistoryNavigation();
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
     this.clearPanelFileSelection();
     this.selectedWorktreePath.set(null);
@@ -9648,11 +9655,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedCommit.set(oid);
     if (!this.graphCommitByOid().has(oid)) {
       this.externalHistoryCommit.set(null);
-      const repositoryId = this.git.activeRepositoryId();
+      const current = () => this.ownsHistoryNavigation(intent) && this.selectedCommit() === oid;
       void this.historySearch.summary(oid).then(summary => {
-        if (this.selectedCommit() === oid && this.git.activeRepositoryId() === repositoryId) this.externalHistoryCommit.set(summary);
+        if (current()) this.externalHistoryCommit.set(summary);
       }).catch(error => {
-        if (this.selectedCommit() === oid) this.git.error.set(String(error?.message ?? error));
+        if (current()) this.git.error.set(String(error?.message ?? error));
       });
     }
     this.commitFilesScrollTop.set(0);
@@ -10262,27 +10269,49 @@ export class AppComponent implements OnInit, OnDestroy {
     else this.changesOpen.set(true);
   }
 
+  private beginHistoryNavigation(): HistoryNavigationIntent {
+    return { generation: ++this.historyNavigationGeneration, scope: this.git.activeRepositoryReadScope() };
+  }
+
+  private ownsHistoryNavigation(intent: HistoryNavigationIntent): boolean {
+    return this.historyNavigationGeneration === intent.generation && this.git.activeRepositoryReadScope() === intent.scope;
+  }
+
   protected async openHistoricalFile(oid: string, path: string, previousPath: string | null = null): Promise<void> {
-    const repositoryId = this.git.activeRepositoryId();
+    const mode = this.diffInsightMode();
+    if (!this.diffViewerOpen() || (mode !== 'history' && mode !== 'blame')) return;
+    const intent = this.beginHistoryNavigation();
+    const viewer = this.diffViewerGeneration;
+    const current = () => this.ownsHistoryNavigation(intent) && this.diffViewerGeneration === viewer
+      && this.diffViewerOpen() && this.diffInsightMode() === mode && this.selectedCommit() === oid;
     this.selectedCommit.set(oid);
     this.selectedCommits.set([oid]);
     this.changesOpen.set(false);
     this.setPanelVisibility('commit-panel', true);
     try {
       const summary = await this.historySearch.summary(oid);
-      if (this.git.activeRepositoryId() !== repositoryId || this.selectedCommit() !== oid) return;
+      if (!current()) return;
       this.externalHistoryCommit.set(summary);
+    } catch (error) {
+      if (current()) this.git.error.set(String((error as { message?: unknown })?.message ?? error));
+      return;
     }
-    catch (error) { this.git.error.set(String((error as { message?: unknown })?.message ?? error)); return; }
     await this.git.inspectCommit(oid);
-    if (this.git.activeRepositoryId() !== repositoryId || this.selectedCommit() !== oid) return;
+    if (!current()) return;
     await this.git.inspectCommitFile({ path, previousPath, status: previousPath ? 'R' : 'M', additions: null, deletions: null });
-    this.diffInsightMode.set('diff');
+    if (current()) this.diffInsightMode.set('diff');
   }
 
   protected async navigateBlame(oid: string, path: string, parent: boolean): Promise<void> {
+    const source = this.activeDiff();
+    if (!source || !this.diffViewerOpen() || this.diffInsightMode() !== 'blame') return;
+    const intent = this.beginHistoryNavigation();
+    const viewer = this.diffViewerGeneration;
+    const current = () => this.ownsHistoryNavigation(intent) && this.diffViewerGeneration === viewer
+      && this.diffViewerOpen() && this.diffInsightMode() === 'blame' && this.activeDiff() === source;
     try {
       const navigation = await this.historySearch.navigation(oid, path);
+      if (!current()) return;
       if (parent) {
         if (!navigation.parents.length) {
           this.git.error.set('This is a root commit; it has no parent.');
@@ -10293,7 +10322,9 @@ export class AppComponent implements OnInit, OnDestroy {
         await this.openHistoricalFile(navigation.oid, navigation.path, navigation.parentPath === navigation.path ? null : navigation.parentPath);
       }
     } catch (error) {
-      this.git.error.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+      if (current()) {
+        this.git.error.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+      }
     }
   }
 

@@ -124,6 +124,11 @@ Ordinary snapshot updates within the same view do not reset pinned results.
 The scope is checked after cancellation and native replies, not only when the
 renderer next runs its reset effect. `history-search-lifecycle.spec.ts`
 exercises same-checkout workspace switches and in-place snapshot refreshes.
+Historical file and blame navigation also retain the originating viewer and
+read scope. A closed or replaced viewer or a newer navigation retires the
+older request before it can select a commit, open a different file, or surface
+its error in the current view. Tests hold the native blame lookup across these
+transitions without weakening ordinary Parent navigation.
 
 ### Working-tree rename index actions
 

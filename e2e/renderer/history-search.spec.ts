@@ -204,6 +204,63 @@ test('file pagination opens historical renamed paths and blame can open the firs
   await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.findLast((call: any) => call.command === 'inspect_commit_file')?.args.path)).toBe('before.txt');
 });
 
+for (const change of ['repository', 'closed viewer', 'newer navigation']) {
+  test(`retired blame navigation cannot redirect the ${change}`, async ({ page }) => {
+    const result = await page.evaluate(async change => {
+      const { app, oldOid, parentOid, calls } = (window as any).__historyFixture;
+      const git = app.git;
+      app.changesOpen.set(false);
+      git.commitFileDiff.set({ oid: oldOid, path: 'old.txt', patch: '+line', truncated: false });
+      app.openDiffViewer();
+      app.diffInsightMode.set('blame');
+      const native = (window as any).__TAURI_INTERNALS__;
+      const invoke = native.invoke;
+      let finish!: (value: unknown) => void;
+      const held = new Promise(resolve => { finish = resolve; });
+      native.invoke = (command: string, args: any) =>
+        command === 'inspect_blame_navigation' && args.path === 'old.txt' ? held : invoke(command, args);
+      const pending = app.navigateBlame(oldOid, 'old.txt', true);
+      if (change === 'repository') {
+        git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-blame', path: '/fixture/other-blame' }]);
+        git.activateRepository('other-blame');
+      } else if (change === 'closed viewer') {
+        app.closeDiffViewer();
+      } else {
+        await app.navigateBlame(oldOid, 'newer.txt', false);
+      }
+      finish({ oid: oldOid, path: 'old.txt', parents: [parentOid], parentPath: 'stale-parent.txt' });
+      await pending;
+      return { paths: calls.filter((item: any) => item.command === 'inspect_commit_file').map((item: any) => item.args.path),
+        parentSelected: app.selectedCommit() === parentOid };
+    }, change);
+    expect(result).toEqual({ paths: change === 'newer navigation' ? ['old.txt'] : [], parentSelected: false });
+  });
+}
+
+test('retired commit summary failures do not replace the current history selection', async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const { app, oldOid } = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    let summaryReads = 0;
+    let rejectFirst!: (error: unknown) => void;
+    native.invoke = (command: string, args: any) => {
+      if (command === 'inspect_history_commit' && ++summaryReads === 1) {
+        return new Promise((_, reject) => { rejectFirst = reject; });
+      }
+      return invoke(command, args);
+    };
+    app.selectCommit(oldOid);
+    app.selectCommit(oldOid);
+    await new Promise(requestAnimationFrame);
+    rejectFirst({ message: 'Older summary request failed' });
+    await new Promise(requestAnimationFrame);
+    return { summaryReads, selected: app.selectedCommit() === oldOid,
+      subject: app.externalHistoryCommit()?.subject, error: app.git.error() };
+  });
+  expect(state).toEqual({ summaryReads: 2, selected: true, subject: 'Older than every loaded graph page', error: null });
+});
+
 test('returning to file history preserves loaded pages instead of repeating the read', async ({page}) => {
   await page.evaluate(async () => {
     const {app, oldOid} = (window as any).__historyFixture;
