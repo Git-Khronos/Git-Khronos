@@ -112,6 +112,17 @@ reads check remote-tracking refs and preservation of HEAD, local refs,
 index, config and working files. No external transport is used. The
 exact-artifact Ubuntu 24.04 CI job runs this suite on the installed package.
 
+## Focused removal of unopened saved paths
+
+Use `--suite workspace-saved-removal` to verify that Repository overview
+can remove only the reviewed paths. The test opens one owned checkout and
+parks three unavailable ones, then cancels and repeats a review for two of
+them. After a fresh WebView load the third path and the open tab must still
+belong to the current workspace, and the removed paths must still belong
+to a separate layout. Independent Git reads fingerprint HEAD, refs, index,
+config and working files before and after.
+The exact-artifact Ubuntu 24.04 CI job also runs this suite.
+
 ## Renderer acceptance in GitHub Actions
 
 The renderer suite uses Chromium with an isolated development server and mocked

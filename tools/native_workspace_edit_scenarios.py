@@ -180,3 +180,91 @@ def saved_workspace_repository_workflow(driver, fixtures, report):
                                              'afterReload': stored(), 'checkoutUnchanged': after == before}
     report['scenarios'].append('native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal')
     return returning
+
+
+def remove_saved_workspace_paths(driver, fixtures, report):
+    repositories = [fixtures.repository('workspace-removal-' + name, commits=2)
+                    for name in ('active', 'first', 'retained', 'second')]
+    active, first, retained, second = repositories
+    files = ('fixture.txt', 'unchanged.txt')
+    for repository in repositories:
+        (repository / 'fixture.txt').write_text('An owned staged change.\n')
+        fixtures.git(repository, 'add', '--', 'fixture.txt')
+        (repository / 'unchanged.txt').write_text('An owned untracked change.\n')
+    before = [checkout_footprint(fixtures, repository, files) for repository in repositories]
+    locations = [active]
+    for repository in repositories[1:]:
+        parked = fixtures.root / (repository.name + '-parked')
+        repository.rename(parked)
+        locations.append(parked)
+    saved = [str(repository) for repository in repositories]
+    primary = {'id': 'owned-bulk-removal', 'name': 'Owned bulk removal',
+               'repositoryPaths': saved, 'activeRepositoryPath': str(active)}
+    other = {'id': 'other-memberships', 'name': 'Other memberships',
+             'repositoryPaths': [str(first), str(second)], 'activeRepositoryPath': str(first)}
+    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.script("""
+      localStorage.clear();
+      localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
+      localStorage.setItem('git-khronos.active-workspace.v1', arguments[0][0].id);
+    """, [primary, other])
+    driver.reload()
+
+    def stored():
+        layouts = driver.script("return JSON.parse(localStorage.getItem('git-khronos.workspaces.v1'))")
+        return {layout['id']: layout['repositoryPaths'] for layout in layouts}
+
+    def wait_restored(failures):
+        driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === '
+                    + json.dumps(str(active)), 60)
+        driver.wait('return document.querySelector(".error-toast")?.textContent.includes('
+                    + json.dumps(f'Could not restore {failures} saved repositor') + ')', 60)
+        driver.wait('return document.querySelectorAll(".repo-tab-main[role=tab]").length === 1', 60)
+
+    wait_restored(3)
+    original = {layout['id']: layout['repositoryPaths'] for layout in (primary, other)}
+    assert stored() == original
+    driver.click_visible('.workspace-toggle')
+    driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    region = overview + ' [aria-label="Saved repositories not open"]'
+    review = overview + ' [aria-labelledby="saved-paths-remove-title"]'
+    driver.click_scrolled_text(region + ' button', 'Select all saved paths', wait_for_ready=True)
+    checkbox = 'input[aria-label=' + json.dumps(f'Select saved path {retained}') + ']'
+    driver.wait('return document.querySelector(' + json.dumps(region + ' ' + checkbox) + ')?.checked === true')
+    # WebKitGTK may paint the checkbox at a different point than its styled
+    # input box. Activate the associated, visibly laid-out native HTML label.
+    driver.click_scrolled_text(region + f' label.saved-path:has(> {checkbox})', str(retained), wait_for_ready=True)
+    driver.wait('return document.querySelector(' + json.dumps(region + ' ' + checkbox) + ')?.checked === false')
+    wanted = [str(first), str(second)]
+    open_review = 'Remove selected saved paths (2)…'
+    evidence = report['workspaceSavedRemoval'] = {'before': stored()}
+
+    def review_selection():
+        driver.click_scrolled_text(region + ' button', open_review, wait_for_ready=True)
+        items = driver.wait('return (() => { const items = [...document.querySelectorAll('
+                            + json.dumps(review + ' li code') + ')];'
+                            ' return items.length ? items.map(item => item.textContent) : null; })()')
+        assert items == wanted, items
+        driver.wait('return document.activeElement?.textContent.trim() === "Cancel" && '
+                    '!!document.activeElement?.closest(' + json.dumps(review) + ')')
+
+    review_selection()
+    driver.key('\ue00c')  # Escape: cancel through ordinary keyboard handling.
+    driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
+    assert stored() == original, 'Cancellation changed the saved workspace'
+    review_selection()
+    driver.click_scrolled_text(review + ' button', 'Remove 2 saved paths', wait_for_ready=True)
+    driver.wait('return document.querySelector(' + json.dumps(region + ' [role="status"]')
+                + ')?.textContent.includes("Removed 2 saved paths from this workspace")')
+    expected = original | {primary['id']: [str(active), str(retained)]}
+    assert stored() == expected
+    driver.reload()
+    wait_restored(1)
+    evidence['afterReload'] = stored()
+    assert evidence['afterReload'] == expected
+    after = [checkout_footprint(fixtures, repository, files) for repository in locations]
+    assert after == before, 'Saved path removal changed Git data or working files'
+    evidence['checkoutsUnchanged'] = True
+    report['scenarios'].append('native-workspace-review-removes-only-selected-saved-paths-and-persists-across-reload')
+    return active

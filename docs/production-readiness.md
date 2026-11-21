@@ -290,6 +290,21 @@ key. See `installed-release-matrix.json` and `jammy-installed-preflight.sha256`
 in that directory. This local evidence does not qualify the later workspace
 locate or saved-path bulk removal changes or imply production signing.
 
+The saved-path removal candidate at `a1b9263` has SHA-256
+`1698ddc4575bbf01de3a66d88f77eda7bdf2caf5139f1d79d0bf78d12cf109c6`.
+The exact package passed the focused offline Ubuntu 24.04 test. Cancelling
+left both layouts unchanged. After confirmation and WebView reload, only
+the two reviewed memberships were gone; the same paths still belonged to
+another workspace. Git verified that HEAD, refs, index, configuration and
+working files were unchanged across all four owned checkouts. The first
+attempt failed the runner's checkbox input hit test; a fresh attempt on
+the same bytes used its associated visible HTML label. Both attempts and
+the older package's baseline failure are retained with the verified
+summary and APT simulation under
+`target/local-review/updater/jammy-builder/workspace-saved-removal.BWbwdDc3/`.
+The host package database was unchanged. This focused check does not
+replace a full release matrix or qualify feature rebase.
+
 ## Installed worktree-path and release-evidence checkpoint — 2026-11-21
 
 The rename-counting candidate, `1a8c1e7`, built on Jammy and passed all 47
