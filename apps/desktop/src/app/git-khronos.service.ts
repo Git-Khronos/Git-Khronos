@@ -252,6 +252,7 @@ export interface SavedRepositoryReplacement {
 
 interface ReviewedWorktreeOpen {
   readonly scope: string;
+  readonly current: () => boolean;
   readonly sourceRegistrationPath: string;
   readonly branch: string;
 }
@@ -712,7 +713,8 @@ export class GitKhronosService implements OnDestroy {
       && !this.repositories().some(repository => repository.path === savedPath));
     const canReopen = () => !reopening || (this.workspaceVisit === visit && this.activeWorkspaceId() === workspaceId
       && this.closedRepositories().get(workspaceId)?.includes(reopening));
-    const canOpenWorktree = () => !reviewedWorktree || this.activeRepositoryReadScope() === reviewedWorktree.scope;
+    const canOpenWorktree = () => !reviewedWorktree || (reviewedWorktree.current()
+      && this.activeRepositoryReadScope() === reviewedWorktree.scope);
     const opened: { snapshot?: RepositorySnapshot; failure?: string; retired?: boolean } = {};
     const status = await this.run('Opening repository…', async report => {
       const retired = () => {
@@ -757,7 +759,7 @@ export class GitKhronosService implements OnDestroy {
       this.forgetClosedRepository(snapshot.path);
       if (reopening && savedPath !== snapshot.path) this.forgetClosedRepository(savedPath);
       report(`Opened ${snapshot.name}`);
-    });
+    }, null, null, true, true, { announceFailure: !reviewedWorktree });
     if (opened.retired) return { status: 'cancelled', error: null };
     if (status !== 'success') return { status, error: opened.failure ?? this.error() };
     if (!opened.snapshot) return { status: 'error', error: 'The repository did not return a result.' };
@@ -3654,6 +3656,7 @@ export class GitKhronosService implements OnDestroy {
     operationId: string | null = null,
     refreshOnCancel = true,
     changesHistory = true,
+    { announceFailure = true }: { announceFailure?: boolean } = {},
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
@@ -3700,13 +3703,13 @@ export class GitKhronosService implements OnDestroy {
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
           detail += ` Repository refresh also failed: ${this.formatError(refreshError)}`;
-          this.error.set(detail);
+          if (announceFailure) this.error.set(detail);
           this.activity.set('Operation canceled; repository refresh failed');
         } finally {
           finishRecoveryBarrier?.();
         }
       } else {
-        this.error.set(detail);
+        if (announceFailure) this.error.set(detail);
         this.activity.set(cancelled ? 'Operation canceled' : 'Operation failed');
       }
       const status = cancelled ? 'cancelled' : 'error';

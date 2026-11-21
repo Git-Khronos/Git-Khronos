@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
-import { GitKhronosService } from './git-khronos.service';
+import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
 import { branchCheckoutOwner } from './repository-location';
 
 export interface CheckoutWorktreeRequest {
@@ -28,10 +28,12 @@ export interface CheckoutWorktreeRequest {
           <p role="alert">The registered checkout is missing. Review its registration from Worktrees. No repair or pruning has been performed.</p>
         }
         @if (error(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
-        @if (busy()) { <p role="status">Checking branch ownership…</p> }
+        @if (phase() !== 'idle') {
+          <p role="status">{{ phase() === 'checking' ? 'Checking branch ownership…' : 'Opening existing checkout…' }}</p>
+        }
         <footer>
-          <button type="button" [disabled]="busy()" (click)="close()">Cancel</button>
-          <button type="button" [disabled]="busy() || git.busy() || request().prunable || !!error()" (click)="confirm()">Open existing checkout</button>
+          <button type="button" [disabled]="phase() === 'checking'" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
+          <button type="button" [disabled]="phase() !== 'idle' || git.busy() || request().prunable || !!error()" (click)="confirm()">Open existing checkout</button>
         </footer>
       </section>
     </div>
@@ -52,8 +54,8 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<CheckoutWorktreeRequest>();
   readonly closed = output<void>();
-  readonly opened = output<string>();
-  readonly busy = signal(false);
+  readonly openOwner = input.required<(request: CheckoutWorktreeRequest) => Promise<OpenRepositoryResult>>();
+  readonly phase = signal<'idle' | 'checking' | 'opening'>('idle');
   readonly error = signal<string | null>(null);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private destroyed = false;
@@ -66,33 +68,41 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   ngOnDestroy(): void { this.destroyed = true; }
 
   close(): void {
-    if (this.busy() || this.closing) return;
+    if (this.phase() === 'checking' || this.closing) return;
     this.closing = true;
     this.closed.emit();
   }
 
   async confirm(): Promise<void> {
     const request = this.request();
-    if (this.busy() || this.git.busy() || this.error() || request.prunable || !this.owns(request)) return;
-    this.busy.set(true);
+    if (this.phase() !== 'idle' || this.git.busy() || this.error() || request.prunable || !this.owns(request)) return;
+    this.phase.set('checking');
+    this.dialog()?.nativeElement.focus();
     try {
       await this.git.refresh();
       const current = this.git.repository();
       if (!current || !this.owns(request)) return;
       const owner = branchCheckoutOwner(current, request.branch);
       if (this.git.error() || !owner || owner.path !== request.worktreePath || owner.prunable) {
-        this.error.set(this.git.error()
+        this.showError(request, this.git.error()
           ?? 'Branch ownership changed or the checkout is unavailable. Close this review and select the branch again.');
-        setTimeout(() => {
-          if (this.owns(request)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[role="alert"]')?.focus();
-        });
         return;
       }
-      this.closing = true;
-      this.opened.emit(owner.path);
+      this.phase.set('opening');
+      const opened = await this.openOwner()(request);
+      if (opened.status !== 'success' && this.owns(request)) {
+        this.showError(request, opened.error ?? 'The checkout could not be opened. Close this review and select the branch again.');
+      }
     } finally {
-      this.busy.set(false);
+      if (this.owns(request)) this.phase.set('idle');
     }
+  }
+
+  private showError(request: CheckoutWorktreeRequest, message: string): void {
+    this.error.set(message);
+    setTimeout(() => {
+      if (this.owns(request)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[role="alert"][tabindex]')?.focus();
+    });
   }
 
   @HostListener('document:focusin') containFocus(): void {

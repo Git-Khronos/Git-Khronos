@@ -45,7 +45,9 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
               path: fixture.changedOpen === 'path' && entry.path === args.path ? '/workspace/redirected' : entry.path,
               current: entry.path === args.path })),
         };
-        if (fixture.holdOpen) return new Promise(resolve => { fixture.finishOpen = () => resolve(opened); });
+        if (fixture.holdOpen) return new Promise((resolve, reject) => {
+          fixture.finishOpen = (fail = false) => fail ? reject(new Error('Owned late open failure')) : resolve(opened);
+        });
         return Promise.resolve(opened);
       }
       if (command === 'checkout_branch') {
@@ -187,6 +189,7 @@ test('occupied branch requires explicit navigation and sends no checkout command
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
+  await expect(page.locator('.repo-tab-main[aria-selected="true"]')).toBeFocused();
   const calls = await page.evaluate(() => (window as any).__checkoutWorktree.calls);
   expect(calls.filter((entry: any) => entry.command === 'checkout_branch')).toEqual([]);
   expect(calls.filter((entry: any) => entry.command === 'open_repository')).toEqual([
@@ -367,7 +370,11 @@ for (const change of ['branch', 'path', 'registration']) {
     const dialog = await requestCheckout(page, fixture.branch);
     await page.evaluate(change => { (window as any).__checkoutWorktree.changedOpen = change; }, change);
     await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
-    await expect(page.locator('.error-toast')).toContainText('That checkout no longer matches the branch you reviewed');
+    const feedback = dialog.getByRole('alert');
+    await expect(feedback).toContainText('That checkout no longer matches the branch you reviewed');
+    await expect(feedback).toBeFocused();
+    await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toBeDisabled();
+    await expect(page.locator('.error-toast')).toHaveCount(0);
     await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
     const state = await page.evaluate(() => {
       const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
@@ -376,6 +383,33 @@ for (const change of ['branch', 'path', 'registration']) {
         opened: git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner') };
     });
     expect(state).toEqual({ writes: [], opened: false });
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('list', { name: 'Local branches' })
+      .getByRole('button', { name: 'Local branch ' + fixture.branch, exact: false }).first()).toBeFocused();
+  });
+}
+
+for (const lateReply of ['success', 'failure'] as const) {
+  test(`cancel retires navigation while the native owner open is pending (${lateReply})`, async ({ page }) => {
+    const fixture = await setup(page);
+    const dialog = await requestCheckout(page, fixture.branch);
+    await page.evaluate(() => { (window as any).__checkoutWorktree.holdOpen = true; });
+    await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finishOpen)).toBe('function');
+    await expect(dialog.getByRole('status')).toHaveText('Opening existing checkout…');
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await page.evaluate(fail => (window as any).__checkoutWorktree.finishOpen(fail), lateReply === 'failure');
+    await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+    await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
+    await expect(page.locator('.error-toast')).toHaveCount(0);
+    expect(await page.evaluate(() => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const fixture = (window as any).__checkoutWorktree;
+      return git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner');
+    })).toBe(false);
   });
 }
 

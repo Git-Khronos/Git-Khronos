@@ -128,7 +128,8 @@ def occupied_branch_navigation(driver, fixtures, report):
     after_refusal = footprints()
     assert after_refusal == changed, 'A stale owner review fell back to a Git mutation'
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-owner-changed.png')
-    driver.click_visible('gc-checkout-worktree-dialog button', 'Cancel')
+    driver.key('\ue00c')  # Escape dismisses the error without retrying the read.
+    driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     report['scenarios'].append('native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout')
     report['occupiedBranchNavigation'] = {
         'source': str(source), 'owner': str(owner), 'branch': branch,

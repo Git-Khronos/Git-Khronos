@@ -787,9 +787,12 @@ retires the request. A late read cannot navigate or reopen the old review.
 Opening the owner saves the source commit draft. Before activating a tab,
 the returned native snapshot must still show the reviewed path, branch
 and shared worktree registration, and the source checkout visit must still
-be active. A late open can neither redirect to a different branch nor
+be active. The dialog remains open during that read. Cancel retires tab
+activation even if the native read is already in flight; it does not claim
+to interrupt Git. A late open can neither redirect to a different branch nor
 navigate after an away-and-back tab switch. A mismatched destination leaves
-the source tab active and asks the user to review the branch again. Git's
+the source tab active and shows the failure inside the review. Success reveals
+the destination tab and gives it focus if the dialog still owned focus. Git's
 registration paths are compared separately from the platform's canonical
 path spelling. If occupancy changes before an ordinary native checkout, Git still decides
 whether the switch is allowed. After a refusal, native code

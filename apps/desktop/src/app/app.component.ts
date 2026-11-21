@@ -1937,12 +1937,24 @@ export class AppComponent implements OnInit, OnDestroy {
     this.restoreDialogFocus(target?.isConnected ? target : this.toolbarBranchToggle()?.nativeElement ?? null);
   }
 
-  protected async openCheckoutWorktree(path: string): Promise<void> {
-    const request = this.checkoutWorktreeRequest();
-    if (!request || request.worktreePath !== path || request.scope !== this.git.activeRepositoryReadScope()) return;
-    this.checkoutWorktreeRequest.set(null);
-    await this.openRepositoryWithDraft(() => this.git.openReviewedWorktree(path, request));
-  }
+  protected readonly openCheckoutWorktree = async (request: CheckoutWorktreeRequest): Promise<OpenRepositoryResult> => {
+    const current = () => this.checkoutWorktreeRequest() === request
+      && request.scope === this.git.activeRepositoryReadScope();
+    if (!current()) return { status: 'cancelled', error: null };
+    const opened = await this.openRepositoryWithDraft(() =>
+      this.git.openReviewedWorktree(request.worktreePath, { ...request, current }));
+    if (opened.status === 'success') {
+      if (this.checkoutWorktreeRequest() === request) this.checkoutWorktreeRequest.set(null);
+      const destinationScope = this.git.activeRepositoryReadScope();
+      requestAnimationFrame(() => {
+        if (this.git.activeRepositoryId() !== opened.repositoryId
+          || this.git.activeRepositoryReadScope() !== destinationScope) return;
+        if (this.canRestoreFocusFrom(null)) this.focusRepositoryTab(opened.repositoryId);
+        else this.revealRepositoryTab(opened.repositoryId);
+      });
+    }
+    return opened;
+  };
 
   private resizeTarget: 'sidebar' | 'details' | null = null;
   private resizePanelChanged = false;
