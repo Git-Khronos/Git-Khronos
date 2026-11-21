@@ -145,6 +145,18 @@ when a checkout was renamed in its original parent. The keyboard selects the
 sole row in the chooser's starting folder without navigating; only the exact
 renamed checkout in the original saved slot is accepted as success.
 
+## Focused selection from a blocked discard review
+
+Use `--suite discard-subset --headless` to exercise the native preview and
+recovery path with staged and unstaged content, a blocked nested file, and an
+unselected root file. Returning to the blocked review must clear the selection
+and restore keyboard focus. The selected preview must name only the chosen
+root file; confirming restores its staged contents and leaves the other paths
+unchanged. Undo must restore the files and effective Git state, including staged
+entries, flags, refs, and config. Discard and undo must both preserve staging.
+The report retains raw index hashes and diagnostics when they differ; Git can
+refresh cache metadata without changing staged entries or flags.
+
 ## Focused feature rebase review
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a

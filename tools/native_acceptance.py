@@ -1148,7 +1148,7 @@ def main():
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
-        "workspace-locate-nearby", "feature-rebase",
+        "workspace-locate-nearby", "feature-rebase", "discard-subset",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1308,6 +1308,9 @@ def main():
             elif args.suite == "feature-rebase":
                 from native_feature_rebase_scenarios import feature_rebase_on_configured_development
                 repository, repo_id = feature_rebase_on_configured_development(driver, fixtures, report)
+            elif args.suite == "discard-subset":
+                from native_discard_subset_scenarios import discard_root_subset
+                repository, repo_id = discard_root_subset(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
