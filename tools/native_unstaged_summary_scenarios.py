@@ -1,6 +1,7 @@
 """Unstaged recap uses real index-relative Git counts, never commit totals."""
 import json
 from native_worktree_scenarios import checkout_footprint
+from native_working_tree_recaps import wait_for_line_recaps
 
 
 def unstaged_summary_workflow(driver, fixtures, report):
@@ -21,28 +22,8 @@ def unstaged_summary_workflow(driver, fixtures, report):
     before = checkout_footprint(fixtures, repository, files)
     open_ui(driver, repository)
     def recaps(unstaged, staged, uncounted=1, timeout=30):
-        # A live status refresh can temporarily replace either recap with the
-        # loading state. Match and capture both elements in the same DOM read.
-        expected = [
-            ('.unstaged-section gc-working-tree-summary .summary',
-             f'{unstaged[0]} additions and {unstaged[1]} deletions in unstaged files'
-             + (f'; {uncounted} binary or uncounted files excluded' if uncounted else '')),
-            ('.staged-section gc-working-tree-summary .summary',
-             f'{staged[0]} additions and {staged[1]} deletions in staged files'),
-        ]
-        texts = driver.wait('''
-            const rows = ''' + json.dumps(expected) + ''';
-            const texts = [];
-            for (const [selector, label] of rows) {
-                const row = document.querySelector(selector);
-                if (!row?.getClientRects().length || row.getAttribute("aria-label") !== label) return null;
-                texts.push(row.textContent);
-            }
-            return texts;
-        ''', timeout)
-        for text, (additions, deletions) in zip(texts, (unstaged, staged), strict=True):
-            assert f'+{additions}' in text and f'−{deletions}' in text and 'partial' not in text, text
-        return texts
+        matched = wait_for_line_recaps(driver, unstaged, staged, uncounted=uncounted, timeout=timeout)
+        return [row['text'] for row in matched]
 
     initial, initial_staged = recaps((4, 3), (1, 1))
     assert checkout_footprint(fixtures, repository, files) == before
@@ -67,7 +48,7 @@ def unstaged_summary_workflow(driver, fixtures, report):
     fixtures.git(renamed, 'add', '-N', '--', new_name.name)
     new_name.write_text('alpha\nbeta\ngamma\nchanged\n')
     exact_before = checkout_footprint(fixtures, renamed, (new_name.name,))
-    open_ui(driver, renamed)
+    repo_id = open_ui(driver, renamed)
     rename_recap, staged = recaps((1, 1), (0, 0), uncounted=0)
     assert checkout_footprint(fixtures, renamed, (new_name.name,)) == exact_before
     report['unstagedLineSummary']['editedRename'] = {'unstagedRecap': rename_recap,
@@ -125,3 +106,4 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['scenarios'].append('native-worktree-rename-stages-and-unstages-both-paths-without-changing-files')
     report['unstagedLineSummary']['renameDiff'] = {'unstaged': unstaged_diff, 'staged': staged_diff}
     report['scenarios'].append('native-worktree-rename-diff-reviews-both-paths-and-shows-only-edited-lines')
+    return renamed, repo_id

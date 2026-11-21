@@ -1,11 +1,11 @@
 """Observe a packaged checkout while Git's first complete file scan is held."""
-import json
 from pathlib import Path
 import shlex
 import shutil
 import time
 
 from native_worktree_scenarios import checkout_footprint
+from native_working_tree_recaps import wait_for_line_recaps
 
 
 CHECKOUT = 'first-status-checkout'
@@ -85,28 +85,10 @@ def first_status(driver, fixtures, report):
         (gate / 'release').touch()
     report['scenarios'].append('native-first-file-scan-shows-loading-not-clean-while-history-is-usable')
 
-    counts = {
-        '.unstaged-section gc-working-tree-summary .summary': {
-            'label': '3 additions and 1 deletion in unstaged files', 'added': '+3', 'removed': '−1',
-        },
-        '.staged-section gc-working-tree-summary .summary': {
-            'label': '1 addition and 0 deletions in staged files', 'added': '+1', 'removed': '−0',
-        },
-    }
-    report['firstWorkingTreeRecaps'] = driver.wait(f"""
-      if (document.querySelector('.wip-nav small')?.textContent.trim() !== '3 changed files'
-        || document.querySelector('[aria-label="Working directory status"]')) return null;
-      const actual = Object.entries({json.dumps(counts)}).map(([selector, expected]) => {{
-        const recap = document.querySelector(selector);
-        const label = recap?.getAttribute('aria-label');
-        const added = recap?.querySelector('span')?.textContent.trim();
-        const removed = recap?.querySelector('i')?.textContent.trim();
-        return recap?.getClientRects().length && recap.getAttribute('role') === 'img'
-          && label === expected.label && added === expected.added && removed === expected.removed
-          ? {{label, added, removed}} : null;
-      }});
-      return actual.every(Boolean) ? actual : null;
-    """)
+    report['firstWorkingTreeRecaps'] = [
+        {key: recap[key] for key in ('label', 'added', 'removed')}
+        for recap in wait_for_line_recaps(driver, (3, 1), (1, 0), changed_files=3)
+    ]
     assert checkout_footprint(fixtures, repo, files) == before
     driver.screenshot(Path(report['artifactsDirectory']) / 'first-status-loaded.png')
     report['scenarios'].append('native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes')

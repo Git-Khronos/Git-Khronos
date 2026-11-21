@@ -66,6 +66,12 @@ tests. A failure retains its first failing phase through cleanup, also
 recorded as `failurePhase` in `report.json`. Only the final report qualifies
 the package; a stale progress file alone is not proof the worker is alive.
 
+Use `--suite working-tree-recaps` to check staged and unstaged line totals
+without running all setup workflows. It checks the displayed counts and
+their accessible labels together, including singular counts and exclusions.
+It covers staging, rename previews, and updates after an external edit with
+unchanged porcelain status.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do
