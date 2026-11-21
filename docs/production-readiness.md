@@ -3035,6 +3035,32 @@ API request at Connect. See `jammy-hosted-fork.IOr6od5N/` and
 `bookworm-gitlab-tls.OUEpWJgd/` in the same package run. The initial
 failures remain in the original lane reports.
 
+The full Jammy environment recheck subsequently passed all 288 cases under
+that same package SHA-256. The strict verifier accepted 52 passing reports
+and all 37 Linux release checks. The installer, verification JSON, checksum
+and successful APT dry run are in
+`target/local-review/qualified-0.1.6-b966672/`. This supersedes the
+`df1edc7` local handoff; it uses a fixture publisher key and qualifies
+neither subsequent `dev` changes nor a production-signed installer.
+
+### Selected branch Push scope
+
+Source tests against owned bare repositories reproduced unselected
+annotated tags appearing on the receiver, a successful-looking Push that
+skipped the parent ref, and Publish refusing a branch with a same-named
+tag. The explicit native branch commands now keep tag and nested-checkout
+pushes out of scope, without altering the corresponding Git config.
+The pinned force-push lease still updates the selected branch only, and
+configured mirror mode still refuses instead of widening the refspec.
+Git 2.39.5 also accepted the scoped publish refspec, set the upstream, and
+left Git configuration for tags and submodules unchanged.
+
+The new assertions are in the native `remote-reviews` suite; source
+Push/Publish/reference tests, strict Clippy, and 64 harness unit tests
+passed. The installed comparison is separate from the already qualified
+`b966672` package; see `scoped-branch-release.8b86T8u7/` under the local
+Jammy builder receipts.
+
 ### Branch workflow qualification timing
 
 The isolated Ubuntu 22.04 branch-workflow suite passed all four cases with
