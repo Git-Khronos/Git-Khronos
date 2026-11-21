@@ -33,7 +33,7 @@ describe('deferred restoration of saved repository tabs', () => {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     });
-    vi.stubGlobal('window', { setTimeout });
+    vi.stubGlobal('window', { setTimeout, clearTimeout });
     storage.set(WORKSPACES, JSON.stringify([workspace('empty', []), workspace('saved', ['/a', '/b', '/c'])]));
     native.open.mockReset().mockImplementation(async ({ path }) => snapshot(path));
     native.refresh.mockReset().mockRejectedValue(new Error('Optional metadata unavailable'));
