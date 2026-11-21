@@ -101,6 +101,20 @@ fn cancellable_command_preserves_delayed_output_and_parent_exit_status() {
 
 #[cfg(unix)]
 #[test]
+fn cancellable_command_waits_for_exit_after_both_output_pipes_close() {
+    let mut command = Command::new("sh");
+    command
+        .args(["-c", "exec >/dev/null 2>&1; sleep .1; exit 7"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    configure_process_tree(&mut command);
+    let output = run_cancellable_command(command, &CancellationToken::default()).unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
 fn cancellable_command_remains_cancellable_after_parent_exit_with_inherited_pipes() {
     let repository = Repository::new();
     let marker = repository.0.join(".git/owned-parent-pid");

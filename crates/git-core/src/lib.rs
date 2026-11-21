@@ -9786,7 +9786,13 @@ fn capture_cancellable_command(
         })?;
     let truncated = Arc::new(AtomicBool::new(false));
     let reader_truncated = truncated.clone();
+    // EOF wakes the coordinator immediately on short commands. Each reader
+    // retains one sender until it finishes (or unwinds), so a disconnected
+    // channel means it is safe to join both readers.
+    let (stdout_open, readers) = std::sync::mpsc::channel::<std::convert::Infallible>();
+    let stderr_open = stdout_open.clone();
     let stdout_reader = thread::spawn(move || {
+        let _reader_open = stdout_open;
         let mut output = Vec::new();
         stdout
             .take(stdout_limit.map_or(u64::MAX, |limit| limit.saturating_add(1) as u64))
@@ -9801,18 +9807,22 @@ fn capture_cancellable_command(
                 output
             })
     });
-    let stderr_reader = thread::spawn(move || match stderr_capture {
-        StderrCapture::Complete => {
-            let mut output = Vec::new();
-            let mut stderr = stderr;
-            stderr.read_to_end(&mut output).map(|_| (output, None))
+    let stderr_reader = thread::spawn(move || {
+        let _reader_open = stderr_open;
+        match stderr_capture {
+            StderrCapture::Complete => {
+                let mut output = Vec::new();
+                let mut stderr = stderr;
+                stderr.read_to_end(&mut output).map(|_| (output, None))
+            }
+            StderrCapture::Transport => authentication::diagnostics::read_transport_stderr(stderr)
+                .map(|capture| (capture.retained, Some(capture.diagnostics))),
         }
-        StderrCapture::Transport => authentication::diagnostics::read_transport_stderr(stderr)
-            .map(|capture| (capture.retained, Some(capture.diagnostics))),
     });
 
     let mut parent_status = None;
     let mut limit_terminated = false;
+    let mut readers_finished = false;
     let status = loop {
         if truncated.load(Ordering::Acquire) && !limit_terminated {
             stop_readers.store(true, Ordering::Release);
@@ -9846,13 +9856,20 @@ fn capture_cancellable_command(
         }
         // A descendant may still own a pipe after Git exits. Keep cancellation
         // active until both readers finish instead of blocking in their joins.
-        if let Some(status) = parent_status
-            && stdout_reader.is_finished()
-            && stderr_reader.is_finished()
-        {
-            break status;
+        let cancellation_poll = Duration::from_millis(30);
+        if readers_finished {
+            if let Some(status) = parent_status {
+                break status;
+            }
+            // Git may close both streams long before it exits; a disconnected
+            // channel must not turn that case into a busy loop.
+            thread::sleep(cancellation_poll);
+        } else {
+            readers_finished = matches!(
+                readers.recv_timeout(cancellation_poll),
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+            );
         }
-        thread::sleep(Duration::from_millis(30));
     };
     let stdout = stdout_reader
         .join()

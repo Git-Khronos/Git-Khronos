@@ -47,6 +47,12 @@ push-review evidence while preserving unrelated config bytes and valid policy.
 Packaged inherited-environment acceptance independently checks the selected
 identity and the outside fixture's config, index, HEAD and working bytes.
 
+Cancellable Git capture waits for both the owned process exit and the two
+output readers. Those readers wake the coordinator on completion; the
+bounded poll still checks cancellation when Git has closed its output but
+is running, or a descendant keeps a pipe open after Git exits. EOF alone
+never completes the operation or substitutes for Git's exit code.
+
 Repository watchers observe Git's metadata directories, not its object
 database. In a reftable repository this includes the shared stack and any
 private stack of the selected linked checkout. Watch the directories rather
