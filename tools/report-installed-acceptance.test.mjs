@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { expandAcceptanceReports, selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
 
 test('discovers only final native reports from explicitly selected roots in stable order', async (t) => {
@@ -148,6 +150,23 @@ test('local release checks include every installed Ubuntu 24.04 workflow review 
     check.distribution.id === 'ubuntu' && check.distribution.versionId === '24.04' &&
     !['smoke', 'gitlab'].includes(check.suite)).map(check => check.suite);
   assert.deepEqual(localSuites, ciSuites);
+});
+
+test('the CLI lists requirements without a package and cannot pass them off as evidence', () => {
+  const cli = fileURLToPath(new URL('./report-installed-acceptance.mjs', import.meta.url));
+  const list = spawnSync(process.execPath, [cli, '--list-release-matrix'], { encoding: 'utf8' });
+  assert.equal(list.status, 0, list.stderr);
+  const declared = JSON.parse(list.stdout);
+  const wouldVerify = summarizeReleaseMatrix([]);
+  assert.equal(declared.kind, 'requirements');
+  assert.equal(declared.totalChecks, wouldVerify.checks.length);
+  assert.equal('complete' in declared, false);
+  assert.ok(declared.checks.every(check => !('report' in check)));
+  assert.deepEqual(declared.checks, wouldVerify.checks.map(({ report, ...check }) => check));
+  const mixed = spawnSync(process.execPath, [cli, '--list-release-matrix', 'installer.deb'], { encoding: 'utf8' });
+  assert.equal(mixed.status, 1);
+  assert.equal(mixed.stdout, '');
+  assert.match(mixed.stderr, /Usage:/);
 });
 
 test('passing patch reports on other platforms or without cancellation evidence do not qualify Noble', () => {

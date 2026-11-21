@@ -200,21 +200,24 @@ export function summarizeInstalledReport(candidate, report) {
   };
 }
 
+function releaseRequirements() {
+  return RELEASE_MATRIX.map(([id, versionId, suite, scenario, inheritedGitEnvironment = false]) => ({
+    distribution: { id, versionId },
+    suite,
+    ...(inheritedGitEnvironment && { inheritedGitEnvironment }),
+    requiredScenarios: Array.isArray(scenario) ? [...scenario] : [scenario],
+  }));
+}
+
 // Input reports must already have been matched to the installed payload.
 export function summarizeReleaseMatrix(validatedReports) {
-  const checks = RELEASE_MATRIX.map(([id, versionId, suite, scenario, inheritedGitEnvironment = false]) => {
-    const requiredScenarios = Array.isArray(scenario) ? scenario : [scenario];
+  const checks = releaseRequirements().map(requirement => {
+    const { distribution: { id, versionId }, suite, inheritedGitEnvironment, requiredScenarios } = requirement;
     const observed = validatedReports.find(report => report.passed === true &&
       report.linuxDistribution?.id === id && report.linuxDistribution.versionId === versionId &&
       report.suite === suite && (!inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
       requiredScenarios.every(required => report.scenarios.includes(required)));
-    return {
-      distribution: { id, versionId },
-      suite,
-      ...(inheritedGitEnvironment && { inheritedGitEnvironment }),
-      requiredScenarios: [...requiredScenarios],
-      report: observed?.path ?? null,
-    };
+    return { ...requirement, report: observed?.path ?? null };
   });
   return { complete: checks.every(check => check.report !== null), checks };
 }
@@ -275,10 +278,16 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
   return summary;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+async function main(args) {
   try {
-    const args = process.argv.slice(2);
-    const usage = 'Usage: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
+    const usage = 'Usage: node tools/report-installed-acceptance.mjs --list-release-matrix\n'
+      + '   or: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
+    if (args[0] === '--list-release-matrix') {
+      if (args.length !== 1) throw new Error(usage);
+      const checks = releaseRequirements();
+      console.log(JSON.stringify({ kind: 'requirements', totalChecks: checks.length, checks }, null, 2));
+      return;
+    }
     const releaseMatrix = args[0] === '--release-matrix';
     let publisherPreflight;
     if (releaseMatrix) args.shift();
@@ -301,4 +310,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.error(`Git Khronos: ${error.message}`);
     process.exitCode = 1;
   }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await main(process.argv.slice(2));
 }

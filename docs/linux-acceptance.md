@@ -507,9 +507,12 @@ To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
 path. The JSON lists the matching report or `null` for each required
 distribution and suite; any missing or failed check causes a nonzero exit.
-The current checklist covers 27 distribution/suite pairs. It includes all
-13 focused Ubuntu 24.04 workspace and Git workflow reviews in the hosted
-acceptance job, not just initial package startup and GitLab catalogue checks.
+To see the current checklist without building an installer or collecting
+reports, run `node tools/report-installed-acceptance.mjs --list-release-matrix`.
+The JSON lists each distribution, suite and required scenario. It includes
+the focused Ubuntu 24.04 workspace and Git workflow reviews as well as
+package startup and GitLab catalogue checks. The listing is not acceptance
+evidence.
 Use the original `report.json` from each passing job. The command does not
 check the publisher key or authorize publication.
 
