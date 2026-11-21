@@ -3057,9 +3057,13 @@ left Git configuration for tags and submodules unchanged.
 
 The new assertions are in the native `remote-reviews` suite; source
 Push/Publish/reference tests, strict Clippy, and 64 harness unit tests
-passed. The installed comparison is separate from the already qualified
-`b966672` package; see `scoped-branch-release.8b86T8u7/` under the local
-Jammy builder receipts.
+passed. With the same corrected harness, the `b966672` installer refused
+Publish in the same-name-tag fixture and the `b105e5a` package passed the
+whole isolated suite. Only `refs/heads/main` existed at the receiver after
+both Publish and Force Push. The successful package SHA-256 is
+`78ef9ccd89f3162fa35530230875c0dd0ffcfdad703db78e66ccc2aa5bf84500`.
+These are focused installed checks, not qualification of that package.
+Both reports are under `scoped-branch-release.8b86T8u7/`.
 
 ### Ordinary and background Fetch
 
@@ -3080,14 +3084,37 @@ Source receipts are under `target/local-review/non-pruning-fetch.Cp9KGYCx/`.
 ### Detached-checkout native hit target
 
 The first Ubuntu 24.04 run of the fast-Git package opened the context
-menu for the row above the requested commit during startup. The screenshot
-showed a dirty-working-copy row inserted after the test had measured the
-target position. The scenario now waits for that row and the exact current
+menu for the row above the requested commit. The screenshot showed the
+dirty-working-copy row, consistent with it appearing after target geometry
+was measured. The scenario now waits for that row and the exact current
 branch before one trusted right-click. On the unchanged `30bb7b4` package,
 all three detached-checkout cases and the remaining focused suites passed.
 The original report and the successful `focused-after-wip.09k5Vvz9/`
 recheck remain in the same package receipt directory. This did not change
 the actual checkout operation or retry a click.
+
+The unchanged fast-Git package then passed strict qualification: all 37
+Linux release checks, 52 accepted reports, and 288 cases in the full Jammy
+environment scope. The fixture-key installer, exact verification and APT
+preview are in `target/local-review/qualified-0.1.6-30bb7b4/`.
+Its SHA-256 is
+`f8354635356384c986a64602a52854e7a47f55c2affcf29e0919d4638b43a1d1`.
+Release and hotfix Finish took 15.8 and 7.4 seconds in the isolated
+installed branch-workflow check. These are measured on this package and
+host, not a controlled comparison with the older installer.
+
+### Working-tree recap during refresh
+
+An unchanged-status recount now keeps previously measured totals
+visible, explicitly marked as updating. It clears them on receipt
+failure or a different checkout/status. The new held-read regression
+failed on the old renderer and passed on the candidate. All 82 focused
+Chromium cases passed, including the revised lifecycle fixtures and the
+two Windows launcher cases that timed out in the earlier full run.
+This did not rerun the full 2,574-test matrix or the native Windows app.
+The AOT build adds 1,796 raw initial JS bytes, 222 gzip bytes and 159
+Brotli bytes; initial CSS is unchanged. Receipts are in
+`target/local-review/recap-refresh.vjxXDg5B/`.
 
 ### Branch workflow qualification timing
 
