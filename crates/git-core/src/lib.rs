@@ -2776,6 +2776,7 @@ pub fn commit_with_policy(
 pub fn update_head_message(
     path: &Path,
     expected_oid: &str,
+    expected_branch: Option<&str>,
     message: &str,
     skip_hooks: bool,
 ) -> Result<(), AppError> {
@@ -2794,15 +2795,7 @@ pub fn update_head_message(
             None,
         ));
     }
-    let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
-    ensure_success("read the current commit", &head)?;
-    if String::from_utf8_lossy(&head.stdout).trim() != expected_oid {
-        return Err(AppError::new(
-            "staleCommit",
-            "HEAD changed before its message could be updated.",
-            Some("Refresh the repository and try again."),
-        ));
-    }
+    reviewed_commit_head(path, expected_oid, expected_branch)?;
     let mut args = vec!["commit", "--amend", "--only"];
     if skip_hooks {
         args.push("--no-verify");
@@ -2818,6 +2811,49 @@ pub struct CommitAuthorInput {
     pub email: String,
 }
 
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitRewriteCheckout {
+    pub head_oid: String,
+    pub branch: Option<String>,
+}
+
+fn stale_commit_edit() -> AppError {
+    AppError::new(
+        "staleCommit",
+        "The branch or HEAD changed before the commit edit could be saved.",
+        Some("Refresh the repository and review the edit again."),
+    )
+}
+
+/// Return the reviewed full branch ref, or None for a detached HEAD.
+fn reviewed_commit_head(
+    path: &Path,
+    expected_oid: &str,
+    expected_branch: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
+    ensure_success("read the current commit", &head)?;
+    if String::from_utf8_lossy(&head.stdout).trim() != expected_oid {
+        return Err(stale_commit_edit());
+    }
+    let symbolic = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    if symbolic.status.success() {
+        let target = std::str::from_utf8(&symbolic.stdout)
+            .map_err(|_| stale_commit_edit())?
+            .trim_end_matches(['\r', '\n']);
+        let name = target.strip_prefix("refs/heads/").ok_or_else(stale_commit_edit)?;
+        if Some(name) != expected_branch {
+            return Err(stale_commit_edit());
+        }
+        Ok(Some(target.to_owned()))
+    } else if symbolic.status.code() == Some(1) && expected_branch.is_none() {
+        Ok(None)
+    } else {
+        Err(stale_commit_edit())
+    }
+}
+
 const MAX_EDITED_HISTORY_COMMITS: usize = 5_000;
 
 /// Changes the message and author of `target_oid`, which must be HEAD or one
@@ -2826,6 +2862,7 @@ const MAX_EDITED_HISTORY_COMMITS: usize = 5_000;
 pub fn edit_commit(
     path: &Path,
     expected_head: &str,
+    expected_branch: Option<&str>,
     target_oid: &str,
     message: &str,
     author: &CommitAuthorInput,
@@ -2866,15 +2903,7 @@ pub fn edit_commit(
     validate_author_part(name, "name")?;
     validate_author_part(email, "email")?;
 
-    let head = run_git(path, &["rev-parse", "--verify", "HEAD"])?;
-    ensure_success("read the current commit", &head)?;
-    if String::from_utf8_lossy(&head.stdout).trim() != expected_head {
-        return Err(AppError::new(
-            "staleCommit",
-            "HEAD changed before the commit could be edited.",
-            Some("Refresh the repository and try again."),
-        ));
-    }
+    let reviewed_ref = reviewed_commit_head(path, expected_head, expected_branch)?;
     let identity = format!("{name} <{email}>");
     if target_oid == expected_head {
         let date = run_git(path, &["log", "-1", "--format=%ad", "--date=raw", "HEAD"])?;
@@ -2885,6 +2914,7 @@ pub fn edit_commit(
             args.push("--no-verify");
         }
         args.extend(["--author", &identity, "--date", &date, "-m", message]);
+        reviewed_commit_head(path, expected_head, expected_branch)?;
         return run_mutation(path, &args, "edit the commit");
     }
 
@@ -2978,40 +3008,23 @@ pub fn edit_commit(
         "Git Khronos: edit commit {}",
         &target_oid[..12.min(target_oid.len())]
     );
-    let branch = run_git(path, &["symbolic-ref", "-q", "HEAD"])?;
-    let branch = String::from_utf8_lossy(&branch.stdout).trim().to_owned();
-    let output = if branch.is_empty() {
-        run_git(
-            path,
-            &[
-                "update-ref",
-                "--no-deref",
-                "-m",
-                &reflog,
-                "HEAD",
-                &new_head,
-                expected_head,
-            ],
-        )?
-    } else {
-        run_git(
-            path,
-            &[
-                "update-ref",
-                "-m",
-                &reflog,
-                &branch,
-                &new_head,
-                expected_head,
-            ],
-        )?
-    };
+    reviewed_commit_head(path, expected_head, expected_branch)?;
+    // Don't rediscover the write target after building the replacement graph.
+    // Use the reviewed ref and let Git compare-and-swap its expected tip.
+    let output = run_git(
+        path,
+        &[
+            "update-ref",
+            "--no-deref",
+            "-m",
+            &reflog,
+            reviewed_ref.as_deref().unwrap_or("HEAD"),
+            &new_head,
+            expected_head,
+        ],
+    )?;
     if !output.status.success() {
-        return Err(AppError::new(
-            "staleCommit",
-            "HEAD changed before the edited history could be saved.",
-            Some("Refresh the repository and try again. Nothing was changed."),
-        ));
+        return Err(stale_commit_edit());
     }
     Ok(())
 }
@@ -17004,6 +17017,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         update_head_message(
             &repository.path,
             &original,
+            Some("main"),
             "Updated message\n\nOnly rewrite the message.",
             false,
         )
@@ -17017,7 +17031,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             .expect("inspect updated commit");
         assert!(details.files.iter().all(|file| file.path != "staged.txt"));
         assert_eq!(
-            update_head_message(&repository.path, &original, "Stale", false)
+            update_head_message(&repository.path, &original, Some("main"), "Stale", false)
                 .expect_err("reject stale head")
                 .kind,
             "staleCommit"
@@ -17040,7 +17054,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             name: "Grace".into(),
             email: "grace@example.test".into(),
         };
-        edit_commit(&repository.path, &head, &head, "Head", &author, false).unwrap();
+        edit_commit(&repository.path, &head, Some("main"), &head, "Head", &author, false).unwrap();
         assert_eq!(
             repository
                 .git_output(&["log", "-1", "--format=%an <%ae>|%B"])
@@ -17050,6 +17064,107 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(
             repository.git_output(&["log", "-1", "--format=%ad", "--date=raw"]),
             date
+        );
+    }
+
+    #[test]
+    fn reviewed_commit_edits_reject_a_different_checkout_at_the_same_oid() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Root"]);
+        let head = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        repository.git(&["switch", "-c", "other"]);
+        let author = CommitAuthorInput {
+            name: "Ada".into(),
+            email: "ada@example.test".into(),
+        };
+        assert_eq!(
+            update_head_message(&repository.path, &head, Some("main"), "Refuse", false)
+                .unwrap_err().kind,
+            "staleCommit"
+        );
+        assert_eq!(
+            edit_commit(&repository.path, &head, None, &head, "Refuse", &author, false)
+                .unwrap_err().kind,
+            "staleCommit"
+        );
+        assert_eq!(
+            repository.git_output(&["symbolic-ref", "HEAD"]).trim(),
+            "refs/heads/other"
+        );
+        for branch in ["main", "other"] {
+            assert_eq!(repository.git_output(&["rev-parse", branch]).trim(), head);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reviewed_ancestor_edit_does_not_retarget_after_building_commits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        const MARKER: &str = "GIT_KHRONOS_REWRITE_CHECKOUT_MARKER";
+        const REAL: &str = "GIT_KHRONOS_REWRITE_CHECKOUT_GIT";
+        if let Some(marker) = std::env::var_os(MARKER) {
+            let repository = TestRepository::new();
+            repository.write("file", "root\n");
+            repository.git(&["add", "file"]);
+            repository.git(&["commit", "-m", "Root"]);
+            let target = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+            repository.write("file", "next\n");
+            repository.git(&["commit", "-am", "Next"]);
+            let head = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+            repository.git(&["branch", "other"]);
+            repository.write("file", "staged\n");
+            repository.git(&["add", "file"]);
+            repository.write("file", "working\n");
+            let index = fs::read(repository.path.join(".git/index")).unwrap();
+            let author = CommitAuthorInput {
+                name: "Ada".into(),
+                email: "ada@example.test".into(),
+            };
+            let error = edit_commit(
+                &repository.path, &head, Some("main"), &target, "Refuse", &author, false,
+            ).expect_err("a different symbolic HEAD must not receive the reviewed rewrite");
+            assert_eq!(error.kind, "staleCommit");
+            assert!(Path::new(&marker).exists(), "checkout fixture must run during commit-tree");
+            assert_eq!(repository.git_output(&["symbolic-ref", "HEAD"]).trim(), "refs/heads/other");
+            for branch in ["main", "other", "HEAD"] {
+                assert_eq!(repository.git_output(&["rev-parse", branch]).trim(), head);
+            }
+            assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
+            assert_eq!(fs::read(repository.path.join("file")).unwrap(), b"working\n");
+            return;
+        }
+
+        let fixture = TestRepository::new();
+        let helper = fixture.path.join("git");
+        fs::write(&helper, r#"#!/bin/sh
+if [ "$3" = commit-tree ] && [ ! -f "$GIT_KHRONOS_REWRITE_CHECKOUT_MARKER" ]; then
+    "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@" || exit
+    "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" -C "$2" symbolic-ref HEAD refs/heads/other || exit
+    printf 'switched\n' >"$GIT_KHRONOS_REWRITE_CHECKOUT_MARKER"
+    exit
+fi
+exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
+"#).unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let real_git = std::env::split_paths(&original_path)
+            .map(|entry| entry.join("git"))
+            .find(|candidate| candidate.is_absolute() && candidate.is_file())
+            .expect("Git must be available on PATH");
+        let path = std::env::join_paths(
+            std::iter::once(fixture.path.clone()).chain(std::env::split_paths(&original_path)),
+        ).unwrap();
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "tests::reviewed_ancestor_edit_does_not_retarget_after_building_commits", "--nocapture"])
+            .env("PATH", path)
+            .env(MARKER, fixture.path.join("checkout-switched"))
+            .env(REAL, real_git)
+            .output().unwrap();
+        assert!(
+            result.status.success(), "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr),
         );
     }
 
@@ -17102,6 +17217,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         edit_commit(
             &repository.path,
             &head,
+            Some("main"),
             &target,
             "Target\n\nBody\n",
             &author,
@@ -17148,7 +17264,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             "main"
         );
         assert_eq!(
-            edit_commit(&repository.path, &head, &target, "Stale", &author, false)
+            edit_commit(&repository.path, &head, Some("main"), &target, "Stale", &author, false)
                 .unwrap_err()
                 .kind,
             "staleCommit"
@@ -17193,7 +17309,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             (valid.clone(), " \n", "invalidCommitMessage"),
         ] {
             assert_eq!(
-                edit_commit(&repository.path, &head, &target, message, &author, false)
+                edit_commit(&repository.path, &head, None, &target, message, &author, false)
                     .unwrap_err()
                     .kind,
                 kind
@@ -17204,7 +17320,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             .trim()
             .to_owned();
         assert_eq!(
-            edit_commit(&repository.path, &head, &unrelated, "x", &valid, false)
+            edit_commit(&repository.path, &head, None, &unrelated, "x", &valid, false)
                 .unwrap_err()
                 .kind,
             "commitNotInHistory"
@@ -17214,6 +17330,7 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         edit_commit(
             &repository.path,
             &head,
+            None,
             &target,
             "Renamed one",
             &valid,

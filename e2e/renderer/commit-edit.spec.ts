@@ -72,7 +72,7 @@ test('removes a co-author from an older pushed commit after review', async ({ pa
   await editor.getByRole('button', { name: 'Save Commit' }).click();
   await expect(editor).toHaveCount(0);
   await expect.poll(() => calls(page)).toEqual([{ command: 'edit_commit', args: expect.objectContaining({
-    expectedHead: head,
+    checkout: { headOid: head, branch: 'main' },
     targetOid: older,
     message: `Add hunk-level staging actions\n\n${olderBody}\n\nCo-authored-by: Alex Kim <alex@example.test>`,
     author: { name: 'Maya Chen', email: 'maya@example.test' },
@@ -89,7 +89,7 @@ test('keeps message-only HEAD edits on the amend path and validates the author',
   await editor.getByLabel('Summary').fill('Polish the activity drawer');
   await editor.getByRole('button', { name: 'Save Commit' }).click();
   await expect.poll(() => calls(page)).toEqual([{ command: 'update_head_message', args: expect.objectContaining({
-    expectedOid: head, message: 'Polish the activity drawer\n\nMake operation history easier to scan and diagnose.',
+    checkout: { headOid: head, branch: 'main' }, message: 'Polish the activity drawer\n\nMake operation history easier to scan and diagnose.',
   }) }]);
 });
 
@@ -106,7 +106,7 @@ test('changes the HEAD author through the commit editor', async ({ page }) => {
   await expect(save).toBeEnabled();
   await save.click();
   await expect.poll(() => calls(page)).toEqual([{ command: 'edit_commit', args: expect.objectContaining({
-    expectedHead: head, targetOid: head, author: { name: 'Grace Hopper', email: 'grace@example.test' },
+    checkout: { headOid: head, branch: 'main' }, targetOid: head, author: { name: 'Grace Hopper', email: 'grace@example.test' },
   }) }]);
 });
 

@@ -983,7 +983,7 @@ fn root_rebase_edit_restart_continue_and_abort_retain_protected_history() {
     fs::write(repository.0.join("base"), b"Reviewed root edit\n").unwrap();
     stage_all(&repository.0).unwrap();
     assert!(continue_rebase(&repository.0).is_err());
-    update_head_message(&repository.0, &root, "Root after explicit amendment", false).unwrap();
+    update_head_message(&repository.0, &root, None, "Root after explicit amendment", false).unwrap();
     // Message-only amendment does not silently absorb staged changes.
     assert!(continue_rebase(&repository.0).is_err());
     commit_with_options(

@@ -1,5 +1,13 @@
 # Informational sources
 
+## Reviewed commit rewrite publication
+
+- [Git update-ref compare-and-swap and transaction semantics](https://git-scm.com/docs/git-update-ref)
+
+Used to keep an ancestor edit's ref update pinned to its reviewed branch
+and expected object ID. Git's CLI owns the actual ref write; no source code
+was copied.
+
 ## Linux package build serialization
 
 - [Linux advisory lock semantics](https://man7.org/linux/man-pages/man2/flock.2.html)

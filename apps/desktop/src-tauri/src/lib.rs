@@ -1086,13 +1086,19 @@ fn commit_changes(
 #[specta::specta]
 fn update_head_message(
     repo_id: String,
-    expected_oid: String,
+    checkout: git_khronos_git_core::CommitRewriteCheckout,
     message: String,
     skip_hooks: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_update_head_message(path, &expected_oid, &message, skip_hooks)
+        git_update_head_message(
+            path,
+            &checkout.head_oid,
+            checkout.branch.as_deref(),
+            &message,
+            skip_hooks,
+        )
     })
 }
 
@@ -1100,7 +1106,7 @@ fn update_head_message(
 #[specta::specta]
 fn edit_commit(
     repo_id: String,
-    expected_head: String,
+    checkout: git_khronos_git_core::CommitRewriteCheckout,
     target_oid: String,
     message: String,
     author: CommitAuthorInput,
@@ -1110,7 +1116,8 @@ fn edit_commit(
     mutate_and_refresh(&repo_id, &state, |path| {
         git_edit_commit(
             path,
-            &expected_head,
+            &checkout.head_oid,
+            checkout.branch.as_deref(),
             &target_oid,
             &message,
             &author,

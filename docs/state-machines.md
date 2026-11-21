@@ -426,7 +426,11 @@ active; otherwise the user must review and push explicitly.
 The inline author/message editor reviews a target OID against the active
 checkout visit, branch and HEAD. Before dispatch, a changed checkout or tip
 invalidates the draft rather than authorizing a rewrite against the newer
-history. Git still validates the expected object ID. A successful rewrite
+history. Native rewrite commands check both the reviewed branch (or detached
+HEAD) and its expected tip. Ancestor edits recheck after building replacement
+objects and only then ask Git to compare-and-swap the original ref. The
+checkout recheck occurs before Git's ref transaction; it is not an atomic
+lock on HEAD across independent Git processes. A successful rewrite
 reconciles the repository through the service, but only the same active
 editor may navigate to the replacement commit. Leaving the editor does not
 undo or discard an already-dispatched mutation.

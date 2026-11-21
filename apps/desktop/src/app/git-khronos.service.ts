@@ -1541,7 +1541,7 @@ export class GitKhronosService implements OnDestroy {
       'update_head_message',
       'Updating commit message…',
       'Commit message updated',
-      { expectedOid, message: message.trim(), skipHooks: false },
+      { checkout: { headOid: expectedOid, branch: repository.status.branch }, message: message.trim(), skipHooks: false },
     );
     if (outcome !== 'success') return false;
     const afterOid = this.repositories().find(candidate => candidate.id === repository.id)?.headOid;
@@ -1559,7 +1559,7 @@ export class GitKhronosService implements OnDestroy {
       'edit_commit',
       'Editing commit…',
       'Commit updated',
-      { expectedHead, targetOid, message: message.trim(), author: { name: author.name.trim(), email: author.email.trim() }, skipHooks: false },
+      { checkout: { headOid: expectedHead, branch: repository.status.branch }, targetOid, message: message.trim(), author: { name: author.name.trim(), email: author.email.trim() }, skipHooks: false },
     );
     if (outcome !== 'success') return false;
     this.recordHeadChange(repository.id, expectedHead, 'Edit Commit');

@@ -86,6 +86,7 @@ export type CommitFileDiff = { oid: string; path: string; patch: string; truncat
 export type CommitHistoryPage = { commits: CommitSummary[]; historyTruncated: boolean }
 export type CommitIdentity = { name: string; email: string }
 export type CommitPolicy = { signOff: boolean; allowEmpty: boolean; author?: CommitIdentity | null; committer?: CommitIdentity | null }
+export type CommitRewriteCheckout = { headOid: string; branch: string | null }
 export type CommitSignature = { status: string; signer: string | null; key: string | null; fingerprint: string | null; trust: string | null }
 export type CommitSummary = { oid: string; parents: string[]; authorName: string; authorEmail: string; authoredAt: string; subject: string; description: string; decorations: string[] }
 export type ComparedCommit = { oid: string; subject: string; author: string; timestamp: number }
@@ -694,8 +695,8 @@ export function apply_saved_discard(args: { repoId: string; id: string; reverse:
 export function forget_saved_discard(args: { repoId: string; id: string; expectedSha256?: string | null }): Promise<boolean> { return TAURI_INVOKE("forget_saved_discard", args); }
 export function ignore_path(args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("ignore_path", args); }
 export function commit_changes(args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("commit_changes", args); }
-export function update_head_message(args: { repoId: string; expectedOid: string; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
-export function edit_commit(args: { repoId: string; expectedHead: string; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("edit_commit", args); }
+export function update_head_message(args: { repoId: string; checkout: CommitRewriteCheckout; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
+export function edit_commit(args: { repoId: string; checkout: CommitRewriteCheckout; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("edit_commit", args); }
 export function checkout_branch(args: { repoId: string; name: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
 export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
 export function sync_checkout_remote_branch(args: { repoId: string; name: string; operationId: string }): Promise<RemoteCheckoutResult> { return TAURI_INVOKE("sync_checkout_remote_branch", args); }
