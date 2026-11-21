@@ -696,7 +696,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
           continue;
         }
         this.setBulkResult(repository.id, action, 'running', null);
-        const result = await runWorkspaceRemote(this.git, repository.id, action);
+        const result = await runWorkspaceRemote(this.git, repository, action);
         if (this.destroyed) return;
         this.setBulkResult(repository.id, action, result.status, result.error);
         if (result.status === 'cancelled') {

@@ -350,6 +350,7 @@ export type PreparedHostedFork = { token: string; plan: HostedForkPlan }
 export type PreparedHostedForkRemote = { token: string; plan: HostedForkRemotePlan }
 export type PreparedHostedWrite = { token: string; plan: HostedWritePlan }
 export type PreparedReset = ({ headOid: string; targetOid: string; mode: string; paths: string[] }) & { token: string }
+export type PullCheckout = { headOid: string | null; branch: string | null }
 /**
  * Read-only configuration evidence, not a persistent mutation capability.
  */
@@ -811,7 +812,7 @@ export function lfs_untrack_pattern(args: { repoId: string; pattern: string; exp
 export function sparse_checkout_set(args: { repoId: string; paths: string[]; sparseIndex: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_set", args); }
 export function sparse_checkout_reapply(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_reapply", args); }
 export function sparse_checkout_disable(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_disable", args); }
-export function pull_repository(args: { repoId: string; strategy?: string | null; remote?: string | null; branch?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pull_repository", args); }
+export function pull_repository(args: { repoId: string; strategy?: string | null; remote?: string | null; branch?: string | null; checkout: PullCheckout; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pull_repository", args); }
 export function push_repository(args: { repoId: string; remote?: string | null; branch?: string | null; expectedHeadOid?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("push_repository", args); }
 export function review_push_destination(args: { repoId: string; remote: string }): Promise<PushDestinationReview> { return TAURI_INVOKE("review_push_destination", args); }
 export function force_push_repository(args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; expectedDestinationState: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }

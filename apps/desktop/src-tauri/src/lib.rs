@@ -2,7 +2,7 @@ use git_khronos_git_core::{
     AppError, BranchIntegrationReview, CancellationToken, CommitAuthorInput, CommitComparison, CommitDetails,
     CommitFileDiff, CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions,
     FileBlameLine, FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep,
-    MINIMUM_GIT_VERSION, ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic,
+    MINIMUM_GIT_VERSION, PullCheckout, ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic,
     TagDetails, TrackedFileSearch, WorkingTreeFileDiff, abort_merge as git_abort_merge,
     abort_rebase as git_abort_rebase, add_remote as git_add_remote,
     add_submodule as git_add_submodule, apply_stash_checked as git_apply_stash,
@@ -43,7 +43,7 @@ use git_khronos_git_core::{
     prepare_interactive_rebase_with_options as git_prepare_interactive_rebase,
     prune_lfs_cancellable as git_prune_lfs_cancellable,
     publish_branch_cancellable as git_publish_branch_cancellable,
-    pull_from_remote_with_strategy_cancellable as git_pull_from_remote_cancellable,
+    pull_for_checkout_cancellable as git_pull_for_checkout_cancellable,
     pull_lfs_cancellable as git_pull_lfs_cancellable, push_cancellable as git_push_cancellable,
     push_force_with_lease_to_remote_cancellable as git_push_force_to_remote_cancellable,
     push_to_remote_at_head_cancellable as git_push_to_remote_at_head_cancellable,
@@ -2396,6 +2396,7 @@ async fn pull_repository(
     strategy: Option<String>,
     remote: Option<String>,
     branch: Option<String>,
+    checkout: PullCheckout,
     operation_id: String,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
@@ -2404,13 +2405,15 @@ async fn pull_repository(
         repo_id,
         operation_id,
         app,
-        move |path, cancellation| match (remote.as_deref(), branch.as_deref()) {
-            (None, None) => {
-                git_pull_from_remote_cancellable(path, &strategy, None, None, cancellation)
-            }
-            target => {
-                git_pull_from_remote_cancellable(path, &strategy, target.0, target.1, cancellation)
-            }
+        move |path, cancellation| {
+            git_pull_for_checkout_cancellable(
+                path,
+                &strategy,
+                remote.as_deref(),
+                branch.as_deref(),
+                &checkout,
+                cancellation,
+            )
         },
     )
     .await

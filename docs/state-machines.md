@@ -249,6 +249,13 @@ An explicit pull fetches the full branch ref, not a same-named remote tag.
 `pull-strategies.spec.ts` covers both destinations and local-only tracking;
 Git core tests cover custom fetch mappings and the remote tag collision.
 
+All app Pull routes pass the original checkout's branch and commit to
+native. A workspace batch captures each checkout when the batch is started,
+not when it reaches the front of the queue. Under the app's repository mutation
+lock, native refuses a changed checkout before starting Git, even when the
+new branch shares its old commit. This preflight isn't a lock against Git
+clients outside the app after the check.
+
 ### Manual co-author entry
 
 Text typed in the co-author picker belongs to the checkout's in-memory

@@ -74,9 +74,13 @@ test('status badges sync with the configured upstream, not the selected toolbar 
   ));
   expect(calls).toEqual([
     expect.objectContaining({ command: 'push_repository', args: expect.objectContaining({ remote: 'origin', branch: 'main', expectedHeadOid: headOid }) }),
-    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ remote: 'origin', branch: 'main', strategy: 'merge' }) }),
+    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({
+      remote: 'origin', branch: 'main', strategy: 'merge', checkout: { headOid, branch: 'main' },
+    }) }),
     expect.objectContaining({ command: 'push_repository', args: expect.objectContaining({ remote: 'upstream', branch: 'main', expectedHeadOid: headOid }) }),
-    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({ remote: 'upstream', branch: 'main', strategy: 'merge' }) }),
+    expect.objectContaining({ command: 'pull_repository', args: expect.objectContaining({
+      remote: 'upstream', branch: 'main', strategy: 'merge', checkout: { headOid, branch: 'main' },
+    }) }),
   ]);
   await expect(ahead).toHaveAttribute('title', 'Push 1 commit to origin/main');
   await expect(behind).toHaveAttribute('title', 'Pull 1 commit from origin/main · Fast-forward if possible');

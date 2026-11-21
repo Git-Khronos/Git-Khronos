@@ -711,6 +711,45 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
+test('a queued workspace pull keeps the original checkout rather than adopting a later branch', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const checkedOut = { ...fixture.second, status: { ...fixture.second.status, branch: 'external-change' } };
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      const repository = args.repoId === fixture.second.id ? checkedOut : fixture.first;
+      if (command === 'pull_repository') {
+        fixture.calls.push(args);
+        if (args.repoId === fixture.first.id) {
+          git.repositories.update((items: any[]) => items.map(item => item.id === checkedOut.id ? checkedOut : item));
+        } else if (args.checkout?.branch !== checkedOut.status.branch) {
+          throw { kind: 'stalePullCheckout', message: 'The checked-out branch or commit changed before Pull could start.' };
+        }
+        return repository;
+      }
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return repository;
+      if (command === 'refresh_repository_status') return repository.status;
+      throw Error(`Unexpected command: ${command}`);
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  await dialog.getByRole('button', { name: 'Pull selected (2)', exact: true }).click();
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — success');
+  await expect(results).toContainText('beta — error: The checked-out branch or commit changed before Pull could start.');
+  const dispatch = await page.evaluate(() => {
+    const { calls, first, second } = (window as any).__center;
+    return { calls, first: first.headOid, second: second.headOid };
+  });
+  expect(dispatch.calls.map((args: any) => args.checkout)).toEqual([
+    { branch: 'main', headOid: dispatch.first },
+    { branch: null, headOid: dispatch.second },
+  ]);
+});
+
 test('a native cancellation stops the remaining selected pulls', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

@@ -2208,12 +2208,11 @@ export class GitKhronosService implements OnDestroy {
   }
 
   async remote(
-    operation: 'fetch_repository' | 'pull_repository' | 'push_repository',
+    operation: 'fetch_repository' | 'push_repository',
     target: { remote?: string; branch?: string; expectedHeadOid?: string } = {},
   ): Promise<void> {
     const labels = {
       fetch_repository: ['Fetching…', 'Fetch complete'],
-      pull_repository: ['Pulling…', 'Pull complete'],
       push_repository: ['Pushing…', 'Push complete'],
     } as const;
     const repositoryId = this.activeRepositoryId();
@@ -2454,7 +2453,12 @@ export class GitKhronosService implements OnDestroy {
     remote?: string,
     branch?: string,
   ): Promise<void> {
-    await this.mutate('pull_repository', 'Pulling…', 'Pull complete', { strategy, remote, branch });
+    const repository = this.repository();
+    if (!repository) return;
+    await this.mutate('pull_repository', 'Pulling…', 'Pull complete', {
+      strategy, remote, branch,
+      checkout: { headOid: repository.headOid, branch: repository.status.branch },
+    });
   }
 
   async stash(message = ''): Promise<boolean> {

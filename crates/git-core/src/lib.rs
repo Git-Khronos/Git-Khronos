@@ -4629,7 +4629,7 @@ pub fn pull_from_remote_with_strategy(
     remote: Option<&str>,
     branch: Option<&str>,
 ) -> Result<(), AppError> {
-    pull_from_remote_with_strategy_and_cancellation(path, strategy, remote, branch, None)
+    pull_from_remote_with_strategy_and_cancellation(path, strategy, remote, branch, None, None)
 }
 
 pub fn pull_with_strategy_cancellable(
@@ -4637,7 +4637,14 @@ pub fn pull_with_strategy_cancellable(
     strategy: &str,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
-    pull_from_remote_with_strategy_and_cancellation(path, strategy, None, None, Some(cancellation))
+    pull_from_remote_with_strategy_and_cancellation(
+        path,
+        strategy,
+        None,
+        None,
+        None,
+        Some(cancellation),
+    )
 }
 
 pub fn pull_from_remote_with_strategy_cancellable(
@@ -4652,8 +4659,76 @@ pub fn pull_from_remote_with_strategy_cancellable(
         strategy,
         remote,
         branch,
+        None,
         Some(cancellation),
     )
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PullCheckout {
+    pub head_oid: Option<String>,
+    pub branch: Option<String>,
+}
+
+/// Refuse a receiver that changed before launching Git. A branch and its
+/// commit are separate identities: different branches often share a tip.
+pub fn pull_for_checkout_cancellable(
+    path: &Path,
+    strategy: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    checkout: &PullCheckout,
+    cancellation: &CancellationToken,
+) -> Result<(), AppError> {
+    pull_from_remote_with_strategy_and_cancellation(
+        path,
+        strategy,
+        remote,
+        branch,
+        Some(checkout),
+        Some(cancellation),
+    )
+}
+
+fn require_pull_checkout(path: &Path, checkout: &PullCheckout) -> Result<(), AppError> {
+    fn line(bytes: &[u8]) -> Option<&[u8]> {
+        bytes
+            .strip_suffix(b"\r\n")
+            .or_else(|| bytes.strip_suffix(b"\n"))
+    }
+
+    let stale = || {
+        AppError::new(
+            "stalePullCheckout",
+            "The checked-out branch or commit changed before Pull could start. Nothing was fetched or integrated.",
+            Some("Refresh the repository and review the current branch before pulling again."),
+        )
+    };
+    if let Some(oid) = &checkout.head_oid {
+        validate_commit_oid(oid)?;
+    }
+    let head = run_git(path, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+    let same_commit = match checkout.head_oid.as_deref() {
+        Some(oid) => head.status.success() && line(&head.stdout) == Some(oid.as_bytes()),
+        None => checkout.branch.is_some() && head.status.code() == Some(1),
+    };
+    if !same_commit {
+        return Err(stale());
+    }
+    let reference = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", "HEAD"])?;
+    let same_branch = match checkout.branch.as_deref() {
+        Some(branch) => {
+            reference.status.success()
+                && line(&reference.stdout).and_then(|name| name.strip_prefix(b"refs/heads/"))
+                    == Some(branch.as_bytes())
+        }
+        None => reference.status.code() == Some(1),
+    };
+    if !same_branch {
+        return Err(stale());
+    }
+    Ok(())
 }
 
 fn pull_from_remote_with_strategy_and_cancellation(
@@ -4661,6 +4736,7 @@ fn pull_from_remote_with_strategy_and_cancellation(
     strategy: &str,
     remote: Option<&str>,
     branch: Option<&str>,
+    checkout: Option<&PullCheckout>,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
     let strategy_arguments = match strategy {
@@ -4698,6 +4774,9 @@ fn pull_from_remote_with_strategy_and_cancellation(
                 Some("Select a remote and try again."),
             ));
         }
+    }
+    if let Some(checkout) = checkout {
+        require_pull_checkout(path, checkout)?;
     }
     run_mutation_with_cancellation(path, &args, "pull from the remote", cancellation)
 }
@@ -18821,6 +18900,59 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             fs::read(local.path.join("tracked.txt")).unwrap(),
             b"branch tip\n"
         );
+    }
+
+    #[test]
+    fn reviewed_pull_refuses_a_different_branch_at_the_same_commit_before_fetching() {
+        let local = TestRepository::new();
+        let remote = TestRepository::new();
+        remote.git(&["commit", "--allow-empty", "-m", "Base"]);
+        local.git(&["remote", "add", "origin", remote.path.to_str().unwrap()]);
+        let token = CancellationToken::default();
+        let run = |checkout: &PullCheckout| {
+            pull_for_checkout_cancellable(
+                &local.path,
+                "ff-only",
+                Some("origin"),
+                Some("main"),
+                checkout,
+                &token,
+            )
+        };
+        run(&PullCheckout {
+            branch: Some("main".into()),
+            head_oid: None,
+        })
+        .unwrap();
+        let base = local.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        let review = PullCheckout {
+            branch: Some("main".into()),
+            head_oid: Some(base.clone()),
+        };
+        let fetch_head = local.path.join(".git/FETCH_HEAD");
+        let before_fetch = fs::read(&fetch_head).unwrap();
+        remote.git(&["commit", "--allow-empty", "-m", "Upstream"]);
+        let upstream = remote.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+
+        local.git(&["switch", "-c", "other"]);
+        assert_eq!(local.git_output(&["rev-parse", "HEAD"]).trim(), base);
+        assert_eq!(run(&review).unwrap_err().kind, "stalePullCheckout");
+        assert_eq!(local.git_output(&["rev-parse", "HEAD"]).trim(), base);
+        local.git(&["switch", "main"]);
+        local.git(&["commit", "--allow-empty", "-m", "Changed locally"]);
+        assert_eq!(run(&review).unwrap_err().kind, "stalePullCheckout");
+        assert_eq!(fs::read(&fetch_head).unwrap(), before_fetch);
+        assert_eq!(
+            local
+                .git_output(&["rev-parse", "refs/remotes/origin/main"])
+                .trim(),
+            base
+        );
+
+        local.git(&["reset", "--hard", &base]);
+        run(&review).unwrap();
+        assert_eq!(local.git_output(&["rev-parse", "HEAD"]).trim(), upstream);
+        assert_eq!(local.git_output(&["rev-parse", "other"]).trim(), base);
     }
 
     #[test]

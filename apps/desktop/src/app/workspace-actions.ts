@@ -1,12 +1,14 @@
+import type { RepositorySnapshot } from '@git-khronos/contracts';
 import type { GitKhronosService } from './git-khronos.service';
 
 export async function runWorkspaceRemote(
   git: GitKhronosService,
-  repositoryId: string,
+  repository: RepositorySnapshot,
   operation: 'fetch' | 'pull',
 ): Promise<{ status: 'success' | 'error' | 'cancelled'; error: string | null }> {
-  const repository = git.repositories().find(item => item.id === repositoryId);
-  if (!repository) return { status: 'error', error: 'Repository is no longer open in this workspace.' };
+  if (!git.repositories().some(item => item.id === repository.id && item.path === repository.path)) {
+    return { status: 'error', error: 'Repository is no longer open in this workspace.' };
+  }
   if (git.busy() || git.browserPreview()) {
     return { status: 'error', error: git.browserPreview() ? 'Network operations are unavailable in browser preview.' : 'Another Git operation is already running.' };
   }
@@ -16,11 +18,13 @@ export async function runWorkspaceRemote(
   const done = `${label} complete · ${git.pathLabel(repository.path)}`;
   const result = operation === 'fetch'
     ? await git.mutateRepositoryWithResult(repository, 'fetch_repository', pending, done, {})
-    : await git.mutateRepositoryWithResult(repository, 'pull_repository', pending, done, {});
+    : await git.mutateRepositoryWithResult(repository, 'pull_repository', pending, done, {
+      checkout: { headOid: repository.headOid, branch: repository.status.branch },
+    });
   if (result.status === 'success' && operation === 'fetch') {
     git.backgroundFetchErrors.update(errors => {
       const updated = { ...errors };
-      delete updated[repositoryId];
+      delete updated[repository.id];
       return updated;
     });
   }
