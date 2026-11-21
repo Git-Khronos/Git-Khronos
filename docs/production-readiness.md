@@ -2757,3 +2757,20 @@ package and passed fixture-publisher preflight. The final receipt is under
 `target/local-review/updater/jammy-builder/reviewed-detach-release.PUqBYx0k/jammy-recap-recheck.bTyafwSj/verified-release.json`.
 This qualifies the earlier bytes against that checklist, not the later
 checkout-snapshot race fix or production signing.
+
+## Installed same-tip checkout race — 2026-11-21
+
+On Ubuntu 24.04, the `419939d` installer returned status for `main`
+and a worktree and current reference for `parallel` after an external
+switch at the same commit. The `bc1a577` installer retried the native
+read and returned `parallel` consistently without mutating the repository.
+It also passed the two inherited-Git checks. The updated fixture verified
+the same package again using atomic readiness markers.
+
+The positive installer SHA-256 is
+`4bded47504c280c1e9525cf0b7851eb6626b441de5e73da90e2d4a85f3dd5d76`.
+The paired and atomic-marker reports are in
+`target/local-review/coherent-checkout-snapshot.pg2K80sh/` and
+`target/local-review/updater/jammy-builder/coherent-snapshot-release.tCQLzY8Z/focused/`.
+These are focused installed results, not the full 34-check matrix or
+production signing.
