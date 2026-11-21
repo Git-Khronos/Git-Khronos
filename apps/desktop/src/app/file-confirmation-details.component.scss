@@ -7,6 +7,9 @@ p + p, p + ul, ul + p { margin-top: 8px; }
 .blocked-discard-path-group { display: grid; gap: 5px; }
 .blocked-discard-choice fieldset { display: grid; gap: 5px; min-width: 0; max-height: min(35dvh, 220px); overflow: auto; margin: 0; padding: 8px; border: 1px solid #49485f; border-radius: 4px; }
 .blocked-discard-choice legend { padding-inline: 4px; color: #c1c0cf; font-size: 12px; font-weight: 700; }
+.blocked-discard-selection { display: flex; flex-wrap: wrap; gap: 6px; }
+.blocked-discard-selection button { padding: 6px 8px; border: 1px solid #49485f; border-radius: 3px; background: #302f46; color: #d7d5e0; font-size: 12px; }
+.blocked-discard-selection button:is(:disabled, [aria-disabled='true']) { opacity: .5; cursor: default; }
 .blocked-discard-choice label { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 6px; border-radius: 3px; color: #d7d5e0; cursor: pointer; }
 .blocked-discard-choice label:hover { background: #302f46; }
 .blocked-discard-choice input { flex: none; margin: 2px 0 0; accent-color: var(--accent); }

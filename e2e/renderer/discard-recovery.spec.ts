@@ -622,6 +622,22 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
   await expect(rootA).toBeFocused();
   await expect(rootA).not.toBeChecked();
   await expect(rootB).not.toBeChecked();
+  const eligible = dialog.getByRole('group', { name: 'Eligible root-level files' });
+  const selectAll = eligible.getByRole('button', { name: 'Select all eligible' });
+  const clear = eligible.getByRole('button', { name: 'Clear selection' });
+  await expect(clear).toBeDisabled();
+  await selectAll.click();
+  await expect(eligible.getByRole('status')).toContainText('2 of 2 eligible files selected.');
+  await expect(rootA).toBeChecked();
+  await expect(rootB).toBeChecked();
+  await expect(selectAll).toBeDisabled();
+  await expect(selectAll).toBeFocused();
+  await clear.click();
+  await expect(eligible.getByRole('status')).toContainText('0 of 2 eligible files selected.');
+  await expect(rootA).not.toBeChecked();
+  await expect(rootB).not.toBeChecked();
+  await expect(clear).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__discardChoiceTest.previews)).toBe(2);
   await rootB.check();
   await dialog.getByRole('button', { name: 'Preview selected files' }).click();
 

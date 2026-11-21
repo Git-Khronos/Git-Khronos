@@ -17,6 +17,11 @@
       }
       <fieldset [disabled]="busy() || loading()">
         <legend>Eligible root-level files</legend>
+        <div class="blocked-discard-selection">
+          <button type="button" [attr.aria-disabled]="paths.length === selectedPaths().length" (click)="selectAllChanged.emit(true)">Select all eligible</button>
+          <button type="button" [attr.aria-disabled]="!selectedPaths().length" (click)="selectAllChanged.emit(false)">Clear selection</button>
+        </div>
+        <p role="status">{{ selectedPaths().length }} of {{ paths.length }} eligible files selected.</p>
         @for (path of paths; track path) {
           <label>
             <input type="checkbox" [checked]="selectedPaths().includes(path)"

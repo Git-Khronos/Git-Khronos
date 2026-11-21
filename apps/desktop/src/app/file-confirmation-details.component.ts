@@ -33,6 +33,7 @@ export class FileConfirmationDetailsComponent {
   readonly error = input.required<string | null>();
   readonly ready = output<PendingFileAction>();
   readonly togglePath = output<string>();
+  readonly selectAllChanged = output<boolean>();
   protected readonly displayRecoveryPath = displayRecoveryPath;
 
   constructor() {

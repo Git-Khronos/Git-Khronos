@@ -108,7 +108,9 @@ deferred review body owns rendering. The root-level subset chooser cannot
 start until the matching first review has rendered. Returning from the chooser
 discards the selection and restores focus only after that review is rendered
 again. Choosing a subset still requires a fresh native preview before any
-destructive confirmation. `discard-recovery.spec.ts` holds the review chunk,
+destructive confirmation. The Select all eligible and Clear selection controls
+only update the current candidate list; neither starts a preview or touches
+excluded paths. `discard-recovery.spec.ts` holds the review chunk,
 asserts that no second preview starts during loading, and checks focus and
 the exact subset sent after the chunk is released.
 

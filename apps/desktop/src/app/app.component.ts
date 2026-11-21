@@ -13228,6 +13228,14 @@ export class AppComponent implements OnInit, OnDestroy {
       ? paths.filter(candidate => candidate !== path) : [...paths, path]);
   }
 
+  protected selectBlockedDiscardChoicePaths(all: boolean): void {
+    const candidates = this.blockedDiscardChoicePaths();
+    if (!candidates || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    if (this.blockedDiscardChoiceSelectedPaths().length === (all ? candidates.length : 0)) return;
+    this.blockedDiscardChoiceError.set(null);
+    this.blockedDiscardChoiceSelectedPaths.set(all ? [...candidates] : []);
+  }
+
   protected returnToBlockedDiscardReview(): void {
     if (this.git.busy() || this.blockedDiscardChoiceLoading()) return;
     this.blockedDiscardChoiceRequest++;
