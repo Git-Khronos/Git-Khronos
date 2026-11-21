@@ -29,6 +29,33 @@ def unstaged_summary_workflow(driver, fixtures, report):
     assert checkout_footprint(fixtures, repository, files) == before
     report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial, 'initialStagedRecap': initial_staged}
     report['scenarios'].append('native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes')
+
+    # A partially staged path is present in both viewports. Selecting its
+    # Tree row must inspect that side of the index, not the other row's diff.
+    driver.click_visible('button[data-file-view-mode="tree"]')
+    def inspect_tree_side(section, label, added, deleted):
+        view = 'View staged changes in' if section == 'staged' else 'View changes in'
+        button = f'#{section}-files-list .tree-file button[aria-label="{view} fixture.txt"]'
+        driver.click_visible(button)
+        totals = driver.wait(f'''
+            const viewer = document.querySelector('.diff-workspace');
+            if (!viewer?.getClientRects().length
+                || !viewer.querySelector('.diff-file-identity')?.textContent.includes({json.dumps(label)})) return null;
+            const added = viewer.querySelector('.diff-additions')?.textContent.trim();
+            const deleted = viewer.querySelector('.diff-deletions')?.textContent.trim();
+            return added && deleted ? {{added, deleted}} : null;
+        ''')
+        assert totals == {'added': added, 'deleted': deleted}, (section, totals)
+        driver.click_visible('button[aria-label="Close diff"]')
+        return totals
+
+    staged_tree = inspect_tree_side('staged', 'Staged Changes', '+1', '−1')
+    unstaged_tree = inspect_tree_side('unstaged', 'Unstaged Changes', '+2', '−1')
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['unstagedLineSummary']['treeDiffSides'] = {'staged': staged_tree, 'unstaged': unstaged_tree}
+    report['scenarios'].append('native-working-tree-same-path-selects-each-index-side-from-its-tree-row')
+    driver.click_visible('button[data-file-view-mode="path"]')
+
     driver.click_visible('[aria-label="Stage fixture.txt"]')
     after_stage, after_staged = recaps((2, 2), (2, 1))
     assert fixtures.git(repository, 'show', ':fixture.txt') == 'unstaged\nretained\nextra'

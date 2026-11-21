@@ -108,7 +108,8 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'workspace-batch', 'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
     'discard-subset', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
-    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope', 'first-status', 'repository-open-scope', 'detached-checkout', 'checkout-snapshot'],
+    'tracked-file-search', 'feature-rebase', 'commit-rewrite', 'file-review-scope', 'repository-creation-scope',
+    'first-status', 'working-tree-recaps', 'repository-open-scope', 'detached-checkout', 'checkout-snapshot'],
   'ubuntu:26.04': ['smoke', 'gitlab'],
   'debian:12': ['incoming-links', 'gitlab'],
   'debian:13': ['smoke', 'gitlab'],
@@ -129,7 +130,7 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
   const fixtures = matrixFixtures();
   const complete = summarizeReleaseMatrix(fixtures);
   assert.equal(complete.complete, true);
-  assert.equal(complete.checks.length, 34);
+  assert.equal(complete.checks.length, 35);
   for (const [platform, suites] of Object.entries(requiredMatrix)) {
     assert.deepEqual(complete.checks.filter(({ distribution }) => `${distribution.id}:${distribution.versionId}` === platform)
       .map(check => check.suite), suites);
@@ -300,6 +301,17 @@ test('installed workspace batch must preserve its checkout and saved Pull policy
     assert.equal(matrix.complete, false);
     assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['workspace-batch']);
   }
+});
+
+test('installed recap evidence must prove diff sides stay distinct even for the same path', () => {
+  const fixtures = matrixFixtures();
+  const recaps = fixtures.find(report => report.suite === 'working-tree-recaps');
+  const scenario = 'native-working-tree-same-path-selects-each-index-side-from-its-tree-row';
+  assert.ok(recaps.scenarios.includes(scenario));
+  const priorEvidence = { ...recaps, scenarios: recaps.scenarios.filter(name => name !== scenario) };
+  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== recaps), priorEvidence]);
+  assert.equal(matrix.complete, false);
+  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['working-tree-recaps']);
 });
 
 test('installed Browse must reject a retired reply and still open a fresh selection', () => {

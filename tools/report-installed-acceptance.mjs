@@ -77,6 +77,13 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-first-file-scan-shows-loading-not-clean-while-history-is-usable',
     'native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes',
   ]],
+  ['working-tree-recaps', [
+    'native-working-tree-same-path-selects-each-index-side-from-its-tree-row',
+    'native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes',
+    'native-unstaged-summary-recounts-after-staging-without-including-staged-lines',
+    'native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain',
+    'native-worktree-rename-stages-and-unstages-both-paths-without-changing-files',
+  ]],
   ['repository-open-scope', [
     'native-retired-repository-read-preserves-active-tab-draft-and-saved-membership',
     'native-current-repository-selection-still-opens-the-chosen-checkout',
