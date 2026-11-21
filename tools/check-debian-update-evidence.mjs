@@ -55,8 +55,14 @@ export function qualifiedPackageDigest(receipt, report, publicKey) {
 }
 
 export async function checkEvidence(receiptPath, reportPath, keyPath, releasePackage) {
-  const receipt = JSON.parse(await readBounded(receiptPath, 65536));
   const report = JSON.parse(await readBounded(reportPath, 4 * 1024 * 1024));
+  return checkEvidenceWithReport(receiptPath, report, keyPath, releasePackage);
+}
+
+// Used by the matrix verifier with the raw report it already read and
+// validated. An aggregate summary cannot substitute for the original report.
+export async function checkEvidenceWithReport(receiptPath, report, keyPath, releasePackage) {
+  const receipt = JSON.parse(await readBounded(receiptPath, 65536));
   const digest = qualifiedPackageDigest(receipt, report, await readBounded(keyPath, 4096));
   if (releasePackage !== undefined) {
     if (typeof receipt.checksum !== 'string' || !/^ubuntu-jammy:[A-Za-z0-9_:+/=.-]+$/.test(receipt.checksum)) {

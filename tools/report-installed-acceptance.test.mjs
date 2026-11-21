@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
+import { selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix } from './report-installed-acceptance.mjs';
 
 const candidate = {
   packageSha256: 'a'.repeat(64),
@@ -126,4 +126,30 @@ test('split passing reports cannot combine to satisfy a required suite', () => {
     assert.equal(outcome.complete, false);
     assert.deepEqual(outcome.checks.filter(check => check.report === null).map(check => check.suite), [suite]);
   }
+});
+
+test('publisher preflight receives the same raw Jammy report that satisfied the matrix', () => {
+  const fixtures = matrixFixtures();
+  const chosen = fixtures.find(item => item.suite === 'environment');
+  const raw = { ...chosen, applicationUpdates: { nativeStatus: { configured: true, automatic: false } } };
+  const alternatives = new Map([
+    ['alternate-noble/report.json', { ...raw, linuxDistribution: { id: 'ubuntu', versionId: '24.04' } }],
+    [chosen.path, raw],
+  ]);
+  const matrix = summarizeReleaseMatrix(fixtures);
+  const selected = selectPublisherReport({ reports: fixtures, releaseMatrix: matrix }, alternatives);
+  assert.equal(selected.path, chosen.path);
+  assert.strictEqual(selected.raw, raw);
+  assert.throws(() => selectPublisherReport({ reports: fixtures, releaseMatrix: matrix }, new Map()),
+    /Missing raw Ubuntu 22.04 environment report/);
+});
+
+test('release verification does not proceed to the publisher check with missing or failed evidence', () => {
+  const fixtures = matrixFixtures();
+  const matrix = summarizeReleaseMatrix(fixtures.filter(item => item.suite !== 'watcher-refresh'));
+  assert.throws(() => selectPublisherReport({ reports: fixtures, releaseMatrix: matrix }, new Map()),
+    /incomplete: ubuntu 22.04: watcher-refresh/);
+  assert.throws(() => selectPublisherReport({
+    reports: [...fixtures, { passed: false }], releaseMatrix: summarizeReleaseMatrix(fixtures),
+  }, new Map()), /every supplied report to pass/);
 });

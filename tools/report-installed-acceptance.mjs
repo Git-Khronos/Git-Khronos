@@ -6,6 +6,7 @@ import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkPackage } from './check-linux-abi.mjs';
+import { checkEvidenceWithReport } from './check-debian-update-evidence.mjs';
 
 const MAX_REPORT_BYTES = 4 * 1024 * 1024;
 const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository';
@@ -107,11 +108,29 @@ export function summarizeReleaseMatrix(validatedReports) {
   return { complete: checks.every(check => check.report !== null), checks };
 }
 
-export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false } = {}) {
+export function selectPublisherReport(summary, environmentReports) {
+  if (summary.reports.some(report => !report.passed)) {
+    throw new Error('Release verification requires every supplied report to pass.');
+  }
+  if (!summary.releaseMatrix?.complete) {
+    const missing = summary.releaseMatrix?.checks.filter(check => !check.report)
+      .map(({ distribution, suite }) => `${distribution.id} ${distribution.versionId}: ${suite}`);
+    throw new Error(`The installed release matrix is incomplete${missing?.length ? ': ' + missing.join(', ') : '.'}`);
+  }
+  const selected = summary.releaseMatrix.checks.find(check => check.suite === 'environment'
+    && check.distribution.id === 'ubuntu' && check.distribution.versionId === '22.04')?.report;
+  const raw = environmentReports.get(selected);
+  if (!raw) throw new Error('Missing raw Ubuntu 22.04 environment report for publisher preflight.');
+  return { path: selected, raw };
+}
+
+export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight } = {}) {
+  releaseMatrix ||= !!publisherPreflight;
   const candidate = checkPackage(resolve(packagePath));
   const reports = [];
   const seen = new Set();
   const validatedReports = [];
+  const environmentReports = new Map();
   for (const path of reportPaths) {
     const absolute = resolve(path);
     if (seen.has(absolute)) throw new Error(`Duplicate report path: ${path}`);
@@ -122,30 +141,46 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
       if (releaseMatrix) {
         const { suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment } = report;
         validatedReports.push({ path, suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment });
+        if (publisherPreflight && suite === 'environment' && linuxDistribution?.id === 'ubuntu'
+            && linuxDistribution.versionId === '22.04' && passed) environmentReports.set(path, report);
       }
     } catch (error) {
       throw new Error(`${path}: ${error.message}`, { cause: error });
     }
   }
-  return {
+  const summary = {
     package: candidate.package,
     version: candidate.version,
     sha256: candidate.packageSha256,
     reports,
     ...(releaseMatrix && { releaseMatrix: summarizeReleaseMatrix(validatedReports) }),
   };
+  if (publisherPreflight) {
+    const { path, raw } = selectPublisherReport(summary, environmentReports);
+    const sha256 = await checkEvidenceWithReport(publisherPreflight.receipt, raw, publisherPreflight.key, resolve(packagePath));
+    if (sha256 !== summary.sha256) throw new Error('The package changed between installed matrix and publisher preflight checks.');
+    summary.publisherPreflight = { sha256, report: path };
+  }
+  return summary;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
+    const usage = 'Usage: node tools/report-installed-acceptance.mjs [--release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb REPORT.json …';
     const releaseMatrix = args[0] === '--release-matrix';
+    let publisherPreflight;
     if (releaseMatrix) args.shift();
+    else if (args[0] === '--verify-release') {
+      const [, receipt, key] = args.splice(0, 3);
+      if (!receipt || !key || [receipt, key].some(arg => arg.startsWith('--'))) throw new Error(usage);
+      publisherPreflight = { receipt, key };
+    }
     const [packagePath, ...reportPaths] = args;
     if (!packagePath || (!releaseMatrix && !reportPaths.length) || args.some(arg => arg.startsWith('--'))) {
-      throw new Error('Usage: node tools/report-installed-acceptance.mjs [--release-matrix] PACKAGE.deb [REPORT.json …]');
+      throw new Error(usage);
     }
-    const summary = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix });
+    const summary = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix, publisherPreflight });
     console.log(JSON.stringify(summary, null, 2));
     if (summary.reports.some(report => !report.passed) || (releaseMatrix && !summary.releaseMatrix.complete)) {
       process.exitCode = 1;

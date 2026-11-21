@@ -395,6 +395,18 @@ distribution and suite; any missing or failed check causes a nonzero exit.
 Use the original `report.json` from each passing job. The command does not
 check the publisher key or authorize publication.
 
+For a strict offline handoff, check the full matrix and publisher preflight
+in one command. Supply the original installed reports, not a prior summary:
+
+```bash
+node tools/report-installed-acceptance.mjs --verify-release \
+  "$BUILD_RECEIPT" "$PUBLISHER_PUBLIC_KEY_FILE" "$PACKAGE" "${REPORTS[@]}"
+```
+
+This emits a JSON summary only after both checks pass. The publisher preflight
+uses the exact raw Ubuntu 22.04 environment report selected by the matrix
+and checks the same package hash. It neither signs nor publishes files.
+
 During longer runs, inspect the adjacent `progress.json` for the last
 completed scenario and elapsed time. The harness replaces it atomically
 and logs progress periodically when scenarios finish. It is a progress
