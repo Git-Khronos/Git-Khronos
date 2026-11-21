@@ -1061,16 +1061,16 @@ fn execute_ignore_with_refresh<T>(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn commit_changes(
+async fn commit_changes(
     repo_id: String,
     message: String,
     amend: bool,
     skip_hooks: bool,
     sign: bool,
     policy: Option<git_khronos_git_core::CommitPolicy>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_khronos_git_core::commit_with_policy(
             path,
             &message,
@@ -1080,6 +1080,7 @@ fn commit_changes(
             &policy.unwrap_or_default(),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
