@@ -210,3 +210,6 @@ def setup_keyboard_isolation(driver, fixtures, report):
 
     from native_application_updates_scenarios import application_updates_workflow
     application_updates_workflow(driver, fixtures, report)
+
+    from native_workspace_edit_scenarios import workspace_edit_workflow
+    workspace_edit_workflow(driver, fixtures, report)
