@@ -1810,3 +1810,21 @@ The same unchanged `080167d2` package separately passed all 19 installed
 updates off, and no installable offer while offline. The focused report is
 under `installed-noble-updates/` in the qualification directory above.
 This is not full environment acceptance or a live signed update installation.
+
+## Installed saved-tab and editor recovery follow-up — 2026-11-21
+
+The next Jammy package was built from `4cb30fb`, SHA-256
+`e7c06759239f6580eed680dc3e433d7ad92504ca44f5a372d65746e056f30f61`.
+The exact installer passed all 26 focused incoming-link cases in an Ubuntu
+24.04 container with both its stock Git 2.43.0 and a separately supplied
+Git 2.39.5 binary. Both runs restored the expected saved repository on a
+fresh application process and left the missing promised object unfetched.
+
+The broad installed runs reached editor recovery, where the old harness
+refused the installed path because it only recognized extracted executables.
+The corrected harness uses the verified binary, private D-Bus owner and
+private profile to bind the interruption to its own process. All 23 installed
+recovery scenarios passed on the same artifact, including a different
+replacement PID and explicit recovery/save. Evidence is under
+`target/local-review/updater/jammy-builder/guarded-reads.e2R48c1/`.
+These focused reports do not establish the full hosted release gate.

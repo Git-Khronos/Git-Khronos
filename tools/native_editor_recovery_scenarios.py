@@ -7,18 +7,42 @@ import select
 import signal
 import stat
 
-from native_acceptance import open_ui
+from native_acceptance import open_ui, verified_installed_executable
 from native_window_close import owned_application_pid
 
 
-def kill_owned_recovery_process(executable, fixture_root, data_home, expected_sha256):
+_INSTALLED_APP = Path('/usr/bin/git-khronos')
+
+
+def private_recovery_owner_pid(driver):
+    address = driver.session_bus_address
+    if not driver.session or not address or not address.startswith('unix:abstract=git-khronos-test-'):
+        raise RuntimeError('Installed crash acceptance requires the owned WebDriver session and private bus')
+    reply = driver.single_instance_bus_call('GetConnectionUnixProcessID').splitlines()
+    kind, _, value = (reply[-1].strip() if reply else '').partition(' ')
+    if kind != 'uint32' or not value.isdecimal() or int(value) <= 1:
+        raise RuntimeError('Private recovery bus did not identify an application process')
+    return int(value)
+
+
+def kill_owned_recovery_process(executable, fixture_root, data_home, expected_sha256, *, installed_driver=None):
     """Bind SIGKILL to one pidfd after executable/profile/identity verification."""
     executable = Path(executable).resolve(strict=True)
     root = Path(fixture_root).resolve(strict=True)
     data_home = Path(data_home).resolve(strict=True)
-    if not executable.is_relative_to(root / 'package') or not data_home.is_relative_to(root):
-        raise RuntimeError('Crash acceptance requires an extracted fixture executable and private profile')
-    pid = owned_application_pid(executable)
+    profile = data_home.stat()
+    if (data_home == root or not data_home.is_relative_to(root) or not stat.S_ISDIR(profile.st_mode)
+            or profile.st_uid != os.geteuid() or stat.S_IMODE(profile.st_mode) & 0o077):
+        raise RuntimeError('Crash acceptance requires a private fixture profile')
+    if installed_driver is not None:
+        if executable != _INSTALLED_APP or installed_driver.executable != executable:
+            raise RuntimeError('Installed crash acceptance requires the reviewed system executable')
+        verified_installed_executable(root / 'package/usr/bin/git-khronos', _INSTALLED_APP)
+        pid = private_recovery_owner_pid(installed_driver)
+    else:
+        if not executable.is_relative_to(root / 'package'):
+            raise RuntimeError('Crash acceptance requires an extracted fixture executable without an installed session')
+        pid = owned_application_pid(executable)
     descriptor = os.pidfd_open(pid)
     try:
         proc = Path('/proc') / str(pid)
@@ -28,6 +52,10 @@ def kill_owned_recovery_process(executable, fixture_root, data_home, expected_sh
         environment = proc.joinpath('environ').read_bytes().split(b'\0')
         if ('XDG_DATA_HOME=' + str(data_home)).encode() not in environment:
             raise RuntimeError('Owned recovery process profile does not match')
+        if installed_driver is not None:
+            address = installed_driver.session_bus_address
+            if ('DBUS_SESSION_BUS_ADDRESS=' + address).encode() not in environment:
+                raise RuntimeError('Owned recovery process session bus does not match')
         with proc.joinpath('exe').open('rb') as source:
             digest = hashlib.file_digest(source, 'sha256').hexdigest()
         if digest != expected_sha256:
@@ -35,11 +63,14 @@ def kill_owned_recovery_process(executable, fixture_root, data_home, expected_sh
         after = proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()
         if before[19] != after[19] or after[0] in ('Z', 'X'):
             raise RuntimeError('Owned recovery process changed before crash dispatch')
+        if installed_driver is not None and private_recovery_owner_pid(installed_driver) != pid:
+            raise RuntimeError('Private recovery bus owner changed before crash dispatch')
         signal.pidfd_send_signal(descriptor, signal.SIGKILL)
         if not select.select([descriptor], [], [], 10)[0]:
             raise RuntimeError('Owned recovery process did not exit after crash dispatch')
         return {'pid': pid, 'startTimeTicks': before[19], 'executableSha256': digest,
-                'signal': 'SIGKILL', 'pidfdExitConfirmed': True}
+                'signal': 'SIGKILL', 'pidfdExitConfirmed': True,
+                'ownership': 'installed-private-bus' if installed_driver else 'extracted-fixture'}
     finally:
         os.close(descriptor)
 
@@ -113,14 +144,17 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     assert file.read_bytes() == working
     metadata_unchanged()
     driver.screenshot(Path(report['artifactsDirectory']) / 'recovery-before-crash.png')
+    installed_driver = driver if report.get('installedExecutable') else None
     crash = kill_owned_recovery_process(driver.executable, fixtures.root,
-                                       fixtures.env['XDG_DATA_HOME'], report['executableSha256'])
+                                       fixtures.env['XDG_DATA_HOME'], report['executableSha256'],
+                                       installed_driver=installed_driver)
     report['editorRecoveryCrash'] = crash
     # The old app is conclusively dead. Session deletion is sent once; no file
     # operation or user decision is replayed when creating the replacement.
     driver.close()
+    driver.wait_single_instance_release()
     driver.start(driver.executable)
-    replacement = owned_application_pid(driver.executable)
+    replacement = private_recovery_owner_pid(driver) if installed_driver else owned_application_pid(driver.executable)
     assert replacement != crash['pid']
     crash['replacementPid'] = replacement
     open_ui(driver, repository)

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from native_editor_recovery_scenarios import kill_owned_recovery_process
 
@@ -23,9 +24,12 @@ class OwnedRecoveryCrashTests(unittest.TestCase):
         shutil.copy2(shutil.which('sleep'), self.executable)
         self.digest = hashlib.sha256(self.executable.read_bytes()).hexdigest()
 
-    def start(self, executable=None, data_home=None):
+    def start(self, executable=None, data_home=None, bus_address=None):
+        env = {**os.environ, 'XDG_DATA_HOME': str(data_home or self.home)}
+        if bus_address is not None:
+            env['DBUS_SESSION_BUS_ADDRESS'] = bus_address
         child = subprocess.Popen([str(executable or self.executable), '60'],
-                                 env={**os.environ, 'XDG_DATA_HOME': str(data_home or self.home)})
+                                 env=env)
         def finish():
             if child.poll() is None:
                 child.kill()
@@ -69,6 +73,51 @@ class OwnedRecoveryCrashTests(unittest.TestCase):
     def test_executable_outside_extracted_fixture_refuses(self):
         with self.assertRaisesRegex(RuntimeError, 'extracted fixture executable'):
             kill_owned_recovery_process(shutil.which('sleep'), self.root, self.home, self.digest)
+
+    def installed_fixture(self):
+        installed = self.root / 'installed-sleep'
+        packaged = self.root / 'package/usr/bin/git-khronos'
+        packaged.parent.mkdir(parents=True)
+        shutil.copy2(self.executable, installed)
+        shutil.copy2(self.executable, packaged)
+        bus = 'unix:abstract=git-khronos-test-owned-crash'
+        driver = Mock(executable=installed, session='owned-session', session_bus_address=bus)
+        return installed, bus, driver
+
+    def test_installed_crash_only_signals_private_bus_owner_with_same_binary(self):
+        installed, bus, driver = self.installed_fixture()
+        sentinel = self.start(installed, bus_address='unix:abstract=unrelated-process')
+        child = self.start(installed, bus_address=bus)
+        driver.single_instance_bus_call.return_value = f'uint32 {child.pid}'
+        with patch('native_editor_recovery_scenarios._INSTALLED_APP', installed):
+            result = kill_owned_recovery_process(installed, self.root, self.home, self.digest,
+                                                 installed_driver=driver)
+        self.assertEqual(result['ownership'], 'installed-private-bus')
+        self.assertEqual(result['pid'], child.pid)
+        self.assertEqual(child.wait(timeout=10), -9)
+        self.assertIsNone(sentinel.poll())
+
+    def test_installed_crash_refuses_wrong_bus_even_with_matching_binary_and_profile(self):
+        installed, _, driver = self.installed_fixture()
+        child = self.start(installed, bus_address='unix:abstract=unrelated-process')
+        driver.single_instance_bus_call.return_value = f'uint32 {child.pid}'
+        with patch('native_editor_recovery_scenarios._INSTALLED_APP', installed):
+            with self.assertRaisesRegex(RuntimeError, 'session bus does not match'):
+                kill_owned_recovery_process(installed, self.root, self.home, self.digest,
+                                            installed_driver=driver)
+        self.assertIsNone(child.poll())
+
+    def test_installed_crash_refuses_a_bus_owner_change(self):
+        installed, bus, driver = self.installed_fixture()
+        child = self.start(installed, bus_address=bus)
+        sentinel = self.start(installed, bus_address=bus)
+        driver.single_instance_bus_call.side_effect = [f'uint32 {child.pid}', f'uint32 {sentinel.pid}']
+        with patch('native_editor_recovery_scenarios._INSTALLED_APP', installed):
+            with self.assertRaisesRegex(RuntimeError, 'bus owner changed'):
+                kill_owned_recovery_process(installed, self.root, self.home, self.digest,
+                                            installed_driver=driver)
+        self.assertIsNone(child.poll())
+        self.assertIsNone(sentinel.poll())
 
 
 if __name__ == '__main__':

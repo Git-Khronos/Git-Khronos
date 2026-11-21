@@ -184,6 +184,11 @@ three recovery) in `parity-draft-recovery-native-crash-private-drivers`.
 The private cache is acknowledged and its exact bytes, owner and 0700/0600
 directory/file permissions verified before SIGKILL. A pidfd, executable hash,
 private profile and process start time bind the crash to the owned fixture app.
+In installed mode the runner also rechecks the installed bytes against the
+reviewed package. It selects the process by the fixture's private D-Bus
+single-instance owner, not by a system-wide executable lookup, and checks
+the process's exact bus address and private profile before sending the signal.
+It waits for that bus name to be released before relaunching.
 Relaunch creates a different process with the same cache bytes. Explicit inert
 review/load preserves working-file, index, refs and config; only an explicit save
 writes the recovered text, preserving BOM/CRLF and cleaning the reviewed source.
