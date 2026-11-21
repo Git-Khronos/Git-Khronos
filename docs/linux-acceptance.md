@@ -755,6 +755,24 @@ For Playwright, also select a fresh, run-specific `--output` directory to avoid
 two runs deleting one another's traces. Do not overlap timing-sensitive suites
 with a compiler or a second browser suite.
 
+For a renderer release check, pin the app and test files to the same commit:
+
+```sh
+PLAYWRIGHT_PORT=4284 node tools/run-validation.mjs start \
+  target/validation-runs/renderer-candidate --snapshot HEAD \
+  run desktop:e2e --skipNxCache --output-style=static -- --workers=2 --retries=0
+```
+
+Choose an unused port and a new run directory. Snapshot mode resolves the
+ref before detaching and exports that commit under the run directory without
+registering a worktree. It includes neither uncommitted tests nor untracked
+files. The runner installs the snapshot's locked dependencies from the local
+pnpm store and makes Playwright start its own server. If dependencies are
+missing from the store, setup fails rather than using the live checkout.
+`preparing.json` records the pinned commit during setup; `started.json`
+means Nx actually started, and both receipts identify the isolated directory.
+Use normal mode for Git-history-dependent targets such as `nx affected`.
+
 The lightweight lifecycle tests include the actual CLI with a private fake
 package-manager executable; they never change the user's PATH or launch a build:
 
