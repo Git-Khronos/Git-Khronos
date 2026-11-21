@@ -222,6 +222,12 @@ export interface RepositoryWorkspace {
   activeRepositoryPath: string | null;
 }
 
+interface RepositoryRestoration {
+  workspaceId: string;
+  pending: Set<string>;
+  failed: Set<string>;
+}
+
 interface MutationResult {
   status: 'success' | 'error' | 'cancelled';
   error: string | null;
@@ -349,6 +355,7 @@ export class GitKhronosService {
   private detailsRequest = 0;
   private historyComparisonRequest: number | null = null;
   private readonly workspaceRepositoryCache = new Map<string, RepositorySnapshot[]>();
+  private repositoryRestoration: RepositoryRestoration | null = null;
   private tagDetailsRequest = 0;
   private readonly tagDetailsCache = new Map<string, TagDetails>();
   private readonly previewBisectOriginalHeads = new Map<string, string>();
@@ -2864,6 +2871,7 @@ export class GitKhronosService {
 
     this.persistOpenTabs();
     this.workspaceRepositoryCache.set(this.activeWorkspaceId(), this.repositories());
+    this.repositoryRestoration = null;
     this.activeWorkspaceId.set(workspaceId);
     this.persistWorkspaces();
     this.clearInspection();
@@ -2876,6 +2884,7 @@ export class GitKhronosService {
       this.activeRepositoryId.set(active?.id ?? null);
       this.activity.set(active ? `Workspace ${target.name}` : 'Ready');
       if (active) void this.refreshRepositoryInBackground(active.id);
+      if (!this.browserPreview()) await this.restoreRepositories();
       return;
     }
 
@@ -2899,7 +2908,9 @@ export class GitKhronosService {
     }
     if (target.repositoryPaths.length) await this.restoreRepositories();
     else this.activity.set('Ready');
-    this.workspaceRepositoryCache.set(workspaceId, this.repositories());
+    if (this.activeWorkspaceId() === workspaceId) {
+      this.workspaceRepositoryCache.set(workspaceId, this.repositories());
+    }
   }
 
   activateRepository(repoId: string): void {
@@ -2919,6 +2930,8 @@ export class GitKhronosService {
     const closingIndex = repositories.findIndex((repository) => repository.id === repoId);
     const closingRepository = repositories[closingIndex];
     if (!closingRepository) return;
+    this.repositoryRestoration?.pending.delete(closingRepository.path);
+    this.repositoryRestoration?.failed.delete(closingRepository.path);
     // A reopened path may reuse the same ID, but not the closed session's page.
     if (this.historyRequest?.repoId === repoId) {
       this.historyRequest = null;
@@ -3678,91 +3691,112 @@ export class GitKhronosService {
   }
 
   private async restoreRepositories(): Promise<void> {
-    const workspaceId = this.activeWorkspaceId();
     const workspace = this.activeWorkspace();
-    const paths = workspace?.repositoryPaths ?? [];
-    if (!paths.length) return;
-    const activePath = workspace?.activeRepositoryPath ?? null;
-    const ordered = [
-      ...paths.filter((path) => path === activePath),
-      ...paths.filter((path) => path !== activePath),
-    ];
-    const failedPaths: string[] = [];
-    const activityId = this.nextActivityId++;
-    this.operations.start(activityId, null, null);
-    this.activity.set('Restoring active repository…');
-    let restoredPath: string | null = null;
-    const finishHistoryBarrier = this.beginHistoryBarrier();
-    try {
-      if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
-      if (this.activeWorkspaceId() !== workspaceId) return;
-      for (const path of ordered) {
-        try {
-          const snapshot = await ipc.open_repository({ path });
-          if (this.activeWorkspaceId() !== workspaceId) return;
-          this.storeSnapshot(snapshot, true);
-          this.activeRepositoryId.set(snapshot.id);
-          this.deferredMetadataRefreshes.add(snapshot.id);
-          restoredPath = path;
-          break;
-        } catch {
-          failedPaths.push(path);
+    const loaded = new Set(this.repositories().map(repository => repository.path));
+    const paths = workspace?.repositoryPaths.filter(path => !loaded.has(path)) ?? [];
+    if (!workspace || !paths.length) return;
+    const restoration: RepositoryRestoration = {
+      workspaceId: workspace.id,
+      pending: new Set(paths),
+      failed: new Set(),
+    };
+    this.repositoryRestoration = restoration;
+
+    // Serve the current/active tab first. The other saved tabs remain durable
+    // intent while their native reads are deferred; a cache hit isn't completion.
+    if (!this.repository()) {
+      const activePath = workspace.activeRepositoryPath;
+      const ordered = activePath && restoration.pending.has(activePath)
+        ? [activePath, ...paths.filter(path => path !== activePath)] : paths;
+      const activityId = this.nextActivityId++;
+      this.operations.start(activityId, null, null);
+      this.activity.set('Restoring active repository…');
+      const finishHistoryBarrier = this.beginHistoryBarrier();
+      try {
+        if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
+        for (const path of ordered) {
+          if (!this.ownsRepositoryRestoration(restoration)) return;
+          if (await this.restoreSavedRepository(restoration, path)) break;
         }
+        if (!this.ownsRepositoryRestoration(restoration)) return;
+        this.activity.set('Ready');
+      } finally {
+        this.operations.complete(activityId);
+        finishHistoryBarrier();
       }
-      this.activity.set('Ready');
-    } finally {
-      this.operations.complete(activityId);
-      finishHistoryBarrier();
     }
-    if (!restoredPath) {
-      if (failedPaths.length) this.reportRestoreFailures(failedPaths);
-      return;
+    if (!this.ownsRepositoryRestoration(restoration)) return;
+    if (this.incomingRepositoryLinksPending() || !restoration.pending.size) {
+      await this.restoreRepositoryTabs(restoration);
+    } else {
+      this.restoreRepositoryTabsWhenIdle(restoration);
     }
-    const activeRepositoryId = this.activeRepositoryId();
-    if (activeRepositoryId) this.deferMetadataRefresh(activeRepositoryId);
-    const remaining = paths.filter((path) => path !== restoredPath);
-    if (this.incomingRepositoryLinksPending()) await this.restoreRepositoryTabs(remaining, paths, workspaceId);
-    else this.restoreRepositoryTabsWhenIdle(remaining, paths, workspaceId);
   }
 
-  private restoreRepositoryTabsWhenIdle(paths: string[], originalOrder: string[], workspaceId: string): void {
-    if (!paths.length) return;
-    if (this.activeWorkspaceId() !== workspaceId) return;
+  private ownsRepositoryRestoration(restoration: RepositoryRestoration): boolean {
+    return this.repositoryRestoration === restoration && this.activeWorkspaceId() === restoration.workspaceId;
+  }
+
+  private restoreRepositoryTabsWhenIdle(restoration: RepositoryRestoration): void {
+    if (!this.ownsRepositoryRestoration(restoration)) return;
     if (typeof window === 'undefined') {
-      void this.restoreRepositoryTabs(paths, originalOrder, workspaceId);
+      void this.restoreRepositoryTabs(restoration);
       return;
     }
     window.setTimeout(() => {
-      if (this.activeWorkspaceId() !== workspaceId) return;
+      if (!this.ownsRepositoryRestoration(restoration)) return;
       if (this.busy() || this.liveRefreshes.size || this.backgroundFetchBusy()) {
-        this.restoreRepositoryTabsWhenIdle(paths, originalOrder, workspaceId);
+        this.restoreRepositoryTabsWhenIdle(restoration);
         return;
       }
-      void this.restoreRepositoryTabs(paths, originalOrder, workspaceId);
+      void this.restoreRepositoryTabs(restoration);
     }, 3_000);
   }
 
-  private async restoreRepositoryTabs(paths: string[], originalOrder: string[], workspaceId: string): Promise<void> {
-    const failedPaths: string[] = [];
+  private async restoreSavedRepository(restoration: RepositoryRestoration, path: string): Promise<boolean> {
+    if (!restoration.pending.has(path)) return false;
+    if (this.repositories().some(repository => repository.path === path)) {
+      restoration.pending.delete(path);
+      return true;
+    }
+    let snapshot: RepositorySnapshot;
+    try {
+      snapshot = await ipc.open_repository({ path });
+    } catch {
+      if (this.ownsRepositoryRestoration(restoration) && restoration.pending.delete(path)) restoration.failed.add(path);
+      return false;
+    }
+    // A workspace can be visited again while an earlier read is in flight.
+    // Explicit tab closure can also revoke this exact pending path.
+    if (!this.ownsRepositoryRestoration(restoration) || !restoration.pending.delete(path)) return false;
+    if (!this.repositories().some(repository => repository.id === snapshot.id)) {
+      const saved = this.activeWorkspace()?.repositoryPaths ?? [];
+      const ranks = new Map(saved.map((savedPath, index) => [savedPath, index]));
+      ranks.set(snapshot.path, ranks.get(path) ?? saved.length);
+      this.storeSnapshot(snapshot, true);
+      this.repositories.update(repositories => [...repositories].sort((left, right) =>
+        (ranks.get(left.path) ?? saved.length) - (ranks.get(right.path) ?? saved.length)));
+      this.deferredMetadataRefreshes.add(snapshot.id);
+    }
+    if (!this.repository()) {
+      this.activeRepositoryId.set(snapshot.id);
+      this.deferMetadataRefresh(snapshot.id);
+    }
+    this.persistOpenTabs();
+    return true;
+  }
+
+  private async restoreRepositoryTabs(restoration: RepositoryRestoration): Promise<void> {
     const finishHistoryBarrier = this.beginHistoryBarrier();
     try {
       if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
-      for (const path of paths) {
-        if (this.activeWorkspaceId() !== workspaceId) return;
-        try {
-          const snapshot = await ipc.open_repository({ path });
-          if (this.activeWorkspaceId() !== workspaceId) return;
-          this.deferredMetadataRefreshes.add(snapshot.id);
-          this.storeSnapshot(snapshot, true);
-          this.repositories.update((repositories) => [...repositories].sort(
-            (left, right) => originalOrder.indexOf(left.path) - originalOrder.indexOf(right.path),
-          ));
-        } catch {
-          failedPaths.push(path);
-        }
+      for (const path of restoration.pending) {
+        if (!this.ownsRepositoryRestoration(restoration)) return;
+        await this.restoreSavedRepository(restoration, path);
       }
-      if (failedPaths.length) this.reportRestoreFailures(failedPaths);
-      else this.persistOpenTabs();
+      if (!this.ownsRepositoryRestoration(restoration)) return;
+      this.repositoryRestoration = null;
+      if (restoration.failed.size) this.reportRestoreFailures([...restoration.failed]);
     } finally {
       finishHistoryBarrier();
     }
@@ -3777,9 +3811,21 @@ export class GitKhronosService {
 
   private persistOpenTabs(preserveSavedPaths = false): void {
     const loadedPaths = this.repositories().map((repository) => repository.path);
-    const repositoryPaths = preserveSavedPaths
-      ? [...new Set([...(this.activeWorkspace()?.repositoryPaths ?? []), ...loadedPaths])]
-      : loadedPaths;
+    const savedPaths = this.activeWorkspace()?.repositoryPaths ?? [];
+    const restoration = this.repositoryRestoration;
+    let repositoryPaths = loadedPaths;
+    if (preserveSavedPaths) {
+      repositoryPaths = [...new Set([...savedPaths, ...loadedPaths])];
+    } else if (restoration && this.ownsRepositoryRestoration(restoration)) {
+      const loaded = new Set(loadedPaths);
+      let index = 0;
+      repositoryPaths = savedPaths.flatMap(path => {
+        if (loaded.has(path)) return [loadedPaths[index++]];
+        if (restoration.pending.has(path) || restoration.failed.has(path)) return [path];
+        return [];
+      });
+      repositoryPaths.push(...loadedPaths.slice(index));
+    }
     const activeRepositoryPath = this.repository()?.path ?? null;
     const workspaceId = this.activeWorkspaceId();
     this.workspaceRepositoryCache.set(workspaceId, this.repositories());

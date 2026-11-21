@@ -49,6 +49,21 @@ identity and the outside fixture's config, index, HEAD and working bytes.
 
 ## Implemented transition ownership
 
+### Deferred saved-tab restoration
+
+Saved workspace tab paths are the intent; loaded repository snapshots and the
+cache are observations. Opening, closing, and reordering visible tabs must not
+erase the still-pending paths or change their relative slots. Returning to a
+partially cached workspace resumes its missing tabs, without changing a visible
+selection. An unreadable saved path remains saved during restoration and is
+reported rather than treated as an explicit close.
+
+One restore instance owns an active workspace visit. Both its timer and replies
+check instance identity, including when the user leaves and returns to the same
+workspace. Closing a tab revokes that pending path so an earlier read cannot
+reopen it. `repository-restoration.spec.ts` exercises durable tab intent,
+partial cache hits, deferred reordering, failures and late native replies.
+
 ### Source-bound branch, sparse-checkout and worktree-removal reviews
 
 Branch deletion/rebase and worktree removal requests capture the repository ID,
