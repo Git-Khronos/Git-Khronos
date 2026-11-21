@@ -518,7 +518,9 @@
 .details-loading span:nth-child(3) { width: 58%; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-.terminal-placeholder { position: fixed; z-index: 24; right: 0; bottom: var(--statusbar-height); left: 0; height: 32px; display: flex; align-items: center; padding: 0 12px; border-top: 1px solid #4a4960; background: #20202e; color: #858496; font-size: 12px; }
+.terminal-placeholder { position: fixed; z-index: 24; right: 0; bottom: var(--statusbar-height); left: 0; min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; border-top: 1px solid var(--overlay-border); background: var(--overlay-surface); color: var(--text); font-size: 12px; }
+.terminal-placeholder p { margin: 0; }
+.terminal-placeholder button { flex: none; }
 .context-menu { position: fixed; z-index: 30; width: 234px; max-height: calc(100vh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--overlay-border); border-radius: 5px; background: var(--overlay-surface); box-shadow: var(--shadow-popover); animation: menu-in var(--motion-feedback) var(--ease-out); }
 .graph-action-menu {
   width: min(276px, calc(100vw - 16px));

@@ -1767,10 +1767,21 @@
     }
     @for (terminalRepository of git.repositories(); track terminalRepository.id) {
       @if (terminalRepositoryIds().includes(terminalRepository.id)) {
+        <ng-template #terminalFallback let-failed>
+          @if (terminalOpen() && terminalRepositoryId() === terminalRepository.id) {
+            <aside class="terminal-placeholder" [attr.aria-label]="failed ? 'Terminal unavailable' : 'Loading terminal'"
+              (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeTerminalFallback(terminalRepository.id)">
+              <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'The terminal could not load. Restart Git Khronos to try again.' : 'Starting repository terminal…' }}</p>
+              <button #terminalFallbackClose type="button" (click)="closeTerminalFallback(terminalRepository.id)">Back to graph</button>
+            </aside>
+          }
+        </ng-template>
         @defer (on immediate) {
           <gc-terminal-panel [repositoryId]="terminalRepository.id" [repositoryLabel]="git.repositoryLabel(terminalRepository)" [visible]="terminalOpen() && terminalRepositoryId() === terminalRepository.id" [nativeAvailable]="!git.browserPreview()" [fontFamily]="terminalFontFamily()" [fontSize]="terminalFontSize()" [lineHeight]="terminalLineHeight()" [cursorStyle]="terminalCursorStyle()" [theme]="appTheme()" (dismissed)="hideTerminalPanel(terminalRepository.id)" (closed)="closeTerminalPanel(terminalRepository.id)" />
-        } @placeholder {
-          @if (terminalOpen() && terminalRepositoryId() === terminalRepository.id) { <div class="terminal-placeholder" role="status" aria-live="polite">Starting repository terminal…</div> }
+        } @loading (after 100ms) {
+          <ng-container [ngTemplateOutlet]="terminalFallback" [ngTemplateOutletContext]="{ $implicit: false }" />
+        } @error {
+          <ng-container [ngTemplateOutlet]="terminalFallback" [ngTemplateOutletContext]="{ $implicit: true }" />
         }
       }
     }

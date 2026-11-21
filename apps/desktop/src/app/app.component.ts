@@ -693,6 +693,14 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly workspaceToggle = viewChild<ElementRef<HTMLButtonElement>>('workspaceToggle');
   private readonly workspaceEditorLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceEditorLoaderClose');
   private readonly workspaceEditorLoaderFocus = afterRenderEffect(() => this.workspaceEditorLoaderClose()?.nativeElement.focus());
+  private readonly terminalFallbackClose = viewChild<ElementRef<HTMLButtonElement>>('terminalFallbackClose');
+  private readonly terminalFallbackFocus = afterRenderEffect(() => {
+    const close = this.terminalFallbackClose()?.nativeElement;
+    const active = document.activeElement;
+    if (close && (active === document.body || active === this.terminalOpener || active === this.terminalToggle()?.nativeElement)) {
+      close.focus({ preventScroll: true });
+    }
+  });
   private readonly commandPaletteLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('commandPaletteLoaderClose');
   private readonly commandPaletteLoaderFocus = afterRenderEffect(() => this.commandPaletteLoaderClose()?.nativeElement.focus());
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
@@ -5033,13 +5041,14 @@ export class AppComponent implements OnInit, OnDestroy {
         : this.diffInsightMode() === 'blame' ? 'gc-file-blame .blame-lines' : '.split-diff-body, .focus-diff-view'
       : '.history-panel.workspace-focus-region';
     const central = document.querySelector<HTMLElement>(this.diffViewerOpen() ? '.diff-workspace' : selector);
-    const terminal = document.querySelector<HTMLElement>('gc-terminal-panel .terminal-panel:not(.inactive)');
+    const terminal = document.querySelector<HTMLElement>('gc-terminal-panel .terminal-panel:not(.inactive), .terminal-placeholder');
     const regions = [
       { element: document.querySelector<HTMLElement>('.toolbar.workspace-focus-region') },
       { element: document.querySelector<HTMLElement>('#repository-reference-panel:not(.panel-hidden)') },
       { element: central, focus: () => (central?.querySelector<HTMLElement>(selector) ?? central)?.focus({ preventScroll: true }) },
       { element: document.querySelector<HTMLElement>('#repository-commit-panel:not(.panel-hidden)') },
-      { element: terminal, focus: () => (terminal?.querySelector<HTMLElement>('.terminal-host.active textarea') ?? terminal)?.focus({ preventScroll: true }) },
+      { element: terminal, focus: () => (terminal?.querySelector<HTMLElement>('.terminal-host.active textarea')
+        ?? this.terminalFallbackClose()?.nativeElement ?? terminal)?.focus({ preventScroll: true }) },
     ].filter((region): region is { element: HTMLElement; focus?: () => void } => !!region.element
       && !region.element.hasAttribute('inert')
       && region.element.getClientRects().length > 0);
@@ -11563,6 +11572,10 @@ export class AppComponent implements OnInit, OnDestroy {
       this.terminalRepositoryId.set(null);
       this.restoreTerminalFocus();
     }
+  }
+
+  protected closeTerminalFallback(repoId: string): void {
+    if (this.terminalOpen() && this.terminalRepositoryId() === repoId) this.closeTerminalPanel(repoId);
   }
 
   protected hideTerminalPanel(repoId: string): void {
