@@ -1154,7 +1154,7 @@ def main():
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "comparison-responsiveness", "stash-responsiveness",
-        "commit-responsiveness",
+        "commit-responsiveness", "ignore-responsiveness",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
@@ -1270,7 +1270,7 @@ def main():
                 application_env.update(fixtures.history_environment())
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
             if args.suite in ("repository-open-scope", "checkout-snapshot", "comparison-responsiveness",
-                              "stash-responsiveness", "commit-responsiveness"):
+                              "stash-responsiveness", "commit-responsiveness", "ignore-responsiveness"):
                 application_env.update(fixtures.history_environment())
             if args.suite in ("gitlab", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
@@ -1392,6 +1392,9 @@ def main():
             elif args.suite == "commit-responsiveness":
                 from native_comparison_responsiveness_scenarios import commit_responsiveness
                 repository, repo_id = commit_responsiveness(driver, fixtures, report)
+            elif args.suite == "ignore-responsiveness":
+                from native_comparison_responsiveness_scenarios import ignore_responsiveness
+                repository, repo_id = ignore_responsiveness(driver, fixtures, report)
             elif args.suite == "watcher-checkout":
                 from native_watcher_scenarios import watcher_checkout
                 repository, repo_id = watcher_checkout(driver, fixtures, report)

@@ -141,3 +141,39 @@ def commit_responsiveness(driver, fixtures, report):
         previous = actual['head']
     report['scenarios'].append('native-commit-and-amend-do-not-block-unrelated-native-status-or-include-unstaged-data')
     return repository, repo_id
+
+
+def ignore_responsiveness(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('ignore-responsiveness', commits=3)
+    (repository / 'fixture.txt').write_text('owned unstaged edit\n')
+    (repository / 'first.log').write_text('owned selected untracked file\n')
+    (repository / 'sibling.log').write_text('owned untracked sibling\n')
+    files = ('fixture.txt', 'first.log', 'sibling.log')
+    repo_id = open_ui(driver, repository)
+    before = checkout_footprint(fixtures, repository, files)
+    staged_before = fixtures.git(repository, 'ls-files', '--stage')
+    gate = fixtures.history_gate
+    (gate / 'target').write_text(str(repository))
+    records = report['ignoreResponsiveness'] = []
+
+    result = held_git_command(driver, gate, 'ignore_path', 'check-ignore', {
+        'repoId': repo_id, 'path': 'first.log', 'patternKind': 'extension', 'stopTracking': False,
+    }, records)
+    assert (repository / '.gitignore').read_bytes() == b'*.log\n'
+    assert fixtures.git(repository, 'ls-files', '--stage') == staged_before
+    paths = {entry['path'] for entry in result['status']['entries']}
+    assert paths == {'.gitignore', 'fixture.txt'}, paths
+
+    result = held_git_command(driver, gate, 'ignore_path', 'check-ignore', {
+        'repoId': repo_id, 'path': 'fixture.txt', 'patternKind': 'file', 'stopTracking': True,
+    }, records)
+    assert (repository / '.gitignore').read_bytes() == b'*.log\n/fixture.txt\n'
+    assert fixtures.git(repository, 'diff', '--cached', '--name-status', '--no-renames') == 'D\tfixture.txt'
+    selected = next(entry for entry in result['status']['entries'] if entry['path'] == 'fixture.txt')
+    assert selected['indexStatus'] == 'D', selected
+    actual = checkout_footprint(fixtures, repository, files)
+    assert all(actual[key] == before[key] for key in ('head', 'branch', 'references', 'configSha256', 'files'))
+    report['scenarios'].append('native-ignore-leaves-updater-status-responsive-and-untracks-only-a-reviewed-file')
+    return repository, repo_id

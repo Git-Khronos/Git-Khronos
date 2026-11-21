@@ -1020,18 +1020,23 @@ async fn forget_saved_discard(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn ignore_path(
+async fn ignore_path(
     repo_id: String,
     path: String,
     pattern_kind: String,
     stop_tracking: bool,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    let session = repository_session(&repo_id, &state)?;
-    let _operation = session.operation.lock().map_err(state_error)?;
-    execute_ignore_with_refresh(&session.path, &path, &pattern_kind, stop_tracking, || {
-        build_snapshot(repo_id, &session)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let session = repository_session(&repo_id, &state)?;
+        let _operation = session.operation.lock().map_err(state_error)?;
+        execute_ignore_with_refresh(&session.path, &path, &pattern_kind, stop_tracking, || {
+            build_snapshot(repo_id, &session)
+        })
     })
+    .await
+    .map_err(background_task_error)?
 }
 
 fn execute_ignore_with_refresh<T>(

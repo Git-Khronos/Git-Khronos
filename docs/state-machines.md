@@ -208,7 +208,11 @@ can hide other untracked paths, so they use the checkout-bound file review
 even for an untracked selection. Cancel makes no Git request. Confirming an
 untracked selection adds the rule without requesting an index change;
 confirming a tracked selection can untrack only the selected file.
-`diff-action-lifecycle.spec.ts` covers both scopes and dispatch arguments.
+Both paths keep the native mutation and snapshot refresh under the same
+repository lock on a worker. If the write succeeds but refresh fails,
+the outcome remains distinct from a refusal or an unknown write.
+`diff-action-lifecycle.spec.ts` covers both scopes and dispatch arguments;
+native `ignore-responsiveness` checks both writes with Git held.
 
 ### Commit followed by push
 
