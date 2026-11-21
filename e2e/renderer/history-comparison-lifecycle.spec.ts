@@ -31,7 +31,8 @@ for (const selection of ['history-newer', 'graph', 'working-tree', 'commit', 'fi
     await prepare(page);
     const result = await page.evaluate(async selection => {
       const state = (window as any).__historyComparison;
-      const { git, historySearch } = state.app;
+      const { git } = state.app;
+      const historySearch = await state.app.loadHistorySearch();
       const first = historySearch.compare('old-base', 'old-target', 'direct');
       if (selection === 'history-newer') {
         const next = historySearch.compare('new-base', 'new-target', 'mergeBase');
@@ -66,7 +67,8 @@ for (const mode of ['direct', 'mergeBase']) {
     await prepare(page);
     const result = await page.evaluate(async mode => {
       const state = (window as any).__historyComparison;
-      const pending = state.app.historySearch.compare('base-ref', 'target-ref', mode);
+      const history = await state.app.loadHistorySearch();
+      const pending = history.compare('base-ref', 'target-ref', mode);
       state.replies[0].resolve({ ...state.fresh, files: [{ path: 'compared.txt', previousPath: null, status: 'M', additions: 1, deletions: 0 }] });
       await pending;
       return { comparison: state.app.git.commitComparison(), selected: state.app.git.selectedComparisonFile(),

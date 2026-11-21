@@ -5,7 +5,7 @@ async function prepare(page: Page, file: boolean): Promise<void> {
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async file => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    const history = app.historySearch;
+    const history = await app.loadHistorySearch();
     await history.reset();
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     let started!: () => void;

@@ -89,7 +89,7 @@ import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
 import { ReferenceActionDialogComponent, type ReferenceActionRequest, type ReferenceRenamed } from './reference-action-dialog.component';
 import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
 import { HistorySearchComponent } from './history-search.component';
-import { HistorySearchService } from './history-search.service';
+import type { HistorySearchService } from './history-search.service';
 import { FetchOptionsDialogComponent, type FetchDialogRequest } from './fetch-options-dialog.component';
 import { PreferencesDialogComponent } from './preferences-dialog.component';
 import { CommandPaletteComponent } from './command-palette.component';
@@ -842,7 +842,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly applicationUpdatesLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('applicationUpdatesLoaderClose');
 
   protected readonly repositoryOperation = computed(() => repositoryOperationState(this.git.repository()?.status));
-  protected readonly historySearch = inject(HistorySearchService);
+  private readonly loadedHistorySearch = signal<HistorySearchService | null>(null);
+  private fileHistoryOpenRequest = 0;
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
   private historyNavigationGeneration = 0;
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
@@ -9432,7 +9433,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.graphCommitByOid().has(oid)) {
       this.externalHistoryCommit.set(null);
       const current = () => this.ownsHistoryNavigation(intent) && this.selectedCommit() === oid;
-      void this.historySearch.summary(oid).then(summary => {
+      void this.git.inspectHistoryCommit(oid).then(summary => {
         if (current()) this.externalHistoryCommit.set(summary);
       }).catch(error => {
         if (current()) this.git.error.set(String(error?.message ?? error));
@@ -9960,8 +9961,8 @@ export class AppComponent implements OnInit, OnDestroy {
     busy: () => this.git.busy(),
     detailsBusy: () => this.git.detailsBusy(),
     blameCount: () => this.git.fileBlame()?.length ?? 0,
-    historyFileCount: () => this.historySearch.files().length,
-    historyFileComplete: () => this.historySearch.fileComplete(),
+    historyFileCount: () => this.loadedHistorySearch()?.files().length ?? 0,
+    historyFileComplete: () => this.loadedHistorySearch()?.fileComplete() ?? false,
     primaryShortcutKey: this.primaryShortcutKey,
     clearSelectedLines: () => this.selectedDiffLineGroups.set([]),
     showContent: () => this.diffInsightMode.set('content'),
@@ -10052,7 +10053,33 @@ export class AppComponent implements OnInit, OnDestroy {
     const revision = this.activeDiffRevision();
     if (!diff || !revision || !this.canInspectActiveFile()) return;
     this.diffInsightMode.set('history');
-    await this.historySearch.resumeFile(revision, diff.path);
+    await this.requestActiveFileHistory(revision, diff.path, true);
+  }
+
+  protected async loadHistorySearch(): Promise<HistorySearchService> {
+    const loaded = this.loadedHistorySearch();
+    if (loaded) return loaded;
+    const { HistorySearchService } = await import('./history-search.service');
+    const history = this.injector.get(HistorySearchService);
+    this.loadedHistorySearch.set(history);
+    return history;
+  }
+
+  private async requestActiveFileHistory(revision: string, path: string, resume: boolean): Promise<void> {
+    const request = ++this.fileHistoryOpenRequest;
+    const scope = this.git.activeRepositoryReadScope();
+    const viewer = this.diffViewerGeneration;
+    const current = () => request === this.fileHistoryOpenRequest && scope === this.git.activeRepositoryReadScope()
+      && viewer === this.diffViewerGeneration && this.diffViewerOpen() && this.diffInsightMode() === 'history'
+      && revision === this.activeDiffRevision() && path === this.activeDiff()?.path;
+    try {
+      const history = await this.loadHistorySearch();
+      if (!current()) return;
+      if (resume) await history.resumeFile(revision, path);
+      else await history.openFile(revision, path);
+    } catch {
+      if (current()) this.git.error.set('File history could not load. Return to the diff and restart Git Khronos to retry.');
+    }
   }
 
   protected async showFileBlame(): Promise<void> {
@@ -10083,7 +10110,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.git.selectedCommitFile.set(path);
     this.openDiffViewer();
     this.diffInsightMode.set(mode);
-    if (mode === 'history') await this.historySearch.openFile(revision, path);
+    if (mode === 'history') await this.requestActiveFileHistory(revision, path, false);
     else await this.git.inspectFileBlame(path, revision);
   }
 
@@ -10133,7 +10160,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.changesOpen.set(false);
     this.setPanelVisibility('commit-panel', true);
     try {
-      const summary = await this.historySearch.summary(oid);
+      const summary = await this.git.inspectHistoryCommit(oid);
       if (!current()) return;
       this.externalHistoryCommit.set(summary);
     } catch (error) {
@@ -10154,7 +10181,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const current = () => this.ownsHistoryNavigation(intent) && this.diffViewerGeneration === viewer
       && this.diffViewerOpen() && this.diffInsightMode() === 'blame' && this.activeDiff() === source;
     try {
-      const navigation = await this.historySearch.navigation(oid, path);
+      const navigation = await this.git.inspectBlameNavigation(oid, path);
       if (!current()) return;
       if (parent) {
         if (!navigation.parents.length) {

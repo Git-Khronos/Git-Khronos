@@ -335,6 +335,13 @@ exercises unchanged-status updates, superseded counts and return visits.
 
 ### History search read ownership
 
+The paged history engine is not part of startup. The search dialog and file
+history share one lazy service instance. A file-history request retains the
+checkout visit, diff viewer, revision and path while the engine loads;
+closing the viewer or starting a new request before that load completes
+does not submit a native page. First use does not reset a newly started
+read. Single-commit lookup and blame navigation use their own native reads.
+
 Repository search and paged file history belong to the active workspace visit
 and checkout, not just the reusable repository ID. Results and paging
 continuations from a retired read cannot update the new view, even if the new

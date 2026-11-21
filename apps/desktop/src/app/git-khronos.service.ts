@@ -3009,6 +3009,18 @@ export class GitKhronosService implements OnDestroy {
     await this.loadFileBlamePage(1, true);
   }
 
+  async inspectHistoryCommit(oid: string) {
+    const repoId = this.activeRepositoryId();
+    if (!repoId) throw new Error('Open a repository first.');
+    return ipc.inspect_history_commit({ repoId, oid });
+  }
+
+  async inspectBlameNavigation(oid: string, path: string) {
+    const repoId = this.activeRepositoryId();
+    if (!repoId) throw new Error('Open a repository first.');
+    return ipc.inspect_blame_navigation({ repoId, oid, path });
+  }
+
   async resumeFileBlame(path: string, revision: string): Promise<void> {
     const target = this.fileBlameTarget;
     if (target?.repoId === this.activeRepositoryId() && target.path === path && target.revision === revision) return;

@@ -85,6 +85,38 @@ test('cancelled history chunk loading does not open late or issue a search', asy
   await expect(page.getByRole('dialog', { name: 'Search repository history', exact: true })).toBeVisible();
 });
 
+test('paging code loads only on demand and a closed viewer cannot start a late file-history read', async ({ page }) => {
+  let release!: () => void;
+  let requests = 0;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/chunk-*.js', async route => {
+    const response = await route.fetch();
+    const text = await response.text();
+    if (text.includes('Searching a bounded history page') && text.includes('HistorySearchService')) {
+      requests++;
+      await gate;
+    }
+    await route.fulfill({ response, body: text });
+  });
+  try {
+    expect(requests).toBe(0);
+    await page.evaluate(() => {
+      const state = (window as any).__historyFixture;
+      state.pendingInsight = state.app.openTrackedFileInsight('new.txt', 'history');
+    });
+    await expect.poll(() => requests).toBe(1);
+    await page.evaluate(() => (window as any).__historyFixture.app.closeDiffViewer());
+    release();
+    const result = await page.evaluate(async () => {
+      const state = (window as any).__historyFixture;
+      await state.pendingInsight;
+      return { fileReads: state.calls.filter((call: any) => call.command === 'inspect_file_history_page'), open: state.app.diffViewerOpen() };
+    });
+    expect(result).toEqual({ fileReads: [], open: false });
+    await expect(page.getByRole('region', { name: 'File history', exact: true })).toHaveCount(0);
+  } finally { release(); }
+});
+
 test('failed history chunk has a focused close route and leaves repository state untouched', async ({ page }) => {
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
@@ -181,13 +213,14 @@ test('retains results and cursor after real operation cancellation, reports inco
 });
 
 test('file pagination opens historical renamed paths and blame can open the first parent', async ({ page }) => {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const { app, oldOid } = (window as any).__historyFixture;
     app.changesOpen.set(false);
     app.git.commitFileDiff.set({ oid: oldOid, path: 'new.txt', patch: '+line', truncated: false });
     app.openDiffViewer();
     app.diffInsightMode.set('history');
-    void app.historySearch.openFile(oldOid, 'new.txt');
+    const history = await app.loadHistorySearch();
+    void history.openFile(oldOid, 'new.txt');
   });
   const history = page.getByRole('region', { name: 'File history', exact: true });
   await expect(history).toContainText('incomplete');
@@ -268,8 +301,9 @@ test('returning to file history preserves loaded pages instead of repeating the 
     app.git.commitFileDiff.set({oid: oldOid, path: 'new.txt', patch: '+line', truncated: false});
     app.openDiffViewer();
     app.diffInsightMode.set('history');
-    await app.historySearch.openFile(oldOid, 'new.txt');
-    await app.historySearch.nextFile();
+    const history = await app.loadHistorySearch();
+    await history.openFile(oldOid, 'new.txt');
+    await history.nextFile();
   });
   const pane = page.getByRole('region', {name: 'File history', exact: true});
   await expect(pane).toContainText('2 commits · complete');
@@ -287,7 +321,8 @@ test('file history keeps its scroll position when returning from Diff', async ({
     app.git.commitFileDiff.set({oid: oldOid, path: 'new.txt', patch: '+line', truncated: false});
     app.openDiffViewer();
     await app.showFileHistory();
-    app.historySearch.files.set(Array.from({length: 100}, (_, i) => ({...entry, oid: (i + 1).toString(16).padStart(40, '0'), path: 'new.txt', previousPath: null})));
+    const history = await app.loadHistorySearch();
+    history.files.set(Array.from({length: 100}, (_, i) => ({...entry, oid: (i + 1).toString(16).padStart(40, '0'), path: 'new.txt', previousPath: null})));
   });
   const viewport = page.locator('gc-file-history .history-list');
   const commitButton = viewport.locator('.history-entry button').first();

@@ -1,6 +1,6 @@
-import { Injectable, effect, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { ipc } from '@git-khronos/contracts';
-import type { BlameNavigation, CommitComparison, CommitSummary, FileHistoryCursor, FileHistoryPage, HistoricalFileEntry, HistoryCursor, HistoryQuery, HistorySearchPage } from '@git-khronos/contracts';
+import type { FileHistoryCursor, FileHistoryPage, HistoricalFileEntry, HistoryCursor, HistoryQuery, HistorySearchPage } from '@git-khronos/contracts';
 import { CancellableOperation } from './cancellable-operation';
 import { GitKhronosService } from './git-khronos.service';
 
@@ -43,9 +43,14 @@ export class HistorySearchService {
   private fileGeneration = 0;
 
   constructor() {
+    // The first operation can start immediately after a lazy injection.
+    // Reset on a different checkout, not on the effect's initial run.
+    let scope = this.git.activeRepositoryReadScope();
     effect(() => {
-      this.git.activeRepositoryReadScope();
-      void this.reset();
+      const current = this.git.activeRepositoryReadScope();
+      if (current === scope) return;
+      scope = current;
+      untracked(() => void this.reset());
     });
   }
 
@@ -226,18 +231,6 @@ export class HistorySearchService {
       this.git.reportBackgroundOperationWarning(operation.read.id, `${detail} The file history may still be running.`);
     }
     if (operation === this.fileOperation && result !== 'accepted') this.fileCancelling.set(false);
-  }
-
-  async navigation(oid: string, path: string): Promise<BlameNavigation> {
-    const repo = this.git.repository();
-    if (!repo) throw new Error('Open a repository first.');
-    return ipc.inspect_blame_navigation({ repoId: repo.id, oid, path });
-  }
-
-  async summary(oid: string): Promise<CommitSummary> {
-    const repoId = this.git.activeRepositoryId();
-    if (!repoId) throw new Error('Open a repository first.');
-    return ipc.inspect_history_commit({ repoId, oid });
   }
 
   compare(base: string, target: string, mode: 'direct' | 'mergeBase'): Promise<boolean> {
